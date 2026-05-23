@@ -134,7 +134,7 @@ impl std::fmt::Debug for Nip46Signer {
             .field("remote_user_pubkey", &self.remote_user_pubkey.to_hex())
             .field("relays", &self.uri.relays)
             .field("pending_count", &self.pending.lock().map(|m| m.len()).unwrap_or(0))
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

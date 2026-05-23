@@ -80,7 +80,7 @@ impl std::fmt::Debug for AccountManager {
             .field("account_count", &self.accounts.len())
             .field("active", &self.active)
             .field("observers", &self.observers.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -249,6 +249,7 @@ impl AccountManager {
         self.observers.len()
     }
 
+    #[allow(clippy::similar_names)]
     fn verify_signer(&self, signer: &Arc<dyn Signer>) -> Result<(), AccountError> {
         let pubkey = signer.pubkey();
         let template = UnsignedEvent {
@@ -306,7 +307,7 @@ fn compute_event_id(template: &UnsignedEvent) -> Option<String> {
         .iter()
         .filter_map(|t| Tag::parse(t).ok())
         .collect();
-    let mut unsigned = EventBuilder::new(Kind::from_u16(template.kind as u16), &template.content)
+    let mut unsigned = EventBuilder::new(Kind::from_u16(u16::try_from(template.kind).unwrap_or(u16::MAX)), &template.content)
         .tags(tags)
         .custom_created_at(Timestamp::from(template.created_at))
         .build(pk);

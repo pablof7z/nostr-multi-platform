@@ -57,7 +57,7 @@ impl std::fmt::Debug for LocalKeySigner {
         f.debug_struct("LocalKeySigner")
             .field("pubkey", &self.pubkey.to_hex())
             .field("encrypted_at_rest", &self.password.is_some())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -139,6 +139,7 @@ impl LocalKeySigner {
     }
 
     /// Set / clear the password used by `to_payload()` to NIP-49-encrypt.
+    #[must_use]
     pub fn with_password(mut self, password: Option<String>) -> Self {
         self.password = password;
         self
@@ -148,6 +149,7 @@ impl LocalKeySigner {
     /// (~65k scrypt iterations — production-grade but slow: 1-3 seconds on a
     /// laptop).  Lower values (e.g. 8) are appropriate for tests and CI to
     /// keep the build fast; never go below 14 for real user keys.
+    #[must_use]
     pub fn with_ncryptsec_log_n(mut self, log_n: u8) -> Self {
         self.ncryptsec_log_n = log_n;
         self
@@ -181,8 +183,8 @@ impl LocalKeySigner {
         }
     }
 
-    fn sign_now(&self, unsigned: UnsignedEvent) -> Result<SignedEvent, SignerError> {
-        let kind = Kind::from_u16(unsigned.kind as u16);
+    fn sign_now(&self, unsigned: &UnsignedEvent) -> Result<SignedEvent, SignerError> {
+        let kind = Kind::from_u16(u16::try_from(unsigned.kind).unwrap_or(u16::MAX));
         // Hard-fail on any malformed tag rather than silently dropping it.
         // A dropped tag would produce a signed event that differs from the
         // caller's intent — the actor's `sign_with` enforces the same
@@ -234,7 +236,7 @@ impl Signer for LocalKeySigner {
     }
 
     fn sign(&self, unsigned: UnsignedEvent) -> SignerOp<SignedEvent> {
-        SignerOp::Ready(self.sign_now(unsigned))
+        SignerOp::Ready(self.sign_now(&unsigned))
     }
 
     fn nip04(&self) -> Option<&dyn Nip04> {
