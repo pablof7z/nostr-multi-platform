@@ -7,7 +7,8 @@ pub enum WorkerRequest {
     Hello(ClientHello),
     Start(StartConfig),
     Dispatch(ActionDispatch),
-    ChirpAction(ChirpActionDispatch),
+    #[serde(rename = "chirp_action")]
+    AppAction(AppActionDispatch),
     CapabilityResult(CapabilityResult),
     Stop { correlation_id: String },
 }
@@ -60,12 +61,12 @@ pub struct ActionDispatch {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ChirpActionDispatch {
-    pub action: ChirpAction,
+pub struct AppActionDispatch {
+    pub action: AppAction,
     pub correlation_id: String,
 }
 
-impl ChirpActionDispatch {
+impl AppActionDispatch {
     pub fn into_action_dispatch(self) -> ActionDispatch {
         let (action_type, payload) = self.action.into_dispatch_parts();
         ActionDispatch {
@@ -78,7 +79,7 @@ impl ChirpActionDispatch {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
-pub enum ChirpAction {
+pub enum AppAction {
     PublishNote {
         content: String,
         #[serde(default)]
@@ -97,7 +98,7 @@ pub enum ChirpAction {
     },
 }
 
-impl ChirpAction {
+impl AppAction {
     pub fn into_dispatch_parts(self) -> (String, Value) {
         match self {
             Self::PublishNote {

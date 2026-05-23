@@ -2,7 +2,7 @@ use std::ffi::{CStr, CString};
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister};
 use nmp_core::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp};
-use nmp_wasm::{ChirpAction, ChirpActionDispatch};
+use nmp_wasm::{AppAction, AppActionDispatch};
 
 fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {
     let ns = CString::new(namespace).unwrap();
@@ -22,26 +22,26 @@ fn web_chirp_action_contract_dispatches_against_registered_app_actions() {
 
     for (intent, expected_namespace) in [
         (
-            ChirpAction::React {
+            AppAction::React {
                 target_event_id: "abc".to_string(),
                 reaction: "+".to_string(),
             },
             "nmp.nip25.react",
         ),
         (
-            ChirpAction::Follow {
+            AppAction::Follow {
                 pubkey: "deadbeef".to_string(),
             },
             "nmp.follow",
         ),
         (
-            ChirpAction::Unfollow {
+            AppAction::Unfollow {
                 pubkey: "deadbeef".to_string(),
             },
             "nmp.unfollow",
         ),
     ] {
-        let action = ChirpActionDispatch {
+        let action = AppActionDispatch {
             action: intent,
             correlation_id: "web-contract".to_string(),
         }
