@@ -3790,6 +3790,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-app-longform"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-chirp-config"
 version = "0.1.0"
 
