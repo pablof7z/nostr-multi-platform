@@ -621,18 +621,15 @@ mod tests {
         // Array of strings.
         assert!(out.contains("    public let relayUrls: [String]\n"));
         assert!(out.contains("    public let denied: Bool\n"));
-        // No explicit CodingKeys — convertFromSnakeCase handles the
-        // snake_case → camelCase mapping at decode time. Emitting CodingKeys
-        // with snake_case rawValues causes KEY_NOT_FOUND because the decoder
-        // transforms JSON keys before matching rawValues.
-        assert!(
-            !out.contains("CodingKeys"),
-            "Stage-1 types must not emit explicit CodingKeys (convertFromSnakeCase conflict)"
-        );
-        assert!(
-            !out.contains("= \"open_views\""),
-            "snake_case rawValues must not appear in generated code"
-        );
+        // PR #358 regression guard — see `tests/swift_codegen_regression.rs`
+        // for the exhaustive set. Stage 1 must not emit `CodingKeys` (the
+        // decoder uses `.convertFromSnakeCase`; explicit raw values would
+        // double-transform to KEY_NOT_FOUND). Stage 2 SnapshotProjections
+        // DOES legitimately emit `CodingKeys`, so we scope to everything
+        // before that section's marker.
+        let stage1 = out.split("// MARK: - SnapshotProjections").next().unwrap_or(&out);
+        assert!(!stage1.contains("CodingKeys"), "Stage 1 must not emit CodingKeys");
+        assert!(!stage1.contains("= \"open_views\""), "no snake_case rawValues in Stage 1");
     }
 
     #[test]
