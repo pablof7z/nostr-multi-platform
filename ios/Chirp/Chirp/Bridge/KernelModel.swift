@@ -539,7 +539,7 @@ final class KernelModel: ObservableObject {
         groupChat.apply(snapshot: update.groupChat)
         dmInbox.apply(snapshot: update.dmInbox)
         // NIP-02 follow list projection mirror. Push every tick so the store
-        // tracks `projections["chirp.follow_list"]`. Touching `followList`
+        // tracks `projections["nmp.follow_list"]`. Touching `followList`
         // here forces the lazy `FollowListStore` init on the first snapshot,
         // which registers the read projection (`nmp_app_chirp_register_follow_list`).
         // The active-account pubkey is forwarded so the store can re-invoke

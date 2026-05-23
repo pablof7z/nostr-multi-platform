@@ -44,7 +44,7 @@ import XCTest
 /// ## Known gap
 ///
 /// None — all 6 registered Rust projections (`nmp.nip29.group_chat`,
-/// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `chirp.follow_list`,
+/// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `nmp.follow_list`,
 /// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`) have Swift decoders covered
 /// by this conformance test as of this file.
 final class SnapshotProjectionsConformanceTests: XCTestCase {
@@ -82,7 +82,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
           "nmp.nip17.dm_inbox": {
             "conversations": []
           },
-          "chirp.follow_list": {
+          "nmp.follow_list": {
             "follows": []
           },
           "nmp.nip57.zaps": {
@@ -112,7 +112,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             "SnapshotProjections.dmInbox decoded nil — check CodingKeys.dmInbox raw value matches \"nmp.nip17.dmInbox\" (post-convertFromSnakeCase of \"nmp.nip17.dm_inbox\")")
         XCTAssertNotNil(
             projections.followList,
-            "SnapshotProjections.followList decoded nil — check CodingKeys.followList raw value matches \"chirp.followList\" (post-convertFromSnakeCase of \"chirp.follow_list\")")
+            "SnapshotProjections.followList decoded nil — check CodingKeys.followList raw value matches \"nmp.followList\" (post-convertFromSnakeCase of \"nmp.follow_list\")")
         XCTAssertNotNil(
             projections.zaps,
             "SnapshotProjections.zaps decoded nil — check CodingKeys.zaps raw value matches \"nmp.nip57.zaps\"")

@@ -19,7 +19,7 @@ import os.log
 //     already fetches kind:3 for the active account — no separate interest
 //     push is needed.
 //   • Decrypted follows surface on every kernel snapshot under the
-//     `projections` key `"chirp.follow_list"` (decoded by
+//     `projections` key `"nmp.follow_list"` (decoded by
 //     `SnapshotProjections.followList`).
 //   • `FollowListStore` re-invokes after the active account changes so the
 //     active_pubkey slot in the projection is updated.
@@ -34,7 +34,7 @@ extension KernelHandle {
     ///
     /// Pure consumption — registers no handle. The active account's follow
     /// list then surfaces on every kernel snapshot under the `projections`
-    /// key `"chirp.follow_list"`.
+    /// key `"nmp.follow_list"`.
     ///
     /// `activePubkey` sets the projection's active-account slot so the
     /// snapshot returns the correct account's follows. Pass `nil` for the
@@ -55,7 +55,7 @@ extension KernelHandle {
 // ── FollowListStore — projection mirror pushed by KernelModel.apply ───────
 
 /// `@MainActor` store backing the DM compose contact picker. A pure mirror
-/// of the kernel's `chirp.follow_list` projection — no Swift owns any
+/// of the kernel's `nmp.follow_list` projection — no Swift owns any
 /// follow-list state, ordering, or protocol decision (thin-shell rule).
 @MainActor
 final class FollowListStore: ObservableObject {

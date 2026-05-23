@@ -964,10 +964,10 @@ struct SnapshotProjections: Decodable, Equatable {
     // string `"nmp.nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
     // `groupChat`, handled by the explicit `CodingKeys` case below.
     let dmInbox: DmInboxSnapshot?
-    // Chirp follow list — `projections["chirp.follow_list"]`. Registered by
+    // NIP-02 follow list — `projections["nmp.follow_list"]`. Registered by
     // `nmp_app_chirp_register_follow_list`. The dotted key is opaque to
     // `.convertFromSnakeCase` (it only replaces `_`), so the post-transform
-    // key is `"chirp.followList"` — handled in the explicit `CodingKeys` below.
+    // key is `"nmp.followList"` — handled in the explicit `CodingKeys` below.
     let followList: FollowListSnapshot?
 
     // NIP-29: the group-discovery read projection registered by
@@ -1049,7 +1049,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case removed
         case groupChat = "nmp.nip29.groupChat"
         case dmInbox = "nmp.nip17.dmInbox"
-        case followList = "chirp.followList"
+        case followList = "nmp.followList"
         // `.convertFromSnakeCase` maps `"nmp.nip29.discovered_groups"` →
         // `"nmp.nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
         // is the post-transform string this case must declare.

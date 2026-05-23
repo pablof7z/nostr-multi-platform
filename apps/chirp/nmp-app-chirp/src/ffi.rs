@@ -369,7 +369,7 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
 /// This is **pure consumption** of the NIP-02 kind:3 contact list. It
 /// constructs a [`FollowListProjection`] bound to `active_pubkey`, plugs it
 /// into the kernel as a [`KernelEventObserver`] (ingest), and registers its
-/// `snapshot_json` read under the snapshot key `"chirp.follow_list"` (output).
+/// `snapshot_json` read under the snapshot key `"nmp.follow_list"` (output).
 /// The active account's formatted follow list then surfaces on every kernel
 /// snapshot tick under that key.
 ///
@@ -385,7 +385,7 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
 /// CALLER CONTRACT — re-invoke after account switch with the new pubkey.
 /// The projection accumulates follow lists for all observed authors; only the
 /// active pubkey's list surfaces in the snapshot. A re-invoke for the same
-/// account overwrites the `"chirp.follow_list"` snapshot key with an
+/// account overwrites the `"nmp.follow_list"` snapshot key with an
 /// equivalent projection (small bounded leak on the observer slot).
 ///
 /// D6 — fire-and-forget. A null `app` or a poisoned observer slot degrades
@@ -424,7 +424,7 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("chirp.follow_list", move || projection.snapshot_json());
+    app_ref.register_snapshot_projection("nmp.follow_list", move || projection.snapshot_json());
 }
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.

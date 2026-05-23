@@ -260,7 +260,7 @@ fn groups_from(projections: &Value) -> Vec<GroupLine> {
 }
 
 fn follow_count_from(projections: &Value) -> usize {
-    projection(projections, "chirp.follow_list")
+    projection(projections, "nmp.follow_list")
         .and_then(|f| f.get("follows"))
         .and_then(Value::as_array)
         .map_or(0, Vec::len)
