@@ -31,15 +31,103 @@
 //!   locks (active-pubkey gate + follows map), one `p`-tag scan, one
 //!   `HashMap` insert. No I/O, no blocking.
 //! * **Thin-shell** — all display strings (npub, abbreviated form, initials,
-//!   colour) are computed here. The Swift shell renders only what it receives.
+//!   colour) are computed here. The host shell renders only what it receives.
+//!
+//! # Provenance
+//!
+//! Moved out of `apps/chirp/nmp-app-chirp/src/follow_list.rs` so any Nostr
+//! app on top of NMP can wire the NIP-02 follow-list projection without
+//! depending on the Chirp app crate (thin-shell rule — Chirp must be a
+//! zero-logic delegate to NMP crates).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
-use nmp_nip17::display;
 use serde::Serialize;
+
+mod display {
+    //! Display-string helpers for NIP-02 follow-list surfaces.
+    //!
+    //! TODO(nmp-display): these helpers are duplicated verbatim from
+    //! `nmp_nip17::display`. The right long-term home is a shared
+    //! `nmp-display` crate that both NIP crates depend on; until then we
+    //! keep two copies because `nmp-nip02 -> nmp-nip17` would be the wrong
+    //! dep direction (nip17 builds on the social graph, not the other way
+    //! round). A future consolidator should search for `TODO(nmp-display)`
+    //! to find every copy.
+
+    use nostr::{nips::nip19::ToBech32, PublicKey};
+
+    /// Convert a hex pubkey to a bech32 `npub1…` string.
+    ///
+    /// On any parse or encode error the raw hex is returned verbatim (D6).
+    pub fn to_npub(pubkey_hex: &str) -> String {
+        match PublicKey::parse(pubkey_hex) {
+            Ok(pk) => pk.to_bech32().unwrap_or_else(|_| pubkey_hex.to_string()),
+            Err(_) => pubkey_hex.to_string(),
+        }
+    }
+
+    /// Abbreviated bech32 form: first 10 chars + `"…"` + last 6 chars.
+    ///
+    /// If `pubkey_hex` is already an `npub1…` string it is abbreviated
+    /// directly; otherwise it is converted first. Falls back to raw hex on
+    /// any error (D6).
+    pub fn short_npub(pubkey_hex: &str) -> String {
+        let npub = to_npub(pubkey_hex);
+        abbreviate(&npub, 10, 6)
+    }
+
+    /// Two-char uppercase initials for the avatar tile.
+    ///
+    /// Takes the first 2 characters of the bech32 body — the part after the
+    /// `"npub1"` prefix — and uppercases them. These are bech32 chars, so
+    /// always ASCII. Falls back gracefully when the `npub1` prefix is absent
+    /// (e.g. raw hex fallback from a parse error in `to_npub`).
+    pub fn avatar_initials(npub: &str) -> String {
+        let body = npub.strip_prefix("npub1").unwrap_or(npub);
+        let chars: Vec<char> = body.chars().take(2).collect();
+        match chars.as_slice() {
+            [a, b] => format!("{a}{b}").to_uppercase(),
+            [a] => a.to_uppercase().to_string(),
+            _ => "?".to_string(),
+        }
+    }
+
+    /// Deterministic 6-hex avatar background colour from a hex pubkey
+    /// (uppercase, no `#` prefix).
+    ///
+    /// Uses the same djb2 algorithm as `nmp-marmot/src/projection/display.rs`
+    /// and `nmp_nip17::display` so colours are consistent across surfaces:
+    /// djb2 over the **last 6 bytes** of the pubkey hex string in natural
+    /// order.
+    pub fn avatar_color_hex(pubkey_hex: &str) -> String {
+        let bytes = pubkey_hex.as_bytes();
+        let start = bytes.len().saturating_sub(6);
+        let tail = &bytes[start..];
+        let mut hash: u32 = 5381;
+        for b in tail {
+            hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
+        }
+        format!("{:06X}", hash & 0x00FF_FFFF)
+    }
+
+    /// Abbreviate a string to `head` chars + `"…"` + `tail` chars.
+    ///
+    /// If the string is short enough to fit without abbreviation it is
+    /// returned unchanged (no trailing ellipsis on short strings).
+    fn abbreviate(s: &str, head: usize, tail: usize) -> String {
+        if s.chars().count() <= head + tail + 1 {
+            return s.to_string();
+        }
+        let chars: Vec<char> = s.chars().collect();
+        let head_s: String = chars.iter().take(head).collect();
+        let tail_s: String = chars.iter().skip(chars.len() - tail).collect();
+        format!("{head_s}…{tail_s}")
+    }
+}
 
 /// NIP-02 contact list kind.
 const KIND_CONTACT_LIST: u32 = 3;
@@ -84,7 +172,7 @@ struct FollowListSnapshotPayload<'a> {
 /// Accumulates NIP-02 kind:3 contact lists and exposes the active account's
 /// follow list as a formatted snapshot.
 ///
-/// Construct with a shared `active_pubkey` slot; the chirp FFI writes the
+/// Construct with a shared `active_pubkey` slot; the host FFI writes the
 /// slot on account creation / switch. Register the same `Arc` as a
 /// [`KernelEventObserver`] against the kernel so kind:3 events are ingested.
 pub struct FollowListProjection {
@@ -110,14 +198,6 @@ impl FollowListProjection {
         }
     }
 
-    /// The snapshot JSON for the `"nmp.follow_list"` projection key.
-    ///
-    /// Returns the active account's follow list as
-    /// `{"follows": [<FollowEntry>, …]}`. An empty array when:
-    ///   * No active account (`active_pubkey` slot is `None`).
-    ///   * No kind:3 event for the active account has arrived yet.
-    ///   * The active account's kind:3 has zero `p` tags (follows nobody).
-    ///   * Any mutex is poisoned (D6).
     /// Number of entries currently held in the follows map. Test-only
     /// inspector for the shadow-storage gate invariant: after the author
     /// guard in `on_kernel_event`, this must be `<= 1` regardless of how
@@ -127,6 +207,14 @@ impl FollowListProjection {
         self.follows.lock().map(|g| g.len()).unwrap_or(0)
     }
 
+    /// The snapshot JSON for the `"nmp.follow_list"` projection key.
+    ///
+    /// Returns the active account's follow list as
+    /// `{"follows": [<FollowEntry>, …]}`. An empty array when:
+    ///   * No active account (`active_pubkey` slot is `None`).
+    ///   * No kind:3 event for the active account has arrived yet.
+    ///   * The active account's kind:3 has zero `p` tags (follows nobody).
+    ///   * Any mutex is poisoned (D6).
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         let active = match self.active_pubkey.lock() {

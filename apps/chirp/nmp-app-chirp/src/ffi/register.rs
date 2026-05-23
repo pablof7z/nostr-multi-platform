@@ -13,8 +13,9 @@ use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::{wire_group_chat, wire_group_discovery};
 use nmp_threading::ModulePolicy;
 
+use nmp_nip02::FollowListProjection;
+
 use crate::dm_runtime::register_dm_runtime;
-use crate::follow_list::FollowListProjection;
 
 use super::actions::{
     register_chirp_actions, register_nip17_actions, register_nip29_actions,

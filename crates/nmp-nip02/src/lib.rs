@@ -55,6 +55,10 @@ use nmp_core::substrate::ActionModule;
 use nmp_core::{ActorCommand, NmpApp};
 use serde::{Deserialize, Serialize};
 
+pub mod projection;
+
+pub use projection::{FollowEntry, FollowListProjection};
+
 // ---------------------------------------------------------------------------
 // Wire shapes
 // ---------------------------------------------------------------------------

@@ -34,7 +34,6 @@
 
 mod dm_runtime;
 pub mod ffi;
-pub mod follow_list;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
