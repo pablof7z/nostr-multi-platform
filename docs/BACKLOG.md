@@ -257,20 +257,16 @@ must receive DMs before NIP-17 can be called done.
 **Acceptance test:** fresh account → receive a gift-wrapped kind:1059 from a second account →
 message appears in the `nmp.nip17.dm_inbox` snapshot projection.
 
-### F-03a · NIP-65 kind:10002 publish coverage — verify auto-trigger fires on sign-in [V1 QUALITY]
+### F-03a · NIP-65 kind:10002 publish coverage [VERIFIED ✅]
 
-`PublishRelayListAction` (`nmp.nip65.publish_relay_list`) is registered in the chirp app FFI.
-The actor auto-publishes kind:10002 via `maybe_publish_relay_list_after_edit`
-(`actor/dispatch.rs:117`) whenever `AddRelay` / `RemoveRelay` are dispatched. This covers
-the relay-settings-change path.
+`maybe_publish_relay_list_after_edit` (`actor/dispatch.rs:117`) is called only from `AddRelay`
+and `RemoveRelay` actor commands — never from sign-in or `ingest_relay_list`. A returning user
+with an existing kind:10002 does NOT re-publish on sign-in (correct behavior: relays came from
+the wire, not from user action). The relay-settings-change path is covered.
 
-**Gap to verify:** on first sign-in with an existing account (kind:10002 fetched from relay,
-NOT added via `AddRelay`), the auto-trigger never fires — only explicit `AddRelay` calls do.
-A returning user may have correct relays but never re-advertise them.
-
-**Verification test:** sign in with a pre-existing account that has a kind:10002 on relay →
-confirm the actor does NOT re-publish kind:10002 (correct; the relays came from the wire, not
-from an AddRelay call). Then add/remove a relay in settings → confirm kind:10002 is published.
+Verified 2026-05-23: `sign_in_nsec` and `sign_in_bunker` (`actor/commands/identity.rs`) have
+no `maybe_publish_relay_list_after_edit` call. Explicit relay mutations (`AddRelay`/`RemoveRelay`)
+do re-publish as intended.
 
 ### F-03b · First-launch defaults — empty timeline [DONE]
 
