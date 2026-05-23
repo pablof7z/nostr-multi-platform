@@ -135,6 +135,7 @@ impl SnapshotRegistry {
 pub type SnapshotProjectionSlot = Arc<Mutex<SnapshotRegistry>>;
 
 /// Construct a fresh, empty [`SnapshotProjectionSlot`].
+#[must_use]
 pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
     Arc::new(Mutex::new(SnapshotRegistry::new()))
 }
