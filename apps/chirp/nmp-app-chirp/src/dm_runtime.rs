@@ -58,7 +58,7 @@ impl DmRuntimeController {
         let active_pubkey = self.active_pubkey();
         let read_relay_urls = self.read_relay_urls();
         {
-            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             for effect in state.reconcile(active_pubkey.as_deref(), &read_relay_urls) {
                 self.apply(effect);
             }

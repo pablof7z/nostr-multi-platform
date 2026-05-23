@@ -13,7 +13,7 @@ pub(super) fn c_string_opt(ptr: *const c_char) -> Option<String> {
     unsafe { CStr::from_ptr(ptr) }
         .to_str()
         .ok()
-        .map(|s| s.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.

@@ -135,9 +135,8 @@ impl FollowListProjection {
         let follows_vec: Vec<FollowEntry> = match active {
             None => Vec::new(),
             Some(pubkey) => {
-                let follows_guard = match self.follows.lock() {
-                    Ok(g) => g,
-                    Err(_) => return serde_json::json!({ "follows": [] }),
+                let Ok(follows_guard) = self.follows.lock() else {
+                    return serde_json::json!({ "follows": [] });
                 };
                 match follows_guard.get(&pubkey) {
                     None => Vec::new(),
@@ -196,7 +195,7 @@ impl KernelEventObserver for FollowListProjection {
             .tags
             .iter()
             .filter_map(|tag| {
-                if tag.first().map(|t| t == "p").unwrap_or(false) {
+                if tag.first().is_some_and(|t| t == "p") {
                     tag.get(1).cloned()
                 } else {
                     None
