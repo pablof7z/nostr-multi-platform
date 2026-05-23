@@ -17,10 +17,18 @@ private let diagLog = Logger(subsystem: "org.nmp.chirp.diag", category: "KernelM
 /// PR-L (KernelModel collapse): every kernel-driven projection lives behind
 /// the single `@Published var snapshot: KernelUpdate?` slot; the computed
 /// accessors below restore the per-field view-facing API (`model.profile`,
-/// `model.items`, …) verbatim. The four genuinely-local mutable slots —
+/// `model.items`, …) verbatim. The genuinely-local mutable slots —
 /// `lastErrorToast` (clearable by the toast tap), `appMetrics` (timing
-/// accumulator), `pendingActions` / `lastDispatchError` (PR-A) — stay
-/// individual `@Published` properties.
+/// accumulator), `lastDispatchError` (synchronous FFI rejection slot,
+/// distinct from the snapshot-driven `lastErrorToast`) — stay individual
+/// `@Published` properties.
+///
+/// V5 thin-shell: action lifecycle tracking lives entirely in Rust. The
+/// `action_lifecycle` projection emits `{in_flight, recent_terminal}` on
+/// every relevant tick; the shell reads `model.actionLifecycle` and
+/// renders verbatim. The previous `pendingActions` / `pendingTerminalStages`
+/// / deferred-ACK reducer in this class — a D10 thin-shell violation —
+/// was deleted in favour of that projection.
 @MainActor
 final class KernelModel: ObservableObject {
 
@@ -40,24 +48,13 @@ final class KernelModel: ObservableObject {
     /// Snapshot-derived AND user-clearable, so we cannot fold this into the
     /// `snapshot` accessor — the clear gesture has nowhere else to land.
     @Published private(set) var lastErrorToast: String?
-    /// PR-A: correlation ids of dispatched actions whose terminal verdict
-    /// has not yet arrived in `projections["action_results"]`. Add on accept,
-    /// remove on terminal tick.
-    @Published private(set) var pendingActions: Set<String> = []
-    /// PR-A / PR-L: synchronous dispatch-error toast slot, distinct from the
-    /// snapshot-driven `lastErrorToast`.
+    /// Synchronous dispatch-error toast slot, distinct from the
+    /// snapshot-driven `lastErrorToast`. Carries the human-readable reason
+    /// returned by `dispatch_action` when it rejects a request synchronously
+    /// (malformed body, unknown namespace, registry not initialised). NOT
+    /// an action-lifecycle signal — a lifecycle failure surfaces through
+    /// `actionLifecycle.recentTerminal[.failed(reason)]` from the projection.
     @Published private(set) var lastDispatchError: String?
-    /// PR-G2 — local cache of terminal `ActionStageEntry` values per
-    /// correlation_id, captured at the moment a terminal verdict lands on
-    /// `actionResults` and cleared when the deferred `ackActionStage`
-    /// FFI call runs. Bridges the render-after-ACK race the codex finding
-    /// flagged: SwiftUI body rendering for a snapshot does not run
-    /// synchronously with `snapshot = update`, so a view that re-reads the
-    /// projection map between snapshot assignment and the deferred ACK
-    /// could observe a missing entry if a fast next snapshot has already
-    /// landed. Keyed on correlation_id; bounded by the per-tick
-    /// `actionResults` count, so growth is naturally pinned.
-    @Published private(set) var pendingTerminalStages: [String: ActionStageEntry] = [:]
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
 
@@ -103,6 +100,11 @@ final class KernelModel: ObservableObject {
     var logs: [String] { snapshot?.logs ?? [] }
     var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
     var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }
+    /// V5 thin-shell display projection — Rust-owned action lifecycle.
+    /// Carries `{ inFlight, recentTerminal }` arrays the views render
+    /// verbatim (spinner per in-flight, success/failure toast per
+    /// recent terminal). `nil` in steady state.
+    var actionLifecycle: ActionLifecycleSnapshot? { snapshot?.actionLifecycle }
 
     /// Per-author mention payloads — adapted from the wire DTO at read time.
     /// Falls back to `[:]` when an older kernel elides the projection.
@@ -293,8 +295,8 @@ final class KernelModel: ObservableObject {
         modularTimeline = .empty
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
-        pendingActions = []
-        pendingTerminalStages = [:]
+        // V5 thin-shell: action lifecycle state lives in Rust and resets
+        // with the kernel `reset()` above — no Swift-side mirror to clear.
         lastDispatchError = nil
         lastErrorToast = nil
         capabilities.start()
@@ -443,35 +445,33 @@ final class KernelModel: ObservableObject {
         track(kernel.dispatchRawAction(namespace: spec.namespace, bodyJson: spec.bodyJson))
     }
 
-    func isActionPending(_ correlationId: String) -> Bool {
-        pendingActions.contains(correlationId)
+    /// V5 thin-shell: read the kernel's `action_lifecycle` projection for
+    /// a given correlation_id's terminal entry. Returns `nil` when the
+    /// kernel has no terminal recorded (either still in flight or
+    /// dropped past the TTL window). The kernel handles all the
+    /// retention bookkeeping — Swift does NOT track pending sets, NOT
+    /// cache terminal stages locally, NOT acknowledge anything.
+    func recentTerminal(correlationId: String) -> ActionLifecycleEntry? {
+        actionLifecycle?.recentTerminal.first { $0.correlationId == correlationId }
     }
 
-    /// PR-G2 — terminal `ActionStageEntry` for `correlationId`, sourced
-    /// from the active snapshot's `actionStages` projection or — when the
-    /// projection has already been overwritten by a fast next snapshot
-    /// before the deferred ACK fired — from `pendingTerminalStages`. The
-    /// shell's progress indicator reads through here so it never observes
-    /// a terminal-then-empty flicker caused by the render-after-ACK race.
-    /// Returns `nil` when no terminal has been observed (or the host has
-    /// already ACKed and the cache was cleared).
-    func terminalActionStage(correlationId: String) -> ActionStageEntry? {
-        if let stages = snapshot?.actionStages?[correlationId],
-            let terminal = stages.last(where: { $0.stage.isTerminal })
-        {
-            return terminal
-        }
-        return pendingTerminalStages[correlationId]
+    /// V5 thin-shell: read the kernel's `action_lifecycle` projection for
+    /// a given correlation_id's in-flight entry. Returns `nil` when the
+    /// action either has not been dispatched, has already settled, or
+    /// the kernel has not yet recorded its first stage.
+    func inFlight(correlationId: String) -> ActionLifecycleEntry? {
+        actionLifecycle?.inFlight.first { $0.correlationId == correlationId }
     }
+
     func clearDispatchError() { lastDispatchError = nil }
 
-    /// PR-A: routes a `DispatchResult` through the pending / dispatch-error slots.
+    /// V5 thin-shell: route a `DispatchResult` only through the
+    /// synchronous-rejection slot. Successful dispatches surface entirely
+    /// through the Rust-owned `action_lifecycle` projection — there is no
+    /// Swift-side pending-actions set to populate.
     @discardableResult
     private func track(_ result: DispatchResult) -> DispatchResult {
-        switch result {
-        case let .accepted(id):
-            pendingActions.insert(id)
-        case let .failure(message):
+        if case let .failure(message) = result {
             kmLog.error("dispatch_action rejected: \(message, privacy: .public)")
             lastDispatchError = message
         }
@@ -564,58 +564,14 @@ final class KernelModel: ObservableObject {
         // relay during a switch.
         discoveredGroups.apply(snapshot: update.discoveredGroups)
 
-        // PR-A: drain `pendingActions` by every terminal verdict on this tick.
-        // PR-G / PR-G2: the `action_stages` mirror persists each correlation_id's
-        // stage history until the host acks. The PR-G2 codex finding identified
-        // a render-after-ACK race: assigning `snapshot = update` schedules a
-        // SwiftUI body rerun but does not run it inline; an immediate
-        // `ackActionStage` could race the very snapshot that just landed, so a
-        // fast next snapshot could drop the terminal entry before any view
-        // reacted to it. The KernelBridge contract explicitly says ack runs
-        // "after reacting/rendering" — defer ACK by one main-runloop turn
-        // (`DispatchQueue.main.async`) so SwiftUI body rendering for THIS
-        // snapshot completes before we tell the kernel to drop the entry.
-        //
-        // `pendingActions.remove(...)` stays synchronous — it is a Swift-side
-        // set the views read; clearing the spinner is part of the rendering
-        // we are deferring the ACK behind. The cached terminal stage is held
-        // in `pendingTerminalStages` so a view that re-reads `actionStages`
-        // between the snapshot landing and the ACK firing sees the terminal
-        // even if a fast next snapshot has already overwritten the projection
-        // (the kernel mirrors the entry, but `snapshot` is the host's read
-        // surface; the cache makes the host robust to the race).
-        if let results = update.actionResults, !results.isEmpty {
-            for terminal in results {
-                pendingActions.remove(terminal.correlationId)
-                // PR-G2: stash the terminal stage so a view re-reading
-                // `terminalActionStage(correlationId:)` between snapshot
-                // assignment and ACK firing sees the right value even if
-                // a fast next snapshot has already settled. Cleared when
-                // the deferred ACK actually runs (below).
-                if let stages = update.actionStages?[terminal.correlationId],
-                    let terminalStage = stages.last(where: { $0.stage.isTerminal })
-                {
-                    pendingTerminalStages[terminal.correlationId] = terminalStage
-                }
-            }
-            // Defer the ACKs to the next main-runloop turn so SwiftUI body
-            // rendering for THIS snapshot has a chance to read the terminal
-            // stage out of `snapshot?.actionStages` (or
-            // `pendingTerminalStages`) BEFORE we tell the kernel to drop the
-            // entry. `[weak self]` so a teardown that races a deferred ACK
-            // is a no-op — the kernel's ack-of-unknown is already a silent
-            // no-op (D6) but skipping the FFI call entirely is cheaper.
-            let terminalsToAck = results.map(\.correlationId)
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                MainActor.assumeIsolated {
-                    for cid in terminalsToAck {
-                        self.kernel.ackActionStage(cid)
-                        self.pendingTerminalStages.removeValue(forKey: cid)
-                    }
-                }
-            }
-        }
+        // V5 thin-shell: action lifecycle tracking is fully Rust-owned.
+        // The kernel emits `projections["action_lifecycle"]` with `inFlight`
+        // and `recentTerminal` arrays already collapsed and TTL-pruned —
+        // views read `model.actionLifecycle` and render verbatim. The
+        // previous PR-A/PR-G/PR-G2 reducer (pendingActions / pendingTerminalStages
+        // / deferred ackActionStage) was a D10 thin-shell violation and is
+        // gone. `action_stages` still rides the snapshot for legacy
+        // consumers; new code reads only `action_lifecycle`.
 
         let logicalInterestSummary = logicalInterests
             .map { "\($0.key)=\($0.state)[\($0.cacheCoverage)]" }

@@ -653,9 +653,11 @@ struct KernelUpdateResult {
 /// `projections["action_results"]` on subsequent snapshot ticks.
 enum DispatchResult: Equatable {
     /// The action was accepted and enqueued. Carries the `correlation_id`
-    /// minted by `ActionRegistry::start` — the host should add this to its
-    /// `pendingActions` set and clear it when `action_results` reports the
-    /// terminal verdict.
+    /// minted by `ActionRegistry::start`. V5: the kernel's
+    /// `action_lifecycle` projection automatically surfaces this id under
+    /// `inFlight` until the action settles, then under `recentTerminal`
+    /// for a 3-second window. The host does NOT maintain its own pending
+    /// set — read `model.actionLifecycle` to drive the UI.
     case accepted(correlationId: String)
     /// The action was rejected synchronously. Carries the human-readable
     /// error from the Rust kernel — show it as a toast.
@@ -816,6 +818,14 @@ struct KernelUpdate: Decodable {
     /// a dropped tick cannot strand a progress indicator.
     var actionStages: [String: [ActionStageEntry]]? { projections?.actionStages }
 
+    /// V5 thin-shell display projection — `projections["action_lifecycle"]`.
+    /// Carries `{ in_flight, recent_terminal }` arrays the host renders
+    /// verbatim. The kernel handles all lifecycle bookkeeping (collapse to
+    /// latest stage per correlation_id, TTL drop on terminals); Swift does
+    /// not track `pendingActions` / `pendingTerminalStages` / manual ACK
+    /// any more. `nil` in steady state.
+    var actionLifecycle: ActionLifecycleSnapshot? { projections?.actionLifecycle }
+
     /// Most recent terminal action result — `projections["last_action_result"]`
     /// (direction review #24). Prefer `actionResults` (array) — this scalar
     /// silently drops terminals when two actions settle in the same kernel tick.
@@ -961,6 +971,12 @@ struct SnapshotProjections: Decodable, Equatable {
     // The map is `correlation_id (String) → [ActionStageEntry]` ordered by
     // recording time. Absent when no correlation_id is currently tracked.
     let actionStages: [String: [ActionStageEntry]]?
+    // V5 thin-shell display projection. The kernel collapses the per-stage
+    // history `action_stages` carries into `{ in_flight, recent_terminal }`
+    // and drops terminals on a 3-second TTL — no host ack required. Drives
+    // the shell's spinner/toast UI without any reducer-side bookkeeping in
+    // Swift. Absent in steady state (no in-flight, no recent terminals).
+    let actionLifecycle: ActionLifecycleSnapshot?
     // D0: views cluster. The active-account `profile` card, the visible
     // `timeline` (the kernel renamed the generic `items` key to the more
     // descriptive `timeline`), the open-view `authorView` / `threadView`
@@ -1063,6 +1079,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case actionResults
         case lastActionResult
         case actionStages
+        case actionLifecycle
         case profile
         case timeline
         case authorView
@@ -1706,6 +1723,90 @@ struct ActionStageEntry: Decodable, Equatable {
             stage = .unknown(raw: raw)
         }
     }
+}
+
+// ─── V5 thin-shell: action_lifecycle projection wire types ──────────────
+//
+// The kernel's `action_lifecycle` projection collapses the per-stage
+// `action_stages` history into the host display shape:
+// `{ in_flight: [...], recent_terminal: [...] }`. Each entry carries a
+// `correlation_id` plus the latest stage (flattened verbatim from the
+// Rust `LifecycleStage` enum — `Failed`'s `reason` lifts to a sibling
+// of `stage`). Terminal entries drop on a 3-second TTL inside the
+// kernel; the shell does not track them.
+
+/// One stage in the V5 display projection. Mirrors the Rust
+/// `LifecycleStage` enum; an unrecognized discriminant collapses to
+/// `.unknown(raw:)` so a future kernel stage added without a Swift
+/// counterpart does not crash the bridge (D1 — graceful schema growth).
+enum ActionLifecycleStage: Equatable {
+    case requested
+    case awaitingCapability
+    case publishing
+    case accepted
+    /// `reason` is the human-readable failure message the host renders
+    /// verbatim. Same field-level shape as `ActionStage.failed`.
+    case failed(reason: String)
+    /// Catchall for future kernel stages — preserves the raw tag so a
+    /// diagnostic view can still display something meaningful.
+    case unknown(raw: String)
+
+    var isTerminal: Bool {
+        switch self {
+        case .accepted, .failed: return true
+        default: return false
+        }
+    }
+}
+
+/// One row in either `inFlight` or `recentTerminal`. The Rust side
+/// flattens `stage` and `correlation_id` (and `reason` on `failed`)
+/// onto the same object, so the decoder reads them via an explicit
+/// `init(from:)` that switches on the `stage` discriminant.
+struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
+    let correlationId: String
+    let stage: ActionLifecycleStage
+
+    var id: String { correlationId }
+
+    enum CodingKeys: String, CodingKey {
+        case correlationId
+        case stage
+        case reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        let raw = try container.decode(String.self, forKey: .stage)
+        switch raw {
+        case "requested": stage = .requested
+        case "awaiting_capability", "awaitingCapability": stage = .awaitingCapability
+        case "publishing": stage = .publishing
+        case "accepted": stage = .accepted
+        case "failed":
+            let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+            stage = .failed(reason: reason)
+        default:
+            stage = .unknown(raw: raw)
+        }
+    }
+}
+
+/// V5 thin-shell display projection. The kernel handles all lifecycle
+/// bookkeeping (latest-stage-wins collapse, TTL eviction on terminals).
+/// The shell decodes this struct verbatim and renders directly — no
+/// pendingActions set, no manual ackActionStage, no PR-G2 race cache.
+struct ActionLifecycleSnapshot: Decodable, Equatable {
+    /// Correlation_ids whose latest stage is non-terminal
+    /// (`requested` / `awaitingCapability` / `publishing`). Render a
+    /// spinner per entry. Stable order: first-record first.
+    let inFlight: [ActionLifecycleEntry]
+    /// Correlation_ids that settled (`accepted` / `failed`) within the
+    /// last 3 seconds. Render a success/failure toast per entry; the
+    /// kernel drops the entry on its next emit past the TTL. Stable
+    /// order: first-record first.
+    let recentTerminal: [ActionLifecycleEntry]
 }
 
 struct PublishOutboxItem: Decodable, Identifiable, Equatable {

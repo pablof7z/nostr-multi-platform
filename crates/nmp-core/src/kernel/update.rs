@@ -303,6 +303,17 @@ impl Kernel {
         if !action_stages.is_null() {
             projections.insert("action_stages".to_string(), action_stages);
         }
+        // V5 thin-shell display projection. `action_lifecycle` collapses the
+        // per-stage history `action_stages` carries into the host's
+        // `{in_flight, recent_terminal}` shape, with TTL-based eviction of
+        // terminals (no host ack required). Absent in steady state — same
+        // `Null → omit key` convention as `action_results` / `action_stages`.
+        // The mutable borrow runs the tracker's TTL sweep on every emit so a
+        // quiet kernel still prunes expired terminals.
+        let action_lifecycle = self.action_lifecycle_projection();
+        if !action_lifecycle.is_null() {
+            projections.insert("action_lifecycle".to_string(), action_lifecycle);
+        }
         // D0: identity output. `accounts_enriched()` returns `AccountSummary`
         // records patched with kind:0 picture_url / display_name so the toolbar
         // avatar and accounts list show real profile data. `active_account` is
