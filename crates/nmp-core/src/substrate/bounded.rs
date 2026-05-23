@@ -126,6 +126,7 @@ where
     ///
     /// Accepts any `Q` where `K: Borrow<Q>`, so callers can pass `&str` when
     /// the map is keyed on `String` (mirrors `HashMap::get` ergonomics).
+    #[must_use]
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: std::borrow::Borrow<Q>,
@@ -142,6 +143,7 @@ where
     /// receipt map without touching the outer position.
     ///
     /// Accepts `Q` for the same ergonomic reason as [`Self::get`].
+    #[must_use]
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: std::borrow::Borrow<Q>,
@@ -151,6 +153,7 @@ where
     }
 
     /// Whether `key` is present.
+    #[must_use]
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
         K: std::borrow::Borrow<Q>,
@@ -253,6 +256,7 @@ where
     /// and a new key was added. The second element is `None` when the key was
     /// already present (update-in-place, no eviction) or when the map was
     /// below capacity.
+    #[must_use]
     pub fn insert_returning_evicted(&mut self, key: K, value: V) -> (Option<V>, Option<(K, V)>)
     where
         K: Clone,
