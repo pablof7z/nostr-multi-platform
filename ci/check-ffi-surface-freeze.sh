@@ -83,6 +83,7 @@ ADDED="$(git diff "${BASE_SHA}...${HEAD_REF}" -- \
     'crates/nmp-core/src/ffi/' \
     'crates/nmp-signer-broker/src/' \
     'apps/chirp/nmp-app-chirp/src/' \
+    ':(exclude)crates/nmp-core/src/ffi/testing.rs' \
     | grep -E '^\+pub extern "C" fn nmp_app_' \
     | sed 's/^+//' \
     | grep -oE 'fn nmp_app_[a-zA-Z0-9_]+' \
@@ -93,6 +94,7 @@ REMOVED="$(git diff "${BASE_SHA}...${HEAD_REF}" -- \
     'crates/nmp-core/src/ffi/' \
     'crates/nmp-signer-broker/src/' \
     'apps/chirp/nmp-app-chirp/src/' \
+    ':(exclude)crates/nmp-core/src/ffi/testing.rs' \
     | grep -E '^\-pub extern "C" fn nmp_app_' \
     | sed 's/^-//' \
     | grep -oE 'fn nmp_app_[a-zA-Z0-9_]+' \
