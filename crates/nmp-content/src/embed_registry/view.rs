@@ -125,6 +125,7 @@ impl EmbedClaimRegistry {
 
     /// Ingest an inserted kernel event — resolves any claimed target it
     /// matches (direct event-id or coordinate-addressed).
+    #[must_use]
     pub fn on_event_inserted(
         _ctx: &ViewContext,
         state: &mut EmbedClaimState,
@@ -157,6 +158,7 @@ impl EmbedClaimRegistry {
 
     /// Ingest a removed kernel event — clears stale resolutions for any
     /// claimed target that resolved to `id`.
+    #[must_use]
     pub fn on_event_removed(
         _ctx: &ViewContext,
         state: &mut EmbedClaimState,
@@ -166,6 +168,7 @@ impl EmbedClaimRegistry {
     }
 
     /// Ingest a replaced kernel event — remove + insert.
+    #[must_use]
     pub fn on_event_replaced(
         ctx: &ViewContext,
         state: &mut EmbedClaimState,
