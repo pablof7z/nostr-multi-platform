@@ -77,19 +77,29 @@ impl OneshotApi {
     }
 
     /// Register a one-shot interest for `shape` under `scope` and return its
-    /// token. Idempotent at the registry layer: a second `request` for the
-    /// same `(scope, shape)` attaches a *distinct token* but shares the single
-    /// deduped registry slot (notedeck §3.2) — so two views asking for the
-    /// same profile produce one wire REQ.
+    /// token paired with the [`InterestId`] the registry assigned. Idempotent
+    /// at the registry layer: a second `request` for the same `(scope, shape)`
+    /// attaches a *distinct token* but shares the single deduped registry slot
+    /// (notedeck §3.2) — so two views asking for the same profile produce one
+    /// wire REQ.
     ///
     /// The interest is `OneShot`, so the existing wire lifecycle CLOSEs it on
     /// first EOSE; no extra close machinery here.
+    ///
+    /// The returned `InterestId` lets callers correlate the registered
+    /// interest with the `WireFrame::Req { interest_id, … }` the planner
+    /// later emits for it — the bridge `kernel::Kernel` uses to map the
+    /// planner-assigned `sub_id` back to the `OneshotToken` so EOSE routing
+    /// and store-gate decisions key on the actual wire sub-id (PD-033-C
+    /// Stage 1). Identical `(scope, shape)` inputs return the same
+    /// `InterestId` across calls — the dedup invariant the registry
+    /// guarantees on the underlying `SubKey`.
     pub fn request(
         &mut self,
         registry: &mut InterestRegistry,
         scope: InterestScope,
         shape: InterestShape,
-    ) -> OneshotToken {
+    ) -> (OneshotToken, InterestId) {
         let token = OneshotToken(self.next_token);
         self.next_token = self.next_token.saturating_add(1);
 
@@ -102,8 +112,9 @@ impl OneshotApi {
         let owner = SubOwnerKey::new(("oneshot-owner", token.0));
         let identity = SubIdentity::new(owner, key, sub_scope);
 
+        let interest_id = InterestId(key.0);
         let interest = LogicalInterest {
-            id: InterestId(key.0),
+            id: interest_id.clone(),
             scope,
             shape,
             hints: Vec::new(),
@@ -122,7 +133,7 @@ impl OneshotApi {
                 completed: false,
             },
         );
-        token
+        (token, interest_id)
     }
 
     /// Mark `token`'s oneshot complete (first matching result observed, or
@@ -216,7 +227,7 @@ mod tests {
     fn request_registers_a_oneshot_interest() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let t = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
+        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
         assert_eq!(api.in_flight(), 1);
         assert_eq!(reg.iter_active().len(), 1);
         assert!(matches!(
@@ -230,9 +241,13 @@ mod tests {
     fn identical_oneshots_dedup_to_one_registry_slot() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let a = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
-        let b = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
+        let (a, a_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
+        let (b, b_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
         assert_ne!(a, b, "distinct tokens");
+        assert_eq!(
+            a_id, b_id,
+            "deduped (scope,shape) returns the same interest_id across calls"
+        );
         assert_eq!(api.in_flight(), 2);
         assert_eq!(
             reg.iter_active().len(),
@@ -252,7 +267,7 @@ mod tests {
     fn complete_then_drain_is_idempotent() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let t = api.request(&mut reg, InterestScope::Global, profile_shape("bob"));
+        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("bob"));
         api.complete(t);
         assert!(api.is_complete(t));
 
@@ -282,8 +297,12 @@ mod tests {
     fn distinct_shapes_get_distinct_slots() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
-        api.request(&mut reg, InterestScope::Global, profile_shape("carol"));
+        let (_, alice_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
+        let (_, carol_id) = api.request(&mut reg, InterestScope::Global, profile_shape("carol"));
         assert_eq!(reg.iter_active().len(), 2);
+        assert_ne!(
+            alice_id, carol_id,
+            "distinct shapes produce distinct interest_ids"
+        );
     }
 }

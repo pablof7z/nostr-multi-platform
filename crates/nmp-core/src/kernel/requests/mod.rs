@@ -14,7 +14,7 @@ mod relay_lifecycle;
 mod startup;
 mod thread;
 
-use super::{json, Kernel, RelayRole, OutboundMessage, CanonicalRelayUrl, Value};
+use super::{discovery, json, Kernel, RelayRole, OutboundMessage, CanonicalRelayUrl, Value};
 
 impl Kernel {
     #[allow(dead_code)] // Per-lane snapshot retained for diagnostic surface (M11).
@@ -261,6 +261,7 @@ impl Kernel {
                     sub_id,
                     filter_json,
                     lifecycle,
+                    interest_id,
                     ..
                 } => {
                     // Canonical key so the EOSE handler's lookup (which uses
@@ -275,6 +276,26 @@ impl Kernel {
                         .unwrap_or(RelayRole::Content);
                     if matches!(lifecycle, InterestLifecycle::Tailing) {
                         self.register_persistent_sub(key.as_str(), sub_id.clone());
+                    }
+                    // PD-033-C Stage 1 discovery-oneshot bridge: if this frame
+                    // originated from a pending discovery oneshot registered by
+                    // `drain_unknown_oneshots`, move the `OneshotToken` into
+                    // `oneshot_subs` keyed by the **planner-assigned `sub_id`**
+                    // so the EOSE handler (`complete_unknown_oneshot`) and the
+                    // store-gate (`is_discovery_oneshot`) key on the actual
+                    // wire sub-id. Pre-Stage 1, the kernel-side
+                    // `oneshot-disc-{token}` sub_id was inserted by
+                    // `drain_unknown_oneshots` AND emitted by the M1 dual-write
+                    // so the two sides matched. With M1 retired the planner's
+                    // `sub-<hash>` is the only sub-id that ever lands on the
+                    // wire — `oneshot_subs` must be keyed on that.
+                    if let Some(token) =
+                        self.pending_discovery_oneshots.remove(interest_id)
+                    {
+                        self.oneshot_subs.insert(
+                            sub_id.clone(),
+                            (token, discovery::OneshotKind::Discovery),
+                        );
                     }
                     // PD-033-C Stage 0: route through the single-writer helper.
                     // After Stage 6 this is the SOLE caller of `insert_wire_sub`.

@@ -392,15 +392,51 @@ the harder migration starts. If anything breaks, the diff is tiny.
 
 ### Stage 1 — Discovery oneshots (smallest blast radius)
 
-**Goal:** delete the double-write in `drain_unknown_oneshots`.
+**Goal:** delete the double-write in `drain_unknown_oneshots` AND wire the
+sub_id bridge the deletion exposes.
 
-- `kernel/discovery.rs:124, 154`: delete `self.req(…)`. The
-  `oneshot.request(registry, …)` already registers the interest; the
-  planner's next `drain_tick` emits the WireFrame.
-- Verify in `actor/mod.rs:1273` that `drain_lifecycle_tick` is called every
-  actor tick (it is).
-- Tests: extend `t140_m1_retirement_tests` with an assertion that no
-  `oneshot-disc-*` sub-id is emitted via M1 paths.
+**Required pieces** (the original "delete two `self.req(...)` calls" plan
+under-scoped this; three load-bearing changes are needed):
+
+1. **Deletion** — `kernel/discovery.rs`: delete both `self.req(…)` dual-write
+   calls. The `oneshot.request(registry, …)` already registers the interest
+   in `InterestRegistry`.
+2. **Compile trigger** — after each `oneshot.request`, enqueue
+   `CompileTrigger::ViewOpened { interest_ids: Vec::new() }` via
+   `self.lifecycle.enqueue_trigger(...)`. Without this, `drain_tick`
+   short-circuits on an empty inbox (`recompile.rs:189`) and the discovery
+   REQ never reaches the wire on a cold-start tick where no other trigger
+   (FollowListChanged, Nip65Arrived, …) happens to be flowing. Pre-Stage 1
+   the M1 dual-write masked this gap.
+3. **Sub_id bridge** — the planner emits `sub-<hash>` sub-ids
+   (`subs/wire.rs:158`), NOT the legacy `oneshot-disc-<token>` form. The
+   kernel's `oneshot_subs` map (used by `is_discovery_oneshot` for store-gate
+   routing and `complete_unknown_oneshot` for EOSE release) MUST be keyed on
+   the planner sub_id. Stage 1 introduces:
+   - `OneshotApi::request` returns `(OneshotToken, InterestId)` (was `OneshotToken`).
+   - New `Kernel.pending_discovery_oneshots: HashMap<InterestId, OneshotToken>`
+     populated by `drain_unknown_oneshots`.
+   - New bridge in `Kernel::register_planner_wire_frames`
+     (`requests/mod.rs`): on each `WireFrame::Req`, if the `interest_id`
+     matches a pending entry, move the token into `oneshot_subs` keyed by
+     the planner-assigned `sub_id` and remove the pending entry.
+   - Concurrency cap in `drain_unknown_oneshots` switched from
+     `oneshot_subs.len()` to `oneshot.in_flight()` (the former under-counts
+     on a tick where interests are registered but the planner has not yet
+     compiled their REQ frames).
+
+- Verify in `actor/mod.rs:1346-1357` that `drain_lifecycle_tick` →
+  `wire_frames_to_outbound` (which calls `register_planner_wire_frames`)
+  is wired every actor tick (it is).
+- Tests: `discovery_tests::discovery_seam_emits_no_m1_oneshot_disc_outbound_req`
+  is the retirement gate (negative-existence: zero `oneshot-disc-*` outbound,
+  positive-existence: both arms reach the planner). The other discovery
+  tests exercise the bridge via the `drain_and_register` test helper.
+- Bootstrap relays: the planner-extension PR #365 lanes (`bootstrap_content_relays`
+  + `bootstrap_indexer_relays`) are wired in production by
+  `identity_state::set_user_configured_relay_edit_rows`. Tests that call
+  `Kernel::new(...)` and need the cold-start route must install them
+  manually via `kernel.lifecycle_mut().set_bootstrap_*_relays(...)`.
 
 **Why second:** smallest production impact; already half-migrated (registry
 side exists); failure mode is "discovery doesn't resolve unknown ids,"

@@ -7,12 +7,19 @@
 //!   [`crate::subs::UnknownIds`] using the **borrowed visitor** (D8: zero
 //!   per-event allocation when every reference is already cached).
 //! - [`Kernel::drain_unknown_oneshots`] — turns the deduped unknown set into
-//!   [`crate::subs::OneshotApi`] requests on the lifecycle's registry **and**
-//!   emits the matching M1 REQ frames so discovery actually resolves on the
-//!   wire (the lifecycle wire-emitter is dormant in the kernel per
-//!   `kernel/mod.rs`; the oneshot registry registration is the forward-looking
-//!   half, the `req()` emission is what fetches today). Called from
-//!   `pending_view_requests`.
+//!   [`crate::subs::OneshotApi`] requests on the lifecycle's registry, AND
+//!   enqueues a [`crate::subs::CompileTrigger::ViewOpened`] so the planner's
+//!   next `drain_tick` (driven from the actor idle loop via
+//!   [`Kernel::drain_lifecycle_tick`]) compiles those interests into wire
+//!   frames. The trigger enqueue is load-bearing: without it, `drain_tick`
+//!   short-circuits on an empty inbox and the discovery REQ never reaches the
+//!   wire on a tick where no other compile trigger (FollowListChanged,
+//!   Nip65Arrived, …) happens to be flowing. Pre-PD-033-C the M1
+//!   `self.req(...)` dual-write masked this gap; Stage 1 retires the dual-write
+//!   so the trigger enqueue is now the sole driver. Cold-start routing for
+//!   `OneShot + Global + event_ids` / `… + authors` is handled by the
+//!   planner's `bootstrap_content_relays` and `bootstrap_indexer_relays`
+//!   lanes (PR #365 planner extension). Called from `pending_view_requests`.
 //! - [`Kernel::complete_unknown_oneshot`] — called from the EOSE handler; the
 //!   `OneShot` lifecycle means "first stored-set delivered" == EOSE, so the
 //!   token completes there and the registry owner is released (slot GCs when
@@ -24,8 +31,9 @@
 //! the hot path (D8). The actor owns all this state; nothing crosses FFI and
 //! no `Result` is produced (D6).
 
-use super::{json, Kernel, OutboundMessage, RelayRole};
+use super::{Kernel, OutboundMessage};
 use crate::planner::{InterestScope, InterestShape};
+use crate::subs::CompileTrigger;
 
 /// Typed discriminant for entries in [`Kernel::oneshot_subs`].
 ///
@@ -44,9 +52,20 @@ pub(in crate::kernel) enum OneshotKind {
     Discovery,
 }
 
-/// Wire sub-id prefix for discovery oneshots. Retained for sub-id
-/// construction (the prefix makes wire logs readable); routing is done
-/// via [`OneshotKind`], not via `starts_with` on this constant.
+/// Legacy wire sub-id prefix for discovery oneshots. Pre-PD-033-C Stage 1
+/// the kernel constructed sub-ids as `oneshot-disc-{token}` and emitted them
+/// via the M1 `self.req(...)` dual-write. Stage 1 retired that dual-write —
+/// the planner's `sub_id_for` (`sub-<hash>`) is now the only sub-id format
+/// that lands on the wire; routing is done via [`OneshotKind`], not via
+/// `starts_with` on this constant.
+///
+/// Retained under `#[cfg(test)]` as a retirement-gate constant: the
+/// `discovery_seam_emits_no_m1_oneshot_disc_outbound_req` test in
+/// `discovery_tests.rs` asserts that no outbound `OutboundMessage.text`
+/// carries this prefix (which would indicate a regression back to the M1
+/// helper). When the broader PD-033-C migration removes `Kernel::req`
+/// entirely, this constant can be deleted.
+#[cfg(test)]
 pub(in crate::kernel) const ONESHOT_SUB_PREFIX: &str = "oneshot-disc-";
 
 impl Kernel {
@@ -93,7 +112,16 @@ impl Kernel {
         // Respect the concurrency cap — relay NOTICE "too many concurrent REQs"
         // was the original bug (T82). Don't open more discovery subs until
         // existing ones close via EOSE.
-        let in_flight = self.oneshot_subs.len();
+        //
+        // PD-033-C Stage 1: the cap is now measured against the OneshotApi's
+        // registered (pending) count — `oneshot_subs` is no longer populated
+        // here (the planner-emitted `sub_id` lands there via the
+        // `register_planner_wire_frames` bridge), so it would under-count on
+        // a tick where interests are registered but the planner has not yet
+        // compiled their REQ frames. `oneshot.in_flight()` is the authoritative
+        // pending count; an entry leaves it only when `complete_unknown_oneshot`
+        // calls `oneshot.release(...)`.
+        let in_flight = self.oneshot.in_flight();
         if in_flight >= Self::MAX_DISCOVERY_CONCURRENCY {
             return Vec::new();
         }
@@ -104,8 +132,28 @@ impl Kernel {
             return Vec::new();
         }
 
-        let mut out = Vec::with_capacity(slots.min(2));
+        // PD-033-C Stage 1: this function no longer emits `OutboundMessage`
+        // frames directly. The M1 `self.req(...)` dual-writes were retired in
+        // both arms below; the canonical wire-frame emission now flows through
+        // the planner's `drain_tick` (called from `Kernel::drain_lifecycle_tick`
+        // on the actor idle loop). The `Vec<OutboundMessage>` return type is
+        // retained so the `pending_view_requests` `requests.extend(...)` shape
+        // stays unchanged; subsequent PD-033-C stages may delete the return
+        // value once every caller is migrated.
         let mut slots_used = 0usize;
+
+        // Track whether at least one new oneshot was registered this drain.
+        // If so, we enqueue a single coalesced `ViewOpened` trigger at the end
+        // so the planner's next `drain_tick` (driven by the actor idle loop)
+        // compiles the newly-registered interests into WireFrames. Without
+        // this enqueue the registry would carry the interest but `drain_tick`
+        // would short-circuit on an empty inbox — the discovery REQ would
+        // never make it onto the wire on a cold-start tick where no other
+        // trigger (FollowListChanged, Nip65Arrived, …) happens to be flowing.
+        // Pre-PD-033-C the M1 `self.req(...)` dual-write masked this gap;
+        // Stage 1 retires the dual-write so the trigger enqueue is now
+        // load-bearing.
+        let mut registered_any = false;
 
         // Events sub (content relay) — take first batch, put back the rest.
         if !event_ids.is_empty() && slots_used < slots {
@@ -115,25 +163,22 @@ impl Kernel {
                 limit: Some(batch.len() as u32),
                 ..Default::default()
             };
-            let token = {
+            let (token, interest_id) = {
                 let registry = self.lifecycle.registry_mut();
                 self.oneshot.request(registry, InterestScope::Global, shape)
             };
-            let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
-            self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
-            // TODO(pd033c-stage1): dual-write D4 violation — `oneshot.request`
-            // above already registers this interest in `InterestRegistry`
-            // (System #2). The `self.req(...)` below ALSO writes the same fact
-            // into `Kernel.wire.subs` (System #1, via the M1 helper). Stage 1
-            // of the PD-033-C migration deletes this `self.req(...)` so the
-            // planner's next `drain_tick` emits the WireFrame instead. See
-            // `docs/architecture-audit/pd033c-plan.md` §1.3 and §5 Stage 1.
-            out.extend(self.req(
-                RelayRole::Content,
-                &sub_id,
-                "discovery: referenced events",
-                json!({ "ids": batch, "limit": batch.len() }),
-            ));
+            // PD-033-C Stage 1 bridge: stash the token by interest_id. The
+            // planner's next `drain_tick` emits a `WireFrame::Req` carrying
+            // this `interest_id`; `register_planner_wire_frames` consumes
+            // the pending entry and inserts `oneshot_subs` keyed by the
+            // planner-assigned `sub_id` so EOSE / store-gate routing works
+            // against the actual wire sub-id.
+            self.pending_discovery_oneshots.insert(interest_id, token);
+            registered_any = true;
+            // Cold-start routing for `OneShot + Global + event_ids` is handled
+            // by the planner's `bootstrap_content_relays` lane (PR #365); see
+            // `crates/nmp-core/src/planner/compiler/partition/mod.rs` Case D
+            // head check.
             if !remainder.is_empty() {
                 self.unknown_ids.put_back_events(remainder.iter().cloned());
             }
@@ -152,22 +197,17 @@ impl Kernel {
                 limit: Some(batch.len() as u32 * 3),
                 ..Default::default()
             };
-            let token = {
+            let (token, interest_id) = {
                 let registry = self.lifecycle.registry_mut();
                 self.oneshot.request(registry, InterestScope::Global, shape)
             };
-            let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
-            self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
-            // TODO(pd033c-stage1): dual-write D4 violation — see twin TODO in
-            // the events-oneshot arm above. Stage 1 deletes this `self.req(...)`
-            // call; the `oneshot.request(...)` two lines up is already the
-            // canonical (InterestRegistry) registration.
-            out.extend(self.req(
-                RelayRole::Indexer,
-                &sub_id,
-                "discovery: referenced profiles",
-                json!({ "kinds": [0, 3, 10002], "authors": batch, "limit": batch.len() * 3 }),
-            ));
+            // PD-033-C Stage 1 bridge (see twin comment in events arm).
+            self.pending_discovery_oneshots.insert(interest_id, token);
+            registered_any = true;
+            // Cold-start routing for the profile shape (`OneShot + Global +
+            // authors`, no NIP-65 mailbox) is handled by the planner's
+            // `bootstrap_indexer_relays` fallback (PR #365); see
+            // `crates/nmp-core/src/planner/compiler/partition/case_a_authors.rs`.
             if !remainder.is_empty() {
                 self.unknown_ids.put_back_pubkeys(remainder.iter().cloned());
             }
@@ -175,15 +215,18 @@ impl Kernel {
             self.unknown_ids.put_back_pubkeys(pubkeys);
         }
 
-        if !out.is_empty() {
-            self.log(format!(
-                "discovery: {} REQ(s) issued ({} in-flight after, {} queued)",
-                out.len(),
-                self.oneshot_subs.len(),
-                self.unknown_ids.pending_len(),
-            ));
+        if registered_any {
+            // A2 — view-equivalent registered one or more interests. The
+            // `interest_ids` field is diagnostic provenance only (the
+            // compiler walks the full registry, not a filtered subset), so
+            // an empty Vec is a correct and zero-allocation form. Per-tick
+            // coalescing in the trigger inbox guarantees ≤1 recompile per
+            // tick regardless of how many oneshots this drain registered.
+            self.lifecycle
+                .enqueue_trigger(CompileTrigger::ViewOpened { interest_ids: Vec::new() });
         }
-        out
+
+        Vec::new()
     }
 
     /// EOSE seam: the oneshot for `sub_id` has delivered its first stored set.
