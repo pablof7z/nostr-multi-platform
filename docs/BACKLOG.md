@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **40d77e4d** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **5a57b503** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -74,12 +74,26 @@ makes the eventual fix harder.
   always-compiled `nmp_core::relay_protocol`. `RelayFrame` / `OutboundMessage` / `RelayRole`
   promoted to `pub`. The native `relay_worker` thread is unchanged. Auto-reconnect uses the
   exact same exponential backoff + per-URL jitter constants the native worker does.
-- Stage 3b (write path): app-level `AppAction` writes (PublishNote / React / Follow / Unfollow)
-  still return `browser_actor_driver_missing` — signing requires the identity runtime + bunker
-  hooks (`actor::commands::sign_in_*`) that live behind `feature = "native"`. Wire IndexedDB
-  store + identity runtime; deliver async snapshot push to JS via `js_sys::Function` callback.
+- Stage 3b ✅ DONE (PR #378 — merged 2026-05-23): NIP-07 signer + async snapshot push.
+  `Nip07Signer::sign()` on wasm32 bridges `window.nostr.signEvent(...)` via
+  `wasm-bindgen-futures::spawn_local` with cached-pubkey cross-check (no tokio).
+  `NmpWasmRuntime::set_snapshot_callback(Option<js_sys::Function>)` lets the relay-pool
+  sink push a `{"type":"update","envelope":…}` JSON frame to JS after every inbound
+  relay frame (same shape `handle()` returns synchronously, no polling). Two-state
+  honest error: `signer_not_installed` (no signer slot filled) vs.
+  `publish_path_not_wired` (signer installed but kernel publish surface not yet
+  exposed to wasm — Stage 3c). New files: `dispatch_routing.rs`, `signer_slot.rs`,
+  `snapshot.rs` (all under 500-LOC ceiling). 20 nmp-wasm tests pass.
+- Stage 3c (remaining wasm gaps): IndexedDB store (kernel still in-memory, resets on
+  page reload) + write-path wiring (`publish_path_not_wired` must become a real
+  `dispatch_action_json` call once the publish surface is exposed to wasm) +
+  multi-role bootstrap parsing in `nmp-wasm::relay_pool::spawn_drivers` (Stage 3
+  spawns one Content-lane driver per URL regardless of declared role; routing is
+  correct by URL but `RelayHealth` diagnostics for pure-indexer URLs land on the
+  wrong lane).
 
-No chirp-web features may be added until Stage 3b lands.
+No chirp-web write features that require persistence across reloads (i.e. anything
+beyond a single in-memory session) may be added until Stage 3c lands.
 
 ### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 
@@ -283,30 +297,31 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Stage 3b — IndexedDB store + write path + async snapshot push [V1 BLOCKER]
+### F-01 · Fix V-01 Stage 3c — IndexedDB store + publish-path wire + multi-role bootstrap [V1 BLOCKER]
 
-Phase 1a/1b/1c + Stage 2 + Stage 3 (read path) done. `WasmRuntime` now drives
-the pure `KernelReducer` AND owns a pool of `BrowserRelayDriver`s
-(`web_sys::WebSocket`-backed, one per (URL, role) pair) with the same
-exponential backoff / jitter / HTTP-401/403 classification the native worker uses.
-Inbound frames route through `KernelReducer::handle_relay_frame`; outbound
-fans back over the same sockets via the runtime's relay-pool sink. The read
-path (relay → kernel → snapshot projection) is functional end-to-end.
+Phase 1a/1b/1c + Stage 2 + Stage 3 (read path) + Stage 3b (signer + snapshot push) done.
+`WasmRuntime` now drives the pure `KernelReducer` AND owns a pool of `BrowserRelayDriver`s
+(`web_sys::WebSocket`-backed, one per (URL, role) pair) with the same exponential backoff
+/ jitter / HTTP-401/403 classification the native worker uses. Inbound frames route through
+`KernelReducer::handle_relay_frame`; outbound fans back over the same sockets via the
+runtime's relay-pool sink. The read path (relay → kernel → snapshot projection) is
+functional end-to-end.
 
-**Stage 3b remaining scope (V1 BLOCKER for chirp-web write features):**
+**Stage 3b ✅ DONE (PR #378 — merged 2026-05-23):** NIP-07 signer (`dispatch_routing.rs`,
+`signer_slot.rs`, `snapshot.rs`) + two-state honest error (`signer_not_installed` vs.
+`publish_path_not_wired`) + `set_snapshot_callback` JS push after every inbound relay frame.
+See V-01 staged fix plan for detail.
+
+**Stage 3c remaining scope (V1 BLOCKER for persistent chirp-web write features):**
 1. **IndexedDB store.** Port persistence to an IndexedDB-backed
    `nostr-database` impl (the native `nmp-nostr-lmdb` fork stays native-only).
    Right now the kernel runs entirely in memory and resets on page reload.
-2. **Write path (signing).** `AppAction` writes (PublishNote / React / Follow /
-   Unfollow) still return `browser_actor_driver_missing`. Wire identity
-   runtime + a wasm-compatible signer (browser-keychain or NIP-46 bunker
-   broker) so the kernel's publish engine can produce kind:1/6/7/3 events.
-3. **Async snapshot push.** Relay-driven kernel mutations don't yet push
-   a fresh snapshot to JS — the host pulls by dispatching a kernel action.
-   Add a `js_sys::Function` callback channel through the wasm-bindgen wrapper
-   so the relay-driver sink can emit a `WorkerEvent::Update` directly when
-   the kernel changes.
-4. **Multi-role bootstrap parsing.** Stage 3 spawns a single Content-lane
+2. **Publish path wired.** `AppAction` writes (PublishNote / React / Follow /
+   Unfollow) currently return `publish_path_not_wired` once a NIP-07 signer is
+   installed (Stage 3b error refinement). Expose the kernel publish surface
+   (`dispatch_action_json` for `nmp.publish` etc.) through `NmpWasmRuntime::handle`
+   so the installed signer can actually produce kind:1/6/7/3 events.
+3. **Multi-role bootstrap parsing.** Stage 3 spawns a single Content-lane
    driver per URL regardless of the bootstrap's declared role string
    (`"indexer"`, `"both,indexer"`, ...). Kernel routing is by URL (T105) so
    the wire path is correct, but `RelayHealth` diagnostics for pure-indexer
@@ -318,7 +333,9 @@ secp256k1-sys wasm32 C build remains environmentally gated on
 `CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need
 homebrew LLVM on macOS).
 
-No `chirp-web` write features may be added until Stage 3b lands.
+No `chirp-web` write features that require persistence across reloads may be added
+until Stage 3c lands. In-session-only write flows backed by a NIP-07 signer can land
+once Stage 3c item 2 (publish-path wire) is in place.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
@@ -432,3 +449,4 @@ Recorded so Opus reviews do not re-flag these as violations.
 | V-05 D2 enforcement gap — coverage_hook never installed | PR #347: `NmpApp::set_coverage_hook` seam wired; `CoverageGate::default()` installed in `nmp_app_chirp_register`; all 3 stages complete |
 | WalletPayInvoice dispatch_action bypass | PR #361 (2026-05-23): `WalletPayInvoiceModule` registered under `"nmp.wallet"` namespace; `nmp_app_wallet_pay_invoice` rewritten as thin `dispatch_action_json` wrapper. Zero direct-FFI bypasses of the dispatch_action seam remain. |
 | ADR-0025 Marmot bespoke FFI exception — FULLY RETIRED | PR #363 (Rust seam), PR #367 (iOS dispatch_action migration), PR #370 (deleted `nmp_marmot_dispatch` C symbol + REPL/TUI migrated to `MarmotHandle::dispatch` Rust method). Zero `extern "C" fn nmp_marmot_dispatch` in workspace. |
+| V-01 Stage 3b — NIP-07 signer + snapshot push | PR #378 (2026-05-23): `Nip07Signer::sign()` on wasm32 bridges `window.nostr.signEvent(...)`; `set_snapshot_callback` JS push after every inbound relay frame; two-state error refinement (`signer_not_installed` / `publish_path_not_wired`); new files `dispatch_routing.rs`, `signer_slot.rs`, `snapshot.rs`. Stage 3c (IndexedDB + publish wire + multi-role bootstrap) remains the V1 blocker. |

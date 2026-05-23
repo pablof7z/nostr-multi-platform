@@ -1,6 +1,6 @@
 # Build & Validation Plan
 
-> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `73ab92f5`.
+> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `5a57b503`.
 >
 > **Sources of truth:**
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
@@ -17,7 +17,7 @@
 **What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
 
 **What does not work yet** (v1 blockers):
-1. **V-01** — `nmp-wasm` is a 295-line stub with no `nmp-core` linkage. Cross-platform claim is false until wired (Phases 1a/b/c done; Stage 2 WebSocket + Stage 3 IndexedDB pending). No `chirp-web` features allowed on top of the stub.
+1. **V-01** — `nmp-wasm` Stage 3c remains the cross-platform v1 blocker. Phases 1a/b/c + Stage 2 (kernel) + Stage 3 (read path) + Stage 3b (NIP-07 signer + snapshot push, PR #378 merged 2026-05-23) done. Remaining: IndexedDB store (kernel still resets on page reload), publish-path wire (`publish_path_not_wired` must become a real `dispatch_action_json` call), multi-role bootstrap parsing. No `chirp-web` write features that require persistence across reloads until Stage 3c lands.
 2. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
 3. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
 4. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`; deletes the 1,988-LOC handwritten counterpart in `KernelBridge.swift`.
@@ -83,7 +83,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
-| M15 Cross-platform | pending | 🟡 Desktop + Android shells; **wasm shell = V-01 stub (v1 blocker)** |
+| M15 Cross-platform | pending | 🟡 Desktop + Android shells; **wasm shell runs real `KernelReducer` + NIP-07 signer + relay-driven snapshot push (PR #378); Stage 3c (IndexedDB + publish-path wire + multi-role bootstrap) = remaining v1 blocker** |
 | M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
 | M17 v1 release | pending | ❌ Pending |
 
