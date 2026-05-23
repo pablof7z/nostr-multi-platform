@@ -202,7 +202,7 @@ impl PublishEngine {
         Self {
             in_flight: HashMap::new(),
             unavailable_relays: BTreeSet::new(),
-            view: PublishStatusState::new(&Default::default()),
+            view: PublishStatusState::new(&super::view::PublishStatusSpec::default()),
             policy,
             outbox,
             dispatcher,

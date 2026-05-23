@@ -388,7 +388,7 @@ impl Kernel {
         projections.insert(
             "mention_profiles".to_string(),
             serde_json::to_value(&mention_profiles)
-                .unwrap_or_else(|_| serde_json::Value::Object(Default::default())),
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
         );
         projections
     }
