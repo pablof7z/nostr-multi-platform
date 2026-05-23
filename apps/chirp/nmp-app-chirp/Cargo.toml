@@ -99,8 +99,7 @@ zeroize.workspace = true
 # Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the
 # `nmp_app_register_event_observer` FFI symbol via Rust path) so the FFI
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
-# the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
-# `nmp-nip22`, `nmp-relations`).
+# the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
