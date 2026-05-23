@@ -251,21 +251,29 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - ~~`crates/nmp-nip65/src/lib.rs`~~ — 569 → 265 LOC (PR #388)
 - ~~`crates/nmp-nostr-lmdb/src/lib.rs`~~ — 1144 → 269 LOC (PR #400)
 
+*Additional test-extractable (recently discovered; PRs in progress 2026-05-24):*
+- `crates/nmp-codegen/src/swift.rs` — 918 total, tests start 591 (PR pending)
+- `crates/nmp-core/src/planner/compiler/mod.rs` — 864 total, tests start 370 (PR pending)
+- `crates/nmp-core/src/kernel/ingest/mod.rs` — 706 total, tests start 547 (PR pending)
+- `crates/nmp-core/src/planner/compiler/partition/case_a_authors.rs` — 712 total, tests start 251 (PR pending)
+
 *Production splits needed (no test section to extract; post-v1):*
+- `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
+- `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs` — 1495 LOC
 - `crates/nmp-core/src/actor/mod.rs` — 1488 LOC
 - `crates/nmp-core/src/actor/dispatch.rs` — 1477 LOC
 - `crates/nmp-core/src/kernel/mod.rs` — 1386 LOC
-- `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
 - `crates/nmp-core/src/actor/commands/identity.rs` — ~1211 LOC production
+- `crates/nmp-core/src/publish/engine.rs` — 827 LOC (already has extracted tests.rs)
+- `crates/nmp-core/src/actor/commands/publish.rs` — 803 LOC (no test section)
 - `crates/nmp-core/src/kernel/update.rs` — 983 LOC
 - `crates/nmp-core/src/kernel/action_registry.rs` — 937 LOC
-- `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs` — 1495 LOC
 
 **Completed test extractions:**
 - handle.rs, signer_seal.rs, view.rs (commit 34fc71a1 — 2026-05-23)
 - action_stages.rs, planner/selection.rs, substrate/bounded.rs, nmp-nip65/src/lib.rs, publish/action.rs (PR #388 — 2026-05-24)
 - identity.rs (commit e79f7a90); wallet.rs (PR #376)
-- relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs (PRs #394-#401 — 2026-05-24)
+- relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs, relay.rs (PRs #394-#401 — 2026-05-24)
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
