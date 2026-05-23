@@ -63,6 +63,7 @@ impl PendingSign {
     /// Park a sign op whose publish routes via the NIP-65 outbox resolver
     /// (`PublishTarget::Auto`) — the back-compat path every kind:1/3/7
     /// publish handler uses.
+    #[must_use]
     pub fn new(op: SignerOp<SignedEvent>, p_tags: Vec<String>) -> Self {
         Self::with_target(op, p_tags, PublishTarget::Auto)
     }

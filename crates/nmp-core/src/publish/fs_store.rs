@@ -49,6 +49,7 @@ impl FsPublishStore {
     /// Construct a store rooted at `path`. `path` is the storage directory the
     /// host supplied via `nmp_app_set_storage_path` - the `publish_intents`
     /// subdirectory is created the first time `upsert` runs.
+    #[must_use]
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }

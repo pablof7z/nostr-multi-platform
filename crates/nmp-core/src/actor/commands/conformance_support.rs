@@ -57,6 +57,7 @@ impl Default for ConformanceHarness {
 
 impl ConformanceHarness {
     /// A fresh, signed-out harness.
+    #[must_use]
     pub fn new() -> Self {
         let publish_store = Arc::new(InMemoryPublishStore::new());
         Self {

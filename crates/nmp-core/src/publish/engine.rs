@@ -190,6 +190,7 @@ pub struct PublishEngine {
 }
 
 impl PublishEngine {
+    #[must_use]
     pub fn new(
         outbox: Arc<dyn OutboxResolver>,
         dispatcher: Arc<dyn RelayDispatcher>,

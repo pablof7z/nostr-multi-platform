@@ -68,6 +68,7 @@ pub struct SnapshotRegistry {
 
 impl SnapshotRegistry {
     /// Construct an empty registry.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

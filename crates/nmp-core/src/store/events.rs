@@ -406,6 +406,7 @@ pub struct ClaimGuard<'a, S: EventStore + ?Sized> {
 impl<'a, S: EventStore + ?Sized> ClaimGuard<'a, S> {
     /// Wrap an already-acquired claim. Prefer [`EventStore::claim_guarded`],
     /// which performs the `claim` and constructs the guard atomically.
+    #[must_use]
     pub fn new(store: &'a S, claimer: ClaimerId) -> Self {
         Self { store, claimer }
     }

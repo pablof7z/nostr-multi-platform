@@ -146,6 +146,7 @@ impl Default for ActionRegistry {
 
 impl ActionRegistry {
     /// An empty registry. Call [`Self::register`] for each module.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),

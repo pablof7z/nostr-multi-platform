@@ -41,6 +41,7 @@ pub struct SubKey(pub u64);
 
 impl SubKey {
     /// Hash any single `Hash`-able value into a `SubKey`.
+    #[must_use]
     pub fn new(value: impl Hash) -> Self {
         Self(stable_hash64(value))
     }
@@ -88,6 +89,7 @@ pub struct SubOwnerKey(pub u64);
 
 impl SubOwnerKey {
     /// Hash any single `Hash`-able value into a `SubOwnerKey`.
+    #[must_use]
     pub fn new(value: impl Hash) -> Self {
         Self(stable_hash64(value))
     }

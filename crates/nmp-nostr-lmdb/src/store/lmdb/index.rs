@@ -33,6 +33,7 @@ pub(super) struct EventIndexKeys {
 }
 
 impl EventIndexKeys {
+    #[must_use]
     pub fn new(event: EventBorrow<'_>) -> Self {
         // Index by created_at and id
         let ci_index: Vec<u8> = make_ci_index_key(event.created_at, event.id);

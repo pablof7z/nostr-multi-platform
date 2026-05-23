@@ -84,6 +84,7 @@ pub struct Grouper<R: ParentResolver> {
 }
 
 impl<R: ParentResolver> Grouper<R> {
+    #[must_use]
     pub fn new(resolver: R, policy: ModulePolicy) -> Self {
         Self {
             resolver,

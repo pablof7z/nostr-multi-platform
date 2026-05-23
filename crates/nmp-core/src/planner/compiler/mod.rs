@@ -89,6 +89,7 @@ impl<'a> SubscriptionCompiler<'a> {
     /// `active_account_read_relays` and `app_relays` default to empty —
     /// callers that need them use [`Self::with_active_account_read_relays`]
     /// or [`Self::with_relays`].
+    #[must_use]
     pub fn new(mailbox_cache: &'a dyn MailboxCache, indexer_relays: &'a [RelayUrl]) -> Self {
         Self {
             mailbox_cache,

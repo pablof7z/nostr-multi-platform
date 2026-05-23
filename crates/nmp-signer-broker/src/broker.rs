@@ -65,6 +65,7 @@ struct ActiveSession {
 impl BunkerBroker {
     /// Construct a new broker. Holds a clone of the actor's command sender;
     /// the actor itself never sees the broker.
+    #[must_use]
     pub fn new(actor_tx: Sender<ActorCommand>) -> Arc<Self> {
         Arc::new(Self {
             actor_tx,

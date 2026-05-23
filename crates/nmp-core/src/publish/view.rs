@@ -71,6 +71,7 @@ pub struct PublishStatusState {
 }
 
 impl PublishStatusState {
+    #[must_use]
     pub fn new(spec: &PublishStatusSpec) -> Self {
         let recent_ok_cap = if spec.recent_ok_cap == 0 {
             DEFAULT_RECENT_OK_CAP
