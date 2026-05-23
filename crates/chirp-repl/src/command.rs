@@ -80,7 +80,7 @@ pub fn parse(line: &str) -> Result<Command, String> {
             }
             Ok(Command::MlsCreate(
                 rest[0].to_string(),
-                rest[1..].iter().map(|s| s.to_string()).collect(),
+                rest[1..].iter().map(std::string::ToString::to_string).collect(),
             ))
         }
         "mls-invite" => {

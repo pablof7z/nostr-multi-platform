@@ -152,9 +152,8 @@ impl FfiApp {
     fn dispatch_action_json(&self, namespace: &str, action_json: &str) -> String {
         // An interior NUL cannot cross to C — collapse it to an error JSON so
         // the caller still gets well-formed data (D6).
-        let (ns, body) = match (CString::new(namespace), CString::new(action_json)) {
-            (Ok(ns), Ok(body)) => (ns, body),
-            _ => return r#"{"error":"action contains NUL byte"}"#.to_string(),
+        let (Ok(ns), Ok(body)) = (CString::new(namespace), CString::new(action_json)) else {
+            return r#"{"error":"action contains NUL byte"}"#.to_string();
         };
         let ptr = nmp_app_dispatch_action(self.app, ns.as_ptr(), body.as_ptr());
         if ptr.is_null() {

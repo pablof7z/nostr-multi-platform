@@ -92,6 +92,7 @@ fn create_account(session: &mut Session, name: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn open_home(session: &mut Session, label: &str) -> Result<()> {
     session.app.open_timeline();
     render_snapshot(session, label);

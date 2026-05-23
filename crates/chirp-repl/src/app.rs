@@ -33,7 +33,7 @@ impl std::fmt::Debug for AppRuntime {
             .field("app", &(!self.app.is_null()))
             .field("chirp", &(!self.chirp.is_null()))
             .field("marmot", &(!self.marmot.is_null()))
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -96,7 +96,7 @@ impl AppRuntime {
     pub fn create_account(&self, profile_json: &str, relays_json: &str, mls: bool) -> Result<()> {
         self.with_cstr(profile_json, |profile| {
             self.with_cstr(relays_json, |relays| {
-                nmp_app_create_new_account(self.app, profile.as_ptr(), relays.as_ptr(), mls)
+                nmp_app_create_new_account(self.app, profile.as_ptr(), relays.as_ptr(), mls);
             })
         })?
     }
@@ -194,6 +194,7 @@ impl AppRuntime {
         self.dispatch_action(namespace, &action)
     }
 
+    #[must_use] 
     pub fn chirp_snapshot(&self) -> Option<Value> {
         if self.chirp.is_null() {
             return None;
@@ -231,11 +232,13 @@ impl AppRuntime {
         }
     }
 
+    #[allow(clippy::unused_self)]
     fn with_cstr<T>(&self, value: &str, f: impl FnOnce(&CString) -> T) -> Result<T> {
         let c = CString::new(value).map_err(|_| "string contains NUL byte".to_string())?;
         Ok(f(&c))
     }
 
+    #[allow(clippy::unused_self)]
     fn take_marmot_json(&self, ptr: *mut std::ffi::c_char, label: &str) -> Result<Value> {
         if ptr.is_null() {
             return Err(format!("{label} returned null"));
