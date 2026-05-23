@@ -127,12 +127,14 @@ to it; delete the hand-rolled path.
   F-04 zap-receipts contract would break on every cold-start sign-in. NIP-17 DM
   routing is intentionally EXCLUDED (gift-wraps must stay fail-closed). All 1065
   nmp-core tests pass.
-- Stage 2 (NEXT — blocked on precursor): Migrate the 5 `self.req(...)` call sites in
+- Stage 2 (NEXT — precursor merged PR #389; kind:9735 host-side migration DONE PR #421):
+  Migrate the 4 remaining `self.req(...)` call sites in
   `kernel/requests/startup.rs::active_account_bootstrap_requests` (self kind:0/3/10002/10050
-  via `Indexer`, self kind:9735 via `Content`) onto `InterestRegistry::ensure_sub`. All 5
-  must be registered with `InterestScope::Global` (NOT `Account(self_pk)` as a stale design
-  comment in `pd033c-plan.md` §3.1 suggests) so the planner's Case A and Case C
-  bootstrap-fallback gates fire on cold-start — both gates require `Global` scope.
+  via `Indexer`) onto `InterestRegistry::ensure_sub`. All 4 must be registered with
+  `InterestScope::Global` (NOT `Account(self_pk)` as a stale design comment in
+  `pd033c-plan.md` §3.1 suggests) so the planner's Case A bootstrap-fallback gates fire on
+  cold-start. The kind:9735 via Content was converted to a host-side `ZapReceiptsRuntimeController`
+  in `nmp-app-chirp` (PR #421) — that call site is gone from startup.rs.
 - Stage 3: Migrate remaining M1 `req()` call sites in `profile.rs` / `thread.rs`.
 - Stage 4: Delete the M1 `req()` helper once all call sites are migrated.
 
@@ -261,9 +263,9 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - ~~`crates/nmp-core/src/planner/compiler/partition/case_c_p_tags.rs`~~ — 604 → 163 LOC (PR #410)
 - ~~`crates/nmp-core/src/kernel/action_registry.rs`~~ — 937 → 353 LOC (PR #411)
 - ~~`crates/nmp-testing/bin/doctrine-lint/rules/d10.rs`~~ — 725 → 336 LOC (PR #412)
-- `crates/nmp-testing/bin/doctrine-lint/rules/d11.rs` — 618 LOC (PR pending)
-- `crates/nmp-testing/bin/doctrine-lint/rules/d12.rs` — 569 LOC (PR pending)
-- `crates/nmp-testing/bin/doctrine-lint/rules/d15.rs` — 672 LOC (PR pending)
+- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d11.rs`~~ — 618 → 351 LOC (PR #415)
+- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d12.rs`~~ — 569 → 337 LOC (PR #414)
+- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d15.rs`~~ — 672 → 474 LOC (PR #413)
 
 *Production splits needed (no test section to extract; post-v1):*
 - `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
@@ -284,7 +286,7 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs, relay.rs (PRs #394-#401 — 2026-05-24)
 - swift.rs, ingest/mod.rs, case_a_authors.rs, event_observer.rs, compiler/mod.rs, nip19.rs (PRs #402-#406, #409 — 2026-05-24)
 - relay_diagnostics.rs, markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10 (PRs #407-#412 — 2026-05-24)
-- (pending): doctrine-lint d11/d12/d15
+- doctrine-lint d11/d12/d15 (PRs #413-#415 — 2026-05-24)
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
