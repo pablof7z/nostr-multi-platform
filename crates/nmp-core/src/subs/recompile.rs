@@ -42,6 +42,7 @@ impl SubscriptionLifecycle {
             &self.active_account_read_relays,
             &self.app_relays,
             &self.bootstrap_content_relays,
+            &self.bootstrap_indexer_relays,
         );
         let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);

@@ -117,7 +117,7 @@ impl RelayEntry {
 /// not perturb account-scoped profile fetches or tailing timeline interests.
 //
 // `too_many_arguments` allowed: this is the planner-private dispatcher; its
-// parameter list is the compile-context surface (4 relay sets + mailbox cache
+// parameter list is the compile-context surface (5 relay sets + mailbox cache
 // + interest input) plus the two output accumulators. A struct wrapper would
 // only force every call site through an extra builder for zero clarity gain.
 #[allow(clippy::too_many_arguments)]
@@ -128,6 +128,7 @@ pub(super) fn partition_interest(
     active_account_read_relays: &[RelayUrl],
     app_relays: &[RelayUrl],
     bootstrap_content_relays: &[RelayUrl],
+    bootstrap_indexer_relays: &[RelayUrl],
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
@@ -175,7 +176,7 @@ pub(super) fn partition_interest(
             &base_shape,
             mailbox_cache,
             app_relays,
-            indexer_relays,
+            bootstrap_indexer_relays,
             relay_entries,
             unroutable,
         );

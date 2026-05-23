@@ -84,11 +84,12 @@ pub struct SubscriptionCompiler<'a> {
     /// Cold-start bootstrap content relays (PD-033-C planner extension).
     ///
     /// The kernel populates this from `bootstrap_urls_for_role(RelayRole::Content)`
-    /// — the same well-known seed it uses for the first content socket. The
-    /// compiler consults this set ONLY for `OneShot + Global + event_ids`-shaped
-    /// interests, so a discovery oneshot for referenced event ids always has a
-    /// landing pad before any account configuration is loaded. Cases A/B/C never
-    /// touch it; Case D consults it ahead of its existing per-relay accumulation
+    /// — the same well-known seed it uses for the first content socket, INCLUDING
+    /// the `FALLBACK_CONTENT_RELAY` cold-start default. The compiler consults
+    /// this set ONLY for `OneShot + Global + event_ids`-shaped interests, so a
+    /// discovery oneshot for referenced event ids always has a content landing
+    /// pad before any account configuration is loaded. Cases A/B/C never touch
+    /// it; Case D consults it ahead of its existing per-relay accumulation
     /// (gated on the OneShot+Global+event_ids triple) so non-bootstrap interests
     /// retain their unchanged routing.
     ///
@@ -96,6 +97,21 @@ pub struct SubscriptionCompiler<'a> {
     /// `with_relays()` default it to `&[]`, so existing callers see no
     /// behavioural change.
     bootstrap_content_relays: &'a [RelayUrl],
+    /// Cold-start bootstrap indexer relays (PD-033-C planner extension).
+    ///
+    /// The kernel populates this from `bootstrap_urls_for_role(RelayRole::Indexer)`
+    /// — the WITH-FALLBACK form (`FALLBACK_INDEXER_RELAY` when no indexer row is
+    /// configured yet). This is intentionally distinct from `indexer_relays`,
+    /// which is the raw (no-fallback) editable indexer set used by the
+    /// mailbox-probe path and Case D's cold-start fallback. Case A's PD-033-C
+    /// `if !landed && is_discovery_oneshot` arm consults THIS field instead so
+    /// the planner mirrors `kernel/discovery.rs::drain_unknown_oneshots`'s
+    /// profile-oneshot fan-out to `RelayRole::Indexer` exactly — cold-start
+    /// included.
+    ///
+    /// Empty in tests and pre-PD-033-C call sites; production
+    /// (`identity_state::set_relay_edit_rows`) always sets it.
+    bootstrap_indexer_relays: &'a [RelayUrl],
 }
 
 impl<'a> SubscriptionCompiler<'a> {
@@ -111,6 +127,7 @@ impl<'a> SubscriptionCompiler<'a> {
             active_account_read_relays: &[],
             app_relays: &[],
             bootstrap_content_relays: &[],
+            bootstrap_indexer_relays: &[],
         }
     }
 
@@ -134,6 +151,7 @@ impl<'a> SubscriptionCompiler<'a> {
             active_account_read_relays,
             app_relays: &[],
             bootstrap_content_relays: &[],
+            bootstrap_indexer_relays: &[],
         }
     }
 
@@ -155,30 +173,43 @@ impl<'a> SubscriptionCompiler<'a> {
             active_account_read_relays,
             app_relays,
             bootstrap_content_relays: &[],
+            bootstrap_indexer_relays: &[],
         }
     }
 
     /// PD-033-C planner extension constructor — adds `bootstrap_content_relays`
-    /// to the full relay context.
+    /// AND `bootstrap_indexer_relays` to the full relay context.
     ///
-    /// Used by `SubscriptionLifecycle::recompile_and_diff` so a discovery
-    /// oneshot for referenced event ids (`OneShot + Global + event_ids`-shaped)
-    /// always has a content landing pad — without this set the partition's
-    /// Case D would route the discovery REQ to `indexer_relays`, which is wrong
-    /// (discovery content fetch belongs on the content lane), and Case A would
-    /// mark a `OneShot + Global + authors`-shaped fetch unroutable when no
-    /// NIP-65 mailbox exists yet (silent loss). See
+    /// Used by `SubscriptionLifecycle::recompile_and_diff` so the discovery
+    /// oneshots from `kernel/discovery.rs::drain_unknown_oneshots` always have
+    /// the correct landing pad:
+    ///
+    /// * `OneShot + Global + event_ids` (the events-oneshot arm) routes to
+    ///   `bootstrap_content_relays` via Case D's head check — kernel-equivalent
+    ///   of `RelayRole::Content` cold-start fan-out.
+    /// * `OneShot + Global + authors` with no NIP-65 mailbox (the
+    ///   profile-oneshot arm) routes to `bootstrap_indexer_relays` via Case A's
+    ///   `if !landed` fallback — kernel-equivalent of `RelayRole::Indexer` cold-
+    ///   start fan-out (carries `FALLBACK_INDEXER_RELAY` when no row is
+    ///   configured yet, whereas raw `indexer_relays` would be empty).
+    ///
+    /// Without this constructor the partition's Case D would route the
+    /// event-ids discovery REQ to `indexer_relays` (wrong — content belongs on
+    /// the content lane), and Case A would mark a `OneShot + Global + authors`
+    /// fetch `unroutable` (silent loss). See
     /// `docs/architecture-audit/pd033c-plan.md` §4.3.
     ///
-    /// `bootstrap_content_relays` is EXCLUDED from `compute_plan_id` so runtime
-    /// toggles do not churn sub-ids — matching the `app_relays` treatment in
+    /// Both new fields are EXCLUDED from `compute_plan_id` so runtime toggles
+    /// do not churn sub-ids — matching the `app_relays` treatment in
     /// `compile_with_context`'s Stage 4 comment.
+    #[allow(clippy::too_many_arguments)]
     pub fn with_relays_and_bootstrap(
         mailbox_cache: &'a dyn MailboxCache,
         indexer_relays: &'a [RelayUrl],
         active_account_read_relays: &'a [RelayUrl],
         app_relays: &'a [RelayUrl],
         bootstrap_content_relays: &'a [RelayUrl],
+        bootstrap_indexer_relays: &'a [RelayUrl],
     ) -> Self {
         Self {
             mailbox_cache,
@@ -186,6 +217,7 @@ impl<'a> SubscriptionCompiler<'a> {
             active_account_read_relays,
             app_relays,
             bootstrap_content_relays,
+            bootstrap_indexer_relays,
         }
     }
 
@@ -233,6 +265,7 @@ impl<'a> SubscriptionCompiler<'a> {
                 self.active_account_read_relays,
                 self.app_relays,
                 self.bootstrap_content_relays,
+                self.bootstrap_indexer_relays,
                 &mut relay_entries,
                 &mut unroutable_authors,
             );

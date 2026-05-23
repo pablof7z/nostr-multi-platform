@@ -298,16 +298,23 @@ impl super::Kernel {
         let read_urls = read_eligible_relay_urls(&rows);
         self.lifecycle.set_app_relays(read_urls.clone());
         self.lifecycle.set_active_account_read_relays(read_urls);
-        // PD-033-C — the planner-extension routing lane for `OneShot + Global +
-        // event_ids` discovery interests. Re-reads via `bootstrap_urls_for_role`
-        // so the lifecycle always sees the same cold-start seed the kernel's
-        // first content socket dials (`FALLBACK_CONTENT_RELAY` when no row is
-        // configured yet), eliminating the silent-loss regression Stage 1's
-        // M1 deletion would otherwise expose.
+        // PD-033-C — the planner-extension routing lanes for kernel-driven
+        // discovery oneshots. BOTH calls re-read through `bootstrap_urls_for_role`
+        // so the lifecycle sees the same cold-start seeds the kernel's first
+        // sockets dial (`FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY`
+        // when no row is configured yet) — eliminating the silent-loss
+        // regression Stage 1's M1 deletion would otherwise expose for both the
+        // events-oneshot arm (Case D, `OneShot + Global + event_ids`) and the
+        // profile-oneshot arm (Case A, `OneShot + Global + authors` with no
+        // NIP-65 mailbox).
         let bootstrap_content_urls = self
             .bootstrap_urls_for_role(crate::relay::RelayRole::Content);
         self.lifecycle
             .set_bootstrap_content_relays(bootstrap_content_urls);
+        let bootstrap_indexer_urls = self
+            .bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        self.lifecycle
+            .set_bootstrap_indexer_relays(bootstrap_indexer_urls);
         let write_urls = rows
             .iter()
             .filter(|r| crate::actor::has_role(&r.role, "write"))

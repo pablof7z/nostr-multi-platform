@@ -276,7 +276,12 @@ mod tests {
         let aar = vec!["wss://user-read.example".to_string()];
         let app = vec!["wss://user-app.example".to_string()];
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &indexer, &aar, &app, &bootstrap,
+            &cache,
+            &indexer,
+            &aar,
+            &app,
+            &bootstrap,
+            /* bootstrap_indexer = */ &[],
         );
 
         let plan = compiler
@@ -313,7 +318,12 @@ mod tests {
         let cache = InMemoryMailboxCache::new();
         let indexer = vec!["wss://purplepag.es".to_string()];
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &indexer, &[], &[], /* bootstrap = */ &[],
+            &cache,
+            &indexer,
+            &[],
+            &[],
+            /* bootstrap_content = */ &[],
+            /* bootstrap_indexer = */ &[],
         );
 
         let plan = compiler
@@ -340,7 +350,12 @@ mod tests {
         let indexer = vec!["wss://purplepag.es".to_string()];
         let bootstrap = vec!["wss://relay.primal.net".to_string()];
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &indexer, &[], &[], &bootstrap,
+            &cache,
+            &indexer,
+            &[],
+            &[],
+            &bootstrap,
+            /* bootstrap_indexer = */ &[],
         );
 
         let mut interest = discovery_oneshot_ids(1, &["aa"]);
@@ -365,7 +380,12 @@ mod tests {
         let bootstrap = vec!["wss://relay.primal.net".to_string()];
         let indexer = vec!["wss://purplepag.es".to_string()];
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &indexer, &[], &[], &bootstrap,
+            &cache,
+            &indexer,
+            &[],
+            &[],
+            &bootstrap,
+            /* bootstrap_indexer = */ &[],
         );
 
         let mut interest = discovery_oneshot_ids(1, &["aa"]);
@@ -387,7 +407,12 @@ mod tests {
         let bootstrap = vec!["wss://relay.primal.net".to_string()];
         let indexer = vec!["wss://purplepag.es".to_string()];
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &indexer, &[], &[], &bootstrap,
+            &cache,
+            &indexer,
+            &[],
+            &[],
+            &bootstrap,
+            /* bootstrap_indexer = */ &[],
         );
 
         // No authors/addresses/p-tags/event_ids → pure Case D firehose.
@@ -413,10 +438,20 @@ mod tests {
 
         let bootstrap_set = vec!["wss://relay.primal.net".to_string()];
         let no_bootstrap = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &[], &[], &[], &[],
+            &cache,
+            &[],
+            &[],
+            &[],
+            /* bootstrap_content = */ &[],
+            /* bootstrap_indexer = */ &[],
         );
         let with_bootstrap = SubscriptionCompiler::with_relays_and_bootstrap(
-            &cache, &[], &[], &[], &bootstrap_set,
+            &cache,
+            &[],
+            &[],
+            &[],
+            &bootstrap_set,
+            /* bootstrap_indexer = */ &[],
         );
 
         let plan_without = no_bootstrap.compile(&interests).expect("compile");
