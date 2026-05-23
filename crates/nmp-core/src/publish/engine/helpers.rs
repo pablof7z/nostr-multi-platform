@@ -54,8 +54,7 @@ pub(super) fn dispatch_due(
                 in_flight
                     .pending_retries
                     .get(relay_url)
-                    .map(|due| *due <= now_ms)
-                    .unwrap_or(true)
+                    .is_none_or(|due| *due <= now_ms)
             }
             _ => false,
         };

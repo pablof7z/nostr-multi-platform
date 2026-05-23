@@ -68,7 +68,7 @@ impl RawEvent {
     pub fn d_tag(&self) -> Option<Vec<u8>> {
         self.tags
             .iter()
-            .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
+            .find(|t| t.first().is_some_and(|s| s == "d"))
             .and_then(|t| t.get(1))
             .map(|s| s.as_bytes().to_vec())
     }
@@ -78,7 +78,7 @@ impl RawEvent {
     pub fn expiration(&self) -> Option<u64> {
         self.tags
             .iter()
-            .find(|t| t.first().map(|s| s == "expiration").unwrap_or(false))
+            .find(|t| t.first().is_some_and(|s| s == "expiration"))
             .and_then(|t| t.get(1))
             .and_then(|s| s.parse::<u64>().ok())
     }
@@ -88,7 +88,7 @@ impl RawEvent {
     pub fn e_tags(&self) -> Vec<String> {
         self.tags
             .iter()
-            .filter(|t| t.first().map(|s| s == "e").unwrap_or(false))
+            .filter(|t| t.first().is_some_and(|s| s == "e"))
             .filter_map(|t| t.get(1).cloned())
             .collect()
     }
@@ -98,7 +98,7 @@ impl RawEvent {
     pub fn p_tags(&self) -> Vec<String> {
         self.tags
             .iter()
-            .filter(|t| t.first().map(|s| s == "p").unwrap_or(false))
+            .filter(|t| t.first().is_some_and(|s| s == "p"))
             .filter_map(|t| t.get(1).cloned())
             .collect()
     }
@@ -108,7 +108,7 @@ impl RawEvent {
     pub fn a_tags(&self) -> Vec<String> {
         self.tags
             .iter()
-            .filter(|t| t.first().map(|s| s == "a").unwrap_or(false))
+            .filter(|t| t.first().is_some_and(|s| s == "a"))
             .filter_map(|t| t.get(1).cloned())
             .collect()
     }

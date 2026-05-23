@@ -607,8 +607,10 @@ fn resolve_publish_store(
     // `lmdb-backend`), then the in-memory store. This keeps CI/test behaviour
     // (no storage path -> no on-disk artefacts) unchanged.
     crate::publish::DomainPublishStore::open(Arc::clone(event_store))
-        .map(|store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>)
-        .unwrap_or_else(|_| Arc::new(crate::publish::InMemoryPublishStore::new()))
+        .map_or_else(
+            |_| Arc::new(crate::publish::InMemoryPublishStore::new()) as Arc<dyn crate::publish::PublishStore>,
+            |store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>,
+        )
 }
 
 fn load_profile_intents(
@@ -625,8 +627,7 @@ fn load_profile_intents(
         let pubkey = record.event.unsigned.pubkey;
         let should_replace = intents
             .get(&pubkey)
-            .map(|existing: &Profile| existing.created_at <= profile.created_at)
-            .unwrap_or(true);
+            .is_none_or(|existing: &Profile| existing.created_at <= profile.created_at);
         if should_replace {
             intents.insert(pubkey, profile);
         }
@@ -943,8 +944,7 @@ impl Kernel {
     pub(crate) fn dispatch_drops_total(&self) -> u64 {
         self.dispatch_drops
             .as_ref()
-            .map(|c| c.load(Ordering::Relaxed))
-            .unwrap_or(0)
+            .map_or(0, |c| c.load(Ordering::Relaxed))
     }
 
     /// G-S4 — install the actor's command-channel depth counter so the
@@ -972,8 +972,7 @@ impl Kernel {
         let depth = self
             .queue_depth
             .as_ref()
-            .map(|c| c.load(Ordering::Relaxed))
-            .unwrap_or(0);
+            .map_or(0, |c| c.load(Ordering::Relaxed));
         depth.min(u32::MAX as u64) as u32
     }
 

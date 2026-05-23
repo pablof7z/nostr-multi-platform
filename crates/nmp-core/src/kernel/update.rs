@@ -413,8 +413,7 @@ impl Kernel {
             .and_then(|p| p.picture_url.as_deref())
             .filter(|url| !url.is_empty());
         let author_picture_url = real_picture
-            .map(str::to_owned)
-            .unwrap_or_else(|| picture_placeholder(&event.author));
+            .map_or_else(|| picture_placeholder(&event.author), str::to_owned);
         // NIP-18 kind:6: the repost's `content` field carries the verbatim
         // stringified inner event JSON. The view layer used to parse this in
         // Swift (`innerEventField` in `NoteRowView.swift` / `ThreadNoteRow`),
@@ -444,11 +443,9 @@ impl Kernel {
                 .unwrap_or_else(|| short_pubkey_display(&event.author)),
             author_picture_url,
             author_avatar_initials: profile
-                .map(|profile| profile.avatar_initials.clone())
-                .unwrap_or_else(|| "..".to_string()),
+                .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
             author_avatar_color: profile
-                .map(|profile| profile.avatar_color.clone())
-                .unwrap_or_else(|| avatar_color(&event.author)),
+                .map_or_else(|| avatar_color(&event.author), |profile| profile.avatar_color.clone()),
             author_avatar_source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {
@@ -503,8 +500,7 @@ impl Kernel {
             .and_then(|p| p.picture_url.as_deref())
             .filter(|url| !url.is_empty());
         let picture_url = real_picture
-            .map(str::to_owned)
-            .unwrap_or_else(|| picture_placeholder(pubkey));
+            .map_or_else(|| picture_placeholder(pubkey), str::to_owned);
         let npub_str = npub.unwrap_or(pubkey).to_string();
         let npub_short = profile_npub_short(&npub_str);
         ProfileCard {
@@ -520,14 +516,11 @@ impl Kernel {
                 .map(|profile| profile.nip05.clone())
                 .unwrap_or_default(),
             about: profile
-                .map(|profile| truncate(&profile.about.replace('\n', " "), 220))
-                .unwrap_or_else(|| placeholder_about.to_string()),
+                .map_or_else(|| placeholder_about.to_string(), |profile| truncate(&profile.about.replace('\n', " "), 220)),
             avatar_initials: profile
-                .map(|profile| profile.avatar_initials.clone())
-                .unwrap_or_else(|| "..".to_string()),
+                .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
             avatar_color: profile
-                .map(|profile| profile.avatar_color.clone())
-                .unwrap_or_else(|| avatar_color(pubkey)),
+                .map_or_else(|| avatar_color(pubkey), |profile| profile.avatar_color.clone()),
             source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {
@@ -578,8 +571,7 @@ impl Kernel {
         let is_following = self
             .seed_contacts
             .get(active)
-            .map(|follows| follows.iter().any(|follow| follow == pubkey))
-            .unwrap_or(false);
+            .is_some_and(|follows| follows.iter().any(|follow| follow == pubkey));
         let (kind, label, icon_name, namespace) = if is_following {
             (
                 "unfollow",
@@ -681,8 +673,7 @@ impl Kernel {
         let focused_index = items.iter().position(|item| item.id == *focused_id);
         let previous_count = focused_index.unwrap_or(0);
         let next_count = focused_index
-            .map(|index| items.len().saturating_sub(index + 1))
-            .unwrap_or(0);
+            .map_or(0, |index| items.len().saturating_sub(index + 1));
         let state = if self.thread_view.request_pending {
             "queued"
         } else if items.is_empty() {

@@ -60,8 +60,7 @@ pub(super) fn insert(
             TombstoneOrigin::Kind5 => tomb
                 .deleter_pubkey
                 .as_ref()
-                .map(|dp| bytes_to_hex(dp) == event.pubkey)
-                .unwrap_or(false),
+                .is_some_and(|dp| bytes_to_hex(dp) == event.pubkey),
             TombstoneOrigin::NIP40Expiry | TombstoneOrigin::AdminPurge => true,
         };
         if applies {
@@ -131,8 +130,7 @@ pub(super) fn delete_by_filter(
             .filter(|id| {
                 st.provenance
                     .get(*id)
-                    .map(|p| p.len() == 1 && p[0].relay_url == *relay)
-                    .unwrap_or(false)
+                    .is_some_and(|p| p.len() == 1 && p[0].relay_url == *relay)
             })
             .cloned()
             .collect(),

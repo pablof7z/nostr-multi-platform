@@ -150,9 +150,7 @@ impl SubShape {
 /// this single helper so the swap is one edit.
 #[must_use] 
 pub fn canonical_filter_hash(shape: &InterestShape) -> String {
-    let hash = serde_json::to_string(shape)
-        .map(|json| stable_hash64(("canonical-filter", json)))
-        .unwrap_or_else(|_| stable_hash64("canonical-filter-invalid-json"));
+    let hash = serde_json::to_string(shape).map_or_else(|_| stable_hash64("canonical-filter-invalid-json"), |json| stable_hash64(("canonical-filter", json)));
     format!("{:08x}", hash & 0xffff_ffff)
 }
 

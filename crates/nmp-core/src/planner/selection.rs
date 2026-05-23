@@ -256,8 +256,7 @@ fn greedy_select(
         for author in authors_now {
             let covered = pool
                 .get(&author)
-                .map(|relays| relays.contains(&winner_url))
-                .unwrap_or(false);
+                .is_some_and(|relays| relays.contains(&winner_url));
             if !covered {
                 continue;
             }

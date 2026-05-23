@@ -86,8 +86,7 @@ pub(super) fn get_param_replaceable(
                 && ev.raw.kind == kind
                 && ev.raw
                     .d_tag()
-                    .map(|d| String::from_utf8_lossy(&d).into_owned() == d_str)
-                    .unwrap_or(false)
+                    .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == d_str)
         })
         .max_by(|a, b| {
             a.raw.created_at
@@ -115,8 +114,7 @@ pub(super) fn scan_by_kind_dtag<'a>(
             ev.raw.kind == kind
                 && ev.raw
                     .d_tag()
-                    .map(|d| String::from_utf8_lossy(&d).into_owned() == d_str)
-                    .unwrap_or(false)
+                    .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == d_str)
                 && since.is_none_or(|s| ev.raw.created_at >= s)
                 && until.is_none_or(|u| ev.raw.created_at <= u)
         })
@@ -231,8 +229,7 @@ fn matches(ev: &StoredEvent, query: &StoreQuery) -> bool {
             ev.raw.kind == *kind
                 && ev.raw
                     .d_tag()
-                    .map(|d| String::from_utf8_lossy(&d).into_owned() == want)
-                    .unwrap_or(false)
+                    .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == want)
                 && in_range(*since, *until)
         }
         StoreQuery::Etag { target, kinds } => {

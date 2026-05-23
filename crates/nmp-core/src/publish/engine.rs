@@ -130,9 +130,7 @@ impl LastTerminal {
         correlation_id_override: Option<&str>,
         outcome: &TerminalOutcome,
     ) -> Self {
-        let correlation_id = correlation_id_override
-            .map(str::to_string)
-            .unwrap_or_else(|| handle.clone());
+        let correlation_id = correlation_id_override.map_or_else(|| handle.clone(), str::to_string);
         if outcome.accepted.is_empty() {
             let error = if outcome.failed.is_empty() {
                 Some("publish failed: no relays settled".to_string())
@@ -722,9 +720,7 @@ impl PublishEngine {
         // `PublishNote` path), otherwise the handle — same fallback rule as
         // `LastTerminal::from_outcome`.
         self.record_terminal(LastTerminal {
-            correlation_id: correlation_id_override
-                .map(str::to_string)
-                .unwrap_or_else(|| handle.clone()),
+            correlation_id: correlation_id_override.map_or_else(|| handle.clone(), str::to_string),
             status: "failed",
             error: Some("no relays resolved for publish target".to_string()),
         });
