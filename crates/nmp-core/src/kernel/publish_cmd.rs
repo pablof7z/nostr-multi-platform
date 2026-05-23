@@ -149,11 +149,14 @@ impl Kernel {
     /// spinner hang forever, exactly the broken-promise gap
     /// `record_action_failure` closes on the failure leg.
     ///
-    /// Callers pass `Some(id)` only on a dispatched action that carried a
-    /// `correlation_id`; a C-ABI-direct `pay_invoice` (no `ActionModule` executor
-    /// yet — the iOS shell calls `nmp_app_wallet_pay_invoice` directly today)
-    /// carries `None` and the wallet runtime simply skips this call (nothing
-    /// is waiting on an id).
+    /// Callers pass `Some(id)` whenever the underlying action carried a
+    /// dispatched `correlation_id` — every FFI-originated `pay_invoice` does
+    /// today (post-V3 the C-ABI symbol `nmp_app_wallet_pay_invoice` is a
+    /// thin wrapper that routes through `nmp_app_dispatch_action`'s
+    /// `nmp.wallet.pay_invoice` namespace). `None` is reserved for
+    /// actor-internal auto-dispatched payments (e.g. the LNURL → pay_invoice
+    /// chain in `commands/zap.rs`) where the wallet runtime simply skips
+    /// this call (nothing is waiting on an id).
     //
     // `#[allow(dead_code)]` was lifted when the
     // `ActorCommand::RecordActionSuccess` dispatch arm landed (the NIP-57 zap

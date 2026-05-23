@@ -1,11 +1,29 @@
 //! NIP-47 Nostr Wallet Connect FFI wrappers.
 //!
-//! All functions are fire-and-forget (D6 — no return values, no exceptions
-//! across the FFI boundary). Outcomes surface via subsequent snapshots: the
-//! wallet state under `projections["wallet"]` (D0: NIP-47 NWC is an app noun,
-//! surfaced through the snapshot-projection seam, not a typed `KernelSnapshot`
-//! field) and any error under `last_error_toast`.
+//! Connection lifecycle (`nmp_app_wallet_connect` / `nmp_app_wallet_disconnect`)
+//! is fire-and-forget bespoke FFI per the Theme A discriminator
+//! ([`crate::substrate::action`] module docs): these are connection-oriented
+//! protocol glue, not user-authored content actions. They send
+//! [`crate::actor::ActorCommand::WalletConnect`] / `WalletDisconnect` directly
+//! because they address an in-process connection lifecycle, not a dispatchable
+//! intent.
+//!
+//! [`nmp_app_wallet_pay_invoice`] is the user-initiated intent surface and
+//! routes through the [`crate::ffi::action::nmp_app_dispatch_action`] seam
+//! (closes the V3 bypass — see `wallet/action.rs` module docs). The
+//! `WalletPayInvoiceModule` registered in
+//! [`crate::kernel::action_registry::default_registry`] under namespace
+//! `nmp.wallet.pay_invoice` is the sole entry point that constructs
+//! [`crate::actor::ActorCommand::WalletPayInvoice`].
+//!
+//! Outcomes surface via subsequent snapshots: the wallet state under
+//! `projections["wallet"]` (D0: NIP-47 NWC is an app noun, surfaced through
+//! the snapshot-projection seam, not a typed `KernelSnapshot` field) and any
+//! error under `last_error_toast`. Dispatched `pay_invoice` calls also reach
+//! `projections["action_stages"]` via the registry-minted correlation_id so
+//! a host spinner can close on the matching kind:23195 response.
 
+use super::action::dispatch_action_json;
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
 use crate::actor::ActorCommand;
 use std::ffi::c_char;
@@ -56,25 +74,41 @@ pub extern "C" fn nmp_app_wallet_disconnect(app: *mut NmpApp) {
 /// `amount_msats_or_null`: pointer to optional payment amount in msats (pass
 /// `nil` to use the invoice's embedded amount).
 ///
-/// `correlation_id` is left `None` on this C-ABI path: the iOS shell calls
-/// `nmp_app_wallet_pay_invoice` directly (no ActionModule executor exists
-/// yet for `nmp.zap`), so the kind:23195 response does not need to drain a
-/// dispatched-action promise. A future `ZapAction` executor will construct
-/// the same `ActorCommand::WalletPayInvoice` with `Some(correlation_id)` and
-/// the wallet runtime's `pending_payments` map closes the round-trip into
-/// `action_results` on the matching response.
+/// # V3 — `dispatch_action` is the sole user-write seam
+///
+/// This symbol is the thin C-ABI wrapper that translates its arguments into
+/// a [`crate::wallet::WalletAction::PayInvoice`] payload and routes the call
+/// through the [`crate::ffi::action::nmp_app_dispatch_action`] seam (the
+/// `nmp.wallet.pay_invoice` namespace registered in
+/// [`crate::kernel::action_registry::default_registry`]). The
+/// `ActionRegistry` executor is the sole constructor of
+/// [`crate::actor::ActorCommand::WalletPayInvoice`] from FFI — this body
+/// never sends an `ActorCommand` directly (D4: every user-initiated write
+/// enters through `dispatch_action`).
+///
+/// The registry-minted correlation_id is consumed internally: the wrapper
+/// preserves the existing fire-and-forget C-ABI contract (no return value)
+/// so the iOS shell + chirp-tui binary continue to compile unchanged. A
+/// caller that needs the correlation_id (to bind a UI spinner) can call
+/// `nmp_app_dispatch_action("nmp.wallet.pay_invoice", ...)` directly — both
+/// paths reach the same module and produce the same `action_stages`
+/// lifecycle. The unack'd `action_stages` entry minted by this wrapper
+/// auto-evicts under the kernel's `MAX_TRACKED_CORRELATIONS` bound (no
+/// memory leak) — the host that called this fire-and-forget symbol does
+/// not need to ACK an id it cannot observe.
 ///
 /// # Double-tap guard
 ///
 /// A second call carrying the same `bolt11` string within
 /// [`INFLIGHT_BOLT11_TTL`] of the first is rejected as a UI double-tap: no
-/// new `ActorCommand::WalletPayInvoice` is enqueued. This guard lives
-/// entirely on the FFI thread (no cross-thread coupling): expired entries
-/// are swept on every call by wall-clock. The guard is per-`bolt11`, so two
-/// rapid taps on the same invoice collapse to one wire request even when
-/// the actor's kind:23194-event-id-keyed correlation map cannot deduplicate
-/// (the request id is minted by the actor AFTER `send_cmd` returns; the FFI
-/// thread cannot wait for it without violating D8).
+/// dispatch is performed. This guard lives entirely on the FFI thread (no
+/// cross-thread coupling): expired entries are swept on every call by
+/// wall-clock. The guard is per-`bolt11` (independent of `amount_msats`),
+/// so two rapid taps on the same invoice with different amounts ALSO
+/// collapse to one wire request — the generic `inflight_dispatches`
+/// guard keyed on `(namespace, action_json)` would not deduplicate those
+/// because the JSON differs. The wallet-specific guard runs FIRST so the
+/// generic dispatch guard never sees a same-`bolt11` retap.
 ///
 /// A retry of the same invoice AFTER the TTL passes through — the NWC
 /// wallet itself is responsible for deduping a true on-the-wire retry by
@@ -117,11 +151,28 @@ pub extern "C" fn nmp_app_wallet_pay_invoice(
         guard.insert(bolt11.clone(), now);
     }
 
-    app.send_cmd(ActorCommand::WalletPayInvoice {
-        bolt11,
-        amount_msats,
-        correlation_id: None,
-    });
+    // Translate the call into a `WalletAction::PayInvoice` payload and route
+    // through `dispatch_action_json`. The registry's `WalletPayInvoiceModule`
+    // executor is the sole constructor of `ActorCommand::WalletPayInvoice`
+    // from FFI (V3 — `dispatch_action` is the sole user-write seam).
+    //
+    // `serde_json::to_string` cannot fail for this `WalletAction` shape
+    // (the fields are a `String` and `Option<u64>`, both always-serialisable),
+    // but D6 mandates "failures are data, never panics": a hypothetical
+    // serialisation failure collapses to a silent drop, exactly the same
+    // observable shape as a poisoned-mutex degradation above.
+    let action = crate::wallet::WalletAction::PayInvoice { bolt11, amount_msats };
+    let Ok(action_json) = serde_json::to_string(&action) else {
+        return;
+    };
+    // The return string carries the minted correlation_id or an error
+    // envelope — the C-ABI symbol is fire-and-forget (matches the existing
+    // contract), so the result is dropped. The action-stages lifecycle
+    // (registered via `is_async_completing = true` on the module) still
+    // reaches the host through `projections["action_stages"]` keyed on the
+    // same correlation_id; a host that needs the id at call time can call
+    // `nmp_app_dispatch_action("nmp.wallet.pay_invoice", ...)` directly.
+    let _ = dispatch_action_json(Some(app), "nmp.wallet.pay_invoice", &action_json);
 }
 
 #[cfg(test)]
@@ -141,26 +192,24 @@ mod tests {
     }
 
     /// Two consecutive `nmp_app_wallet_pay_invoice` calls with the SAME
-    /// `bolt11` must result in exactly one `WalletPayInvoice` enqueue —
-    /// the second call is the UI double-tap and must be silently dropped.
+    /// `bolt11` must result in exactly one dispatch — the second call is the
+    /// UI double-tap and must be silently dropped by the wallet-specific
+    /// bolt11 guard BEFORE it reaches `dispatch_action_json`.
     ///
-    /// Witnessed via the `queue_depth` straddle counter: the first call
-    /// increments by 1, the second must not increment.
+    /// Witness: the `inflight_bolt11` set has exactly one entry after the
+    /// pair (a rejected re-tap inserts nothing). Asserting the generic
+    /// `inflight_dispatches` set size (also expected to be 1) is an
+    /// independent witness covered by
+    /// `fire_and_forget_wrapper_routes_through_dispatch_action`.
     #[test]
     fn same_bolt11_twice_enqueues_exactly_once() {
         with_app(|app| {
             let app_ptr = app as *const _ as *mut NmpApp;
             let bolt11 = CString::new("lnbc100n1p0fakefakefakebolt11invoicestring").unwrap();
 
-            // The straddle counter (`queue_depth`) is incremented
-            // synchronously inside `send_cmd` BEFORE the actor can dequeue,
-            // so the FFI-side increment for an accepted call is observable.
-            // But the actor thread is running concurrently and may dequeue
-            // between the two reads, so we cannot assert
-            // `after_second == after_first` directly. The robust witness for
-            // "the second call was rejected before reaching `send_cmd`" is
-            // the inflight set itself: a rejected re-tap inserts nothing, so
-            // the set size after two same-bolt11 calls is exactly one.
+            // First call: passes both the bolt11 guard and dispatch_action.
+            // Second call: short-circuits at the bolt11 guard — the generic
+            // dispatch guard never sees it.
             nmp_app_wallet_pay_invoice(app_ptr, bolt11.as_ptr(), std::ptr::null());
             nmp_app_wallet_pay_invoice(app_ptr, bolt11.as_ptr(), std::ptr::null());
 
@@ -272,6 +321,61 @@ mod tests {
             assert!(
                 guard.is_empty(),
                 "NULL bolt11 is a no-op and must not insert an empty-key entry"
+            );
+        });
+    }
+
+    /// V3 contract — the C-ABI wrapper routes through `dispatch_action`.
+    ///
+    /// A successful `nmp_app_wallet_pay_invoice` call MUST land an entry in
+    /// the generic `inflight_dispatches` map (the dedup keyed on
+    /// `hash(namespace, action_json)` that ALL `nmp_app_dispatch_action`
+    /// calls populate on accepted execution). If the wrapper were still
+    /// constructing `ActorCommand::WalletPayInvoice` directly (the V3
+    /// bypass), no `inflight_dispatches` entry would appear — only the
+    /// wallet-specific `inflight_bolt11` entry would. Both must appear
+    /// today; this test fails closed if a future refactor accidentally
+    /// reverts the body to a direct `send_cmd`.
+    ///
+    /// Pairs with `default_registry_has_wallet_pay_invoice_module_under_feature`
+    /// in `kernel/action_registry.rs`: that test proves the module is
+    /// registered, this test proves the FFI symbol uses the registered
+    /// module instead of bypassing it.
+    #[test]
+    fn fire_and_forget_wrapper_routes_through_dispatch_action() {
+        with_app(|app| {
+            let app_ptr = app as *const _ as *mut NmpApp;
+            let bolt11 = CString::new("lnbc100n1p0v3contracttest").unwrap();
+
+            // Pre-state: neither inflight map carries an entry.
+            assert_eq!(
+                app.inflight_bolt11.lock().unwrap().len(),
+                0,
+                "preconditions: inflight_bolt11 must start empty"
+            );
+            assert_eq!(
+                app.inflight_dispatches.lock().unwrap().len(),
+                0,
+                "preconditions: inflight_dispatches must start empty"
+            );
+
+            nmp_app_wallet_pay_invoice(app_ptr, bolt11.as_ptr(), std::ptr::null());
+
+            // Post-state: BOTH the wallet-specific bolt11 guard AND the
+            // generic dispatch dedup guard carry an entry — proving the
+            // call went through `dispatch_action_json` (which populates
+            // `inflight_dispatches`) instead of a direct `send_cmd` (which
+            // does not).
+            assert_eq!(
+                app.inflight_bolt11.lock().unwrap().len(),
+                1,
+                "the wallet-specific bolt11 guard must record the accepted call"
+            );
+            assert_eq!(
+                app.inflight_dispatches.lock().unwrap().len(),
+                1,
+                "the generic dispatch_action guard must also record the accepted call — \
+                 a missing entry here means the V3 bypass has been reintroduced"
             );
         });
     }

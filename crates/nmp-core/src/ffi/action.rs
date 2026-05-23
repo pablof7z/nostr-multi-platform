@@ -256,7 +256,7 @@ pub extern "C" fn nmp_app_register_action_result_observer(
 /// (or a registry-rejected action) does not poison the map — the host can
 /// fix and re-submit immediately. Expired entries are swept lazily on every
 /// call by wall-clock.
-fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str) -> String {
+pub(super) fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str) -> String {
     let Some(app) = app else {
         return error_json("null app");
     };
