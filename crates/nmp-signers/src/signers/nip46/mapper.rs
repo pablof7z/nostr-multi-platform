@@ -42,6 +42,7 @@ use crate::signers::{SignerError, SignerOp};
 /// already has it) but is intentionally unused: per codex review #3, the
 /// canonical event we trust is the one the remote returned, not the local
 /// template.  The template's role ended when we sent the RPC.
+#[must_use]
 pub fn map_response_to_event(
     raw_op: SignerOp<String>,
     _unsigned: UnsignedEvent,
@@ -71,6 +72,7 @@ pub fn map_response_to_event(
 
 /// Parse the JSON response body from a `sign_event` RPC and verify it end to
 /// end (id recomputation + schnorr signature, plus pubkey identity check).
+#[must_use]
 pub fn parse_signed_event_response(
     s: &str,
     expected_pubkey: PublicKey,
@@ -200,6 +202,7 @@ fn build_event_for_verify(
 }
 
 /// Minimal JSON-string escape — covers what NIP-46 RPC params need.
+#[must_use]
 pub fn escape_json(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -220,6 +223,7 @@ pub fn escape_json(s: &str) -> String {
 
 /// Deterministic-ish request id (timestamp + atomic counter).  Not a security
 /// boundary — uniqueness within the signer's lifetime is what matters.
+#[must_use]
 pub fn generate_request_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};

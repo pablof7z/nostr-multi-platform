@@ -1,3 +1,12 @@
+//! Relay worker: per-relay thread that owns the WebSocket connection lifecycle.
+//!
+//! Each relay is managed by a dedicated OS thread.  The thread connects,
+//! drives the mio poll loop (`io_ready`), writes outbound frames
+//! (`socket_io::flush_relay_writes`), reads inbound frames
+//! (`socket_io::drain_relay_reads`), and sends `RelayEvent` notifications back
+//! to the kernel actor over an `mpsc::Sender`.  Keepalive pings are handled
+//! inline; reconnects are signalled by returning `RelayWorkerResult::Reconnect`.
+
 use crate::keepalive::{KeepaliveAction, KeepaliveState};
 use crate::kernel::RelayFrame;
 use crate::relay::RelayRole;

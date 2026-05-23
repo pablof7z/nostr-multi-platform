@@ -1,3 +1,8 @@
+//! Note relation counts: reply, reaction, and repost tallies tracked by the
+//! NIP-01 projection layer.  `NoteRelationView` implements the substrate
+//! `ViewModule` contract and is driven by the kernel's event-inserted /
+//! removed callbacks.
+
 use std::collections::HashMap;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};

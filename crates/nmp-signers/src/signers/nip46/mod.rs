@@ -92,11 +92,13 @@ impl Nip46SignerHandle {
     }
 
     /// The parsed URI.
+    #[must_use]
     pub fn uri(&self) -> &BunkerUri {
         &self.uri
     }
 
     /// The local ephemeral pubkey (the bunker addresses RPC responses to this).
+    #[must_use]
     pub fn local_pubkey(&self) -> PublicKey {
         self.local_keys.public_key()
     }
@@ -105,6 +107,7 @@ impl Nip46SignerHandle {
     /// resolved.  In test contexts the caller can pass `remote_user_pubkey`
     /// directly; in production the kernel performs the `connect` /
     /// `get_public_key` RPC dance via `transport` and supplies the result.
+    #[must_use]
     pub fn complete<T: Nip46Transport + 'static>(
         self,
         transport: Arc<T>,
@@ -205,11 +208,13 @@ impl Nip46Signer {
     }
 
     /// The cached remote user pubkey (sync).
+    #[must_use]
     pub fn remote_user_pubkey(&self) -> PublicKey {
         self.remote_user_pubkey
     }
 
     /// The parsed bunker URI.
+    #[must_use]
     pub fn uri(&self) -> &BunkerUri {
         &self.uri
     }

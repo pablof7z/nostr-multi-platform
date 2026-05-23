@@ -1,3 +1,7 @@
+//! Profile display helpers: `AuthorDisplay` (wire type for UI) and
+//! `ProfileDisplay` (kernel-side cache entry).  `profile_from_event` decodes
+//! kind:0 metadata events; `should_replace` enforces last-writer-wins ordering.
+
 use nmp_core::nip19::encode_npub;
 use nmp_core::substrate::{picture_placeholder, KernelEvent};
 use serde::{Deserialize, Serialize};
