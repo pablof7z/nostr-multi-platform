@@ -72,6 +72,7 @@ impl Store {
     }
 
     /// Get an event by ID
+    #[must_use]
     pub fn get_event_by_id(&self, id: &EventId) -> Result<Option<Event>, Error> {
         let txn = self.db.read_txn()?;
         let event: Option<Event> = self
@@ -83,6 +84,7 @@ impl Store {
     }
 
     /// Do we have an event
+    #[must_use]
     pub fn has_event(&self, id: &EventId) -> Result<bool, Error> {
         let txn = self.db.read_txn()?;
         let has: bool = self.db.has_event(&txn, id.as_bytes())?;
@@ -91,6 +93,7 @@ impl Store {
     }
 
     /// Is the event deleted
+    #[must_use]
     pub fn event_is_deleted(&self, id: &EventId) -> Result<bool, Error> {
         let txn = self.db.read_txn()?;
         let deleted: bool = self.db.is_deleted(&txn, id)?;
@@ -98,6 +101,7 @@ impl Store {
         Ok(deleted)
     }
 
+    #[must_use]
     pub fn count(&self, filter: Filter) -> Result<usize, Error> {
         let txn = self.db.read_txn()?;
         let len: usize = self.db.count(&txn, filter)?;
@@ -106,6 +110,7 @@ impl Store {
     }
 
     // Lookup ID: EVENT_ORD_IMPL
+    #[must_use]
     pub fn query(&self, filter: Filter) -> Result<Events, Error> {
         let mut events: Events = Events::new(&filter);
 
@@ -117,6 +122,7 @@ impl Store {
         Ok(events)
     }
 
+    #[must_use]
     pub fn negentropy_items(&self, filter: Filter) -> Result<Vec<(EventId, Timestamp)>, Error> {
         let txn = self.db.read_txn()?;
         let events = self.db.query(&txn, filter)?;

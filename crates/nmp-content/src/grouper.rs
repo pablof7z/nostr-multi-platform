@@ -16,6 +16,7 @@ use url::Url;
 /// or empty `Text` segments, collapses into one `Segment::Media`.
 ///
 /// Returns a new vector — the input is consumed.
+#[must_use]
 pub(crate) fn group_consecutive_media(input: Vec<Segment>) -> Vec<Segment> {
     let mut out: Vec<Segment> = Vec::with_capacity(input.len());
     let mut pending_urls: Vec<Url> = Vec::new();
@@ -83,6 +84,7 @@ fn is_bridging_text(s: &str) -> bool {
 
 /// Classify a URL as media by extension. Returns `None` for non-media URLs.
 /// Pure URL-extension inference per the §10 rule: no MIME sniff, no HTTP.
+#[must_use]
 pub(crate) fn media_kind_for_url(url: &Url) -> Option<MediaKind> {
     let path = url.path();
     let lower = path.to_lowercase();

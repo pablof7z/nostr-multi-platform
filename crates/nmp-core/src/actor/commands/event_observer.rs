@@ -150,7 +150,7 @@ pub type KernelEventObserverSlot = Arc<Mutex<ObserverInner>>;
 fn drain_c_envelope(envelope: CFanoutEnvelope) {
     let ptr = envelope.payload.as_ptr();
     for registration in &envelope.registrations {
-        crate::ffi_guard::guard_ffi_callback("kernel event observer", || {
+        let _ = crate::ffi_guard::guard_ffi_callback("kernel event observer", || {
             (registration.callback)(registration.context as *mut c_void, ptr);
         });
     }

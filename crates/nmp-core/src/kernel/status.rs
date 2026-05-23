@@ -1,3 +1,10 @@
+//! Kernel relay-status and subscription-status projection helpers.
+//!
+//! Implements `Kernel::relay_status`, `Kernel::relay_statuses`, and
+//! `Kernel::subscription_statuses`. These are read-only views over the
+//! kernel's relay-connectivity and subscription-lifecycle state — used by
+//! `make_update` to populate the diagnostics-screen snapshot projection.
+
 use super::{Kernel, RelayStatus, RelayRole, LogicalInterestStatus, short_hex, BTreeSet, WireSubscriptionStatus, RelayHealth, Counters, Instant, now_hms};
 
 impl Kernel {

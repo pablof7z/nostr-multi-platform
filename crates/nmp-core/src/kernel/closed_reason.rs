@@ -110,6 +110,7 @@ impl CloseReason {
     ///   malformed (NIP-01 §A).
     /// - `Error | Unsupported | Pow | Unknown` → `permanent` — retrying the
     ///   same REQ against the same relay will not help.
+    #[must_use]
     pub(crate) fn error_category(self) -> Option<&'static str> {
         match self {
             Self::AuthRequired => Some(ERR_AUTH_REQUIRED),

@@ -280,7 +280,7 @@ fn fully_dead_author_returns_when_relay_alive_again() {
         .per_relay
         .contains_key("wss://only.example"));
 
-    l.mark_relay_dead("wss://only.example".to_string());
+    let _ = l.mark_relay_dead("wss://only.example".to_string());
     let _ = l.recompile_and_diff(&mailboxes).expect("compile 2");
     assert!(
         l.current_plan.as_ref().unwrap().per_relay.is_empty(),
@@ -559,7 +559,7 @@ fn mark_relay_alive_clears_dead_relay_and_enqueues_recovery_trigger() {
     let mut l = SubscriptionLifecycle::new();
     let url = "wss://flaky.example".to_string();
 
-    l.mark_relay_dead(url.clone());
+    let _ = l.mark_relay_dead(url.clone());
     // Discard the dead-trigger so we observe only the recovery trigger.
     let _ = l.inbox.drain_coalesced();
 

@@ -1,3 +1,15 @@
+//! Substrate view types: the typed contract between NIP crates and the kernel's
+//! subscription planner.
+//!
+//! `ViewDependencies` is the primary bridge type. A NIP crate's view module
+//! calls [`ViewDependencies::into_logical_interest`] to convert its declared
+//! event needs (kinds, authors, tag-refs, relay-pin, limit) into a
+//! [`crate::planner::LogicalInterest`] suitable for `NmpApp::push_interest`.
+//!
+//! `KernelEvent` is the substrate-level event representation passed to
+//! `KernelEventObserver` implementations — it carries only the fields the
+//! kernel guarantees across all protocols (no NIP-specific payload parsing).
+
 use serde::{Deserialize, Serialize};
 
 use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};

@@ -83,7 +83,7 @@ pub(crate) fn handle_lifecycle_event(
         };
         // UB guard: the foreign callback may panic / raise; an unwind
         // across the C ABI boundary is undefined behaviour.
-        crate::ffi_guard::guard_ffi_callback("lifecycle observer", || {
+        let _ = crate::ffi_guard::guard_ffi_callback("lifecycle observer", || {
             (registration.callback)(registration.context as *mut std::ffi::c_void, phase_code);
         });
     }

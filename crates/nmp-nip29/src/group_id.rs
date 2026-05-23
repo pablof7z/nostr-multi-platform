@@ -48,6 +48,7 @@ impl GroupId {
     /// # Errors
     ///
     /// Returns a string describing the missing field if either is empty.
+    #[must_use]
     pub fn require_routable(&self) -> Result<(), String> {
         if self.host_relay_url.is_empty() {
             return Err("group.host_relay_url must not be empty".into());

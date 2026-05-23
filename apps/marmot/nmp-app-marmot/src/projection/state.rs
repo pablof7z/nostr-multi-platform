@@ -223,6 +223,7 @@ impl MarmotProjection {
 
     /// Borrow the inner state under the lock for an FFI op. Returns `None`
     /// on a poisoned mutex (D6 — caller degrades to null / `{"ok":false}`).
+    #[must_use]
     pub fn with_inner<R>(&self, f: impl FnOnce(&mut InnerHandle<'_>) -> R) -> Option<R> {
         let mut guard = self.inner.lock().ok()?;
         let mut h = InnerHandle { inner: &mut guard };
@@ -393,6 +394,7 @@ impl<'a> InnerHandle<'a> {
 
     /// The cached relay-pinned relays for a group, or `&[]` on a miss
     /// (caller fails closed on the explicit publish boundary).
+    #[must_use]
     pub(crate) fn group_relays(&self, group_id_hex: &str) -> Vec<RelayUrl> {
         self.inner
             .group_relays
@@ -433,6 +435,7 @@ impl<'a> InnerHandle<'a> {
 
     /// Read the user's current write-relay URLs from the shared kernel
     /// relay-edit projection. Empty when no write relays are configured.
+    #[must_use]
     pub(crate) fn write_relay_urls(&self) -> Vec<String> {
         let Some(app) = self.app() else {
             return Vec::new();
@@ -487,6 +490,7 @@ impl<'a> InnerHandle<'a> {
     /// Look up + remove a cached pending Welcome, returning the gift-wrap
     /// `Event` so the caller can re-run the idempotent
     /// `unwrap_and_process_welcome` to obtain the `&Welcome`.
+    #[must_use]
     pub(crate) fn take_welcome_gift_wrap(&mut self, id_hex: &str) -> Option<Event> {
         self.inner
             .pending_welcomes
@@ -547,6 +551,7 @@ impl KernelEventObserver for MarmotProjection {
 
 /// Parse a signed `nostr::Event` from its JSON wire form (D6: `Err` →
 /// caller returns `{"ok":false}`).
+#[must_use]
 pub(crate) fn parse_signed_event(json: &str) -> Result<Event, String> {
     Event::from_json(json).map_err(|e| format!("invalid signed event json: {e}"))
 }

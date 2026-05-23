@@ -212,6 +212,7 @@ fn collect_p_tags(event: &Value, out: &mut BTreeSet<String>) {
 /// preserves the no-personal-relay-filter behaviour (Pitfall §13.4). Used by
 /// the `req` tick loop to fold discovery REQ responses into the lifecycle's
 /// mailbox cache.
+#[must_use]
 pub fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot)> {
     if event["kind"].as_u64()? != 10002 {
         return None;

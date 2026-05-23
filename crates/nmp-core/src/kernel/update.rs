@@ -1,3 +1,17 @@
+//! Snapshot emission: serializes kernel state into the `KernelSnapshot` JSON
+//! that drives every UI update.
+//!
+//! `Kernel::make_update` is the hot path called at up to 4 Hz. It:
+//! 1. Calls `visible_items()` to compute the current timeline item list.
+//! 2. Diffs against `last_emitted_items` to compute `inserted`/`updated`/`removed`.
+//! 3. Assembles `KernelSnapshot` with `Metrics` counters and all projections.
+//! 4. Serialises the snapshot exactly once and hands the JSON string to the caller.
+//!
+//! Performance invariants (see `make_update_us` / `serialize_us` metrics):
+//! - No store scans on the hot path — all aggregates maintained incrementally.
+//! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
+//! - `last_payload_bytes` lags one tick to avoid double-serialization.
+
 use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, avatar_color, truncate, format_timestamp, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
 use crate::substrate::placeholder::picture_placeholder;
 

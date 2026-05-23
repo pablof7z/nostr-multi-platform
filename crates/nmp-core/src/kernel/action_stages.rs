@@ -179,6 +179,7 @@ pub(crate) struct ActionStageTracker {
 }
 
 impl ActionStageTracker {
+    #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()
     }
@@ -317,6 +318,7 @@ impl ActionStageTracker {
     /// private fields. Cheap (clone of `Vec<String>`) but kept behind
     /// `#[cfg(test)]` so it does not appear in production callsites.
     #[cfg(test)]
+    #[must_use]
     pub(crate) fn order_snapshot(&self) -> Vec<String> {
         self.correlation_order.clone()
     }
@@ -329,6 +331,7 @@ impl ActionStageTracker {
 
     /// Test/diagnostic accessor: stage history for a correlation_id.
     #[cfg(test)]
+    #[must_use]
     pub(crate) fn history(&self, correlation_id: &str) -> Option<&[StageEntry]> {
         self.entries.get(correlation_id).map(|v| v.as_slice())
     }

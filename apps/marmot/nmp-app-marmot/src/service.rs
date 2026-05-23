@@ -129,6 +129,7 @@ pub struct PendingGroupChange<'a> {
 impl<'a> PendingGroupChange<'a> {
     /// Call after the `evolution_event` was successfully published to the
     /// group relay. Performs `merge_pending_commit` (except SelfRemove).
+    #[must_use]
     pub fn commit(mut self) -> Result<()> {
         self.resolved = true;
         if self.self_remove {
@@ -143,6 +144,7 @@ impl<'a> PendingGroupChange<'a> {
 
     /// Call if the `evolution_event` failed to publish. Clears the MLS
     /// pending commit so future group ops are not blocked (mdk-api.md §7.7).
+    #[must_use]
     pub fn clear(mut self) -> Result<()> {
         self.resolved = true;
         if self.self_remove {
@@ -243,6 +245,7 @@ impl MarmotService {
     /// Retrieve cached full signed events for the given pubkeys. Returns only
     /// the pubkeys whose events are cached. Used by `create_group`/`add_members`
     /// as a fallback when the caller does not supply explicit key-package events.
+    #[must_use]
     pub fn cached_key_packages(&self, pubkeys: &[PublicKey]) -> Vec<Event> {
         let Ok(cache) = self.kp_cache.lock() else {
             return Vec::new();
@@ -255,6 +258,7 @@ impl MarmotService {
 
     /// Pubkeys (hex) that have a cached KeyPackage. Surfaced in the snapshot so
     /// native can render pending state while Rust-owned lookup requests settle.
+    #[must_use]
     pub fn cached_kp_pubkeys(&self) -> Vec<String> {
         self.kp_cache
             .lock()
@@ -305,6 +309,7 @@ impl MarmotService {
     /// Validate a peer's KeyPackage Nostr event (kind:30443 or legacy 443)
     /// parses. MDK parses the embedded KeyPackage internally on
     /// `create_group`/`add_members`; this is a pre-flight sanity check.
+    #[must_use]
     pub fn validate_peer_key_package(&self, event: &Event) -> Result<()> {
         self.mdk
             .parse_key_package(event)
@@ -367,6 +372,7 @@ impl MarmotService {
     /// Rotate this member's MLS leaf keypair (forward secrecy / PCS).
     /// Any member may call this; mandatory post-join per MIP-02. Returns a
     /// [`PendingGroupChange`] (kind:445 commit). Publish then `commit()`.
+    #[must_use]
     pub fn self_update(&self, group_id: &GroupId) -> Result<PendingGroupChange<'_>> {
         let r = self.mdk.self_update(group_id)?;
         Ok(self.pending_from_update(group_id.clone(), r, false))
@@ -375,6 +381,7 @@ impl MarmotService {
     /// Leave the group (SelfRemove proposal). Returns a [`PendingGroupChange`]
     /// flagged `self_remove`: a peer auto-commits it, so `commit()` does NOT
     /// call `merge_pending_commit` (mdk-api.md §7.3 / §5.3).
+    #[must_use]
     pub fn leave_group(&self, group_id: &GroupId) -> Result<PendingGroupChange<'_>> {
         let r = self.mdk.leave_group(group_id)?;
         Ok(self.pending_from_update(group_id.clone(), r, true))
@@ -444,11 +451,13 @@ impl MarmotService {
     /// the caller MUST trigger [`self_update`](Self::self_update) (post-join
     /// self-update is mandatory per MIP-02; MDK sets
     /// `SelfUpdateState::Required`).
+    #[must_use]
     pub fn accept_welcome(&self, welcome: &welcome_types::Welcome) -> Result<()> {
         self.mdk.accept_welcome(welcome).map_err(MarmotError::from)
     }
 
     /// Decline a processed Welcome.
+    #[must_use]
     pub fn decline_welcome(&self, welcome: &welcome_types::Welcome) -> Result<()> {
         self.mdk.decline_welcome(welcome).map_err(MarmotError::from)
     }
@@ -458,6 +467,7 @@ impl MarmotService {
     /// Encrypt a plaintext rumor as an MLS ApplicationMessage. Returns a
     /// signed kind:445 `Event` ready to publish to the group relay (MDK signs
     /// it with the MLS credential key — no extra signing needed).
+    #[must_use]
     pub fn create_message(&self, group_id: &GroupId, rumor: UnsignedEvent) -> Result<Event> {
         self.mdk
             .create_message(group_id, rumor, None)
@@ -466,6 +476,7 @@ impl MarmotService {
 
     /// Process an incoming kind:445 event (application message / commit /
     /// proposal). Returns the MDK processing result enum.
+    #[must_use]
     pub fn process_message(&self, event: &Event) -> Result<MessageProcessingResult> {
         self.mdk.process_message(event).map_err(MarmotError::from)
     }
@@ -473,16 +484,19 @@ impl MarmotService {
     // ── Read projections (back the Domain/View modules) ──────────────────────
 
     /// All groups (any state). Backs `GroupList`.
+    #[must_use]
     pub fn get_groups(&self) -> Result<Vec<group_types::Group>> {
         self.mdk.get_groups().map_err(MarmotError::from)
     }
 
     /// A single group's display metadata. Backs `MarmotGroup`.
+    #[must_use]
     pub fn get_group(&self, group_id: &GroupId) -> Result<Option<group_types::Group>> {
         self.mdk.get_group(group_id).map_err(MarmotError::from)
     }
 
     /// The current member set (Nostr pubkeys). Backs `MemberList`.
+    #[must_use]
     pub fn get_members(&self, group_id: &GroupId) -> Result<std::collections::BTreeSet<PublicKey>> {
         self.mdk.get_members(group_id).map_err(MarmotError::from)
     }
@@ -496,6 +510,7 @@ impl MarmotService {
     }
 
     /// Decrypted message history (unpaginated). Backs `GroupMessages`.
+    #[must_use]
     pub fn get_messages(&self, group_id: &GroupId) -> Result<Vec<message_types::Message>> {
         self.mdk
             .get_messages(group_id, None)
@@ -504,6 +519,7 @@ impl MarmotService {
 
     /// Groups whose self-update (key rotation) is overdue past `threshold_secs`.
     /// Drives the TTL re-publish path (plan §Step 3).
+    #[must_use]
     pub fn groups_needing_self_update(&self, threshold_secs: u64) -> Result<Vec<GroupId>> {
         self.mdk
             .groups_needing_self_update(threshold_secs)
@@ -526,6 +542,7 @@ pub struct CreateGroupPending<'a> {
 impl<'a> CreateGroupPending<'a> {
     /// Call after the kind:444 welcome rumors were delivered. Performs the
     /// mandatory `merge_pending_commit` (mdk-api.md §7.3).
+    #[must_use]
     pub fn commit(mut self) -> Result<()> {
         self.resolved = true;
         self.service
@@ -535,6 +552,7 @@ impl<'a> CreateGroupPending<'a> {
     }
 
     /// Call if welcome delivery failed; clears the pending commit.
+    #[must_use]
     pub fn clear(mut self) -> Result<()> {
         self.resolved = true;
         self.service

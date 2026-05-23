@@ -49,6 +49,7 @@ impl Default for PublishTarget {
 /// `Auto` is always valid: it deliberately asks the kernel to resolve via
 /// NIP-65. `Explicit` is fail-closed: an empty or malformed relay set is a
 /// caller bug, not a request to silently widen to `Auto`.
+#[must_use]
 pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), String> {
     match target {
         PublishTarget::Auto => Ok(()),
@@ -56,6 +57,7 @@ pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), Stri
     }
 }
 
+#[must_use]
 pub(crate) fn validate_explicit_relays(relays: &[RelayUrl]) -> Result<(), String> {
     if relays.is_empty() {
         return Err("explicit publish target requires at least one relay".to_string());

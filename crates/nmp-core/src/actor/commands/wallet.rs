@@ -103,6 +103,7 @@ pub(crate) struct WalletStatus {
 pub(crate) type WalletStatusSlot = Arc<Mutex<Option<WalletStatus>>>;
 
 /// Construct a fresh, empty [`WalletStatusSlot`].
+#[must_use]
 pub(crate) fn new_wallet_status_slot() -> WalletStatusSlot {
     Arc::new(Mutex::new(None))
 }
@@ -121,6 +122,7 @@ impl WalletRuntime {
     /// and the `"wallet"` snapshot projection reads from. The two `Arc` clones
     /// share one inner `Mutex`, so an actor write is visible to the projection
     /// closure on the next tick without crossing the FFI boundary.
+    #[must_use]
     pub(crate) fn new(status_slot: WalletStatusSlot) -> Self {
         Self {
             connection: None,

@@ -66,6 +66,7 @@ impl KeepaliveState {
     /// `idle_threshold` worth of silence post-connect is tolerated without a
     /// premature ping. Production passes the same `Instant` it just read for
     /// the `Connected` event.
+    #[must_use]
     pub(crate) fn new(now: Instant, idle_threshold: Duration, pong_timeout: Duration) -> Self {
         Self {
             idle_threshold,

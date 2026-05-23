@@ -283,7 +283,7 @@ fn drain_c_raw_envelope(envelope: CRawFanoutEnvelope) {
             continue;
         };
         let registration = &entry.registration;
-        crate::ffi_guard::guard_ffi_callback("raw event observer", || {
+        let _ = crate::ffi_guard::guard_ffi_callback("raw event observer", || {
             (registration.callback)(registration.context as *mut c_void, ptr);
         });
     }

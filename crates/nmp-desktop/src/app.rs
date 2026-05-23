@@ -18,6 +18,7 @@ pub struct DesktopApp {
 }
 
 impl DesktopApp {
+    #[must_use]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self {
             bridge: KernelBridge::start(cc.egui_ctx.clone()),

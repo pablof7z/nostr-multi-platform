@@ -266,12 +266,14 @@ impl Kernel {
     /// path. `None` is a normal result (the event simply hasn't been ingested);
     /// the caller degrades gracefully (D6 — emit the reaction with only the `e`
     /// tag, never panic).
+    #[must_use]
     pub(crate) fn event_author(&self, event_id_hex: &str) -> Option<String> {
         self.events.get(event_id_hex).map(|e| e.author.clone())
     }
 
     /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),
     /// read from the shared store. Empty if no kind:3 is known yet.
+    #[must_use]
     pub(crate) fn current_follows(&self, author_hex: &str) -> Vec<String> {
         let Some(author) = crate::kernel::hex_to_pubkey_bytes(author_hex) else {
             return Vec::new();

@@ -452,6 +452,7 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
+#[must_use]
 pub(crate) fn c_str_opt(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;

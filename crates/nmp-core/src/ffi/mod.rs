@@ -167,16 +167,19 @@ pub(crate) type Nip17LocalKeysSlot = Arc<Mutex<Option<nostr::Keys>>>;
 pub(crate) type StoragePathSlot = Arc<Mutex<Option<String>>>;
 
 /// Construct a fresh, empty [`MlsLocalNsecSlot`].
+#[must_use]
 pub(crate) fn new_mls_local_nsec_slot() -> MlsLocalNsecSlot {
     Arc::new(Mutex::new(None))
 }
 
 /// Construct a fresh, empty [`Nip17LocalKeysSlot`].
+#[must_use]
 pub(crate) fn new_nip17_local_keys_slot() -> Nip17LocalKeysSlot {
     Arc::new(Mutex::new(None))
 }
 
 /// Construct a fresh, empty [`StoragePathSlot`].
+#[must_use]
 pub(crate) fn new_storage_path_slot() -> StoragePathSlot {
     Arc::new(Mutex::new(None))
 }
@@ -205,11 +208,13 @@ fn new_update_callback_slot() -> UpdateCallbackSlot {
 }
 
 /// Construct a fresh, empty [`DmInboxObserverIdSlot`].
+#[must_use]
 pub(crate) fn new_dm_inbox_observer_id_slot() -> DmInboxObserverIdSlot {
     Arc::new(Mutex::new(None))
 }
 
 /// Construct a fresh, empty [`SingletonEventObserverIdSlot`].
+#[must_use]
 pub(crate) fn new_singleton_event_observer_id_slot() -> SingletonEventObserverIdSlot {
     Arc::new(Mutex::new(None))
 }
@@ -691,7 +696,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // This listener thread has no outer `catch_unwind` (unlike
                 // the actor thread above), so an unguarded unwind here is
                 // undefined behaviour across the C ABI boundary.
-                crate::ffi_guard::guard_ffi_callback("update listener", || {
+                let _ = crate::ffi_guard::guard_ffi_callback("update listener", || {
                     (registration.callback)(registration.context as *mut c_void, payload.as_ptr());
                 });
             }
@@ -1091,6 +1096,7 @@ impl NmpApp {
     /// that backs the typed Rust API above. Crate-private because external
     /// Rust callers should go through
     /// [`Self::register_event_observer`] / [`Self::unregister_event_observer`].
+    #[must_use]
     pub(crate) fn event_observers_slot(&self) -> KernelEventObserverSlot {
         Arc::clone(&self.event_observers)
     }
@@ -1122,6 +1128,7 @@ impl NmpApp {
     /// slot that backs the typed Rust API above. Crate-private — external
     /// Rust callers go through [`Self::register_raw_event_observer`] /
     /// [`Self::unregister_raw_event_observer`].
+    #[must_use]
     pub(crate) fn raw_event_observers_slot(&self) -> RawEventObserverSlot {
         Arc::clone(&self.raw_event_observers)
     }
@@ -1490,6 +1497,7 @@ pub extern "C" fn nmp_app_reset(app: *mut NmpApp) {
     app.send_cmd(ActorCommand::Reset);
 }
 
+#[must_use]
 pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     if app.is_null() {
         None
@@ -1507,6 +1515,7 @@ pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
 // directly; no C-ABI counterpart exists, so no `*mut NmpApp` → `&mut NmpApp`
 // helper is needed.
 
+#[must_use]
 pub(crate) fn c_string_argument(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -1527,6 +1536,7 @@ pub(crate) fn c_string_argument(ptr: *const c_char) -> Option<String> {
 /// drops the call), this returns `Some(value)` for non-empty content and
 /// `None` for absent — so a NULL `reply_to_id` means "top-level note" rather
 /// than "drop the publish". Build-doc §1.1 contract.
+#[must_use]
 pub(crate) fn c_optional_string_argument(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
