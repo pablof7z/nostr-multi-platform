@@ -9,11 +9,13 @@ description = "Browser-facing NMP worker protocol and wasm runtime facade."
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# V-01 Phase 1b: nmp-core dep is deferred until Phase 1c (RelayFrame enum)
-# decouples kernel/ingest from tungstenite. Once actor/ and relay_worker/ are
-# gated behind `#[cfg(feature = "native")]`, add:
-#   nmp-core = { path = "../nmp-core", default-features = false }
-# and verify `cargo check -p nmp-wasm` passes.
+# V-01 Phase 1b: nmp-core compiled with `default-features = false` so the
+# wasm32 build sees only the pure kernel + ActorCommand data type + substrate
+# traits. Phase 1c (PR #341) gated actor/, relay_worker/, and tungstenite
+# behind `#[cfg(feature = "native")]`, which unblocked this dep. Phase 2 will
+# wire NmpApp into WasmRuntime using a WASM-compatible transport
+# (web_sys::WebSocket + IndexedDB store).
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
