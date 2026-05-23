@@ -324,7 +324,6 @@ impl ThreadState {
         // Root-first DFS. If the root hasn't arrived yet but some of its
         // children have, emit those children as a forest rooted at their
         // parents (still useful for partial UIs).
-        let mut nodes = Vec::new();
 
         // Helper: depth-first walk from `id` at `depth`.
         fn walk(
@@ -338,7 +337,7 @@ impl ThreadState {
             let child_count = state
                 .children_of
                 .get(id)
-                .map_or(0, |s| s.len() as u32);
+                .map_or(0, |s| u32::try_from(s.len()).unwrap_or(u32::MAX));
             out.push(ThreadNode {
                 id: id.clone(),
                 author: event.author.clone(),
@@ -365,6 +364,7 @@ impl ThreadState {
             }
         }
 
+        let mut nodes = Vec::new();
         if self.by_id.contains_key(&self.root) {
             walk(self, &self.root, 0, None, &mut nodes);
         } else {
