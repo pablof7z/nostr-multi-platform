@@ -258,6 +258,14 @@ pub(super) fn avatar_color(pubkey: &str) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
+// `chrono::Local` is the local-timezone reader; it lives behind chrono's
+// `clock` feature, which `nmp-core` gates to `native` in Cargo.toml.
+// Wall-clock display strings only appear on the FFI snapshot surface (whose
+// callers are themselves native), so the helpers can also be `native`-only.
+// V-01 Phase 1c: under `--no-default-features` the two call sites
+// (`format_timestamp` in `update.rs`, `now_hms` in `status.rs`) are gated
+// to match — the diagnostic strings drop out alongside the FFI module.
+#[cfg(feature = "native")]
 pub(super) fn format_timestamp(created_at: u64) -> String {
     let Some(system_time) = UNIX_EPOCH.checked_add(Duration::from_secs(created_at)) else {
         return created_at.to_string();
@@ -266,6 +274,7 @@ pub(super) fn format_timestamp(created_at: u64) -> String {
     datetime.format("%b %-d %H:%M").to_string()
 }
 
+#[cfg(feature = "native")]
 pub(super) fn now_hms() -> String {
     let now = SystemTime::now();
     let datetime: DateTime<Local> = DateTime::<Local>::from(now);

@@ -16,22 +16,35 @@
 //! `CreateAccount` during onboarding.
 
 mod commands;
+// V-01 Phase 1c: the actor *runtime* (dispatch / tick / relay management /
+// session persistence) sits on top of the native `relay_worker` and is
+// therefore native-only. `ActorCommand` (pure data), the observer slots,
+// and `relay_roles` (data — pure URL/role canonicalization) stay
+// always-compiled below so `publish/action.rs` and every NIP-crate
+// `ActionModule::execute` impl can still name `ActorCommand` without the
+// `native` feature.
+#[cfg(feature = "native")]
 mod dispatch;
+#[cfg(feature = "native")]
 mod fairness;
-pub(crate) mod kernel_action;
+#[cfg(feature = "native")]
 mod outbound;
+#[cfg(feature = "native")]
 mod pending_sign;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod publish_relay_dispatch_tests;
+#[cfg(feature = "native")]
 mod relay_mgmt;
 mod relay_roles;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod relay_url_canonical_tests;
+#[cfg(feature = "native")]
 mod session_persistence;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod session_persistence_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod tests;
+#[cfg(feature = "native")]
 mod tick;
 
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
@@ -100,30 +113,55 @@ pub use commands::{
 // `actor` chain so the gated `pub use actor::ConformanceHarness` in `lib.rs`
 // reaches the `tests/nip_tag_conformance.rs` integration test. Gated on
 // `test-support` so it never appears in a production build.
-#[cfg(any(test, feature = "test-support"))]
+// V-01 Phase 1c: the harness sits on the native publish helpers, so the
+// `commands` mod gates its re-export the same way; mirror the gate here.
+#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub use commands::ConformanceHarness;
+// V-01 Phase 1c: every import below sits on the native actor runtime
+// (`dispatch` / `fairness` / `pending_sign` / `relay_mgmt` / `tick` /
+// `relay_worker`). They go away with the rest of the runtime when
+// `--no-default-features` is set. `ActorCommand` (the enum below) and the
+// observer types remain always-compiled — only the loop that *consumes*
+// them is gated.
+#[cfg(feature = "native")]
 use dispatch::{dispatch_command, handle_relay_event, ActorContext};
+#[cfg(feature = "native")]
 use fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
+#[cfg(feature = "native")]
 use pending_sign::PendingSign;
 
 use crate::kernel::LifecyclePhase;
 
 use crate::app::KernelAction;
 
+#[cfg(feature = "native")]
 use relay_mgmt::{
     all_relays_connected, close_relays, maybe_send_startup, route_dispatch_outbound,
     send_all_outbound,
 };
+#[cfg(feature = "native")]
 use tick::{compute_wait, emit_now, flush_due};
 
+#[cfg(feature = "native")]
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl, RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::RelayRole;
+#[cfg(feature = "native")]
+use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+#[cfg(feature = "native")]
 use crate::relay_worker::{RelayCommand, RelayEvent};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(feature = "native")]
+use std::collections::HashSet;
+#[cfg(feature = "native")]
 use std::panic::{self, AssertUnwindSafe};
+#[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{Receiver, Sender};
+#[cfg(feature = "native")]
+use std::sync::mpsc::{self, TryRecvError};
+#[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
@@ -658,10 +696,19 @@ pub enum ActorCommand {
     WithdrawInterest(crate::planner::InterestId),
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// V-01 Phase 1c: the actor runtime — per-URL relay handles, the public
+// entry points (`run_actor*`), and every loop / dispatch helper below —
+// sits on top of the native `relay_worker`. Gated behind `native` so the
+// crate compiles without the WebSocket transport. Everything above (the
+// `ActorCommand` enum, observer types, `relay_roles`) stays always-compiled.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the
 /// pool key — every resolved write/read relay gets its own socket. `role`
 /// is retained so the actor can route diagnostic-bucket updates back to
 /// the kernel's lane-keyed RelayHealth rows until per-URL health lands (M11).
+#[cfg(feature = "native")]
 pub(super) struct RelayControl {
     pub(super) generation: u64,
     #[allow(dead_code)] // Diagnostic lane label; per-URL health is M11.
@@ -671,6 +718,7 @@ pub(super) struct RelayControl {
     pub(super) tx: Sender<RelayCommand>,
 }
 
+#[cfg(feature = "native")]
 use outbound::wire_frames_to_outbound;
 
 /// Backwards-compatible entry point: spawn the actor without a lifecycle
@@ -683,6 +731,7 @@ use outbound::wire_frames_to_outbound;
 /// `cfg(any(test, feature = "test-support"))` gate (the `testing` facade in
 /// `lib.rs` and `actor::tick`'s test module). A plain `cargo build` without
 /// `--tests` or the `test-support` feature would otherwise warn.
+#[cfg(feature = "native")]
 #[allow(dead_code)]
 pub fn run_actor(
     command_rx: Receiver<ActorCommand>,
@@ -730,6 +779,7 @@ pub fn run_actor(
 /// defaults to an empty slot (nothing fans out, zero overhead). New
 /// integrations should prefer [`run_actor_with_observers`] so kernel-event
 /// fan-out is wired.
+#[cfg(feature = "native")]
 #[allow(dead_code)]
 pub fn run_actor_with_lifecycle_observer(
     command_rx: Receiver<ActorCommand>,
@@ -779,6 +829,7 @@ pub fn run_actor_with_lifecycle_observer(
 /// progress under sustained command bursts. Relay events use a separate
 /// channel read with `recv_timeout(compute_wait(…))` so emit-hz cadence is
 /// respected when the command lane is not saturated.
+#[cfg(feature = "native")]
 #[allow(clippy::too_many_arguments)]
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,

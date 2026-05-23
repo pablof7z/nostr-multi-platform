@@ -13,12 +13,18 @@ mod ffi;
 mod ffi_guard;
 mod keepalive;
 mod kernel;
+mod kernel_action;
 mod kernel_reducer;
 pub mod nip19;
 pub mod nip21;
 pub mod planner;
 pub mod publish;
 mod relay;
+// V-01 Phase 1c: the WebSocket relay worker is the native I/O layer.
+// Gated behind `native` (matches the `tungstenite`/`mio`/`rustls` dep gate
+// in Cargo.toml). The kernel speaks [`crate::kernel::RelayFrame`] instead of
+// `tungstenite::Message` so it compiles without this module.
+#[cfg(feature = "native")]
 mod relay_worker;
 pub mod remote_signer;
 pub mod stable_hash;
@@ -175,7 +181,12 @@ pub use actor::{
 /// Enable with `features = ["test-support"]` in `Cargo.toml`.  This gate is
 /// intentionally `any(test, feature = "test-support")` so `cargo test` always
 /// has access without an explicit feature flag.
-#[cfg(any(test, feature = "test-support"))]
+///
+/// V-01 Phase 1c: the facade re-exports `run_actor` and the conformance
+/// harness — both live on the native runtime — so the whole module is gated
+/// behind `native` as well. Under `--no-default-features` there is no actor
+/// thread to spawn and no harness handlers to drive.
+#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
     pub use crate::store::{RawEvent, VerifiedEvent};

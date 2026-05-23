@@ -1,4 +1,4 @@
-//! Actor-side `KernelAction` reducer (T95).
+//! `KernelAction` reducer (T95).
 //!
 //! `KernelAction` / `KernelUpdate` are the generic, FFI-serializable boundary
 //! defined in [`crate::app`]. `nmp-codegen` projects them into Swift/Kotlin by
@@ -9,6 +9,15 @@
 //! clean slot for every future variant. Only `OpenUri` needs a real arm today;
 //! the remaining variants map to their trivially-correct `KernelUpdate` so the
 //! seam is uniform without growing scope.
+//!
+//! # Placement (V-01 Phase 1c)
+//!
+//! Lives at the crate root (not under `actor/`) because the reducer is pure
+//! over `&mut Kernel` — it never touches `ActorCommand`, the relay worker, or
+//! any I/O. Keeping it outside the `actor` tree lets [`crate::kernel_reducer::KernelReducer`]
+//! (a public reducer consumed by codegen-projected `FfiApp`s) compile without
+//! the `native` feature, even when the actor runtime is gated out for wasm32
+//! or other no-std-io targets.
 //!
 //! Doctrine:
 //! - **D0** — operates only on the app-noun-free `KernelAction`/`KernelUpdate`

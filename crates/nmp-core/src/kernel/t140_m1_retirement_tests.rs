@@ -189,7 +189,7 @@ fn m2_follow_feed_sub_survives_eose() {
     kernel.handle_message(
         crate::relay::RelayRole::Content,
         "wss://alice-t140.relay/",
-        Message::Text(eose),
+        RelayFrame::Text(eose),
     );
 
     let state =

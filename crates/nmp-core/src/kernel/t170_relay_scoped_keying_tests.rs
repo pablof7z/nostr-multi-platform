@@ -106,7 +106,7 @@ fn t170_sibling_relay_persistence_survives_close_of_other_relay() {
     kernel.handle_message(
         crate::relay::RelayRole::Content,
         RELAY_B,
-        Message::Text(eose),
+        RelayFrame::Text(eose),
     );
 
     let state = kernel.wire_sub_state_for_test_on_relay(RELAY_B, SHARED_SUB);
@@ -169,7 +169,7 @@ fn t_normalize_planner_url_persistent_sub_survives_eose_on_canonical_url() {
     kernel.handle_message(
         crate::relay::RelayRole::Content,
         CANONICAL_URL,
-        Message::Text(eose),
+        RelayFrame::Text(eose),
     );
 
     // The Tailing follow-feed sub must stay `live` — the persistent-sub

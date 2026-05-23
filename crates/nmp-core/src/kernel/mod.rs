@@ -78,6 +78,7 @@ mod relay_diagnostics;
 // `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
 // publish resolver and `NmpApp` move behind named types here so D14 can flag
 // future regressions on the field shape.
+mod relay_frame;
 mod relay_projection;
 mod raw_event_observer;
 #[cfg(test)]
@@ -135,6 +136,12 @@ mod contacts_fanout_tests;
 use crate::relay::{
     CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ, TIMELINE_AUTHOR_LIMIT,
 };
+// `chrono::Local` reads the OS-local wall clock; the `clock` feature it lives
+// behind is gated to `native` in Cargo.toml. The wall-clock display helpers
+// (`format_timestamp` / `now_hms` in `kernel/nostr.rs`) are themselves
+// native-only — see the `#[cfg(feature = "native")]` gates on those two
+// functions and the single use site in `kernel/update.rs::created_at_display`.
+#[cfg(feature = "native")]
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -142,7 +149,11 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tungstenite::Message;
+// V-01 Phase 1c: the kernel no longer names `tungstenite`. The native
+// `relay_worker` converts `tungstenite::Message` → [`RelayFrame`] before
+// handing it to [`Kernel::handle_message`]; a non-native transport (wasm32)
+// is responsible for its own equivalent conversion.
+pub(crate) use relay_frame::RelayFrame;
 
 use nostr::*;
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};

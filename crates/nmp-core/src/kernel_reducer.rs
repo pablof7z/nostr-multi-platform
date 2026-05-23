@@ -3,9 +3,9 @@
 //! `nmp-codegen` projects per-app FFI crates that own an `AppAction` /
 //! `AppUpdate` pair around [`KernelAction`] / [`KernelUpdate`]. The generated
 //! `FfiApp::dispatch` needs to reduce the kernel arm to an update — but the
-//! actor-side reducer ([`crate::actor::kernel_action::dispatch_kernel_action`])
-//! is `pub(crate)` and takes a private `&mut Kernel`, neither reachable from
-//! a downstream crate.
+//! [`crate::kernel_action::dispatch_kernel_action`] reducer (also used by the
+//! actor loop) is `pub(crate)` and takes a private `&mut Kernel`, neither
+//! reachable from a downstream crate.
 //!
 //! [`KernelReducer`] closes that seam: it owns an encapsulated [`Kernel`] and
 //! exposes a single public method — [`KernelReducer::reduce`] — that delegates
@@ -22,7 +22,7 @@
 //!
 //! This is the NMP-145 follow-up: T-NMP-145-FF.
 
-use crate::actor::kernel_action::dispatch_kernel_action;
+use crate::kernel_action::dispatch_kernel_action;
 use crate::app::{KernelAction, KernelUpdate};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;

@@ -468,7 +468,14 @@ impl Kernel {
             } else {
                 truncate(&event.content.replace('\n', " "), 180)
             },
+            // `format_timestamp` is `#[cfg(feature = "native")]` — the
+            // wall-clock display path lives in the native FFI surface. Under
+            // `--no-default-features` the snapshot still emits a valid
+            // string; only the human-readable formatting drops.
+            #[cfg(feature = "native")]
             created_at_display: format_timestamp(event.created_at),
+            #[cfg(not(feature = "native"))]
+            created_at_display: event.created_at.to_string(),
             relay_count: event.relay_count,
             is_repost,
             nav_target_id,
