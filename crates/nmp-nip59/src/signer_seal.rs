@@ -483,9 +483,9 @@ mod tests {
         // Local-keys fast path: the SignerOp must be Ready(Ok(event))
         // immediately — no driver thread.
         let op = gift_wrap_with_signer(
-            Arc::new(sender_keys.clone()) as Arc<dyn SignerForSeal>,
+            &(Arc::new(sender_keys.clone()) as Arc<dyn SignerForSeal>),
             &receiver_keys.public_key(),
-            rumor.clone(),
+            &rumor,
             created_at,
         );
         let event = op
@@ -518,9 +518,9 @@ mod tests {
         let created_at = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
 
         let mut op = gift_wrap_with_signer(
-            Arc::clone(&signer) as Arc<dyn SignerForSeal>,
+            &(Arc::clone(&signer) as Arc<dyn SignerForSeal>),
             &receiver_keys.public_key(),
-            rumor.clone(),
+            &rumor,
             created_at,
         );
 
@@ -600,9 +600,9 @@ mod tests {
         });
         let rumor = sample_rumor(sender_keys.public_key(), "irrelevant");
         let op = gift_wrap_with_signer(
-            signer,
+            &signer,
             &receiver_keys.public_key(),
-            rumor,
+            &rumor,
             Timestamp::from(1_700_000_000),
         );
         let err = op
