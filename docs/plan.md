@@ -1,64 +1,172 @@
 # Build & Validation Plan
 
-> Companion to `docs/product-spec.md` (what we ship) and the design docs in `docs/design/` (how each subsystem works). This document defines **the single ladder of milestones**, each one a runnable product that proves a specific architectural claim with real (not modeled) evidence.
-
-> **Three arcs:** Kernel substrate + Nostr social stack (M0–M10) → FFI hardening + Chirp empirical proof (M10.5) → WoT + cross-platform + release (M13–M17; M12 Wallet deferred post-v1 per [scope-adjustments-2026-05-18](plan/scope-adjustments-2026-05-18.md)). Chirp is the reference client across those arcs: every reusable NMP feature that ships should become visible, testable, and debuggable there before we reopen other app proofs.
-
-> **Each milestone is gated.** Every milestone ends with: a runnable artifact, automated tests in `nmp-testing`, a measured-numbers report in `docs/perf/m<N>/`, and an explicit ADR if a design decision was revised in flight. **No silent endings.** **No "for later" carve-outs** — if a slice is in the milestone scope, it ships in that milestone, or the milestone is not done.
-
-> **The doctrine is final** (`docs/product-spec.md` §1.5, D0–D10): D0 kernel never grows app nouns · D1 best-effort rendering with placeholders · D2 negentropy first, REQ second · D3 outbox routing automatic, manual relay is the opt-out · D4 single writer per fact; caches derive · D5 snapshots bounded by open views · D6 errors never cross FFI as exceptions · D7 capabilities report, never decide policy · D8 reactivity contract (composite reverse index, ≤60 Hz/view, working-set bounded) · D9 kernel owns time, relay-supplied `created_at` untrusted · D10 provenance, private events never escape to public relays. Every PR is reviewed against this rubric; a change that makes any doctrine harder to enforce is rewritten or rejected.
-
----
-
-## Supporting sections
-
-- [Status — where we are right now](plan/status.md)
-- [Chirp showcase goal](plan/chirp-showcase.md)
-- [Principles of execution](plan/principles.md)
-- [Subsystem coverage matrix + NIP roadmap](plan/subsystem-matrix.md)
-- [Parallelization opportunities](plan/parallelization.md)
-- [Test pyramid](plan/test-pyramid.md)
-- [CI / pre-merge hygiene](plan/ci-hygiene.md)
-- [Decision log](plan/decision-log.md)
-- [Scope adjustments 2026-05-18](plan/scope-adjustments-2026-05-18.md) — historical scope changes and framework-magic contract
-- [Post-v1 milestones](plan/post-v1.md) — deferred M9 (DMs), M12 (Wallet), and non-Chirp app proofs
+> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `73ab92f5`.
+>
+> **Sources of truth:**
+> - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
+> - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (work currently on a branch).
+> - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
+> - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-20260523-review-stateful-spike.md`](perf/codex-reviews/opus-direction-20260523-review-stateful-spike.md).
+>
+> **This file is the overview.** Active items belong in `WIP.md` (in-flight) or `BACKLOG.md` (queue). Update this file only when a milestone changes status, doctrine is amended, or the v1 exit criteria move.
 
 ---
 
-## The milestone ladder
+## TL;DR — one screen
 
-Each milestone has: **demo product**, **scope (what gets built)**, **subsystem deliverables**, **exit gate (measurable)**, and **runnable artifact**. Estimates are for one experienced developer focused on the work; they are not commitments.
+**What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
 
-| Milestone | Title | Arc | Status |
-|---|---|---|---|
-| [M0](plan/m0-fixture.md) | Kernel substrate + non-Nostr fixture | Arc 1 — Social stack | ✅ DONE |
-| [M1](plan/m1-twitter-slice.md) | Chirp social baseline on iOS | Arc 1 — Social stack | 🟡 Largely done |
-| [M2](plan/m2-subscription-compilation.md) | Subscription compilation + outbox routing + kind:3 auto-tracking | Arc 1 — Social stack | |
-| [M3](plan/m3-persistence.md) | Persistence (LMDB) + full insert invariants | Arc 1 — Social stack | |
-| [M4](plan/m4-negentropy.md) | NIP-77 negentropy sync engine | Arc 1 — Social stack | |
-| [M5](plan/m5-nip42.md) | NIP-42 auth | Arc 1 — Social stack | |
-| [M6](plan/m6-signers-write.md) | Sessions + signers (incl. bunker:// + nsec creation) + write path | Arc 1 — Social stack | |
-| [M7](plan/m7-interaction-loop.md) | Reactions + Thread + Reply | Arc 1 — Social stack | |
-| [M8](plan/m8-multi-account.md) | Multi-session (multi-account) clients | Arc 1 — Social stack | |
-| ~~M9~~ | ~~NIP-17 DMs + NSE~~ | ~~Arc 1~~ | [deferred post-v1](plan/post-v1.md) |
-| [M10](plan/m10-blossom.md) | Blossom + media + long-running capabilities | Arc 1 — Social stack | |
-| [M10.5](plan/m10.5-ffi-hardening.md) | FFI hardening + iOS empirical proof | Hard gate | |
-| ~~M11~~ | ~~Podcast app — kernel-boundary proof~~ | ~~Arc 2~~ | Deferred until Chirp is complete |
-| ~~M11.5~~ | ~~Highlighter rebuild app proof~~ | ~~Arc 2~~ | App proof deferred; generic `nmp-nip29` retained |
-| ~~M12~~ | ~~Wallet (NWC + zaps + Cashu + nutzaps)~~ | ~~Arc 3~~ | [deferred post-v1](plan/post-v1.md) |
-| [M13](plan/m13-wot.md) | Web-of-Trust | Arc 3 — Release | |
-| [M14](plan/m14-uniffi.md) | UniFFI migration | Arc 3 — Release | |
-| [M15](plan/m15-cross-platform.md) | Cross-platform: Android + Desktop + Web | Arc 3 — Release | |
-| [M16](plan/m16-cli-starter.md) | CLI + starter app + recipe book | Arc 3 — Release | |
-| [M17](plan/m17-release.md) | v1 release | Arc 3 — Release | |
+**What does not work yet** (v1 blockers):
+1. **V-01** — `nmp-wasm` is a 295-line stub with no `nmp-core` linkage. Cross-platform claim is false until wired (Phases 1a/b/c done; Stage 2 WebSocket + Stage 3 IndexedDB pending). No `chirp-web` features allowed on top of the stub.
+2. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
+3. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
+4. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`; deletes the 1,988-LOC handwritten counterpart in `KernelBridge.swift`.
+
+**Strategic gap (not v1-blocking but framework-thesis-blocking):** No stateful second app exists. `apps/longform` proves read-only; `apps/fixture` proves non-Nostr write. NIP-01 publish + NIP-46 signin from a non-Chirp binary, ≤300 LOC Swift, **zero new bespoke FFI symbols** — that spike either confirms or falsifies the framework thesis in one sprint. See [PD-033-A](BACKLOG.md#pd-033-a--framework-thesis--second-non-social-app).
+
+**Largest accumulated debt:** 48 bespoke `nmp_app_*` FFI symbols in `crates/nmp-core/src/ffi/mod.rs` (1,487 LOC) competing with `dispatch_action`. Every non-`dispatch_action` verb is migration debt. D11 covers publish; everything else is open. No deprecation calendar exists yet.
+
+---
+
+## Doctrine — final
+
+The doctrine is final ([`product-spec.md` §1.5, D0–D10](product-spec.md)). Every PR is reviewed against this rubric; a change that makes any doctrine harder to enforce is rewritten or rejected.
+
+- **D0** kernel never grows app nouns
+- **D1** best-effort rendering with placeholders
+- **D2** negentropy first, REQ second
+- **D3** outbox routing automatic, manual relay is the opt-out
+- **D4** single writer per fact; caches derive
+- **D5** snapshots bounded by open views
+- **D6** errors never cross FFI as exceptions
+- **D7** capabilities report, never decide policy
+- **D8** reactivity contract (composite reverse index, ≤60 Hz/view, working-set bounded)
+- **D9** kernel owns time; relay-supplied `created_at` untrusted
+- **D10** provenance; private events never escape to public relays
+- **D11** publish goes through `dispatch_action` (in force; bespoke `nmp_app_publish_note` deleted PR #56)
+- **D12** action_stages substrate with ack-based retention (in force)
+- **D14** relay slots are typed projections (in force)
+
+Corollary — **no hacks, no fragmentation, no debt**: temporary workarounds, stubs, "for now" branches, and silent failures are forbidden. Staging is allowed only when the staging plan is written in `BACKLOG.md` and progress advances each sprint.
+
+---
+
+## Doctrine corollaries — execution rules
+
+- **Use rust-nostr.** `nostr` crate NIP modules are the protocol foundation. `nmp-nipXX` crates are thin NMP adapters, never crypto reimplementations.
+- **No polling.** Sleep+check loops are forbidden at every layer. Use blocking recv, OS callbacks, or wall-clock-gated observers.
+- **PR workflow.** Agents commit to a worktree branch and open a PR. Never push to `master` directly. Orchestrator merges.
+- **Doctrine-lint scoped before push.** Banned tokens (`nip29` in `nmp-core`, etc.) tracked in `d0_doctrine_lint_banned_tokens` memory.
+
+---
+
+## Where we are — actual state on master
+
+The original M0–M17 ladder predates the current codebase by a wide margin. Most of M2–M9 work landed without the ladder being updated. The honest mapping:
+
+| Milestone | Original ladder claim | Actual state on master |
+|---|---|---|
+| M0 Kernel substrate + fixture | done | ✅ Built |
+| M1 Chirp social baseline on iOS | hardening | ✅ Built (iOS Chirp + Android shells) |
+| M2 Subscription compilation + outbox + kind:3 | design + impl | ✅ Planner/compiler built; **V-04 dual-system violation pending** |
+| M3 Persistence (LMDB) | design + impl | ✅ `nmp-nostr-lmdb` + `lmdb-backend` feature |
+| M4 NIP-77 negentropy | pending | ✅ `nmp-nip77` built + wired |
+| M5 NIP-42 relay auth | pending | ✅ Built; **V-06 NIP-46 incompatibility pending (post-v1)** |
+| M6 Sessions + signers + write | pending | ✅ Built (local-key/NIP-07/NIP-46 + broker) |
+| M7 Reactions + thread + reply | pending | ✅ `nmp-reactions` + `nmp-threading` built |
+| M8 Multi-session | pending | ✅ Multi-account + `switch_active` built |
+| ~~M9~~ DMs | deferred post-v1 | 🟡 Gift-wrap built; conversation layer + **F-02 cold-start verification pending**; **V-08 bunker silent-fail pending (post-v1)** |
+| M10 Blossom + media | pending | ❌ Not built (post-v1) |
+| M10.5 FFI hardening | design done | ✅ S2/S3/S4/S5 gates closed; native CI coverage still a gap |
+| ~~M11~~ Podcast rebuild | deferred | Skipped — see `nmp-only-two-agents` memory |
+| ~~M11.5~~ Highlighter app proof | deferred | `nmp-nip29` retained as generic infra; app shell removed |
+| ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
+| M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
+| M14 UniFFI migration | pending | ❌ Not started (post-v1) |
+| M15 Cross-platform | pending | 🟡 Desktop + Android shells; **wasm shell = V-01 stub (v1 blocker)** |
+| M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
+| M17 v1 release | pending | ❌ Pending |
+
+Detail per milestone lives in [`docs/plan/m*.md`](plan/). The fresh codebase inventory and divergence analysis live in [`docs/plan/status.md`](plan/status.md).
+
+---
+
+## v1 exit — what has to be true to ship
+
+v1 ships when **all of the following** hold:
+
+1. **No `BACKLOG.md` Section 1 violation is open** (or every open one has a staged plan that crosses the v1 line with progress per sprint).
+2. **Every `BACKLOG.md` Section 4 v1-blocker item is closed.** Today: F-01, F-02, F-04, F-05.
+3. **Every pending user decision in Section 3 is resolved** (today: PD-033-A, PD-033-C, PD-037).
+4. **Stateful second-app spike is run** (either confirms the framework thesis or produces a written falsification with `BACKLOG.md` findings for each substrate gap encountered).
+5. **`nmp-wasm` is no longer a stub.** Either it is wired (V-01 Stages 2/3 complete) or it is deleted from the workspace — keeping a maintained stub is forbidden.
+6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
+7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** Calendar = "N existing symbols migrated to `dispatch_action` per quarter, N owned." Calendar must be written before any new v1 feature lands.
+8. **Snapshot serialization has a CI regression gate.** `make_update_us` + `serialize_us` are instrumented (`feedback memory: opus_direction_review_2026_05_23b`); the gate threshold must be documented (e.g. p99 < 8ms over 1k-event firehose) and CI-enforced.
+9. **All M0–M8 + M10.5 milestones gates are met against the current code** (the table above is honest; no silent endings).
+10. **Doctrine D0–D14 enforced by lint** (doctrine-lint scoped run is part of CI on master).
+
+Items 6–8 are the honest-cross-platform / deprecation-calendar / perf-gate triad from the 2026-05-23 direction review. None are tracked elsewhere; they must be added to `BACKLOG.md` if work is going to start on them.
+
+---
+
+## Post-v1 — explicitly deferred
+
+Deliberately deferred. See [`BACKLOG.md` §5](BACKLOG.md#section-5--post-v1) and [`plan/post-v1.md`](plan/post-v1.md).
+
+- Blossom uploads/downloads (M10)
+- Web-of-Trust (M13)
+- UniFFI migration (M14)
+- Cashu / nutzaps (NIP-60/61)
+- `nmp-codegen` full Swift bridge (pilot F-05 must land first)
+- Second non-social app **as a product** (the v1 spike is a thesis test, not a shipped product)
+- V-06 NIP-42+NIP-46 Stages 2-3 (broker `sign_auth_challenge` RPC)
+- V-08 NIP-17 DM bunker support Stage 3 (`unwrap_gift_wrap` via remote signer RPC)
+- ADR-0025 Marmot C-ABI cluster relocation out of Chirp binary
+
+---
+
+## Working agreements — agent + heartbeat conventions
+
+These are not negotiable; they exist because each was learned the hard way. Full detail in memory.
+
+- **Agents always run in the background, in worktree isolation** (`isolation: "worktree"`, `run_in_background: true`). Never name the main repo path as the agent's workdir.
+- **Agents push to their worktree branch and open a PR.** Heartbeat sweeps orphan `worktree-agent-*` branches with commits not on master and cherry-picks them.
+- **Agents must NEVER run full-workspace `cargo test`.** Scoped tests only — the orchestrator owns the full-suite pre-merge gate.
+- **Heartbeat commits MUST be pathspec-scoped** (`git commit -- <file>`); land via throwaway worktree when the main tree is dirty.
+- **README + this file are heartbeat-maintained.** Refresh dynamic parts only at each heartbeat; ≤200 LOC budget for the README, ≤250 LOC for this file.
+- **After every merge to master, ask codex for a post-merge review** and record findings in `docs/perf/codex-reviews/`.
+
+---
+
+## Supporting documents
+
+Where to look for detail:
+
+- [`docs/aim.md`](aim.md) — architectural north star (immutable)
+- [`docs/product-spec.md`](product-spec.md) + [`docs/product-spec/doctrine.md`](product-spec/doctrine.md) — full doctrine
+- [`docs/BACKLOG.md`](BACKLOG.md) — active violations, pending decisions, v1 backlog
+- [`WIP.md`](../WIP.md) — live in-flight tracker
+- [`docs/plan/status.md`](plan/status.md) — honest codebase inventory + divergence
+- [`docs/plan/principles.md`](plan/principles.md) — execution principles
+- [`docs/plan/subsystem-matrix.md`](plan/subsystem-matrix.md) — subsystem coverage + NIP roadmap
+- [`docs/plan/parallelization.md`](plan/parallelization.md) — parallelization opportunities
+- [`docs/plan/test-pyramid.md`](plan/test-pyramid.md) — test structure
+- [`docs/plan/ci-hygiene.md`](plan/ci-hygiene.md) — CI / pre-merge hygiene
+- [`docs/plan/decision-log.md`](plan/decision-log.md) — decision log
+- [`docs/plan/scope-adjustments-2026-05-18.md`](plan/scope-adjustments-2026-05-18.md) — historical scope changes
+- [`docs/plan/post-v1.md`](plan/post-v1.md) — deferred work detail
+- [`docs/plan/marmot-mls.md`](plan/marmot-mls.md) — Marmot/MLS detail
+- [`docs/plan/m0-fixture.md`](plan/m0-fixture.md) – [`m17-release.md`](plan/m17-release.md) — per-milestone detail
+- [`docs/architecture-audit/`](architecture-audit/) — 2026-05-23 13-agent audit, PD-033-C plan, codegen plan
+- [`docs/perf/codex-reviews/`](perf/codex-reviews/) — post-merge codex reviews + opus direction reviews
+- [`docs/decisions/`](decisions/) — ADRs 0001–0027
 
 ---
 
 ## What this plan is not
 
-- **Not a schedule.** No dates, no person-months. Milestones are sequential; their durations depend on team size and surface complexity. Estimates per milestone are guidance only.
-- **Not a marketing roadmap.** v1 ships when M17 gates are met, not on a calendar.
-- **Not exhaustive about post-v1 work.** NIP-23 long-form, NIP-71 video, and additional protocol modules are post-v1 unless they become necessary for Chirp. NIP-29 remains generic Nostr group infrastructure, not a reason to keep a Highlighter app shell active. Marmot MLS-over-Nostr encrypted groups ship post-v1 via [`plan/marmot-mls.md`](plan/marmot-mls.md). Additional app demonstrations are post-v1. These deferrals do not shrink Chirp's standing showcase goal: once a reusable NMP feature ships, Chirp should demonstrate it or document why it cannot.
-- **Not silent about gaps.** The [status doc](plan/status.md) names exactly what is and isn't built. As the ladder progresses, the status doc gets revised so the plan stays honest about state.
-
-The plan exists so that any single milestone can be picked up cold by someone reading this doc + `product-spec.md` + the relevant ADRs and design docs, and they can execute without bothering the rest of the team.
+- **Not a schedule.** Milestones are sequential; durations depend on team size and surface complexity. No dates, no person-months.
+- **Not a marketing roadmap.** v1 ships when the exit criteria above are met, not on a calendar.
+- **Not the active-work tracker.** `WIP.md` owns in-flight; `BACKLOG.md` owns the queue. This file is the durable overview.
+- **Not exhaustive about post-v1.** Additional protocol modules (NIP-23 long-form is in, more video/long-form work post-v1), app demonstrations, and the framework GA are scoped only after v1.

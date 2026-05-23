@@ -50,6 +50,14 @@ use schemars::{schema_for, JsonSchema};
 use serde::Serialize;
 use serde_json::Value;
 
+// The four projection types come in through `kernel/mod.rs`'s
+// `pub(crate) use ... as ...ForCodegen` aliases. The aliasing is what
+// breaks the E0252 collision V6 Stage 1 walked into (re-exporting +
+// importing the same name in the same module under
+// `--features codegen-schema`). See the alias declarations in
+// `kernel/mod.rs` for the full rationale. The local `as` rebinds give us
+// the same call-site identifiers as before — no change in this file's
+// `schema_value::<T>()` invocations.
 use crate::actor::RelayRoleOption;
 use crate::kernel::{
     AccountSummary, LogicalInterestStatusForCodegen as LogicalInterestStatus,

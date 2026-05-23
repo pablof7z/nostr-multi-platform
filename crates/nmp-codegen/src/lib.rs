@@ -10,6 +10,14 @@ mod manifest;
 // existing module-scaffolding generator is parameterised on `AppManifest`,
 // not type-schema data.
 pub mod swift;
+// V6 Stage 2 — dotted-projection-key registry for `SnapshotProjections` +
+// `CodingKeys`. Hand-transcribed from the existing Swift declaration in
+// `ios/Chirp/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
+// appends `SnapshotProjections` to the generated file using this slice.
+// Lives in `nmp-codegen` (D0-exempt) so the registry can name dotted host
+// keys like `"nmp.nip29.group_chat"` without tripping doctrine-lint on
+// `nmp-core`. See module doc for the full rationale.
+pub mod swift_projections_registry;
 
 use std::path::Path;
 

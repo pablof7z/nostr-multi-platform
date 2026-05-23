@@ -121,6 +121,7 @@ pub struct LmdbEventStore {
 
 impl LmdbEventStore {
     /// Open or create an LMDB store at `path`.
+    #[must_use]
     pub fn open(path: &Path) -> Result<Self, StoreError> {
         #[cfg(feature = "lmdb-backend")]
         {

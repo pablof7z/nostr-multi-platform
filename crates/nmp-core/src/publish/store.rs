@@ -19,6 +19,7 @@ pub struct DomainPublishStore {
 }
 
 impl DomainPublishStore {
+    #[must_use]
     pub fn open(store: Arc<dyn EventStore>) -> Result<Self, PublishStoreError> {
         let domain = store.domain_open(NAMESPACE).map_err(map_store_error)?;
         Ok(Self { domain })

@@ -101,6 +101,7 @@ impl ZapRequestBuilder {
     /// # Errors
     ///
     /// Returns [`ZapRequestBuildError`] if recipient or target is missing.
+    #[must_use]
     pub fn build(
         self,
         author: impl Into<String>,

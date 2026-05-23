@@ -156,6 +156,7 @@ impl<'a> SubscriptionCompiler<'a> {
     ///
     /// Production callers: use `compile_with_context`.
     /// Test-only / static-config callers: `compile` is safe.
+    #[must_use]
     pub fn compile(
         &self,
         interests: &[LogicalInterest],
@@ -167,6 +168,7 @@ impl<'a> SubscriptionCompiler<'a> {
     ///
     /// Callers that track `indexer_set_version` / `user_config_version` should
     /// use this form so plan-ids invalidate correctly on policy changes.
+    #[must_use]
     pub fn compile_with_context(
         &self,
         interests: &[LogicalInterest],

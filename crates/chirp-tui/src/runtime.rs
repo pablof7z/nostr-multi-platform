@@ -31,6 +31,7 @@ pub struct AppRuntime {
 }
 
 impl AppRuntime {
+    #[must_use]
     pub fn new() -> Result<(Self, Receiver<NmpEvent>)> {
         let app = nmp_core::nmp_app_new();
         if app.is_null() {

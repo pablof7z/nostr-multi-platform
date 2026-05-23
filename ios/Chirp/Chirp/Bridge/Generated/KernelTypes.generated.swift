@@ -269,3 +269,78 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable {
     }
 }
 
+// MARK: - SnapshotProjections
+// Source: crates/nmp-codegen/src/swift_projections_registry.rs (Stage 2 registry)
+//
+// The kernel's host-extensible `projections` map. Each entry mirrors one
+// registered snapshot-projection key. Every member is optional so a stale
+// kernel build that predates a projection still decodes (D1 forward-compat).
+//
+// The `CodingKeys` enum below uses post-`.convertFromSnakeCase` raw values
+// (the iOS shell's `KernelHandle.decode` sets that strategy). Cases whose
+// raw value matches the Swift property name carry no explicit literal.
+struct SnapshotProjections: Decodable, Equatable {
+    let wallet: WalletStatusData?
+    let bunkerHandshake: BunkerHandshake?
+    let nip46Onboarding: Nip46Onboarding?
+    let publishQueue: [PublishQueueEntry]?
+    let publishOutbox: [PublishOutboxItem]?
+    let outboxSummary: OutboxSummary?
+    let relayEditRows: [RelayEditRow]?
+    let relayRoleOptions: [RelayRoleOption]?
+    let accounts: [AccountSummary]?
+    let activeAccount: String?
+    let actionResults: [LastActionResult]?
+    let lastActionResult: LastActionResult?
+    let actionStages: [String: [ActionStageEntry]]?
+    let actionLifecycle: ActionLifecycleSnapshot?
+    let profile: ProfileCard?
+    let timeline: [TimelineItem]?
+    let authorView: AuthorProfileSnapshot?
+    let threadView: ThreadView?
+    let inserted: [TimelineItem]?
+    let updated: [TimelineItem]?
+    let removed: [String]?
+    let groupChat: GroupChatSnapshot?
+    let dmInbox: DmInboxSnapshot?
+    let followList: FollowListSnapshot?
+    let discoveredGroups: DiscoveredGroupsSnapshot?
+    let zaps: ZapsAggregateSnapshot?
+    let dmRelayList: DmRelayListSnapshot?
+    let relayDiagnostics: RelayDiagnosticsSnapshot?
+    let mentionProfiles: [String: MentionProfileWire]?
+    let settingsHub: SettingsHubSummary?
+
+    enum CodingKeys: String, CodingKey {
+        case wallet
+        case bunkerHandshake
+        case nip46Onboarding
+        case publishQueue
+        case publishOutbox
+        case outboxSummary
+        case relayEditRows
+        case relayRoleOptions
+        case accounts
+        case activeAccount
+        case actionResults
+        case lastActionResult
+        case actionStages
+        case actionLifecycle
+        case profile
+        case timeline
+        case authorView
+        case threadView
+        case inserted
+        case updated
+        case removed
+        case groupChat = "nmp.nip29.groupChat"
+        case dmInbox = "nmp.nip17.dmInbox"
+        case followList = "nmp.followList"
+        case discoveredGroups = "nmp.nip29.discoveredGroups"
+        case zaps = "nmp.nip57.zaps"
+        case dmRelayList = "nmp.nip17.dmRelayList"
+        case relayDiagnostics
+        case mentionProfiles
+        case settingsHub
+    }
+}

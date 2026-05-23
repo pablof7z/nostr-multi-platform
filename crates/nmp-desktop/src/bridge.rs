@@ -27,6 +27,7 @@ pub struct KernelBridge {
 impl KernelBridge {
     /// Spawn the actor, start it against the default public relays, and wire a
     /// reader thread that repaints `egui_ctx` whenever a new snapshot lands.
+    #[must_use]
     pub fn start(egui_ctx: egui::Context) -> Self {
         let (tx, rx) = spawn_actor();
         let latest: SharedSnapshot = Arc::new(Mutex::new(None));
@@ -67,6 +68,7 @@ impl KernelBridge {
 
     /// Read the current snapshot (clone — the UI never holds the lock across
     /// a frame, and never mutates kernel state: D7).
+    #[must_use]
     pub fn snapshot(&self) -> Option<Snapshot> {
         self.latest.lock().ok().and_then(|s| s.clone())
     }
