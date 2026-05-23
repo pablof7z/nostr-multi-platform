@@ -67,11 +67,9 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
         return;
     };
 
-    let _ = app
-        .tx
-        .send(ActorCommand::Kernel(crate::app::KernelAction::OpenUri {
-            uri,
-        }));
+    app.send_cmd(ActorCommand::Kernel(crate::app::KernelAction::OpenUri {
+        uri,
+    }));
 }
 
 #[no_mangle]

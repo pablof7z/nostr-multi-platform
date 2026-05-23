@@ -45,9 +45,7 @@ pub extern "C" fn nmp_app_lifecycle_foreground(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app
-        .tx
-        .send(ActorCommand::LifecycleEvent(LifecyclePhase::Foreground));
+    app.send_cmd(ActorCommand::LifecycleEvent(LifecyclePhase::Foreground));
 }
 
 /// Report iOS `scenePhase == .background` (or platform equivalent). Symmetric
@@ -67,9 +65,7 @@ pub extern "C" fn nmp_app_lifecycle_background(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app
-        .tx
-        .send(ActorCommand::LifecycleEvent(LifecyclePhase::Background));
+    app.send_cmd(ActorCommand::LifecycleEvent(LifecyclePhase::Background));
 }
 
 /// Register a native handler that fires on meaningful phase transitions.

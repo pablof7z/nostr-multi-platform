@@ -103,12 +103,10 @@ pub(super) fn partition_interest(
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
-    // Note: `indexer_relays` is still threaded for backwards-compatibility with
-    // discovery-flavoured callers but is no longer consulted by Case A or Case
-    // B. Per the routing-rules clarification, indexer relays are discovery-only
-    // (kind:0/3/10002) — never a content fallback. Case D still consults them
-    // for the empty-active-account fallback (hashtag firehose).
-    let _ = indexer_relays;
+    // `indexer_relays` is discovery-only (kind:0/3/10002) — never a content
+    // fallback for Cases A–C. Case D consults them as a last-resort when both
+    // active-account read relays and app relays are empty (hashtag firehose /
+    // cold-start).
 
     let base_shape = InterestShape {
         authors: BTreeSet::new(),

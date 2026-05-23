@@ -76,6 +76,7 @@ impl Kernel {
 mod tests {
     use super::*;
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use serde_json::Value;
 
     const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
