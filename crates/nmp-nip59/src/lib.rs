@@ -27,11 +27,13 @@
 //! <https://github.com/nostr-protocol/nips/blob/master/59.md>
 
 pub use error::Nip59Error;
+pub use kinds::KIND_GIFT_WRAP;
 pub use signer_seal::{
     gift_wrap_with_signer, SignerForSeal, DRIVER_STEP_TIMEOUT, GIFT_WRAP_TOTAL_TIMEOUT,
 };
 pub use wrap::{gift_wrap, unwrap_gift_wrap, UnwrappedGift};
 
 mod error;
+pub mod kinds;
 mod signer_seal;
 mod wrap;
