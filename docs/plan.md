@@ -6,7 +6,7 @@
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
 > - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (work currently on a branch).
 > - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
-> - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-20260523-review-stateful-spike.md`](perf/codex-reviews/opus-direction-20260523-review-stateful-spike.md).
+> - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-14-review-product-honesty.md`](perf/codex-reviews/opus-direction-14-review-product-honesty.md).
 >
 > **This file is the overview.** Active items belong in `WIP.md` (in-flight) or `BACKLOG.md` (queue). Update this file only when a milestone changes status, doctrine is amended, or the v1 exit criteria move.
 

@@ -349,6 +349,82 @@ surface for "bunker connection lost" exists because the broker has no state for 
 - **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
   NIP-46 as a v1 sign-in method.
 
+### V-15 · Real-relay test suite never runs in CI — v1 live-relay claims are unfalsifiable [HIGH]
+
+**Verified:** `.github/workflows/test.yml:41` runs `cargo test --workspace --exclude ...` without
+`--ignored`. Every integration test in `crates/nmp-testing/tests/` (`real_relay_smoke.rs`,
+`real_relay_connect.rs`, `real_relay_nip42.rs`, `real_relay_outbox.rs`, `real_relay_replan.rs`,
+`real_relay_soak.rs`) is `#[ignore = "real-relay smoke (run with --ignored)"]`. CI has never
+opened a socket to a real relay. The "Damus round-trip kind:1" test at `real_relay_smoke.rs:99`
+is the most basic possible end-to-end proof and has not run on a CI box since it was written.
+
+**Impact:** F-02 ("DM cold-start receive-side verification") and F-04 ("Zap E2E round-trip") are
+listed as v1 blockers but their acceptance criteria live only in developer heads. There is no
+place a passing or failing result is recorded automatically. The publish path, AUTH path, outbox
+routing, NIP-77 negentropy sync, and gift-wrap inbox could all be broken on HEAD right now with
+no CI signal.
+
+**Correct fix:** add `.github/workflows/real-relay-nightly.yml` that runs the `real_relay_*`
+suite on a cron (e.g. nightly), posts results, and gates v1 on the suite being green. Add a
+"skip if relay unreachable" guard so the nightly is not flaky on relay downtime. The infrastructure
+already exists — this is one new workflow file.
+
+**Deadline:** before declaring F-02 or F-04 closed. Until this workflow exists, the v1 exit
+criterion for F-02/F-04 is literally unevaluable.
+
+### V-16 · `SearchView.swift` is dead code that ships in the Chirp binary [MEDIUM]
+
+**Verified:** `ios/Chirp/Chirp/Features/SearchView.swift:3` defines `struct SearchView` and is
+compiled into `Chirp.app` (`project.pbxproj:468`). Zero `SearchView()` call sites exist in the
+iOS target. `RootShell.swift:7` documents "search tab removed (Search deferred to toolbar button
+on HomeFeed)" but no HomeFeed toolbar button to `SearchView` exists. The view is also mis-named:
+it is an "open hex pubkey or event id" form (lines 31–47), not a search feature.
+
+**Correct fix:** delete `SearchView.swift` and remove it from `project.pbxproj`, or wire it
+back into HomeFeed's toolbar and rename to `OpenByIdView`.
+
+### V-17 · `MarmotMemberList::snapshot` returns `Vec::new()` — no group-member visibility [HIGH]
+
+**Verified:** `apps/marmot/nmp-app-marmot/src/view/views.rs:270` — `MemberListView::snapshot`
+returns `MemberListPayload { members: Vec::new() }` with a comment "Authoritative member set is
+MDK-side; the service/actor layer fills…". `MarmotGroupChatView.swift` has no UI to view group
+members. The Invite sheet (`MarmotInviteSheet.swift`) accepts npubs but the user cannot see who
+is already in the group.
+
+**Impact:** For an encrypted-group product, "who can read my messages" is the most
+safety-critical question. The answer is currently "the user cannot see." Marmot/MLS is listed as
+"what works on master" in `plan.md` §TL;DR — that is true at the kernel layer, false at the UX
+layer.
+
+**Correct fix:** wire `MDK::get_members()` into `MemberListView::snapshot`; add a members sheet
+to `MarmotGroupChatView`'s toolbar. Gate v1-A Marmot on this.
+
+**Deadline:** before v1-A if Marmot ships. Otherwise move Marmot to a "Labs" tab with a
+disclaimer and remove it from the v1-A feature set.
+
+### V-18 · `PublishOutcome::FailedAfterRetries` has no `set_last_error_toast` — silent failure [DONE — PR #426]
+
+**Verified:** `crates/nmp-core/src/publish/state.rs:172` defines the terminal failure variant.
+The only `set_last_error_toast` call paths from the publish/sign chain were sign-step failures,
+broker timeouts, and relay-management ops — no settle-time toast for a post that failed on every
+relay. **Fixed:** PR #426 adds the toast in `apply_engine_completions` when `status == "failed"`.
+
+### V-19 · `DiagnosticsView` (474 LOC) ships to all users via Settings [DONE — PR #425]
+
+**Verified:** `ios/Chirp/Chirp/Features/SettingsHubView.swift:43` exposed Diagnostics under a
+"Developer" section accessible to every user — no debug build flag. **Fixed:** PR #425 wraps the
+Developer section in `#if DEBUG` and deletes the stale Roadmap DisclosureGroup.
+
+### V-20 · `dmRelativeTime` in Swift — thin-shell doctrine violation [MEDIUM]
+
+**Verified:** `ios/Chirp/Chirp/Features/DmListView.swift:284` defines
+`func dmRelativeTime(_ unixSecs: UInt64) -> String`. `DmConversationView.swift:161` and
+`DmListView.swift:127` both call it. The thin-shell rule (aim.md §2) says relative-time
+formatting is Rust-owned; `DiagnosticsView.swift` itself cites this rule. DM messages bypass it.
+
+**Correct fix:** add `createdAtDisplay: String` to `DmMessage` in
+`crates/nmp-nip17/src/inbox.rs` (Rust-side formatting), delete `dmRelativeTime` from Swift.
+
 ---
 
 ## Section 2 — In Flight
