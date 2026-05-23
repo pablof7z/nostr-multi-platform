@@ -276,9 +276,9 @@ pub(crate) fn send_gift_wrapped_dm(
         // `nostr::nips::nip59::make_seal`.
         let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
         let op = nmp_nip59::gift_wrap_with_signer(
-            std::sync::Arc::clone(&signer),
+            &signer,
             receiver,
-            nostr_rumor.clone(),
+            &nostr_rumor,
             tweaked,
         );
         // LOCAL fast path: every `SignerOp` is `Ready`, so `wait`

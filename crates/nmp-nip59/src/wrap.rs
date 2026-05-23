@@ -33,6 +33,10 @@ pub struct UnwrappedGift {
 /// use this function — they must go through the signer NIP-44 seam (ADR-0026,
 /// `RemoteSignerHandle::nip44_encrypt`). Callers with an explicit ADR-0025
 /// raw-key exception may call this primitive directly.
+///
+/// # Errors
+///
+/// Returns `Nip59Error` if the NIP-59 seal or wrap construction fails.
 pub fn gift_wrap(
     sender: &Keys,
     receiver: &PublicKey,
@@ -52,6 +56,10 @@ pub fn gift_wrap(
 /// Unwrap an incoming kind:1059 gift-wrap event: verify the seal → extract
 /// the rumor. Thin wrapper over
 /// `nostr::nips::nip59::UnwrappedGift::from_gift_wrap`.
+///
+/// # Errors
+///
+/// Returns `Nip59Error` if the gift-wrap is malformed or the seal cannot be verified.
 pub fn unwrap_gift_wrap(receiver: &Keys, gift_wrap: &Event) -> Result<UnwrappedGift, Nip59Error> {
     let inner = futures::executor::block_on(
         nostr::nips::nip59::UnwrappedGift::from_gift_wrap(receiver, gift_wrap),

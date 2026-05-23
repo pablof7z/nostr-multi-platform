@@ -231,9 +231,9 @@ fn wrap_signed_seal(
 ///   [`nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK`]) get the
 ///   privacy property the spec intends.
 pub fn gift_wrap_with_signer(
-    signer: Arc<dyn SignerForSeal>,
+    signer: &Arc<dyn SignerForSeal>,
     receiver_pubkey: &PublicKey,
-    rumor: UnsignedEvent,
+    rumor: &UnsignedEvent,
     created_at: Timestamp,
 ) -> SignerOp<Event> {
     // Stage 1 — seal-content encrypt.
@@ -285,7 +285,7 @@ pub fn gift_wrap_with_signer(
             let (tx, rx) = mpsc::channel::<Result<Event, SignerError>>();
             let receiver_clone = *receiver_pubkey;
             let created_at_clone = created_at;
-            let signer_for_driver = Arc::clone(&signer);
+            let signer_for_driver = Arc::clone(signer);
             let spawn_result = thread::Builder::new()
                 .name("nmp-nip59-gift-wrap-driver".to_string())
                 .spawn(move || {
@@ -320,6 +320,7 @@ pub fn gift_wrap_with_signer(
 /// Steps: wait on the `nip44_encrypt` rx → build seal `UnsignedEvent` →
 /// call `sign_seal` → wait on the sign rx → wrap with fresh ephemeral
 /// → return.
+#[allow(clippy::needless_pass_by_value)] // Arc by value: thread spawn needs ownership; Timestamp: Copy but clear in context
 fn drive_remote_chain(
     signer: Arc<dyn SignerForSeal>,
     sender_pubkey: PublicKey,

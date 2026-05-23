@@ -264,9 +264,9 @@ mod tests {
             .build(alice_pk);
 
         let op = gift_wrap_with_signer(
-            Arc::clone(&signer),
+            &signer,
             &bob_pk,
-            rumor,
+            &rumor,
             Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK),
         );
         let envelope = op
