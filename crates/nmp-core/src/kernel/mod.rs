@@ -383,6 +383,8 @@ pub(crate) struct Kernel {
     /// authoritative; both the iOS bridge and the S3 harness measure the real
     /// frame length themselves). `0` on the first tick.
     last_payload_bytes: usize,
+    last_make_update_us: u128,
+    last_serialize_us: u128,
     events_since_last_update: u64,
     max_event_to_emit_ms: u128,
     max_events_per_update: u64,
@@ -826,6 +828,8 @@ impl Kernel {
             last_emitted_items: Vec::new(),
             update_sequence: 0,
             last_payload_bytes: 0,
+            last_make_update_us: 0,
+            last_serialize_us: 0,
             events_since_last_update: 0,
             max_event_to_emit_ms: 0,
             max_events_per_update: 0,
