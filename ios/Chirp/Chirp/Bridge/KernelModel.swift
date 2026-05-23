@@ -527,14 +527,14 @@ final class KernelModel: ObservableObject {
         snapshot = update
         lastErrorToast = update.lastErrorToast
 
-        // T146 — refresh modular timeline blocks only when the flat items
-        // changed. The grouper has already accepted events by the time the
-        // snapshot lands (kernel event observer is synchronous).
-        if update.items != priorItems {
-            let nextTimeline = kernel.chirpSnapshot()
-            if nextTimeline != modularTimeline {
-                modularTimeline = nextTimeline
-            }
+        // T146 — refresh modular timeline on every tick. `cards` grows
+        // independently when quoted/referenced events arrive via discovery
+        // oneshots — those events don't change the visible `items` window, so
+        // gating on `items` left embedded-event embeds as collapsed placeholders.
+        // The equality check below prevents spurious SwiftUI re-renders.
+        let nextTimeline = kernel.chirpSnapshot()
+        if nextTimeline != modularTimeline {
+            modularTimeline = nextTimeline
         }
 
         let activeAccountChanged = update.activeAccount != priorActiveAccount
