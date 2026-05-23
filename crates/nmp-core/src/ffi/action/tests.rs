@@ -941,24 +941,24 @@ fn rejected_dispatch_does_not_pollute_inflight_set() {
 //   same reasoning for `nmp_app_register_action_module`.
 
 // ──────────────────────────────────────────────────────────────────
-//                MlsOpHandler + DispatchMlsOp end-to-end
+//                HostOpHandler + DispatchHostOp end-to-end
 // ──────────────────────────────────────────────────────────────────
 //
-// The substrate-generic MLS-op seam (`NmpApp::set_mls_op_handler` +
-// `ActorCommand::DispatchMlsOp`) is the architecturally-correct path
+// The substrate-generic host-op seam (`NmpApp::set_host_op_handler` +
+// `ActorCommand::DispatchHostOp`) is the architecturally-correct path
 // for stateful, app-owned ops (today: `nmp-app-marmot`'s MLS service)
 // through the `dispatch_action` seam. ADR-0025 named the legacy bespoke
 // `nmp_marmot_dispatch` FFI cluster as a temporary exception; that
 // cluster was deleted in ADR-0025 PR 3 (2026-05-23) and this seam is
-// now the SOLE host entry point for stateful MLS-op dispatch.
+// now the SOLE host entry point for stateful host-op dispatch.
 //
 // End-to-end shape proved here:
 //
 //   1. An app crate's `ActionModule::execute` body serializes its
-//      typed action to JSON and emits `ActorCommand::DispatchMlsOp
+//      typed action to JSON and emits `ActorCommand::DispatchHostOp
 //      { action_json, correlation_id }`.
-//   2. The actor's `DispatchMlsOp` dispatch arm pulls the
-//      host-installed `MlsOpHandler` out of the slot and calls
+//   2. The actor's `DispatchHostOp` dispatch arm pulls the
+//      host-installed `HostOpHandler` out of the slot and calls
 //      `handle(action_json, correlation_id)`.
 //   3. The handler's return value (`{"ok":true,...}` or
 //      `{"ok":false,"error":...}`) is folded into the existing
@@ -970,13 +970,13 @@ fn rejected_dispatch_does_not_pollute_inflight_set() {
 //      `PublishModule` async-completing path delivers.
 
 /// A test-only `ActionModule` whose `execute` body emits
-/// `ActorCommand::DispatchMlsOp` carrying the action JSON. This is
+/// `ActorCommand::DispatchHostOp` carrying the action JSON. This is
 /// exactly the shape `nmp-app-marmot`'s real `MarmotActionModule`
 /// will use — the handler is the only D0-naming piece, kept in the
 /// app crate.
-struct TestMlsOpModule;
-impl crate::substrate::ActionModule for TestMlsOpModule {
-    const NAMESPACE: &'static str = "test.mls_op"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+struct TestHostOpModule;
+impl crate::substrate::ActionModule for TestHostOpModule {
+    const NAMESPACE: &'static str = "test.host_op"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         _ctx: &mut ActionContext,
@@ -985,7 +985,7 @@ impl crate::substrate::ActionModule for TestMlsOpModule {
         Ok(())
     }
     /// Mirrors the `MarmotActionModule::execute` pattern: serialize the
-    /// typed action to JSON and hand it to the actor's `DispatchMlsOp`
+    /// typed action to JSON and hand it to the actor's `DispatchHostOp`
     /// arm. No state access — the handler owns that.
     fn execute(
         action: Self::Action,
@@ -994,7 +994,7 @@ impl crate::substrate::ActionModule for TestMlsOpModule {
     ) -> Result<(), String> {
         let action_json =
             serde_json::to_string(&action).map_err(|e| e.to_string())?;
-        send(crate::actor::ActorCommand::DispatchMlsOp {
+        send(crate::actor::ActorCommand::DispatchHostOp {
             action_json,
             correlation_id: correlation_id.to_string(),
         });
@@ -1002,14 +1002,14 @@ impl crate::substrate::ActionModule for TestMlsOpModule {
     }
 }
 
-/// A stub `MlsOpHandler` that records every call so the test can assert
+/// A stub `HostOpHandler` that records every call so the test can assert
 /// the handler was invoked with the same `action_json` and
 /// `correlation_id` the dispatcher produced.
-struct RecordingMlsHandler {
+struct RecordingHostHandler {
     seen: Arc<Mutex<Vec<(String, String)>>>,
     respond_ok: bool,
 }
-impl crate::substrate::MlsOpHandler for RecordingMlsHandler {
+impl crate::substrate::HostOpHandler for RecordingHostHandler {
     fn handle(&self, action_json: &str, correlation_id: &str) -> serde_json::Value {
         self.seen
             .lock()
@@ -1025,9 +1025,9 @@ impl crate::substrate::MlsOpHandler for RecordingMlsHandler {
 
 /// PR 1 end-to-end PROOF — the substrate-generic seam works.
 ///
-/// Host wires `MlsOpHandler` and registers `TestMlsOpModule`, then
-/// `nmp_app_dispatch_action("test.mls_op", json)` returns a
-/// `correlation_id`. The actor's `DispatchMlsOp` arm eventually pulls
+/// Host wires `HostOpHandler` and registers `TestHostOpModule`, then
+/// `nmp_app_dispatch_action("test.host_op", json)` returns a
+/// `correlation_id`. The actor's `DispatchHostOp` arm eventually pulls
 /// the handler from the slot and calls `handle` with the same
 /// `action_json` payload and the registry-minted `correlation_id`.
 ///
@@ -1037,9 +1037,9 @@ impl crate::substrate::MlsOpHandler for RecordingMlsHandler {
 /// with the FFI return. The same shape `host_registered_executor_*`
 /// tests use for command-queue observations.
 #[test]
-fn dispatch_mls_op_routes_action_json_to_installed_handler() {
+fn dispatch_host_op_routes_action_json_to_installed_handler() {
     let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
-    let handler = Arc::new(RecordingMlsHandler {
+    let handler = Arc::new(RecordingHostHandler {
         seen: Arc::clone(&seen),
         respond_ok: true,
     });
@@ -1051,13 +1051,13 @@ fn dispatch_mls_op_routes_action_json_to_installed_handler() {
     // Install the substrate-generic handler BEFORE dispatching — the
     // production order is: host init wires both the handler AND the
     // module before any `nmp_app_dispatch_action` arrives.
-    app_mut.set_mls_op_handler(handler as Arc<dyn crate::substrate::MlsOpHandler>);
-    app_mut.register_action::<TestMlsOpModule>();
+    app_mut.set_host_op_handler(handler as Arc<dyn crate::substrate::HostOpHandler>);
+    app_mut.register_action::<TestHostOpModule>();
 
     let out = dispatch_action_json(
         // SAFETY: `nmp_app_new` never returns null.
         Some(&*app_mut),
-        "test.mls_op",
+        "test.host_op",
         r#"{"op":"create_group","name":"engineering"}"#,
     );
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -1081,7 +1081,7 @@ fn dispatch_mls_op_routes_action_json_to_installed_handler() {
     }
     let (action_json, correlation_id) = observed.unwrap_or_else(|| {
         panic!(
-            "MlsOpHandler::handle was never invoked within 2 s of dispatch \
+            "HostOpHandler::handle was never invoked within 2 s of dispatch \
              (returned correlation_id={returned_id})"
         )
     });
@@ -1106,14 +1106,14 @@ fn dispatch_mls_op_routes_action_json_to_installed_handler() {
     nmp_app_free(app);
 }
 
-/// When no handler is installed, a `DispatchMlsOp` command does NOT
+/// When no handler is installed, a `DispatchHostOp` command does NOT
 /// silently drop on the floor — the actor's arm records a `Failed`
 /// terminal stage so a host's spinner clears (instead of hanging
 /// forever) on the next snapshot tick. This is the D6 "no silent
 /// drops" guarantee the dispatch surface relies on.
 ///
 /// The witness is the kernel's `action_stages` projection (read via
-/// the snapshot path) carrying a `Failed { reason: "no MLS op
+/// the snapshot path) carrying a `Failed { reason: "no host op
 /// handler installed" }` entry for the dispatched correlation_id.
 /// Asserting against the full snapshot is heavy for a unit test, so
 /// we instead exercise the dispatch + register path and rely on the
@@ -1121,7 +1121,7 @@ fn dispatch_mls_op_routes_action_json_to_installed_handler() {
 /// only that the dispatch envelope is well-formed (host gets a
 /// `correlation_id`) when the handler is absent.
 #[test]
-fn dispatch_mls_op_without_handler_still_returns_correlation_id() {
+fn dispatch_host_op_without_handler_still_returns_correlation_id() {
     let app = nmp_app_new();
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
@@ -1129,9 +1129,9 @@ fn dispatch_mls_op_without_handler_still_returns_correlation_id() {
     // arm itself records the Failed terminal; the FFI return is still
     // a normal `correlation_id` envelope because `start()` and the
     // `execute()` enqueue both succeed.
-    app_mut.register_action::<TestMlsOpModule>();
+    app_mut.register_action::<TestHostOpModule>();
 
-    let out = dispatch_action_json(Some(&*app_mut), "test.mls_op", r#"{"op":"ping"}"#);
+    let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
     let id = parsed
         .get("correlation_id")
@@ -1155,9 +1155,9 @@ fn dispatch_mls_op_without_handler_still_returns_correlation_id() {
 /// (not an `error` envelope) — `ok:false` from the handler is a
 /// terminal verdict, not a `start()` rejection.
 #[test]
-fn dispatch_mls_op_routes_handler_failure_through_terminal_path() {
+fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
     let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
-    let handler = Arc::new(RecordingMlsHandler {
+    let handler = Arc::new(RecordingHostHandler {
         seen: Arc::clone(&seen),
         respond_ok: false,
     });
@@ -1165,10 +1165,10 @@ fn dispatch_mls_op_routes_handler_failure_through_terminal_path() {
     let app = nmp_app_new();
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
-    app_mut.set_mls_op_handler(handler as Arc<dyn crate::substrate::MlsOpHandler>);
-    app_mut.register_action::<TestMlsOpModule>();
+    app_mut.set_host_op_handler(handler as Arc<dyn crate::substrate::HostOpHandler>);
+    app_mut.register_action::<TestHostOpModule>();
 
-    let out = dispatch_action_json(Some(&*app_mut), "test.mls_op", r#"{"op":"ping"}"#);
+    let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(
         parsed.get("correlation_id").is_some(),

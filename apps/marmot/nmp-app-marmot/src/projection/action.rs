@@ -12,7 +12,7 @@
 //!   point) — registers a typed [`ActionModule`] under the `"nmp.marmot"`
 //!   namespace; the host calls
 //!   `nmp_app_dispatch_action("nmp.marmot", action_json)`; the actor's
-//!   `set_mls_op_handler`-installed
+//!   `set_host_op_handler`-installed
 //!   [`crate::projection::handler::MarmotMlsOpHandler`] runs the op
 //!   against the live `MarmotProjection`. Returns a `correlation_id`
 //!   synchronously; the terminal verdict surfaces on `action_stages`.
@@ -48,12 +48,12 @@
 //! `MarmotActionModule::start` is the validator — it deserializes the
 //! action JSON into the typed `MarmotAction` enum and rejects malformed
 //! payloads at the boundary. `MarmotActionModule::execute` then re-serializes
-//! the typed enum and emits `ActorCommand::DispatchMlsOp { action_json,
-//! correlation_id }`. The actor's `DispatchMlsOp` arm pulls the host-installed
+//! the typed enum and emits `ActorCommand::DispatchHostOp { action_json,
+//! correlation_id }`. The actor's `DispatchHostOp` arm pulls the host-installed
 //! [`MarmotMlsOpHandler`](crate::projection::handler::MarmotMlsOpHandler)
 //! out of the slot and runs the op against the live `MarmotProjection`.
 //!
-//! Why re-serialize an already-parsed enum? Because `MlsOpHandler::handle`
+//! Why re-serialize an already-parsed enum? Because `HostOpHandler::handle`
 //! takes `&str` (D0 — `nmp-core` cannot name `MarmotAction`); the typed enum
 //! provides the validation gate without coupling the kernel to the app's
 //! noun. The serde round-trip is sub-microsecond and only happens once per
@@ -170,7 +170,7 @@ pub enum MarmotAction {
 /// (`PublishModule`, `nmp_nip02::ReactModule`, etc.): `start()` validates the typed
 /// action; `execute()` emits one `ActorCommand` carrying everything the
 /// actor needs to run the op. The only Marmot-specific piece is the
-/// handler the actor's `DispatchMlsOp` arm reaches through the host-
+/// handler the actor's `DispatchHostOp` arm reaches through the host-
 /// installed slot — see the module rustdoc.
 pub struct MarmotActionModule;
 
@@ -201,20 +201,20 @@ impl ActionModule for MarmotActionModule {
     /// `action_stages` mirror is exercised end-to-end:
     ///
     /// * the registry mints a `correlation_id` and returns it to the host;
-    /// * the actor's `DispatchMlsOp` arm records `Requested` → terminal
+    /// * the actor's `DispatchHostOp` arm records `Requested` → terminal
     ///   (`Accepted` on `ok:true`, `Failed` on `ok:false`) under that id;
     /// * the host's spinner clears on the next snapshot tick.
     ///
     /// Returning `false` here would skip the `action_stages` mirror writes
     /// and the host would never see a terminal verdict for a Marmot op.
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `DispatchMlsOp` arm in `nmp-core/src/actor/dispatch.rs`, not here; this is the seam declaration so the registry routes the verdict.
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `DispatchHostOp` arm in `nmp-core/src/actor/dispatch.rs`, not here; this is the seam declaration so the registry routes the verdict.
         true
     }
 
     /// Re-serialize the typed action and hand it to the actor's
-    /// `DispatchMlsOp` arm. The matching handler
+    /// `DispatchHostOp` arm. The matching handler
     /// ([`crate::projection::handler::MarmotMlsOpHandler`]) installed via
-    /// [`nmp_core::NmpApp::set_mls_op_handler`] parses the JSON back out
+    /// [`nmp_core::NmpApp::set_host_op_handler`] parses the JSON back out
     /// and runs the op against the live `MarmotProjection`.
     ///
     /// `serde_json::to_string` cannot fail for a value the registry
@@ -230,7 +230,7 @@ impl ActionModule for MarmotActionModule {
     ) -> Result<(), String> {
         let action_json = serde_json::to_string(&action)
             .map_err(|e| format!("failed to re-serialize MarmotAction: {e}"))?;
-        send(ActorCommand::DispatchMlsOp {
+        send(ActorCommand::DispatchHostOp {
             action_json,
             correlation_id: correlation_id.to_string(),
         });
@@ -288,13 +288,13 @@ mod tests {
         );
     }
 
-    /// `MarmotActionModule::execute` MUST emit exactly one `DispatchMlsOp`
+    /// `MarmotActionModule::execute` MUST emit exactly one `DispatchHostOp`
     /// command carrying the registry-minted `correlation_id` and the
     /// re-serialized action JSON. Mirrors the
     /// `host_registered_executor_dispatches_successfully` shape in
     /// `nmp-core::ffi::action::tests`.
     #[test]
-    fn execute_emits_one_dispatch_mls_op_command_with_correlation_id() {
+    fn execute_emits_one_dispatch_host_op_command_with_correlation_id() {
         use nmp_core::ActorCommand;
         use std::cell::RefCell;
 
@@ -311,7 +311,7 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "execute must emit exactly one ActorCommand");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::DispatchMlsOp {
+            ActorCommand::DispatchHostOp {
                 action_json,
                 correlation_id,
             } => {
@@ -326,7 +326,7 @@ mod tests {
                     Some("hello, group"),
                 );
             }
-            other => panic!("expected DispatchMlsOp, got {other:?}"),
+            other => panic!("expected DispatchHostOp, got {other:?}"),
         }
     }
 

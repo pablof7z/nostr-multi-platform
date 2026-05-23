@@ -371,21 +371,21 @@ pub struct NmpApp {
     /// `run_actor_with_observers` as an `Option`) so the per-app registration
     /// pattern mirrors `storage_path` and the other pre-start slots.
     coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
-    /// Host-installed MLS op handler slot — the substrate-generic seam app
+    /// Host-installed host-op handler slot — the substrate-generic seam app
     /// crates use to expose stateful, host-owned operations through the
     /// generic `dispatch_action` path without `nmp-core` ever naming the
-    /// app's nouns (D0). See [`crate::substrate::MlsOpHandler`] for the full
+    /// app's nouns (D0). See [`crate::substrate::HostOpHandler`] for the full
     /// contract.
     ///
-    /// Shared `Arc<Mutex<Option<Arc<dyn MlsOpHandler>>>>` with the actor
+    /// Shared `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` with the actor
     /// thread (handed to `run_actor_with_observers`): the per-app crate
-    /// writes through this clone via [`Self::set_mls_op_handler`] before
-    /// `nmp_app_start`; the actor's `DispatchMlsOp` dispatch arm reads
+    /// writes through this clone via [`Self::set_host_op_handler`] before
+    /// `nmp_app_start`; the actor's `DispatchHostOp` dispatch arm reads
     /// through its clone when an `ActionModule::execute` body enqueues
-    /// `ActorCommand::DispatchMlsOp`. `None` (the default, and the only
-    /// state for hosts that don't bind an MLS app) makes any such command
+    /// `ActorCommand::DispatchHostOp`. `None` (the default, and the only
+    /// state for hosts that don't bind a stateful app) makes any such command
     /// record a `Failed` terminal stage — never a silent drop.
-    mls_op_handler: crate::substrate::MlsOpHandlerSlot,
+    host_op_handler: crate::substrate::HostOpHandlerSlot,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -588,14 +588,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // straight to raw REQ, preserving legacy behaviour.
     let coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>> = Arc::new(Mutex::new(None));
     let actor_coverage_hook = Arc::clone(&coverage_hook);
-    // Substrate-generic MLS-op handler slot — the actor's `DispatchMlsOp`
+    // Substrate-generic host-op handler slot — the actor's `DispatchHostOp`
     // dispatch arm reads from this clone. The per-app crate (today
-    // `nmp-app-marmot`) writes through `NmpApp::set_mls_op_handler` before
+    // `nmp-app-marmot`) writes through `NmpApp::set_host_op_handler` before
     // `nmp_app_start`. `None` is the default and the production state for
-    // every host that does not bind an MLS-driven app crate.
-    let mls_op_handler: crate::substrate::MlsOpHandlerSlot =
-        crate::substrate::new_mls_op_handler_slot();
-    let actor_mls_op_handler = crate::substrate::MlsOpHandlerSlot::clone(&mls_op_handler);
+    // every host that does not bind a stateful app crate.
+    let host_op_handler: crate::substrate::HostOpHandlerSlot =
+        crate::substrate::new_host_op_handler_slot();
+    let actor_host_op_handler = crate::substrate::HostOpHandlerSlot::clone(&host_op_handler);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -655,11 +655,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // pipeline enforces D2 ("negentropy before REQ") via the
                 // per-app crate's policy closure.
                 actor_coverage_hook,
-                // The actor's clone of the MLS-op handler slot — read by the
-                // `DispatchMlsOp` dispatch arm. `None` (no MLS app bound) makes
-                // any such command record a `Failed` terminal stage; never a
-                // silent drop.
-                actor_mls_op_handler,
+                // The actor's clone of the host-op handler slot — read by the
+                // `DispatchHostOp` dispatch arm. `None` (no stateful app bound)
+                // makes any such command record a `Failed` terminal stage;
+                // never a silent drop.
+                actor_host_op_handler,
             );
         }));
         if let Err(e) = result {
@@ -727,12 +727,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // `nmp_app_start`; the actor reads its clone after kernel
         // construction and installs the hook on `SubscriptionLifecycle`.
         coverage_hook,
-        // The `NmpApp`'s clone of the MLS-op handler slot. Written by the
+        // The `NmpApp`'s clone of the host-op handler slot. Written by the
         // per-app crate (today `nmp-app-marmot`) via
-        // [`NmpApp::set_mls_op_handler`] before `nmp_app_start`; the actor
-        // reads through its matching clone when the `DispatchMlsOp` arm
+        // [`NmpApp::set_host_op_handler`] before `nmp_app_start`; the actor
+        // reads through its matching clone when the `DispatchHostOp` arm
         // fires.
-        mls_op_handler,
+        host_op_handler,
         // NIP-47 wallet `pay_invoice` double-tap guard. Empty at construction;
         // populated by `ffi::wallet::nmp_app_wallet_pay_invoice` on each
         // accepted invoice, swept on TTL expiry (no cross-thread coupling).
@@ -895,39 +895,39 @@ impl NmpApp {
         }
     }
 
-    /// Install the substrate-generic [`crate::substrate::MlsOpHandler`].
+    /// Install the substrate-generic [`crate::substrate::HostOpHandler`].
     ///
     /// The handler is the bridge between an [`crate::substrate::ActionModule`]
-    /// whose `execute()` body emits [`crate::actor::ActorCommand::DispatchMlsOp`]
+    /// whose `execute()` body emits [`crate::actor::ActorCommand::DispatchHostOp`]
     /// and the app-owned state the op mutates (today: `nmp-app-marmot`'s
-    /// `MarmotService`). The actor's `DispatchMlsOp` arm pulls the handler
+    /// `MarmotService`). The actor's `DispatchHostOp` arm pulls the handler
     /// from this slot and calls `handle(action_json, correlation_id)`.
     ///
     /// `nmp-core` deliberately does NOT name the app's typed action enum
-    /// (D0 — no Marmot / MLS nouns in the kernel); the handler speaks only
-    /// `&str` + [`serde_json::Value`]. The matching `ActionModule` lives in
-    /// the app crate and serializes its typed action into the same JSON
-    /// envelope the handler parses back out — exactly the same JSON
+    /// (D0 — no Marmot / MLS / app-specific nouns in the kernel); the handler
+    /// speaks only `&str` + [`serde_json::Value`]. The matching `ActionModule`
+    /// lives in the app crate and serializes its typed action into the same
+    /// JSON envelope the handler parses back out — exactly the same JSON
     /// translation layer the legacy `nmp_marmot_dispatch` symbol used
     /// (deleted in ADR-0025 PR 3, 2026-05-23).
     ///
-    /// The slot is `Arc<Mutex<Option<Arc<dyn MlsOpHandler>>>>` shared with
+    /// The slot is `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` shared with
     /// the actor thread (handed to `run_actor_with_observers` at
     /// construction time). Like [`Self::set_coverage_hook`], this takes
     /// `&self`: the host may install — or replace — the handler at any
     /// time. A second call replaces the first; the new handler is the one
-    /// the *next* `DispatchMlsOp` arm picks up.
+    /// the *next* `DispatchHostOp` arm picks up.
     ///
     /// D6 — a poisoned slot mutex is a silent no-op (the host's handler is
     /// dropped on the floor); the slot keeps whatever value was previously
     /// installed (or `None`, in which case the dispatch arm records the
-    /// `Failed { reason: "no MLS op handler installed" }` terminal). MUST
+    /// `Failed { reason: "no host op handler installed" }` terminal). MUST
     /// be called before any `nmp_app_dispatch_action` that targets a
-    /// namespace whose `ActionModule::execute` emits `DispatchMlsOp` —
+    /// namespace whose `ActionModule::execute` emits `DispatchHostOp` —
     /// installing the handler late produces a stream of `Failed` terminals
     /// for the gap, not a panic.
-    pub fn set_mls_op_handler(&self, handler: std::sync::Arc<dyn crate::substrate::MlsOpHandler>) {
-        if let Ok(mut slot) = self.mls_op_handler.lock() {
+    pub fn set_host_op_handler(&self, handler: std::sync::Arc<dyn crate::substrate::HostOpHandler>) {
+        if let Ok(mut slot) = self.host_op_handler.lock() {
             *slot = Some(handler);
         }
     }

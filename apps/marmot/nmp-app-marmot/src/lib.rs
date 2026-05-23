@@ -47,7 +47,7 @@
 //!    registered under the `"nmp.marmot"` namespace — the host calls
 //!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and the
 //!    [`projection::handler::MarmotMlsOpHandler`] installed via
-//!    `NmpApp::set_mls_op_handler` runs the op against the live
+//!    `NmpApp::set_host_op_handler` runs the op against the live
 //!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C symbol
 //!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 exception
 //!    is fully retired. In-process Rust callers that need the synchronous
