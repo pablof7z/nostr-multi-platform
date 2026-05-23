@@ -533,6 +533,18 @@ impl Kernel {
         for outcome in completions {
             let (status, outcomes) = classify_terminal_outcome(&outcome);
             self.set_publish_entry_terminal(&outcome.event_id, status, outcomes);
+            // V-18: surface a user-visible toast when every relay returned
+            // `FailedAfterRetries`. Without this, a post that no relay
+            // accepted would silently sit in the Outbox with no feedback to
+            // the user. `classify_terminal_outcome` already maps the
+            // empty-accepted case to `"failed"` (line ~565), so we trust the
+            // helper. The `NoTargets` / pre-sign-step path is handled
+            // separately by `record_engine_error`.
+            if status == "failed" {
+                self.set_last_error_toast(Some(
+                    "Couldn't reach any relay — your post is in the Outbox".to_string(),
+                ));
+            }
         }
         // `changed_since_emit` is set inside `set_publish_entry_terminal` on
         // any field change; setting again here is redundant but documents the
