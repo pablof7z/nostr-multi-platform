@@ -6,8 +6,9 @@ use tungstenite::Message;
 
 use crate::keepalive::KeepaliveState;
 use crate::relay::RelayRole;
+use crate::relay_protocol::is_permanent_error;
 
-use super::{is_permanent_error, RelayEvent, RelaySocket, RelayWorkerResult};
+use super::{RelayEvent, RelaySocket, RelayWorkerResult};
 
 pub(super) enum FlushResult {
     Flushed,

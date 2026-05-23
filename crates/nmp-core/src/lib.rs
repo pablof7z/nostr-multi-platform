@@ -26,6 +26,12 @@ pub mod nip21;
 pub mod planner;
 pub mod publish;
 mod relay;
+// V-01 Stage 3: wire-transport-agnostic relay protocol primitives — backoff
+// constants, keepalive thresholds, jitter, and HTTP-denial classification.
+// Always-compiled so the wasm32 `BrowserRelayDriver` in `nmp-wasm` can reuse
+// the exact same constants the native `relay_worker` does without depending on
+// `tungstenite`/`mio`/`rustls`.
+pub mod relay_protocol;
 // D0: NIP-47 NWC is an app noun — the `wallet` module is gated behind the
 // `wallet` Cargo feature. Hosts the `nmp.wallet.pay_invoice` `ActionModule`
 // that closes the V3 dispatch-action bypass (`ffi::wallet::nmp_app_wallet_pay_invoice`
