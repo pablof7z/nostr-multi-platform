@@ -11,7 +11,23 @@
 //! cache of the actor's identity facts; the actor mutates them only through
 //! `set_accounts` / `push_publish_entry` / `set_last_error_toast`, then emits.
 
+use std::sync::{Arc, Mutex};
+
 use serde::Serialize;
+
+/// Shared slot for the currently active account pubkey.
+///
+/// Follows the same typed-slot pattern as [`IndexerRelaysSlot`] and
+/// [`LocalWriteRelaysSlot`] in `relay_projection`: a named type alias prevents
+/// accidental bare `Arc<Mutex<Option<String>>>` proliferation and lets D14's
+/// lint catch shape regressions at the declaration site rather than silently at
+/// every call site.
+pub(crate) type ActiveAccountSlot = Arc<Mutex<Option<String>>>;
+
+/// Construct a fresh, empty [`ActiveAccountSlot`].
+pub(crate) fn new_active_account_slot() -> ActiveAccountSlot {
+    Arc::new(Mutex::new(None))
+}
 
 /// One account row in the snapshot.
 ///

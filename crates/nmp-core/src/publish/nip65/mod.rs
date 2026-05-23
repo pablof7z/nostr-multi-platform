@@ -31,10 +31,11 @@
 //! exception across the resolver boundary.
 
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::kernel::{
-    new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
+    new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
+    ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use crate::store::{EventStore, PubKey, StoredEvent};
 
@@ -72,7 +73,7 @@ pub struct Nip65OutboxResolver {
     /// Active account pubkey. Local relay-row fallback applies only to this
     /// pubkey so already-signed events from other authors never route through
     /// the viewer's relays.
-    active_account: Arc<Mutex<Option<String>>>,
+    active_account: ActiveAccountSlot,
 }
 
 /// Returns true for kinds that index relays exist to serve: kind:0 (profile),
@@ -91,7 +92,7 @@ impl Nip65OutboxResolver {
             store,
             indexer_relays,
             new_local_write_relays_slot(),
-            Arc::new(Mutex::new(None)),
+            new_active_account_slot(),
         )
     }
 
@@ -99,7 +100,7 @@ impl Nip65OutboxResolver {
         store: Arc<dyn EventStore>,
         indexer_relays: IndexerRelaysSlot,
         local_write_relays: LocalWriteRelaysSlot,
-        active_account: Arc<Mutex<Option<String>>>,
+        active_account: ActiveAccountSlot,
     ) -> Self {
         Self {
             store,

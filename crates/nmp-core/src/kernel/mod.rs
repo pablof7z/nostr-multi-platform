@@ -147,7 +147,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 // V-01 Phase 1c: the kernel no longer names `tungstenite`. The native
 // `relay_worker` converts `tungstenite::Message` → [`RelayFrame`] before
@@ -182,7 +182,8 @@ use clock::{Clock, SystemClock};
 // `nmp_app_dispatch_action` entry point.
 pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    AccountSummary, PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
+    new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry, RelayAckOutcome,
+    SettingsHubSummary,
 };
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
@@ -524,7 +525,7 @@ pub(crate) struct Kernel {
     local_write_relays_handle: LocalWriteRelaysSlot,
     /// Shared active-account pubkey used by the publish resolver to scope the
     /// local relay-row fallback to the viewer's own events only.
-    active_account_handle: Arc<Mutex<Option<String>>>,
+    active_account_handle: ActiveAccountSlot,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -700,7 +701,7 @@ impl Kernel {
         // the call site and D14 does not fire on the field declaration.
         let indexer_relays_handle: IndexerRelaysSlot = new_indexer_relays_slot();
         let local_write_relays_handle: LocalWriteRelaysSlot = new_local_write_relays_slot();
-        let active_account_handle: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let active_account_handle: ActiveAccountSlot = new_active_account_slot();
         let publish_engine = publish_engine::build_engine(
             Arc::clone(&store),
             Arc::clone(&publish_dispatcher),
