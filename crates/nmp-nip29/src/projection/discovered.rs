@@ -47,7 +47,7 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
 
@@ -150,9 +150,18 @@ pub struct DiscoveredGroupsProjection {
     host_relay_url: RelayUrl,
     /// Latest event per `(kind, d)`. NIP-33 replaceable semantics: a newer
     /// event for the same `(kind, d)` strictly supersedes the older one.
-    /// `BTreeMap` keys are `(kind, d_tag)`; values are the comparator
-    /// snapshot of the winning event.
-    latest: Mutex<BTreeMap<(u32, String), LatestEvent>>,
+    /// Keys are `(kind, d_tag)`; values are the comparator snapshot of the
+    /// winning event.
+    ///
+    /// Bounded by [`MAX_PROJECTION_MESSAGES`] — once full, the oldest entry
+    /// by insertion order is evicted. The cap defends the outer map against
+    /// adversarial relays that spam fake group ids: without it, every
+    /// distinct `(kind, d)` pair would persist for the lifetime of the
+    /// session, growing the snapshot and the resident set unboundedly.
+    /// Re-delivering an existing `(kind, d)` updates in place and does not
+    /// shift eviction order — replaceable-event semantics are preserved by
+    /// the [`LatestEvent::supersedes`] check before the call to `insert`.
+    latest: Mutex<BoundedMessageMap<(u32, String), LatestEvent>>,
 }
 
 impl DiscoveredGroupsProjection {
@@ -161,7 +170,7 @@ impl DiscoveredGroupsProjection {
     pub fn new(host_relay_url: impl Into<RelayUrl>) -> Self {
         Self {
             host_relay_url: host_relay_url.into(),
-            latest: Mutex::new(BTreeMap::new()),
+            latest: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 

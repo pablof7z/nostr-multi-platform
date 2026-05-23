@@ -286,3 +286,34 @@ fn host_relay_url_accessor_returns_construction_value() {
     let proj = DiscoveredGroupsProjection::new(HOST);
     assert_eq!(proj.host_relay_url(), HOST);
 }
+
+#[test]
+fn outer_map_is_bounded_against_adversarial_d_tag_spam() {
+    // V7 — without an outer bound, a relay spamming distinct `d` tags grows
+    // the projection's internal map for the lifetime of the session. The
+    // `BoundedMessageMap` cap (MAX_PROJECTION_MESSAGES = 10_000) defends the
+    // resident set and the per-tick snapshot cost: at saturation we keep
+    // only the most-recent rows. Pushing well beyond the cap and asserting
+    // the snapshot len does not exceed it is the structural invariant.
+    use nmp_core::substrate::MAX_PROJECTION_MESSAGES;
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    // Push 2× the cap distinct `d` values via kind:39000 — each creates a
+    // new `(kind, d)` slot in the outer map.
+    let overflow = MAX_PROJECTION_MESSAGES * 2;
+    for i in 0..overflow {
+        let d = format!("group-{i:07}");
+        proj.on_kernel_event(&event(
+            &format!("meta-{i}"),
+            KIND_GROUP_METADATA,
+            100 + i as u64,
+            vec![d_tag(&d), vec!["name".into(), d]],
+        ));
+    }
+    let snap = proj.snapshot();
+    assert!(
+        snap.groups.len() <= MAX_PROJECTION_MESSAGES,
+        "discovered-groups outer map must be bounded; got {} (cap {})",
+        snap.groups.len(),
+        MAX_PROJECTION_MESSAGES,
+    );
+}
