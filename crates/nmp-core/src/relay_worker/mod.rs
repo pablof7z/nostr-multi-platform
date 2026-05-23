@@ -111,38 +111,16 @@ enum RelayWorkerResult {
 }
 
 type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
-/// Initial mid-session reconnect delay. Doubled on each consecutive failure
-/// up to [`RELAY_RECONNECT_DELAY_MAX`]; reset to this value on a successful
-/// connect.
-const RELAY_RECONNECT_DELAY_INITIAL: Duration = Duration::from_secs(3);
-const RELAY_RECONNECT_DELAY_MAX: Duration = Duration::from_secs(300);
-/// T120b / G4 — emit a Ping after this much inbound silence.
-const KEEPALIVE_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
-/// T120b / G4 — declare the socket dead if no inbound frame arrives within
-/// this window after a Ping is emitted.
-const KEEPALIVE_PONG_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// T116c / G12 — per-URL deterministic jitter to prevent thundering-herd
-/// reconnects when many relays fail simultaneously (e.g. network partition
-/// recovery). Uses a hash of the URL bytes to produce a spread that is:
-///   - deterministic per URL (same URL always gets the same jitter offset),
-///   - spread across all active relays (different URLs → different offsets),
-///   - bounded to [0, 5s] so worst-case individual delay is `base + 5s`.
-///
-/// No shared state needed: each worker computes its own jitter independently.
-pub(crate) fn jittered_backoff(base: Duration, url: &str) -> Duration {
-    let hash = url
-        .bytes()
-        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(u64::from(b)));
-    let jitter_ms = hash % 5000; // 0–4999 ms spread
-    base + Duration::from_millis(jitter_ms)
-}
-
-/// HTTP-level denial: the relay explicitly rejected the connection.
-/// 401 and 403 are both permanent until the user changes credentials/policy.
-fn is_permanent_error(error: &str) -> bool {
-    error.contains("403") || error.contains("401") || error.contains("Forbidden")
-}
+// V-01 Stage 3: backoff/keepalive constants and helpers now live in the
+// always-compiled `relay_protocol` module so the wasm32 `BrowserRelayDriver`
+// can reuse them. Behaviour and values are unchanged — these `use` statements
+// preserve the legacy in-module names so the body of `run_relay_worker` is
+// untouched.
+use crate::relay_protocol::{
+    is_permanent_error, jittered_backoff, KEEPALIVE_IDLE_THRESHOLD, KEEPALIVE_PONG_TIMEOUT,
+    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
+};
 
 /// Spawn a worker that dials `relay_url` on transport lane `role`.
 ///

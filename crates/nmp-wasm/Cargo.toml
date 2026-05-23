@@ -23,3 +23,18 @@ wasm-bindgen = "0.2.121"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.98"
+# V-01 Stage 3 — `BrowserRelayDriver` owns the `web_sys::WebSocket` lifecycle.
+# Feature set kept minimal: `WebSocket` itself for send/close, `MessageEvent`
+# to read incoming frames, `CloseEvent` for the close reason, `ErrorEvent` to
+# surface socket errors, `BinaryType` to opt into ArrayBuffer payloads, and
+# `Window` to install the reconnect-deadline `setTimeout` (no `setInterval` —
+# D8 no-polling: each tick re-arms the next deadline only after the kernel
+# has processed the inbound frame).
+web-sys = { version = "0.3.98", features = [
+    "BinaryType",
+    "CloseEvent",
+    "ErrorEvent",
+    "MessageEvent",
+    "WebSocket",
+    "Window",
+] }

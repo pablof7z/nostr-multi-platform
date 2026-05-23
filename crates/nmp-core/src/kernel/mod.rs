@@ -161,7 +161,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // `relay_worker` converts `tungstenite::Message` → [`RelayFrame`] before
 // handing it to [`Kernel::handle_message`]; a non-native transport (wasm32)
 // is responsible for its own equivalent conversion.
-pub(crate) use relay_frame::RelayFrame;
+//
+// V-01 Stage 3: re-exported `pub` (lib.rs surfaces it as `nmp_core::RelayFrame`)
+// so the wasm32 `BrowserRelayDriver` in `nmp-wasm` can construct frames from
+// `web_sys::MessageEvent` / `web_sys::CloseEvent` and hand them to
+// `KernelReducer::handle_relay_frame`. Substrate-grade (D0).
+pub use relay_frame::RelayFrame;
 
 use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, short_pubkey_display, avatar_color, root_event_id, first_event_ref};
 // V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are

@@ -85,8 +85,13 @@ pub(crate) const JB55_PUBKEY: &str =
 /// NIP-42 driver state, and `wire_subs` for the diagnostic surface. The first
 /// connection of each lane bootstraps on [`BOOTSTRAP_DISCOVERY_RELAYS`] purely
 /// so the cold-start kind:10002 discovery fetch has a socket to leave on.
+///
+/// V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` in
+/// `nmp-wasm` can name the role when handing a frame to
+/// [`crate::KernelReducer::handle_relay_frame`]. Substrate-grade (D0): the
+/// type carries no app/protocol nouns.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum RelayRole {
+pub enum RelayRole {
     Content,
     Indexer,
     /// NIP-47 Nostr Wallet Connect relay. Spawned on demand when a wallet is
@@ -138,12 +143,42 @@ impl RelayRole {
 /// (hashtag firehose), the NIP-65 outbox fan-out target (publish), or the
 /// cold-start [`BOOTSTRAP_DISCOVERY_RELAYS`] seed (first kind:10002 discovery).
 /// `role` is retained only for the diagnostics/transport lane it belongs to.
+///
+/// V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` in
+/// `nmp-wasm` can route the kernel's outbound frames over `WebSocket::send_with_str`.
+/// Fields stay `pub(crate)` because mutating them is reserved to the kernel's
+/// own outbound producers (publish engine, view-request planner, AUTH driver);
+/// external callers read via the accessors below. Substrate-grade (D0): the
+/// type carries no app/protocol nouns.
 #[derive(Clone, Debug)]
-pub(crate) struct OutboundMessage {
+pub struct OutboundMessage {
     pub(crate) role: RelayRole,
     /// Resolved wire target. The transport dials this URL.
     pub(crate) relay_url: String,
     pub(crate) text: String,
+}
+
+impl OutboundMessage {
+    /// Diagnostics lane the frame belongs to. Forwarded by the WASM driver
+    /// when reporting back through [`crate::KernelReducer::handle_relay_frame`]
+    /// for any reply the kernel emits (e.g. AUTH responses).
+    #[must_use]
+    pub fn role(&self) -> RelayRole {
+        self.role
+    }
+
+    /// Resolved wire target — the URL the transport dials.
+    #[must_use]
+    pub fn relay_url(&self) -> &str {
+        &self.relay_url
+    }
+
+    /// Raw outbound text frame (NIP-01 JSON: `["REQ", …]`, `["EVENT", …]`,
+    /// `["CLOSE", …]`, `["AUTH", …]`).
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
 }
 
 
