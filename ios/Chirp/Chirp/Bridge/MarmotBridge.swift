@@ -35,6 +35,20 @@ import os.log
 //   event of those kinds is automatically processed by the Rust layer
 //   (welcomes / messages / key packages surface in the next snapshot).
 //
+// ── ADR-0025 PR 2 (this revision) — dispatch routing ─────────────────────
+//
+// MLS write ops (create_group, invite, send, leave, remove, accept_welcome,
+// decline_welcome, publish_key_package, ingest_signed_event, clear_pending)
+// are now routed through the generic `nmp_app_dispatch_action("nmp.marmot",
+// action_json)` entry point — the same path every other ActionModule uses.
+// The Rust side (PR #363) registered a `MarmotActionModule` + `MlsOpHandler`
+// trait so the wire shape is byte-identical (`{"op":"...", ...}`) but the
+// bespoke `nmp_marmot_dispatch` C-ABI symbol is no longer reachable from
+// Swift. `dispatch_action` is non-blocking — it returns a `correlation_id`
+// synchronously and the actual `Accepted` / `Failed` verdict arrives in the
+// next snapshot's `action_stages` projection. ADR-0025 PR 3 deletes the
+// (now-unused) `nmp_marmot_dispatch` C symbol entirely.
+//
 // ── Key-package fetch ─────────────────────────────────────────────────────
 //
 // Before inviting a peer, their signed kind:30443 KeyPackage event must be
@@ -203,11 +217,31 @@ struct MarmotMessage: Decodable, Identifiable, Equatable {
     }
 }
 
-/// Decoded `{"ok":Bool,…}` envelope every dispatch op returns. The op-
-/// specific fields (`group_id_hex`, `d_tag`, `events`, …) are intentionally
-/// not modeled — the Chirp UI only needs the success flag + error string;
-/// the signed events those ops emit cannot be published from this shell
-/// (see header limitation), so decoding them would be dead weight.
+/// Result envelope every Marmot dispatch wrapper returns.
+///
+/// ── ADR-0025 PR 2 semantic shift ─────────────────────────────────────────
+///
+/// Before PR 2 this struct mirrored the synchronous `{"ok":…,"needs":…}` JSON
+/// returned by the bespoke `nmp_marmot_dispatch` C-ABI symbol — that symbol
+/// blocked the caller until the relay round-trip completed, so all per-op
+/// detail (`needs`, `needs_display`, `errors`, `fetch_requested`) was known by
+/// the time it returned. PR 2 routes every Marmot op through the generic
+/// `nmp_app_dispatch_action("nmp.marmot", …)` entry point instead. That path
+/// is non-blocking: it returns a `correlation_id` synchronously, and the real
+/// outcome — including the `needs` list for create_group / invite — arrives
+/// asynchronously through the `action_stages` projection on a subsequent
+/// snapshot tick.
+///
+/// The fields below are kept for source-compatibility with existing call
+/// sites (`MarmotInviteSheet`, `MarmotGroupsView`), but on the new path:
+///   • `ok == true` means *the action was submitted*, not *the action
+///     succeeded*. Callers may dismiss spinners but should treat the
+///     refreshed snapshot — not the return value — as the source of truth.
+///   • `needs` / `needsDisplay` / `errors` / `fetchRequested` are always nil
+///     on submission. The "Waiting for key packages from …" branch in the
+///     existing callers is now dead on the happy path; the equivalent
+///     diagnostic for the async path will be wired in a follow-on PR
+///     reading from `update.actionStages` (PR 3 territory).
 struct MarmotOpResult: Decodable, Equatable {
     let ok: Bool
     let error: String?
@@ -226,6 +260,15 @@ struct MarmotOpResult: Decodable, Equatable {
     }
 
     static let bridgeUnavailable = MarmotOpResult.failure("marmot bridge unavailable")
+
+    /// PR 2: submission accepted by `dispatch_action`. `correlationId` is
+    /// the kernel-minted id; it can be used later to match against
+    /// `update.actionStages` when wiring the async-verdict UX. Existing
+    /// call sites read only `result.ok`, so the id is informational.
+    static func submitted(correlationId: String) -> MarmotOpResult {
+        MarmotOpResult(ok: true, error: nil, needs: nil,
+                       needsDisplay: nil, errors: nil, fetchRequested: nil)
+    }
 
     static func failure(_ message: String) -> MarmotOpResult {
         MarmotOpResult(ok: false, error: message, needs: nil,
@@ -347,30 +390,10 @@ extension KernelHandle {
         }
     }
 
-    /// Perform one mutating op. `actionJSON` is the op envelope. Returns the
-    /// decoded `{"ok":…}` result; `.bridgeUnavailable` if the handle is
-    /// unset, `{ok:false}` on a serialize / decode failure (D6 — never
-    /// throws across the bridge).
-    func marmotDispatch(actionJSON: String) -> MarmotOpResult {
-        guard let handle = marmotHandle else { return .bridgeUnavailable }
-        let ptr: UnsafeMutablePointer<CChar>? = actionJSON.withCString {
-            nmp_marmot_dispatch(handle, $0)
-        }
-        guard let ptr else {
-            return .failure("dispatch returned null")
-        }
-        defer { nmp_marmot_string_free(ptr) }
-        let payload = String(cString: ptr)
-        guard let data = payload.data(using: .utf8) else {
-            return .failure("dispatch payload not utf8")
-        }
-        do {
-            return try JSONDecoder().decode(MarmotOpResult.self, from: data)
-        } catch {
-            mbLog.error("marmotDispatch decode failed: \(error.localizedDescription) — payload: \(payload.prefix(400))")
-            return .failure("undecodable dispatch result")
-        }
-    }
+    // ADR-0025 PR 2 — `marmotDispatch(actionJSON:)` deleted. Every Marmot op
+    // now routes through `KernelHandle.dispatchRawAction(namespace:bodyJson:)`
+    // with namespace `"nmp.marmot"`. See `MarmotStore.dispatchAsync` /
+    // `dispatchFireAndForget` below for the migration target.
 
 }
 
@@ -423,73 +446,63 @@ final class MarmotStore: ObservableObject {
     }
 
     // ── Dispatch op wrappers ──────────────────────────────────────────────
-    // Each encodes the op envelope and dispatches. The next kernel snapshot
-    // pushes the refreshed Marmot view; the UI does not poll from Swift.
+    // Each encodes the op envelope and dispatches it through the kernel's
+    // generic `nmp_app_dispatch_action("nmp.marmot", …)` entry point (ADR-0025
+    // PR 2). The next kernel snapshot pushes the refreshed Marmot view; the UI
+    // does not poll from Swift.
     //
-    // `nmp-marmot` dispatch opens a synchronous WebSocket connection with a
-    // wall-clock timeout per relay (up to 6 s × N relays) — blocking the
-    // main actor is not acceptable. All wrappers move the blocking FFI call
-    // off the main actor via `DispatchQueue.global().async`.
-    //
-    // `KernelHandle` is not `Sendable` so `Task.detached` cannot capture it;
-    // `DispatchQueue.global().async` has no such constraint.
+    // `dispatch_action` is non-blocking — it validates the namespace + body,
+    // mints a `correlation_id`, enqueues the op for the actor thread, and
+    // returns immediately. The actor in turn invokes the registered
+    // `MlsOpHandler` and records `Accepted` / `Failed` in `action_stages` for a
+    // future snapshot. As a result the wrappers below run inline on the
+    // calling actor (no `DispatchQueue.global()` or `withCheckedContinuation`
+    // is needed — the prior 0–6 s relay-timeout justification was specific to
+    // the now-retired blocking `nmp_marmot_dispatch` path).
     //
     // Two call-site contracts:
     // • Fire-and-forget (Void return): the outcome arrives as a refreshed
     //   snapshot on the next kernel tick; callers need no result.
-    // • Result-dependent (async → MarmotOpResult): callers await inside
-    //   `Task { }`, which keeps the continuation on @MainActor for safe
-    //   @State mutation after the await.
+    // • Result-dependent (async → MarmotOpResult): the `async` is kept on
+    //   the signature for source-compat with existing `Task { let r = await
+    //   … }` call sites, even though the body is now synchronous. The
+    //   returned value reports submission acceptance only — see the
+    //   `MarmotOpResult` doc comment for the semantic shift.
 
-    /// Encode the op envelope and dispatch it on the global concurrent queue,
-    /// bridging back to the caller via `CheckedContinuation`. JSON encoding is
-    /// done on the calling actor (cheap); only the blocking FFI call crosses to
-    /// the background thread. Never throws across the bridge (D6).
+    /// Encode the op envelope and dispatch it through `dispatch_action`.
+    /// Returns a `MarmotOpResult` reporting submission acceptance: `.ok`
+    /// when the kernel minted a `correlation_id`; `.failure(_)` when the
+    /// kernel rejected the body synchronously (unknown namespace, malformed
+    /// JSON, validator rejection) or when the body failed to encode.
+    /// Never throws across the bridge (D6).
     private func dispatchAsync(_ action: [String: Any]) async -> MarmotOpResult {
         guard let data = try? JSONSerialization.data(withJSONObject: action),
               let json = String(data: data, encoding: .utf8)
         else { return .failure("could not encode action") }
-        let handle = kernel.marmotHandle
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                guard let handle else {
-                    continuation.resume(returning: .bridgeUnavailable)
-                    return
-                }
-                let ptr: UnsafeMutablePointer<CChar>? = json.withCString {
-                    nmp_marmot_dispatch(handle, $0)
-                }
-                guard let ptr else {
-                    continuation.resume(returning: .failure("dispatch returned null"))
-                    return
-                }
-                let payload = String(cString: ptr)
-                nmp_marmot_string_free(ptr)
-                guard let d = payload.data(using: .utf8),
-                      let result = try? JSONDecoder().decode(MarmotOpResult.self, from: d)
-                else {
-                    continuation.resume(returning: .failure("undecodable dispatch result"))
-                    return
-                }
-                continuation.resume(returning: result)
-            }
+        // The Marmot handle is the Swift-side proof that the active account
+        // has a local signing key (and therefore an MLS identity). The
+        // kernel-side module will also reject a `nmp.marmot` dispatch when
+        // no MarmotMlsOpHandler is installed, but preserving the fast-fail
+        // surfaces the same `.bridgeUnavailable` UX bunker sign-in users
+        // saw on the old path.
+        guard kernel.marmotHandle != nil else { return .bridgeUnavailable }
+        let result = kernel.dispatchRawAction(namespace: "nmp.marmot", bodyJson: json)
+        switch result {
+        case .accepted(let correlationId):
+            return .submitted(correlationId: correlationId)
+        case .failure(let message):
+            return .failure(message)
         }
     }
 
-    /// Encode the op envelope and dispatch fire-and-forget on the global
-    /// concurrent queue. The outcome arrives as a refreshed snapshot on the
-    /// next kernel tick.
+    /// Encode the op envelope and dispatch fire-and-forget. The outcome
+    /// arrives as a refreshed snapshot on the next kernel tick.
     private func dispatchFireAndForget(_ action: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: action),
               let json = String(data: data, encoding: .utf8)
         else { return }
-        guard let handle = kernel.marmotHandle else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let ptr: UnsafeMutablePointer<CChar>? = json.withCString {
-                nmp_marmot_dispatch(handle, $0)
-            }
-            if let ptr { nmp_marmot_string_free(ptr) }
-        }
+        guard kernel.marmotHandle != nil else { return }
+        _ = kernel.dispatchRawAction(namespace: "nmp.marmot", bodyJson: json)
     }
 
     /// Publish (or rotate) the local MLS key-package.

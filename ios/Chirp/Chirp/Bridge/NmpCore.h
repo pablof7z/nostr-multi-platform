@@ -407,6 +407,11 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 //    200 decrypted messages for one group (JSON array).
 // 4. `nmp_marmot_dispatch(handle, action_json)` → one mutating
 //    op; returns `{"ok":true,…}` / `{"ok":false,"error":"…"}`.
+//    DEPRECATED (ADR-0025 PR 2, 2026-05-23) — Swift no longer calls this
+//    symbol. Every Marmot op now routes through
+//    `nmp_app_dispatch_action("nmp.marmot", action_json)` via the
+//    `MarmotActionModule` + `MlsOpHandler` registered in PR 1. The symbol
+//    is kept exported here until ADR-0025 PR 3 deletes it on the Rust side.
 // 5. Free EVERY returned string via `nmp_marmot_string_free`.
 // 6. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
 //
