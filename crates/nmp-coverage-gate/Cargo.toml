@@ -1,0 +1,10 @@
+[package]
+name = "nmp-coverage-gate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "D2 coverage-gate policy — thresholds and back-off rules for negentropy-before-REQ enforcement."
+
+[dependencies]
+# zero nmp-core dep — this crate must stay below nmp-core in the dep graph
+# so the assembly crate (nmp-app-chirp) can depend on both without a cycle.
