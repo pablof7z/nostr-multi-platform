@@ -52,7 +52,10 @@ fn fresh_inbox_yields_empty_snapshot() {
 #[test]
 fn kind_filter_is_gift_wrap_only() {
     let filter = DmInboxProjection::kind_filter();
-    assert!(filter.matches(1059), "kind:1059 gift-wrap must match");
+    assert!(
+        filter.matches(KIND_GIFT_WRAP),
+        "kind:1059 gift-wrap must match"
+    );
     assert!(!filter.matches(14), "kind:14 must NOT match — it is sealed");
     assert!(!filter.matches(1), "plain notes must not match");
 }
@@ -240,9 +243,9 @@ fn redelivered_dm_records_source_relays() {
     let envelope =
         gift_wrapped_dm(&alice, &bob.public_key(), "from relays", 100, None).as_json();
 
-    observer.on_raw_event_with_source(1059, &envelope, Some("wss://r1.example"));
-    observer.on_raw_event_with_source(1059, &envelope, Some("wss://r2.example"));
-    observer.on_raw_event_with_source(1059, &envelope, Some("wss://r1.example"));
+    observer.on_raw_event_with_source(KIND_GIFT_WRAP, &envelope, Some("wss://r1.example"));
+    observer.on_raw_event_with_source(KIND_GIFT_WRAP, &envelope, Some("wss://r2.example"));
+    observer.on_raw_event_with_source(KIND_GIFT_WRAP, &envelope, Some("wss://r1.example"));
 
     let snap = proj.snapshot();
     let relays = &snap.conversations[0].messages[0].source_relays;
@@ -291,7 +294,7 @@ fn drives_through_raw_observer_trait_object() {
     let proj = Arc::new(inbox_for(&bob));
     let observer: Arc<dyn RawEventObserver> = Arc::clone(&proj) as _;
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "via trait", 100, None);
-    observer.on_raw_event(1059, &envelope.as_json());
+    observer.on_raw_event(KIND_GIFT_WRAP, &envelope.as_json());
     assert_eq!(proj.snapshot().conversations.len(), 1);
 }
 

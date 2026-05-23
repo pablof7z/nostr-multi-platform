@@ -63,13 +63,11 @@ use nmp_core::planner::{
 };
 use nmp_core::substrate::{BoundedMessageMap, ViewDependencies, MAX_PROJECTION_MESSAGES};
 use nmp_core::{KindFilter, RawEventObserver};
+use nmp_nip59::KIND_GIFT_WRAP;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
 
 use crate::display;
-
-/// NIP-59 gift-wrap kind — the opaque outer envelope this projection taps.
-const KIND_GIFT_WRAP: u32 = 1059;
 
 /// NIP-17 kind:14 chat-message rumor — the only inner kind this inbox keeps.
 const KIND_CHAT_MESSAGE: u16 = 14;
