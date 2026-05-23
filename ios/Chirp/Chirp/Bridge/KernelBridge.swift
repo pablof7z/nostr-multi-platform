@@ -930,183 +930,20 @@ struct KernelUpdate: Decodable {
     var settingsHub: SettingsHubSummary? { projections?.settingsHub }
 }
 
-/// The kernel's host-extensible `projections` map. Each built-in app-noun
-/// projection (NWC wallet, NIP-46 bunker handshake, the publish cluster)
-/// appears here under its own namespaced key instead of a typed
-/// `KernelSnapshot` field (D0 — the protocol-neutral kernel emits app nouns
-/// only through this map). Every member is optional: a host-registered
-/// projection contributes JSON `null` when its feature is idle, the kernel-owned
-/// publish cluster is always present once a kernel populates it, and the whole
-/// map is absent on an older kernel build.
-struct SnapshotProjections: Decodable, Equatable {
-    let wallet: WalletStatusData?
-    let bunkerHandshake: BunkerHandshake?
-    // Built-in NIP-46 typed onboarding read model. Always populated by the
-    // kernel (the underlying projection produces a non-null payload on every
-    // tick); optional only so an older kernel build that predates the
-    // projection still decodes (D1).
-    let nip46Onboarding: Nip46Onboarding?
-    let publishQueue: [PublishQueueEntry]?
-    let publishOutbox: [PublishOutboxItem]?
-    /// §6 anti-pattern #1 fix — pre-formatted outbox header (`"N pending
-    /// publishes"` + per-status subtitle) computed in Rust. Optional so an
-    /// older kernel that predates the projection still decodes (D1).
-    let outboxSummary: OutboxSummary?
-    let relayEditRows: [RelayEditRow]?
-    let relayRoleOptions: [RelayRoleOption]?
-    // D0: identity output. `accounts` decodes from `projections["accounts"]`;
-    // `activeAccount` decodes from `projections["active_account"]` (the kernel
-    // emits snake_case and the decoder uses `.convertFromSnakeCase`).
-    let accounts: [AccountSummary]?
-    let activeAccount: String?
-    // Direction review #29: per-tick draining array of action terminals. Absent
-    // in steady state; `[{correlationId, status, error?}]` whenever any action
-    // settled this tick. Prefer this over the sticky scalar below.
-    let actionResults: [LastActionResult]?
-    // Direction review #24: sticky scalar — only the most recent terminal.
-    // Kept for backward compat; prefer `actionResults` for multi-action ticks.
-    let lastActionResult: LastActionResult?
-    // PR-G: per-correlation_id stage mirror. Snake_case JSON key
-    // `action_stages` decodes via `.convertFromSnakeCase` to `actionStages`.
-    // The map is `correlation_id (String) → [ActionStageEntry]` ordered by
-    // recording time. Absent when no correlation_id is currently tracked.
-    let actionStages: [String: [ActionStageEntry]]?
-    // V5 thin-shell display projection. The kernel collapses the per-stage
-    // history `action_stages` carries into `{ in_flight, recent_terminal }`
-    // and drops terminals on a 3-second TTL — no host ack required. Drives
-    // the shell's spinner/toast UI without any reducer-side bookkeeping in
-    // Swift. Absent in steady state (no in-flight, no recent terminals).
-    let actionLifecycle: ActionLifecycleSnapshot?
-    // D0: views cluster. The active-account `profile` card, the visible
-    // `timeline` (the kernel renamed the generic `items` key to the more
-    // descriptive `timeline`), the open-view `authorView` / `threadView`
-    // payloads, and the per-tick `inserted` / `updated` / `removed` timeline
-    // deltas are no longer typed `KernelSnapshot` fields — all seven are
-    // built-in entries in this map. Every member is optional so an older
-    // kernel that predates the migration still decodes (D1).
-    let profile: ProfileCard?
-    let timeline: [TimelineItem]?
-    let authorView: AuthorProfileSnapshot?
-    let threadView: ThreadView?
-    let inserted: [TimelineItem]?
-    let updated: [TimelineItem]?
-    let removed: [String]?
-    // NIP-29: the group-chat read projection registered by
-    // `nmp_app_chirp_register_group_chat`. Its snapshot key is the dotted
-    // string `"nmp.nip29.group_chat"`, which `.convertFromSnakeCase` cannot
-    // derive from a Swift property name — hence the explicit `CodingKeys`
-    // below (an explicit enum is all-or-nothing, so every other member is
-    // re-listed there with its snake_case raw value).
-    let groupChat: GroupChatSnapshot?
-    // NIP-17: the DM inbox read projection registered by
-    // `nmp_app_chirp_register_dm_inbox`. Its snapshot key is the dotted
-    // string `"nmp.nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
-    // `groupChat`, handled by the explicit `CodingKeys` case below.
-    let dmInbox: DmInboxSnapshot?
-    // NIP-02 follow list — `projections["nmp.follow_list"]`. Registered by
-    // `nmp_app_chirp_register_follow_list`. The dotted key is opaque to
-    // `.convertFromSnakeCase` (it only replaces `_`), so the post-transform
-    // key is `"nmp.followList"` — handled in the explicit `CodingKeys` below.
-    let followList: FollowListSnapshot?
-
-    // NIP-29: the group-discovery read projection registered by
-    // `nmp_app_chirp_register_group_discovery`. Its snapshot key is the
-    // dotted string `"nmp.nip29.discovered_groups"` — same `.convertFromSnakeCase`
-    // caveat as `groupChat` / `dmInbox`, handled by the explicit
-    // `CodingKeys` case below.
-    let discoveredGroups: DiscoveredGroupsSnapshot?
-    // NIP-57: the zap-aggregate read projection registered by
-    // `nmp_app_chirp_register` (PR #288). Its snapshot key is the dotted
-    // string `"nmp.nip57.zaps"`. `.convertFromSnakeCase` only splits on `_`,
-    // and this key has none — the post-transform string is identical
-    // (`"nmp.nip57.zaps"`), but the synthesized default for a Swift property
-    // named `zaps` would be the bare string `"zaps"`. The explicit
-    // `CodingKeys` case below is therefore mandatory.
-    let zaps: ZapsAggregateSnapshot?
-    // NIP-17: the DM relay-list projection registered by `register_dm_runtime`.
-    // Its snapshot key is `"nmp.nip17.dm_relay_list"` — `.convertFromSnakeCase`
-    // maps this to `"nmp.nip17.dmRelayList"`, handled by the explicit
-    // `CodingKeys` case below.
-    let dmRelayList: DmRelayListSnapshot?
-    // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
-    // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
-    // the §"Where do views live?" violations the three diagnostics screens
-    // committed (client-side filter / sorted / reduce / date math /
-    // protocol-keyword switches). Always emitted by a current kernel build;
-    // optional so a stale kernel still decodes.
-    let relayDiagnostics: RelayDiagnosticsSnapshot?
-    /// Per-author mention payload map — `projections["mention_profiles"]`.
-    /// Replaces the Swift Dictionary derivation ProfileView used to build
-    /// (`ProfileView.swift:28-40`); the Rust derivation lives in
-    /// `Kernel::mention_profiles_from_items` (kernel/update.rs). Optional
-    /// so an older kernel that pre-dates the projection still decodes (D1).
-    let mentionProfiles: [String: MentionProfileWire]?
-    // Settings-hub view payload — pre-formatted subtitles the iOS Settings
-    // screen renders verbatim (aim.md §6/AP1: pluralization belongs in Rust).
-    // Currently a single `relays_subtitle` field; further hub copy that
-    // depends on substrate state will fold in here without adding a new
-    // top-level projection key.
-    let settingsHub: SettingsHubSummary?
-
-    /// Explicit coding keys.
-    ///
-    /// The decoder runs with `.convertFromSnakeCase`, which transforms each
-    /// JSON key BEFORE it is matched against a `CodingKey.stringValue`. So
-    /// every case here must carry the *post-transform* (camelCase) name —
-    /// which is exactly the synthesized default — EXCEPT `groupChat`.
-    ///
-    /// The kernel's keys are dotted strings — `"nmp.nip29.group_chat"` and
-    /// `"nmp.nip17.dm_inbox"`. `.convertFromSnakeCase` splits on `_` only (`.`
-    /// is opaque), so it maps `"nmp.nip29.group_chat"` → `"nmp.nip29.groupChat"`
-    /// and `"nmp.nip17.dm_inbox"` → `"nmp.nip17.dmInbox"`. Those post-transform
-    /// strings are the raw values `groupChat` / `dmInbox` must declare; the
-    /// synthesized defaults would never match.
-    ///
-    /// Declaring a `CodingKeys` enum overrides synthesis entirely, so every
-    /// member is re-listed; all but `groupChat` / `dmInbox` simply restate
-    /// the default.
-    enum CodingKeys: String, CodingKey {
-        case wallet
-        case bunkerHandshake
-        case nip46Onboarding
-        case publishQueue
-        case publishOutbox
-        case outboxSummary
-        case relayEditRows
-        case relayRoleOptions
-        case accounts
-        case activeAccount
-        case actionResults
-        case lastActionResult
-        case actionStages
-        case actionLifecycle
-        case profile
-        case timeline
-        case authorView
-        case threadView
-        case inserted
-        case updated
-        case removed
-        case groupChat = "nmp.nip29.groupChat"
-        case dmInbox = "nmp.nip17.dmInbox"
-        case followList = "nmp.followList"
-        // `.convertFromSnakeCase` maps `"nmp.nip29.discovered_groups"` →
-        // `"nmp.nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
-        // is the post-transform string this case must declare.
-        case discoveredGroups = "nmp.nip29.discoveredGroups"
-        // `.convertFromSnakeCase` leaves `"nmp.nip57.zaps"` untouched (no `_`),
-        // but declaring `CodingKeys` overrides synthesis entirely, so the raw
-        // value must be the literal dotted kernel key — the synthesized default
-        // would be the bare property name `"zaps"` and never match.
-        case zaps = "nmp.nip57.zaps"
-        // `.convertFromSnakeCase` maps `"nmp.nip17.dm_relay_list"` →
-        // `"nmp.nip17.dmRelayList"` (split on `_` only, `.` opaque).
-        case dmRelayList = "nmp.nip17.dmRelayList"
-        case relayDiagnostics
-        case mentionProfiles
-        case settingsHub
-    }
-}
+// `SnapshotProjections` is generated — see
+// `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`. The Rust
+// source of truth is the `SNAPSHOT_PROJECTIONS` registry in
+// `crates/nmp-codegen/src/swift_projections_registry.rs`; the renderer in
+// `crates/nmp-codegen/src/swift.rs` emits the equivalent struct + `CodingKeys`
+// enum. Regenerate via:
+//
+//   cargo run -p nmp-core --features codegen-schema \
+//       --bin dump_projection_schemas \
+//     | cargo run -p nmp-codegen -- gen swift
+//
+// The `codegen-drift` CI gate fails any PR whose generated file differs
+// from a fresh run, so a new dotted-key projection added to the Rust
+// registry without regenerating Swift cannot land on master.
 
 // ─── mention_profiles projection wire type ────────────────────────────────
 //
