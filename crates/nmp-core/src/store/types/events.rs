@@ -179,6 +179,7 @@ impl VerifiedEvent {
     /// Use this in store harnesses and unit tests where synthetic events with
     /// placeholder signatures are needed. NEVER enabled in production builds.
     #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
     pub fn from_raw_unchecked(raw: RawEvent) -> Self {
         VerifiedEvent(raw)
     }

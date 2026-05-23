@@ -73,6 +73,7 @@ impl PendingSign {
     /// (e.g. NIP-29 group actions) so the relay pin survives a remote-signer
     /// round-trip — the idle-tick poll loop publishes through
     /// `Kernel::publish_signed_to` with this exact target.
+    #[must_use]
     pub fn with_target(
         op: SignerOp<SignedEvent>,
         p_tags: Vec<String>,
@@ -91,6 +92,7 @@ impl PendingSign {
     /// `correlation_id` to report once the publish settles. Used by the
     /// `PublishNote` dispatch path so a bunker user's dispatched note settles
     /// under the registry-minted id the host is waiting on, not the event id.
+    #[must_use]
     pub fn with_correlation_id(
         op: SignerOp<SignedEvent>,
         p_tags: Vec<String>,
@@ -107,6 +109,7 @@ impl PendingSign {
     /// Park a sign op with both a routing target and an optional action
     /// correlation id. This is the lossless path for dispatched publishes
     /// whose `PublishTarget` is not always `Auto`.
+    #[must_use]
     pub fn with_target_and_correlation_id(
         op: SignerOp<SignedEvent>,
         p_tags: Vec<String>,

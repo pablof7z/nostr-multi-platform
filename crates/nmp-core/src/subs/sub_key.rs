@@ -48,6 +48,7 @@ impl SubKey {
 
     /// Start an incremental builder seeded with `seed`. Fold further parts in
     /// with [`SubKeyBuilder::with`], then [`SubKeyBuilder::finish`].
+    #[must_use]
     pub fn builder(seed: impl Hash) -> SubKeyBuilder {
         let mut h = StableHasher::new();
         seed.hash(&mut h);

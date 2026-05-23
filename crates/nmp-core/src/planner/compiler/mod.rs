@@ -108,6 +108,7 @@ impl<'a> SubscriptionCompiler<'a> {
     /// (hashtag firehose, global search) route to those relays unioned with
     /// `app_relays`, using `RoutingSource::UserConfigured(AccountRead)`
     /// and `RoutingSource::UserConfigured(AppRelay)` respectively.
+    #[must_use]
     pub fn with_active_account_read_relays(
         mailbox_cache: &'a dyn MailboxCache,
         indexer_relays: &'a [RelayUrl],
@@ -127,6 +128,7 @@ impl<'a> SubscriptionCompiler<'a> {
     /// Production callers (the subscription lifecycle) use this form so
     /// `app_relays` land on the additive NIP-65 lane in `case_a/case_b` and on
     /// the union with active-account read relays in `case_d`.
+    #[must_use]
     pub fn with_relays(
         mailbox_cache: &'a dyn MailboxCache,
         indexer_relays: &'a [RelayUrl],

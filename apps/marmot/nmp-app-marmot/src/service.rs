@@ -215,6 +215,7 @@ impl MarmotService {
     /// Construct from an already-built storage backend + a custom MDK config
     /// (e.g. `max_past_epochs`). Used by tests (`new_in_memory`) and advanced
     /// callers.
+    #[must_use]
     pub fn from_storage(storage: MdkSqliteStorage, keys: Keys, config: MdkConfig) -> Self {
         Self {
             mdk: MDK::builder(storage).with_config(config).build(),

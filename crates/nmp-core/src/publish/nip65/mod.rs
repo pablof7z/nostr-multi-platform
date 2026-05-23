@@ -120,6 +120,7 @@ impl Nip65OutboxResolver {
     /// live indexer handle. Not `#[cfg(test)]` because the consumers are
     /// integration tests in a sibling crate.
     #[doc(hidden)]
+    #[must_use]
     pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
         Self::new(store, new_indexer_relays_slot())
     }

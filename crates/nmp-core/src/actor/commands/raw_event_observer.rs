@@ -96,6 +96,7 @@ pub struct KindFilter(BTreeSet<u32>);
 impl KindFilter {
     /// Build a filter from a kind list. An empty list yields the
     /// match-everything filter.
+    #[must_use]
     pub fn from_kinds<I: IntoIterator<Item = u32>>(kinds: I) -> Self {
         Self(kinds.into_iter().collect())
     }
