@@ -65,7 +65,7 @@ impl FollowEntry {
     /// Build a `FollowEntry` from a hex pubkey, computing all display fields.
     fn from_hex(pubkey: String) -> Self {
         let npub = display::to_npub(&pubkey);
-        FollowEntry {
+        Self {
             short_npub: display::short_npub(&pubkey),
             avatar_initials: display::avatar_initials(&npub),
             avatar_color: display::avatar_color_hex(&pubkey),
