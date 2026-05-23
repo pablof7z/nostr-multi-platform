@@ -21,6 +21,7 @@ impl WasmRuntime {
         Self::default()
     }
 
+    #[must_use]
     pub fn handle(&mut self, request: WorkerRequest) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
         match request {
             WorkerRequest::Hello(hello) => {
