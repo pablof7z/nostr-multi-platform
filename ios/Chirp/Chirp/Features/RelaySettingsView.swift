@@ -155,11 +155,23 @@ struct RelaySettingsView: View {
     private func publishButton(label: String, systemImage: String) -> some View {
         Button {
             let result = model.publishDmRelayList(relays: model.relayEditRows.map(\.url))
+            // Also publish NIP-65 kind:10002 (general relay list) so other
+            // Nostr clients can discover this user's read/write relays via
+            // NIP-65 relay discovery. `nmp.nip65.publish_relay_list` is
+            // registered by `nmp-app-chirp::register_nip65_actions`; "indexer"
+            // relays are dropped Swift-side (NIP-65 has no indexer marker).
+            model.publishRelayList(relays: model.relayEditRows)
             // PR-A: only stash a correlation id on accept — a synchronous
             // dispatch rejection has already routed through `track()` into
             // `lastDispatchError` (the global toast slot). Clearing
             // `publishCid` here resets the row to the button so the user
-            // can retry without first observing a stale terminal.
+            // can retry without first observing a stale terminal. The
+            // correlation id tracked is the kind:10050 (DM inbox) one —
+            // the kind:10002 dispatch's correlation id is intentionally
+            // dropped (the user-facing spinner is keyed on the DM inbox
+            // publish; both dispatches share the same accept/reject path
+            // through `track()`, so a kind:10002 rejection still surfaces
+            // through `lastDispatchError`).
             publishCid = result.correlationId
         } label: {
             Label(label, systemImage: systemImage)

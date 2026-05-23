@@ -441,6 +441,29 @@ final class KernelHandle {
         dispatchAction(namespace: "nmp.nip17.publish_relay_list", body: ["relays": relays])
     }
 
+    /// `nmp.nip65.publish_relay_list` — dispatches a kind:10002 NIP-65
+    /// relay-list metadata event. Filters out `"indexer"` relays (NIP-65 has
+    /// no indexer marker) and maps the Rust-canonical role string to the
+    /// NIP-65 marker: `"read"` → `"read"`, `"write"` → `"write"`,
+    /// `"both"` → `"both"`. Any other role string is dropped. The
+    /// `"read"`/`"write"`/`"both"` strings match `RelayMarker`'s lowercase
+    /// serde form in `nmp-nip65::RelayListEntry`, so the body deserialises
+    /// directly into `PublishRelayListInput` Rust-side.
+    @discardableResult
+    func publishRelayList(relays: [RelayEditRow]) -> DispatchResult {
+        let nip65Relays = relays.compactMap { relay -> [String: String]? in
+            switch relay.role {
+            case "read", "write", "both":
+                return ["url": relay.url, "marker": relay.role]
+            default:
+                return nil  // excludes "indexer" and any unknown roles
+            }
+        }
+        return dispatchAction(
+            namespace: "nmp.nip65.publish_relay_list",
+            body: ["relays": nip65Relays])
+    }
+
     func openTimeline() {
         nmp_app_open_timeline(raw)
     }
