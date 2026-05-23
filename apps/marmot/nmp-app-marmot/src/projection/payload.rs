@@ -204,9 +204,11 @@ impl MarmotSnapshot {
     /// Returned by the iOS shell whenever no `MarmotHandle` exists; the
     /// kernel-side snapshot path always sets `is_registered = true`.
     pub fn empty() -> Self {
-        let mut kp = KeyPackageStatus::default();
-        kp.subtitle = KeyPackageStatus::SUBTITLE_NOT_REGISTERED.to_string();
-        kp.action_label = KeyPackageStatus::ACTION_LABEL_PUBLISH.to_string();
+        let kp = KeyPackageStatus {
+            subtitle: KeyPackageStatus::SUBTITLE_NOT_REGISTERED.to_string(),
+            action_label: KeyPackageStatus::ACTION_LABEL_PUBLISH.to_string(),
+            ..Default::default()
+        };
         Self {
             groups: Vec::new(),
             pending_welcomes: Vec::new(),

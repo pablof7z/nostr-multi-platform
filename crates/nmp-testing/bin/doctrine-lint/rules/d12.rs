@@ -110,7 +110,7 @@ pub fn scan_file(text: &str, line_is_comment: &[bool]) -> Vec<AsyncMarkerHit> {
             // The declaration line is where the finding is anchored.
             // `body_returns_true` widens the scan across newlines if the
             // body is multi-line.
-            if line_declares_async_marker(line) && body_returns_true(&lines, &line_is_comment, idx)
+            if line_declares_async_marker(line) && body_returns_true(&lines, line_is_comment, idx)
             {
                 let col = line.find("is_async_completing").unwrap_or(0) + 1;
                 markers.push((idx + 1, col));
@@ -129,12 +129,11 @@ pub fn scan_file(text: &str, line_is_comment: &[bool]) -> Vec<AsyncMarkerHit> {
         .map(|(line, col)| AsyncMarkerHit {
             line,
             col,
-            message: format!(
-                "`is_async_completing` returns `true` but this file never calls \
+            message: "`is_async_completing` returns `true` but this file never calls \
                  `record_action_stage` — D12 requires async-completing modules \
                  to record stage transitions so the `action_stages` mirror \
                  reflects reality"
-            ),
+                .to_string(),
             suggested:
                 "call `kernel.record_action_stage(correlation_id, stage, detail)` \
                  from the module's executor or actor handler — see \
@@ -224,12 +223,12 @@ fn body_returns_true(lines: &[&str], line_is_comment: &[bool], start: usize) -> 
     //    both fall through this branch identically.
     let mut depth: i32 = 0;
     let mut saw_true = false;
-    for cursor in idx..lines.len() {
+    for (cursor, line) in lines.iter().enumerate().skip(idx) {
         let is_comment = line_is_comment.get(cursor).copied().unwrap_or(false);
         if is_comment {
             continue;
         }
-        let code = strip_line_comment(lines[cursor]);
+        let code = strip_line_comment(line);
         // Char-by-char walk:
         //   - `{` opens a scope (depth += 1)
         //   - `}` closes a scope; if depth → 0 the function body ended

@@ -84,9 +84,7 @@ pub fn file_is_test_only(path: &Path) -> bool {
     if in_test_infra {
         return true;
     }
-    let in_content_fixtures = s.contains("/nmp-content-fixtures/")
-        || s.starts_with("crates/nmp-content-fixtures/");
-    in_content_fixtures
+    s.contains("/nmp-content-fixtures/") || s.starts_with("crates/nmp-content-fixtures/")
 }
 
 const BANNED_PATTERNS: &[(&str, &str)] = &[

@@ -32,22 +32,15 @@
 //! Inside any function whose body contains a `// D10: private-kind publish`
 //! marker comment, D10 flags lines containing:
 //!
-//! - `PublishTarget::Auto`                       — the explicit Auto literal
-//! - `publish_signed(`                            — the Auto-routing variant
-//!                                                  (its `_to` sibling pins)
-//! - `publish_signed_with_correlation(`           — Auto-routing twin
+//! - `PublishTarget::Auto` — the explicit Auto literal
+//! - `publish_signed(` — the Auto-routing variant (its `_to` sibling pins)
+//! - `publish_signed_with_correlation(` — Auto-routing twin
 //! - `publish_unsigned_event(` (not `_to_relays`) — Auto-routing twin
-//! - `publish_signed_event(`                      — the verified-publish entry
-//!                                                  point in `commands::publish`
-//!                                                  that maps empty relays →
-//!                                                  Auto. A guarded caller MUST
-//!                                                  prove non-emptiness before
-//!                                                  the call (or it is a D10
-//!                                                  leak by construction) and
-//!                                                  attach a reasoned
-//!                                                  `doctrine-allow: D10 — …`
-//!                                                  annotation pointing to the
-//!                                                  upstream guard.
+//! - `publish_signed_event(` — the verified-publish entry point in
+//!   `commands::publish` that maps empty relays → Auto. A guarded caller MUST
+//!   prove non-emptiness before the call (or it is a D10 leak by construction)
+//!   and attach a reasoned `doctrine-allow: D10 — …` annotation pointing to
+//!   the upstream guard.
 //!
 //! Each is a routing seam that resolves to the NIP-65 outbox; in a
 //! private-kind publisher that is a D10 violation by construction. The
@@ -212,7 +205,7 @@ impl PrivatePublishTracker {
             // than the marker itself). Track it ONCE per fn — a duplicate
             // marker inside the same fn must not push twice.
             let open_depth = self.cur_depth - 1;
-            if !self.marked_open_depths.iter().any(|d| *d == open_depth) {
+            if !self.marked_open_depths.contains(&open_depth) {
                 self.marked_open_depths.push(open_depth);
             }
         }

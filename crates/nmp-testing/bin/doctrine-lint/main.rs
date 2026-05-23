@@ -158,6 +158,9 @@ fn main() -> ExitCode {
 /// only the D8 *no-polling* check runs. D0/D6/D7 and the hot-path half of D8
 /// are `nmp-core`-scoped rules and would flood false positives across the
 /// rest of the workspace, so they are skipped entirely in that mode.
+// One `extra_scopes` slice per doctrine rule — bundling them into a struct
+// would obscure the 1:1 rule correspondence and make call-sites harder to read.
+#[allow(clippy::too_many_arguments)]
 fn scan_one_file(
     path: &Path,
     d8_extra_scopes: &[String],
