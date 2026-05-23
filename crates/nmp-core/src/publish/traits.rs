@@ -32,6 +32,17 @@ pub enum SignerError {
     Rejected(String),
 }
 
+impl std::fmt::Display for SignerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable(msg) => write!(f, "signer unavailable: {msg}"),
+            Self::Rejected(msg) => write!(f, "signing rejected: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for SignerError {}
+
 /// Test-only signer that refuses every AUTH request. Used in tests that
 /// exercise non-auth paths.
 #[derive(Clone, Debug, Default)]
@@ -258,6 +269,17 @@ pub enum PublishStoreError {
     NotFound,
     Backend(String),
 }
+
+impl std::fmt::Display for PublishStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "publish record not found"),
+            Self::Backend(msg) => write!(f, "publish store backend error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for PublishStoreError {}
 
 #[derive(Default)]
 pub struct InMemoryPublishStore {

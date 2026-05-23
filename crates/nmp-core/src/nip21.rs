@@ -80,6 +80,15 @@ impl std::fmt::Display for Nip21Error {
     }
 }
 
+impl std::error::Error for Nip21Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Nip19(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 impl From<Nip19Error> for Nip21Error {
     fn from(e: Nip19Error) -> Self {
         Self::Nip19(e)

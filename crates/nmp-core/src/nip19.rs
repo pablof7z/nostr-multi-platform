@@ -132,6 +132,8 @@ impl std::fmt::Display for Nip19Error {
     }
 }
 
+impl std::error::Error for Nip19Error {}
+
 // ─── Hex helpers ───────────────────────────────────────────────────────────
 
 fn hex_to_bytes(hex: &str) -> Result<[u8; 32], Nip19Error> {
