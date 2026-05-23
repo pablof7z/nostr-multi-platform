@@ -127,15 +127,15 @@ to it; delete the hand-rolled path.
   F-04 zap-receipts contract would break on every cold-start sign-in. NIP-17 DM
   routing is intentionally EXCLUDED (gift-wraps must stay fail-closed). All 1065
   nmp-core tests pass.
-- Stage 2 (NEXT — precursor merged PR #389; kind:9735 host-side migration DONE PR #421):
-  Migrate the 4 remaining `self.req(...)` call sites in
-  `kernel/requests/startup.rs::active_account_bootstrap_requests` (self kind:0/3/10002/10050
-  via `Indexer`) onto `InterestRegistry::ensure_sub`. All 4 must be registered with
-  `InterestScope::Global` (NOT `Account(self_pk)` as a stale design comment in
-  `pd033c-plan.md` §3.1 suggests) so the planner's Case A bootstrap-fallback gates fire on
-  cold-start. The kind:9735 via Content was converted to a host-side `ZapReceiptsRuntimeController`
-  in `nmp-app-chirp` (PR #421) — that call site is gone from startup.rs.
-- Stage 3: Migrate remaining M1 `req()` call sites in `profile.rs` / `thread.rs`.
+- Stage 2 ✅ DONE (PR #422 — merged 2026-05-24): Migrated the 4 remaining `self.req(...)` call
+  sites in `kernel/requests/startup.rs::active_account_bootstrap_requests` (self
+  kind:0/3/10002/10050 via Indexer) onto `InterestRegistry::ensure_sub` +
+  `CompileTrigger::ViewOpened`. Added `Kernel::drain_lifecycle_outbound()` in
+  `kernel/outbox.rs` so the wasm `KernelReducer` drains inline (no actor idle loop).
+  `KernelReducer::handle_relay_connected` now calls `drain_lifecycle_outbound` after startup.
+  1067 nmp-core tests pass. `Kernel::req` now has zero in-tree callers (kept under
+  `#[allow(dead_code)]` — PD-033-C will retire it in Stage 4).
+- Stage 3 (NEXT): Migrate remaining M1 `req()` call sites in `profile.rs` / `thread.rs`.
 - Stage 4: Delete the M1 `req()` helper once all call sites are migrated.
 
 ### V-05 · D2 enforcement gap — coverage_hook never installed [DONE]
@@ -292,6 +292,63 @@ the 500-LOC ceiling. All 32 lib tests pass.
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
 (ActorCommand closed enum analysis required — Opus review #10).
 
+### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM]
+
+**Verified:** `crates/nmp-signer-broker/src/relay_client.rs:103` calls
+`set_read_timeout(&mut socket, Duration::from_millis(100))`. The worker loop at
+`:154–217` interleaves `cmd_rx.try_recv()` with a short-timeout blocking read.
+This is exactly the pattern banned by `crates/nmp-core/src/relay_worker/no_polling_tests.rs:1–35`,
+which asserts that `set_read_timeout`, `Duration::from_millis(50)`, and `.try_recv()`
+are absent from `relay_worker/{mod,io_ready,socket_io}.rs`. The banned-token test
+does not cover the broker because it is a different crate, but the doctrine
+(`feedback_no_polling`, AGENTS.md §No polling — ever) is project-wide.
+
+**Impact:** 100 ms polling at 4 Hz snapshot cadence means the broker thread burns
+CPU on every tick whether or not the bunker relay has sent anything. On mobile,
+this contributes to battery drain on any session with a remote signer.
+
+**Correct fix:** extract a generic readiness-driven `RelayConnection` type (the
+primitives are already partially factored in `relay_protocol.rs` by PR #375) and
+replace `TungsteniteRelayClient::run_worker` with it. Both the native relay worker
+and the broker then depend on the same shared primitive.
+
+**Staged fix plan:**
+- Stage 1: Extract `nmp-relay-conn` crate (or `relay_protocol` extension) with a
+  readiness-driven tungstenite socket loop — no polling, no `set_read_timeout`.
+- Stage 2: Rewrite `TungsteniteRelayClient::run_worker` to use it; delete the
+  polling loop.
+- **Deadline:** before v1-A (any user sign-in via bunker hits this path).
+
+### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM]
+
+**Verified:** `crates/nmp-signer-broker/src/relay_client.rs` exposes only `send`
+and `shutdown`. `broker.rs:114` exposes only `cancel`. Neither file has a
+reconnect path. `run_worker` returns on any read or write failure
+(`relay_client.rs:159, 194, 213`). When that thread dies every subsequent
+`signer.sign()` call times out after `REMOTE_SIGN_TIMEOUT` (5s) with a generic
+backend error. V-06 and V-08 post-v1 items cover NIP-42 / DM decryption — they
+do not cover basic transport resilience. **This gap is unticketed.**
+
+**Impact:** NIP-46 is listed as a v1 sign-in method in `aim.md` §4.6. Any user
+who signs in via bunker and experiences an intermittent relay drop ends up in a
+state where every publish attempt silently fails until they re-sign-in. No UI
+surface for "bunker connection lost" exists because the broker has no state for it.
+
+**Correct fix:**
+- (a) Reconnect loop in `TungsteniteRelayClient` with the same exponential
+  backoff + per-URL jitter constants from `relay_protocol.rs`.
+- (b) A `BunkerConnectionState::TransportLost { reconnect_in_ms }` variant (or
+  equivalent) on the broker's status projection so the host shell can surface a
+  non-silent indicator.
+
+**Staged fix plan:**
+- Stage 1: Add `BunkerConnectionState` enum (Connected / Connecting /
+  TransportLost) to broker; expose it via the broker's status callback.
+- Stage 2: Implement the reconnect loop (can share V-13 Stage 1 primitive once
+  that lands).
+- **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
+  NIP-46 as a v1 sign-in method.
+
 ---
 
 ## Section 2 — In Flight
@@ -306,24 +363,35 @@ before picking up Section 4 work to avoid duplicating an in-progress task.
 Items that cannot be resolved autonomously. An agent that encounters one of these must log
 its finding in the decision thread below and move on to the next item, not block.
 
-### PD-033-A · Framework thesis — second non-social app — CONFIRMED 2026-05-23
+### PD-033-A · Framework thesis — second non-social app — NEEDS REVALIDATION
 
-**Decision settled (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
-client (read kind:1, publish kind:1, sign-in via nsec or NIP-46 bunker) built entirely on
-substrate seams already exported by `nmp-core` + `nmp-signer-broker`. **Zero new C-ABI
-protocol symbols** — the only `#[no_mangle]` introduced is `nmp_app_notes_init` (empty
-app-registration marker; binary would still link without it). Swift surface is **299 LOC**
-(under the ≤300 LOC budget). Rust surface is 25 LOC of code (plus docs + 2 tests).
+**Original closure (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
+client, 299 LOC Swift, 25 LOC Rust, zero new C-ABI protocol symbols. Closed as "confirmed."
 
-The framework thesis — generic `dispatch_action` + kernel projections + signer-broker can
-host a second non-social app without any new protocol crate — is now proven for both the
-**read path** (verified earlier by `apps/longform/`) and the **stateful write path** (this
-spike: publish kind:1 + NIP-46 bunker sign-in, both via existing seams).
+**Re-opened (Opus direction review #13 — 2026-05-24):** Code-grounded inspection of the
+artifact found it does NOT use the framework's defining properties:
 
-**Original framing kept for history:** each protocol-bound app (e.g. Chirp social) requires
-a protocol crate + projection crate + 4–6 C-ABI symbols + payload types + Swift decoder.
-PD-033-A asked whether the substrate could host an app that needs none of those. Answer: yes,
-when the app is built on generic seams (raw_event_observer + dispatch_action + signer-broker).
+- `NotesBridge.swift:74` calls `nmp_app_register_raw_event_observer` with a kind:1 filter
+  only — this is a raw event *tap* (every ingested kind:1 fans out regardless of author).
+  D3 outbox routing is bypassed entirely; `KindFilter` (`raw_event_observer.rs:92`) has no
+  author dimension.
+- `NoteModel.swift:14` parses the NIP-01 event JSON in Swift (`JSONSerialization →
+  [String: Any]`). The architectural bible's first anti-pattern.
+- `NotesBridge.swift:84` orders the timeline in Swift (insertion-order keyed off arrival,
+  not `created_at`). The kernel owns no timeline view for this app.
+- `TimelineView.swift:30, 36–38` formats timestamps + shortens pubkeys in Swift.
+- `NotesBridge.swift:36–37` sets `isSignedIn = true` synchronously with no handshake-
+  success gate.
+
+**The 299 LOC count is accurate; the proof is not.** Notes proves the substrate *can be
+bypassed* cheaply — not that the framework guidance produces correct apps.
+
+**Required to re-close:** rewrite `apps/notes/` so it (a) registers a `LogicalInterest` for
+kind:1 from the active user's follow set (outbox-routed through the planner, D3), (b)
+consumes a kernel-owned timeline projection (no JSON in Swift, no list ordering in Swift),
+and (c) gates `isSignedIn` on a real handshake-success callback. If that requires new
+framework affordances, those affordances are the real v1-A gap. Milestone: 30-day call from
+Opus direction review #13.
 
 ### PD-033-C · Two subscription systems (gates V-04 fix) — DECISION MADE
 
