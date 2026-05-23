@@ -21,6 +21,7 @@ const SUPPORTED_NETWORKS: &[&str] = &["lnbcrt", "lntbs", "lnbc", "lntb"];
 const MSATS_PER_BTC: u128 = 100_000_000_000;
 
 /// Decode the millisats amount from a BOLT-11 invoice's HRP.
+#[must_use] 
 pub fn amount_msats(invoice: &str) -> Option<u64> {
     let lower = invoice.trim().to_ascii_lowercase();
     let body = strip_network(&lower)?;

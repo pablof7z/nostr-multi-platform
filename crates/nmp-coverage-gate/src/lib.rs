@@ -95,6 +95,7 @@ impl CoverageGate {
     ///
     /// The assembly crate calls this with the sum of unique authors across
     /// all `RelayPlan` entries in the compiled plan.
+    #[must_use] 
     pub fn should_use_negentropy(&self, total_author_count: usize) -> bool {
         total_author_count >= self.author_negentropy_threshold
     }
@@ -103,6 +104,7 @@ impl CoverageGate {
     /// watermark, given the age of the most-recent stored event.
     ///
     /// Returns `0` when `since_bump_factor` is zero or the bump rounds down.
+    #[must_use] 
     pub fn since_bump_secs(&self, watermark_age_secs: u64) -> u64 {
         (watermark_age_secs as f64 * self.since_bump_factor) as u64
     }

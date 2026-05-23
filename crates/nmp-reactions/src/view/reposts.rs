@@ -57,10 +57,12 @@ pub struct RepostsView;
 impl RepostsView {
     pub const NAMESPACE: &'static str = "nmp.reactions.reposts";
 
+    #[must_use] 
     pub fn key(spec: &RepostsSpec) -> RepostsSpec {
         spec.clone()
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &RepostsSpec) -> ViewDependencies {
         let mut deps = ViewDependencies {
             kinds: vec![KIND_REPOST, KIND_GENERIC_REPOST],
@@ -83,6 +85,7 @@ impl RepostsView {
         deps
     }
 
+    #[must_use] 
     pub fn open(_ctx: &ViewContext, spec: RepostsSpec) -> (RepostsState, RepostsPayload) {
         let state = RepostsState {
             spec,
@@ -122,6 +125,7 @@ impl RepostsView {
         state.inner.replace(old_id, new_event)
     }
 
+    #[must_use] 
     pub fn snapshot(_ctx: &ViewContext, state: &RepostsState) -> RepostsPayload {
         // Every record in `inner` already passed the scope predicate (which
         // requires kind 6/16), so the snapshot is reposts-only by construction.

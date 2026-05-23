@@ -51,6 +51,7 @@ impl FfiApp {
     /// Registration happens here, during host init — before `nmp_app_start`
     /// and before any `dispatch` call — because each module's `register` seam
     /// needs `&mut NmpApp`.
+    #[must_use] 
     pub fn new() -> Self {
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; `app` is valid for the
@@ -65,6 +66,7 @@ impl FfiApp {
         }
     }
 
+    #[must_use] 
     pub fn app_name(&self) -> &'static str {
         "fixture"
     }

@@ -62,11 +62,13 @@ pub struct ZapReceiptRecord {
     pub created_at: u64,
 }
 
+#[must_use] 
 pub fn try_from_event(event: &StoredEvent) -> Option<ZapReceiptRecord> {
     let raw = event.raw.as_ref();
     decode_borrowed(&raw.id, raw.kind, raw.created_at, &raw.tags)
 }
 
+#[must_use] 
 pub fn try_from_kernel_event(event: &KernelEvent) -> Option<ZapReceiptRecord> {
     decode_borrowed(&event.id, event.kind, event.created_at, &event.tags)
 }

@@ -57,6 +57,7 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 /// registration and the subscription must stay pinned to it. The kernel's
 /// raw-event tap then drives every accepted event into
 /// `MarmotService::ingest_signed_event_core` automatically.
+#[must_use] 
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = nmp_core::substrate::ViewDependencies {
         kinds: vec![KIND_GIFT_WRAP],
@@ -76,6 +77,7 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
 /// author's outbox relays. The kernel planner owns that NIP-65 routing; the
 /// app only declares the peer pubkey and the event kinds it needs.
 ///
+#[must_use] 
 pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
     nmp_core::substrate::ViewDependencies {
         kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],

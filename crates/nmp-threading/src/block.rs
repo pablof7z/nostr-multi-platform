@@ -29,15 +29,17 @@ pub enum TimelineBlock {
 
 impl TimelineBlock {
     /// Length of the block in events (1 for standalone).
+    #[must_use] 
     pub fn len(&self) -> usize {
         match self {
-            TimelineBlock::Standalone(_) => 1,
-            TimelineBlock::Module { events, .. } => events.len(),
+            Self::Standalone(_) => 1,
+            Self::Module { events, .. } => events.len(),
         }
     }
 
     /// True when the block carries no events. Always `false` in practice —
     /// the grouper never emits empty modules.
+    #[must_use] 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

@@ -58,7 +58,7 @@ impl Anchor {
             ("e", "a", "i", "k", "p")
         };
         match self {
-            Anchor::Event { id, kind, author, relay } => {
+            Self::Event { id, kind, author, relay } => {
                 let mut t = vec![e_key.to_string(), id.clone()];
                 if let Some(r) = relay {
                     t.push(r.clone());
@@ -73,7 +73,7 @@ impl Anchor {
                     tags.push(p);
                 }
             }
-            Anchor::Address { coord, kind, author, relay } => {
+            Self::Address { coord, kind, author, relay } => {
                 let mut t = vec![a_key.to_string(), coord.clone()];
                 if let Some(r) = relay {
                     t.push(r.clone());
@@ -88,7 +88,7 @@ impl Anchor {
                     tags.push(p);
                 }
             }
-            Anchor::External { uri } => {
+            Self::External { uri } => {
                 tags.push(vec![i_key.to_string(), uri.clone()]);
             }
         }
@@ -96,9 +96,9 @@ impl Anchor {
 
     fn is_empty(&self) -> bool {
         match self {
-            Anchor::Event { id, .. } => id.trim().is_empty(),
-            Anchor::Address { coord, .. } => coord.trim().is_empty(),
-            Anchor::External { uri } => uri.trim().is_empty(),
+            Self::Event { id, .. } => id.trim().is_empty(),
+            Self::Address { coord, .. } => coord.trim().is_empty(),
+            Self::External { uri } => uri.trim().is_empty(),
         }
     }
 }

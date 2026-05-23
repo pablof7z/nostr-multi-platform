@@ -32,12 +32,13 @@ pub enum SignerOp<T: Send + 'static> {
 impl<T: Send + 'static> SignerOp<T> {
     /// Construct a ready-now success.
     pub fn ok(value: T) -> Self {
-        SignerOp::Ready(Ok(value))
+        Self::Ready(Ok(value))
     }
 
     /// Construct a ready-now error.
+    #[must_use] 
     pub fn err(error: SignerError) -> Self {
-        SignerOp::Ready(Err(error))
+        Self::Ready(Err(error))
     }
 
     /// Block the current thread for up to `timeout` waiting for the result.
@@ -49,8 +50,8 @@ impl<T: Send + 'static> SignerOp<T> {
     ///   producing a value
     pub fn wait(self, timeout: Duration) -> Result<T, SignerError> {
         match self {
-            SignerOp::Ready(r) => r,
-            SignerOp::Pending(rx) => match rx.recv_timeout(timeout) {
+            Self::Ready(r) => r,
+            Self::Pending(rx) => match rx.recv_timeout(timeout) {
                 Ok(r) => r,
                 Err(RecvTimeoutError::Timeout) => Err(SignerError::Timeout(format!(
                     "signer op did not complete within {timeout:?}"
@@ -66,24 +67,24 @@ impl<T: Send + 'static> SignerOp<T> {
     /// completed.  Disconnect surfaces as `Some(Err(SignerError::Backend))`.
     pub fn poll(&mut self) -> Option<Result<T, SignerError>> {
         match self {
-            SignerOp::Ready(_) => {
+            Self::Ready(_) => {
                 let taken = std::mem::replace(
                     self,
-                    SignerOp::Ready(Err(SignerError::Backend(
+                    Self::Ready(Err(SignerError::Backend(
                         "already polled to completion".to_string(),
                     ))),
                 );
                 match taken {
-                    SignerOp::Ready(r) => Some(r),
+                    Self::Ready(r) => Some(r),
                     // `self` was `Ready` immediately above, and `replace`
                     // returns that same value — but surface a `Backend` error
                     // rather than panicking at this public boundary.
-                    SignerOp::Pending(_) => Some(Err(SignerError::Backend(
+                    Self::Pending(_) => Some(Err(SignerError::Backend(
                         "signer op poll observed inconsistent state".to_string(),
                     ))),
                 }
             }
-            SignerOp::Pending(rx) => match rx.try_recv() {
+            Self::Pending(rx) => match rx.try_recv() {
                 Ok(r) => Some(r),
                 Err(TryRecvError::Empty) => None,
                 Err(TryRecvError::Disconnected) => Some(Err(SignerError::Backend(
@@ -97,9 +98,9 @@ impl<T: Send + 'static> SignerOp<T> {
 impl<T: Send + 'static> std::fmt::Debug for SignerOp<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SignerOp::Ready(Ok(_)) => f.write_str("SignerOp::Ready(Ok(..))"),
-            SignerOp::Ready(Err(e)) => write!(f, "SignerOp::Ready(Err({e}))"),
-            SignerOp::Pending(_) => f.write_str("SignerOp::Pending(..)"),
+            Self::Ready(Ok(_)) => f.write_str("SignerOp::Ready(Ok(..))"),
+            Self::Ready(Err(e)) => write!(f, "SignerOp::Ready(Err({e}))"),
+            Self::Pending(_) => f.write_str("SignerOp::Pending(..)"),
         }
     }
 }

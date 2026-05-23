@@ -135,6 +135,7 @@ pub struct RelayListEntry {
 /// * has an empty `pubkey` — the actor derives it from the signing keys at
 ///   sign time (this mirrors `nmp_nip17::build_dm_relay_list_event` and the
 ///   NIP-29 builders; the build half is pubkey-agnostic).
+#[must_use] 
 pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(entries.len());
     let mut seen = std::collections::HashSet::new();

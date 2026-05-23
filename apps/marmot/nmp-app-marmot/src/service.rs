@@ -69,10 +69,10 @@ pub enum MarmotError {
 impl std::fmt::Display for MarmotError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MarmotError::Mdk(s) => write!(f, "mdk error: {s}"),
-            MarmotError::Nostr(s) => write!(f, "nostr error: {s}"),
-            MarmotError::GiftWrap(s) => write!(f, "nip59 error: {s}"),
-            MarmotError::Invariant(s) => write!(f, "invariant violation: {s}"),
+            Self::Mdk(s) => write!(f, "mdk error: {s}"),
+            Self::Nostr(s) => write!(f, "nostr error: {s}"),
+            Self::GiftWrap(s) => write!(f, "nip59 error: {s}"),
+            Self::Invariant(s) => write!(f, "invariant violation: {s}"),
         }
     }
 }
@@ -80,12 +80,12 @@ impl std::error::Error for MarmotError {}
 
 impl From<mdk_core::Error> for MarmotError {
     fn from(e: mdk_core::Error) -> Self {
-        MarmotError::Mdk(e.to_string())
+        Self::Mdk(e.to_string())
     }
 }
 impl From<nmp_nip59::Nip59Error> for MarmotError {
     fn from(e: nmp_nip59::Nip59Error) -> Self {
-        MarmotError::GiftWrap(e.to_string())
+        Self::GiftWrap(e.to_string())
     }
 }
 
@@ -542,11 +542,13 @@ impl<'a> CreateGroupPending<'a> {
     }
 
     /// The created group's MLS id.
+    #[must_use] 
     pub fn group_id(&self) -> &GroupId {
         &self.group_id
     }
 
     /// The created group's MLS id, hex-encoded.
+    #[must_use] 
     pub fn group_id_hex(&self) -> String {
         hex_encode(self.group_id.as_slice())
     }

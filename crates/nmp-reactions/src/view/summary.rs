@@ -67,10 +67,12 @@ pub struct ReactionSummaryView;
 impl ReactionSummaryView {
     pub const NAMESPACE: &'static str = "nmp.reactions.summary";
 
+    #[must_use] 
     pub fn key(spec: &ReactionSummarySpec) -> ReactionTarget {
         spec.target.clone()
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &ReactionSummarySpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![crate::kinds::KIND_REACTION],
@@ -79,6 +81,7 @@ impl ReactionSummaryView {
         }
     }
 
+    #[must_use] 
     pub fn open(
         _ctx: &ViewContext,
         spec: ReactionSummarySpec,
@@ -121,6 +124,7 @@ impl ReactionSummaryView {
         state.inner.replace(old_id, new_event)
     }
 
+    #[must_use] 
     pub fn snapshot(_ctx: &ViewContext, state: &SummaryState) -> ReactionSummaryPayload {
         let (entries, total) = state.inner.reaction_summary();
         ReactionSummaryPayload { entries, total }

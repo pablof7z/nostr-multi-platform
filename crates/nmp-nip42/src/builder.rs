@@ -17,6 +17,7 @@ use super::frame::AuthChallenge;
 /// account the signer will sign with; `created_at` is unix-seconds at
 /// caller's clock (the signer accepts any value, but a wall-clock skew
 /// beyond ±10 minutes will cause the relay to reject the AUTH event).
+#[must_use] 
 pub fn build_auth_event(
     challenge: &AuthChallenge,
     pubkey: String,
@@ -88,6 +89,7 @@ pub fn validate_signed_for(
 /// Render the wire frame the kernel pushes to the relay:
 /// `["AUTH", <event_json>]`. The event_json shape is the standard NIP-01
 /// signed-event object (id, pubkey, created_at, kind, tags, content, sig).
+#[must_use] 
 pub fn wire_frame_for(signed: &nmp_core::substrate::SignedEvent) -> String {
     serde_json::json!([
         "AUTH",

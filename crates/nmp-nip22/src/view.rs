@@ -86,10 +86,12 @@ pub struct CommentsView;
 impl CommentsView {
     pub const NAMESPACE: &'static str = "nmp.nip22.comments";
 
+    #[must_use] 
     pub fn key(spec: &CommentsSpec) -> EventId {
         spec.target.clone()
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &CommentsSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_COMMENT],
@@ -101,6 +103,7 @@ impl CommentsView {
         }
     }
 
+    #[must_use] 
     pub fn open(_ctx: &ViewContext, spec: CommentsSpec) -> (CommentsState, CommentsPayload) {
         let state = CommentsState {
             target: spec.target.clone(),
@@ -138,6 +141,7 @@ impl CommentsView {
         s.replace(old, e)
     }
 
+    #[must_use] 
     pub fn snapshot(_c: &ViewContext, state: &CommentsState) -> CommentsPayload {
         CommentsPayload {
             target_id: state.target.clone(),

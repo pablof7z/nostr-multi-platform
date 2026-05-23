@@ -331,7 +331,7 @@ impl<R: ParentResolver> Grouper<R> {
         self.blocks.iter().position(|b| match b {
             TimelineBlock::Standalone(id) => id == parent_id,
             TimelineBlock::Module { events, .. } => {
-                events.last().map(|leaf| leaf == parent_id).unwrap_or(false)
+                events.last().is_some_and(|leaf| leaf == parent_id)
             }
         })
     }

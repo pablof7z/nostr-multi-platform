@@ -81,10 +81,12 @@ pub struct ZapsView;
 impl ZapsView {
     pub const NAMESPACE: &'static str = "nmp.nip57.zaps";
 
+    #[must_use] 
     pub fn key(spec: &ZapsSpec) -> EventId {
         spec.target.clone()
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &ZapsSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_ZAP_RECEIPT],
@@ -93,6 +95,7 @@ impl ZapsView {
         }
     }
 
+    #[must_use] 
     pub fn open(_ctx: &ViewContext, spec: ZapsSpec) -> (ZapsState, ZapsPayload) {
         let state = ZapsState {
             target: spec.target.clone(),
@@ -135,6 +138,7 @@ impl ZapsView {
         s.insert(e)
     }
 
+    #[must_use] 
     pub fn snapshot(_c: &ViewContext, state: &ZapsState) -> ZapsPayload {
         let total_msats = state.by_id.values().map(|e| e.msats).sum();
         let zap_count = state.by_id.len() as u32;

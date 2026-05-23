@@ -115,6 +115,7 @@ pub struct ZapsAggregateSnapshot {
 impl ZapsAggregateSnapshot {
     /// An empty snapshot — what a freshly-constructed projection (or a
     /// poisoned internal mutex, D6) reports.
+    #[must_use] 
     pub fn empty() -> Self {
         Self {
             totals: HashMap::new(),
@@ -158,6 +159,7 @@ impl Default for ZapsAggregateProjection {
 impl ZapsAggregateProjection {
     /// Construct an empty projection. Events arrive via
     /// [`KernelEventObserver::on_kernel_event`].
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             by_target: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),

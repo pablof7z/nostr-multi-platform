@@ -72,8 +72,8 @@ enum TargetSpec {
 impl TargetSpec {
     fn is_empty(&self) -> bool {
         match self {
-            TargetSpec::Event(id) => id.trim().is_empty(),
-            TargetSpec::Address(c) => c.pubkey.trim().is_empty(),
+            Self::Event(id) => id.trim().is_empty(),
+            Self::Address(c) => c.pubkey.trim().is_empty(),
         }
     }
 }

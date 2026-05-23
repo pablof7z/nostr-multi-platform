@@ -72,6 +72,7 @@ impl MarmotIngestTap {
     }
 
     /// The kind filter to register this tap with.
+    #[must_use] 
     pub fn kind_filter() -> KindFilter {
         KindFilter::from_kinds(TAP_KINDS)
     }

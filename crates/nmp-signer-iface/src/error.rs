@@ -42,15 +42,15 @@ pub enum SignerError {
 impl std::fmt::Display for SignerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SignerError::NotReady(m) => write!(f, "signer not ready: {m}"),
-            SignerError::Unsupported(m) => write!(f, "unsupported: {m}"),
-            SignerError::Rejected(m) => write!(f, "rejected: {m}"),
-            SignerError::Mismatch(m) => write!(f, "signer mismatch: {m}"),
-            SignerError::Timeout(m) => write!(f, "timeout: {m}"),
-            SignerError::SignatureVerificationFailed(m) => {
+            Self::NotReady(m) => write!(f, "signer not ready: {m}"),
+            Self::Unsupported(m) => write!(f, "unsupported: {m}"),
+            Self::Rejected(m) => write!(f, "rejected: {m}"),
+            Self::Mismatch(m) => write!(f, "signer mismatch: {m}"),
+            Self::Timeout(m) => write!(f, "timeout: {m}"),
+            Self::SignatureVerificationFailed(m) => {
                 write!(f, "signature verification failed: {m}")
             }
-            SignerError::Backend(m) => write!(f, "backend error: {m}"),
+            Self::Backend(m) => write!(f, "backend error: {m}"),
         }
     }
 }

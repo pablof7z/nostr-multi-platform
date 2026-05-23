@@ -58,6 +58,7 @@ impl ReactionAccumulator {
 
     /// All records newest-first (by `created_at` desc, then `event_id` for
     /// determinism). Deterministic so diffing-based renderers see a stable order (D8).
+    #[must_use] 
     pub fn snapshot_records(&self) -> Vec<ReactionRecord> {
         let mut out: Vec<ReactionRecord> = self.records.values().cloned().collect();
         out.sort_by(|a, b| {
@@ -73,6 +74,7 @@ impl ReactionAccumulator {
     /// `RepostsView`, not the reaction summary). Output is `(content, count)`
     /// sorted by count desc then content asc (stable ordering for diffing) plus
     /// the total distinct-reactor count.
+    #[must_use] 
     pub fn reaction_summary(&self) -> (Vec<(String, u64)>, u64) {
         // newest-first ensures the first record seen per reactor is its newest.
         let ordered = self.snapshot_records();

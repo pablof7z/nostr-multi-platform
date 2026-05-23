@@ -50,6 +50,7 @@ pub enum RelayAuthState {
 impl RelayAuthState {
     /// Wire key the diagnostics UI displays in `RelayStatus.auth`. Matches
     /// the snake-case serde serialization (ADR-0007 §1).
+    #[must_use] 
     pub fn as_status_key(&self) -> &'static str {
         match self {
             Self::NotRequired => "not_required",

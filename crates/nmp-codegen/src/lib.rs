@@ -45,6 +45,7 @@ pub(crate) fn variant_name(package: &str) -> String {
         .collect()
 }
 
+#[must_use] 
 pub fn app_crate_name(app_name: &str) -> String {
     format!("nmp-app-{}", app_name.replace('_', "-"))
 }

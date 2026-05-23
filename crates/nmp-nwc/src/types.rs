@@ -26,6 +26,7 @@ pub enum NwcMethod {
 }
 
 impl NwcMethod {
+    #[must_use] 
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::GetInfo => "get_info",
@@ -102,6 +103,7 @@ pub struct MakeInvoiceResult {
 
 impl NwcResponse {
     /// Extract balance in msats from a `get_balance` response.
+    #[must_use] 
     pub fn balance_msats(&self) -> Option<u64> {
         if self.result_type != "get_balance" || self.error.is_some() {
             return None;
@@ -113,6 +115,7 @@ impl NwcResponse {
     }
 
     /// Extract the payment preimage from a `pay_invoice` response.
+    #[must_use] 
     pub fn pay_preimage(&self) -> Option<String> {
         if self.result_type != "pay_invoice" || self.error.is_some() {
             return None;

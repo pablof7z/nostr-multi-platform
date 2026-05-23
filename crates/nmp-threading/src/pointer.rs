@@ -34,9 +34,10 @@ pub enum ThreadPointer {
 impl ThreadPointer {
     /// Event id when this pointer names a specific event; `None` for
     /// `Address` and `External` (they terminate ancestor-walk).
+    #[must_use] 
     pub fn event_id(&self) -> Option<&str> {
         match self {
-            ThreadPointer::Event { id, .. } => Some(id.as_str()),
+            Self::Event { id, .. } => Some(id.as_str()),
             _ => None,
         }
     }

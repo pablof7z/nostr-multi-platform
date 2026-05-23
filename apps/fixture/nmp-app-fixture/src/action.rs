@@ -5,6 +5,7 @@ pub enum AppAction {
 }
 
 impl AppAction {
+    #[must_use] 
     pub fn namespace(&self) -> &'static str {
         match self {
             Self::Kernel(_) => "kernel",

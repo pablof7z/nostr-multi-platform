@@ -50,12 +50,14 @@ pub struct CommentRecord {
 /// - the event carries an `h` tag (NIP-29 group comments live in `nmp-nip29`), or
 /// - neither a root nor a parent pointer can be formed (the event is too
 ///   malformed to be a NIP-22 comment).
+#[must_use] 
 pub fn try_from_event(event: &StoredEvent) -> Option<CommentRecord> {
     let raw = event.raw.as_ref();
     decode_borrowed(&raw.id, &raw.pubkey, raw.kind, raw.created_at, &raw.tags, &raw.content)
 }
 
 /// Hot-path decoder over a borrowed [`KernelEvent`].
+#[must_use] 
 pub fn try_from_kernel_event(event: &KernelEvent) -> Option<CommentRecord> {
     decode_borrowed(
         &event.id,

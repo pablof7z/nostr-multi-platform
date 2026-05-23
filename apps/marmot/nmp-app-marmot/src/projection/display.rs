@@ -17,6 +17,7 @@ use nostr::{nips::nip19::ToBech32, PublicKey};
 /// grapheme-wise — matches the Swift code we are replacing (one
 /// observable change is unicode handling, but the Swift `String.prefix`
 /// was also bytewise via `Character` truncation for ASCII labels).
+#[must_use] 
 pub fn initials(name: &str) -> String {
     let mut chars = name.chars().filter(|c| !c.is_whitespace());
     let a = chars.next();
@@ -29,6 +30,7 @@ pub fn initials(name: &str) -> String {
 }
 
 /// `"3 members"` / `"1 member"` — Rust-owned pluralisation.
+#[must_use] 
 pub fn member_count_display(count: usize) -> String {
     if count == 1 {
         "1 member".to_string()
@@ -39,6 +41,7 @@ pub fn member_count_display(count: usize) -> String {
 
 /// `Some("3")` when `count > 0`, else `None`. The UI renders the badge
 /// `if let unread = row.unread_display` — no derivation in native.
+#[must_use] 
 pub fn unread_display(count: u64) -> Option<String> {
     if count == 0 {
         None
@@ -49,6 +52,7 @@ pub fn unread_display(count: u64) -> Option<String> {
 
 /// `Some("1 invite")` / `Some("3 invites")` / `None`. Drives the
 /// top-of-list invite chip with no count branching in Swift.
+#[must_use] 
 pub fn invites_chip_label(count: usize) -> Option<String> {
     match count {
         0 => None,
@@ -59,6 +63,7 @@ pub fn invites_chip_label(count: usize) -> Option<String> {
 
 /// Empty-name fallback. Avoids `name.isEmpty ? "Untitled group" : name`
 /// in Swift.
+#[must_use] 
 pub fn group_display_name(name: &str) -> String {
     if name.is_empty() {
         "Untitled group".to_string()
@@ -68,6 +73,7 @@ pub fn group_display_name(name: &str) -> String {
 }
 
 /// Empty-name fallback for a welcome / invite row.
+#[must_use] 
 pub fn welcome_display_name(name: &str) -> String {
     if name.is_empty() {
         "Group invite".to_string()
@@ -81,6 +87,7 @@ pub fn welcome_display_name(name: &str) -> String {
 /// hex, converts via `nostr::PublicKey` first, falling back to the raw
 /// input when the hex cannot be parsed (D6 — render the raw string rather
 /// than crash).
+#[must_use] 
 pub fn short_npub(pubkey_hex: &str) -> String {
     if pubkey_hex.starts_with("npub1") {
         return abbreviate(pubkey_hex, 10, 6);
@@ -96,6 +103,7 @@ pub fn short_npub(pubkey_hex: &str) -> String {
 
 /// `npub1abcd…wxyz` (8 + 4) — used for inline error strings where the
 /// shorter form fits better.
+#[must_use] 
 pub fn short_npub_compact(pubkey_hex: &str) -> String {
     if pubkey_hex.starts_with("npub1") {
         return abbreviate(pubkey_hex, 8, 4);
@@ -124,6 +132,7 @@ fn abbreviate(s: &str, head: usize, tail: usize) -> String {
 /// djb2 over the **last 6 chars** of the hex string in NATURAL order
 /// (`hex.suffix(6).utf8` in Swift → `&hex[hex.len()-6..]` in Rust). The
 /// match means existing renders keep their tints across this migration.
+#[must_use] 
 pub fn avatar_color_hex(pubkey_hex: &str) -> String {
     let bytes = pubkey_hex.as_bytes();
     let start = bytes.len().saturating_sub(6);
@@ -139,6 +148,7 @@ pub fn avatar_color_hex(pubkey_hex: &str) -> String {
 /// against `now_secs`. Same coarse buckets `RelativeDateTimeFormatter`
 /// reaches for at `.abbreviated`. Future timestamps (clock skew) report
 /// as `"now"`.
+#[must_use] 
 pub fn relative_time(unix_secs: u64, now_secs: u64) -> String {
     if unix_secs >= now_secs {
         return "now".to_string();

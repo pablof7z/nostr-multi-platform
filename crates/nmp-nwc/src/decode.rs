@@ -12,6 +12,7 @@ use crate::types::NwcResponse;
 /// from `wallet_pubkey_hex`, otherwise returns None.
 ///
 /// `client_secret_hex` / `wallet_pubkey_hex`: from the stored NWC connection.
+#[must_use] 
 pub fn try_decode_relay_message(
     relay_text: &str,
     wallet_pubkey_hex: &str,
@@ -42,6 +43,7 @@ pub fn try_decode_relay_message(
 }
 
 /// Extract the event id from a relay EVENT message, alongside the decoded response.
+#[must_use] 
 pub fn try_decode_relay_message_with_id(
     relay_text: &str,
     wallet_pubkey_hex: &str,
@@ -85,6 +87,7 @@ pub fn try_decode_relay_message_with_id(
 /// missing an `e` tag — the last case is itself a violation of NIP-47 and
 /// would leave the client unable to match the reply to any request, so we
 /// fail closed (D6 — silent on unknown, never panic).
+#[must_use] 
 pub fn try_decode_response_for_request(
     relay_text: &str,
     wallet_pubkey_hex: &str,

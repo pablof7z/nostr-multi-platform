@@ -102,6 +102,7 @@ impl Relations {
     /// Start a NIP-25 reaction targeting `target.event_id` (with the
     /// target's author for the `p` tag). Forwards to
     /// [`Reaction::to_event`].
+    #[must_use] 
     pub fn react_to(target: &NoteRecord) -> ReactionBuilder {
         Reaction::to_event(target.event_id.clone(), target.author.clone())
     }
@@ -110,6 +111,7 @@ impl Relations {
     /// For non-kind-1 events use the lower-level
     /// [`crate::GenericRepost::of`] which takes the reposted kind
     /// explicitly.
+    #[must_use] 
     pub fn repost(target: &NoteRecord) -> RepostBuilder {
         Repost::of(target.event_id.clone(), target.author.clone())
     }
@@ -117,6 +119,7 @@ impl Relations {
     /// Start a NIP-57 zap-request targeting the author of `target`. Caller
     /// must still set amount + relays + (optionally) the zapped event id
     /// before `.build(...)`.
+    #[must_use] 
     pub fn zap_request(target: &NoteRecord) -> ZapRequestBuilder {
         ZapRequest::to_pubkey(target.author.clone()).zapped_event(target.event_id.clone())
     }
@@ -124,6 +127,7 @@ impl Relations {
     /// Start a NIP-22 comment on `target` (top-level — root == parent).
     /// Forwards to [`Comment::on_event`]. For comments nested under a
     /// parent comment, chain [`CommentBuilder::reply_to_comment`].
+    #[must_use] 
     pub fn comment_on(target: &NoteRecord) -> CommentBuilder {
         // `NoteRecord` only ever represents a kind-1 short text note — the
         // root kind is a compile-time constant from `nmp-nip01`, never a

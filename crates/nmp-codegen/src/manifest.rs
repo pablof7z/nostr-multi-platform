@@ -64,6 +64,7 @@ impl AppManifest {
         })
     }
 
+    #[must_use] 
     pub fn ordered_modules(&self) -> Vec<String> {
         self.modules
             .protocol

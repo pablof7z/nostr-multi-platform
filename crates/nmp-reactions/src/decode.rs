@@ -144,6 +144,7 @@ impl ReactionRecord {
 /// Returns `None` when `event.kind` is not in `{7, 6, 16}`. All target/`p`/
 /// `emoji`/`k` tags are optional at decode time (the wire can be sloppy); the
 /// builders in [`crate::build`] enforce the NIP invariants on the write side.
+#[must_use] 
 pub fn try_from_event(event: &StoredEvent) -> Option<ReactionRecord> {
     let raw = event.raw.as_ref();
     decode_borrowed(
@@ -163,6 +164,7 @@ pub fn try_from_event(event: &StoredEvent) -> Option<ReactionRecord> {
 /// event; per D8 (zero per-event alloc after warmup) it must not allocate an
 /// intermediate `RawEvent` + `Arc`. The only allocations are the owned
 /// `String`s the immutable record output unavoidably owns.
+#[must_use] 
 pub fn try_from_kernel_event(event: &KernelEvent) -> Option<ReactionRecord> {
     decode_borrowed(
         &event.id,

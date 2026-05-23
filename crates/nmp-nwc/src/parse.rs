@@ -46,6 +46,7 @@ pub struct NwcUri {
 
 impl NwcUri {
     /// First relay in the URI's list. Parser guarantees `relay_urls` is non-empty.
+    #[must_use] 
     pub fn primary_relay_url(&self) -> &str {
         &self.relay_urls[0]
     }
