@@ -177,6 +177,7 @@ impl DiscoveredGroupsProjection {
     }
 
     /// The host relay this projection is scoped to.
+    #[must_use]
     pub fn host_relay_url(&self) -> &str {
         &self.host_relay_url
     }

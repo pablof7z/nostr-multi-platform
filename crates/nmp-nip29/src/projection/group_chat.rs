@@ -149,6 +149,7 @@ impl GroupChatProjection {
     }
 
     /// The group this projection is scoped to.
+    #[must_use]
     pub fn group_id(&self) -> &GroupId {
         &self.group_id
     }
