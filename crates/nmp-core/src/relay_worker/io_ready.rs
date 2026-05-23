@@ -1,3 +1,12 @@
+//! I/O readiness polling for the relay worker thread.
+//!
+//! `RelayPoller` drives the non-blocking poll loop: it blocks on the TCP
+//! socket for readable/writable events (via `TcpStream::set_read_timeout`)
+//! and also drains `ControlInbox` messages (relay commands from the actor).
+//! `ControlWakeGuard` provides a RAII guard that fires a wakeup to the
+//! poller's `ready_tx` channel when dropped, preventing the relay thread
+//! from sleeping past an urgent command.
+
 use std::collections::VecDeque;
 use std::io;
 use std::net::TcpStream;

@@ -1,3 +1,11 @@
+//! Low-level WebSocket I/O helpers for the relay worker thread.
+//!
+//! `flush_relay_writes` drains the worker's outbound queue into the
+//! WebSocket's write buffer. `drain_relay_reads` reads incoming frames
+//! without blocking, forwarding them to the actor's inbound channel.
+//! Both functions return `FlushResult` to signal whether the socket
+//! should be considered healthy or torn down.
+
 use std::collections::VecDeque;
 use std::sync::mpsc::Sender;
 use std::time::Instant;
