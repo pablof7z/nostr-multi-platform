@@ -1,0 +1,28 @@
+[package]
+name = "nmp-app-longform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Second-app spike: a read-only NIP-23 long-form article reader built ONLY on
+# `nmp-core`'s substrate seams (no `nmp-app-chirp` dep, no iOS dep). This crate
+# is the falsification test for the framework thesis — see `apps/longform/README.md`.
+#
+# Built as both an rlib (for in-process Rust callers / tests) and a cdylib (so
+# a third-party host can link the C-ABI entry points in `src/ffi.rs`).
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# FRAMEWORK FINDING — recorded in `apps/longform/README.md`:
+#
+# We pull `nmp-core` with `features = ["test-support"]` because the public
+# C-ABI lifecycle symbols (`nmp_app_new`, `nmp_app_start`) are NOT re-exported
+# from `nmp_core::*` outside the `test-support` and `android-ffi` Cargo
+# features (see `crates/nmp-core/src/lib.rs:73-87` and 94-140). The `fixture`
+# app does the same. A true third-party app crate cannot today build against a
+# released `nmp-core` rlib without enabling a feature whose name says "tests
+# only" — substrate work needed to expose a non-test Rust constructor.
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

@@ -2,6 +2,7 @@
 members = [
     "apps/chirp/nmp-app-chirp",
     "apps/fixture/nmp-app-fixture",
+    "apps/longform/nmp-app-longform",
     "crates/fixture-todo-core",
     "crates/chirp-tui",
     "crates/chirp-repl",
