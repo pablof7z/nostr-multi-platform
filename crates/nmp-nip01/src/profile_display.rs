@@ -77,6 +77,7 @@ pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
     })
 }
 
+#[must_use]
 pub fn should_replace(current: Option<&ProfileDisplay>, candidate: &ProfileDisplay) -> bool {
     current
         .is_none_or(|profile| {

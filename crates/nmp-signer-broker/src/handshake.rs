@@ -526,6 +526,7 @@ fn await_nostrconnect_connect(
 /// kind:24133 event, decrypt the content with NIP-44, and return
 /// `(id, result_or_error_json)` for the signer's `deliver_rpc_response`.
 /// Returns `None` if the event is malformed or addressed to a different key.
+#[must_use]
 pub fn decode_inbound_response(
     event: &Value,
     local_keys: &Keys,

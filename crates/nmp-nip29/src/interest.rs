@@ -20,6 +20,7 @@ use crate::kinds::{
 ///
 /// The `h` tag is always added with the group's `local_id`, matching the
 /// relay's structural filter requirement for group-scoped events.
+#[must_use]
 pub fn host_pinned_interest(
     id: u64,
     group: &GroupId,

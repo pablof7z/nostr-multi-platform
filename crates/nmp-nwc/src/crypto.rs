@@ -22,6 +22,7 @@ use nostr::{Keys, PublicKey, SecretKey};
 /// # Errors
 ///
 /// Returns `NwcBuildError` if the secret or pubkey are invalid or encryption fails.
+#[must_use]
 pub fn encrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -51,6 +52,7 @@ pub fn encrypt(
 ///
 /// Returns `NwcBuildError` if the secret or pubkey are invalid, the payload is
 /// malformed, or decryption fails.
+#[must_use]
 pub fn decrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
