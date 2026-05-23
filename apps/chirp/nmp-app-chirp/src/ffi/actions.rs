@@ -55,7 +55,7 @@ pub(super) fn register_chirp_actions(app: &mut NmpApp) {
 /// executor is structurally impossible.
 ///
 /// Namespaces: `nmp.nip29.post_chat_message`, `nmp.nip29.react_in_group`,
-/// `nmp.nip29.comment_in_group`, `nmp.nip29.discover`, `nmp.nip29.join`.
+/// `nmp.nip29.discover`, `nmp.nip29.join`.
 ///
 /// SCOPE: NIP-29 v1 ships chat (3 actions), discovery, and join. The admin /
 /// membership (9000-9009) and artifact / discussion executors are deliberately

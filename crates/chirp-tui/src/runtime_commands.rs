@@ -223,23 +223,6 @@ impl AppRuntime {
         self.dispatch_action_value("nmp.nip29.react_in_group", &body)
     }
 
-    pub fn reply_group_message(
-        &self,
-        relay: &str,
-        local_id: &str,
-        parent_event_id: &str,
-        content: &str,
-    ) -> Result<String> {
-        self.dispatch_action_value(
-            "nmp.nip29.comment_in_group",
-            &json!({
-                "group": { "host_relay_url": relay, "local_id": local_id },
-                "parent_event_id": parent_event_id,
-                "content": content
-            }),
-        )
-    }
-
     pub fn marmot_register_active(&self) -> Result<()> {
         if !self.marmot.get().is_null() {
             return Ok(());

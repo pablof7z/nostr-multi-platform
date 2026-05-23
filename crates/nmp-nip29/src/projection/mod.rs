@@ -5,7 +5,7 @@
 //! `snapshot_json` for `nmp_core::NmpApp::register_snapshot_projection`:
 //!
 //! - [`group_chat`] — [`GroupChatProjection`]: one group's chat-content
-//!   events (kinds 9/11/1111) keyed by `["h", local_id]`. The read-side
+//!   events (kinds 9/11) keyed by `["h", local_id]`. The read-side
 //!   of `GroupChatView`.
 //! - [`discovered`] — [`DiscoveredGroupsProjection`]: a single relay's
 //!   group catalog, accumulated from kinds 39000/39001/39002. The read-side

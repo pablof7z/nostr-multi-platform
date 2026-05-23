@@ -7,8 +7,8 @@ use std::ffi::CString;
 use nmp_core::substrate::ActionModule;
 use nmp_core::{nmp_app_free, nmp_app_new, ActorCommand};
 use nmp_nip29::action::{
-    CommentInGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
-    JoinGroupInput, PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
+    DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction, JoinGroupInput,
+    PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
 };
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
@@ -107,7 +107,7 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
     }
 }
 
-/// THE GROUP-CHAT CATALOG WIRING PROOF: each of the 3 NIP-29 group-chat
+/// THE GROUP-CHAT CATALOG WIRING PROOF: each of the 2 NIP-29 group-chat
 /// namespaces `register_nip29_actions` wires is reachable through the
 /// generic `dispatch_action` path. A well-formed body yields a 32-hex
 /// `correlation_id` (BOTH the typed module validator AND the executor are
@@ -123,9 +123,9 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
     assert!(!handle.is_null());
 
     let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
-    // Each of the 3 group-chat namespaces, with a well-formed body for its
+    // Each of the 2 group-chat namespaces, with a well-formed body for its
     // typed `<Input>`.
-    let cases: [(&str, String); 3] = [
+    let cases: [(&str, String); 2] = [
         (
             PostChatMessageAction::NAMESPACE,
             format!(r#"{{"group":{group},"content":"hi"}}"#),
@@ -133,10 +133,6 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
         (
             ReactInGroupAction::NAMESPACE,
             format!(r#"{{"group":{group},"target_event_id":"deadbeef","content":"+"}}"#),
-        ),
-        (
-            CommentInGroupAction::NAMESPACE,
-            format!(r#"{{"group":{group},"content":"nice"}}"#),
         ),
     ];
 

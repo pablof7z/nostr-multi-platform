@@ -15,8 +15,6 @@ pub const KIND_DISCUSSION_OR_ARTIFACT: u32 = 11;
 pub const KIND_REPOST: u32 = 16;
 /// Reaction (kind 7) — group variant when `h` tag present.
 pub const KIND_REACTION: u32 = 7;
-/// NIP-22 comment (kind 1111) — group variant when `h` tag present.
-pub const KIND_COMMENT: u32 = 1111;
 /// NIP-84 highlight (kind 9802) — group variant when `h` tag present.
 pub const KIND_HIGHLIGHT: u32 = 9802;
 
@@ -46,7 +44,7 @@ pub enum KindClass {
     Moderation,
     /// User-signed user-management request (9021 / 9022).
     UserManagement,
-    /// Known h-tagged user-sent group event (9, 11, 16, 7, 1111, 9802 if h-tagged).
+    /// Known h-tagged user-sent group event (9, 11, 16, 7, 9802 if h-tagged).
     KnownGroupEvent,
     /// Unknown h-tagged kind — routed to `GroupContextEvent` fallback per
     /// `kinds.md` §2.1 "Future / extensibility".
@@ -77,7 +75,6 @@ pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
             | KIND_DISCUSSION_OR_ARTIFACT
             | KIND_REPOST
             | KIND_REACTION
-            | KIND_COMMENT
             | KIND_HIGHLIGHT => KindClass::KnownGroupEvent,
             _ => KindClass::UnknownGroupEvent,
         },
@@ -98,7 +95,6 @@ pub enum GroupEventClass {
     Artifact,
     Repost,
     Reaction,
-    Comment,
     Highlight,
 }
 
@@ -124,7 +120,6 @@ pub fn group_event_class(kind: u32, tags: &[Vec<String>]) -> Option<GroupEventCl
         KIND_DISCUSSION_OR_ARTIFACT => Some(classify_kind11(tags)),
         KIND_REPOST => Some(GroupEventClass::Repost),
         KIND_REACTION => Some(GroupEventClass::Reaction),
-        KIND_COMMENT => Some(GroupEventClass::Comment),
         KIND_HIGHLIGHT => Some(GroupEventClass::Highlight),
         _ => None,
     }

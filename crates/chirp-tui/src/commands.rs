@@ -219,18 +219,7 @@ fn group(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
             )?;
             Ok(action(cid, "group react"))
         }
-        "reply" => {
-            let (relay, rest) = first_word(args);
-            let (id, rest) = first_word(rest);
-            let (parent, content) = first_word(rest);
-            require(
-                content,
-                "group reply <relay-url> <local-id> <event-id> <message>",
-            )?;
-            let cid = runtime.reply_group_message(relay, id, parent, content)?;
-            Ok(action(cid, "group reply"))
-        }
-        _ => Err("usage: group discover|open|join|post|react|reply".to_string()),
+        _ => Err("usage: group discover|open|join|post|react".to_string()),
     }
 }
 
