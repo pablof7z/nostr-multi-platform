@@ -67,6 +67,7 @@ pub struct Nip46SignerHandle {
 
 impl Nip46SignerHandle {
     /// Parse `bunker://...` and produce a handle.
+    #[must_use]
     pub fn from_bunker_uri(s: &str) -> Result<Self, BunkerParseError> {
         let uri = parse_bunker_uri(s)?;
         Ok(Self {
@@ -78,6 +79,7 @@ impl Nip46SignerHandle {
     /// Parse and seed with a specific local key. Used by the signer broker
     /// (`nmp-signer-broker`) to restore sessions with a persisted local secret,
     /// and in tests for deterministic key seeding.
+    #[must_use]
     pub fn from_bunker_uri_with_local_key(
         s: &str,
         sk: SecretKey,
@@ -142,6 +144,7 @@ impl Nip46Signer {
     /// Restore from a payload.  Requires a transport (the kernel-side relay
     /// dispatcher) and the cached remote-user pubkey.  Returns `NotReady` if
     /// the payload has never been handshaken (no cached pubkey).
+    #[must_use]
     pub fn from_payload<T: Nip46Transport + 'static>(
         p: &Nip46Payload,
         transport: Arc<T>,

@@ -98,6 +98,7 @@ impl fmt::Display for BunkerUri {
 }
 
 /// Parse a `bunker://` URI.  Pure function, no allocations beyond the result.
+#[must_use]
 pub fn parse_bunker_uri(input: &str) -> Result<BunkerUri, BunkerParseError> {
     if input.is_empty() {
         return Err(BunkerParseError::Empty);

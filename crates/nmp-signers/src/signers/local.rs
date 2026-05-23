@@ -89,6 +89,7 @@ impl LocalKeySigner {
     }
 
     /// Construct from a 64-char hex secret.
+    #[must_use]
     pub fn from_secret_hex(hex: &str) -> Result<Self, SignerError> {
         let sk = SecretKey::from_hex(hex)
             .map_err(|e| SignerError::Backend(format!("invalid hex secret: {e}")))?;
@@ -96,6 +97,7 @@ impl LocalKeySigner {
     }
 
     /// Construct from an `nsec1...` bech32 string.
+    #[must_use]
     pub fn from_nsec(nsec: &str) -> Result<Self, SignerError> {
         use nostr::nips::nip19::FromBech32;
         let sk = SecretKey::from_bech32(nsec)
@@ -104,6 +106,7 @@ impl LocalKeySigner {
     }
 
     /// Construct from an `ncryptsec1...` (NIP-49) string + password.
+    #[must_use]
     pub fn from_ncryptsec(ncryptsec: &str, password: &str) -> Result<Self, SignerError> {
         use nostr::nips::nip19::FromBech32;
         use nostr::nips::nip49::EncryptedSecretKey;
@@ -118,6 +121,7 @@ impl LocalKeySigner {
     }
 
     /// Restore from a `LocalPayload` produced by [`Signer::to_payload`].
+    #[must_use]
     pub fn from_payload(p: &LocalPayload) -> Result<Self, SignerError> {
         Self::from_payload_with_password(p, None)
     }
