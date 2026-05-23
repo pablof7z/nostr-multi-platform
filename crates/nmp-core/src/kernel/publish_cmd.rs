@@ -114,13 +114,18 @@ impl Kernel {
         // diagnostic view would render. The shared `correlation_id` is
         // the join key — the host's stage observer and its
         // action_results observer match on the same value.
-        self.action_stages.record(
+        //
+        // V5 thin-shell: `record_action_stage` mirrors into both the
+        // `action_stages` history AND the `action_lifecycle` display
+        // projection in one call, so the host shell sees the terminal
+        // appear in `recent_terminal` on the next snapshot tick with no
+        // reducer-side bookkeeping.
+        self.record_action_stage(
             &correlation_id,
             super::action_stages::ActionStage::Failed {
                 reason: error.clone(),
             },
             None,
-            self.now_ms(),
         );
         self.publish_engine
             .record_action_terminal_failure(correlation_id, error);
@@ -162,11 +167,14 @@ impl Kernel {
         // the spinner-keyed host clears on the next emit. Same join-key
         // contract — the host's stage observer and its action_results
         // observer match on the same `correlation_id`.
-        self.action_stages.record(
+        //
+        // V5 thin-shell: `record_action_stage` mirrors into both the
+        // `action_stages` history AND the `action_lifecycle` display
+        // projection in one call.
+        self.record_action_stage(
             &correlation_id,
             super::action_stages::ActionStage::Accepted,
             None,
-            self.now_ms(),
         );
         self.publish_engine
             .record_action_terminal_success(correlation_id);
@@ -195,9 +203,33 @@ impl Kernel {
         detail: Option<serde_json::Value>,
     ) {
         let at_ms = self.now_ms();
+        // V5 thin-shell: mirror the transition into the
+        // `action_lifecycle` display tracker before persisting to the
+        // substrate-level `action_stages` history. Both writes share the
+        // same `at_ms` so a TTL eviction in `action_lifecycle` and a
+        // history append in `action_stages` are coherent under a
+        // `FixedClock`. The mirror takes a `clone` of the stage because
+        // `action_stages::record` consumes the value; the display tracker
+        // collapses to its own enum independent of substrate growth.
+        self.action_lifecycle
+            .record(correlation_id, stage.clone(), at_ms);
         self.action_stages
             .record(correlation_id, stage, detail, at_ms);
         self.changed_since_emit = true;
+    }
+
+    /// Read accessor for the `action_lifecycle` display projection
+    /// (V5 thin-shell). Returns the host-facing
+    /// `{in_flight, recent_terminal}` payload or
+    /// [`serde_json::Value::Null`] when nothing is tracked.
+    ///
+    /// TTL pruning runs inside the tracker's `snapshot` so a quiet
+    /// kernel still drops expired terminals on the next emit. `now_ms`
+    /// routes through the kernel clock so a `FixedClock` keeps tests
+    /// deterministic.
+    pub(crate) fn action_lifecycle_projection(&mut self) -> serde_json::Value {
+        let now = self.now_ms();
+        self.action_lifecycle.snapshot(now)
     }
 
     /// Drop the entry for `correlation_id` from the `action_stages`

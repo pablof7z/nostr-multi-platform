@@ -12,3 +12,15 @@ name = "nmp-codegen"
 path = "src/main.rs"
 
 [dependencies]
+# V6 Stage 1 — Swift `Decodable` emitter input parsing. The emitter consumes
+# the JSON document produced by `cargo run -p nmp-core --features codegen-schema
+# --bin dump_projection_schemas`; `serde_json` decodes it into the typed
+# `ProjectionSchemaDocument` shape nmp-codegen renders Swift from.
+# `preserve_order` keeps the iteration order in any sub-object stable (the
+# emitter sorts what it cares about explicitly, but `preserve_order` is the
+# safer default).
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[dev-dependencies]
+tempfile = "3"

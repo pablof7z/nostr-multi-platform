@@ -23,179 +23,100 @@ mod wallet;
 #[cfg(any(test, feature = "test-support"))]
 mod testing;
 
-// Re-exported so the crate-level test-support facade (`lib.rs`) can reach
-// these by the `ffi::` path, mirroring the other FFI entry points. The
-// symbols stay `#[no_mangle] extern "C"` in `capability` so the Swift/C ABI
-// is unaffected; the `pub use` itself is only consumed under the
-// test-support gate, hence the matching `cfg`.
-#[cfg(any(test, feature = "test-support"))]
+// ── Native re-export surface ──────────────────────────────────────────────
+// Hoist every per-submodule FFI entry-point into the `ffi::` namespace so
+// any native (non-WASM) Rust-side caller — third-party app crates
+// (`nmp-app-fixture`, `nmp-app-*`), out-of-crate integration tests, the
+// Android JNI shim — can name them through the rlib without an `extern "C"`
+// block. The symbols themselves stay `#[no_mangle] extern "C"` in their
+// owning submodules, so the Swift/C ABI is unaffected; the `pub use` only
+// affects Rust-side reach.
+//
+// Gated on `native` (the default feature) so wasm32 (`--no-default-features`)
+// continues to compile without these symbols. `android-ffi` implies `native`
+// (see [features] in Cargo.toml), so the Android JNI surface inherits this
+// block — the small `android-ffi` delta below adds only the four symbols
+// that are android-only (account removal, bunker sign-in, full-actor stop,
+// active-account switch). Likewise `test-support` implies `native` in
+// practice (the `ffi` module itself is `#[cfg(feature = "native")]`), so the
+// test-support delta only adds the harness-only injectors / ack / read
+// helpers.
+//
+// `allow(unused_imports)`: in-crate `tests` modules reach these symbols by
+// their `super::` / module path, so the facade re-export is only consumed by
+// out-of-crate clients; keeps `cargo test -p nmp-core --lib` clean.
+#[cfg(feature = "native")]
+#[allow(unused_imports)]
+pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
+#[cfg(feature = "native")]
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
-
-// M6 — the single namespace-keyed action-dispatch entry point. Re-exported
-// through the test-support facade so integration tests can call it through
-// the rlib without an `extern "C"` block. The symbol stays `#[no_mangle]
-// extern "C"` in `action`; the `pub use` is only consumed under the
-// test-support gate.
-#[cfg(any(test, feature = "test-support"))]
-pub use action::{nmp_app_ack_action_stage, nmp_app_dispatch_action};
-
-// Action-result observer registration — the push-side output seam. Re-exported
-// through the test-support facade so integration tests can register an observer
-// through the rlib without an `extern "C"` block. The symbol stays
-// `#[no_mangle] extern "C"` in `action`; `allow(unused)`: the in-crate
-// `ffi::action::tests` reach it by module path, so this facade re-export is
-// used only by out-of-crate integration tests.
-#[cfg(any(test, feature = "test-support"))]
-#[allow(unused_imports)]
-pub use action::nmp_app_register_action_result_observer;
-
-// Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
-// registration entry point. Re-exported through the test-support facade so
-// integration tests can call it through the rlib without an `extern "C"`
-// block. The symbol stays `#[no_mangle] extern "C"` in `snapshot`; the
-// `pub use` is only consumed under the test-support gate. `allow(unused)`:
-// the in-crate `ffi::snapshot::tests` reach the symbol by its module path,
-// so the facade re-export is used only by out-of-crate integration tests.
-#[cfg(any(test, feature = "test-support"))]
-#[allow(unused_imports)]
-pub use snapshot::nmp_app_register_snapshot_projection;
-
-// T118 / G3 — lifecycle FFI exposed through the test-support facade so
-// integration tests (`nmp-testing/tests/lifecycle_ffi_*`) can drive
-// scenePhase transitions and assert on the observer callback. The Swift
-// shell consumes the same `#[no_mangle] extern "C"` symbols directly via
-// the static lib — the `pub use` only affects Rust-side reach.
-#[cfg(any(test, feature = "test-support"))]
-// `nmp_app_is_alive` is reached by the in-crate `ffi::lifecycle::tests`
-// module by its `super::` path, so the facade re-export is only consumed by
-// out-of-crate integration tests / test-support clients — same pattern as
-// `nmp_app_register_action_result_observer` above. The `allow(unused)` keeps
-// `cargo test -p nmp-core --lib` clean.
+#[cfg(feature = "native")]
+pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
+#[cfg(feature = "native")]
+pub use identity::{
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_relay,
+    nmp_app_signin_nsec,
+};
+#[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use lifecycle::{
     nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
     nmp_app_set_lifecycle_callback,
 };
-
-// T146 — kernel event observer FFI exposed through the test-support facade
-// so integration tests in `nmp-testing` (and the in-tree FFI smoke in
-// `event_observer.rs`) can register callbacks. Swift / Kotlin shells
-// consume the same `#[no_mangle] extern "C"` symbols directly via the
-// static lib.
-#[cfg(any(test, feature = "test-support"))]
-pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
-
-// Raw signed-event tap FFI exposed through the test-support facade so
-// integration tests (and the in-tree smoke in `raw_event_tap.rs`) can
-// register verbatim-signed-event callbacks. Swift / Kotlin shells consume
-// the same `#[no_mangle] extern "C"` symbols directly via the static lib.
-#[cfg(any(test, feature = "test-support"))]
+// Publish-lifecycle control-plane FFI (retry/cancel). The one-door-per-
+// capability rule deleted the bespoke event-producing siblings
+// (`nmp_app_publish_signed_event` / `nmp_app_publish_signed_event_to` /
+// `nmp_app_publish_unsigned_event`) — every event-producing publish now
+// goes through `nmp_app_dispatch_action` (`nmp.publish`). Retry/cancel
+// address a publish *handle* (not an event) and have no `dispatch_action`
+// equivalent, so they stay on these dedicated symbols (the D11 lint
+// whitelists them).
+#[cfg(feature = "native")]
+pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
+#[cfg(feature = "native")]
 pub use raw_event_tap::{
     nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
 };
+#[cfg(feature = "native")]
+#[allow(unused_imports)]
+pub use snapshot::nmp_app_register_snapshot_projection;
+#[cfg(feature = "native")]
+pub use timeline::{
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
+    nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
+};
 
-// Re-exported so `crate::ffi::nmp_app_inject_*` stays byte-stable for the
-// test-support facade in `lib.rs`. The symbols stay `#[no_mangle] extern "C"`
-// in `testing`; the `pub use` is only consumed under the test-support gate.
+// ── test-support delta ───────────────────────────────────────────────────
+// Live-bench harnesses (`live-bench`) and integration test binaries
+// (`nmp-testing`) need a few extra entry points that production app crates
+// do not — per-action stage acks (action-FSM tests), pre-verified event
+// injection (S3/S4/S5 throughput harnesses), and read-side projection JSON
+// dumps (assert reducer output without going through the snapshot
+// callback). Kept gated on test-support so they don't pollute the
+// production-app re-export surface above.
+#[cfg(any(test, feature = "test-support"))]
+pub use action::nmp_app_ack_action_stage;
 #[cfg(any(test, feature = "test-support"))]
 pub use testing::{
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
     nmp_app_inject_signed_events, nmp_app_read_projection_json,
 };
 
-// Re-exported so `crate::ffi::nmp_app_{open_author,open_thread,...}` stays
-// byte-stable for the test-support facade in `lib.rs`. The symbols stay
-// `#[no_mangle] extern "C"` in `timeline`; the `pub use` is only consumed
-// under the test-support gate.
-#[cfg(any(test, feature = "test-support"))]
-pub use timeline::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
-    nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
-};
-
-// test-support: expose identity / relay-edit FFI entry-points so
-// integration tests (and chirp-repl, which depends on nmp-core with the
-// test-support feature) can call them through the rlib without extern "C"
-// blocks. The symbols remain `#[no_mangle] extern "C"` in `identity`; this
-// `pub use` is only consumed under the test/test-support gate.
-#[cfg(any(test, feature = "test-support"))]
-pub use identity::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_relay,
-    nmp_app_signin_nsec,
-};
-
-// test-support: expose the publish-lifecycle control-plane FFI entry-points
-// (retry/cancel). The one-door-per-capability rule deleted the bespoke
-// event-producing siblings `nmp_app_publish_signed_event` /
-// `nmp_app_publish_signed_event_to` / `nmp_app_publish_unsigned_event` —
-// those are the deleted door. Retry/cancel address a publish *handle* (not
-// an event) and have no `dispatch_action` equivalent, so they stay on
-// these dedicated symbols (the D11 lint whitelists them).
-#[cfg(any(test, feature = "test-support"))]
-pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
-
-// android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
-// can call them through the rlib. These re-exports are the ONLY thing that
-// makes rustc include the symbol bodies in CGU files for the cdylib.
+// ── android-ffi delta ────────────────────────────────────────────────────
+// The Android JNI shim (`nmp-android-ffi`) needs four extra entry points
+// the standard native re-export above does not yet expose — account
+// removal, bunker sign-in, full-actor stop (handled by `nmp_app_free` in
+// the standard flow), and active-account switch. The rest of the Android
+// JNI surface is inherited from the `native` block above (android-ffi
+// implies native). Re-exporting through the rlib is what causes rustc to
+// include the symbol bodies in CGU files for the cdylib; without these
+// Rust-path references the symbols stay `U` in the cdylib and the JNI link
+// step fails (the `cargo check (android-ffi)` CI job never links).
 #[cfg(feature = "android-ffi")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
-};
-// android-ffi: publish-lifecycle control-plane FFI (retry/cancel). The
-// one-door-per-capability rule deleted the bespoke event-producing siblings
-// from this module; what remains is the narrow control surface the action
-// seam does not carry.
-#[cfg(feature = "android-ffi")]
-pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
-// T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
-// re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the
-// Android JNI shim can't link.
-#[cfg(feature = "android-ffi")]
-pub use capability::{
-    nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
-};
-// M6 — action-dispatch entry point + the action-result observer registration
-// seam, reachable via the Rust path so the Android JNI shim pulls the symbol
-// bodies into the cdylib CGU. Each symbol is `#[no_mangle] extern "C"` in
-// `action`; without this re-export rustc omits its body from the cdylib CGU
-// and an Android link step against it fails (the `cargo check (android-ffi)`
-// CI job never links, so it does not catch this). `allow(unused_imports)`:
-// the re-export exists only to force the symbol body into the cdylib CGU —
-// no Rust caller names it by this path.
-//
-// ADR-0027 final stage: the closure-based dual seam
-// (`nmp_app_register_action_executor` / `nmp_app_register_action_module`) was
-// deleted; the typed `register_action::<M>()` Rust seam is the sole host
-// registration path. There is no useful C-ABI shape for the typed seam —
-// `M::Action` and `ActorCommand` have no stable C representation.
-#[cfg(feature = "android-ffi")]
-#[allow(unused_imports)]
-pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
-// Host-extensible snapshot output — registration entry point reachable via
-// the Rust path so the Android JNI shim pulls the symbol body into the
-// cdylib CGU.
-#[cfg(feature = "android-ffi")]
-pub use lifecycle::{
-    nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
-    nmp_app_set_lifecycle_callback,
-};
-#[cfg(feature = "android-ffi")]
-pub use snapshot::nmp_app_register_snapshot_projection;
-// T146 — kernel event observer FFI symbols reachable via Rust paths so the
-// Android JNI shim can pull the symbol bodies into the cdylib CGU.
-#[cfg(feature = "android-ffi")]
-pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
-#[cfg(feature = "android-ffi")]
-pub use raw_event_tap::{
-    nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
-};
-#[cfg(feature = "android-ffi")]
-pub use timeline::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
-    nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
+    nmp_app_remove_account, nmp_app_signin_bunker, nmp_app_switch_active,
 };
 #[cfg(all(feature = "android-ffi", feature = "wallet"))]
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};

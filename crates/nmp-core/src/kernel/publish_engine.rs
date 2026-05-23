@@ -473,7 +473,14 @@ impl Kernel {
         // Record the terminal into the stage mirror *before* serializing
         // the action_results array. The mirror's `at_ms` is sourced from
         // `now_ms()` so a `FixedClock` keeps the timestamp deterministic.
-        let now_ms = self.now_ms();
+        //
+        // V5 thin-shell: route through `record_action_stage` (instead of
+        // the bare `action_stages.record`) so the `action_lifecycle`
+        // display projection picks up the terminal in the same edge. A
+        // host that only consumes `action_lifecycle` now sees engine
+        // terminals appear in `recent_terminal` exactly as it sees
+        // sign-step terminals from `record_action_failure` /
+        // `record_action_success`.
         for terminal in &terminals {
             let stage = match terminal.status {
                 "ok" => super::action_stages::ActionStage::Accepted,
@@ -484,14 +491,10 @@ impl Kernel {
                         .unwrap_or_else(|| terminal.status.to_string()),
                 },
             };
-            // `record` is silent on cap hits (D6) — the diagnostic counters
-            // surface the event without interrupting the publish path.
-            self.action_stages.record(
-                &terminal.correlation_id,
-                stage,
-                None,
-                now_ms,
-            );
+            // `record_action_stage` is silent on cap hits (D6) — the
+            // diagnostic counters in the underlying trackers surface the
+            // event without interrupting the publish path.
+            self.record_action_stage(&terminal.correlation_id, stage, None);
         }
         let arr: Vec<serde_json::Value> = terminals
             .iter()

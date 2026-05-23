@@ -56,6 +56,14 @@ lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database", "native"
 # compilation — the android-ffi feature is the portable fix).
 # android-ffi implies native (the FFI layer is C-ABI, native-only).
 android-ffi = ["native"]
+# V6 Stage 1 — Swift `Decodable` emitter. Adds `schemars::JsonSchema` derives
+# to the projection types `nmp-codegen` reflects into Swift, and exposes the
+# `dump_projection_schemas` binary that walks them. OFF by default — production
+# builds never link `schemars` or the schema-export helper module. Enable with:
+#   cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas
+# (consumed by `nmp-codegen gen swift` in CI and at developer-loop time).
+# See `docs/architecture-audit/v6-codegen-plan.md` §3b for the design rationale.
+codegen-schema = ["dep:schemars"]
 
 [dependencies]
 bech32 = "0.11"
@@ -107,6 +115,13 @@ ureq = { version = "2", default-features = false, features = ["tls", "json"], op
 # the lockfile as a transitive of `nostr`; declaring it direct adds nothing new.
 tracing = "0.1"
 zeroize = { workspace = true }
+# V6 Stage 1 — JSON Schema generation for the Swift `Decodable` emitter
+# (`nmp-codegen gen swift`). Optional and gated behind `codegen-schema` so
+# production builds (which never run the emitter) link no `schemars` /
+# `schemars_derive` code. The derive is added side-by-side with `Serialize`
+# via `#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]`
+# on each projection type the emitter reflects.
+schemars = { version = "0.8", optional = true }
 
 # LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
 # env-injection seam (ADR-0011); heed / nostr-database are the underlying

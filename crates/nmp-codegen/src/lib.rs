@@ -1,11 +1,21 @@
 mod ffi_gen;
 mod generate;
 mod manifest;
+// V6 Stage 1 — Swift `Decodable` emitter pilot. Consumes the JSON document
+// `nmp-core --features codegen-schema --bin dump_projection_schemas` writes,
+// emits one Swift file with one struct per pilot type. See
+// `docs/architecture-audit/v6-codegen-plan.md` §6b. Keeps the existing
+// `generate_modules` (Rust-shell scaffolding) and the new Swift emitter on
+// independent code paths — they share no rendering primitives because the
+// existing module-scaffolding generator is parameterised on `AppManifest`,
+// not type-schema data.
+pub mod swift;
 
 use std::path::Path;
 
 pub use generate::{generate_modules, GenerationReport};
 pub use manifest::{AppManifest, ModuleSet};
+pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
 
 pub fn check_modules(manifest_path: &Path, out_dir: &Path) -> Result<bool, String> {
     let scratch = out_dir.with_extension("nmp-check");

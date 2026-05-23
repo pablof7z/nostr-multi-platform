@@ -13,9 +13,6 @@ use nmp_content_fixtures::build_bundle;
 use nmp_content_fixtures::dto::{EmbedEntry, ScenarioDto, SegmentDto};
 use nmp_core::store::{RawEvent, VerifiedEvent};
 
-// S-A01 (kind:30023 standalone article) and S-A02 (naddr in kind:1 preview card)
-// are specified in docs/design/content-gallery-scenarios.md but not yet
-// implemented — they require nmp-nip23 article tokenization fixtures.
 const EXPECTED_SCENARIOS: usize = 29;
 
 fn verify_event(ev: &nmp_content_fixtures::dto::SignedEventJson) {

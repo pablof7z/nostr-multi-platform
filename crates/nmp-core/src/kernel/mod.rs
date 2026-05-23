@@ -19,6 +19,9 @@ pub(crate) mod action_registry;
 // FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
 // dispatch handler (`actor::dispatch`) can reach the type aliases; the
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
+pub(crate) mod action_lifecycle;
+#[cfg(test)]
+mod action_lifecycle_tests;
 pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_failure_tests;
@@ -191,6 +194,16 @@ pub(crate) use identity_state::{
     new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry, RelayAckOutcome,
     SettingsHubSummary,
 };
+// V6 Stage 1 — Swift codegen pilot. The four projection types below are
+// `pub(crate) struct`s in `types` (widened from `pub(super)` so the
+// re-export can lift them out of `kernel`); the `codegen-schema` build
+// hands them to `schemars::schema_for!` from `crate::codegen_schema`.
+// Feature-gated so non-codegen builds don't trip the unused-import lint
+// (no in-crate consumer outside `codegen_schema`). Crate-private
+// encapsulation is preserved either way — nothing outside `nmp-core`
+// can name these types.
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::{LogicalInterestStatus, Metrics, RelayStatus, WireSubscriptionStatus};
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
@@ -447,6 +460,13 @@ pub(crate) struct Kernel {
     /// and retains them until the host acks via `nmp_app_ack_action_stage`.
     /// Caps and drop-oldest semantics live in [`action_stages`].
     action_stages: action_stages::ActionStageTracker,
+    /// Actor-owned tracker for the `action_lifecycle` display projection
+    /// (V5 thin-shell fix). Mirrors every transition the substrate-level
+    /// `action_stages` tracker records, but collapses to the latest stage
+    /// per correlation_id and drops terminals on a wall-clock TTL — no
+    /// host ack required. Drives the host's spinner/toast UI without any
+    /// reducer-side bookkeeping in the shell.
+    action_lifecycle: action_lifecycle::ActionLifecycleTracker,
     publish_engine: crate::publish::PublishEngine,
     /// Buffered (`relay_url`, frame) pairs produced by the engine. The kernel
     /// drains this after each engine call and wraps the pairs as
@@ -827,6 +847,7 @@ impl Kernel {
             last_error_category: None,
             relay_edit_rows: Vec::new(),
             action_stages: action_stages::ActionStageTracker::new(),
+            action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
             publish_engine,
             publish_dispatcher,
             publish_store,

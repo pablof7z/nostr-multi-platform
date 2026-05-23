@@ -653,9 +653,11 @@ struct KernelUpdateResult {
 /// `projections["action_results"]` on subsequent snapshot ticks.
 enum DispatchResult: Equatable {
     /// The action was accepted and enqueued. Carries the `correlation_id`
-    /// minted by `ActionRegistry::start` — the host should add this to its
-    /// `pendingActions` set and clear it when `action_results` reports the
-    /// terminal verdict.
+    /// minted by `ActionRegistry::start`. V5: the kernel's
+    /// `action_lifecycle` projection automatically surfaces this id under
+    /// `inFlight` until the action settles, then under `recentTerminal`
+    /// for a 3-second window. The host does NOT maintain its own pending
+    /// set — read `model.actionLifecycle` to drive the UI.
     case accepted(correlationId: String)
     /// The action was rejected synchronously. Carries the human-readable
     /// error from the Rust kernel — show it as a toast.
@@ -816,6 +818,14 @@ struct KernelUpdate: Decodable {
     /// a dropped tick cannot strand a progress indicator.
     var actionStages: [String: [ActionStageEntry]]? { projections?.actionStages }
 
+    /// V5 thin-shell display projection — `projections["action_lifecycle"]`.
+    /// Carries `{ in_flight, recent_terminal }` arrays the host renders
+    /// verbatim. The kernel handles all lifecycle bookkeeping (collapse to
+    /// latest stage per correlation_id, TTL drop on terminals); Swift does
+    /// not track `pendingActions` / `pendingTerminalStages` / manual ACK
+    /// any more. `nil` in steady state.
+    var actionLifecycle: ActionLifecycleSnapshot? { projections?.actionLifecycle }
+
     /// Most recent terminal action result — `projections["last_action_result"]`
     /// (direction review #24). Prefer `actionResults` (array) — this scalar
     /// silently drops terminals when two actions settle in the same kernel tick.
@@ -961,6 +971,12 @@ struct SnapshotProjections: Decodable, Equatable {
     // The map is `correlation_id (String) → [ActionStageEntry]` ordered by
     // recording time. Absent when no correlation_id is currently tracked.
     let actionStages: [String: [ActionStageEntry]]?
+    // V5 thin-shell display projection. The kernel collapses the per-stage
+    // history `action_stages` carries into `{ in_flight, recent_terminal }`
+    // and drops terminals on a 3-second TTL — no host ack required. Drives
+    // the shell's spinner/toast UI without any reducer-side bookkeeping in
+    // Swift. Absent in steady state (no in-flight, no recent terminals).
+    let actionLifecycle: ActionLifecycleSnapshot?
     // D0: views cluster. The active-account `profile` card, the visible
     // `timeline` (the kernel renamed the generic `items` key to the more
     // descriptive `timeline`), the open-view `authorView` / `threadView`
@@ -1063,6 +1079,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case actionResults
         case lastActionResult
         case actionStages
+        case actionLifecycle
         case profile
         case timeline
         case authorView
@@ -1532,30 +1549,11 @@ struct Nip46Onboarding: Decodable, Equatable {
 }
 
 // ─── Perf-diagnostic types ────────────────────────────────────────────────
-
-struct LogicalInterestStatus: Decodable, Identifiable, Equatable {
-    var id: String { key }
-    let key: String
-    let state: String
-    let refcount: UInt32
-    let relayUrls: [String]
-    let cacheCoverage: String
-    let warmingUntilMs: UInt64?
-}
-
-struct WireSubscriptionStatus: Decodable, Identifiable, Equatable {
-    var id: String { wireId }
-    let wireId: String
-    let relayUrl: String
-    let filterSummary: String
-    let state: String
-    let logicalConsumerCount: UInt32
-    let eventsRx: UInt64?
-    let openedAtMs: UInt64
-    let lastEventAtMs: UInt64?
-    let eoseAtMs: UInt64?
-    let closeReason: String?
-}
+//
+// `LogicalInterestStatus` and `WireSubscriptionStatus` moved to
+// `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). The Rust
+// projection types in `nmp-core/src/kernel/types.rs` are now the single
+// source of truth — Swift mirrors are emitted from `schemars` schemas.
 
 // ─── Domain types shared across the UI ───────────────────────────────────
 
@@ -1577,29 +1575,9 @@ struct ThreadView: Decodable, Equatable {
     let nextCountLabel: String?
 }
 
-struct AccountSummary: Decodable, Identifiable, Equatable {
-    let id: String
-    let npub: String
-    let displayName: String
-    /// Stable wire token (`"local"` | `"nip46"` | …). Kept for the diagnostics
-    /// surface that still renders the raw string; new view code MUST bind
-    /// `signerLabel` / `signerIsRemote` instead (aim.md §4.4 / §4.5).
-    let signerKind: String
-    /// Stable status token (`"active"` | `"idle"`). Kept for backward compat;
-    /// new view code MUST bind `isActive` instead.
-    let status: String
-    /// Pre-classified, human-readable label rendered verbatim by the UI.
-    /// Replaces the old `switch kind.lowercased() { … }` in AccountsView.
-    let signerLabel: String
-    /// `true` when the signer's key material lives outside the kernel
-    /// (NIP-46 bunker today, NIP-07 / hardware later). Replaces
-    /// `.filter { $0.signerKind.lowercased() == "nip46" }` in AccountsView.
-    let signerIsRemote: Bool
-    /// Pre-derived `status == "active"`. Native binds this directly.
-    let isActive: Bool
-    /// Profile picture URL from kind:0 metadata; nil when not yet loaded.
-    let pictureUrl: String?
-}
+// `AccountSummary` moved to `Generated/KernelTypes.generated.swift` (V6
+// Stage 1, plan §6b). Rust source: `nmp-core/src/kernel/identity_state.rs`
+// `AccountSummary`. Field docs live alongside the Rust definition.
 
 struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     let eventId: String
@@ -1708,6 +1686,90 @@ struct ActionStageEntry: Decodable, Equatable {
     }
 }
 
+// ─── V5 thin-shell: action_lifecycle projection wire types ──────────────
+//
+// The kernel's `action_lifecycle` projection collapses the per-stage
+// `action_stages` history into the host display shape:
+// `{ in_flight: [...], recent_terminal: [...] }`. Each entry carries a
+// `correlation_id` plus the latest stage (flattened verbatim from the
+// Rust `LifecycleStage` enum — `Failed`'s `reason` lifts to a sibling
+// of `stage`). Terminal entries drop on a 3-second TTL inside the
+// kernel; the shell does not track them.
+
+/// One stage in the V5 display projection. Mirrors the Rust
+/// `LifecycleStage` enum; an unrecognized discriminant collapses to
+/// `.unknown(raw:)` so a future kernel stage added without a Swift
+/// counterpart does not crash the bridge (D1 — graceful schema growth).
+enum ActionLifecycleStage: Equatable {
+    case requested
+    case awaitingCapability
+    case publishing
+    case accepted
+    /// `reason` is the human-readable failure message the host renders
+    /// verbatim. Same field-level shape as `ActionStage.failed`.
+    case failed(reason: String)
+    /// Catchall for future kernel stages — preserves the raw tag so a
+    /// diagnostic view can still display something meaningful.
+    case unknown(raw: String)
+
+    var isTerminal: Bool {
+        switch self {
+        case .accepted, .failed: return true
+        default: return false
+        }
+    }
+}
+
+/// One row in either `inFlight` or `recentTerminal`. The Rust side
+/// flattens `stage` and `correlation_id` (and `reason` on `failed`)
+/// onto the same object, so the decoder reads them via an explicit
+/// `init(from:)` that switches on the `stage` discriminant.
+struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
+    let correlationId: String
+    let stage: ActionLifecycleStage
+
+    var id: String { correlationId }
+
+    enum CodingKeys: String, CodingKey {
+        case correlationId
+        case stage
+        case reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        let raw = try container.decode(String.self, forKey: .stage)
+        switch raw {
+        case "requested": stage = .requested
+        case "awaiting_capability", "awaitingCapability": stage = .awaitingCapability
+        case "publishing": stage = .publishing
+        case "accepted": stage = .accepted
+        case "failed":
+            let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+            stage = .failed(reason: reason)
+        default:
+            stage = .unknown(raw: raw)
+        }
+    }
+}
+
+/// V5 thin-shell display projection. The kernel handles all lifecycle
+/// bookkeeping (latest-stage-wins collapse, TTL eviction on terminals).
+/// The shell decodes this struct verbatim and renders directly — no
+/// pendingActions set, no manual ackActionStage, no PR-G2 race cache.
+struct ActionLifecycleSnapshot: Decodable, Equatable {
+    /// Correlation_ids whose latest stage is non-terminal
+    /// (`requested` / `awaitingCapability` / `publishing`). Render a
+    /// spinner per entry. Stable order: first-record first.
+    let inFlight: [ActionLifecycleEntry]
+    /// Correlation_ids that settled (`accepted` / `failed`) within the
+    /// last 3 seconds. Render a success/failure toast per entry; the
+    /// kernel drops the entry on its next emit past the TTL. Stable
+    /// order: first-record first.
+    let recentTerminal: [ActionLifecycleEntry]
+}
+
 struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     let handle: String
     let eventId: String
@@ -1786,34 +1848,15 @@ struct OutboxSummary: Decodable, Equatable {
     )
 }
 
-struct RelayEditRow: Decodable, Identifiable, Equatable {
-    let url: String
-    let role: String
-    let roleLabel: String
-    let roleTint: String
-    var id: String { url }
-
-    init(
-        url: String,
-        role: String,
-        roleLabel: String = "",
-        roleTint: String = "accent"
-    ) {
-        self.url = url
-        self.role = role
-        self.roleLabel = roleLabel
-        self.roleTint = roleTint
-    }
-}
-
-struct RelayRoleOption: Decodable, Identifiable, Equatable {
-    let value: String
-    let label: String
-    let tint: String
-    let isDefault: Bool
-
-    var id: String { value }
-}
+// `RelayEditRow` and `RelayRoleOption` moved to
+// `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). Rust
+// source: `nmp-core/src/kernel/identity_state.rs::RelayEditRow` /
+// `nmp-core/src/actor/relay_roles.rs::RelayRoleOption`. The previous
+// `RelayEditRow` carried a custom memberwise `init(url:role:roleLabel:roleTint:)`
+// with defaulted last two args; no caller in the iOS shell constructed
+// `RelayEditRow` directly (only decoded from snapshots and read fields),
+// so removing the init is safe — the generated type's synthesised
+// memberwise init is unused.
 
 /// NIP-47 wallet connection status, projected from the kernel snapshot.
 struct WalletStatusData: Decodable, Equatable {
@@ -1983,68 +2026,26 @@ extension TimelineItem {
     }
 }
 
-/// Full kernel metrics (matches nmp_core snapshot output). Timing fields are
-/// optional because they are only populated once the relevant milestone is
-/// reached (e.g., `firstEventMs` is nil until the first event arrives).
-struct KernelMetrics: Decodable {
-    let generatedEvents: UInt64
-    let noteEvents: UInt64
-    let profileEvents: UInt64
-    let duplicateEvents: UInt64
-    let deleteEvents: UInt64
-    let storedEvents: Int
-    let tombstones: Int
-    let visibleItems: Int
-    let visibleProfiledItems: Int
-    let visiblePlaceholderAvatarItems: Int
-    let openViews: UInt32
-    let eventsSinceLastUpdate: UInt64
-    let diagnosticFirehoseEvents: UInt64
-    let insertedCount: Int
-    let updatedCount: Int
-    let removedCount: Int
-    let eventsPerSecondConfigured: UInt32
-    let emitHzConfigured: UInt32
-    let updateSequence: UInt64
-    let estimatedStoreBytes: Int
-    let payloadBytes: Int
-    let storeToPayloadRatio: Double
-    let actorQueueDepth: UInt32
-    let framesRx: UInt64
-    let eventsRx: UInt64
-    let eoseRx: UInt64
-    let noticesRx: UInt64
-    let closedRx: UInt64
-    let bytesRx: UInt64
-    let bytesTx: UInt64
-    let contactsAuthors: Int
-    let timelineAuthors: Int
-    let firstEventMs: UInt64?
-    let targetProfileLoadedMs: UInt64?
-    let timelineOpenedMs: UInt64?
-    let timelineFirstItemMs: UInt64?
-    let updateEmittedMs: UInt64?
-    let lastEventToEmitMs: UInt64?
-    let maxEventToEmitMs: UInt64
-    let maxEventsPerUpdate: UInt64
-}
-
-struct RelayStatus: Decodable, Equatable, Identifiable {
-    var id: String { relayUrl }
-    let role: String
-    let relayUrl: String
-    let connection: String
-    let auth: String
-    let nip77Negentropy: String?
-    let activeWireSubscriptions: Int
-    let reconnectCount: UInt32
-    let lastConnectedAtMs: UInt64?
-    let lastEventAtMs: UInt64?
-    let lastNotice: String?
-    let lastError: String?
-    let bytesRx: UInt64?
-    let bytesTx: UInt64?
-}
+// `KernelMetrics` and `RelayStatus` moved to
+// `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). Rust
+// source: `nmp-core/src/kernel/types.rs::Metrics` /
+// `nmp-core/src/kernel/types.rs::RelayStatus`. Field docs live alongside
+// the Rust definitions.
+//
+// The generated `KernelMetrics` adds two fields the hand-written shape
+// was missing — `dispatchDropsTotal` and `claimDropsTotal` — both
+// non-optional `UInt64`. The Rust kernel always emits them
+// (`update.rs::metrics_snapshot`), so the now-stricter Swift decode is
+// safe against any live snapshot.
+//
+// The generated `RelayStatus` adds three fields the hand-written shape
+// was missing — `errorCategory: String?`, `denied: Bool`, and
+// `lastCloseReason: String?` — all currently-emitted by
+// `kernel::status::relay_status()`. The `nip77Negentropy` field tightens
+// from `String?` to `String` (Rust emits it unconditionally as
+// `"unknown" | "probing" | "supported" | "unsupported"`), and
+// `bytesRx` / `bytesTx` / `eventsRx` are tightened from optional to
+// non-optional to match the Rust definitions.
 
 extension Duration {
     var microseconds: Int {

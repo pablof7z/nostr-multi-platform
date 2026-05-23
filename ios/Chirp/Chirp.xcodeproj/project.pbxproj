@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0248D621EC2123D7B7E13C0A /* GroupDiscoveryBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D480A8BF704C4F5C1F80AE /* GroupDiscoveryBridge.swift */; };
+		FB51698B24754DCEB2A1BB63 /* KernelTypes.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CEDF0304888431F95656463 /* KernelTypes.generated.swift */; };
 		06F6D20F46F0A4211F7B63D5 /* OnboardingView+Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */; };
 		072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985298ED1B842E892A6FA759 /* ProfileView.swift */; };
 		0D422FF23569CEEFFC4AB10E /* HomeFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F03417D370984DB9AC4212B /* HomeFeedView.swift */; };
@@ -81,6 +82,7 @@
 
 /* Begin PBXFileReference section */
 		06F566EF3969D45C9F6BDAE0 /* ChatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatsView.swift; sourceTree = "<group>"; };
+		6CEDF0304888431F95656463 /* KernelTypes.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelTypes.generated.swift; sourceTree = "<group>"; };
 		0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireSubscriptionDetailView.swift; sourceTree = "<group>"; };
 		0F7C6ADBA250165B0FFE7338 /* MarmotGroupsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotGroupsView.swift; sourceTree = "<group>"; };
 		18F55EDA0CB6D234B934C44A /* NoteEntityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEntityViews.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 			children = (
 				FDF6A637F032F16E09D2F6AC /* DmBridge.swift */,
 				1E62432F6B248D62C781D547 /* FollowListBridge.swift */,
+				641E2D06FA394908B12C512E /* Generated */,
 				F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */,
 				A7D480A8BF704C4F5C1F80AE /* GroupDiscoveryBridge.swift */,
 				1B303905AEF1833128E7C6BC /* KernelBridge.swift */,
@@ -275,6 +278,14 @@
 				C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */,
 			);
 			path = Bridge;
+			sourceTree = "<group>";
+		};
+		641E2D06FA394908B12C512E /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				6CEDF0304888431F95656463 /* KernelTypes.generated.swift */,
+			);
+			path = Generated;
 			sourceTree = "<group>";
 		};
 		E2E0CE7C80541C9169F414C6 = {
@@ -433,6 +444,7 @@
 				1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */,
 				68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */,
 				D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */,
+				FB51698B24754DCEB2A1BB63 /* KernelTypes.generated.swift in Sources */,
 				998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */,
 				99E0C16264F132D76DC0A2BF /* MarmotBridge.swift in Sources */,
 				475E4D5C5C2AB5E7EC579915 /* MarmotGroupChatView.swift in Sources */,
