@@ -1,48 +1,57 @@
 //! Browser-side runtime built on the pure `KernelReducer` from `nmp-core`.
 //!
-//! # V-01 Stage 2 status (post-PR)
+//! # V-01 Stage 3 status
 //!
-//! This module replaces the prior 295-line stub that maintained a `Vec<LocalNote>`
-//! and synthesized JSON snapshots with a hardcoded `"browser-local"` pubkey.
-//! It is now driven by [`nmp_core::KernelReducer`] — the same pure
-//! `(KernelAction) -> KernelUpdate` reducer the native actor loop uses. The
-//! wasm32 target compiles `nmp-core` with `default-features = false`, so the
-//! native actor thread (`run_actor`), the C-ABI FFI surface, the tungstenite
-//! relay worker, and the LMDB store are all gated out. What survives is the
-//! pure protocol kernel: NIP-19/NIP-21 decoding, interest-registry routing,
-//! view-spec resolution, and the snapshot wire envelope.
+//! The runtime drives a real [`nmp_core::KernelReducer`] (Stage 2) AND, on
+//! `wasm32`, owns a pool of [`crate::relay_driver::BrowserRelayDriver`]s — one
+//! `web_sys::WebSocket` per (URL, role) pair (Stage 3). Inbound relay frames
+//! arrive on the JS event loop, route through `KernelReducer::handle_relay_frame`,
+//! and the resulting outbound is fanned back out over the same sockets. The
+//! kernel's `RelayStatus`, `RelayFrame` ingest, and `OutboundMessage` paths
+//! are exercised end-to-end against live relays.
+//!
+//! On native targets the relay-driver pool is conditionally compiled out
+//! (the native crate already owns the native transport via `relay_worker`);
+//! `handle()` still works synchronously for the protocol-conformance tests
+//! that the workspace runs on native CI.
 //!
 //! # What is real
 //!
-//! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce real
-//!   `KernelUpdate` values.
-//! - `OpenUri` (a kernel-namespaced `ActionDispatch`) routes through
-//!   `resolve_open_uri` and emits the corresponding `ViewOpened` update.
-//! - Snapshot envelopes are produced via [`nmp_core::wrap_snapshot`]; the
-//!   `Update` event carries the canonical `{"t":"snapshot","v":…}` shape every
-//!   other host (iOS, Android, desktop) consumes.
+//! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce
+//!   real `KernelUpdate` values.
+//! - `OpenUri` routes through `resolve_open_uri` and emits the corresponding
+//!   `ViewOpened` update.
+//! - Snapshot envelopes are produced via [`nmp_core::wrap_snapshot`].
+//! - **(wasm32)** Relay sockets dial on `Start`, reconnect with the same
+//!   exponential backoff + jitter constants the native worker uses, ingest
+//!   frames into the kernel, and route outbound back to the wire.
 //!
-//! # What is honestly stubbed (Stage 3 / V-01 follow-up)
+//! # What is honestly stubbed (Stage 3b / V-01 follow-up)
 //!
-//! - **Relay transport.** `nmp-core`'s `relay_worker` is `#[cfg(feature = "native")]`
-//!   (tungstenite + mio + rustls). The wasm32 target has no `web_sys::WebSocket`
-//!   bridge yet. App-level actions that require relay I/O (`PublishNote`,
-//!   `React`, `Follow`, `Unfollow`) return a `CapabilityFailure` carrying a
-//!   `BrowserActorDriverMissing`-style reason.
 //! - **Event store.** No `nostr-database` / IndexedDB backend is wired yet —
 //!   the kernel runs entirely in memory and resets on page reload.
-//! - **Actor thread.** WASM has no OS threads; `run_actor` is replaced by
-//!   synchronous reduction inside `handle()`. Async paths (`FetchLnurlInvoice`,
-//!   `WalletPayInvoice`, NIP-46 broker round-trips) are not reachable.
-//!
-//! These gaps are explicit so Stage 3 has a precise scope: wire
-//! `web_sys::WebSocket` as a `RelayFrame` source, port `nostr-database` to
-//! IndexedDB, and let the kernel drive REQ/EVENT/CLOSE end-to-end.
+//! - **Identity / signing.** App-level *writes* (`PublishNote`, `React`,
+//!   `Follow`, `Unfollow`) still return a `CapabilityFailure` carrying a
+//!   `BrowserActorDriverMissing`-style reason — signing requires the identity
+//!   runtime + bunker hooks (`actor::commands::sign_in_*`) that live behind
+//!   `feature = "native"`. The wasm32 read path (relay frames → kernel →
+//!   snapshot) is functional; the write path is not yet.
+//! - **Async snapshot push.** Relay-driven kernel mutations don't yet push
+//!   a fresh snapshot to JS — the JS host pulls by dispatching a
+//!   `nmp.kernel.diagnostics` (or any other read action). A push channel via
+//!   `js_sys::Function` callback is Stage 3b.
 
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
 use nmp_core::{wrap_snapshot, KernelAction, KernelReducer, KernelUpdate, SNAPSHOT_SCHEMA_VERSION};
 use serde_json::Value;
+
+#[cfg(target_arch = "wasm32")]
+use crate::relay_driver::BrowserRelayDriver;
+#[cfg(target_arch = "wasm32")]
+use crate::relay_pool;
 
 use crate::protocol::{
     ActionDispatch, AppAction, CapabilityFailure, RelayBootstrapEntry, RuntimeStatus, StartConfig,
@@ -59,7 +68,11 @@ const PROTOCOL_VERSION: u16 = 1;
 /// branch needs no kernel; everything else does).
 pub struct WasmRuntime {
     /// Pure protocol kernel — the same reducer the native actor loop uses.
-    reducer: KernelReducer,
+    /// Held behind `Rc<RefCell>` so the wasm32 relay-driver closures can
+    /// share it without unsafe lifetime gymnastics. On native the wrapper is
+    /// effectively free (single-owned, single-threaded test harness) and
+    /// keeps both call sites symmetrical.
+    reducer: Rc<RefCell<KernelReducer>>,
     /// `Start` flips this to `true`; `Stop` flips it back. Mirrors the
     /// "running" flag the native actor exposes through its snapshot.
     started: bool,
@@ -71,7 +84,7 @@ pub struct WasmRuntime {
     /// `StartConfig` was honored end-to-end.
     relay_bootstrap: Vec<RelayBootstrapEntry>,
     /// Database name captured at `Start` time. The pure kernel never sees a
-    /// database (no IndexedDB binding yet — Stage 3). Echoed back through the
+    /// database (no IndexedDB binding yet — Stage 3b). Echoed back through the
     /// snapshot so hosts can verify the start handshake.
     database_name: String,
     /// Monotonic revision counter, mirroring the kernel's own `rev` field
@@ -79,16 +92,24 @@ pub struct WasmRuntime {
     /// successful kernel-driven update so hosts can apply the bible's
     /// monotonic-revision-guard rule.
     rev: u64,
+    /// Live `web_sys::WebSocket` drivers — one per relay URL in the bootstrap.
+    /// `wasm32`-only: native tests never construct drivers. The
+    /// `RefCell<Vec<…>>` lets the sink closure (registered at `Start` time)
+    /// look up the driver by URL on every outbound fan-out.
+    #[cfg(target_arch = "wasm32")]
+    relays: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
 }
 
 impl Default for WasmRuntime {
     fn default() -> Self {
         Self {
-            reducer: KernelReducer::new(),
+            reducer: Rc::new(RefCell::new(KernelReducer::new())),
             started: false,
             relay_bootstrap: Vec::new(),
             database_name: String::new(),
             rev: 0,
+            #[cfg(target_arch = "wasm32")]
+            relays: Rc::new(RefCell::new(Vec::new())),
         }
     }
 }
@@ -164,7 +185,8 @@ impl WasmRuntime {
         // reducer entry point `dispatch_kernel_action` calls on the native
         // actor thread, byte-for-byte. The returned `Started { rev }` is the
         // ground truth for the runtime's own monotonic counter.
-        match self.reducer.reduce(KernelAction::Start) {
+        let started = self.reducer.borrow_mut().reduce(KernelAction::Start);
+        match started {
             KernelUpdate::Started { rev } => {
                 self.rev = rev;
             }
@@ -183,6 +205,15 @@ impl WasmRuntime {
         self.relay_bootstrap = relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
         self.database_name = config.database_name;
 
+        // V-01 Stage 3 — spawn one `BrowserRelayDriver` per relay URL on
+        // wasm32. The driver dials immediately and routes inbound frames
+        // through `KernelReducer::handle_relay_frame`; outbound from those
+        // frames fan out over the sink registered below. Native builds skip
+        // this path entirely — they have no `web_sys` and use the native
+        // `relay_worker` thread when they want real transport.
+        #[cfg(target_arch = "wasm32")]
+        self.spawn_relay_drivers()?;
+
         Ok(vec![
             WorkerEvent::RuntimeStatus {
                 status: RuntimeStatus::Running,
@@ -193,9 +224,18 @@ impl WasmRuntime {
     }
 
     fn stop(&mut self, correlation_id: String) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
+        // Tear down every live relay driver — closing the JS sockets and
+        // dropping the parked closures so the user-agent reclaims them.
+        // Order matters: close sockets BEFORE driving the kernel `Stop`,
+        // because the kernel's `Stop` arm resets the per-relay state we
+        // want to settle observers on.
+        #[cfg(target_arch = "wasm32")]
+        relay_pool::close_drivers(&self.relays);
+
         // Mirror `Start`: drive the kernel through its `Stop` action so the
         // single reducer is the single writer of the running/stopped flag.
-        match self.reducer.reduce(KernelAction::Stop) {
+        let stopped = self.reducer.borrow_mut().reduce(KernelAction::Stop);
+        match stopped {
             KernelUpdate::Stopped { rev } => {
                 self.rev = rev;
             }
@@ -210,6 +250,23 @@ impl WasmRuntime {
             status: RuntimeStatus::Stopped,
             correlation_id: Some(correlation_id),
         }])
+    }
+
+    /// V-01 Stage 3 — instantiate one `BrowserRelayDriver` per configured
+    /// relay URL and wire each one's outbound sink so the kernel's responses
+    /// (AUTH replies, EOSE-CLOSEs, view REQs registered while the socket was
+    /// dialling) fan back out over the same socket pool. Implementation lives
+    /// in [`crate::relay_pool`].
+    #[cfg(target_arch = "wasm32")]
+    fn spawn_relay_drivers(&mut self) -> Result<(), WasmRuntimeError> {
+        let sink = relay_pool::build_sink(Rc::clone(&self.relays));
+        let drivers = relay_pool::spawn_drivers(
+            &self.relay_bootstrap,
+            Rc::clone(&self.reducer),
+            sink,
+        )?;
+        *self.relays.borrow_mut() = drivers;
+        Ok(())
     }
 
     fn app_action(
@@ -239,7 +296,7 @@ impl WasmRuntime {
         // app-namespaced ones (anything that emits a signed event) hit the
         // same BrowserActorDriverMissing wall as `app_action` above.
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
-            let update = self.reducer.reduce(kernel_action);
+            let update = self.reducer.borrow_mut().reduce(kernel_action);
             // The kernel reducer is the source of truth for the
             // `Started`/`Stopped` transition; mirror its outcome into the
             // runtime's `started` flag and `rev` counter so subsequent
