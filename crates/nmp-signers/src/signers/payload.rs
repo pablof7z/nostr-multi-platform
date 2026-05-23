@@ -2,7 +2,7 @@
 //!
 //! Every [`Signer`](super::Signer) round-trips through a `SignerPayload`.  The
 //! payload is a discriminated union so storage adapters (Keychain, LMDB, web
-//! IndexedDB) treat all signer kinds uniformly: store JSON, parse on restore,
+//! `IndexedDB`) treat all signer kinds uniformly: store JSON, parse on restore,
 //! call `Signer::from_payload(payload)`.
 //!
 //! The applesauce / NDK pattern is mirrored: NIP-07 payloads carry no secret

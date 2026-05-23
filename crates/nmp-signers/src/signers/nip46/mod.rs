@@ -10,7 +10,7 @@
 //!
 //! `Nip46SignerHandle` is the **pre-handshake** form: it carries a parsed
 //! `bunker://` URI + local ephemeral keys.  Once the caller has completed the
-//! connect / get_public_key RPC handshake, `complete(transport, pubkey)` returns
+//! connect / `get_public_key` RPC handshake, `complete(transport, pubkey)` returns
 //! the upgraded `Nip46Signer`.
 //!
 //! ## Design choices
@@ -57,7 +57,7 @@ type PendingMap = HashMap<String, Sender<Result<String, SignerError>>>;
 ///
 /// Produced by [`Nip46SignerHandle::from_bunker_uri`].  Carries the parsed
 /// bunker URI + local ephemeral keys.  Call `complete()` after the kernel has
-/// completed the connect / get_public_key handshake and learned the remote user
+/// completed the connect / `get_public_key` handshake and learned the remote user
 /// pubkey.
 #[derive(Debug)]
 pub struct Nip46SignerHandle {
@@ -211,7 +211,7 @@ impl Nip46Signer {
         &self.uri
     }
 
-    fn enqueue(&self, method: &str, params_json: String) -> SignerOp<String> {
+    fn enqueue(&self, method: &str, params_json: &str) -> SignerOp<String> {
         let id = generate_request_id();
         let body_json = format!(
             r#"{{"id":"{id}","method":"{method}","params":{params_json}}}"#,
@@ -275,7 +275,7 @@ impl Signer for Nip46Signer {
                 )))
             }
         };
-        let raw_op = self.enqueue("sign_event", params_json);
+        let raw_op = self.enqueue("sign_event", &params_json);
         map_response_to_event(raw_op, unsigned, self.remote_user_pubkey)
     }
 
@@ -302,22 +302,22 @@ impl Signer for Nip46Signer {
 impl Nip04 for Nip46Signer {
     fn encrypt(&self, recipient: &PublicKey, plaintext: &str) -> SignerOp<String> {
         let params = format!(r#"["{}","{}"]"#, recipient.to_hex(), escape_json(plaintext));
-        self.enqueue("nip04_encrypt", params)
+        self.enqueue("nip04_encrypt", &params)
     }
     fn decrypt(&self, sender: &PublicKey, ciphertext: &str) -> SignerOp<String> {
         let params = format!(r#"["{}","{}"]"#, sender.to_hex(), escape_json(ciphertext));
-        self.enqueue("nip04_decrypt", params)
+        self.enqueue("nip04_decrypt", &params)
     }
 }
 
 impl Nip44 for Nip46Signer {
     fn encrypt(&self, recipient: &PublicKey, plaintext: &str) -> SignerOp<String> {
         let params = format!(r#"["{}","{}"]"#, recipient.to_hex(), escape_json(plaintext));
-        self.enqueue("nip44_encrypt", params)
+        self.enqueue("nip44_encrypt", &params)
     }
     fn decrypt(&self, sender: &PublicKey, payload: &str) -> SignerOp<String> {
         let params = format!(r#"["{}","{}"]"#, sender.to_hex(), escape_json(payload));
-        self.enqueue("nip44_decrypt", params)
+        self.enqueue("nip44_decrypt", &params)
     }
 }
 

@@ -14,7 +14,7 @@ use crate::signers::{Signer, SignerError};
 /// Identity id is the hex-encoded pubkey of the account (matches NDK + applesauce).
 pub type IdentityId = String;
 
-/// AccountManager error variants.
+/// `AccountManager` error variants.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum AccountError {
     /// No account exists with this id.

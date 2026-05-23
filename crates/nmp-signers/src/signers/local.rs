@@ -213,7 +213,7 @@ impl LocalKeySigner {
             sig: event.sig.to_string(),
             unsigned: UnsignedEvent {
                 pubkey: event.pubkey.to_hex(),
-                kind: event.kind.as_u16() as u32,
+                kind: u32::from(event.kind.as_u16()),
                 tags: event
                     .tags
                     .iter()

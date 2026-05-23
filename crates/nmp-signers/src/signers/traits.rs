@@ -55,7 +55,7 @@ pub trait Nip44: Send + Sync {
 ///    pre-handshake handle type.
 /// 2. `sign()` returns a signature whose embedded pubkey equals `self.pubkey()`
 ///    and whose computed id matches the unsigned template.  `AccountManager`
-///    enforces this post-condition (applesauce SignerMismatchError).
+///    enforces this post-condition (applesauce `SignerMismatchError`).
 /// 3. `nip04()` / `nip44()` return `Some(_)` iff the signer can service that
 ///    namespace.  Callers MUST check.
 /// 4. `to_payload()` round-trips via the kind-specific constructor; re-handshake
