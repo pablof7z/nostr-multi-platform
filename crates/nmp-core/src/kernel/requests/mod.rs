@@ -173,22 +173,17 @@ impl Kernel {
             relay_url
         ));
         let paused = self.relay_auth_paused(role);
-        self.wire.subs.insert(
-            (wire_key_url.clone(), sub_id.to_string()),
-            WireSub {
-                id: sub_id.to_string(),
-                role,
-                relay_url: wire_key_url,
-                filter_summary: summary.to_string(),
-                state: if paused { "auth_paused" } else { "opening" }.to_string(),
-                events_rx: 0,
-                opened_at: Instant::now(),
-                last_event_at: None,
-                eose_at: None,
-                close_reason: None,
-            },
+        // PD-033-C Stage 0: route through the single-writer helper. Stage 6
+        // retires this M1 caller entirely; until then the helper preserves
+        // M1's `auth_paused` initial state (M2 hardcodes `"opening"`, which
+        // is a known asymmetry — see pd033c-plan.md §4.1).
+        self.insert_wire_sub(
+            role,
+            wire_key_url,
+            sub_id.to_string(),
+            summary.to_string(),
+            if paused { "auth_paused" } else { "opening" },
         );
-        self.changed_since_emit = true;
         OutboundMessage {
             role,
             relay_url,
@@ -281,20 +276,17 @@ impl Kernel {
                     if matches!(lifecycle, InterestLifecycle::Tailing) {
                         self.register_persistent_sub(key.as_str(), sub_id.clone());
                     }
-                    self.wire.subs.insert(
-                        (key.clone(), sub_id.clone()),
-                        WireSub {
-                            id: sub_id.clone(),
-                            role,
-                            relay_url: key,
-                            filter_summary: filter_json.clone(),
-                            state: "opening".to_string(),
-                            events_rx: 0,
-                            opened_at: Instant::now(),
-                            last_event_at: None,
-                            eose_at: None,
-                            close_reason: None,
-                        },
+                    // PD-033-C Stage 0: route through the single-writer helper.
+                    // After Stage 6 this is the SOLE caller of `insert_wire_sub`.
+                    // M2 keeps its `"opening"` initial state (M1 has an extra
+                    // `auth_paused` branch — see pd033c-plan.md §4.1 for the
+                    // gap and the AuthGate consolidation that closes it).
+                    self.insert_wire_sub(
+                        role,
+                        key,
+                        sub_id.clone(),
+                        filter_json.clone(),
+                        "opening",
                     );
                 }
                 WireFrame::Close { relay_url, sub_id } => {

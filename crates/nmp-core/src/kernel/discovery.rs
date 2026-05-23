@@ -121,6 +121,13 @@ impl Kernel {
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
             self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
+            // TODO(pd033c-stage1): dual-write D4 violation — `oneshot.request`
+            // above already registers this interest in `InterestRegistry`
+            // (System #2). The `self.req(...)` below ALSO writes the same fact
+            // into `Kernel.wire.subs` (System #1, via the M1 helper). Stage 1
+            // of the PD-033-C migration deletes this `self.req(...)` so the
+            // planner's next `drain_tick` emits the WireFrame instead. See
+            // `docs/architecture-audit/pd033c-plan.md` §1.3 and §5 Stage 1.
             out.extend(self.req(
                 RelayRole::Content,
                 &sub_id,
@@ -151,6 +158,10 @@ impl Kernel {
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
             self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
+            // TODO(pd033c-stage1): dual-write D4 violation — see twin TODO in
+            // the events-oneshot arm above. Stage 1 deletes this `self.req(...)`
+            // call; the `oneshot.request(...)` two lines up is already the
+            // canonical (InterestRegistry) registration.
             out.extend(self.req(
                 RelayRole::Indexer,
                 &sub_id,
