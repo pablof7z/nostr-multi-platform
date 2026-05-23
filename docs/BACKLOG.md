@@ -240,16 +240,16 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 **Production-only files verified over ceiling (2026-05-24):**
 
-*Test-extractable (test section brings production below 500):*
-- `crates/nmp-core/src/actor/relay_mgmt.rs` — 806 total, ~371 prod (tests start 372)
-- `crates/nmp-core/src/actor/commands/raw_event_observer.rs` — 833 total, ~476 prod (tests start 477)
-- `crates/nmp-core/src/actor/commands/dm.rs` — 680 total, ~454 prod (tests start 455)
-- `crates/nmp-core/src/actor/commands/zap.rs` — 682 total, ~426 prod (tests start 427)
-- `crates/nmp-core/src/kernel/outbox.rs` — 713 total, ~384 prod (tests start 385)
-- `crates/nmp-core/src/publish/state.rs` — 516 total, ~345 prod (tests start 346)
-- `crates/nmp-core/src/relay.rs` — 516 total, ~338 prod (tests start 339)
-- `crates/nmp-nip65/src/lib.rs` — 569 total, ~261 prod (tests start 262)
-- `crates/nmp-nostr-lmdb/src/lib.rs` — 1144 total, ~267 prod (tests start 267)
+*Test-extractable — all addressed (PRs merged 2026-05-24):*
+- ~~`crates/nmp-core/src/actor/relay_mgmt.rs`~~ — 806 → 374 LOC (PR #394)
+- ~~`crates/nmp-core/src/actor/commands/raw_event_observer.rs`~~ — 833 → 479 LOC (PR #398)
+- ~~`crates/nmp-core/src/actor/commands/dm.rs`~~ — 680 → 457 LOC (PR #395)
+- ~~`crates/nmp-core/src/actor/commands/zap.rs`~~ — 682 → 429 LOC (PR #401)
+- ~~`crates/nmp-core/src/kernel/outbox.rs`~~ — 713 → 387 LOC (PR #399)
+- ~~`crates/nmp-core/src/publish/state.rs`~~ — 516 → 348 LOC (PR #396)
+- `crates/nmp-core/src/relay.rs` — 516 → 341 LOC (PR #397, CI re-running)
+- ~~`crates/nmp-nip65/src/lib.rs`~~ — 569 → 265 LOC (PR #388)
+- ~~`crates/nmp-nostr-lmdb/src/lib.rs`~~ — 1144 → 269 LOC (PR #400)
 
 *Production splits needed (no test section to extract; post-v1):*
 - `crates/nmp-core/src/actor/mod.rs` — 1488 LOC
@@ -263,8 +263,9 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 **Completed test extractions:**
 - handle.rs, signer_seal.rs, view.rs (commit 34fc71a1 — 2026-05-23)
-- action_stages.rs, planner/selection.rs, substrate/bounded.rs, nmp-nip65/src/lib.rs, publish/action.rs (PR in progress — 2026-05-24)
+- action_stages.rs, planner/selection.rs, substrate/bounded.rs, nmp-nip65/src/lib.rs, publish/action.rs (PR #388 — 2026-05-24)
 - identity.rs (commit e79f7a90); wallet.rs (PR #376)
+- relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs (PRs #394-#401 — 2026-05-24)
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
