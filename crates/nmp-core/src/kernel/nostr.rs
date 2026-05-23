@@ -1,3 +1,12 @@
+//! Pure Nostr-protocol helpers used by the kernel's event processing path.
+//!
+//! Contains event-parsing utilities (`parse_profile`, `parse_relay_list`),
+//! timeline diffing (`diff_items`), display helpers (`short_hex`,
+//! `avatar_color`, `truncate`, `initials`), and predicate helpers
+//! (`is_hex_pubkey`, `event_references`). All functions are `pub(super)` or
+//! `pub(crate)` — they are internal kernel implementation details, not public
+//! NMP API.
+
 use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSet, StoredEvent, BTreeSet, UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
 use crate::substrate::SignedEvent;
 

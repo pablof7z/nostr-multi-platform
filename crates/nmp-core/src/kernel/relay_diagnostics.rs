@@ -1,8 +1,7 @@
+//! Diagnostics-screen projection: pre-rolled relay + wire-subscription rows.
 // Display-only formatters: float casts and count truncations are acceptable
 // for metrics labels that are never used in arithmetic.
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-
-//! Diagnostics-screen projection: pre-rolled relay + wire-subscription rows.
 //!
 //! The three iOS diagnostics surfaces (`DiagnosticsView`, `RelayDetailView`,
 //! `WireSubscriptionDetailView`) used to filter / sort / reduce the raw
