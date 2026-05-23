@@ -74,14 +74,16 @@ makes the eventual fix harder.
   always-compiled `nmp_core::relay_protocol`. `RelayFrame` / `OutboundMessage` / `RelayRole`
   promoted to `pub`. The native `relay_worker` thread is unchanged. Auto-reconnect uses the
   exact same exponential backoff + per-URL jitter constants the native worker does.
-- Stage 3b (write path): app-level `AppAction` writes (PublishNote / React / Follow / Unfollow)
-  still return `browser_actor_driver_missing` — signing requires the identity runtime + bunker
-  hooks (`actor::commands::sign_in_*`) that live behind `feature = "native"`. Wire IndexedDB
-  store + identity runtime; deliver async snapshot push to JS via `js_sys::Function` callback.
-  An in-flight branch (`feat/wasm-stage3b-write-path`) prototypes the NIP-07 signer + snapshot
-  push callback; not yet merged to master.
+- Stage 3b ✅ DONE (PR #378 — merged 2026-05-23): NIP-07 signer + async snapshot push.
+  `Nip07Signer::sign()` on wasm32 bridges `window.nostr.signEvent(...)` via
+  `wasm-bindgen-futures::spawn_local` with cached-pubkey cross-check. Two-state honest error:
+  `signer_not_installed` vs. `publish_path_not_wired`. `NmpWasmRuntime::set_snapshot_callback`
+  pushes a JSON frame to JS after every inbound relay frame. New files: `dispatch_routing.rs`,
+  `signer_slot.rs`, `snapshot.rs` (all under 500-LOC ceiling).
+- Stage 3c (remaining gaps): IndexedDB store + publish-path wire (`publish_path_not_wired` →
+  real `dispatch_action_json`) + multi-role bootstrap parsing — see F-01.
 
-No chirp-web features may be added until Stage 3b lands.
+No chirp-web write features requiring persistence across reloads may be added until Stage 3c lands.
 
 ### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 

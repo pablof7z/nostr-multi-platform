@@ -17,7 +17,7 @@
 **What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
 
 **What does not work yet** (v1 blockers):
-1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` now drives the real `KernelReducer` (Stage 2, PR #372) and owns a `BrowserRelayDriver` pool over `web_sys::WebSocket` for the read path (Stage 3, PR #375). **Stage 3b remains v1-blocking**: IndexedDB persistence, wasm-compatible signer (browser-keychain / NIP-46 bunker broker), async snapshot push to JS via `js_sys::Function` callback, and multi-role bootstrap parsing. App-level writes (PublishNote / React / Follow / Unfollow) still return `browser_actor_driver_missing`. No `chirp-web` write features allowed until Stage 3b lands.
+1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` now drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool over `web_sys::WebSocket` for the read path (Stage 3, PR #375), and has NIP-07 signer + async snapshot push (Stage 3b, PR #378). **Stage 3c remains v1-blocking**: IndexedDB persistence, publish-path wire (`publish_path_not_wired` → real `dispatch_action_json`), and multi-role bootstrap parsing. No persistent chirp-web write features allowed until Stage 3c lands.
 2. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
 3. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
 4. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`; deletes the 1,988-LOC handwritten counterpart in `KernelBridge.swift`.
@@ -83,7 +83,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
-| M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stage 2 + Stage 3 read path landed (PR #372/#375); **Stage 3b write path + IndexedDB still v1-blocking** |
+| M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stage 2 + Stage 3 + Stage 3b landed (PR #372/#375/#378); **Stage 3c IndexedDB + publish-path wire still v1-blocking** |
 | M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
 | M17 v1 release | pending | ❌ Pending |
 
@@ -99,7 +99,7 @@ v1 ships when **all of the following** hold:
 2. **Every `BACKLOG.md` Section 4 v1-blocker item is closed.** Today: F-01, F-02, F-04, F-05.
 3. **Every pending user decision in Section 3 is resolved** (today: PD-033-C, PD-037; PD-033-A confirmed 2026-05-23 by `apps/notes/`).
 4. **Stateful second-app spike is run** — ✅ done (PR #377: `apps/notes/` confirms the framework thesis; 299 LOC Swift, 25 LOC Rust, 0 new C-ABI symbols).
-5. **`nmp-wasm` is no longer a stub.** Stage 2 + Stage 3 read path complete (PR #372/#375); Stage 3b (write path + IndexedDB + async snapshot push) is the remaining v1-blocking work — see F-01.
+5. **`nmp-wasm` is no longer a stub.** Stage 2 + Stage 3 + Stage 3b complete (PR #372/#375/#378); Stage 3c (IndexedDB + publish-path wire + multi-role bootstrap) is the remaining v1-blocking work — see F-01.
 6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
 7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** Calendar = "N existing symbols migrated to `dispatch_action` per quarter, N owned." Calendar must be written before any new v1 feature lands.
 8. **Snapshot serialization has a CI regression gate.** `make_update_us` + `serialize_us` are instrumented (`feedback memory: opus_direction_review_2026_05_23b`); the gate threshold must be documented (e.g. p99 < 8ms over 1k-event firehose) and CI-enforced.
