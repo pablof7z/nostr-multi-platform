@@ -124,17 +124,7 @@ pub extern "C" fn nmp_app_longform_snapshot_json() -> *const c_char {
     let Some(store) = STORE.get() else {
         return std::ptr::null();
     };
-    let snapshot = {
-        let Ok(guard) = store.lock() else {
-            return std::ptr::null();
-        };
-        // Inline the same shape `LongformProjection::snapshot_json` produces
-        // — sorted-newest-first articles — so the FFI getter can avoid the
-        // extra Arc clone of the projection itself.
-        let mut articles: Vec<_> = guard.values().cloned().collect();
-        articles.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        serde_json::json!({ "articles": articles })
-    };
+    let snapshot = LongformProjection::new(Arc::clone(store)).snapshot_json();
     let Ok(serialised) = serde_json::to_string(&snapshot) else {
         return std::ptr::null();
     };
