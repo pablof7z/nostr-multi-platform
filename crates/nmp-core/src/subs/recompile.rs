@@ -36,11 +36,12 @@ impl SubscriptionLifecycle {
         mailbox_cache: &dyn MailboxCache,
     ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
-        let compiler = SubscriptionCompiler::with_relays(
+        let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
             mailbox_cache,
             &self.indexer_relays,
             &self.active_account_read_relays,
             &self.app_relays,
+            &self.bootstrap_content_relays,
         );
         let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);

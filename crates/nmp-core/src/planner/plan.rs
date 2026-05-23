@@ -54,6 +54,24 @@ pub enum UserConfiguredCategory {
     AppRelay,
     /// Operator-injected relay for debug/testing purposes.
     Debug,
+    /// Cold-start bootstrap content relay (PD-033-C planner-extension lane).
+    ///
+    /// Distinct from [`Indexer`] (which is discovery-only, never content) and
+    /// from [`AppRelay`] (operator-configured, may be empty before any user
+    /// configuration). The kernel populates `bootstrap_content_relays` from
+    /// `Kernel::bootstrap_urls_for_role(RelayRole::Content)` — the same
+    /// well-known seed (`FALLBACK_CONTENT_RELAY`) it uses for cold-start
+    /// connections — so a `OneShot + Global` discovery interest with concrete
+    /// `event_ids` always has a landing pad even before any account is loaded.
+    ///
+    /// Only consumed by Case D for `OneShot + Global + event_ids`-shaped
+    /// interests. Cases A/B/C never route to this lane (an `authors`-shape
+    /// without a NIP-65 mailbox routes via [`Indexer`] in the same
+    /// PD-033-C-bootstrap arm; see Case A's `if !landed` block).
+    ///
+    /// [`Indexer`]: UserConfiguredCategory::Indexer
+    /// [`AppRelay`]: UserConfiguredCategory::AppRelay
+    Bootstrap,
 }
 
 // ─── RoutingSource ───────────────────────────────────────────────────────────

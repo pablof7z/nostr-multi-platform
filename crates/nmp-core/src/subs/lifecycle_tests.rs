@@ -594,6 +594,114 @@ fn mark_relay_alive_on_never_dead_relay_is_noop() {
     assert!(l.inbox.is_empty(), "no trigger may be enqueued for a no-op");
 }
 
+// ─── PD-033-C — `set_bootstrap_content_relays` end-to-end wiring ─────────────
+
+/// PD-033-C planner extension end-to-end smoke: setting bootstrap content
+/// relays on the lifecycle and registering a `OneShot + Global + event_ids`
+/// discovery interest produces a `WireFrame::Req` addressed to the bootstrap
+/// URL. Proves the lifecycle threads the new field into the compiler and the
+/// compiler's new gate fires through to the wire-emitter.
+///
+/// This is the integration counterpart to the in-tree
+/// `case_d_no_author::tests::pd033c_event_ids_oneshot_global_routes_to_bootstrap_content`
+/// unit test — together they pin the planner-side prerequisite for Stage 1.
+#[test]
+fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
+    let mut l = SubscriptionLifecycle::new();
+    // Drop the cfg(test) purplepag.es default so we can prove the discovery
+    // REQ lands on bootstrap content, not the indexer fallback.
+    l.set_indexer_relays(vec![]);
+    l.set_bootstrap_content_relays(vec!["wss://relay.primal.net".to_string()]);
+
+    let mailboxes = InMemoryMailboxCache::new();
+    // Discovery oneshot for an event id — matches `oneshot.request(...)` in
+    // `kernel/discovery.rs::drain_unknown_oneshots` (events arm).
+    let event_id_hex: String = "aa".repeat(32);
+    let interest = LogicalInterest {
+        id: InterestId(1),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            event_ids: [event_id_hex.clone()].into_iter().collect(),
+            limit: Some(1),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::OneShot,
+    };
+    l.registry_mut().push(interest);
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let landed: Vec<&WireFrame> = frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://relay.primal.net"))
+        .collect();
+    assert_eq!(
+        landed.len(),
+        1,
+        "exactly one REQ must land on the bootstrap content relay; got {} frames in total: {:?}",
+        landed.len(),
+        frames
+    );
+    if let WireFrame::Req { lifecycle, filter_json, .. } = landed[0] {
+        assert!(
+            matches!(lifecycle, InterestLifecycle::OneShot),
+            "the bootstrap REQ must carry OneShot lifecycle (CLOSE on EOSE)"
+        );
+        assert!(
+            filter_json.contains(&event_id_hex),
+            "the bootstrap REQ filter must carry the discovery event_id; got {filter_json}"
+        );
+    } else {
+        panic!("expected a WireFrame::Req on the bootstrap relay");
+    }
+}
+
+/// `set_bootstrap_content_relays` REPLACES the bootstrap set wholesale —
+/// matches the `set_indexer_relays` / `set_app_relays` setter contract. An
+/// empty Vec disables the bootstrap gate, falling back to the unchanged
+/// Case D body.
+#[test]
+fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
+    let mut l = SubscriptionLifecycle::new();
+    l.set_indexer_relays(vec![]);
+    l.set_bootstrap_content_relays(vec!["wss://first.example".to_string()]);
+    l.set_bootstrap_content_relays(vec![
+        "wss://second.example".to_string(),
+        "wss://third.example".to_string(),
+    ]);
+
+    let mailboxes = InMemoryMailboxCache::new();
+    let event_id_hex: String = "bb".repeat(32);
+    l.registry_mut().push(LogicalInterest {
+        id: InterestId(1),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            event_ids: [event_id_hex].into_iter().collect(),
+            limit: Some(1),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::OneShot,
+    });
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let urls: std::collections::BTreeSet<String> = frames
+        .iter()
+        .filter_map(|f| match f {
+            WireFrame::Req { relay_url, .. } => Some(relay_url.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        urls.contains("wss://second.example") && urls.contains("wss://third.example"),
+        "later setter call must REPLACE the prior set; got {urls:?}"
+    );
+    assert!(
+        !urls.contains("wss://first.example"),
+        "the first bootstrap URL must have been replaced, not retained; got {urls:?}"
+    );
+}
+
 /// `set_indexer_relays` REPLACES the indexer set wholesale — it does not
 /// append to the `#[cfg(test)]` purplepag.es default. Setting an empty Vec
 /// disables the indexer fallback entirely.

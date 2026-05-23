@@ -166,6 +166,22 @@ pub struct SubscriptionLifecycle {
     /// [`Self::set_active_account_read_relays`]; defaults to empty so the
     /// no-author firehose falls back to `app_relays`, then indexer.
     active_account_read_relays: Vec<RelayUrl>,
+    /// PD-033-C — cold-start bootstrap content relays.
+    ///
+    /// Populated by the kernel from `bootstrap_urls_for_role(RelayRole::Content)`
+    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_relay_edit_rows`)
+    /// — the same well-known seed the actor opens its first content socket on.
+    /// Threaded into the compiler on every recompile so a `OneShot + Global +
+    /// event_ids`-shaped discovery interest (the kernel-driven oneshot from
+    /// `kernel/discovery.rs::drain_unknown_oneshots`) routes to those URLs
+    /// instead of `indexer_relays` (which is discovery-only for
+    /// kind:0/3/10002, not for event-id batches).
+    ///
+    /// Defaults to empty so existing tests and pre-PD-033-C call sites see
+    /// the unchanged Case D behaviour. See
+    /// `docs/architecture-audit/pd033c-plan.md` §4.3 for the routing-gap
+    /// rationale.
+    bootstrap_content_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,
     /// Per-relay auth state + pending REQ buffer.

@@ -45,6 +45,7 @@ impl SubscriptionLifecycle {
             },
             app_relays: Vec::new(),
             active_account_read_relays: Vec::new(),
+            bootstrap_content_relays: Vec::new(),
             current_plan: None,
             auth_gate: AuthGate::new(),
             compile_count: 0,
@@ -138,6 +139,22 @@ impl SubscriptionLifecycle {
     /// account's kind:10002 read-relays.
     pub fn set_active_account_read_relays(&mut self, relays: Vec<RelayUrl>) {
         self.active_account_read_relays = relays;
+    }
+
+    /// PD-033-C — install (or replace) the cold-start bootstrap content relay
+    /// list.
+    ///
+    /// Populated by the kernel from
+    /// `bootstrap_urls_for_role(RelayRole::Content)`; threaded into the compiler
+    /// on every recompile. Empty by default so existing call sites see no
+    /// behavioural change; a `OneShot + Global + event_ids`-shaped discovery
+    /// interest with an empty bootstrap set falls through to the unchanged
+    /// Case D body. See
+    /// [`crate::planner::compiler::SubscriptionCompiler::with_relays_and_bootstrap`]
+    /// and `docs/architecture-audit/pd033c-plan.md` §4.3 for the routing
+    /// rationale.
+    pub fn set_bootstrap_content_relays(&mut self, relays: Vec<RelayUrl>) {
+        self.bootstrap_content_relays = relays;
     }
 
     /// Install (or replace) the post-compile [`PlanCoverageHook`].

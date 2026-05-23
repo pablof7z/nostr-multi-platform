@@ -15,12 +15,24 @@
 //!   lane `UserConfigured(AppRelay)`. We still emit `request_probe` so that
 //!   kind:10002 lookup populates the mailbox cache and the next recompile
 //!   routes the author through NIP-65.
-//! - Author with NO NIP-65 mailbox AND no `app_relays` configured → the
-//!   author is recorded in `unroutable` so the kernel can surface a UI
-//!   diagnostic. The interest still flies to other authors' relays.
+//! - Author with NO NIP-65 mailbox AND no `app_relays` configured AND the
+//!   interest is `OneShot + Global` → REQ goes to `indexer_relays` with lane
+//!   `UserConfigured(Indexer)`. This is the PD-033-C planner-extension arm
+//!   (`docs/architecture-audit/pd033c-plan.md` §4.3): kernel-driven discovery
+//!   oneshots for referenced pubkeys (`kernel/discovery.rs::drain_unknown_oneshots`'s
+//!   profile-oneshot arm) fan to `RelayRole::Indexer` for kind:0/3/10002
+//!   lookups, so the planner must mirror that decision for the equivalent
+//!   `LogicalInterest`. Without this fallback the silent-loss regression
+//!   reappears the moment M1 is deleted.
+//! - Author with NO NIP-65 mailbox AND no `app_relays` AND NOT a `OneShot +
+//!   Global` interest → the author is recorded in `unroutable` so the kernel
+//!   can surface a UI diagnostic. The interest still flies to other authors'
+//!   relays.
 //!
-//! The indexer set is NEVER consulted in this case. Indexers are discovery-
-//! only (kind:0 / kind:3 / kind:10002 lookups driven by the kernel directly).
+//! Outside the PD-033-C `OneShot + Global` arm the indexer set is NEVER
+//! consulted in this case — indexers remain discovery-only for tailing
+//! follow-feed authors (the T134 invariant), and the kernel surfaces missing
+//! mailboxes as "unroutable" via the UI toast as before.
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1 / §3.2
 //! Doctrine: D3 (outbox routing automatic).
@@ -28,7 +40,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::planner::{
-    interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
+    interest::{InterestScope, InterestLifecycle, InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
     plan::{RoutingSource, UserConfiguredCategory},
 };
 use super::{MailboxCache, RelayEntry};
@@ -42,15 +54,36 @@ type CaseAEntry = (BTreeSet<Pubkey>, BTreeSet<NaddrCoord>, BTreeSet<RoutingSourc
 /// Also emits inbox entries for any `#p` tag values ("both populated" split).
 /// The inbox slice carries the original `authors` so the REQ semantics remain
 /// `authors AND #p` (intersection) rather than a wildcard over all #p events.
+///
+/// `indexer_relays` is the PD-033-C planner-extension fallback for the
+/// `OneShot + Global` discovery-oneshot arm only — see module doc and the
+/// `if !landed` block below. Tailing / account-scoped interests never touch it.
+//
+// `too_many_arguments` allowed: this is a crate-internal routing helper whose
+// parameters mirror the public compiler context plus its two accumulators;
+// repackaging them behind a struct would obscure the dispatch in
+// `partition::partition_interest` for no readability gain.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn route(
     interest: &LogicalInterest,
     p_tag_values: &BTreeSet<Pubkey>,
     base_shape: &InterestShape,
     mailbox_cache: &dyn MailboxCache,
     app_relays: &[RelayUrl],
+    indexer_relays: &[RelayUrl],
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
+    // PD-033-C: gates the kernel-driven discovery-oneshot fallback. The two
+    // conjuncts (`OneShot` + `Global`) intentionally match
+    // `kernel/discovery.rs::drain_unknown_oneshots`'s shape exactly —
+    // `oneshot.request(registry, InterestScope::Global, shape)` always
+    // constructs an interest with `lifecycle: OneShot` (see
+    // `subs/oneshot.rs::request`). Account-scoped profile fetches and tailing
+    // follow-feed interests both fail this gate and retain their
+    // pre-PD-033-C unroutable behaviour.
+    let is_discovery_oneshot = matches!(interest.lifecycle, InterestLifecycle::OneShot)
+        && matches!(interest.scope, InterestScope::Global);
     // Accumulate per-relay (authors, addresses, sources) before pushing
     // RelayEntry objects. This lets multiple authors share a relay without
     // creating separate entries — Stage 3 merge operates on the combined set.
@@ -103,7 +136,27 @@ pub(super) fn route(
         }
 
         if !landed {
-            unroutable.insert(author.clone());
+            // PD-033-C planner extension: a `OneShot + Global` interest whose
+            // author has no NIP-65 mailbox AND no app_relays falls back to
+            // `indexer_relays` instead of being marked unroutable. This
+            // matches `kernel/discovery.rs::drain_unknown_oneshots`'s
+            // profile-oneshot arm which fans the equivalent kind:0/3/10002
+            // filter to `RelayRole::Indexer` today. Tailing follow-feed
+            // interests are NOT eligible — they continue to land in
+            // `unroutable` so the kernel can surface the toast.
+            if is_discovery_oneshot && !indexer_relays.is_empty() {
+                for relay in indexer_relays {
+                    let entry = per_relay
+                        .entry(relay.clone())
+                        .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
+                    entry.0.insert(author.clone());
+                    entry.2.insert(RoutingSource::UserConfigured(UserConfiguredCategory::Indexer));
+                    landed = true;
+                }
+            }
+            if !landed {
+                unroutable.insert(author.clone());
+            }
         }
     }
 
@@ -136,7 +189,23 @@ pub(super) fn route(
         }
 
         if !landed {
-            unroutable.insert(coord.pubkey.clone());
+            // PD-033-C planner extension (parity with the author arm above):
+            // a `OneShot + Global` interest whose address-pointer pubkey has
+            // no NIP-65 mailbox AND no app_relays falls back to
+            // `indexer_relays` rather than being marked unroutable.
+            if is_discovery_oneshot && !indexer_relays.is_empty() {
+                for relay in indexer_relays {
+                    let entry = per_relay
+                        .entry(relay.clone())
+                        .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
+                    entry.1.insert(coord.clone());
+                    entry.2.insert(RoutingSource::UserConfigured(UserConfiguredCategory::Indexer));
+                    landed = true;
+                }
+            }
+            if !landed {
+                unroutable.insert(coord.pubkey.clone());
+            }
         }
     }
 
@@ -364,5 +433,185 @@ mod tests {
 
         assert!(plan.per_relay.is_empty());
         assert!(plan.unroutable_authors.contains(&pk("alice")));
+    }
+
+    // ── PD-033-C planner extension — indexer fallback arm (§4.3) ────────────
+    //
+    // The matrix below mirrors `kernel/discovery.rs::drain_unknown_oneshots`'s
+    // profile-oneshot arm: kind:0/3/10002 + authors → `RelayRole::Indexer`.
+    // Without this, deleting M1 in Stage 1 would mark every discovery-targeted
+    // pubkey `unroutable` and the kernel would never fetch the profile.
+
+    /// One-shot global profile fetch (the discovery-oneshot shape) with NO
+    /// NIP-65 mailbox cached AND NO app_relays → routes to `indexer_relays`
+    /// (lane `UserConfigured(Indexer)`). The author is NOT `unroutable`. This
+    /// is the headline silent-loss regression the planner extension fixes.
+    #[test]
+    fn pd033c_case_a_oneshot_global_no_nip65_routes_to_indexer() {
+        let cache = InMemoryMailboxCache::new();
+        let indexer = vec!["wss://purplepag.es".to_string()];
+        let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &[]);
+
+        // Profile-shape oneshot, scope Global — matches `oneshot.request(...)`.
+        let interest = LogicalInterest {
+            id: InterestId(1),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: [pk("bob")].into_iter().collect(),
+                kinds: [0u32, 3, 10002].into_iter().collect(),
+                limit: Some(3),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::OneShot,
+        };
+
+        let plan = compiler.compile(&[interest]).expect("compile");
+        let ix = plan
+            .per_relay
+            .get("wss://purplepag.es")
+            .expect("indexer must carry the discovery profile-oneshot");
+        assert!(ix
+            .role_tags
+            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)));
+        // Critical: Bob is NOT unroutable — the silent-loss invariant.
+        assert!(
+            plan.unroutable_authors.is_empty(),
+            "PD-033-C invariant: discovery-oneshot authors with indexer fallback \
+             must NOT be marked unroutable; got {:?}",
+            plan.unroutable_authors
+        );
+    }
+
+    /// Counterpoint: a `Tailing` follow-feed interest (a non-discovery
+    /// timeline) for the same NIP-65-unknown author with the same indexer set
+    /// MUST still be `unroutable` — the planner extension is strictly scoped
+    /// to discovery oneshots; broader fallback would degrade routing for the
+    /// 99% case (tailing follows ride NIP-65, indexer is discovery-only per
+    /// T134).
+    #[test]
+    fn pd033c_case_a_tailing_no_nip65_remains_unroutable() {
+        let cache = InMemoryMailboxCache::new();
+        let indexer = vec!["wss://purplepag.es".to_string()];
+        let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &[]);
+
+        // Plain timeline interest — Tailing lifecycle, exactly the shape that
+        // must NOT be diverted to the indexer (would re-introduce the T134
+        // anti-pattern of follow-feeds on purplepag.es).
+        let plan = compiler
+            .compile(&[timeline_interest(1, &["bob"])])
+            .expect("compile");
+
+        assert!(
+            plan.per_relay.get("wss://purplepag.es").is_none(),
+            "Tailing follow-feed must NOT route to indexer (T134 invariant)"
+        );
+        assert!(
+            plan.unroutable_authors.contains(&pk("bob")),
+            "Tailing+Global without NIP-65/app-relays must remain unroutable"
+        );
+    }
+
+    /// Counterpoint: a `OneShot + Account(x)` profile fetch is account-scoped
+    /// (it ultimately resolves to a concrete account context). Today it stays
+    /// `unroutable` rather than diverting to the indexer — gate is OneShot AND
+    /// Global, not OneShot alone. This prevents account-scoped interests from
+    /// being mistakenly placed on the cold-start indexer lane.
+    #[test]
+    fn pd033c_case_a_account_scoped_oneshot_does_not_indexer_fallback() {
+        let cache = InMemoryMailboxCache::new();
+        let indexer = vec!["wss://purplepag.es".to_string()];
+        let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &[]);
+
+        let interest = LogicalInterest {
+            id: InterestId(1),
+            scope: InterestScope::Account(pk("alice")),
+            shape: InterestShape {
+                authors: [pk("bob")].into_iter().collect(),
+                kinds: [0u32, 3, 10002].into_iter().collect(),
+                limit: Some(3),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::OneShot,
+        };
+
+        let plan = compiler.compile(&[interest]).expect("compile");
+        assert!(
+            plan.per_relay.get("wss://purplepag.es").is_none(),
+            "Account-scoped OneShot must NOT divert to the indexer lane"
+        );
+        assert!(plan.unroutable_authors.contains(&pk("bob")));
+    }
+
+    /// When `app_relays` ARE configured, the `if !landed` block never fires —
+    /// the AppRelay lane already carried the author. The PD-033-C indexer arm
+    /// must NOT additively route to the indexer in that case (would double-
+    /// charge the indexer for a routable author).
+    #[test]
+    fn pd033c_case_a_oneshot_global_with_app_relays_skips_indexer() {
+        let cache = InMemoryMailboxCache::new();
+        let indexer = vec!["wss://purplepag.es".to_string()];
+        let app = vec!["wss://user-app.example".to_string()];
+        let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &app);
+
+        let interest = LogicalInterest {
+            id: InterestId(1),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: [pk("bob")].into_iter().collect(),
+                kinds: [0u32, 3, 10002].into_iter().collect(),
+                limit: Some(3),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::OneShot,
+        };
+
+        let plan = compiler.compile(&[interest]).expect("compile");
+        // App relay carried Bob — indexer must be untouched.
+        assert!(plan.per_relay.get("wss://user-app.example").is_some());
+        assert!(
+            plan.per_relay.get("wss://purplepag.es").is_none(),
+            "PD-033-C indexer fallback must NOT fire when AppRelay carried the author"
+        );
+        assert!(plan.unroutable_authors.is_empty());
+    }
+
+    /// Mixed multi-author: one author with NIP-65, one author without (and no
+    /// app_relays). The NIP-65 author rides their write relay; the
+    /// no-mailbox author falls back to the indexer via the PD-033-C arm.
+    /// Critically: neither lands in `unroutable_authors`.
+    #[test]
+    fn pd033c_case_a_mixed_authors_partial_nip65_landed_via_indexer() {
+        let mut cache = InMemoryMailboxCache::new();
+        cache.put(pk("alice"), MailboxSnapshot {
+            write_relays: vec!["wss://alice-write".to_string()],
+            read_relays: vec![],
+            both_relays: vec![],
+        });
+        let indexer = vec!["wss://purplepag.es".to_string()];
+        let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &[]);
+
+        let interest = LogicalInterest {
+            id: InterestId(1),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: [pk("alice"), pk("bob")].into_iter().collect(),
+                kinds: [0u32, 3, 10002].into_iter().collect(),
+                limit: Some(3),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::OneShot,
+        };
+
+        let plan = compiler.compile(&[interest]).expect("compile");
+        // Alice rides her NIP-65 write relay.
+        assert!(plan.per_relay.get("wss://alice-write").is_some());
+        // Bob lands on the indexer via the PD-033-C arm.
+        assert!(plan.per_relay.get("wss://purplepag.es").is_some());
+        // Neither is unroutable.
+        assert!(plan.unroutable_authors.is_empty());
     }
 }
