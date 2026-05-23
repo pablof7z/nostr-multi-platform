@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **d69fad76** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **40d77e4d** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -63,7 +63,7 @@ makes the eventual fix harder.
 - Phase 1c ✅ DONE (PR #341): `RelayFrame` enum introduced; `actor/` and `relay_worker/` gated
   behind `#[cfg(feature = "native")]`; `cargo check -p nmp-core --no-default-features` passes
   (after the Stage 2 import-gating fixup above).
-- Stage 2 ✅ DONE (PR pending): `WasmRuntime` rewritten on `nmp_core::KernelReducer` — the
+- Stage 2 ✅ DONE (PR #372 — merged 2026-05-23): `WasmRuntime` rewritten on `nmp_core::KernelReducer` — the
   pure protocol kernel now drives `Start`/`Stop`/snapshot envelopes. `LocalNote` stub deleted.
   `cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes; relay transport remains
   Stage 3 (app-level intents return `browser_actor_driver_missing` honestly).
@@ -379,4 +379,4 @@ Recorded so Opus reviews do not re-flag these as violations.
 | ChirpAction → AppAction in nmp-wasm | PR #333: D0 rename complete |
 | V-05 D2 enforcement gap — coverage_hook never installed | PR #347: `NmpApp::set_coverage_hook` seam wired; `CoverageGate::default()` installed in `nmp_app_chirp_register`; all 3 stages complete |
 | WalletPayInvoice dispatch_action bypass | PR #361 (2026-05-23): `WalletPayInvoiceModule` registered under `"nmp.wallet"` namespace; `nmp_app_wallet_pay_invoice` rewritten as thin `dispatch_action_json` wrapper. Zero direct-FFI bypasses of the dispatch_action seam remain. |
-| ADR-0025 Marmot bespoke FFI exception (partial — PR 3 pending) | PR #363: `MlsOpHandler` trait + `MarmotActionModule` (Rust seam). PR #367: iOS `MarmotBridge.swift` migrated to `dispatchRawAction("nmp.marmot", …)`. PR 3 (in flight 2026-05-23): deletes `nmp_marmot_dispatch` C symbol; fully retires the exception. |
+| ADR-0025 Marmot bespoke FFI exception — FULLY RETIRED | PR #363 (Rust seam), PR #367 (iOS dispatch_action migration), PR #370 (deleted `nmp_marmot_dispatch` C symbol + REPL/TUI migrated to `MarmotHandle::dispatch` Rust method). Zero `extern "C" fn nmp_marmot_dispatch` in workspace. |
