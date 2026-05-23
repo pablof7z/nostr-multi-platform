@@ -446,7 +446,11 @@ HEAD `3e370bb5`.
 1. `handle_event` `_` wildcard never called `notify_event_observers` → kind:9735 events never
    reached `ZapsAggregateProjection`. Fixed: kind:9735 arm added in `kernel/ingest/mod.rs`.
 2. No kind:9735 subscription interest registered at bootstrap. Fixed: `#p <viewer>` REQ added in
-   `active_account_bootstrap_requests` (5 tests covering F-02 + F-04 pass).
+   `active_account_bootstrap_requests` (5 tests covering F-02 + F-04 pass). Note: the kind:9735
+   REQ was later D0-migrated to a host-side `ZapReceiptsRuntimeController` in `nmp-app-chirp`
+   (PR #421) — the subscription is now pushed as a generic `LogicalInterest` via
+   `nmp_nip57::self_zap_receipts_interest`. The planner's cold-start bootstrap fallback
+   (`Tailing + Global + Nip65ReadRelays`) ensures receipts still flow before kind:10002 lands.
 
 `ZapAction` is implemented and registered. `ZapsAggregateProjection` is registered. The full
 round-trip — dispatch zap → `FetchLnurlInvoice` → bolt11 toast → `WalletPayInvoice` → NWC
