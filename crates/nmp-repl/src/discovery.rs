@@ -108,12 +108,11 @@ pub fn fetch_follows(session: &mut Session) -> Result<FollowsResult> {
                 break Outcome::Timeout;
             }
             match next_frame(&mut socket) {
-                Frame::Timeout | Frame::Other => continue,
                 Frame::Event { sub_id: s, event } if s == sub_id => {
                     events += 1;
                     collect_p_tags(&event, &mut follows);
                 }
-                Frame::Event { .. } => continue,
+                Frame::Timeout | Frame::Other | Frame::Event { .. } => continue,
                 Frame::Eose { sub_id: s } if s == sub_id => break Outcome::Eose,
                 Frame::Eose { .. } => continue,
                 Frame::Closed { message, .. } => break Outcome::Closed(message),

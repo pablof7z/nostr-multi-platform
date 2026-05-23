@@ -1,6 +1,6 @@
 //! Tungstenite transport helpers. Lifted from
 //! `crates/nmp-core/examples/outbox_perf.rs` lines 415–651, kept in lockstep
-//! with that reference. The REPL is "outbox_perf, behind a line editor".
+//! with that reference. The REPL is "`outbox_perf`, behind a line editor".
 //!
 //! ## Typed frames (the swallowing-bug fix)
 //!
@@ -107,7 +107,10 @@ fn connect_err_msg(e: &tungstenite::Error) -> String {
 pub fn next_frame(socket: &mut Sock) -> Frame {
     match socket.read() {
         Ok(Message::Text(s)) => parse_envelope(&s),
-        Ok(Message::Close(_)) => Frame::RelayClosed,
+        Ok(Message::Close(_))
+        | Err(tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed) => {
+            Frame::RelayClosed
+        }
         Ok(_) => Frame::Other,
         Err(tungstenite::Error::Io(e))
             if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut =>
@@ -115,8 +118,6 @@ pub fn next_frame(socket: &mut Sock) -> Frame {
             Frame::Timeout
         }
         Err(tungstenite::Error::Io(e)) => Frame::Io { kind: e.kind() },
-        Err(tungstenite::Error::ConnectionClosed)
-        | Err(tungstenite::Error::AlreadyClosed) => Frame::RelayClosed,
         Err(_) => Frame::Io {
             kind: ErrorKind::Other,
         },

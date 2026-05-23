@@ -45,7 +45,7 @@ enum RowState {
 #[derive(Clone, Debug)]
 struct Row {
     relay: String,
-    /// Wire sub_id — the row key. One row per REQ.
+    /// Wire `sub_id` — the row key. One row per REQ.
     sub_id: String,
     /// Compact filter summary, e.g. `kind:1 (83 authors)`.
     summary: String,
@@ -154,7 +154,7 @@ fn drive_table(
         let now = Instant::now();
         if now >= wall_deadline {
             // Mark anything not in a terminal state as Timeout.
-            for r in rows.iter_mut() {
+            for r in &mut rows {
                 if matches!(r.state, RowState::Connecting | RowState::ReqSent | RowState::Receiving) {
                     r.state = RowState::Timeout;
                 }
@@ -643,13 +643,12 @@ fn format_row_with_color(row: &Row, verbose: bool) -> (Option<Color>, String) {
 pub fn print_outbox_line(relays: usize, authors_on_wire: usize, unroutable: usize) {
     let mut stdout = stdout();
     let _ = stdout.execute(Print(format!(
-        "  outbox: {} relays, {} authors-on-wire, ",
-        relays, authors_on_wire
+        "  outbox: {relays} relays, {authors_on_wire} authors-on-wire, "
     )));
     if unroutable > 0 {
         let _ = stdout.execute(SetForegroundColor(Color::Yellow));
     }
-    let _ = stdout.execute(Print(format!("{} unroutable", unroutable)));
+    let _ = stdout.execute(Print(format!("{unroutable} unroutable")));
     let _ = stdout.execute(ResetColor);
     let _ = stdout.execute(Print("\n"));
 }

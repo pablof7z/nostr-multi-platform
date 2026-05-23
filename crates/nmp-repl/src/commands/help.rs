@@ -179,7 +179,7 @@ pub fn run(arg: Option<String>) -> Result<()> {
         Some("set-budget") => SET_BUDGET,
         Some("refresh") => REFRESH,
         Some("expand") => EXPAND,
-        Some("quit") | Some("exit") => QUIT,
+        Some("quit" | "exit") => QUIT,
         Some("load-key") => LOAD_KEY,
         #[cfg(feature = "mls")]
         Some("mls-init") => MLS_INIT,

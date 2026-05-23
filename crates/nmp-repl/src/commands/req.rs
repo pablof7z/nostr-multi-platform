@@ -9,7 +9,7 @@
 //! 3. Build one `LogicalInterest`, replace the registry slot (`InterestId(1)`).
 //! 4. Discovery convergence loop:
 //!    - `recompile_and_diff(&cache)` → frames.
-//!    - Partition: `mailbox-probe-*` sub_ids = discovery REQs.
+//!    - Partition: `mailbox-probe-*` `sub_ids` = discovery REQs.
 //!    - If probes exist: run them against the indexer, `cache.put` each
 //!      kind:10002, `enqueue_trigger(Nip65Arrived)`, then `drain_tick` and
 //!      loop. `probed_mailboxes` dedups so this converges in 1–2 passes.

@@ -1,4 +1,4 @@
-//! `set-app-relays <url>[,<url>...]` — override the planner's app_relays
+//! `set-app-relays <url>[,<url>...]` — override the planner's `app_relays`
 //! fallback list (default empty).
 
 use crate::error::Result;

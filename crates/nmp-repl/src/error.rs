@@ -24,13 +24,11 @@ pub enum ReplError {
 impl fmt::Display for ReplError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Parse(s) => write!(f, "{s}"),
-            Self::Variable(s) => write!(f, "{s}"),
+            Self::Parse(s) | Self::Variable(s) | Self::Other(s) => write!(f, "{s}"),
             Self::Network(s) => write!(f, "network error: {s}"),
             Self::Nip05(s) => write!(f, "nip-05 error: {s}"),
             Self::Planner(s) => write!(f, "planner error: {s}"),
             Self::Io(s) => write!(f, "io error: {s}"),
-            Self::Other(s) => write!(f, "{s}"),
         }
     }
 }

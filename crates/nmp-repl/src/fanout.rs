@@ -105,7 +105,7 @@ pub struct ContentReq {
     pub authors: usize,
 }
 
-/// Synchronous discovery-probe fan. Sends each probe REQ (kind:10002, sub_id
+/// Synchronous discovery-probe fan. Sends each probe REQ (kind:10002, `sub_id`
 /// prefix `mailbox-probe-`) verbatim to its indexer relay, drains kind:10002
 /// EVENTs until every probe sub reaches EOSE or `DISCOVERY_WALL` elapses,
 /// and returns the parsed snapshots.
@@ -350,19 +350,16 @@ fn run_relay_thread(
             connected: true,
             ..Default::default()
         };
-        let raw_filter: Value = match serde_json::from_str(&r.filter_json) {
-            Ok(v) => v,
-            Err(_) => {
-                st.error = Some("bad filter json".to_string());
-                st.elapsed = Some(started.elapsed());
-                let _ = tx.send(RelayEvent::Error {
-                    relay: relay_url.clone(),
-                    sub_id: r.sub_id.clone(),
-                    msg: "bad filter json".to_string(),
-                });
-                send_done(&r.sub_id, st);
-                continue;
-            }
+        let raw_filter: Value = if let Ok(v) = serde_json::from_str(&r.filter_json) { v } else {
+            st.error = Some("bad filter json".to_string());
+            st.elapsed = Some(started.elapsed());
+            let _ = tx.send(RelayEvent::Error {
+                relay: relay_url.clone(),
+                sub_id: r.sub_id.clone(),
+                msg: "bad filter json".to_string(),
+            });
+            send_done(&r.sub_id, st);
+            continue;
         };
         let req = json!(["REQ", r.sub_id, raw_filter]).to_string();
         if let Err(e) = socket.send(Message::Text(req)) {
@@ -437,7 +434,7 @@ fn run_relay_thread(
             Frame::Notice { message } => {
                 // Non-terminal: surface but keep streaming. Tagged to every
                 // open sub on this socket (NOTICE is not sub-scoped).
-                for sid in open.iter() {
+                for sid in &open {
                     let _ = tx.send(RelayEvent::Notice {
                         relay: relay_url.clone(),
                         sub_id: sid.clone(),

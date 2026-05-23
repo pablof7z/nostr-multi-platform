@@ -86,7 +86,6 @@ fn await_ok(sock: &mut ws::Sock, event_id: &str) -> OkResult {
                     return res;
                 }
             }
-            Frame::Timeout => continue,
             Frame::RelayClosed | Frame::Io { .. } => return OkResult::NoReply,
             Frame::Closed { message, .. } => return OkResult::Rejected(message),
             Frame::Auth { .. } => {
