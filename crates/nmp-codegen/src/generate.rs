@@ -1,3 +1,10 @@
+//! Module code generator: reads `nmp.toml` manifests and emits per-app
+//! `src/ffi.rs` + `src/types.rs` Rust source files.
+//!
+//! `generate_modules` is the write path; `check_modules` is the idempotency
+//! check used by the build-system gate. Both delegate to `generate_crate` for
+//! each module declared in the manifest.
+
 use crate::{app_crate_name, rust_crate_name, variant_name, AppManifest};
 use std::fs;
 use std::path::{Path, PathBuf};

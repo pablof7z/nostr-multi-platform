@@ -3,6 +3,13 @@
 // Copyright (c) 2023-2025 Rust Nostr Developers
 // Distributed under the MIT software license
 
+//! LMDB composite index key builders.
+//!
+//! Each `make_*_index_key` function encodes a compound key for one of LMDB's
+//! named databases (CI, TC, AC, AKC, KC, ATC, KTC, coordinate).  Keys are
+//! designed to sort lexicographically so range queries over time, kind, author,
+//! and tag work as contiguous scans.  All key functions are `#[must_use]`.
+
 use core::cmp;
 
 use nostr::event::borrow::EventBorrow;
