@@ -199,6 +199,7 @@ impl GroupChatProjection {
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
     /// collapses to `json!({"messages": []})` rather than propagating.
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot())
             .unwrap_or_else(|_| serde_json::json!({ "messages": [] }))

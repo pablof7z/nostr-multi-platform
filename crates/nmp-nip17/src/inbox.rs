@@ -289,6 +289,7 @@ impl DmInboxProjection {
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
     /// collapses to `{"conversations": []}` rather than propagating.
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot())
             .unwrap_or_else(|_| serde_json::json!({ "conversations": [], "remote_signer_unsupported": false }))

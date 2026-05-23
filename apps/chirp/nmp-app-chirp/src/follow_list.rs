@@ -126,6 +126,7 @@ impl FollowListProjection {
         self.follows.lock().map(|g| g.len()).unwrap_or(0)
     }
 
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         let active = match self.active_pubkey.lock() {
             Ok(guard) => guard.as_ref().cloned(),
