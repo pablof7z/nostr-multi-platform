@@ -1061,7 +1061,7 @@ pub fn run_actor_with_observers(
     let mut next_relay_generation = 1;
     let mut running = false;
     let mut emit_hz = DEFAULT_EMIT_HZ;
-    let mut last_emit = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
+    let mut last_emit = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or_else(Instant::now);
     let mut startup_sent = false;
     // Remote (NIP-46) sign ops parked off the blocking path. `dispatch_command`
     // pushes a `PendingSign` when a publish-command sign goes `Pending`; the
