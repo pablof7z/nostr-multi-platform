@@ -10,6 +10,7 @@ use keyring_core::set_default_store;
 ))]
 use apple_native_keyring_store::protected::Store as AppleStore;
 
+#[must_use]
 pub(crate) fn initialize() -> Option<bool> {
     #[cfg(any(
         target_os = "ios",
@@ -36,6 +37,7 @@ pub(crate) fn initialize() -> Option<bool> {
     }
 }
 
+#[must_use]
 pub(crate) fn install_mock_store() -> Option<bool> {
     let store = keyring_core::mock::Store::new().ok()?;
     set_default_store(store);

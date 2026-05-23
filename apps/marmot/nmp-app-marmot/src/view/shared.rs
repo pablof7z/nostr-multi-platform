@@ -22,6 +22,7 @@ pub struct EventAccumulator {
 }
 
 impl EventAccumulator {
+    #[must_use]
     pub fn insert(&mut self, event: &KernelEvent) -> Option<EventAccumulatorDelta> {
         if self.events.iter().any(|e| e.id == event.id) {
             return None;
@@ -31,6 +32,7 @@ impl EventAccumulator {
         Some(EventAccumulatorDelta::Inserted(event.id.clone()))
     }
 
+    #[must_use]
     pub fn remove(&mut self, id: &EventId) -> Option<EventAccumulatorDelta> {
         let before = self.events.len();
         self.events.retain(|e| e.id != *id);

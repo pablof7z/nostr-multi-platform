@@ -49,6 +49,7 @@ impl<T: Send + 'static> SignerOp<T> {
     /// - `Err(SignerError::Timeout)` on timeout
     /// - `Err(SignerError::Backend)` if the sender was dropped without
     ///   producing a value
+    #[must_use]
     pub fn wait(self, timeout: Duration) -> Result<T, SignerError> {
         match self {
             Self::Ready(r) => r,

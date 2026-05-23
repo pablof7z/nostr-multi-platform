@@ -67,6 +67,7 @@ fn tokenize_resolved(content: &str, tags: &[Vec<String>], mode: RenderMode) -> C
 /// Tokenize an inline run (no markdown blocks). Public to `markdown.rs`
 /// so block inlines reuse the same tokenizer — the "one parser, two render
 /// paths" invariant from §10 #3.
+#[must_use]
 pub(crate) fn tokenize_inline(content: &str, emoji_table: &HashMap<String, Url>) -> Vec<Segment> {
     if content.is_empty() {
         return Vec::new();
