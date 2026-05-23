@@ -119,7 +119,7 @@ fn relay(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
         "add" => {
             let parts = words(args);
             let url = parts.first().ok_or("usage: relay add <url> [role]")?;
-            let role = parts.get(1).map(String::as_str).unwrap_or("both,indexer");
+            let role = parts.get(1).map_or("both,indexer", String::as_str);
             runtime.add_relay(url, role)?;
             Ok(status(format!("relay add requested for {url}")))
         }

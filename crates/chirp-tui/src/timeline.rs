@@ -160,8 +160,7 @@ fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
         Some("known") => value
             .get("count")
             .and_then(Value::as_u64)
-            .map(RowRelationCount::Known)
-            .unwrap_or(RowRelationCount::Loading),
+            .map_or(RowRelationCount::Loading, RowRelationCount::Known),
         _ => RowRelationCount::Loading,
     }
 }

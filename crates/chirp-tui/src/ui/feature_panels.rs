@@ -37,12 +37,10 @@ fn render_chats(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .features
         .dm_conversations
         .first()
-        .map(|c| message_lines(&c.messages))
-        .unwrap_or_else(|| {
-            vec![Line::from(
-                ":dm <pubkey> <message> sends through nmp.nip17.send",
-            )]
-        });
+        .map_or_else(
+            || vec![Line::from(":dm <pubkey> <message> sends through nmp.nip17.send")],
+            |c| message_lines(&c.messages),
+        );
     frame.render_widget(panel("Conversation", messages), panes[1]);
 }
 
@@ -92,9 +90,7 @@ fn render_groups(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 fn render_wallet(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let wallet = &state.features.wallet;
     let balance = wallet
-        .balance_msats
-        .map(|m| format!("{} sats", m / 1000))
-        .unwrap_or_else(|| "balance unavailable".to_string());
+        .balance_msats.map_or_else(|| "balance unavailable".to_string(), |m| format!("{} sats", m / 1000));
     frame.render_widget(
         panel(
             "Wallet",
