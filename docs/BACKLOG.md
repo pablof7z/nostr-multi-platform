@@ -212,6 +212,37 @@ All production sub-modules are within the 500-LOC ceiling.
 `tests/{mod,helpers,register,social,nip29,nip17,nip57}.rs`. Every sub-file is under
 the 500-LOC ceiling. All 32 lib tests pass.
 
+### V-12 · Five production files above 500-LOC ceiling [MEDIUM · staged]
+
+**Verified (2026-05-23):**
+- `crates/nmp-core/src/actor/mod.rs` — 1487 LOC
+- `crates/nmp-core/src/actor/dispatch.rs` — 1477 LOC
+- `crates/nmp-core/src/kernel/mod.rs` — 1373 LOC
+- `crates/nmp-core/src/actor/commands/identity.rs` — ~1211 LOC production (1320 total incl. tests)
+- `crates/nmp-core/src/actor/commands/wallet.rs` — 657 LOC production (wallet tests extracted in PR #376)
+
+All five breach AGENTS.md §File-size rule ("hard 500-LOC ceiling; test sections extracted to `#[path]` subfiles").
+
+**Staged fix plan (independent per file):**
+
+**(a) identity.rs test extraction ✅ DONE (commit on master 2026-05-23):**
+`mod nip46_onboarding_tests` (108 LOC) extracted to `identity/nip46_onboarding_tests.rs`
+via `#[path = "identity/nip46_onboarding_tests.rs"]`. Production section is 1211 LOC and
+needs its own follow-up production split.
+
+**(b) identity.rs production split:**
+A 3-way split was analyzed: BunkerHandshake dto/types + IdentityRuntime + free functions.
+Requires reshuffling visibility of `BunkerHandshakeSlot` across modules — a real refactor,
+not just a split. Defer until after v1.
+
+**(c) actor/mod.rs, actor/dispatch.rs, kernel/mod.rs:**
+Need command/concern grouping analysis (see Opus direction review #10: the `ActorCommand`
+enum's closed-enum lock-in is the real issue, not just LOC). Do not split blindly — group by
+cohesion. Post-v1.
+
+**Deadline:** identity.rs test extraction done. Production splits of mod.rs, dispatch.rs,
+kernel/mod.rs, and wallet.rs are post-v1.
+
 ---
 
 ## Section 2 — In Flight
