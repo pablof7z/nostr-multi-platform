@@ -98,6 +98,7 @@ pub fn request_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing or encryption fails.
+#[must_use]
 pub fn get_balance_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -115,6 +116,7 @@ pub fn get_balance_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing or encryption fails.
+#[must_use]
 pub fn get_info_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -132,6 +134,7 @@ pub fn get_info_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing, params serialization, or encryption fails.
+#[must_use]
 pub fn pay_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -152,6 +155,7 @@ pub fn pay_invoice_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing, params serialization, or encryption fails.
+#[must_use]
 pub fn make_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
