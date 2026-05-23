@@ -37,7 +37,7 @@ pub(super) fn dispatch_due(
     unavailable_relays: &BTreeSet<RelayUrl>,
 ) -> Vec<RelayAck> {
     let mut acks = Vec::new();
-    for (relay_url, state) in in_flight.per_relay.iter_mut() {
+    for (relay_url, state) in &mut in_flight.per_relay {
         if let Some(filter) = relay_filter {
             if relay_url != filter {
                 continue;

@@ -207,7 +207,7 @@ impl<'a> SubscriptionCompiler<'a> {
                     role_tags.insert(src);
                 }
                 let mut merged = false;
-                for (existing_shape, existing_lifecycle, existing_ids) in sub_shapes.iter_mut() {
+                for (existing_shape, existing_lifecycle, existing_ids) in &mut sub_shapes {
                     if let MergeOutcome::Merged(new_shape) =
                         merge(&existing_shape.clone(), &shape, existing_lifecycle, &lifecycle)
                     {

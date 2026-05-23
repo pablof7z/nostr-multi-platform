@@ -137,7 +137,7 @@ impl RelayPoller {
     pub(super) fn wait(&mut self, timeout: Duration) -> io::Result<Ready> {
         self.poll.poll(&mut self.events, Some(timeout))?;
         let mut ready = Ready::default();
-        for event in self.events.iter() {
+        for event in &self.events {
             match event.token() {
                 CONTROL => ready.control = true,
                 SOCKET => {

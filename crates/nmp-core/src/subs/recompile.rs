@@ -248,7 +248,7 @@ pub(super) fn apply_watermark_rewrite(
     watermark_fn: &(dyn Fn(&InterestShape) -> Option<u64> + Send + Sync),
 ) {
     for relay_plan in plan.per_relay.values_mut() {
-        for sub_shape in relay_plan.sub_shapes.iter_mut() {
+        for sub_shape in &mut relay_plan.sub_shapes {
             if shape_is_ephemeral_only(&sub_shape.shape) {
                 continue;
             }
