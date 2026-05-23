@@ -9,6 +9,7 @@ pub struct GenerationReport {
     pub files: Vec<PathBuf>,
 }
 
+#[must_use]
 pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<GenerationReport, String> {
     let manifest = AppManifest::read(manifest_path)?;
     if out_dir.exists() {

@@ -167,6 +167,7 @@ import Foundation
 ///   doesn't match this emitter.
 /// - [`SwiftEmitError::Unsupported`] if any type has a non-flat-record
 ///   schema.
+#[must_use]
 pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
     let document: ProjectionSchemaDocument = serde_json::from_str(document_json)
         .map_err(|err| SwiftEmitError::ParseFailed {
@@ -388,35 +389,16 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
         }
     }
 
-    // Emit a `CodingKeys` enum mapping camelCase Swift fields back to the
-    // snake_case JSON keys schemars produced. This makes the Decodable
-    // synthesised by Swift match the wire shape exactly — without relying
-    // on `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase` at the
-    // call site (which the existing KernelHandle.decode already configures,
-    // but inlining the mapping makes the type self-contained and means a
-    // single field's wire name can be overridden in the registry later).
-    //
-    // Only emitted when at least one field's snake_case name differs from
-    // its Swift identifier — otherwise the synthesised CodingKeys is
-    // already correct and emitting an explicit one is noise.
-    let needs_coding_keys = entry
-        .schema
-        .properties
-        .keys()
-        .any(|raw| snake_to_camel(raw) != *raw);
-    if needs_coding_keys {
-        out.push('\n');
-        out.push_str("    private enum CodingKeys: String, CodingKey {\n");
-        for raw_name in entry.schema.properties.keys() {
-            let camel = snake_to_camel(raw_name);
-            if camel == *raw_name {
-                out.push_str(&format!("        case {camel}\n"));
-            } else {
-                out.push_str(&format!("        case {camel} = \"{raw_name}\"\n"));
-            }
-        }
-        out.push_str("    }\n");
-    }
+    // No explicit CodingKeys. `KernelBridge.decode()` configures
+    // `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase`, which
+    // transforms wire keys (snake_case) to Swift identifiers (camelCase)
+    // before Codable matches them. Emitting `case foo = "foo_bar"` would
+    // cause a double-transform failure: the decoder converts "foo_bar" →
+    // "fooBar", then looks for a CodingKeys rawValue "fooBar" but finds
+    // "foo_bar" → KEY_NOT_FOUND on every field. The synthesised CodingKeys
+    // (no explicit rawValues) matches correctly because each case's implicit
+    // rawValue equals its Swift identifier, which is exactly what the
+    // decoder produces after the convertFromSnakeCase transform.
 
     out.push_str("}\n");
     Ok(())
@@ -541,6 +523,7 @@ pub struct SwiftCheckOutcome {
 ///
 /// # Errors
 /// As [`render_swift`], plus filesystem I/O failures.
+#[must_use]
 pub fn generate_swift(document_json: &str, out_path: &Path) -> Result<(), SwiftEmitError> {
     let rendered = render_swift(document_json)?;
     if let Some(parent) = out_path.parent() {
@@ -556,6 +539,7 @@ pub fn generate_swift(document_json: &str, out_path: &Path) -> Result<(), SwiftE
 /// As [`render_swift`]. A missing file returns `up_to_date = false` with
 /// `first_diff_line = None`, not an error — the CI gate treats "file
 /// doesn't exist" the same as "file is stale".
+#[must_use]
 pub fn check_swift(document_json: &str, out_path: &Path) -> Result<SwiftCheckOutcome, SwiftEmitError> {
     let rendered = render_swift(document_json)?;
     let actual = match std::fs::read_to_string(out_path) {
@@ -637,13 +621,18 @@ mod tests {
         // Array of strings.
         assert!(out.contains("    public let relayUrls: [String]\n"));
         assert!(out.contains("    public let denied: Bool\n"));
-        // CodingKeys must remap the four snake_case keys.
-        assert!(out.contains("case openViews = \"open_views\""));
-        assert!(out.contains("case firstEventMs = \"first_event_ms\""));
-        assert!(out.contains("case relayUrls = \"relay_urls\""));
-        // `id` / `denied` are already camelCase ⇒ no `= "..."` clause.
-        assert!(out.contains("        case id\n"));
-        assert!(out.contains("        case denied\n"));
+        // No explicit CodingKeys — convertFromSnakeCase handles the
+        // snake_case → camelCase mapping at decode time. Emitting CodingKeys
+        // with snake_case rawValues causes KEY_NOT_FOUND because the decoder
+        // transforms JSON keys before matching rawValues.
+        assert!(
+            !out.contains("CodingKeys"),
+            "Stage-1 types must not emit explicit CodingKeys (convertFromSnakeCase conflict)"
+        );
+        assert!(
+            !out.contains("= \"open_views\""),
+            "snake_case rawValues must not appear in generated code"
+        );
     }
 
     #[test]
