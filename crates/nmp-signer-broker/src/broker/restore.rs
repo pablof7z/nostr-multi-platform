@@ -1,3 +1,7 @@
+//! `BunkerBroker` session restore — deserialises a `SignerPayload` JSON string
+//! from persistent storage and reconnects the broker to the bunker relay,
+//! restoring the signer without requiring the user to re-authenticate.
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 

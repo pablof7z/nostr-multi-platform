@@ -1,3 +1,7 @@
+//! `BunkerBroker` nostrconnect handshake — generates the `nostrconnect://` URI,
+//! starts the handshake thread, and wires the resulting `Nip46SignerHandle`
+//! into the broker's active-signer slot on completion.
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 

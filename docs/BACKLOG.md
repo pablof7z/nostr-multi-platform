@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **73ab92f5** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **d69fad76** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -75,7 +75,7 @@ path references updated (nmp-repl, nmp-app-chirp, nmp-testing). All `cargo check
 
 ### V-03 · ~~wallet_status app noun in nmp-core~~ CLOSED — see Appendix
 
-### V-04 · Two subscription systems coexist — D4 single-writer violation [MEDIUM · pending user decision]
+### V-04 · Two subscription systems coexist — D4 single-writer violation [MEDIUM · staged fix in progress]
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:361` documents that the M1 hand-rolled
 `req()` path is still authoritative. The `InterestRegistry`/`LogicalInterest` infrastructure
@@ -83,7 +83,17 @@ is live but parallel, not a replacement. Two systems maintaining separate state 
 concern violates D4 (single-writer-per-fact).
 
 **Correct fix:** designate `InterestRegistry` as canonical; migrate all M1 `req()` call sites
-to it; delete the hand-rolled path. See PD-033-C for the user decision that gates this.
+to it; delete the hand-rolled path.
+
+**Staged fix plan (PD-033-C):**
+- Stage 1 ✅ DONE (PR #368 — merged 2026-05-23): Deleted M1 dual-write (`self.req(...)`) from
+  `kernel/discovery.rs` (`drain_unknown_oneshots`). Required three load-bearing pieces: the
+  deletion itself, a `CompileTrigger::ViewOpened` enqueue (drain_tick short-circuits on empty
+  inbox), and a planner sub_id bridge (`OneshotApi::request` → `(OneshotToken, InterestId)`,
+  `register_planner_wire_frames` re-keys `oneshot_subs` from the planner-assigned `sub-<hash>`
+  id). All 1040 nmp-core tests pass.
+- Stage 2: Migrate remaining M1 `req()` call sites (bootstrap REQs, profile claims, etc.).
+- Stage 3: Delete the M1 `req()` helper once all call sites are migrated.
 
 ### V-05 · D2 enforcement gap — coverage_hook never installed [DONE]
 
@@ -208,10 +218,10 @@ framework claim in one sprint.
 
 **Decision needed:** next sprint priority, or continue adding Chirp features first?
 
-### PD-033-C · Two subscription systems (gates V-04 fix)
+### PD-033-C · Two subscription systems (gates V-04 fix) — DECISION MADE
 
-M1 hand-rolled `req()` path vs `InterestRegistry`. Migrate M1 to `InterestRegistry` and
-delete, or designate one canonical first and delete the other in a follow-up?
+Decision (2026-05-23): migrate M1 `req()` call sites to InterestRegistry and delete the
+hand-rolled path, staged. Stage 1 complete (PR #368). See V-04 staged fix plan above.
 
 ### PD-037 · Stale branch confirmation
 
@@ -344,3 +354,5 @@ Recorded so Opus reviews do not re-flag these as violations.
 | marmot_local_nsec → mls_local_nsec | PR #334: D0 rename complete |
 | ChirpAction → AppAction in nmp-wasm | PR #333: D0 rename complete |
 | V-05 D2 enforcement gap — coverage_hook never installed | PR #347: `NmpApp::set_coverage_hook` seam wired; `CoverageGate::default()` installed in `nmp_app_chirp_register`; all 3 stages complete |
+| WalletPayInvoice dispatch_action bypass | PR #361 (2026-05-23): `WalletPayInvoiceModule` registered under `"nmp.wallet"` namespace; `nmp_app_wallet_pay_invoice` rewritten as thin `dispatch_action_json` wrapper. Zero direct-FFI bypasses of the dispatch_action seam remain. |
+| ADR-0025 Marmot bespoke FFI exception (partial — PR 3 pending) | PR #363: `MlsOpHandler` trait + `MarmotActionModule` (Rust seam). PR #367: iOS `MarmotBridge.swift` migrated to `dispatchRawAction("nmp.marmot", …)`. PR 3 (in flight 2026-05-23): deletes `nmp_marmot_dispatch` C symbol; fully retires the exception. |
