@@ -77,19 +77,19 @@ pub struct Lmdb {
     env: Env,
     /// Events
     events: Database<Bytes, Bytes>, // Event ID, Event
-    /// CreatedAt + ID index
+    /// `CreatedAt` + ID index
     ci_index: Database<Bytes, Bytes>, // <Index>, Event ID
-    /// Tag + CreatedAt + ID index
+    /// Tag + `CreatedAt` + ID index
     tc_index: Database<Bytes, Bytes>, // <Index>, Event ID
-    /// Author + CreatedAt + ID index
+    /// Author + `CreatedAt` + ID index
     ac_index: Database<Bytes, Bytes>, // <Index>, Event ID
-    /// Author + Kind + CreatedAt + ID index
+    /// Author + Kind + `CreatedAt` + ID index
     akc_index: Database<Bytes, Bytes>, // <Index>, Event ID
-    /// Author + Tag + CreatedAt + ID index
+    /// Author + Tag + `CreatedAt` + ID index
     atc_index: Database<Bytes, Bytes>, // <Index>, Event ID
-    /// Kind + CreatedAt + ID index
+    /// Kind + `CreatedAt` + ID index
     kc_index: Database<Bytes, Bytes>, // <Index>, Event ID
-    /// Kind + Tag + CreatedAt + ID index
+    /// Kind + Tag + `CreatedAt` + ID index
     ktc_index: Database<Bytes, Bytes>, // <Index>, Event ID
     /// Deleted IDs
     deleted_ids: Database<Bytes, Unit>, // Event ID
@@ -299,7 +299,7 @@ impl Lmdb {
         }
     }
 
-    /// Migrate from version 1 to version 2: Build kc_index
+    /// Migrate from version 1 to version 2: Build `kc_index`
     fn migrate_v1_to_v2(&self, txn: &mut RwTxn) -> Result<(), Error> {
         tracing::info!("Building kc_index for existing events...");
 
@@ -371,7 +371,7 @@ impl Lmdb {
         self.ac_index.put(txn, &index.ac_index, &index.id)?;
         self.kc_index.put(txn, &index.kc_index, &index.id)?;
 
-        for tag in index.tags.into_iter() {
+        for tag in index.tags {
             self.atc_index.put(txn, &tag.atc_index, &index.id)?;
             self.ktc_index.put(txn, &tag.ktc_index, &index.id)?;
             self.tc_index.put(txn, &tag.tc_index, &index.id)?;
@@ -380,7 +380,7 @@ impl Lmdb {
         Ok(())
     }
 
-    /// Deletes an event and all its index entries using pre-collected DeletionInfo.
+    /// Deletes an event and all its index entries using pre-collected `DeletionInfo`.
     ///
     /// This is a helper function that centralizes the deletion logic used by multiple
     /// methods (`remove_replaceable`, `remove_addressable`, `handle_deletion_event`).
@@ -616,25 +616,25 @@ impl Lmdb {
         match pattern {
             QueryFilterPattern::Ids => self.query_by_ids(txn, filter, limit, &mut output)?,
             QueryFilterPattern::AuthorsAndKinds => {
-                self.query_by_authors_and_kinds(txn, filter, since, until, limit, &mut output)?
+                self.query_by_authors_and_kinds(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::AuthorsAndTags => {
-                self.query_by_authors_and_tags(txn, filter, since, until, limit, &mut output)?
+                self.query_by_authors_and_tags(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::AuthorKindsAndTags => {
-                self.query_by_authors_kinds_and_tags(txn, filter, since, until, limit, &mut output)?
+                self.query_by_authors_kinds_and_tags(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::KindsAndTags => {
-                self.query_by_kinds_and_tags(txn, filter, since, until, limit, &mut output)?
+                self.query_by_kinds_and_tags(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::Tags => {
-                self.query_by_tags(txn, filter, since, until, limit, &mut output)?
+                self.query_by_tags(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::Authors => {
-                self.query_by_authors(txn, filter, since, until, limit, &mut output)?
+                self.query_by_authors(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::Kinds => {
-                self.query_by_kinds(txn, filter, since, until, limit, &mut output)?
+                self.query_by_kinds(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::Scraping => {
                 return self.query_by_scraping(txn, filter, since, until, limit);

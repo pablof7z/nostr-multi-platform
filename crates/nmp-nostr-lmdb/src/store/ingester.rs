@@ -21,7 +21,7 @@ use tokio::sync::oneshot;
 use super::error::Error;
 use super::lmdb::Lmdb;
 
-/// Pre-allocated buffer size for FlatBufferBuilder
+/// Pre-allocated buffer size for `FlatBufferBuilder`
 ///
 /// This size is chosen to handle most Nostr events without reallocation.
 /// Large events (with many tags or large content) may still trigger reallocation.
@@ -289,7 +289,7 @@ fn mark_all_as_failed(results: &mut [OperationResult]) {
         match prev_result {
             OperationResult::Save { result: res, .. } => *res = Err(Error::BatchTransactionFailed),
             OperationResult::Delete { result: res, .. } => {
-                *res = Err(Error::BatchTransactionFailed)
+                *res = Err(Error::BatchTransactionFailed);
             }
         }
     }

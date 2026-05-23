@@ -141,14 +141,14 @@ impl From<Filter> for DatabaseFilter {
         Self {
             ids: filter
                 .ids
-                .map(|ids| ids.into_iter().map(|id| id.to_bytes()).collect())
+                .map(|ids| ids.into_iter().map(nostr::EventId::to_bytes).collect())
                 .unwrap_or_default(),
             authors: filter
                 .authors
                 .map(|authors| {
                     authors
                         .into_iter()
-                        .map(|pubkey| pubkey.to_bytes())
+                        .map(nostr::PublicKey::to_bytes)
                         .collect()
                 })
                 .unwrap_or_default(),

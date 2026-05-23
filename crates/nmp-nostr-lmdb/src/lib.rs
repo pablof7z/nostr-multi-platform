@@ -46,6 +46,9 @@
 #![allow(missing_docs)]
 #![warn(rustdoc::bare_urls)]
 #![allow(clippy::mutable_key_type)]
+// Storage backend: every function returns the same `Error` type; `# Errors`
+// docs would be pure repetition with no diagnostic value.
+#![allow(clippy::missing_errors_doc)]
 
 use std::path::{Path, PathBuf};
 
@@ -90,7 +93,7 @@ pub struct NostrLmdbBuilder {
 }
 
 impl NostrLmdbBuilder {
-    /// New LMDb builder
+    /// New `LMDb` builder
     pub fn new<P>(path: P) -> Self
     where
         P: AsRef<Path>,

@@ -93,7 +93,7 @@ impl EventIndexKeys {
     }
 }
 
-/// Reverse created_at and convert `u64` to big-endian byte order
+/// Reverse `created_at` and convert `u64` to big-endian byte order
 #[inline]
 fn reverse_and_conv_to_be64(created_at: Timestamp) -> [u8; 8] {
     // Reverse
@@ -114,7 +114,7 @@ fn extend_key_with_tag_value(key: &mut Vec<u8>, len: usize, tag_value: &str) {
     }
 }
 
-/// Make CreatedAt + ID index key
+/// Make `CreatedAt` + ID index key
 ///
 /// ## Structure
 ///
@@ -126,7 +126,7 @@ pub fn make_ci_index_key(created_at: Timestamp, event_id: &[u8; EventId::LEN]) -
     key
 }
 
-/// Make Tag + CreatedAt + ID index key (for looking up event by `tag`)
+/// Make Tag + `CreatedAt` + ID index key (for looking up event by `tag`)
 ///
 /// ## Structure
 ///
@@ -150,7 +150,7 @@ pub fn make_tc_index_key(
     key
 }
 
-/// Make Author + CreatedAt + ID index key (for looking up event by `author`)
+/// Make Author + `CreatedAt` + ID index key (for looking up event by `author`)
 ///
 /// ## Structure
 ///
@@ -167,7 +167,7 @@ pub fn make_ac_index_key(
     key
 }
 
-/// Make Author + Kind + CreatedAt + ID index key (for looking up event by `author` and `kind`)
+/// Make Author + Kind + `CreatedAt` + ID index key (for looking up event by `author` and `kind`)
 ///
 /// ## Structure
 ///
@@ -187,7 +187,7 @@ pub fn make_akc_index_key(
     key
 }
 
-/// Make Kind + CreatedAt + ID index key (for looking up event by `kind`)
+/// Make Kind + `CreatedAt` + ID index key (for looking up event by `kind`)
 ///
 /// ## Structure
 ///
@@ -204,7 +204,7 @@ pub fn make_kc_index_key(
     key
 }
 
-/// Make Author + Tag + CreatedAt + ID index key (for looking up event by `author` and `tag`)
+/// Make Author + Tag + `CreatedAt` + ID index key (for looking up event by `author` and `tag`)
 ///
 /// ## Structure
 ///
@@ -237,7 +237,7 @@ pub fn make_atc_index_key(
     key
 }
 
-/// Make Kind + Tag + CreatedAt + ID index (for looking up event by `kind` and `tag`)
+/// Make Kind + Tag + `CreatedAt` + ID index (for looking up event by `kind` and `tag`)
 ///
 /// ## Structure
 ///
