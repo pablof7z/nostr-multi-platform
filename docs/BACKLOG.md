@@ -285,10 +285,9 @@ when the app is built on generic seams (raw_event_observer + dispatch_action + s
 Decision (2026-05-23): migrate M1 `req()` call sites to InterestRegistry and delete the
 hand-rolled path, staged. Stage 1 complete (PR #368). See V-04 staged fix plan above.
 
-### PD-037 · Stale branch confirmation
+### PD-037 · Stale branch confirmation — CLOSED 2026-05-23
 
-Branch `codex/worker1-nip17-dm-inbox-relays` may be dead (work shipped via PR #237 + #300).
-Confirm and delete, or identify what remains.
+`codex/worker1-nip17-dm-inbox-relays` does not exist on the remote. Already deleted.
 
 ---
 
