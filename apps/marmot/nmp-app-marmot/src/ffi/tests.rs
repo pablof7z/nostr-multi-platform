@@ -28,6 +28,7 @@ use nmp_core::substrate::{
 use nmp_core::RawEventObserver;
 use nostr::{JsonUtil, Keys};
 use serde_json::json;
+use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
@@ -59,7 +60,13 @@ fn register_with_null_app_returns_null() {
     assert!(h.is_null());
 }
 
-static KEYRING_SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+// Keyed by account_id so concurrent actor-thread store operations (which use
+// different account_ids like "nmp.identity.active.id") don't corrupt test state.
+static KEYRING_SLOTS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn keyring_slots() -> &'static Mutex<HashMap<String, String>> {
+    KEYRING_SLOTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 extern "C" fn mock_keyring_callback(
     _context: *mut std::ffi::c_void,
@@ -72,29 +79,18 @@ extern "C" fn mock_keyring_callback(
     let result = match request {
         Some(req) if req.namespace == KeyringCapability::NAMESPACE => {
             match serde_json::from_str::<KeyringRequest>(&req.payload_json) {
-                Ok(KeyringRequest::Store { secret, .. }) => {
-                    *KEYRING_SLOT
-                        .get_or_init(|| Mutex::new(None))
-                        .lock()
-                        .unwrap() = Some(secret);
+                Ok(KeyringRequest::Store { account_id, secret }) => {
+                    keyring_slots().lock().unwrap().insert(account_id, secret);
                     KeyringResult::ok(None)
                 }
-                Ok(KeyringRequest::Retrieve { .. }) => {
-                    match KEYRING_SLOT
-                        .get_or_init(|| Mutex::new(None))
-                        .lock()
-                        .unwrap()
-                        .clone()
-                    {
+                Ok(KeyringRequest::Retrieve { account_id }) => {
+                    match keyring_slots().lock().unwrap().get(&account_id).cloned() {
                         Some(secret) => KeyringResult::ok(Some(secret)),
                         None => KeyringResult::not_found(),
                     }
                 }
-                Ok(KeyringRequest::Delete { .. }) => {
-                    *KEYRING_SLOT
-                        .get_or_init(|| Mutex::new(None))
-                        .lock()
-                        .unwrap() = None;
+                Ok(KeyringRequest::Delete { account_id }) => {
+                    keyring_slots().lock().unwrap().remove(&account_id);
                     KeyringResult::ok(None)
                 }
                 Err(_) => KeyringResult::error(-50),
@@ -112,6 +108,9 @@ extern "C" fn mock_keyring_callback(
         .into_raw()
 }
 
+// A valid nsec1 key shared with session_persistence_tests.
+const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
 #[test]
 fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
     let app = nmp_core::nmp_app_new();
@@ -122,16 +121,18 @@ fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
     );
     let app_ref = unsafe { &*app };
 
-    let _ = app_ref.sign_in_local_nsec_with_keyring("test.identity", "nsec1stored".to_string());
+    // Use a valid nsec so the actor's sign-in succeeds; the mock keyring is
+    // keyed by account_id so actor-thread persist calls don't corrupt state.
+    let _ = app_ref.sign_in_local_nsec_with_keyring("test.keyring.acct", TEST_NSEC.to_string());
     assert_eq!(
         app_ref
-            .restore_local_nsec_from_keyring("test.identity", None)
+            .restore_local_nsec_from_keyring("test.keyring.acct", None)
             .as_deref(),
-        Some("nsec1stored")
+        Some(TEST_NSEC)
     );
-    app_ref.remove_account_forgetting_keyring("test.identity", "missing".to_string());
+    app_ref.remove_account_forgetting_keyring("test.keyring.acct", "missing".to_string());
     assert_eq!(
-        app_ref.restore_local_nsec_from_keyring("test.identity", None),
+        app_ref.restore_local_nsec_from_keyring("test.keyring.acct", None),
         None
     );
 
