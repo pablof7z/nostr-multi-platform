@@ -166,6 +166,47 @@ pub struct SubscriptionLifecycle {
     /// [`Self::set_active_account_read_relays`]; defaults to empty so the
     /// no-author firehose falls back to `app_relays`, then indexer.
     active_account_read_relays: Vec<RelayUrl>,
+    /// PD-033-C — cold-start bootstrap content relays.
+    ///
+    /// Populated by the kernel from `bootstrap_urls_for_role(RelayRole::Content)`
+    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_relay_edit_rows`)
+    /// — the same well-known seed the actor opens its first content socket on,
+    /// INCLUDING the `FALLBACK_CONTENT_RELAY` cold-start default when no row is
+    /// configured yet. This is intentionally distinct from `app_relays` (which
+    /// is empty before the user configures one) so a `OneShot + Global +
+    /// event_ids`-shaped discovery interest (the kernel-driven oneshot from
+    /// `kernel/discovery.rs::drain_unknown_oneshots`) always has a content
+    /// landing pad — not the indexer set, which is discovery-only for
+    /// kind:0/3/10002 and not appropriate for event-id batches.
+    ///
+    /// Defaults to empty so existing tests and pre-PD-033-C call sites see
+    /// the unchanged Case D behaviour. See
+    /// `docs/architecture-audit/pd033c-plan.md` §4.3 for the routing-gap
+    /// rationale.
+    bootstrap_content_relays: Vec<RelayUrl>,
+    /// PD-033-C — cold-start bootstrap indexer relays.
+    ///
+    /// Populated by the kernel from `bootstrap_urls_for_role(RelayRole::Indexer)`
+    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_relay_edit_rows`)
+    /// — the WITH-FALLBACK form, including `FALLBACK_INDEXER_RELAY` when no
+    /// indexer row is configured yet. This is intentionally distinct from
+    /// [`Self::indexer_relays`], which is a RAW filter on the editable
+    /// relay-row list with NO cold-start fallback (an empty `indexer_relays`
+    /// means "operator opted out", but `bootstrap_indexer_relays` carries the
+    /// guaranteed cold-start seed M1's `req(RelayRole::Indexer, …)` rides
+    /// today).
+    ///
+    /// Consumed by `case_a_authors::route`'s `if !landed && is_discovery_oneshot`
+    /// arm — the planner-extension fallback for `OneShot + Global` profile-shape
+    /// interests when the author has no NIP-65 mailbox and no `app_relays`.
+    /// Mirrors `kernel/discovery.rs::drain_unknown_oneshots`'s profile-oneshot
+    /// fan-out to `RelayRole::Indexer` exactly — same URL set, same cold-start
+    /// guarantee.
+    ///
+    /// Defaults to empty so existing tests and pre-PD-033-C call sites see no
+    /// behavioural change (the `unroutable` arm continues to fire). Production
+    /// (`identity_state::set_relay_edit_rows`) always sets it.
+    bootstrap_indexer_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,
     /// Per-relay auth state + pending REQ buffer.

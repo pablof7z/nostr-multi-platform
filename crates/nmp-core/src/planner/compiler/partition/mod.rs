@@ -27,8 +27,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::planner::{
     interest::{
-        InterestId, InterestLifecycle, InterestShape, LogicalInterest, NaddrCoord, Pubkey,
-        RelayUrl,
+        InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
+        Pubkey, RelayUrl,
     },
     plan::RoutingSource,
 };
@@ -94,12 +94,41 @@ impl RelayEntry {
 ///   the next recompile has data.
 /// - **Case D (no-author)**: no authors, addresses, or #p → active-account
 ///   read relays (hashtag firehose, global search). Falls to indexer if empty.
+///   PD-033-C extension: a `OneShot + Global + event_ids`-shaped interest is
+///   intercepted at the head of Case D and routed to `bootstrap_content_relays`
+///   when that set is non-empty — the kernel-driven discovery oneshot path
+///   that previously rode the M1 hand-rolled `req()` helper.
+///
+/// ## PD-033-C planner extension (§4.3)
+///
+/// Two narrow gates make discovery-oneshot interests routable without M1:
+///
+/// 1. **Case A `if !landed` fallback**: a `OneShot + Global` interest whose
+///    author has no NIP-65 mailbox AND no `app_relays` falls through to
+///    `indexer_relays` (lane `UserConfigured(Indexer)`) instead of being marked
+///    `unroutable`. Mirrors `discovery.rs::drain_unknown_oneshots`'s
+///    profile-oneshot arm which fans the same shape to `RelayRole::Indexer`.
+/// 2. **Case D head**: a `OneShot + Global` interest with concrete `event_ids`
+///    and no authors/addresses/p-tags routes to `bootstrap_content_relays`
+///    (lane `UserConfigured(Bootstrap)`) when that set is non-empty — the
+///    content-relay analogue of the indexer fallback for event-id discovery.
+///
+/// Both gates require `lifecycle == OneShot` AND `scope == Global` so they do
+/// not perturb account-scoped profile fetches or tailing timeline interests.
+//
+// `too_many_arguments` allowed: this is the planner-private dispatcher; its
+// parameter list is the compile-context surface (5 relay sets + mailbox cache
+// + interest input) plus the two output accumulators. A struct wrapper would
+// only force every call site through an extra builder for zero clarity gain.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn partition_interest(
     interest: &LogicalInterest,
     mailbox_cache: &dyn MailboxCache,
     indexer_relays: &[RelayUrl],
     active_account_read_relays: &[RelayUrl],
     app_relays: &[RelayUrl],
+    bootstrap_content_relays: &[RelayUrl],
+    bootstrap_indexer_relays: &[RelayUrl],
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
@@ -147,6 +176,7 @@ pub(super) fn partition_interest(
             &base_shape,
             mailbox_cache,
             app_relays,
+            bootstrap_indexer_relays,
             relay_entries,
             unroutable,
         );
@@ -183,6 +213,29 @@ pub(super) fn partition_interest(
     // app relays (hashtag firehose). Indexer remains as a last-resort fallback
     // when BOTH sets are empty so the kernel-driven discovery REQs still have
     // somewhere to land in cold-start scenarios.
+    //
+    // PD-033-C head check: a `OneShot + Global` interest with concrete
+    // `event_ids` is the kernel-driven discovery oneshot for referenced events
+    // (`kernel/discovery.rs::drain_unknown_oneshots`). Route it to
+    // `bootstrap_content_relays` BEFORE the existing accumulation so the
+    // discovery REQ lands on a content relay (not the indexer set, which is
+    // discovery-only for kind:0/3/10002). Non-discovery Case D interests
+    // (Tailing firehose, Account-scoped reads, event_ids without `OneShot +
+    // Global`) fall through to the unchanged routing below.
+    let is_oneshot_global_event_ids_discovery = matches!(interest.lifecycle, InterestLifecycle::OneShot)
+        && matches!(interest.scope, InterestScope::Global)
+        && !interest.shape.event_ids.is_empty()
+        && !bootstrap_content_relays.is_empty();
+    if is_oneshot_global_event_ids_discovery {
+        case_d_no_author::route_bootstrap_content(
+            interest,
+            &base_shape,
+            bootstrap_content_relays,
+            relay_entries,
+        );
+        return;
+    }
+
     case_d_no_author::route(
         interest,
         &base_shape,

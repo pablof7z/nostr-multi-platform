@@ -45,6 +45,8 @@ impl SubscriptionLifecycle {
             },
             app_relays: Vec::new(),
             active_account_read_relays: Vec::new(),
+            bootstrap_content_relays: Vec::new(),
+            bootstrap_indexer_relays: Vec::new(),
             current_plan: None,
             auth_gate: AuthGate::new(),
             compile_count: 0,
@@ -138,6 +140,38 @@ impl SubscriptionLifecycle {
     /// account's kind:10002 read-relays.
     pub fn set_active_account_read_relays(&mut self, relays: Vec<RelayUrl>) {
         self.active_account_read_relays = relays;
+    }
+
+    /// PD-033-C — install (or replace) the cold-start bootstrap content relay
+    /// list.
+    ///
+    /// Populated by the kernel from
+    /// `bootstrap_urls_for_role(RelayRole::Content)`; threaded into the compiler
+    /// on every recompile. Empty by default so existing call sites see no
+    /// behavioural change; a `OneShot + Global + event_ids`-shaped discovery
+    /// interest with an empty bootstrap set falls through to the unchanged
+    /// Case D body. See
+    /// [`crate::planner::compiler::SubscriptionCompiler::with_relays_and_bootstrap`]
+    /// and `docs/architecture-audit/pd033c-plan.md` §4.3 for the routing
+    /// rationale.
+    pub fn set_bootstrap_content_relays(&mut self, relays: Vec<RelayUrl>) {
+        self.bootstrap_content_relays = relays;
+    }
+
+    /// PD-033-C — install (or replace) the cold-start bootstrap indexer relay
+    /// list.
+    ///
+    /// Populated by the kernel from
+    /// `bootstrap_urls_for_role(RelayRole::Indexer)` — the WITH-FALLBACK form,
+    /// including `FALLBACK_INDEXER_RELAY` when no indexer row is configured
+    /// yet. Consumed by `case_a_authors::route`'s `OneShot + Global` discovery
+    /// arm — distinct from [`Self::set_indexer_relays`] which feeds the raw
+    /// (no-fallback) indexer probe / Case D cold-start fallback paths.
+    ///
+    /// Empty by default so existing call sites see no behavioural change. The
+    /// kernel always sets this in `identity_state::set_relay_edit_rows`.
+    pub fn set_bootstrap_indexer_relays(&mut self, relays: Vec<RelayUrl>) {
+        self.bootstrap_indexer_relays = relays;
     }
 
     /// Install (or replace) the post-compile [`PlanCoverageHook`].
