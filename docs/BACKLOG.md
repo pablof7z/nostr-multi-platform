@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **596bba29** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **3744f255** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -203,7 +203,7 @@ Work currently on a branch. Agents must not duplicate these tasks.
 
 | ID | Description | Branch | Status |
 |----|-------------|--------|--------|
-| B-7 | fix(nmp-core): route kind:9735 to KernelEventObserver + #p bootstrap subscription (F-04) | agent in worktree | PR #342 pending CI merge |
+| B-7 | fix(nmp-core): route kind:9735 to KernelEventObserver + #p bootstrap subscription (F-04) | merged | DONE — PR #342 |
 | B-8 | test(nmp-app-chirp): DM inbox FFI round-trip — unignore dm_inbox_full_round_trip_through_ffi | `worktree-agent-ae8ca2fe461608b8a` | PR #344 pending CI merge |
 
 > B-1–B-4 all merged to master (PRs #331–#337). B-5 merged PR #341. B-6 merged PR #340. Phase 1b merged PR #343. WIP.md superseded by this file.
@@ -279,11 +279,11 @@ HEAD `3e370bb5`.
 
 ### F-04 · Zap E2E round-trip verification [V1 BLOCKER]
 
-**Structural gaps fixed (B-7, in progress):**
+**Structural gaps fixed (B-7 — merged PR #342):**
 1. `handle_event` `_` wildcard never called `notify_event_observers` → kind:9735 events never
-   reached `ZapsAggregateProjection`. Fix: add kind:9735 arm in `kernel/ingest/mod.rs`.
-2. No kind:9735 subscription interest registered at bootstrap. Fix: add `#p <viewer>` REQ in
-   `active_account_bootstrap_requests`.
+   reached `ZapsAggregateProjection`. Fixed: kind:9735 arm added in `kernel/ingest/mod.rs`.
+2. No kind:9735 subscription interest registered at bootstrap. Fixed: `#p <viewer>` REQ added in
+   `active_account_bootstrap_requests` (5 tests covering F-02 + F-04 pass).
 
 `ZapAction` is implemented and registered. `ZapsAggregateProjection` is registered. The full
 round-trip — dispatch zap → `FetchLnurlInvoice` → bolt11 toast → `WalletPayInvoice` → NWC
