@@ -5,7 +5,12 @@
 //! kernel's relay-connectivity and subscription-lifecycle state — used by
 //! `make_update` to populate the diagnostics-screen snapshot projection.
 
-use super::{Kernel, RelayStatus, RelayRole, LogicalInterestStatus, short_hex, BTreeSet, WireSubscriptionStatus, RelayHealth, Counters, Instant, now_hms};
+use super::{Kernel, RelayStatus, RelayRole, LogicalInterestStatus, short_hex, BTreeSet, WireSubscriptionStatus, RelayHealth, Counters, Instant};
+// `now_hms` is `#[cfg(feature = "native")]` (reads OS wall clock via
+// `chrono::Local`). The single use site in `log()` is already gated; the
+// import has to match so `--no-default-features` (wasm32) compiles.
+#[cfg(feature = "native")]
+use super::now_hms;
 
 impl Kernel {
     pub(super) fn relay_status(&self) -> RelayStatus {

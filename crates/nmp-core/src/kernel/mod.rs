@@ -163,7 +163,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // is responsible for its own equivalent conversion.
 pub(crate) use relay_frame::RelayFrame;
 
-use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, format_timestamp, now_hms, diff_items, ratio, short_pubkey_display, avatar_color, root_event_id, first_event_ref};
+use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, short_pubkey_display, avatar_color, root_event_id, first_event_ref};
+// V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
+// `#[cfg(feature = "native")]` in `kernel/nostr.rs` (they read the OS
+// wall clock via `chrono::Local`). Importing them unconditionally breaks
+// `--no-default-features` (wasm32) builds. The single call sites in
+// `update.rs`, `status.rs`, and `publish_outbox.rs` are themselves
+// already `#[cfg(feature = "native")]`, so the re-export is gated too.
+#[cfg(feature = "native")]
+use nostr::{format_timestamp, now_hms};
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
 
 /// Decode a 64-char lowercase/uppercase-hex pubkey into the store's

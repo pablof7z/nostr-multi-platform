@@ -55,14 +55,22 @@ makes the eventual fix harder.
   heed, nostr-database, mio, rustls, chrono/clock. `mod ffi` gated behind
   `#[cfg(feature = "native")]`. Default build unchanged. (commit `5e36e158`)
 - Phase 1b ✅ DONE (PR #343): `nmp-core = { default-features = false }` dep wired in
-  `nmp-wasm/Cargo.toml`. `cargo check -p nmp-wasm` (native) passes; wasm32 target blocked by
-  secp256k1-sys C build (tracked separately — needs pure-Rust secp backend or further feature-gating).
+  `nmp-wasm/Cargo.toml`. **Regression noted 2026-05-23:** between PR #343 and Stage 2,
+  five `super::format_timestamp` / `super::now_hms` / `super::UNIX_EPOCH` imports in
+  `kernel/{nostr,mod,update,status,publish_outbox}.rs` were left ungated even though the
+  items they pulled from are `#[cfg(feature = "native")]`. `cargo check -p nmp-wasm`
+  failed on HEAD until Stage 2 (PR pending) restored the gates.
 - Phase 1c ✅ DONE (PR #341): `RelayFrame` enum introduced; `actor/` and `relay_worker/` gated
-  behind `#[cfg(feature = "native")]`; `cargo check -p nmp-core --no-default-features` passes.
-- Stage 2: replace stub relay transport with `gloo-net`/`web-sys` WebSocket.
-- Stage 3: port persistence to IndexedDB-backed `nostr-database` impl.
+  behind `#[cfg(feature = "native")]`; `cargo check -p nmp-core --no-default-features` passes
+  (after the Stage 2 import-gating fixup above).
+- Stage 2 ✅ DONE (PR pending): `WasmRuntime` rewritten on `nmp_core::KernelReducer` — the
+  pure protocol kernel now drives `Start`/`Stop`/snapshot envelopes. `LocalNote` stub deleted.
+  `cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes; relay transport remains
+  Stage 3 (app-level intents return `browser_actor_driver_missing` honestly).
+- Stage 3: wire `web_sys::WebSocket` as a `RelayFrame` source so live REQ/EVENT/CLOSE
+  flows through the kernel, then port persistence to IndexedDB-backed `nostr-database` impl.
 
-No chirp-web features may be added until Phase 1c lands.
+No chirp-web features may be added until Stage 3 lands.
 
 ### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 
@@ -235,14 +243,30 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Phase 1b/1c — wire nmp-wasm to nmp-core proper [V1 BLOCKER]
+### F-01 · Fix V-01 Stage 3 — wire web_sys::WebSocket transport + IndexedDB [V1 BLOCKER]
 
-Phase 1a, 1b, 1c all done (PRs #341, #343). `nmp-wasm` now depends on
-`nmp-core` (default-features = false). Next: wire `NmpApp` into `WasmRuntime`
-and delete the stub runtime. Blocked on secp256k1-sys wasm32 C build (pure-Rust
-secp backend or further feature-gating needed).
+Phase 1a/1b/1c + Stage 2 done. Stub runtime is deleted; `WasmRuntime` is now
+driven by `nmp_core::KernelReducer` (the pure reducer the native actor uses).
+Snapshots flow through `wrap_snapshot` — bit-identical envelope to native hosts.
+App-level intents (`PublishNote`, `React`, `Follow`, `Unfollow`) currently
+return `browser_actor_driver_missing` because the relay transport is not yet
+wired. Stage 3 closes that gap.
 
-No `chirp-web` feature work until stub runtime is deleted.
+**Stage 3 scope:**
+1. Implement a `web_sys::WebSocket`-backed source of `RelayFrame` so the
+   kernel's already-wire-transport-agnostic ingest path can run unchanged
+   under wasm32.
+2. Drive REQ/EVENT/CLOSE end-to-end from the browser; the actor analogue
+   becomes a `spawn_local`-driven loop pumping `KernelAction` values.
+3. Port persistence to an IndexedDB-backed `nostr-database` impl (the native
+   `nmp-nostr-lmdb` fork stays native-only).
+
+secp256k1-sys wasm32 C build is no longer a blocker — Stage 2 confirmed
+`cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes once
+`CC_wasm32_unknown_unknown` resolves to a clang with wasm support (the CI
+workflow now sets this explicitly).
+
+No `chirp-web` feature work until Stage 3 lands.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
