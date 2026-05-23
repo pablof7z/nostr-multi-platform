@@ -1,0 +1,33 @@
+[package]
+name = "nmp-app-notes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Second-app stateful spike: a minimal NIP-01 note client (read kind:1,
+# publish kind:1, sign-in via nsec or NIP-46 bunker) built ONLY on the
+# substrate seams already exported by `nmp-core` + `nmp-signer-broker`. No
+# Chirp dependency, no protocol-crate dependency, no bespoke `#[no_mangle]`
+# C-ABI symbols beyond `nmp_app_notes_init` (a marker, not a protocol seam).
+#
+# This crate exists to **confirm the framework thesis for stateful apps** —
+# the Longform spike already proved the read-only path; this proves write +
+# signin work the same way.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# `nmp_app_signin_bunker`, `nmp_app_switch_active`, `nmp_app_remove_account`,
+# `nmp_app_lifecycle_*`, and the wallet symbols are only re-exported via
+# Rust paths under the `android-ffi` feature (see crates/nmp-core/src/lib.rs
+# lines 117-119). Enabling the feature here is what causes rustc to include
+# those `#[no_mangle]` symbol bodies in the CGUs that end up inside
+# `libnmp_app_notes.a` (without a Rust-path reference the symbols stay `U`
+# in the archive and the iOS link step fails). The feature is misnamed for
+# historical reasons; it has no Android-specific code paths.
+nmp-core = { path = "../../../crates/nmp-core", features = ["android-ffi"] }
+# NIP-46 signer broker. Re-exports `nmp_signer_broker_init`,
+# `nmp_app_nostrconnect_uri`, `nmp_app_cancel_bunker_handshake`, and
+# `nmp_broker_free_string` — the bunker sign-in surface the iOS shell needs.
+# Lives outside `nmp-core` because doctrine D0 forbids `nmp-core -> nmp-signers`.
+nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }

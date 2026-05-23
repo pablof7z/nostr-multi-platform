@@ -3805,6 +3805,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-app-notes"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-signer-broker",
+]
+
+[[package]]
 name = "nmp-chirp-config"
 version = "0.1.0"
 
