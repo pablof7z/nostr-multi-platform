@@ -260,6 +260,66 @@ impl Kernel {
         self.lifecycle.drain_tick(&mailboxes)
     }
 
+    /// V-04 Stage 2 — `KernelReducer` / wasm bridge: drain one lifecycle tick
+    /// and convert the resulting [`crate::subs::WireFrame`]s into
+    /// [`crate::relay::OutboundMessage`]s ready to hand to the transport.
+    ///
+    /// This is the wasm/`KernelReducer`-side analogue of the native actor's
+    /// `wire_frames_to_outbound` bridge (`actor/outbound.rs`). It exists
+    /// because `KernelReducer` (used by `nmp-wasm`) does NOT have an actor
+    /// idle loop; without an inline conversion, a `CompileTrigger::ViewOpened`
+    /// enqueued by a `startup_requests`-style helper would never be drained on
+    /// the wasm path and the REQs would never reach the wire.
+    ///
+    /// Empty inbox / empty diff is a zero-cost no-op (returns
+    /// `Vec::new()` before allocating anything) — matches D8.
+    ///
+    /// Frame-to-outbound conversion is byte-for-byte the same as
+    /// `actor::outbound::wire_frames_to_outbound`: same `["REQ", sub_id, filter]`
+    /// / `["CLOSE", sub_id]` shape, same canonical URL stamp, same
+    /// `RelayRole::Content` fallback for unrecognized relay URLs, same
+    /// `register_planner_wire_frames` call so EOSE / keep-live bookkeeping
+    /// matches the native path exactly. The duplication is deliberate —
+    /// `wire_frames_to_outbound` is `pub(super)` to `actor` and crosses a
+    /// module boundary the kernel must not depend on (D0). If this method
+    /// ever drifts from the actor bridge, the
+    /// `actor::outbound::tests` regression on canonicalization
+    /// (`non_canonical_wire_frame_url_is_canonicalized_on_outbound`) is the
+    /// canary — port any fix here too.
+    pub(crate) fn drain_lifecycle_outbound(&mut self) -> Vec<crate::relay::OutboundMessage> {
+        let frames = self.drain_lifecycle_tick();
+        if frames.is_empty() {
+            return Vec::new();
+        }
+        self.register_planner_wire_frames(&frames);
+        frames
+            .into_iter()
+            .map(|f| {
+                let (relay_url, text) = match f {
+                    crate::subs::WireFrame::Req {
+                        relay_url,
+                        sub_id,
+                        filter_json,
+                        ..
+                    } => (relay_url, format!(r#"["REQ","{sub_id}",{filter_json}]"#)),
+                    crate::subs::WireFrame::Close { relay_url, sub_id } => {
+                        (relay_url, format!(r#"["CLOSE","{sub_id}"]"#))
+                    }
+                };
+                let relay_url =
+                    crate::relay::canonical_relay_url(&relay_url).unwrap_or(relay_url);
+                let role = self
+                    .role_for_relay_url(&relay_url)
+                    .unwrap_or(crate::relay::RelayRole::Content);
+                crate::relay::OutboundMessage {
+                    role,
+                    relay_url,
+                    text,
+                }
+            })
+            .collect()
+    }
+
     /// T142 — role lookup: map a resolved relay URL to its `RelayRole` lane.
     ///
     /// Option A from the spec §3.2: bootstrap-URL matching with Content fallback.
