@@ -120,9 +120,9 @@ pub(crate) fn send_gift_wrapped_dm(
     // fires a lint finding.
     //
     // 1. Resolve a `SignerForSeal` for the active account (ADR-0026 seam).
-    //    `None` here means the active signer is a remote (NIP-46 / NIP-07)
-    //    handle and the Phase-2 adapter is not wired yet; surface a toast
-    //    and publish nothing (D6 — graceful degrade, never a panic).
+    //    `None` only when there is no active account at all, or the remote
+    //    signer reported a malformed pubkey (RemoteSignerForSeal graceful-
+    //    degrade). Both local and remote (NIP-46) signers are supported.
     let Some(signer) = identity.active_signer_for_seal() else {
         // `active_signer_for_seal` only returns `None` when there is no
         // active account at all, OR when the active remote signer

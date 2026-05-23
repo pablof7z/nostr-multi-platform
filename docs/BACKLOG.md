@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **9f227710** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **49b927ff** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
