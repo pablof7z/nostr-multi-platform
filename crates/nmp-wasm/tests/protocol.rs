@@ -1,5 +1,5 @@
 use nmp_wasm::{
-    ChirpAction, ChirpActionDispatch, ClientHello, RelayBootstrapEntry, RuntimeStatus, StartConfig,
+    AppAction, AppActionDispatch, ClientHello, RelayBootstrapEntry, RuntimeStatus, StartConfig,
     WasmRuntime, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
@@ -90,8 +90,8 @@ fn invalid_protocol_is_rejected_before_start() {
 
 #[test]
 fn chirp_action_publish_note_maps_to_kernel_publish_action() {
-    let action = ChirpActionDispatch {
-        action: ChirpAction::PublishNote {
+    let action = AppActionDispatch {
+        action: AppAction::PublishNote {
             content: "hello from web".to_string(),
             reply_to_id: None,
         },
@@ -124,7 +124,7 @@ fn chirp_action_react_defaults_to_like_without_host_policy() {
     }))
     .unwrap();
 
-    let WorkerRequest::ChirpAction(action) = request else {
+    let WorkerRequest::AppAction(action) = request else {
         panic!("expected chirp action request");
     };
     let dispatch = action.into_action_dispatch();
@@ -144,8 +144,8 @@ fn chirp_action_uses_same_generic_worker_event_path() {
     let mut runtime = WasmRuntime::new();
 
     let events = runtime
-        .handle(WorkerRequest::ChirpAction(ChirpActionDispatch {
-            action: ChirpAction::Follow {
+        .handle(WorkerRequest::AppAction(AppActionDispatch {
+            action: AppAction::Follow {
                 pubkey: "deadbeef".to_string(),
             },
             correlation_id: "follow-1".to_string(),
@@ -178,8 +178,8 @@ fn browser_publish_intent_emits_rust_owned_chirp_snapshot() {
         .unwrap();
 
     let events = runtime
-        .handle(WorkerRequest::ChirpAction(ChirpActionDispatch {
-            action: ChirpAction::PublishNote {
+        .handle(WorkerRequest::AppAction(AppActionDispatch {
+            action: AppAction::PublishNote {
                 content: "hello from web".to_string(),
                 reply_to_id: None,
             },
@@ -216,8 +216,8 @@ fn browser_publish_validation_lives_in_rust_facade() {
     let mut runtime = WasmRuntime::new();
 
     let events = runtime
-        .handle(WorkerRequest::ChirpAction(ChirpActionDispatch {
-            action: ChirpAction::PublishNote {
+        .handle(WorkerRequest::AppAction(AppActionDispatch {
+            action: AppAction::PublishNote {
                 content: "   ".to_string(),
                 reply_to_id: None,
             },
