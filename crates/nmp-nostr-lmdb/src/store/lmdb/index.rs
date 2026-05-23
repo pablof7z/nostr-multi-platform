@@ -133,6 +133,7 @@ pub fn make_ci_index_key(created_at: Timestamp, event_id: &[u8; EventId::LEN]) -
 /// ## Structure
 ///
 /// `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_tc_index_key(
     tag_name: SingleLetterTag,
     tag_value: &str,
@@ -157,6 +158,7 @@ pub fn make_tc_index_key(
 /// ## Structure
 ///
 /// `author(32)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_ac_index_key(
     author: &[u8; PublicKey::LEN],
     created_at: Timestamp,
@@ -174,6 +176,7 @@ pub fn make_ac_index_key(
 /// ## Structure
 ///
 /// `author(32)` + `kind(2)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_akc_index_key(
     author: &[u8; PublicKey::LEN],
     kind: u16,
@@ -194,6 +197,7 @@ pub fn make_akc_index_key(
 /// ## Structure
 ///
 /// `kind(2)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_kc_index_key(
     kind: u16,
     created_at: Timestamp,
@@ -211,6 +215,7 @@ pub fn make_kc_index_key(
 /// ## Structure
 ///
 /// `author(32)` + `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_atc_index_key(
     author: &[u8; PublicKey::LEN],
     tag_name: SingleLetterTag,
@@ -244,6 +249,7 @@ pub fn make_atc_index_key(
 /// ## Structure
 ///
 /// `kind(2)` + `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_ktc_index_key(
     kind: u16,
     tag_name: SingleLetterTag,
