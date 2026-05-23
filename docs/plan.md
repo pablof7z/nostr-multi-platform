@@ -24,7 +24,7 @@
 
 **Framework thesis — CONFIRMED 2026-05-23 (PR #377):** `apps/notes/` is a stateful second app — NIP-01 publish (kind:1) + NIP-46 bunker sign-in built entirely on existing substrate seams. 299 LOC Swift (under the ≤300 budget), 25 LOC Rust, **zero new bespoke C-ABI symbols** (the lone `nmp_app_notes_init` is an empty app-registration marker). Together with `apps/longform` (read-only consumption) and `apps/fixture` (non-Nostr write), the substrate now hosts a second non-Chirp app with no protocol-crate dependency. See [PD-033-A](BACKLOG.md#pd-033-a--framework-thesis--second-non-social-app--confirmed-2026-05-23).
 
-**Largest accumulated debt:** 48 bespoke `nmp_app_*` FFI symbols in `crates/nmp-core/src/ffi/mod.rs` (1,487 LOC) competing with `dispatch_action`. Every non-`dispatch_action` verb is migration debt. D11 covers publish; everything else is open. No deprecation calendar exists yet.
+**Largest accumulated debt:** 48 bespoke `nmp_app_*` FFI symbols in `crates/nmp-core/src/ffi/` (mod.rs alone is 1,559 LOC). Calendar written 2026-05-23 (see [PD-039](BACKLOG.md#pd-039--bespoke-ffi-deprecation-calendar-d11-expansion--decision-made-2026-05-23)): 16 are migration debt (user-intent verbs that bypass `dispatch_action`), 26 are structural-permanent under Theme A (lifecycle / callbacks / capability sockets / observer + projection registration / NWC connection lifecycle / publish control plane / liveness probe), 4 are test-only, 1 canonical, 1 already a thin shim. Target: 0 migration-debt symbols at v1-B. D11 covers publish; D11 expansion (PD-039) now covers the rest.
 
 ---
 
@@ -101,12 +101,12 @@ v1 ships when **all of the following** hold:
 4. **Stateful second-app spike is run** — ✅ done (PR #377: `apps/notes/` confirms the framework thesis; 299 LOC Swift, 25 LOC Rust, 0 new C-ABI symbols).
 5. **`nmp-wasm` is no longer a stub.** Stage 2 + Stage 3 + Stage 3b complete (PR #372/#375/#378); Stage 3c (IndexedDB + publish-path wire + multi-role bootstrap) is the remaining v1-blocking work — see F-01.
 6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
-7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** Calendar = "N existing symbols migrated to `dispatch_action` per quarter, N owned." Calendar must be written before any new v1 feature lands.
+7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** ✅ calendar written 2026-05-23 — see [PD-039 in BACKLOG.md](BACKLOG.md#pd-039--bespoke-ffi-deprecation-calendar-d11-expansion--decision-made-2026-05-23). 48 symbols inventoried; 16 classified as migration debt, 26 as structural-permanent (Theme A), 4 as test-only, 1 canonical, 1 already a thin shim. Enforcement: the existing `ci/check-ffi-surface-freeze.sh` gate (`.github/workflows/ffi-surface-freeze.yml`) rejects net-additions by default; the single ADR override (`nmp_app_is_alive` / ADR-0028) is the precedent for future genuinely-structural additions.
 8. **Snapshot serialization has a CI regression gate.** ✅ done — `make_update_us` + `serialize_us` instrumented in `crates/nmp-core/src/kernel/update.rs`. Gate: `snapshot_perf_firehose_gate` in `crates/nmp-core/src/kernel/perf_tests.rs` asserts `make_update_us < 250_000` μs and `serialize_us < 150_000` μs over a 1k-event firehose with `visible_limit = 500`. Thresholds = ≈ 10 × the observed dev-hardware debug baseline (~25 ms / ~15 ms, 5-run variance < 5 %); sized to catch a 10 × regression on `ubuntu-latest` debug CI without flaking on shared-runner jitter. The `NMP_PERF` log line in `kernel::update` remains the live monitoring signal in production. Test runs on every PR via `test.yml` (no new workflow required).
 9. **All M0–M8 + M10.5 milestones gates are met against the current code** (the table above is honest; no silent endings).
 10. **Doctrine D0–D14 enforced by lint** (doctrine-lint scoped run is part of CI on master).
 
-Items 6–8 are the honest-cross-platform / deprecation-calendar / perf-gate triad from the 2026-05-23 direction review. Item 8 (perf gate) is now closed in code; items 6 and 7 are still open and must be added to `BACKLOG.md` if work is going to start on them.
+Items 6–8 are the honest-cross-platform / deprecation-calendar / perf-gate triad from the 2026-05-23 direction review. Items 7 (deprecation calendar) and 8 (perf gate) are now closed; item 6 (honest cross-platform) is the remaining open item in this triad and must be added to `BACKLOG.md` if work is going to start on it.
 
 ---
 

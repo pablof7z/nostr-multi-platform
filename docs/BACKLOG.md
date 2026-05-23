@@ -321,6 +321,48 @@ hand-rolled path, staged. Stage 1 complete (PR #368). See V-04 staged fix plan a
 
 `codex/worker1-nip17-dm-inbox-relays` does not exist on the remote. Already deleted.
 
+### PD-039 · Bespoke FFI deprecation calendar (D11 expansion) — DECISION MADE 2026-05-23
+
+**Decision settled (this PR):** the bespoke `nmp_app_*` C-ABI surface in
+`crates/nmp-core/src/ffi/` is sorted into four categories. The calendar fixes
+which symbols are migration debt vs. permanent by doctrine, the migration
+cadence, and the doctrine reviewers apply to new additions. Companion to v1
+exit criterion #7 in [`docs/plan.md`](plan.md#v1-exit--what-has-to-be-true-to-ship).
+
+**Inventory on 2026-05-23 (HEAD `4fd656dd`, 48 symbols total):** 1 canonical
+(`nmp_app_dispatch_action`); 1 already a thin shim over `dispatch_action`
+(`nmp_app_wallet_pay_invoice`); 26 structural permanent under Theme A
+(lifecycle / callbacks / capability sockets / observer + projection
+registration / NWC connection lifecycle / publish control plane / liveness
+probe / action-stage acks); 4 test-only (`cfg(feature = "test-support")`); **16
+migration debt** (user-intent verbs that send `ActorCommand::*` directly).
+
+**Rule (in force from 2026-05-23):** No new `nmp_app_*` symbol may be added
+without a merged ADR. The CI gate
+[`ci/check-ffi-surface-freeze.sh`](../ci/check-ffi-surface-freeze.sh)
+(`.github/workflows/ffi-surface-freeze.yml`) rejects net-additions by default;
+genuinely-structural additions are exempted via `ADR_OVERRIDES` (precedent:
+`nmp_app_is_alive` / ADR-0028).
+
+**Cadence — target zero migration-debt symbols at v1-B:**
+- Batch 1 (pre-v1-A): 0 deletions — every debt symbol has a live Swift caller.
+- Batch 2 (v1-A → v1-B, ~2/quarter): identity (5) + relay-edit (2) = 7
+  symbols migrate to `nmp.identity.*` / `nmp.relays.*` namespaces.
+- Batch 3 (v1-B): 9 view/subscription-registry mutations migrate to
+  `nmp.timeline.*` (or 2 reclassify as structural — `claim_profile` /
+  `release_profile` are handle refcounts, not actions).
+
+**Definition of done per migrated symbol:** body becomes a thin
+`dispatch_action_json(Some(app), "<namespace>", &json)` shim (the pattern
+`nmp_app_wallet_pay_invoice` already follows; `ffi/wallet.rs:119`). The
+C-ABI symbol is retained for byte-stable Swift compatibility; only the body
+changes. Net-zero ABI churn.
+
+Full per-symbol inventory, Theme A doctrine, batch-by-batch namespace map, and
+adjacent hygiene items (header drift in `NmpCore.h`; signer-broker /
+nmp-app-chirp symbols outside this calendar's scope) live in
+[`docs/architecture-audit/ffi-deprecation-calendar.md`](architecture-audit/ffi-deprecation-calendar.md).
+
 ---
 
 ## Section 4 — V1 Feature Backlog
