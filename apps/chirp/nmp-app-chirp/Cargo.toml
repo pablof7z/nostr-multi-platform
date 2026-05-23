@@ -44,6 +44,15 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+# NIP-02 (follow list, kind:3) + NIP-25 (reactions, kind:7). Chirp registers
+# the crate's `FollowModule` / `UnfollowModule` / `ReactModule` against the
+# kernel action registry — this is the D0-clean replacement for the deleted
+# per-verb `nmp_app_follow` / `nmp_app_unfollow` / `nmp_app_react` C symbols.
+# Lifted out of `apps/chirp/nmp-app-chirp/src/ffi/actions.rs` so any Nostr
+# app on top of NMP wires the social graph with a single
+# `nmp_nip02::register_actions(app)` call (Opus direction review #10
+# 30-day call). D0-clean: `nmp-core` gains no NIP-02 / NIP-25 nouns.
+nmp-nip02 = { path = "../../../crates/nmp-nip02" }
 # NIP-29 relay-based groups. Chirp registers the crate's typed
 # `JoinRequestAction` `ActionModule` against the kernel action registry —
 # proving the host-extensibility seam works for NIP-crate modules, not just

@@ -1,0 +1,25 @@
+[package]
+name = "nmp-nip02"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "NIP-02 (Follow List, kind:3) + NIP-25 (Reactions, kind:7) ActionModules — substrate-level social-graph primitives. The crate name reflects the originating substrate seam (NIP-02 follow lists are the core social primitive); the kind:7 reaction module is co-located here because Follow/Unfollow/React form the minimal social-verb cluster every Nostr client implements and they share the `nmp.*` namespace shape that D9 requires of every protocol crate."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# `nmp-core` supplies the `ActionModule` trait this crate's modules implement,
+# the `ActorCommand` variants the executors enqueue (`React`, `Follow`,
+# `Unfollow` — kept generic in core because the actor owns the kind:3/kind:7
+# build + sign step on its thread per D7), and the `NmpApp::register_action`
+# seam `register_actions` calls.
+nmp-core = { path = "../nmp-core" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# Brings in `nmp_app_new` / `nmp_app_free` so the integration tests can
+# exercise `register_actions` end-to-end against a real `NmpApp` — same
+# pattern the other `nmp-nip*` crates use.
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+serde_json = "1.0"
