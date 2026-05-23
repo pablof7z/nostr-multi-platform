@@ -214,7 +214,7 @@ fn wrap_signed_seal(
 /// 5. Sends the final `Event` (or error) on the returned channel.
 ///
 /// The function returns `SignerOp::Pending(rx)` immediately. The actor
-/// polls `rx` on its existing PendingSign tick loop — no busy waits, no
+/// polls `rx` on its existing `PendingSign` tick loop — no busy waits, no
 /// blocking the actor thread, no parallel state cluster.
 ///
 /// # Constraints
@@ -337,8 +337,7 @@ fn drive_remote_chain(
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             return Err(SignerError::Timeout(format!(
-                "gift_wrap driver: nip44_encrypt did not complete within {:?}",
-                DRIVER_STEP_TIMEOUT
+                "gift_wrap driver: nip44_encrypt did not complete within {DRIVER_STEP_TIMEOUT:?}"
             )));
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -369,8 +368,7 @@ fn drive_remote_chain(
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 return Err(SignerError::Timeout(format!(
-                    "gift_wrap driver: sign_seal did not complete within {:?}",
-                    DRIVER_STEP_TIMEOUT
+                    "gift_wrap driver: sign_seal did not complete within {DRIVER_STEP_TIMEOUT:?}"
                 )));
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
