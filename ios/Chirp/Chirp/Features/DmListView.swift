@@ -124,7 +124,7 @@ private struct DmConversationRow: View {
                         .lineLimit(1)
                     Spacer()
                     if let latest {
-                        Text(dmRelativeTime(latest.createdAt))
+                        Text(latest.createdAtDisplay)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -278,12 +278,3 @@ private struct DmComposeSheet: View {
     }
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────
-
-/// Abbreviated relative time for a unix-seconds timestamp.
-func dmRelativeTime(_ unixSecs: UInt64) -> String {
-    let date = Date(timeIntervalSince1970: TimeInterval(unixSecs))
-    let fmt = RelativeDateTimeFormatter()
-    fmt.unitsStyle = .abbreviated
-    return fmt.localizedString(for: date, relativeTo: Date())
-}

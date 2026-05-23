@@ -1144,6 +1144,12 @@ struct DmMessage: Decodable, Identifiable, Equatable {
     let senderPubkey: String
     let content: String
     let createdAt: UInt64
+    /// Pre-formatted abbreviated relative-time label (e.g. `"3s ago"`,
+    /// `"12m ago"`, `"5h ago"`, `"2d ago"`) computed by the Rust DM
+    /// projection at every snapshot tick (V-20 thin-shell fix — aim.md §2:
+    /// display formatting is Rust-owned). The view binds this directly and
+    /// never calls `RelativeDateTimeFormatter`.
+    let createdAtDisplay: String
     let replyTo: String?
     let isOutgoing: Bool
     let sourceRelays: [String]?

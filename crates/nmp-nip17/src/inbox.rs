@@ -49,7 +49,9 @@
 //!   rumor. Nothing panics across the actor boundary.
 //! * **D7** — an incoming rumor's `created_at` was stamped by the *sender*;
 //!   it is the real send time, not the `0` "kernel please stamp me" sentinel
-//!   the outbound builder uses. It is stored verbatim.
+//!   the outbound builder uses. It is stored verbatim. The `created_at_display`
+//!   relative-time label is (re)computed at every snapshot tick against
+//!   `SystemTime::now()` so it stays fresh as time advances.
 //!
 //! # Spec
 //!
@@ -57,6 +59,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
@@ -90,6 +93,19 @@ pub struct DmMessage {
     /// Unix seconds — the rumor's own `created_at`, stamped by the sender
     /// (D7: a received message's timestamp is real, not the `0` sentinel).
     pub created_at: u64,
+    /// Pre-formatted abbreviated relative-time label for `created_at`
+    /// (e.g. `"3s ago"`, `"12m ago"`, `"5h ago"`, `"2d ago"`). Computed in
+    /// Rust at snapshot time via [`display::format_ago_secs`] so the host
+    /// shell never reaches for `RelativeDateTimeFormatter` or any other
+    /// date-formatting API (V-20 thin-shell fix — aim.md §2: display
+    /// formatting is Rust-owned).
+    ///
+    /// Computed against the snapshot's wall-clock "now" (read once per
+    /// `snapshot()` call); stored as the empty string in the ingest-time
+    /// `DmMessage` and overwritten on every snapshot so the label is always
+    /// fresh on render — never stale across ticks.
+    #[serde(default)]
+    pub created_at_display: String,
     /// When the rumor carries a NIP-10 `["e", <id>, _, "reply"]` marker, the
     /// id of the message this one replies to.
     pub reply_to: Option<String>,
@@ -157,7 +173,7 @@ pub struct DmInboxSnapshot {
 impl DmInboxSnapshot {
     /// An empty inbox — what a fresh projection (or a poisoned mutex, D6)
     /// reports.
-    #[must_use] 
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             conversations: Vec::new(),
@@ -199,7 +215,7 @@ impl DmInboxProjection {
     }
 
     /// The kind filter to register this observer with — kind:1059 only.
-    #[must_use] 
+    #[must_use]
     pub fn kind_filter() -> KindFilter {
         KindFilter::from_kinds([KIND_GIFT_WRAP])
     }
@@ -222,6 +238,15 @@ impl DmInboxProjection {
     /// unsealing through the remote signer RPC.
     #[must_use]
     pub fn snapshot(&self) -> DmInboxSnapshot {
+        self.snapshot_at(now_unix_secs())
+    }
+
+    /// Snapshot the inbox against a caller-supplied wall-clock "now" (Unix
+    /// seconds). Exposed so tests can pin the clock and assert on the
+    /// `created_at_display` relative-time labels deterministically. Production
+    /// callers should use [`Self::snapshot`], which reads `SystemTime::now()`.
+    #[must_use]
+    pub fn snapshot_at(&self, now_secs: u64) -> DmInboxSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return DmInboxSnapshot::empty();
         };
@@ -239,10 +264,15 @@ impl DmInboxProjection {
             .map(|guard| guard.is_none())
             .unwrap_or(false);
 
-        // Group messages by conversation peer.
+        // Group messages by conversation peer. Each message is cloned out of
+        // the bounded store; the `created_at_display` field is (re)computed
+        // here against `now_secs` so it never goes stale across ticks
+        // (V-20 thin-shell fix — host renders the label verbatim).
         let mut by_peer: BTreeMap<String, Vec<DmMessage>> = BTreeMap::new();
         for (peer, msg) in messages.values() {
-            by_peer.entry(peer.clone()).or_default().push(msg.clone());
+            let mut msg = msg.clone();
+            msg.created_at_display = display::format_ago_secs(now_secs, msg.created_at);
+            by_peer.entry(peer.clone()).or_default().push(msg);
         }
 
         let mut conversations: Vec<DmConversation> = by_peer
@@ -368,6 +398,11 @@ impl DmInboxProjection {
             content: rumor.content.clone(),
             // D7: the rumor's `created_at` is the sender's real send time.
             created_at: rumor.created_at.as_secs(),
+            // The relative-time label is (re)computed at every snapshot tick
+            // against the snapshot's `now_secs` (V-20). Stored as the empty
+            // string at ingest so the field cannot leak a stale value if a
+            // code path ever reads the bounded store directly.
+            created_at_display: String::new(),
             reply_to: first_reply_e_tag(rumor),
             is_outgoing,
             source_relays: source_relays_from(source_relay_url),
@@ -408,7 +443,7 @@ impl RawEventObserver for DmInboxProjection {
 /// The id is intentionally independent of the pubkey so an account switch
 /// replaces the prior `#p` filter instead of accumulating one long-lived
 /// subscription per account.
-#[must_use] 
+#[must_use]
 pub fn active_giftwrap_inbox_interest_id() -> InterestId {
     InterestId(nmp_core::stable_hash::stable_hash64(
         "nip17.giftwrap.active",
@@ -427,7 +462,7 @@ pub fn active_giftwrap_inbox_interest_id() -> InterestId {
 /// [`PTagRouting::Nip17DmRelays`]; if the kind:10050 list is unknown or empty,
 /// the compiler emits no subscription instead of falling back to public NIP-65
 /// read relays.
-#[must_use] 
+#[must_use]
 pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = ViewDependencies {
         kinds: vec![KIND_GIFT_WRAP],
@@ -481,6 +516,20 @@ fn merge_source_relay(relays: &mut Vec<String>, source_relay_url: Option<&str>) 
     if !relays.iter().any(|existing| existing == source) {
         relays.push(source.to_string());
     }
+}
+
+/// Wall-clock "now" in Unix seconds — the time source the production
+/// [`DmInboxProjection::snapshot`] path uses to fill `created_at_display`.
+///
+/// D6: a clock that pre-dates the Unix epoch (impossible on any sane device)
+/// degrades to `0`, which [`display::format_ago_secs`] renders as `"now"`.
+/// Tests pin the clock via [`DmInboxProjection::snapshot_at`] instead of
+/// reaching for this helper.
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
