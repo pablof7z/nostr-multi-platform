@@ -19,7 +19,7 @@ use nostr::{nips::nip19::ToBech32, PublicKey};
 /// Convert a hex pubkey to a bech32 `npub1…` string.
 ///
 /// On any parse or encode error the raw hex is returned verbatim (D6).
-#[must_use] 
+#[must_use]
 pub fn to_npub(pubkey_hex: &str) -> String {
     match PublicKey::parse(pubkey_hex) {
         Ok(pk) => pk.to_bech32().unwrap_or_else(|_| pubkey_hex.to_string()),
@@ -31,7 +31,7 @@ pub fn to_npub(pubkey_hex: &str) -> String {
 ///
 /// If `pubkey_hex` is already an `npub1…` string it is abbreviated directly;
 /// otherwise it is converted first. Falls back to raw hex on any error (D6).
-#[must_use] 
+#[must_use]
 pub fn short_npub(pubkey_hex: &str) -> String {
     let npub = to_npub(pubkey_hex);
     abbreviate(&npub, 10, 6)
@@ -43,7 +43,7 @@ pub fn short_npub(pubkey_hex: &str) -> String {
 /// `"npub1"` prefix — and uppercases them. These are bech32 chars, so always
 /// ASCII. Falls back gracefully when the `npub1` prefix is absent (e.g. raw
 /// hex fallback from a parse error in `to_npub`).
-#[must_use] 
+#[must_use]
 pub fn avatar_initials(npub: &str) -> String {
     let body = npub.strip_prefix("npub1").unwrap_or(npub);
     let chars: Vec<char> = body.chars().take(2).collect();
@@ -54,13 +54,46 @@ pub fn avatar_initials(npub: &str) -> String {
     }
 }
 
+/// Abbreviated "X ago" relative-time label for a Unix-seconds timestamp.
+///
+/// Mirrors the bucketing of `kernel/relay_diagnostics.rs::format_ago_ms` so
+/// surfaces across the app speak the same dialect ("3s ago" / "12m ago" /
+/// "5h ago" / "2d ago"). Replaces the iOS `RelativeDateTimeFormatter` call
+/// `dmRelativeTime` in the DM views (V-20 thin-shell fix — aim.md §2:
+/// display formatting is Rust-owned).
+///
+/// `now_secs` is the wall-clock "now" in Unix seconds — injected so the
+/// snapshot path stays deterministic in tests and the helper itself does no
+/// I/O. The DM projection reads `SystemTime::now()` once per snapshot tick
+/// and threads it through; the helper never reaches for a clock.
+///
+/// When `then_secs == 0` or the message is "in the future" relative to `now`
+/// (clock skew, or a sender stamp slightly ahead of the receiver), the label
+/// is `"now"` — matching the relay-diagnostics convention.
+#[must_use]
+pub fn format_ago_secs(now_secs: u64, then_secs: u64) -> String {
+    if then_secs == 0 || now_secs <= then_secs {
+        return "now".to_string();
+    }
+    let diff = now_secs - then_secs;
+    if diff < 60 {
+        format!("{diff}s ago")
+    } else if diff < 3_600 {
+        format!("{}m ago", diff / 60)
+    } else if diff < 86_400 {
+        format!("{}h ago", diff / 3_600)
+    } else {
+        format!("{}d ago", diff / 86_400)
+    }
+}
+
 /// Deterministic 6-hex avatar background colour from a hex pubkey (uppercase,
 /// no `#` prefix).
 ///
 /// Uses the same djb2 algorithm as `nmp-marmot/src/projection/display.rs` so
 /// colours are consistent across surfaces: djb2 over the **last 6 bytes** of
 /// the pubkey hex string in natural order.
-#[must_use] 
+#[must_use]
 pub fn avatar_color_hex(pubkey_hex: &str) -> String {
     let bytes = pubkey_hex.as_bytes();
     let start = bytes.len().saturating_sub(6);
@@ -105,14 +138,12 @@ mod tests {
             npub.starts_with("npub1"),
             "to_npub must produce an npub1… string, got: {npub}"
         );
-        // Round-trips: converting back to hex should give the original.
         let pk = nostr::PublicKey::from_bech32(&npub).expect("round-trip");
         assert_eq!(pk.to_hex(), hex);
     }
 
     #[test]
     fn to_npub_falls_back_to_raw_on_garbage_input() {
-        // D6: a parse error must never panic — return the raw input instead.
         let garbage = "not-a-valid-hex-pubkey";
         assert_eq!(to_npub(garbage), garbage);
     }
@@ -122,7 +153,6 @@ mod tests {
         let keys = test_keys();
         let hex = keys.public_key().to_hex();
         let short = short_npub(&hex);
-        // "npub1" (5) + at least 5 more chars before the ellipsis → 10 head.
         assert!(
             short.starts_with("npub1"),
             "short npub must start with npub1, got: {short}"
@@ -131,7 +161,6 @@ mod tests {
             short.contains('…'),
             "short npub must contain ellipsis, got: {short}"
         );
-        // Total visible chars: 10 head + 1 ellipsis + 6 tail.
         let visible: Vec<char> = short.chars().collect();
         assert_eq!(
             visible.len(),
@@ -142,7 +171,6 @@ mod tests {
 
     #[test]
     fn avatar_initials_extracts_two_chars_after_npub1_prefix() {
-        // Known: "npub1abc…" → initials "AB"
         let npub = "npub1abcdefgh";
         let initials = avatar_initials(npub);
         assert_eq!(initials, "AB", "initials should be first 2 chars after 'npub1'");
@@ -155,15 +183,10 @@ mod tests {
         let npub = to_npub(&hex);
         let initials = avatar_initials(&npub);
         assert_eq!(initials.len(), 2, "initials must be 2 chars");
-        // Bech32 chars are lowercase a–z and digits 0–9; after to_uppercase()
-        // the alphabetic chars become uppercase. Digits stay as-is. All chars
-        // are ASCII — verify that rather than asserting "all uppercase letters".
         assert!(
             initials.chars().all(|c| c.is_ascii()),
             "initials must be ASCII, got: {initials}"
         );
-        // The string should equal its own to_uppercase() — letters are already
-        // uppercased, digits are unchanged by to_uppercase().
         assert_eq!(
             initials,
             initials.to_uppercase(),
@@ -195,8 +218,6 @@ mod tests {
     fn avatar_color_hex_differs_between_distinct_pubkeys() {
         let k1 = Keys::generate();
         let k2 = Keys::generate();
-        // Astronomically unlikely to collide — if this flakes something is wrong
-        // with the hash algorithm.
         assert_ne!(
             avatar_color_hex(&k1.public_key().to_hex()),
             avatar_color_hex(&k2.public_key().to_hex()),
@@ -206,16 +227,50 @@ mod tests {
 
     #[test]
     fn avatar_color_hex_on_garbage_does_not_panic() {
-        // D6: no panic on invalid input — the djb2 just hashes the bytes it gets.
         let _ = avatar_color_hex("zz");
         let _ = avatar_color_hex("");
     }
 
     #[test]
     fn short_npub_falls_back_on_garbage_input() {
-        // D6: garbage input must not panic — returns something (possibly the
-        // garbage itself if short enough).
         let s = short_npub("zz");
         assert_eq!(s, "zz", "short string returned unchanged");
+    }
+
+    // ── format_ago_secs ──────────────────────────────────────────────────
+
+    #[test]
+    fn format_ago_secs_zero_then_is_now() {
+        assert_eq!(format_ago_secs(1_000_000_000, 0), "now");
+    }
+
+    #[test]
+    fn format_ago_secs_future_then_is_now() {
+        assert_eq!(format_ago_secs(100, 200), "now");
+        assert_eq!(format_ago_secs(100, 100), "now");
+    }
+
+    #[test]
+    fn format_ago_secs_seconds_bucket() {
+        assert_eq!(format_ago_secs(105, 100), "5s ago");
+        assert_eq!(format_ago_secs(159, 100), "59s ago");
+    }
+
+    #[test]
+    fn format_ago_secs_minutes_bucket() {
+        assert_eq!(format_ago_secs(160, 100), "1m ago");
+        assert_eq!(format_ago_secs(100 + 59 * 60, 100), "59m ago");
+    }
+
+    #[test]
+    fn format_ago_secs_hours_bucket() {
+        assert_eq!(format_ago_secs(100 + 3_600, 100), "1h ago");
+        assert_eq!(format_ago_secs(100 + 23 * 3_600, 100), "23h ago");
+    }
+
+    #[test]
+    fn format_ago_secs_days_bucket() {
+        assert_eq!(format_ago_secs(100 + 86_400, 100), "1d ago");
+        assert_eq!(format_ago_secs(100 + 7 * 86_400, 100), "7d ago");
     }
 }

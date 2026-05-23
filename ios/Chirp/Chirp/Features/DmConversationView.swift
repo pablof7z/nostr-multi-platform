@@ -158,7 +158,7 @@ private struct DmMessageBubble: View {
                     .background(
                         outgoing ? Color.accentColor : Color(.secondarySystemBackground),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                Text(dmRelativeTime(message.createdAt))
+                Text(message.createdAtDisplay)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
