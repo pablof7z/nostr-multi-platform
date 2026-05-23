@@ -202,7 +202,10 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 Work currently on a branch. Agents must not duplicate these tasks.
 
-*No work currently in flight.*
+| Item | Branch | Notes |
+|------|--------|-------|
+| NIP-29 KernelEventObserver fan-out | `fix/nip29-event-observer-fanout` | Fix `_` wildcard arm in `handle_event` — GroupChatProjection + DiscoveredGroupsProjection deaf |
+| V-05 Stage 1 nmp-coverage-gate | `feat/nmp-coverage-gate-stage1` | Create pure-policy crate with CoverageGate struct |
 
 > B-1–B-8 all merged to master (PRs #331–#337, #340–#344). WIP.md superseded by this file.
 
