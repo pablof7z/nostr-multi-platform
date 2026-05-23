@@ -72,6 +72,7 @@ pub fn q_tag(id: &str, relay: Option<&str>) -> Vec<String> {
 ///
 /// Promoted here from the copy that was private to `nmp-nip23::decode` so
 /// every protocol crate shares one implementation.
+#[must_use]
 pub fn first_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
     tags.iter()
         .find(|t| t.first().map(String::as_str) == Some(key))
@@ -81,6 +82,7 @@ pub fn first_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str
 
 /// Return the second column of every tag whose first column equals `key`,
 /// in document order.
+#[must_use]
 pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
     tags.iter()
         .filter(|t| t.first().map(String::as_str) == Some(key))

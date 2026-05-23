@@ -97,6 +97,7 @@ impl NoteRelationIndex {
         NoteRelationCounts::for_note(event_id, self.reply_count_for(event_id))
     }
 
+    #[must_use]
     pub fn ingest(&mut self, event: &KernelEvent) -> Vec<String> {
         let Some(note) = try_from_kernel_event(event) else {
             return Vec::new();

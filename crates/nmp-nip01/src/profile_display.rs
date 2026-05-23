@@ -58,6 +58,7 @@ impl AuthorDisplay {
     }
 }
 
+#[must_use]
 pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
     if event.kind != 0 {
         return None;
