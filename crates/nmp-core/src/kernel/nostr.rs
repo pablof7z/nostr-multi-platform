@@ -7,7 +7,12 @@
 //! `pub(crate)` — they are internal kernel implementation details, not public
 //! NMP API.
 
-use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSet, StoredEvent, BTreeSet, UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
+use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSet, StoredEvent, BTreeSet};
+// `UNIX_EPOCH`, `Duration`, `DateTime`, `Local`, `SystemTime` are only consumed
+// by `format_timestamp` / `now_hms` below, both `#[cfg(feature = "native")]` —
+// the imports are gated to match so `--no-default-features` (wasm32) compiles.
+#[cfg(feature = "native")]
+use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]

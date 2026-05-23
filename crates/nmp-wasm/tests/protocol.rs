@@ -161,10 +161,18 @@ fn chirp_action_uses_same_generic_worker_event_path() {
     }
 }
 
+// V-01 Stage 2: `WasmRuntime` no longer keeps a local `Vec<LocalNote>` and no
+// longer fabricates a snapshot that "contains" the published note. The pure
+// `KernelReducer` runs in WASM, but the actor + relay_worker (and therefore
+// every signed-event publish path) are `#[cfg(feature = "native")]` and
+// unreachable. The honest contract for app-level intents in browser WASM
+// today is `CapabilityFailure(browser_actor_driver_missing)`; Stage 3 will
+// wire `web_sys::WebSocket` so these complete.
+
 #[test]
-fn browser_publish_intent_emits_rust_owned_chirp_snapshot() {
+fn start_emits_canonical_snapshot_envelope_from_real_kernel() {
     let mut runtime = WasmRuntime::new();
-    runtime
+    let events = runtime
         .handle(WorkerRequest::Start(StartConfig {
             app_id: "chirp".to_string(),
             relays: nmp_chirp_config::chirp_default_relay_urls(),
@@ -177,6 +185,43 @@ fn browser_publish_intent_emits_rust_owned_chirp_snapshot() {
         }))
         .unwrap();
 
+    assert_eq!(events.len(), 2, "Start must emit RuntimeStatus + Update");
+    let WorkerEvent::Update { envelope } = &events[1] else {
+        panic!("expected update envelope, got {:?}", events[1]);
+    };
+
+    // Envelope is the canonical `wrap_snapshot` shape every native host
+    // also decodes: `{"t":"snapshot","v":{…}}`. No more bespoke "chirpTimeline"
+    // synthesized field — that was the stub leaking app-noun shape into the
+    // wire envelope.
+    assert_eq!(envelope["t"], "snapshot");
+    let payload = &envelope["v"];
+
+    // The inner payload's `rev` is the kernel's own rev, not a runtime-local
+    // counter. `KernelAction::Start` always returns `Started { rev: 0 }` on a
+    // fresh kernel, so the wasm runtime mirrors that.
+    assert_eq!(payload["rev"], 0, "rev must match KernelUpdate::Started");
+    assert_eq!(payload["running"], true);
+    assert_eq!(payload["database_name"], "chirp-dev");
+    assert_eq!(payload["schema_version"], 1);
+
+    // `relay_diagnostics` carries the bootstrap entries the host supplied at
+    // Start time. Status is "configured" — the honest state until Stage 3
+    // (web_sys::WebSocket) connects.
+    let diags = &payload["projections"]["relay_diagnostics"];
+    assert!(diags.is_array(), "relay_diagnostics must be an array");
+    assert_eq!(
+        diags[0]["url"],
+        nmp_chirp_config::CHIRP_CONTENT_RELAY_URL
+    );
+    assert_eq!(diags[0]["role"], "both,indexer");
+    assert_eq!(diags[0]["status"], "configured");
+}
+
+#[test]
+fn publish_note_returns_browser_driver_missing_until_stage_3() {
+    let mut runtime = WasmRuntime::new();
+
     let events = runtime
         .handle(WorkerRequest::AppAction(AppActionDispatch {
             action: AppAction::PublishNote {
@@ -187,50 +232,80 @@ fn browser_publish_intent_emits_rust_owned_chirp_snapshot() {
         }))
         .unwrap();
 
+    // No actor → no publish path. Honest failure rather than fabricated
+    // success. The reason carries a stable prefix host UIs can pattern-match
+    // for the degraded-mode banner.
+    match &events[0] {
+        WorkerEvent::CapabilityFailure(failure) => {
+            assert_eq!(failure.capability, "nmp.publish");
+            assert_eq!(failure.correlation_id, "pub-1");
+            assert!(
+                failure.reason.starts_with("browser_actor_driver_missing"),
+                "expected browser_actor_driver_missing prefix, got: {}",
+                failure.reason
+            );
+        }
+        other => panic!("expected CapabilityFailure, got {other:?}"),
+    }
+}
+
+#[test]
+fn kernel_namespaced_dispatch_routes_through_real_reducer() {
+    use nmp_wasm::ActionDispatch;
+    let mut runtime = WasmRuntime::new();
+
+    // `nmp.kernel.start` is one of the action_types the runtime routes
+    // directly to `KernelReducer::reduce(KernelAction::Start)`. Proves the
+    // generic Dispatch path is wired to the real kernel — not a hardcoded
+    // string match against a fake snapshot.
+    let events = runtime
+        .handle(WorkerRequest::Dispatch(ActionDispatch {
+            action_type: "nmp.kernel.start".to_string(),
+            payload: serde_json::json!({}),
+            correlation_id: "k-start-1".to_string(),
+        }))
+        .unwrap();
+
+    assert_eq!(events.len(), 2);
     assert_eq!(
         events[0],
         WorkerEvent::ActionAccepted {
-            action_type: "nmp.publish".to_string(),
-            correlation_id: "pub-1".to_string(),
+            action_type: "nmp.kernel.start".to_string(),
+            correlation_id: "k-start-1".to_string(),
         }
     );
     let WorkerEvent::Update { envelope } = &events[1] else {
         panic!("expected update envelope, got {:?}", events[1]);
     };
-    assert_eq!(
-        envelope["chirpTimeline"]["cards"][0]["content"],
-        "hello from web"
-    );
-    assert_eq!(
-        envelope["v"]["projections"]["relay_diagnostics"][0]["url"],
-        nmp_chirp_config::CHIRP_CONTENT_RELAY_URL
-    );
-    assert_eq!(
-        envelope["v"]["projections"]["relay_diagnostics"][0]["role"],
-        "both,indexer"
-    );
+    // Real kernel `rev` came back through `KernelUpdate::Started`. Stub never
+    // touched the kernel at all, so this assertion failing means a regression
+    // back to the synthetic-JSON path.
+    assert_eq!(envelope["v"]["rev"], 0);
+    assert_eq!(envelope["v"]["running"], true);
 }
 
 #[test]
-fn browser_publish_validation_lives_in_rust_facade() {
+fn app_namespaced_dispatch_returns_browser_driver_missing() {
+    use nmp_wasm::ActionDispatch;
     let mut runtime = WasmRuntime::new();
 
+    // `nmp.publish` is an *app* action — it produces a signed event. Without
+    // the actor + relay worker this cannot complete; the runtime returns
+    // CapabilityFailure rather than fabricating a snapshot the way the stub
+    // did.
     let events = runtime
-        .handle(WorkerRequest::AppAction(AppActionDispatch {
-            action: AppAction::PublishNote {
-                content: "   ".to_string(),
-                reply_to_id: None,
-            },
-            correlation_id: "pub-empty".to_string(),
+        .handle(WorkerRequest::Dispatch(ActionDispatch {
+            action_type: "nmp.publish".to_string(),
+            payload: serde_json::json!({"PublishNote": {"content": "hi", "target": "Auto"}}),
+            correlation_id: "pub-2".to_string(),
         }))
         .unwrap();
 
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.publish");
-            assert_eq!(failure.correlation_id, "pub-empty");
-            assert_eq!(failure.reason, "publish note content is empty");
+            assert!(failure.reason.starts_with("browser_actor_driver_missing"));
         }
-        other => panic!("expected Rust-side validation failure, got {other:?}"),
+        other => panic!("expected CapabilityFailure, got {other:?}"),
     }
 }

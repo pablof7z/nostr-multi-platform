@@ -12,7 +12,12 @@
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, avatar_color, truncate, format_timestamp, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, avatar_color, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+// `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
+// The single use site at `created_at_display` is already gated; import has
+// to match so `--no-default-features` (wasm32) compiles.
+#[cfg(feature = "native")]
+use super::format_timestamp;
 use crate::substrate::placeholder::picture_placeholder;
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.

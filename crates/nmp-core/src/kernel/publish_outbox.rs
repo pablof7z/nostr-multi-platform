@@ -8,7 +8,12 @@ use crate::publish::{PerRelayState, PublishAction};
 use crate::relay::{OutboundMessage, RelayRole};
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
-use super::{Kernel, PublishOutboxItem, format_timestamp, OutboxSummarySnapshot, PublishOutboxRelay, truncate};
+use super::{Kernel, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, truncate};
+// `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
+// The single use site is already gated below; the import has to match so
+// `--no-default-features` (wasm32) compiles.
+#[cfg(feature = "native")]
+use super::format_timestamp;
 
 impl Kernel {
     pub(super) fn publish_outbox_items(&self) -> Vec<PublishOutboxItem> {
