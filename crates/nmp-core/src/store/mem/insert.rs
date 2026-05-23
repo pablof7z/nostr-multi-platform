@@ -98,13 +98,13 @@ pub(super) fn insert(
 
     // 6. Kind:5 self-delete handling.
     if event.kind == 5 {
-        return handle_kind5_insert(&mut st, event, source, received_at_ms);
+        return Ok(handle_kind5_insert(&mut st, event, source, received_at_ms));
     }
 
     // 7. Replaceable supersession.
     if event.is_replaceable() {
         let key = (event.pubkey.clone(), event.kind, None::<String>);
-        return handle_supersession(&mut st, event, source, received_at_ms, key);
+        return Ok(handle_supersession(&mut st, event, source, received_at_ms, key));
     }
 
     // 8. Parameterized replaceable.
@@ -112,11 +112,11 @@ pub(super) fn insert(
         let d = event.d_tag()
             .map(|b| String::from_utf8_lossy(&b).into_owned());
         let key = (event.pubkey.clone(), event.kind, d);
-        return handle_supersession(&mut st, event, source, received_at_ms, key);
+        return Ok(handle_supersession(&mut st, event, source, received_at_ms, key));
     }
 
     // 9. Normal insert / duplicate.
-    handle_normal_insert(&mut st, event, source, received_at_ms)
+    Ok(handle_normal_insert(&mut st, event, source, received_at_ms))
 }
 
 pub(super) fn delete_by_filter(
@@ -174,7 +174,7 @@ fn handle_supersession(
     source: &RelayUrl,
     received_at_ms: u64,
     key: (String, u32, Option<String>),
-) -> Result<InsertOutcome, StoreError> {
+) -> InsertOutcome {
     let id_bytes = event.id_bytes();
     let id_hex = event.id.clone();
     let (pubkey_hex, kind, d_tag_filter) = key;
@@ -183,7 +183,7 @@ fn handle_supersession(
     if st.events.contains_key(&id_hex) {
         let p = st.provenance.entry(id_hex).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
-        return Ok(InsertOutcome::Duplicate { id: id_bytes, sources_after: p.len() as u32 });
+        return InsertOutcome::Duplicate { id: id_bytes, sources_after: p.len() as u32 };
     }
 
     let existing_id: Option<String> = st
@@ -195,8 +195,7 @@ fn handle_supersession(
                 && match &d_tag_filter {
                     None => true,
                     Some(d) => ev.raw.d_tag()
-                        .map(|tag| String::from_utf8_lossy(&tag).into_owned() == *d)
-                        .unwrap_or(false),
+                        .is_some_and(|tag| String::from_utf8_lossy(&tag).into_owned() == *d),
                 }
         })
         .max_by(|(_, a), (_, b)| {
@@ -221,15 +220,15 @@ fn handle_supersession(
             st.events.insert(id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
             let p = st.provenance.entry(id_hex).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
-            Ok(InsertOutcome::Replaced { new_id, replaced_id })
+            InsertOutcome::Replaced { new_id, replaced_id }
         } else {
-            Ok(InsertOutcome::Superseded { id: id_bytes, current_id: hex_to_bytes32_owned(existing_hex) })
+            InsertOutcome::Superseded { id: id_bytes, current_id: hex_to_bytes32_owned(existing_hex) }
         }
     } else {
         st.events.insert(id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
         let p = st.provenance.entry(id_hex).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
-        Ok(InsertOutcome::Inserted { id: id_bytes, sources_after: p.len() as u32 })
+        InsertOutcome::Inserted { id: id_bytes, sources_after: p.len() as u32 }
     }
 }
 
@@ -238,20 +237,20 @@ fn handle_normal_insert(
     event: RawEvent,
     source: &RelayUrl,
     received_at_ms: u64,
-) -> Result<InsertOutcome, StoreError> {
+) -> InsertOutcome {
     let id_bytes = event.id_bytes();
     let id_hex = event.id.clone();
 
     if st.events.contains_key(&id_hex) {
         let p = st.provenance.entry(id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
-        return Ok(InsertOutcome::Duplicate { id: id_bytes, sources_after: p.len() as u32 });
+        return InsertOutcome::Duplicate { id: id_bytes, sources_after: p.len() as u32 };
     }
 
     st.events.insert(id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
     let p = st.provenance.entry(id_hex).or_default();
     upsert_provenance(p, source.clone(), received_at_ms);
-    Ok(InsertOutcome::Inserted { id: id_bytes, sources_after: p.len() as u32 })
+    InsertOutcome::Inserted { id: id_bytes, sources_after: p.len() as u32 }
 }
 
 fn handle_kind5_insert(
@@ -259,7 +258,7 @@ fn handle_kind5_insert(
     event: RawEvent,
     source: &RelayUrl,
     received_at_ms: u64,
-) -> Result<InsertOutcome, StoreError> {
+) -> InsertOutcome {
     let kind5_id_bytes = event.id_bytes();
     let kind5_id_hex = event.id.clone();
     let kind5_pubkey = event.pubkey.clone();
@@ -291,7 +290,7 @@ fn handle_kind5_insert(
         let to_delete: Vec<String> = st.events.iter()
             .filter(|(_, ev)| {
                 ev.raw.pubkey == tgt_pk && ev.raw.kind == tgt_kind
-                    && ev.raw.d_tag().map(|d| String::from_utf8_lossy(&d).into_owned() == tgt_dtag).unwrap_or(false)
+                    && ev.raw.d_tag().is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == tgt_dtag)
                     && ev.raw.created_at <= kind5_at
             })
             .map(|(id, _)| id.clone())
@@ -311,7 +310,7 @@ fn handle_kind5_insert(
     st.events.insert(kind5_id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
     let p = st.provenance.entry(kind5_id_hex).or_default();
     upsert_provenance(p, source.clone(), received_at_ms);
-    Ok(InsertOutcome::Inserted { id: kind5_id_bytes, sources_after: p.len() as u32 })
+    InsertOutcome::Inserted { id: kind5_id_bytes, sources_after: p.len() as u32 }
 }
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────

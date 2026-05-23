@@ -281,6 +281,9 @@ impl Kernel {
     ///
     /// M11 will sharpen this to a per-URL lookup once the URL→role index is
     /// maintained by the relay-lifecycle manager.
+    // M11 will add a `None` path when the URL is unknown; the Option is
+    // intentionally forward-reserved so call sites don't need signature churn.
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<crate::relay::RelayRole> {
         use crate::relay::RelayRole;
         // Canonicalize so a raw/non-canonical input matches the canonical

@@ -117,7 +117,7 @@ fn update_local_key_slots(
 /// `PublishUnsignedEvent` arm re-stamps it from the kernel clock. This
 /// function never reads the system clock.
 fn maybe_publish_relay_list_after_edit(
-    identity: &mut commands::IdentityRuntime,
+    identity: &commands::IdentityRuntime,
     kernel: &mut Kernel,
     projection_before: &[crate::kernel::RelayEditRow],
     pending_signs: &mut Vec<super::pending_sign::PendingSign>,
