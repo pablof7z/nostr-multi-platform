@@ -71,13 +71,13 @@ No `nip44_*_to_self`, no key-derivation accessor, no `Keys` handle escapes the
 signer. Two methods, both NIP-44, both addressed to / from a counterparty
 pubkey. That is the minimal surface that unblocks bunker DMs.
 
-### `active_local_nsec` / `marmot_local_nsec` must not be read by DM send code
+### `active_local_nsec` / `mls_local_nsec` must not be read by DM send code
 
 The DM-send executor (Phase 1's `SendGiftWrappedDm` arm, and any future
 migration of it) must obtain encryption capability **only** through this seam —
 `signer.nip44_encrypt(..)` + `signer.sign(..)` — and through the actor's own
 identity state. It must never read `NmpApp::active_local_nsec` or
-`marmot_local_nsec`. Reading a raw nsec would (a) exfiltrate key material out of
+`mls_local_nsec`. Reading a raw nsec would (a) exfiltrate key material out of
 the signer boundary and (b) still exclude bunker users, who have no local nsec
 at all. This constraint is forward-facing: it governs the Phase 2.5/Phase 3
 migration of the `dm.rs` actor arm onto this seam.

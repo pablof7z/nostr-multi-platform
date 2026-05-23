@@ -48,19 +48,20 @@ Marmot's MLS layer needs the active account's raw secret key (`nostr::Keys`)
 to drive the OpenMLS credential. To keep that key Rust-owned (D0 — Swift never
 sees it on the `createAccount` path), `NmpApp` carries a dedicated slot:
 
-- **`NmpApp::marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>`** — the
+- **`NmpApp::mls_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>`** — the
   active local account's `nsec1…` in bech32 form, written by the actor after
   every identity mutation, read by `nmp_marmot_register` via the
-  `NmpApp::marmot_local_nsec()` accessor.
+  `NmpApp::mls_local_nsec()` accessor.
 
 This slot is part of the bounded exception. Hard limits:
 
-- The slot is named `marmot_local_nsec` (not a generic `active_local_nsec`) so
-  its single legitimate consumer is unambiguous at the call site.
+- The slot is named `mls_local_nsec` (describing the MLS protocol purpose, not
+  the Marmot consumer — D0 forbids app nouns at the substrate level). The D13
+  doctrine-lint enforces that only `crates/nmp-marmot/` may call `mls_local_nsec()`.
 - **NIP-17 DMs must NOT read this slot.** DM gift-wrapping also needs signer
   access, but per the Constraints above it must go through a dedicated
   `ActorCommand::SendGiftWrappedDm` kernel command — never by reading
-  `marmot_local_nsec` directly.
+  `mls_local_nsec` directly.
 
 ## Consequences
 
