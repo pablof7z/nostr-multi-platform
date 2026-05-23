@@ -37,12 +37,11 @@ pub enum RenderMode {
 /// Update this table conservatively. Adding a kind here is a behavioral
 /// change every consumer sees; prefer letting an app pass explicit
 /// `RenderMode::Markdown` if the kind dispatch is app-specific.
+#[must_use] 
 pub fn sniff_mode_from_kind(kind: u32) -> RenderMode {
     match kind {
-        // NIP-23 long-form content (markdown article).
-        30023 | 30024 => RenderMode::Markdown,
-        // NIP-54 wiki (markdown).
-        30818 => RenderMode::Markdown,
+        // NIP-23 long-form content and NIP-54 wiki — all markdown.
+        30023 | 30024 | 30818 => RenderMode::Markdown,
         _ => RenderMode::Plain,
     }
 }

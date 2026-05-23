@@ -103,7 +103,7 @@ pub(super) fn is_claimed(state: &EmbedClaimState, target: &EmbedTarget) -> bool 
 
 /// Current refcount for `target` (0 if absent).
 pub(super) fn refcount(state: &EmbedClaimState, target: &EmbedTarget) -> usize {
-    state.entries.get(target).map(Entry::refcount).unwrap_or(0)
+    state.entries.get(target).map_or(0, Entry::refcount)
 }
 
 /// Number of distinct targets currently being claimed.

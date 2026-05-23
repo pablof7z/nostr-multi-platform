@@ -64,7 +64,7 @@ pub enum MarkdownNode {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MarkdownInline {
     /// One of the plaintext inline `Segment` variants (Text, Mention,
-    /// EventRef, Hashtag, Url, Media, Emoji, Invoice). MarkdownBlock is
+    /// `EventRef`, Hashtag, Url, Media, Emoji, Invoice). `MarkdownBlock` is
     /// never emitted here (blocks don't nest inline).
     Inline(Segment),
     /// `*italic*` or `_italic_` — children are themselves inline runs.
@@ -119,7 +119,7 @@ pub(crate) fn parse_markdown_blocks(
 
 /// State machine that walks `Event` stream → `Vec<MarkdownNode>`.
 ///
-/// `block_stack` holds in-progress block frames (BlockQuote, List, Item);
+/// `block_stack` holds in-progress block frames (`BlockQuote`, List, Item);
 /// `inline_stack` holds in-progress inline frames (Emphasis, Strong, Link).
 /// `pending_inlines` accumulates inline runs for the innermost block.
 struct Walker<'a> {
@@ -348,7 +348,7 @@ impl<'a> Walker<'a> {
 
     fn pop_inline_into(&mut self, wrap: impl FnOnce(Vec<MarkdownInline>) -> MarkdownInline) {
         let popped = match self.inline_stack.pop() {
-            Some(InlineFrame::Emphasis(b)) | Some(InlineFrame::Strong(b)) => b,
+            Some(InlineFrame::Emphasis(b) | InlineFrame::Strong(b)) => b,
             Some(InlineFrame::Link { label, href }) => {
                 // Defensive: shouldn't happen — TagEnd::Link is handled
                 // separately — but degrade gracefully if it does.
@@ -366,7 +366,7 @@ impl<'a> Walker<'a> {
     }
 
     fn emit_block(&mut self, node: MarkdownNode) {
-        if let Some(BlockFrame::BlockQuote { body }) | Some(BlockFrame::Item { body }) =
+        if let Some(BlockFrame::BlockQuote { body } | BlockFrame::Item { body }) =
             self.block_stack.last_mut()
         {
             body.push(node);
@@ -377,7 +377,7 @@ impl<'a> Walker<'a> {
 }
 
 /// Flatten a `MarkdownInline` to its plain-text rendering, appending into
-/// `out`. Used only for image alt text (CommonMark §6.4: alt is the plain
+/// `out`. Used only for image alt text (`CommonMark` §6.4: alt is the plain
 /// string content of the image description, emphasis/links stripped).
 fn inline_plain_text(inline: &MarkdownInline, out: &mut String) {
     match inline {

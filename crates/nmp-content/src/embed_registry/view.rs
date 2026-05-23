@@ -56,7 +56,7 @@ impl EmbedClaimRegistry {
     ) -> Option<EmbedClaimDelta> {
         let entry = state.entries.get_mut(target)?;
         let same = entry.resolved == resolved;
-        entry.resolved = resolved.clone();
+        entry.resolved.clone_from(&resolved);
         if same {
             None
         } else {
@@ -81,7 +81,7 @@ impl EmbedClaimRegistry {
         if state.entries.contains_key(&EmbedTarget::Event(id.clone())) {
             affected.push(EmbedTarget::Event(id.clone()));
         }
-        for (target, entry) in state.entries.iter() {
+        for (target, entry) in &state.entries {
             if matches!(target, EmbedTarget::Address { .. })
                 && entry.resolved.as_ref().is_some_and(|r| &r.id == id)
             {
@@ -102,6 +102,7 @@ impl EmbedClaimRegistry {
     pub fn key(_spec: &EmbedClaimSpec) {}
 
     /// Event dependencies for this view. Unit-shaped spec → none declared.
+    #[must_use] 
     pub fn dependencies(_spec: &EmbedClaimSpec) -> ViewDependencies {
         // The dependency contract is spec-driven and static; the spec here is
         // unit-shaped, so there is nothing to declare. Kernel-side
@@ -112,6 +113,7 @@ impl EmbedClaimRegistry {
     }
 
     /// Open a fresh registry view, returning its empty state + snapshot.
+    #[must_use] 
     pub fn open(
         _ctx: &ViewContext,
         _spec: EmbedClaimSpec,
@@ -175,6 +177,7 @@ impl EmbedClaimRegistry {
     }
 
     /// Outward-facing snapshot of the registry state.
+    #[must_use] 
     pub fn snapshot(_ctx: &ViewContext, state: &EmbedClaimState) -> EmbedRegistrySnapshot {
         Self::snapshot_state(state)
     }

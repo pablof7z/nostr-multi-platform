@@ -1,7 +1,7 @@
 //! Recursion guard for embed rendering — `RenderContext { depth, visited }`.
 //!
 //! This recursion guard is often absent in other Nostr content renderers. See
-//! `content-rendering.md` §5 (RenderContext) and PD-015 (default `max_depth
+//! `content-rendering.md` §5 (`RenderContext`) and PD-015 (default `max_depth
 //! = 4`, configurable per app; beyond `max_depth` the embed card collapses
 //! to a "see full thread" link rather than mounting another renderer).
 
@@ -26,7 +26,7 @@ pub struct RenderContext {
     /// returns `true` and the renderer SHOULD show a "see full thread"
     /// link instead of mounting another embed.
     pub max_depth: u8,
-    /// EventIds already visited on this render path. Prevents an event
+    /// `EventIds` already visited on this render path. Prevents an event
     /// that quotes (transitively) itself from infinite-recursing.
     pub visited: SmallVec<[EventId; 8]>,
 }
@@ -39,6 +39,7 @@ impl Default for RenderContext {
 
 impl RenderContext {
     /// Construct a top-level context with the default max depth (4).
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             depth: 0,
@@ -49,6 +50,7 @@ impl RenderContext {
 
     /// Construct a top-level context with an explicit `max_depth`. Apps
     /// configure once at app startup; per-render overrides should be rare.
+    #[must_use] 
     pub fn with_max_depth(max_depth: u8) -> Self {
         Self {
             depth: 0,
@@ -61,6 +63,7 @@ impl RenderContext {
     /// link rather than descend. Per PD-015 the conditions are:
     ///   - `depth >= max_depth` (budget exhausted), OR
     ///   - `visited.contains(into)` (cycle detected on this path).
+    #[must_use] 
     pub fn should_collapse(&self, into: &EventId) -> bool {
         self.depth >= self.max_depth || self.visited.iter().any(|id| id == into)
     }
@@ -73,6 +76,7 @@ impl RenderContext {
     /// `descend` when the budget is exhausted silently increments past
     /// `max_depth` and downstream `should_collapse` will keep returning
     /// `true`, but better-behaved callers gate on it.
+    #[must_use] 
     pub fn descend(&self, into: EventId) -> Self {
         let mut visited = self.visited.clone();
         visited.push(into);
@@ -88,6 +92,7 @@ impl RenderContext {
 /// methods. Returns `true` when the renderer may descend into `into`.
 ///
 /// This is the inverse of [`RenderContext::should_collapse`].
+#[must_use] 
 pub fn render_context_can_descend(ctx: &RenderContext, into: &EventId) -> bool {
     !ctx.should_collapse(into)
 }

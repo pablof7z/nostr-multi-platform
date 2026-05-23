@@ -19,6 +19,7 @@ impl ContentTree {
     /// form. Pure; allocates a fresh arena. Honours D1 (unprojectable content
     /// becomes a typed [`WireNode::Placeholder`], never dropped) and D6 (no
     /// panics).
+    #[must_use] 
     pub fn to_wire(&self) -> ContentTreeWire {
         let mut builder = WireBuilder::default();
         let roots = self

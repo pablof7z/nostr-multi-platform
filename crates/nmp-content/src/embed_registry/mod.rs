@@ -57,6 +57,7 @@ impl EmbedClaimRegistry {
     /// Initialise a fresh state — apps that don't run the full `open`
     /// machinery can hold an [`EmbedClaimState`] directly and call the
     /// inherent methods.
+    #[must_use] 
     pub fn state() -> EmbedClaimState {
         EmbedClaimState::new()
     }
@@ -88,11 +89,13 @@ impl EmbedClaimRegistry {
     }
 
     /// True if any handle is currently outstanding for `target`.
+    #[must_use] 
     pub fn is_claimed(state: &EmbedClaimState, target: &EmbedTarget) -> bool {
         state::is_claimed(state, target)
     }
 
     /// Current refcount for `target` (0 if absent).
+    #[must_use] 
     pub fn refcount(state: &EmbedClaimState, target: &EmbedTarget) -> usize {
         state::refcount(state, target)
     }
@@ -100,11 +103,13 @@ impl EmbedClaimRegistry {
     /// Number of distinct targets currently being claimed. This is the
     /// "how many upstream subscriptions would be open" count — apps assert
     /// `claim_count == 1` when many components claim the same id.
+    #[must_use] 
     pub fn claim_count(state: &EmbedClaimState) -> usize {
         state::claim_count(state)
     }
 
     /// Look up a resolved payload, if any.
+    #[must_use] 
     pub fn resolved(state: &EmbedClaimState, target: &EmbedTarget) -> Option<ResolvedEvent> {
         state::resolved(state, target)
     }

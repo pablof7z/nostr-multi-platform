@@ -25,6 +25,7 @@ use crate::segment::{ContentTree, InvoiceKind, Segment};
 /// `mode` selects the parser. `RenderMode::Auto` requires a separate
 /// `kind` hint via [`tokenize_with_kind`]; when called as `tokenize(_, _,
 /// Auto)` without a kind, it degrades to `Plain`.
+#[must_use] 
 pub fn tokenize(content: &str, tags: &[Vec<String>], mode: RenderMode) -> ContentTree {
     let resolved = match mode {
         RenderMode::Auto => RenderMode::Plain,
@@ -35,6 +36,7 @@ pub fn tokenize(content: &str, tags: &[Vec<String>], mode: RenderMode) -> Conten
 
 /// Tokenize with an explicit kind hint — used when `mode` is `Auto`. If
 /// `mode` is already `Plain` / `Markdown`, the kind is ignored.
+#[must_use] 
 pub fn tokenize_with_kind(
     content: &str,
     tags: &[Vec<String>],

@@ -193,7 +193,7 @@ fn run_worker(
                     return;
                 }
             }
-            Ok(tungstenite::Message::Pong(_)) | Ok(tungstenite::Message::Frame(_)) => {}
+            Ok(tungstenite::Message::Pong(_) | tungstenite::Message::Frame(_)) => {}
             Ok(tungstenite::Message::Close(_)) => {
                 return;
             }
