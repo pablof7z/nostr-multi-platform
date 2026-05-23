@@ -9,10 +9,17 @@
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-content/nmp-core/nmp-testing): V-12 second batch — PRs #407, #408, #410, #411, #412, #413, #414, #415 (CI pending / agents running)
+*(none)*
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — fix(nmp-core): remove kind:9735 zap receipt bootstrap REQ; move to nmp-nip57 ZapReceiptsRuntimeController — PR #421 merged
+- 2026-05-24 — fix(chirp): refresh modular timeline every tick so quoted-event cards appear — PR #420 merged
+- 2026-05-24 — fix(nmp-core): D0 rename MlsOpHandler → HostOpHandler — PR #419 merged
+- 2026-05-24 — fix(nmp-nip02): move FollowListProjection out of Chirp (thin-shell) — PR #418 merged
+- 2026-05-24 — fix(nmp-nip29): delete foreign kind constants — PR #417 merged
+- 2026-05-24 — fix(nmp-nip59): define KIND_GIFT_WRAP — PR #416 merged
+- 2026-05-24 — refactor(nmp-content/nmp-core/nmp-testing): V-12 second batch — PRs #407, #408, #410, #411, #412, #413, #414, #415 merged
 - 2026-05-24 — refactor(nmp-core/nmp-codegen): V-12 second batch (swift, ingest, case_a, event_observer, compiler, nip19) — PRs #402-#406, #409 merged
 - 2026-05-24 — refactor(nmp-core): V-12 extract relay tests to subfile — PR #397 merged
 - 2026-05-24 — feat(nmp-nip02): lift Follow/Unfollow/React ActionModules from nmp-app-chirp — PR #390 merged

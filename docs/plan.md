@@ -17,7 +17,7 @@
 **What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
 
 **What does not work yet** (v1 blockers):
-1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` now drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool over `web_sys::WebSocket` for the read path (Stage 3, PR #375), and has NIP-07 signer + async snapshot push (Stage 3b, PR #378). **Stage 3c remains v1-blocking**: IndexedDB persistence, publish-path wire (`publish_path_not_wired` → real `dispatch_action_json`), and multi-role bootstrap parsing. No persistent chirp-web write features allowed until Stage 3c lands.
+1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool (Stage 3, PR #375), NIP-07 signer + async snapshot push (Stage 3b, PR #378), publish-path wire + multi-role bootstrap (Stage 3c, PR #385 — merged 2026-05-24). **Only F-01 IndexedDB persistence remains v1-blocking.** No persistent chirp-web features may be added until F-01 lands.
 2. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
 3. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
 4. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`; deletes the 1,988-LOC handwritten counterpart in `KernelBridge.swift`.
@@ -83,7 +83,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
-| M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stage 2 + Stage 3 + Stage 3b landed (PR #372/#375/#378); **Stage 3c IndexedDB + publish-path wire still v1-blocking** |
+| M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stages 2–3c all merged (PR #372/#375/#378/#385); **F-01 IndexedDB is the sole remaining v1-blocking item** |
 | M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
 | M17 v1 release | pending | ❌ Pending |
 
@@ -99,7 +99,7 @@ v1 ships when **all of the following** hold:
 2. **Every `BACKLOG.md` Section 4 v1-blocker item is closed.** Today: F-01, F-02, F-04, F-05.
 3. **Every pending user decision in Section 3 is resolved** (today: PD-033-C, PD-037; PD-033-A confirmed 2026-05-23 by `apps/notes/`).
 4. **Stateful second-app spike is run** — ✅ done (PR #377: `apps/notes/` confirms the framework thesis; 299 LOC Swift, 25 LOC Rust, 0 new C-ABI symbols).
-5. **`nmp-wasm` is no longer a stub.** Stage 2 + Stage 3 + Stage 3b complete (PR #372/#375/#378); Stage 3c (IndexedDB + publish-path wire + multi-role bootstrap) is the remaining v1-blocking work — see F-01.
+5. **`nmp-wasm` is no longer a stub.** ✅ Stages 2–3c all complete (PRs #372/#375/#378/#385). **Only F-01 IndexedDB persistence remains** before chirp-web can claim full parity — see F-01 in BACKLOG.md.
 6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
 7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** ✅ calendar written 2026-05-23 — see [PD-039 in BACKLOG.md](BACKLOG.md#pd-039--bespoke-ffi-deprecation-calendar-d11-expansion--decision-made-2026-05-23). 48 symbols inventoried; 16 classified as migration debt, 26 as structural-permanent (Theme A), 4 as test-only, 1 canonical, 1 already a thin shim. Enforcement: the existing `ci/check-ffi-surface-freeze.sh` gate (`.github/workflows/ffi-surface-freeze.yml`) rejects net-additions by default; the single ADR override (`nmp_app_is_alive` / ADR-0028) is the precedent for future genuinely-structural additions.
 8. **Snapshot serialization has a CI regression gate.** ✅ done — `make_update_us` + `serialize_us` instrumented in `crates/nmp-core/src/kernel/update.rs`. Gate: `snapshot_perf_firehose_gate` in `crates/nmp-core/src/kernel/perf_tests.rs` asserts `make_update_us < 250_000` μs and `serialize_us < 150_000` μs over a 1k-event firehose with `visible_limit = 500`. Thresholds = ≈ 10 × the observed dev-hardware debug baseline (~25 ms / ~15 ms, 5-run variance < 5 %); sized to catch a 10 × regression on `ubuntu-latest` debug CI without flaking on shared-runner jitter. The `NMP_PERF` log line in `kernel::update` remains the live monitoring signal in production. Test runs on every PR via `test.yml` (no new workflow required).

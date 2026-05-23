@@ -255,12 +255,12 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - ~~`crates/nmp-core/src/planner/compiler/partition/case_a_authors.rs`~~ — 712 → 253 LOC (PR #404)
 - ~~`crates/nmp-core/src/actor/commands/event_observer.rs`~~ — 543 → 340 LOC (PR #405)
 - ~~`crates/nmp-core/src/planner/compiler/mod.rs`~~ — 864 → 372 LOC (PR #406)
-- `crates/nmp-core/src/kernel/relay_diagnostics.rs` — 611 → 542 LOC (PR #407, CI pending; production alone 539 LOC — post-v1 split needed)
-- `crates/nmp-content/src/markdown.rs` — 580 → 424 LOC (PR #408, CI pending)
+- ~~`crates/nmp-core/src/kernel/relay_diagnostics.rs`~~ — 611 → 542 LOC (PR #407; production alone 539 LOC — post-v1 split needed)
+- ~~`crates/nmp-content/src/markdown.rs`~~ — 580 → 424 LOC (PR #408)
 - ~~`crates/nmp-core/src/nip19.rs`~~ — 568 → 476 LOC (PR #409)
-- `crates/nmp-core/src/planner/compiler/partition/case_c_p_tags.rs` — 604 → 163 LOC (PR #410, CI pending)
-- `crates/nmp-core/src/kernel/action_registry.rs` — 937 → 353 LOC (PR #411, CI pending)
-- `crates/nmp-testing/bin/doctrine-lint/rules/d10.rs` — 725 → 336 LOC (PR #412, CI pending)
+- ~~`crates/nmp-core/src/planner/compiler/partition/case_c_p_tags.rs`~~ — 604 → 163 LOC (PR #410)
+- ~~`crates/nmp-core/src/kernel/action_registry.rs`~~ — 937 → 353 LOC (PR #411)
+- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d10.rs`~~ — 725 → 336 LOC (PR #412)
 - `crates/nmp-testing/bin/doctrine-lint/rules/d11.rs` — 618 LOC (PR pending)
 - `crates/nmp-testing/bin/doctrine-lint/rules/d12.rs` — 569 LOC (PR pending)
 - `crates/nmp-testing/bin/doctrine-lint/rules/d15.rs` — 672 LOC (PR pending)
@@ -283,7 +283,8 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - identity.rs (commit e79f7a90); wallet.rs (PR #376)
 - relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs, relay.rs (PRs #394-#401 — 2026-05-24)
 - swift.rs, ingest/mod.rs, case_a_authors.rs, event_observer.rs, compiler/mod.rs, nip19.rs (PRs #402-#406, #409 — 2026-05-24)
-- (pending CI): markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10/d11/d12/d15
+- relay_diagnostics.rs, markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10 (PRs #407-#412 — 2026-05-24)
+- (pending): doctrine-lint d11/d12/d15
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
