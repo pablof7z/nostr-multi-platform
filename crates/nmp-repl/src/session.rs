@@ -154,6 +154,7 @@ impl Session {
 
     /// Short seed label for the prompt — `seed=npub1l2v…` (design §8.4) or
     /// "no-seed" if unset. Falls back to a hex prefix if npub encoding fails.
+    #[must_use]
     pub fn prompt_label(&self) -> String {
         match &self.seed_hex {
             Some(hex) => match nmp_core::nip19::encode_npub(hex) {

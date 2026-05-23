@@ -65,6 +65,7 @@ pub enum Frame {
 /// Try to connect; return `Err(message)` on any failure (DNS, TLS, refused,
 /// etc.) so the caller can surface *why* the dial failed rather than a bare
 /// "connect refused".
+#[must_use]
 pub fn try_connect_msg(url: &str) -> std::result::Result<Sock, String> {
     let (socket, _response) = match tungstenite::connect(url) {
         Ok(p) => p,
@@ -104,6 +105,7 @@ fn connect_err_msg(e: &tungstenite::Error) -> String {
 
 /// Read one frame from the socket, parsing the JSON envelope here so no
 /// caller re-parses or swallows a terminal frame. See [`Frame`].
+#[must_use]
 pub fn next_frame(socket: &mut Sock) -> Frame {
     match socket.read() {
         Ok(Message::Text(s)) => parse_envelope(&s),
@@ -198,6 +200,7 @@ pub fn normalize_url(s: &str) -> String {
 /// e.g. `kind:1 (83 authors)`, `kind:10002 (50 authors)`, `kind:3 (1
 /// author)`. Shared by all three relay-interaction sites so the rendering
 /// is identical everywhere.
+#[must_use]
 pub fn summarize_filter(filter_json: &str) -> String {
     let v: Value = match serde_json::from_str(filter_json) {
         Ok(v) => v,

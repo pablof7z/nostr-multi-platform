@@ -53,6 +53,7 @@ pub fn needs_follows(filter: &FilterAst) -> bool {
 /// a tailing subscription kept alive past EOSE. (The REPL's
 /// fanout still terminates on EOSE or wall — that is a transport-side
 /// decision, independent of the interest's declared lifecycle.)
+#[must_use]
 pub fn build_interest(
     session: &Session,
     filter: &FilterAst,
@@ -159,6 +160,7 @@ fn expand_literal_author(s: &str) -> Result<String> {
 /// mailbox cache (populated by a prior `req`'s discovery, or an explicit
 /// `req kinds=10002 authors=$me`). This is variable resolution layered on
 /// the same cache the lifecycle owns — it does not run the outbox.
+#[must_use]
 pub fn expand_var_to_strings(
     session: &Session,
     name: &str,

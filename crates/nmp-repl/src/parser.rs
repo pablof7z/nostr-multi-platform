@@ -15,6 +15,7 @@ use crate::ast::{
 ///
 /// Empty / whitespace-only input → `Command::Noop`. Returns `Err(String)`
 /// with a user-facing error message on parse failure.
+#[must_use]
 pub fn parse_line(line: &str) -> Result<Command, String> {
     // Reject control chars (newline, tab, NUL etc.) anywhere in the input.
     for c in line.chars() {

@@ -10,6 +10,7 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Resolve `localpart@domain` to a 64-hex pubkey via the domain's
 /// `/.well-known/nostr.json?name=<localpart>` endpoint.
+#[must_use]
 pub fn resolve(nip05: &str) -> Result<String> {
     let (local, domain) = nip05
         .split_once('@')

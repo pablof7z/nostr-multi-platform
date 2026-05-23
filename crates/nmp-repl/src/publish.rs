@@ -23,6 +23,7 @@ const WIRE_WALL: Duration = Duration::from_secs(5);
 /// For each relay: connect, send `["EVENT", <event-json>]`, then read frames
 /// until an `["OK", <id>, <accepted>, <msg>]` for our event id, a terminal
 /// frame, or the 5s wall. Prints a per-relay status line.
+#[must_use]
 pub fn publish_event(event: &nostr::Event, relay_urls: &[String]) -> (usize, usize) {
     let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
     let event_id = event.id.to_hex();

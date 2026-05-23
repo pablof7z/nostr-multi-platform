@@ -46,6 +46,7 @@ pub struct FollowsResult {
 ///
 /// Errors with a *seed-missing* message only when the seed is genuinely
 /// unset — a set-but-uncached seed triggers the fetch.
+#[must_use]
 pub fn fetch_follows(session: &mut Session) -> Result<FollowsResult> {
     let start = Instant::now();
 
