@@ -280,12 +280,12 @@ mod tests {
         let out = enum_file(
             "ViewSpec",
             "nmp_core::KernelViewSpec",
-            &manifest(&["nmp-nip01", "nmp-nip23"], &["fixture-todo-core"]),
+            &manifest(&["nmp-nip01", "nmp-nip22"], &["fixture-todo-core"]),
             "ViewSpec",
             "pub fn namespace(&self) -> &'static str",
         );
         let nip01 = out.find("NmpNip01(").expect("nip01 variant present");
-        let nip23 = out.find("NmpNip23(").expect("nip23 variant present");
+        let nip23 = out.find("NmpNip22(").expect("nip23 variant present");
         let todo = out.find("FixtureTodoCore(").expect("app variant present");
         assert!(
             nip01 < nip23 && nip23 < todo,
@@ -293,7 +293,7 @@ mod tests {
         );
         // Each module variant carries the `ViewSpec` module type for this enum.
         assert!(out.contains("NmpNip01(nmp_nip01::ViewSpec),"));
-        assert!(out.contains("NmpNip23(nmp_nip23::ViewSpec),"));
+        assert!(out.contains("NmpNip22(nmp_nip22::ViewSpec),"));
     }
 
     #[test]
@@ -304,13 +304,13 @@ mod tests {
         let out = enum_file(
             "AppUpdate",
             "nmp_core::KernelUpdate",
-            &manifest(&["nmp-nip23"], &[]),
+            &manifest(&["nmp-nip22"], &[]),
             "Update",
             "pub fn namespace(&self) -> &'static str",
         );
-        assert!(out.contains("Self::NmpNip23(_) => \"nmp-nip23\","));
+        assert!(out.contains("Self::NmpNip22(_) => \"nmp-nip22\","));
         assert!(
-            !out.contains("=> \"NmpNip23\""),
+            !out.contains("=> \"NmpNip22\""),
             "namespace string must be the dash-form crate name, not the variant ident"
         );
     }
@@ -319,7 +319,7 @@ mod tests {
     fn enum_file_is_deterministic_for_identical_input() {
         // Same manifest in → byte-identical source out. No map iteration, no
         // clock, no env — the generator's core invariant.
-        let m = manifest(&["nmp-nip01", "nmp-nip23"], &["fixture-todo-core"]);
+        let m = manifest(&["nmp-nip01", "nmp-nip22"], &["fixture-todo-core"]);
         let a = enum_file("AppAction", "nmp_core::KernelAction", &m, "Action", "pub fn namespace(&self) -> &'static str");
         let b = enum_file("AppAction", "nmp_core::KernelAction", &m, "Action", "pub fn namespace(&self) -> &'static str");
         assert_eq!(a, b);
@@ -352,10 +352,10 @@ mod tests {
         // The generated Cargo.toml must declare one `[dependencies]` entry per
         // module, each using the `package = "<dash-name>"` + relative path
         // form, keyed by the underscored crate identifier.
-        let out = cargo_toml(&manifest(&["nmp-nip23"], &["fixture-todo-core"]));
+        let out = cargo_toml(&manifest(&["nmp-nip22"], &["fixture-todo-core"]));
         assert!(out.contains("name = \"nmp-app-fixture\""));
         assert!(out.contains(
-            "nmp_nip23 = { package = \"nmp-nip23\", path = \"../../../crates/nmp-nip23\" }"
+            "nmp_nip22 = { package = \"nmp-nip22\", path = \"../../../crates/nmp-nip22\" }"
         ));
         assert!(out.contains(
             "fixture_todo_core = { package = \"fixture-todo-core\", path = \"../../../crates/fixture-todo-core\" }"

@@ -3,7 +3,6 @@
 //! `tokenize_with_kind` and whose `embeds` are resolved through the real
 //! `RenderContext` recursion guard (see `crate::embed_store`).
 
-pub mod articles;
 pub mod edge;
 pub mod lists;
 pub mod mentions;

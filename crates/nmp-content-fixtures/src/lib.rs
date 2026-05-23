@@ -52,8 +52,7 @@ pub fn build_bundle() -> Bundle {
     scenarios.extend(scenarios::text::build(&ids));
     scenarios.extend(scenarios::mentions::build(&ids));
     scenarios.extend(scenarios::quotes::build(&ids));
-    scenarios.extend(scenarios::articles::build(&ids));
-    scenarios.extend(scenarios::lists::build(&ids));
+scenarios.extend(scenarios::lists::build(&ids));
     scenarios.extend(scenarios::edge::build(&ids));
     Bundle {
         version: BUNDLE_VERSION,

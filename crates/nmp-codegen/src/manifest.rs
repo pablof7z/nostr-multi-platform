@@ -213,14 +213,14 @@ mod tests {
 
             [modules]
             kernel = "nmp-core"
-            protocol = ["nmp-nip01", "nmp-nip23"]
+            protocol = ["nmp-nip01", "nmp-nip22"]
             app = ["fixture-todo-core", "fixture-extra"]
             "#,
         )
         .unwrap();
         assert_eq!(
             parsed.ordered_modules(),
-            vec!["nmp-nip01", "nmp-nip23", "fixture-todo-core", "fixture-extra"],
+            vec!["nmp-nip01", "nmp-nip22", "fixture-todo-core", "fixture-extra"],
             "protocol modules come first, then app modules, declaration order within each"
         );
     }

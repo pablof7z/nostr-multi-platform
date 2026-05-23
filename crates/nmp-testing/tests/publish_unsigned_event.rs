@@ -18,9 +18,9 @@
 //!
 //! What this file still pins:
 //!
-//! 1. **Builder wire shape** — `nmp_nip23::Article::new(...)
-//!    .build(...)` produces a wire-form `UnsignedEvent` with the expected
-//!    kind + canonical tag order. Pure, no actor.
+//! 1. **Builder wire shape** — `nmp_nip01::Note::new(...).build(...)` produces
+//!    a wire-form `UnsignedEvent` with the expected kind + NIP-10 tag shape.
+//!    Pure, no actor.
 //! 2. **Compile-shape handoff** — the `UnsignedEvent` plugs directly into
 //!    `ActorCommand::PublishUnsignedEvent(_)` so apps don't re-wrap or
 //!    convert (the action seam's executor lands on this exact variant).
@@ -30,62 +30,45 @@
 //!    sends the toast.
 
 use nmp_core::testing::ActorCommand;
-use nmp_nip23::Article;
+use nmp_nip01::Note;
 use std::time::Duration;
 
 #[test]
-fn build_article_unsigned_event_has_expected_wire_shape() {
+fn build_note_unsigned_event_has_expected_wire_shape() {
     // Pure builder — no actor, no signing, no clock. This is the only part
     // an app touches before handing off to PublishUnsignedEvent (whether
     // directly inside a kernel-side executor, or indirectly through the
     // `dispatch_action` seam — both land on the same variant).
-    let unsigned = Article::new("my-article")
-        .title("Hello")
-        .summary("a short summary")
-        .image("https://example.com/cover.png")
-        .published_at(1_700_000_000)
-        .content("# Heading\n\nMarkdown body")
+    let unsigned = Note::new("Hello Nostr!")
         .build("ignored-by-signer", 1_700_000_100)
-        .expect("article builder produces an UnsignedEvent");
-    assert_eq!(unsigned.kind, 30023);
-    assert_eq!(unsigned.content, "# Heading\n\nMarkdown body");
-    let keys: Vec<&str> = unsigned
-        .tags
-        .iter()
-        .filter_map(|t| t.first())
-        .map(String::as_str)
-        .collect();
-    assert_eq!(keys, vec!["d", "title", "image", "summary", "published_at"]);
+        .expect("note builder produces an UnsignedEvent");
+    assert_eq!(unsigned.kind, 1);
+    assert_eq!(unsigned.content, "Hello Nostr!");
+    // A root note has no NIP-10 tags — empty tag list.
+    assert!(unsigned.tags.is_empty(), "root note must have no tags");
 }
 
 #[test]
 fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
-    // The shape pin: `ArticleBuilder::build()` returns the exact
+    // The shape pin: `NoteBuilder::build()` returns the exact
     // `UnsignedEvent` type `ActorCommand::PublishUnsignedEvent(_)` expects.
     //
     // The post-PR-F flow inside an `nmp.publish` action executor:
     //
-    //   let unsigned = Article::new(d).title(t).content(c).build(pk, ts)?;
-    //   send(ActorCommand::PublishUnsignedEvent(unsigned));
+    //   let unsigned = Note::new(content).build(pk, ts)?;
+    //   send(ActorCommand::PublishUnsignedEvent { event: unsigned, correlation_id: None });
     //
     // (The C / Swift / Kotlin shells reach this same variant by going
     // through `nmp_app_dispatch_action` — the deleted
     // `nmp_app_publish_unsigned_event` no longer exists.)
-    //
-    // The runtime sign + outbox-route behaviour is covered by the
-    // `publish_unsigned_event_signs_and_publishes_arbitrary_kind` unit test
-    // in `nmp-core::actor::commands::tests` (drives Kernel +
-    // IdentityRuntime directly against the same handler the actor uses).
-    let unsigned = Article::new("plug-in-test")
-        .title("Hi")
-        .content("body")
+    let unsigned = Note::new("plug-in-test")
         .build("placeholder-pk", 1_700_000_200)
-        .expect("article builder");
+        .expect("note builder");
     let cmd = ActorCommand::PublishUnsignedEvent { event: unsigned, correlation_id: None };
     // Confirm the variant carries the kind through unchanged — extracting
     // by pattern-match also doubles as a compile-time shape lock.
     if let ActorCommand::PublishUnsignedEvent { event: u, .. } = cmd {
-        assert_eq!(u.kind, 30023);
+        assert_eq!(u.kind, 1);
     } else {
         panic!("expected PublishUnsignedEvent variant");
     }
@@ -98,11 +81,9 @@ fn unsigned_event_serde_round_trips_for_action_payload() {
     // payload it carries is a JSON-encoded `UnsignedEvent` — exactly what
     // this round-trip pins. Builders produce something the action seam's
     // executor will decode without loss.
-    let unsigned = Article::new("dispatch-shape")
-        .title("Wire")
-        .content("hello")
+    let unsigned = Note::new("dispatch-shape")
         .build("pk", 1_700_000_300)
-        .expect("article builder");
+        .expect("note builder");
     let json = serde_json::to_string(&unsigned).expect("UnsignedEvent serialises");
     let decoded: nmp_core::substrate::UnsignedEvent =
         serde_json::from_str(&json).expect("UnsignedEvent round-trips");

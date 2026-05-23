@@ -125,7 +125,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         "S-E06",
         "fallback",
         "Article with empty body but valid metadata",
-        "nmp-nip23 decode ok, body empty -> header-only render (D8)",
+        "kind:30023 empty body -> tokenize_with_kind renders header-only (D8)",
         &e,
         vec![],
         &store,
