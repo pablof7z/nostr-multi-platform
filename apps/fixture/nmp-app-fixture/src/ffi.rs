@@ -51,7 +51,6 @@ impl FfiApp {
     /// Registration happens here, during host init — before `nmp_app_start`
     /// and before any `dispatch` call — because each module's `register` seam
     /// needs `&mut NmpApp`.
-    #[must_use] 
     pub fn new() -> Self {
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; `app` is valid for the
@@ -66,7 +65,6 @@ impl FfiApp {
         }
     }
 
-    #[must_use] 
     pub fn app_name(&self) -> &'static str {
         "fixture"
     }
@@ -152,8 +150,9 @@ impl FfiApp {
     fn dispatch_action_json(&self, namespace: &str, action_json: &str) -> String {
         // An interior NUL cannot cross to C — collapse it to an error JSON so
         // the caller still gets well-formed data (D6).
-        let (Ok(ns), Ok(body)) = (CString::new(namespace), CString::new(action_json)) else {
-            return r#"{"error":"action contains NUL byte"}"#.to_string();
+        let (ns, body) = match (CString::new(namespace), CString::new(action_json)) {
+            (Ok(ns), Ok(body)) => (ns, body),
+            _ => return r#"{"error":"action contains NUL byte"}"#.to_string(),
         };
         let ptr = nmp_app_dispatch_action(self.app, ns.as_ptr(), body.as_ptr());
         if ptr.is_null() {
