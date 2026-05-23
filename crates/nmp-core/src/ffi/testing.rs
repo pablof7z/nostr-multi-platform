@@ -13,7 +13,7 @@
 
 use super::{app_ref, NmpApp};
 use crate::actor::ActorCommand;
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via
 /// the test-support `ingest_pre_verified_event` path.
@@ -196,4 +196,68 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
     };
     app.send_cmd(ActorCommand::IngestPreVerifiedEvents(vec![verified]));
     true
+}
+
+/// Read a single snapshot-projection's JSON by key, returning a heap-owned
+/// C string the caller must free via [`crate::ffi::nmp_app_free_string`].
+///
+/// Runs every registered snapshot projection directly against the app's
+/// shared registry (the same path `make_update` drives on each actor tick),
+/// then pulls out the value at `key`. Returns `null` when:
+///
+/// * `app` or `key` is null,
+/// * `key` is not valid UTF-8,
+/// * no projection has been registered under `key`,
+/// * serialization of the projection's `serde_json::Value` fails (shouldn't
+///   happen for any well-formed projection), or
+/// * the resulting `CString` would contain an interior NUL.
+///
+/// The returned pointer is heap-owned (`CString::into_raw`); failing to free
+/// it via `nmp_app_free_string` leaks the underlying allocation.
+///
+/// This is the symmetric output-side seam for `nmp_app_inject_signed_event_json`:
+/// together they let an integration test inject a verbatim signed event and
+/// observe its effect through the registered snapshot-projection layer, with
+/// no production code paths exposed beyond what the kernel already runs on
+/// every snapshot tick.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Never part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_read_projection_json(
+    app: *mut NmpApp,
+    key: *const c_char,
+) -> *mut c_char {
+    let Some(app) = app_ref(app) else {
+        return std::ptr::null_mut();
+    };
+    if key.is_null() {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+    let key_str = match unsafe { CStr::from_ptr(key) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    // Lock the shared snapshot-projection slot directly and run every closure.
+    // Mirrors the `pub(crate) fn run_snapshot_projections_for_test` helper at
+    // `ffi/mod.rs:831` (which is `#[cfg(test)]`-gated and not visible under
+    // the `test-support` feature). Reaching the field directly is fine: this
+    // module is a sibling of `mod.rs` inside `crate::ffi`, so the private
+    // field is in-scope without widening any visibility.
+    let projections = match app.snapshot_projections.lock() {
+        Ok(registry) => registry.run(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let Some(value) = projections.get(key_str) else {
+        return std::ptr::null_mut();
+    };
+    let Ok(json) = serde_json::to_string(value) else {
+        return std::ptr::null_mut();
+    };
+    match CString::new(json) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
 }
