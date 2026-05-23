@@ -1,6 +1,6 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
-//! Six `extern "C"` symbols Swift links against — they mirror the
+//! Five `extern "C"` symbols Swift links against — they mirror the
 //! lifetime / free / D6 conventions of the Chirp timeline symbols
 //! (`nmp_app_chirp_register` / `_snapshot` / `_snapshot_free` /
 //! `_unregister`):
@@ -14,14 +14,31 @@
 //!   (`groups` / `pending_welcomes` / `key_package`).
 //! - [`nmp_marmot_group_messages`] — newest-N decrypted messages
 //!   for one group (hex id), JSON array.
-//! - [`nmp_marmot_dispatch`] — perform one mutating op
-//!   (`publish_key_package` / `create_group` / `invite` / `send` /
-//!   `leave` / `remove` / `accept_welcome` / `decline_welcome` /
-//!   `ingest_signed_event`). Returns `{"ok":true,…}` / `{"ok":false,…}`.
 //! - [`nmp_marmot_string_free`] — companion deallocator.
 //! - [`nmp_marmot_unregister`] — drop both kernel
 //!   registrations (lossy observer + raw tap) + free the handle.
 //!   Idempotent.
+//!
+//! ## Mutating ops — `nmp_app_dispatch_action` + Rust-native accessor
+//!
+//! The legacy bespoke `nmp_marmot_dispatch` C-ABI symbol was deleted in
+//! ADR-0025 PR 3 (2026-05-23). Mutating ops now have two entry points:
+//!
+//! * **Host (iOS)** — `nmp_app_dispatch_action("nmp.marmot", action_json)`,
+//!   the generic kernel dispatch path. Registered in
+//!   [`register_with_keys`] via
+//!   [`crate::projection::action::MarmotActionModule`] +
+//!   [`crate::projection::handler::MarmotMlsOpHandler`]. Returns a
+//!   `correlation_id` synchronously; the terminal verdict is mirrored on
+//!   the `action_stages` projection. The rich per-op envelope is consumed
+//!   by the kernel, not surfaced to the host.
+//! * **In-process Rust callers (REPL / TUI / integration tests)** —
+//!   [`MarmotHandle::dispatch`], a Rust-native method that reaches the
+//!   SAME [`crate::projection::ops::dispatch`] entry point both seams use
+//!   and returns the FULL synchronous envelope (`events`,
+//!   `welcome_rumors`, `evolution_event`, `event`,
+//!   `post_join_self_update_event`, …). Required by the hand-shuttle MLS
+//!   round-trip in `crates/chirp-repl/src/marmot.rs::tests`.
 //!
 //! ## Doctrine
 //!
@@ -139,6 +156,49 @@ pub struct MarmotHandle {
 // documented hygiene step; the actor join is the actual fence.
 unsafe impl Send for MarmotHandle {}
 unsafe impl Sync for MarmotHandle {}
+
+impl MarmotHandle {
+    /// Rust-native dispatch entry point for in-process callers (REPL / TUI /
+    /// integration tests) that need the SYNCHRONOUS rich per-op envelope —
+    /// `events` for `publish_key_package`, `welcome_rumors` /
+    /// `evolution_event` / `group_id_hex` for `create_group` / `invite`,
+    /// `event` for `send`, `post_join_self_update_event` for
+    /// `accept_welcome`, etc.
+    ///
+    /// ## Why this exists separately from `nmp_app_dispatch_action`
+    ///
+    /// ADR-0025 PR 3 deleted the legacy bespoke `nmp_marmot_dispatch` C-ABI
+    /// symbol; iOS now routes every Marmot op through the generic
+    /// `nmp_app_dispatch_action("nmp.marmot", action_json)` path
+    /// ([`crate::projection::action::MarmotActionModule`]). That path is
+    /// non-blocking — it returns `{"correlation_id":"…"}` synchronously and
+    /// the rich envelope produced by the `MarmotMlsOpHandler` is consumed
+    /// by the kernel's `action_stages` machinery (which only mirrors the
+    /// `ok:true/false` verdict). The per-op event payloads are NOT surfaced
+    /// to the caller on that path.
+    ///
+    /// In-process Rust callers that hand-shuttle MLS events between
+    /// `AppRuntime`s — namely `chirp-repl` / `chirp-tui` / their
+    /// integration tests — depend on the synchronous envelope. This
+    /// accessor invokes the SAME [`crate::projection::ops::dispatch`]
+    /// entry point both seams reach (the kernel actor's `DispatchMlsOp`
+    /// arm and the legacy C symbol used) without going through any FFI.
+    ///
+    /// ## D0 / layering
+    ///
+    /// This is a Rust-native method on a `pub` opaque handle in this app
+    /// crate. It is NOT a C-ABI symbol, not part of any host FFI surface,
+    /// and not subject to ADR-0025's bespoke-FFI prohibition (which
+    /// targeted `extern "C"` cluster bloat in the iOS bridge).
+    pub fn dispatch(&self, action: &Value) -> Value {
+        self.projection
+            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs()))
+            .unwrap_or_else(|| json!({
+                "ok": false,
+                "error": "projection mutex poisoned",
+            }))
+    }
+}
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -384,31 +444,6 @@ pub extern "C" fn nmp_marmot_group_messages(
     }
 }
 
-/// Perform one mutating op. `action_json` is the op envelope (see module
-/// rustdoc). Returns `{"ok":true,…}` / `{"ok":false,"error":"…"}`.
-/// Null handle / serialize failure → null (D6).
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_marmot_dispatch(
-    handle: *mut MarmotHandle,
-    action_json: *const c_char,
-) -> *mut c_char {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        return std::ptr::null_mut();
-    };
-    let Some(action) = c_str_opt(action_json) else {
-        return to_c_json(&err("missing action_json"));
-    };
-    let Ok(v) = serde_json::from_str::<Value>(&action) else {
-        return to_c_json(&err("action_json is not valid JSON"));
-    };
-    let result = handle
-        .projection
-        .with_inner(|h| crate::projection::ops::dispatch(h, &v, now_secs()))
-        .unwrap_or_else(|| err("projection mutex poisoned"));
-    to_c_json(&result)
-}
-
 /// Free a string previously returned by snapshot / group_messages /
 /// dispatch. Null is a silent no-op.
 #[no_mangle]
@@ -476,11 +511,6 @@ fn to_c_json<T: serde::Serialize>(v: &T) -> *mut c_char {
         Ok(s) => to_c_string(&s),
         Err(_) => std::ptr::null_mut(),
     }
-}
-
-/// `{"ok":false,"error":"…"}`
-pub(crate) fn err(msg: &str) -> Value {
-    json!({ "ok": false, "error": msg })
 }
 
 #[cfg(test)]

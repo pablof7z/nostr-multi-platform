@@ -7,9 +7,10 @@
 //!
 //! `nmp-core` defines [`MlsOpHandler::handle`](nmp_core::substrate::MlsOpHandler::handle)
 //! as `(&str, &str) -> serde_json::Value` — exactly the JSON-in / JSON-out
-//! shape the bespoke `nmp_marmot_dispatch` envelope already speaks, with
-//! `correlation_id` added so the actor's `DispatchMlsOp` arm can record the
-//! terminal verdict in the kernel's `action_stages` mirror.
+//! shape the legacy bespoke `nmp_marmot_dispatch` envelope spoke (deleted
+//! in ADR-0025 PR 3, 2026-05-23), with `correlation_id` added so the
+//! actor's `DispatchMlsOp` arm can record the terminal verdict in the
+//! kernel's `action_stages` mirror.
 //!
 //! This handler:
 //!

@@ -405,13 +405,14 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 //    `{ groups, pending_welcomes, key_package }`.
 // 3. `nmp_marmot_group_messages(handle, group_id_hex)` → newest
 //    200 decrypted messages for one group (JSON array).
-// 4. `nmp_marmot_dispatch(handle, action_json)` → one mutating
-//    op; returns `{"ok":true,…}` / `{"ok":false,"error":"…"}`.
-//    DEPRECATED (ADR-0025 PR 2, 2026-05-23) — Swift no longer calls this
-//    symbol. Every Marmot op now routes through
-//    `nmp_app_dispatch_action("nmp.marmot", action_json)` via the
-//    `MarmotActionModule` + `MlsOpHandler` registered in PR 1. The symbol
-//    is kept exported here until ADR-0025 PR 3 deletes it on the Rust side.
+// 4. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`
+//    (registered as the `nmp.marmot` ActionModule via
+//    `MarmotActionModule` + `MlsOpHandler`). Returns a `correlation_id`
+//    synchronously; the terminal verdict surfaces through
+//    `projections["action_stages"]` on a subsequent snapshot tick.
+//    The legacy bespoke `nmp_marmot_dispatch` C-ABI symbol was deleted
+//    in ADR-0025 PR 3 (2026-05-23) — the ADR-0025 exception is now
+//    fully retired.
 // 5. Free EVERY returned string via `nmp_marmot_string_free`.
 // 6. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
 //
@@ -435,7 +436,6 @@ void *nmp_app_chirp_identity_sign_in_nsec(void *app, const char *secret, const c
 void nmp_app_chirp_identity_remove_account(void *app, const char *identity_id);
 char *nmp_marmot_snapshot(void *handle);
 char *nmp_marmot_group_messages(void *handle, const char *group_id_hex);
-char *nmp_marmot_dispatch(void *handle, const char *action_json);
 void nmp_marmot_string_free(char *ptr);
 void nmp_marmot_unregister(void *handle);
 

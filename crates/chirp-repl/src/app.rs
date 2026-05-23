@@ -3,7 +3,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use nmp_app_chirp::{
-    nmp_app_chirp_identity_sign_in_nsec, nmp_marmot_dispatch,
+    nmp_app_chirp_identity_sign_in_nsec,
     nmp_marmot_group_messages, nmp_marmot_register_active,
     nmp_marmot_snapshot, nmp_marmot_string_free,
     nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
@@ -127,10 +127,23 @@ impl AppRuntime {
         if self.marmot.is_null() {
             return Err("Marmot is not initialized; run mls-init first".to_string());
         }
-        let action = CString::new(action.to_string())
-            .map_err(|_| "marmot action JSON contains NUL byte".to_string())?;
-        let ptr = nmp_marmot_dispatch(self.marmot, action.as_ptr());
-        let value = self.take_marmot_json(ptr, "marmot dispatch")?;
+        // ADR-0025 PR 3 (2026-05-23): the legacy bespoke `nmp_marmot_dispatch`
+        // C-ABI symbol was deleted. iOS now routes Marmot ops through
+        // `nmp_app_dispatch_action("nmp.marmot", …)`, but that path drops the
+        // synchronous rich envelope (`events`, `welcome_rumors`,
+        // `post_join_self_update_event`, `event`) on the floor — the kernel
+        // only mirrors `ok:true/false` into `action_stages`. The REPL test
+        // round-trip hand-shuttles those events between two `AppRuntime`s, so
+        // it needs the full envelope. `MarmotHandle::dispatch` is the
+        // Rust-native accessor that calls the SAME `ops::dispatch` entry
+        // point both seams reach, without any C-ABI in the loop.
+        //
+        // SAFETY: `self.marmot` was checked non-null above; the handle was
+        // boxed by `nmp_marmot_register*` and remains valid until
+        // `nmp_marmot_unregister` in `Drop`. No other thread mutates the
+        // handle pointer (REPL is single-threaded per `AppRuntime`).
+        let handle = unsafe { &*self.marmot };
+        let value = handle.dispatch(&action);
         if value.get("ok").and_then(Value::as_bool) == Some(false) {
             let error = value
                 .get("error")

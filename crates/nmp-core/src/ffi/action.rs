@@ -1374,9 +1374,10 @@ mod tests {
     // The substrate-generic MLS-op seam (`NmpApp::set_mls_op_handler` +
     // `ActorCommand::DispatchMlsOp`) is the architecturally-correct path
     // for stateful, app-owned ops (today: `nmp-app-marmot`'s MLS service)
-    // through the `dispatch_action` seam. ADR-0025 named the bespoke
-    // `nmp_marmot_dispatch` FFI cluster as a temporary exception; this
-    // seam is its replacement.
+    // through the `dispatch_action` seam. ADR-0025 named the legacy bespoke
+    // `nmp_marmot_dispatch` FFI cluster as a temporary exception; that
+    // cluster was deleted in ADR-0025 PR 3 (2026-05-23) and this seam is
+    // now the SOLE host entry point for stateful MLS-op dispatch.
     //
     // End-to-end shape proved here:
     //

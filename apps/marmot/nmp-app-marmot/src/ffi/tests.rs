@@ -49,7 +49,6 @@ fn null_pointer_paths_are_silent() {
     .is_null());
     assert!(nmp_marmot_snapshot(std::ptr::null_mut()).is_null());
     assert!(nmp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
-    assert!(nmp_marmot_dispatch(std::ptr::null_mut(), std::ptr::null()).is_null());
     nmp_marmot_string_free(std::ptr::null_mut());
     nmp_marmot_unregister(std::ptr::null_mut());
 }

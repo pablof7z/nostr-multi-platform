@@ -48,10 +48,11 @@
 //!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and the
 //!    [`projection::handler::MarmotMlsOpHandler`] installed via
 //!    `NmpApp::set_mls_op_handler` runs the op against the live
-//!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C cluster
-//!    (ADR-0025) is still live in this PR and reaches the SAME projection;
-//!    PR 2 migrates iOS to the generic seam and PR 3 deletes the legacy
-//!    symbol (see the ADR-0025 retirement plan).
+//!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C symbol
+//!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 exception
+//!    is fully retired. In-process Rust callers that need the synchronous
+//!    rich envelope use the Rust-native [`ffi::MarmotHandle::dispatch`]
+//!    accessor (REPL / TUI / integration tests).
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver
@@ -120,9 +121,9 @@ pub mod mls_types {
 // dispatch; the live extension path is `KernelEventObserver` (the Marmot
 // projection registers one in `projection/`). Write capabilities are
 // dispatched through `projection::action::MarmotActionModule` registered
-// under the `"nmp.marmot"` namespace; the bespoke `nmp_marmot_dispatch` C
-// cluster (ADR-0025) is still live in this PR and reaches the SAME
-// projection — see the ADR-0025 retirement plan for the staged migration.
+// under the `"nmp.marmot"` namespace; the legacy bespoke
+// `nmp_marmot_dispatch` C cluster (ADR-0025) was DELETED in PR 3
+// (2026-05-23) — the ADR-0025 exception is fully retired.
 
 #[cfg(test)]
 mod tests;
