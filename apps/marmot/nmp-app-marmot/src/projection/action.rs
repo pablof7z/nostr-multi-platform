@@ -167,7 +167,7 @@ pub enum MarmotAction {
 /// [`MARMOT_ACTION_NAMESPACE`].
 ///
 /// Mirrors the shape of every other `ActionModule` in the workspace
-/// (PublishModule, ChirpReactModule, etc.): `start()` validates the typed
+/// (`PublishModule`, `nmp_nip02::ReactModule`, etc.): `start()` validates the typed
 /// action; `execute()` emits one `ActorCommand` carrying everything the
 /// actor needs to run the op. The only Marmot-specific piece is the
 /// handler the actor's `DispatchMlsOp` arm reaches through the host-

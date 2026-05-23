@@ -3771,6 +3771,7 @@ dependencies = [
  "nmp-coverage-gate",
  "nmp-marmot",
  "nmp-nip01",
+ "nmp-nip02",
  "nmp-nip17",
  "nmp-nip29",
  "nmp-nip57",
@@ -3925,6 +3926,15 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-threading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip02"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
  "serde",
  "serde_json",
 ]

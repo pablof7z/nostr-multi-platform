@@ -1,89 +1,43 @@
-//! Chirp's social-verb [`ActionModule`] impls (`nmp.nip25.react`, `nmp.follow`,
-//! `nmp.unfollow`) and the per-NIP-crate registration helpers (`register_*_actions`)
-//! invoked from [`super::register::nmp_app_chirp_register`].
+//! Per-NIP-crate action-registration helpers invoked from
+//! [`super::register::nmp_app_chirp_register`].
 //!
-//! The `ChirpReactModule` / `ChirpFollowModule` / `ChirpUnfollowModule` structs
-//! are the D0-clean replacement for the deleted per-verb C symbols
-//! (`nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow`): the social verbs
-//! now live in this app crate and reach the kernel through the generic
-//! `dispatch_action` path, not through bespoke `nmp-core` FFI symbols.
+//! Each `register_*_actions` helper wires one protocol crate's typed
+//! `ActionModule` impls into `NmpApp`'s action registry via
+//! [`nmp_core::NmpApp::register_action`]. The kernel then resolves the
+//! per-namespace executor through the same generic `dispatch_action` seam
+//! every other action uses — no per-verb C-ABI symbol, no chirp-local
+//! `ActionModule` impl.
+//!
+//! # History
+//!
+//! The social-verb modules (`nmp.follow`, `nmp.unfollow`, `nmp.nip25.react`)
+//! used to live in this file as `ChirpFollowModule` / `ChirpUnfollowModule`
+//! / `ChirpReactModule`. Opus direction review #10 flagged that placement
+//! as the Follow / React "escape path" — they are substrate-level social
+//! primitives, not Chirp-specific verbs, so they were lifted into
+//! `crates/nmp-nip02/` and any future Nostr app on top of NMP now wires
+//! them with the same `nmp_nip02::register_actions(app)` call Chirp uses.
+//!
+//! The bespoke C-ABI symbols (`nmp_app_react` / `nmp_app_follow` /
+//! `nmp_app_unfollow`) had been deleted in a prior cycle; the only door
+//! into the social verbs is `nmp_app_dispatch_action` under the
+//! `nmp.follow` / `nmp.unfollow` / `nmp.nip25.react` namespaces.
 
-use nmp_core::substrate::ActionModule;
-use nmp_core::{ActorCommand, NmpApp};
-
-use super::helpers::{PubkeyAction, ReactAction};
+use nmp_core::NmpApp;
 
 /// Register Chirp's social-verb action namespaces against `app`'s action
-/// registry. Each namespace gets BOTH a module (shape validator, consumed by
-/// `ActionRegistry::start`) AND an executor (the `ActorCommand` enqueue,
-/// consumed by `ActionRegistry::execute`) — `nmp_app_dispatch_action`
-/// requires both halves.
+/// registry.
 ///
-/// This is the D0-clean replacement for the deleted per-verb C symbols
-/// (`nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow`): the social verbs
-/// now live in this app crate and reach the kernel through the generic
-/// `dispatch_action` path, not through bespoke `nmp-core` FFI symbols.
+/// Delegates to [`nmp_nip02::register_actions`] — the substrate-level
+/// social-graph cluster (NIP-02 follow list + NIP-25 reactions). Chirp keeps
+/// this thin wrapper so the call site in
+/// [`super::register::nmp_app_chirp_register`] stays stable and the
+/// `register_chirp_actions` symbol remains the one Chirp-side line a
+/// reader greps for when asking "where does Chirp wire social actions?".
 ///
-/// JSON schemas (the third arg the host passes to `nmp_app_dispatch_action`):
-/// * `chirp.react`   — `{"target_event_id":"<hex>","reaction":"+"}`
-/// * `nmp.follow`    — `{"pubkey":"<hex>"}`
-/// * `nmp.unfollow`  — `{"pubkey":"<hex>"}`
-///
-/// Hex-shape validation deliberately stays in the actor's command handlers
-/// (which own the user-facing toasts) — the module validators here only check
-/// JSON shape, mirroring the comment the deleted FFI symbols carried (D6).
-pub(super) struct ChirpReactModule;
-impl ActionModule for ChirpReactModule {
-    const NAMESPACE: &'static str = "nmp.nip25.react";
-    type Action = ReactAction;
-    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        // Thread the registry-minted correlation_id through to the actor so
-        // the publish engine reports the terminal verdict under THIS id (not
-        // the kind:7 event id); the host spinner keyed on the dispatch
-        // return value can then be cleared.
-        send(ActorCommand::React {
-            target_event_id: action.target_event_id,
-            reaction: action.reaction,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
-
-pub(super) struct ChirpFollowModule;
-impl ActionModule for ChirpFollowModule {
-    const NAMESPACE: &'static str = "nmp.follow";
-    type Action = PubkeyAction;
-    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        // Thread the registry-minted correlation_id through so the kind:3
-        // publish terminal verdict reports it; see `ChirpReactModule`.
-        send(ActorCommand::Follow {
-            pubkey: action.pubkey,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
-
-pub(super) struct ChirpUnfollowModule;
-impl ActionModule for ChirpUnfollowModule {
-    const NAMESPACE: &'static str = "nmp.unfollow";
-    type Action = PubkeyAction;
-    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        // Thread the registry-minted correlation_id through so the kind:3
-        // publish terminal verdict reports it; see `ChirpReactModule`.
-        send(ActorCommand::Unfollow {
-            pubkey: action.pubkey,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
-
+/// Namespaces wired: `nmp.follow`, `nmp.unfollow`, `nmp.nip25.react`.
 pub(super) fn register_chirp_actions(app: &mut NmpApp) {
-    app.register_action::<ChirpReactModule>();
-    app.register_action::<ChirpFollowModule>();
-    app.register_action::<ChirpUnfollowModule>();
+    nmp_nip02::register_actions(app);
 }
 
 /// Register the 3 NIP-29 group-chat action namespaces against `app`'s action
