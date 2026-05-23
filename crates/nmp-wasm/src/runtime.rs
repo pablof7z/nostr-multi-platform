@@ -1,21 +1,41 @@
 //! Browser-side runtime built on the pure `KernelReducer` from `nmp-core`.
 //!
-//! # V-01 Stage 3 status
+//! # V-01 Stage 3b status
 //!
-//! The runtime drives a real [`nmp_core::KernelReducer`] (Stage 2) AND, on
-//! `wasm32`, owns a pool of [`crate::relay_driver::BrowserRelayDriver`]s — one
-//! `web_sys::WebSocket` per (URL, role) pair (Stage 3). Inbound relay frames
-//! arrive on the JS event loop, route through `KernelReducer::handle_relay_frame`,
-//! and the resulting outbound is fanned back out over the same sockets. The
-//! kernel's `RelayStatus`, `RelayFrame` ingest, and `OutboundMessage` paths
-//! are exercised end-to-end against live relays.
+//! Stage 3 (read path) shipped the live relay transport: `WasmRuntime` drives
+//! a real [`nmp_core::KernelReducer`] AND, on `wasm32`, owns a pool of
+//! [`crate::relay_driver::BrowserRelayDriver`]s — one `web_sys::WebSocket`
+//! per (URL, role) pair. Inbound relay frames arrive on the JS event loop,
+//! route through `KernelReducer::handle_relay_frame`, and the resulting
+//! outbound is fanned back out over the same sockets.
 //!
-//! On native targets the relay-driver pool is conditionally compiled out
-//! (the native crate already owns the native transport via `relay_worker`);
-//! `handle()` still works synchronously for the protocol-conformance tests
-//! that the workspace runs on native CI.
+//! Stage 3b (this commit) adds the **signer install path** and the **async
+//! snapshot push channel**:
 //!
-//! # What is real
+//! - [`crate::protocol::WorkerRequest::SetSigner`] installs an
+//!   `Arc<dyn nmp_signers::Signer>` into the runtime's signer slot. The only
+//!   wired kind today is `"nip07"`, which the host first handshakes
+//!   asynchronously through JS (`window.nostr.getPublicKey()`) before sending
+//!   the wasm-side install request with the cached pubkey hex.
+//! - The `NmpWasmRuntime::set_snapshot_callback` wasm-bindgen method stores
+//!   a `js_sys::Function` the relay-pool sink invokes whenever an inbound
+//!   relay frame mutates kernel state. The callback receives the same
+//!   `{"type":"update","envelope":…}` JSON shape `handle()` returns
+//!   synchronously, so the JS event-handling code does not branch on push
+//!   vs. pull.
+//!
+//! What Stage 3b deliberately does NOT do (Stage 3c follow-up):
+//!
+//! - **In-process publish path.** App-level writes (PublishNote / React /
+//!   Follow / Unfollow) need a `KernelReducer` surface that takes a
+//!   `SignedEvent` and routes it through `PublishEngine`. That surface does
+//!   not yet exist — the native path goes through `ActorCommand` which is
+//!   `feature = "native"`-gated. Until that lands, app writes return
+//!   `signer_not_installed` (no signer in the slot) or `publish_path_not_wired`
+//!   (signer present but no kernel-publish surface to feed it through).
+//! - **IndexedDB store.** Kernel still runs in memory, resets on page reload.
+//!
+//! # What is real (Stage 3 + Stage 3b combined)
 //!
 //! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce
 //!   real `KernelUpdate` values.
@@ -24,78 +44,85 @@
 //! - Snapshot envelopes are produced via [`nmp_core::wrap_snapshot`].
 //! - **(wasm32)** Relay sockets dial on `Start`, reconnect with the same
 //!   exponential backoff + jitter constants the native worker uses, ingest
-//!   frames into the kernel, and route outbound back to the wire.
-//!
-//! # What is honestly stubbed (Stage 3b / V-01 follow-up)
-//!
-//! - **Event store.** No `nostr-database` / IndexedDB backend is wired yet —
-//!   the kernel runs entirely in memory and resets on page reload.
-//! - **Identity / signing.** App-level *writes* (`PublishNote`, `React`,
-//!   `Follow`, `Unfollow`) still return a `CapabilityFailure` carrying a
-//!   `BrowserActorDriverMissing`-style reason — signing requires the identity
-//!   runtime + bunker hooks (`actor::commands::sign_in_*`) that live behind
-//!   `feature = "native"`. The wasm32 read path (relay frames → kernel →
-//!   snapshot) is functional; the write path is not yet.
-//! - **Async snapshot push.** Relay-driven kernel mutations don't yet push
-//!   a fresh snapshot to JS — the JS host pulls by dispatching a
-//!   `nmp.kernel.diagnostics` (or any other read action). A push channel via
-//!   `js_sys::Function` callback is Stage 3b.
+//!   frames into the kernel, route outbound back to the wire, and push a
+//!   fresh snapshot to the JS host through the registered callback (if any).
+//! - **(wasm32, feature = "wasm" in nmp-signers)** `Nip07Signer::sign()`
+//!   bridges into `window.nostr.signEvent(...)` via `spawn_local`.
 
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use nmp_core::{wrap_snapshot, KernelAction, KernelReducer, KernelUpdate, SNAPSHOT_SCHEMA_VERSION};
-use serde_json::Value;
+use nmp_core::{KernelAction, KernelReducer, KernelUpdate};
+use nmp_signers::Signer;
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_driver::BrowserRelayDriver;
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
 
+use crate::dispatch_routing::{
+    browser_driver_missing_reason, kernel_action_from_dispatch, write_path_unavailable_reason,
+};
 use crate::protocol::{
-    ActionDispatch, AppAction, CapabilityFailure, RelayBootstrapEntry, RuntimeStatus, StartConfig,
+    ActionDispatch, AppAction, CapabilityFailure, RuntimeStatus, SetSigner, StartConfig,
     WorkerEvent, WorkerRequest,
 };
+use crate::signer_slot;
+use crate::snapshot::{build_snapshot_value, RuntimeMeta};
 
 const PROTOCOL_VERSION: u16 = 1;
 
-/// Browser-side runtime backed by a real `KernelReducer`.
+/// Type alias for the snapshot-callback slot. On `wasm32` this is a real JS
+/// function the host installed; on native targets there is no JS to call so
+/// the slot carries `()` (the push helper is a no-op shim). Keeping the alias
+/// makes the runtime struct definition portable across targets without a
+/// `#[cfg]` on every field reference.
+#[cfg(target_arch = "wasm32")]
+type SnapshotCallback = js_sys::Function;
+#[cfg(not(target_arch = "wasm32"))]
+type SnapshotCallback = ();
+
+/// Browser-side runtime backed by a real `KernelReducer` plus the Stage 3b
+/// signer slot and snapshot-callback push channel.
 ///
 /// `Default::default()` constructs the reducer eagerly — the kernel is cheap
 /// to allocate (no I/O, no threads) and constructing it lazily would complicate
-/// the snapshot path that runs before `Start` arrives (the `protocol_mismatch`
-/// branch needs no kernel; everything else does).
+/// the snapshot path that runs before `Start` arrives.
 pub struct WasmRuntime {
     /// Pure protocol kernel — the same reducer the native actor loop uses.
     /// Held behind `Rc<RefCell>` so the wasm32 relay-driver closures can
-    /// share it without unsafe lifetime gymnastics. On native the wrapper is
-    /// effectively free (single-owned, single-threaded test harness) and
-    /// keeps both call sites symmetrical.
+    /// share it without unsafe lifetime gymnastics.
     reducer: Rc<RefCell<KernelReducer>>,
-    /// `Start` flips this to `true`; `Stop` flips it back. Mirrors the
-    /// "running" flag the native actor exposes through its snapshot.
-    started: bool,
-    /// Relay bootstrap captured at `Start` time. The pure kernel does not yet
-    /// own a relay-bootstrap list (Stage 3 will wire the snapshot
-    /// `relay_diagnostics` projection through `Kernel::relay_statuses`); for
-    /// now the runtime carries it so the snapshot envelope can surface the
-    /// configured relays as a `configured` diagnostic — proving the
-    /// `StartConfig` was honored end-to-end.
-    relay_bootstrap: Vec<RelayBootstrapEntry>,
-    /// Database name captured at `Start` time. The pure kernel never sees a
-    /// database (no IndexedDB binding yet — Stage 3b). Echoed back through the
-    /// snapshot so hosts can verify the start handshake.
-    database_name: String,
-    /// Monotonic revision counter, mirroring the kernel's own `rev` field
-    /// (visible through `KernelUpdate::Started { rev }`). Bumped on every
-    /// successful kernel-driven update so hosts can apply the bible's
-    /// monotonic-revision-guard rule.
-    rev: u64,
+    /// Runtime metadata mirrored into every snapshot envelope. Shared with
+    /// the relay-pool sink via `Rc<RefCell>` so the sink can build a fresh
+    /// snapshot from kernel + meta without holding a reference to the
+    /// runtime itself (which the sink, captured by JS event handlers,
+    /// cannot).
+    meta: Rc<RefCell<RuntimeMeta>>,
+    /// V-01 Stage 3b — signer slot. `None` until the host calls
+    /// `SetSigner`. App-level writes that hit `app_action()` distinguish
+    /// the two states (no slot → `signer_not_installed`; slot filled →
+    /// `publish_path_not_wired`) so the JS host can present an honest UX
+    /// banner instead of guessing.
+    ///
+    /// `Arc<dyn Signer>` (not `Rc`) matches the existing `nmp-signers`
+    /// shape — `Signer` is `Send + Sync` because the native actor loop
+    /// hands signer ops across threads. On wasm32 there are no threads
+    /// to cross; the `Arc` cost over `Rc` is one atomic increment per
+    /// install and is otherwise free.
+    signer: Option<Arc<dyn Signer>>,
+    /// V-01 Stage 3b — snapshot push callback. Wasm32 stores the JS
+    /// `Function`; native carries `()`. The relay-pool sink reads this slot
+    /// after every kernel-mutating inbound frame and pushes a fresh snapshot
+    /// if a callback is installed. Unused on native (no JS to call into;
+    /// `set_snapshot_callback` is a no-op shim), so silence the dead-code
+    /// warning the symmetric struct layout otherwise triggers there.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    snapshot_callback: Rc<RefCell<Option<SnapshotCallback>>>,
     /// Live `web_sys::WebSocket` drivers — one per relay URL in the bootstrap.
-    /// `wasm32`-only: native tests never construct drivers. The
-    /// `RefCell<Vec<…>>` lets the sink closure (registered at `Start` time)
-    /// look up the driver by URL on every outbound fan-out.
+    /// `wasm32`-only: native tests never construct drivers.
     #[cfg(target_arch = "wasm32")]
     relays: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
 }
@@ -104,10 +131,9 @@ impl Default for WasmRuntime {
     fn default() -> Self {
         Self {
             reducer: Rc::new(RefCell::new(KernelReducer::new())),
-            started: false,
-            relay_bootstrap: Vec::new(),
-            database_name: String::new(),
-            rev: 0,
+            meta: Rc::new(RefCell::new(RuntimeMeta::new())),
+            signer: None,
+            snapshot_callback: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
         }
@@ -119,6 +145,25 @@ impl WasmRuntime {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Install (or clear, with `None`) the snapshot push callback. Wasm32
+    /// only — native targets have no `js_sys::Function` to install.
+    ///
+    /// Calling this with `Some(f)` replaces any previously-installed
+    /// callback atomically (the slot is swapped under a single `RefMut`
+    /// borrow). Calling with `None` clears the slot; subsequent relay
+    /// frames will not push, and the host falls back to pull-by-dispatch.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
+        *self.snapshot_callback.borrow_mut() = callback;
+    }
+
+    /// Native test-side shim — the wasm-bindgen `NmpWasmRuntime` only
+    /// exposes the `wasm32` method, but the protocol-conformance tests run
+    /// on native CI and need a no-op equivalent so the test target compiles
+    /// without `#[cfg]` fences in every fixture.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_snapshot_callback(&mut self, _callback: Option<()>) {}
 
     /// Process one `WorkerRequest` and return the events to forward back to
     /// JS. Total — never panics. Returns `Err` only for caller-side validation
@@ -160,6 +205,7 @@ impl WasmRuntime {
                     reason: browser_driver_missing_reason(),
                 })])
             }
+            WorkerRequest::SetSigner(request) => Ok(self.set_signer(request)),
             WorkerRequest::Stop { correlation_id } => self.stop(correlation_id),
         }
     }
@@ -181,36 +227,31 @@ impl WasmRuntime {
             ));
         }
 
-        // Drive the pure kernel through its `Start` action — this is the same
-        // reducer entry point `dispatch_kernel_action` calls on the native
-        // actor thread, byte-for-byte. The returned `Started { rev }` is the
+        // Drive the pure kernel through its `Start` action — same reducer
+        // entry point `dispatch_kernel_action` calls on the native actor
+        // thread, byte-for-byte. The returned `Started { rev }` is the
         // ground truth for the runtime's own monotonic counter.
         let started = self.reducer.borrow_mut().reduce(KernelAction::Start);
-        match started {
-            KernelUpdate::Started { rev } => {
-                self.rev = rev;
-            }
-            // The `Start` arm of `dispatch_kernel_action` only ever emits
-            // `Started`; any other variant would indicate a kernel contract
-            // change. Surface it as InvalidConfig so the host sees a loud
-            // failure rather than a silently degraded runtime.
+        let rev = match started {
+            KernelUpdate::Started { rev } => rev,
             other => {
                 return Err(WasmRuntimeError::KernelContract(format!(
                     "expected Started after KernelAction::Start, got {other:?}"
                 )));
             }
+        };
+
+        {
+            let mut meta = self.meta.borrow_mut();
+            meta.started = true;
+            meta.rev = rev;
+            meta.relay_bootstrap =
+                relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
+            meta.database_name = config.database_name;
         }
 
-        self.started = true;
-        self.relay_bootstrap = relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
-        self.database_name = config.database_name;
-
         // V-01 Stage 3 — spawn one `BrowserRelayDriver` per relay URL on
-        // wasm32. The driver dials immediately and routes inbound frames
-        // through `KernelReducer::handle_relay_frame`; outbound from those
-        // frames fan out over the sink registered below. Native builds skip
-        // this path entirely — they have no `web_sys` and use the native
-        // `relay_worker` thread when they want real transport.
+        // wasm32. Native builds skip this path entirely.
         #[cfg(target_arch = "wasm32")]
         self.spawn_relay_drivers()?;
 
@@ -232,20 +273,20 @@ impl WasmRuntime {
         #[cfg(target_arch = "wasm32")]
         relay_pool::close_drivers(&self.relays);
 
-        // Mirror `Start`: drive the kernel through its `Stop` action so the
-        // single reducer is the single writer of the running/stopped flag.
         let stopped = self.reducer.borrow_mut().reduce(KernelAction::Stop);
-        match stopped {
-            KernelUpdate::Stopped { rev } => {
-                self.rev = rev;
-            }
+        let rev = match stopped {
+            KernelUpdate::Stopped { rev } => rev,
             other => {
                 return Err(WasmRuntimeError::KernelContract(format!(
                     "expected Stopped after KernelAction::Stop, got {other:?}"
                 )));
             }
+        };
+        {
+            let mut meta = self.meta.borrow_mut();
+            meta.rev = rev;
+            meta.started = false;
         }
-        self.started = false;
         Ok(vec![WorkerEvent::RuntimeStatus {
             status: RuntimeStatus::Stopped,
             correlation_id: Some(correlation_id),
@@ -253,20 +294,50 @@ impl WasmRuntime {
     }
 
     /// V-01 Stage 3 — instantiate one `BrowserRelayDriver` per configured
-    /// relay URL and wire each one's outbound sink so the kernel's responses
-    /// (AUTH replies, EOSE-CLOSEs, view REQs registered while the socket was
-    /// dialling) fan back out over the same socket pool. Implementation lives
-    /// in [`crate::relay_pool`].
+    /// relay URL. Wires each driver's outbound sink to the relay pool's
+    /// fan-out closure, which also pushes a snapshot through the registered
+    /// callback (if any) so the JS host sees kernel mutations as they
+    /// happen.
     #[cfg(target_arch = "wasm32")]
     fn spawn_relay_drivers(&mut self) -> Result<(), WasmRuntimeError> {
-        let sink = relay_pool::build_sink(Rc::clone(&self.relays));
+        let sink = relay_pool::build_sink(
+            Rc::clone(&self.relays),
+            Rc::clone(&self.snapshot_callback),
+            Rc::clone(&self.reducer),
+            Rc::clone(&self.meta),
+        );
         let drivers = relay_pool::spawn_drivers(
-            &self.relay_bootstrap,
+            &self.meta.borrow().relay_bootstrap,
             Rc::clone(&self.reducer),
             sink,
         )?;
         *self.relays.borrow_mut() = drivers;
         Ok(())
+    }
+
+    /// V-01 Stage 3b — install a signer from a [`SetSigner`] request.
+    ///
+    /// Pure: no I/O, no JS-event-loop interaction. Construction failure
+    /// surfaces as `CapabilityFailure` with a stable code (e.g.
+    /// `unsupported_signer_kind`, `invalid_signer_pubkey`); success
+    /// surfaces as `ActionAccepted` with `action_type = "nmp.set_signer"`
+    /// so the host can resolve a spinner the same way it does for any
+    /// other dispatched action.
+    fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
+        match signer_slot::install_from_request(&request) {
+            Ok(signer) => {
+                self.signer = Some(signer);
+                vec![WorkerEvent::ActionAccepted {
+                    action_type: "nmp.set_signer".to_string(),
+                    correlation_id: request.correlation_id,
+                }]
+            }
+            Err(error) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: "nmp.set_signer".to_string(),
+                correlation_id: request.correlation_id,
+                reason: error.detail(),
+            })],
+        }
     }
 
     fn app_action(
@@ -275,16 +346,10 @@ impl WasmRuntime {
         correlation_id: String,
     ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
         let (action_type, _payload) = action.into_dispatch_parts();
-        // Every variant of `AppAction` is a *write* — PublishNote, React,
-        // Follow, Unfollow all sign and publish events through the actor's
-        // publish-engine path. Without the actor (gated behind `native`) and
-        // without a wasm relay transport (Stage 3), no write can be honored.
-        // Honest failure beats fabricated success: report
-        // BrowserActorDriverMissing rather than fabricating a fake snapshot.
         Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
             capability: action_type,
             correlation_id,
-            reason: browser_driver_missing_reason(),
+            reason: write_path_unavailable_reason(self.signer.as_ref()),
         })])
     }
 
@@ -294,26 +359,20 @@ impl WasmRuntime {
         // ...) the bible specifies. The kernel-namespaced ones map directly to
         // `KernelAction` variants and run through `KernelReducer::reduce`; the
         // app-namespaced ones (anything that emits a signed event) hit the
-        // same BrowserActorDriverMissing wall as `app_action` above.
+        // same write-path-unavailable wall as `app_action` above.
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
             let update = self.reducer.borrow_mut().reduce(kernel_action);
-            // The kernel reducer is the source of truth for the
-            // `Started`/`Stopped` transition; mirror its outcome into the
-            // runtime's `started` flag and `rev` counter so subsequent
-            // snapshots stay coherent across both the typed `Start`/`Stop`
-            // entry points and the generic `Dispatch` path.
             match update {
                 KernelUpdate::Started { rev } => {
-                    self.rev = rev;
-                    self.started = true;
+                    let mut meta = self.meta.borrow_mut();
+                    meta.rev = rev;
+                    meta.started = true;
                 }
                 KernelUpdate::Stopped { rev } => {
-                    self.rev = rev;
-                    self.started = false;
+                    let mut meta = self.meta.borrow_mut();
+                    meta.rev = rev;
+                    meta.started = false;
                 }
-                // `ViewOpened` / `ViewClosed` / `Diagnostics` / `UriRejected`
-                // are read-side operations on the registry; the kernel does
-                // not bump `rev` and the runtime's running flag is unchanged.
                 _ => {}
             }
             return Ok(vec![
@@ -327,127 +386,37 @@ impl WasmRuntime {
         Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
             capability: action.action_type,
             correlation_id: action.correlation_id,
-            reason: browser_driver_missing_reason(),
+            reason: write_path_unavailable_reason(self.signer.as_ref()),
         })])
     }
 
-    /// Build the snapshot envelope using the same `wrap_snapshot` helper the
-    /// native actor uses, so the on-wire `{"t":"snapshot","v":…}` shape is
-    /// identical across native and wasm hosts.
-    ///
-    /// The `v` payload is intentionally minimal in Stage 2 — only the fields
-    /// derived from real kernel state (`rev`, `running`) plus the runtime's
-    /// captured `relay_diagnostics` are populated. The kernel's full
-    /// projection set (timeline, profile cards, publish-outbox, ...) is
-    /// reachable only through `Kernel::make_update`, which is `pub(crate)` and
-    /// runs inside the actor loop; exposing a non-native equivalent is part of
-    /// Stage 3 alongside the relay-transport wiring.
+    /// Build a `WorkerEvent::Update` from the current kernel + meta state.
+    /// Identical shape to the JSON the relay-pool callback push uses, so the
+    /// host's reducer doesn't branch on push vs. pull.
     fn snapshot_event(&self) -> WorkerEvent {
-        let envelope = self.snapshot_value();
+        let envelope = build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow());
         WorkerEvent::Update { envelope }
     }
 
-    fn snapshot_value(&self) -> Value {
-        // The inner snapshot shape — host shells decode this as the `v` field
-        // of the canonical `UpdateEnvelope::Snapshot` variant. Stage 2 keeps
-        // the surface intentionally small; Stage 3 expands it to mirror the
-        // native `Kernel::make_update` projection set.
-        let snapshot = serde_json::json!({
-            "schema_version": SNAPSHOT_SCHEMA_VERSION,
-            "rev": self.rev,
-            "running": self.started,
-            "database_name": self.database_name,
-            "projections": {
-                "relay_diagnostics": self.relay_bootstrap.iter().map(|relay| {
-                    serde_json::json!({
-                        "url": relay.url,
-                        "role": relay.role,
-                        // "configured" means the relay was named in
-                        // `StartConfig` but no live transport has yet
-                        // connected to it — the honest state given Stage 3
-                        // (relay worker) has not landed. The native runtime
-                        // would surface "connected"/"degraded"/... here once
-                        // the wasm relay worker is wired.
-                        "status": "configured",
-                    })
-                }).collect::<Vec<_>>()
-            }
-        });
-
-        // Round-trip through `wrap_snapshot` so the on-wire envelope is
-        // bit-identical to the native path (`{"t":"snapshot","v":…}`). Falling
-        // back to the bare snapshot keeps the host functional if serialization
-        // somehow fails — preferable to dropping the frame.
-        let snapshot_json = serde_json::to_string(&snapshot)
-            .unwrap_or_else(|_| String::from(r#"{"schema_version":1,"rev":0,"running":false}"#));
-        wrap_snapshot(snapshot_json)
-            .and_then(|wire| serde_json::from_str::<Value>(&wire).ok())
-            .unwrap_or(serde_json::json!({
-                "t": "snapshot",
-                "v": snapshot,
-            }))
+    /// Build the inner snapshot `v` payload. Used by tests that want to
+    /// inspect the snapshot without unwrapping the envelope.
+    #[cfg(test)]
+    pub(crate) fn snapshot_value(&self) -> serde_json::Value {
+        build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow())
     }
-}
 
-/// Map a generic `ActionDispatch` to its `KernelAction` if (and only if) the
-/// `action_type` is in the kernel namespace. Returns `None` for app-namespaced
-/// actions, which the caller surfaces as `BrowserActorDriverMissing` until
-/// Stage 3 wires a relay transport.
-///
-/// Kept narrow on purpose: only the actions whose entire implementation lives
-/// in the pure reducer are routed. Anything that needs the actor (signed-event
-/// publication, capability dispatch, planner driver) returns `None`.
-fn kernel_action_from_dispatch(action: &ActionDispatch) -> Option<KernelAction> {
-    match action.action_type.as_str() {
-        "nmp.kernel.start" => Some(KernelAction::Start),
-        "nmp.kernel.stop" => Some(KernelAction::Stop),
-        "nmp.kernel.diagnostics" => Some(KernelAction::RunDiagnostics),
-        "nmp.kernel.open_uri" => action
-            .payload
-            .get("uri")
-            .and_then(Value::as_str)
-            .map(|uri| KernelAction::OpenUri { uri: uri.to_string() }),
-        "nmp.kernel.open_view" => {
-            let namespace = action.payload.get("namespace").and_then(Value::as_str)?;
-            let key = action.payload.get("key").and_then(Value::as_str)?;
-            Some(KernelAction::OpenView {
-                namespace: namespace.to_string(),
-                key: key.to_string(),
-            })
-        }
-        "nmp.kernel.close_view" => {
-            let namespace = action.payload.get("namespace").and_then(Value::as_str)?;
-            let key = action.payload.get("key").and_then(Value::as_str)?;
-            Some(KernelAction::CloseView {
-                namespace: namespace.to_string(),
-                key: key.to_string(),
-            })
-        }
-        _ => None,
-    }
-}
-
-/// Single source of truth for the "the wasm runtime cannot honor relay-backed
-/// actions until the Stage 3 transport lands" message. Stable string so JS
-/// hosts can pattern-match it for a degraded-mode banner without parsing the
-/// full reason text.
-fn browser_driver_missing_reason() -> String {
-    "browser_actor_driver_missing: wasm relay transport is not yet wired (V-01 Stage 3 — \
-     web_sys::WebSocket bridge). Live relay-backed actions and capability completions \
-     require the actor + relay_worker, both gated behind `feature = \"native\"`."
-        .to_string()
 }
 
 fn relay_bootstrap_from_config(
     relays: Vec<String>,
-    relay_bootstrap: Vec<RelayBootstrapEntry>,
-) -> Vec<RelayBootstrapEntry> {
+    relay_bootstrap: Vec<crate::protocol::RelayBootstrapEntry>,
+) -> Vec<crate::protocol::RelayBootstrapEntry> {
     if !relay_bootstrap.is_empty() {
         return relay_bootstrap;
     }
     relays
         .into_iter()
-        .map(|url| RelayBootstrapEntry {
+        .map(|url| crate::protocol::RelayBootstrapEntry {
             url,
             role: "both".to_string(),
         })
@@ -459,8 +428,7 @@ pub enum WasmRuntimeError {
     InvalidConfig(String),
     /// The pure `KernelReducer` returned an unexpected `KernelUpdate` variant
     /// for a `KernelAction` whose contract is single-valued (e.g. `Start`
-    /// always yields `Started`). Surfaced rather than panicked so the host
-    /// sees a loud failure if the kernel contract ever changes underneath us.
+    /// always yields `Started`).
     KernelContract(String),
 }
 

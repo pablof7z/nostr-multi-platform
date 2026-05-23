@@ -17,6 +17,15 @@ crate-type = ["cdylib", "rlib"]
 # (web_sys::WebSocket + IndexedDB store).
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
+# V-01 Stage 3b — `nmp-signers` for the NIP-07 browser-extension `Signer`.
+# Always-on dependency: `nmp-signers` itself compiles on every host (its native
+# code is the non-wasm fallback that returns `SignerError::Unsupported`). The
+# `wasm` feature unlocks the real `window.nostr.signEvent(...)` bridge on
+# wasm32; on native targets the feature is a no-op (the cfg guard inside
+# `signers/nip07.rs` evaluates `false`).
+nmp-signers = { path = "../nmp-signers", features = ["wasm"] }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+nostr = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 wasm-bindgen = "0.2.121"
@@ -38,3 +47,10 @@ web-sys = { version = "0.3.98", features = [
     "WebSocket",
     "Window",
 ] }
+# V-01 Stage 3b — drive the `Nip07Signer::sign()` Promise round-trip from the
+# JS event loop without blocking the wasm thread. `spawn_local` parks a future
+# that awaits `window.nostr.signEvent(...).then(...)` and pushes the result
+# into an `mpsc::Receiver` the `SignerOp::Pending(rx)` carries back to the
+# caller. No tokio — `wasm-bindgen-futures` is a pure JS Promise glue crate
+# (it is already a transitive dep of the workspace through `nostr`).
+wasm-bindgen-futures = "0.4.71"
