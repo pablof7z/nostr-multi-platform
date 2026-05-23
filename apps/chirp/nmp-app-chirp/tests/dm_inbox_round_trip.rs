@@ -194,22 +194,24 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     assert_eq!(typed.conversations[0].messages.len(), 1);
     assert_eq!(typed.conversations[0].messages[0].content, "wire-shape check");
 
-    // Empty-inbox shape contract: when no envelopes have arrived the
-    // closure surfaces `{"conversations":[]}`, NOT JSON `null` or a
-    // missing key. The Swift decoder relies on this being a concrete
-    // empty object, not absent.
+    // Empty-inbox shape contract: when no local keys slot is present the
+    // snapshot surfaces `{"conversations":[], "remote_signer_unsupported":true}`,
+    // NOT JSON `null` or a missing key. The Swift decoder relies on this
+    // being a concrete object — `decodeIfPresent` handles the new field for
+    // older kernels (backward compat via V-08 Stage 2 iOS fix).
     let empty_projection = DmInboxProjection::new(
         // SAFETY: app is still live.
         unsafe { (*app).nip17_local_keys() },
     );
-    // Clear the slot so the projection sees "not signed in".
+    // Clear the slot so the projection sees "not signed in" →
+    // remote_signer_unsupported surfaces as true.
     // SAFETY: app is still live.
     *unsafe { (*app).nip17_local_keys() }.lock().unwrap() = None;
     let empty_json = empty_projection.snapshot_json();
     assert_eq!(
         empty_json,
-        serde_json::json!({ "conversations": [] }),
-        "empty-inbox snapshot must be {{\"conversations\":[]}}, not null/missing",
+        serde_json::json!({ "conversations": [], "remote_signer_unsupported": true }),
+        "empty-inbox (no local keys) must carry remote_signer_unsupported:true",
     );
 
     nmp_app_free(app);
