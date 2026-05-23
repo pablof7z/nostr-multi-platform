@@ -8,7 +8,7 @@
 //! now live in this app crate and reach the kernel through the generic
 //! `dispatch_action` path, not through bespoke `nmp-core` FFI symbols.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::ActionModule;
 use nmp_core::{ActorCommand, NmpApp};
 
 use super::helpers::{PubkeyAction, ReactAction};
@@ -36,9 +36,6 @@ pub(super) struct ChirpReactModule;
 impl ActionModule for ChirpReactModule {
     const NAMESPACE: &'static str = "nmp.nip25.react";
     type Action = ReactAction;
-    fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
-        Ok(())
-    }
     fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
         // Thread the registry-minted correlation_id through to the actor so
         // the publish engine reports the terminal verdict under THIS id (not
@@ -57,9 +54,6 @@ pub(super) struct ChirpFollowModule;
 impl ActionModule for ChirpFollowModule {
     const NAMESPACE: &'static str = "nmp.follow";
     type Action = PubkeyAction;
-    fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
-        Ok(())
-    }
     fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
         // Thread the registry-minted correlation_id through so the kind:3
         // publish terminal verdict reports it; see `ChirpReactModule`.
@@ -75,9 +69,6 @@ pub(super) struct ChirpUnfollowModule;
 impl ActionModule for ChirpUnfollowModule {
     const NAMESPACE: &'static str = "nmp.unfollow";
     type Action = PubkeyAction;
-    fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
-        Ok(())
-    }
     fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
         // Thread the registry-minted correlation_id through so the kind:3
         // publish terminal verdict reports it; see `ChirpReactModule`.

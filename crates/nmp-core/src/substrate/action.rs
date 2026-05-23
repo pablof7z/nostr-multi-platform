@@ -65,10 +65,14 @@ pub trait ActionModule: Send + Sync + 'static {
     /// per-action lifecycle (step / status / deadline) was discarded at the
     /// `dispatch_action` boundary and never reached the host or the actor, so
     /// the `ActionPlan` return type it once produced has been removed.
-    fn start(
-        ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection>;
+    ///
+    /// Default: no-op accept. Override only when upfront validation is
+    /// needed (empty fields, hex shape, invariant checks). Modules whose
+    /// kernel command handler owns all error toasting can omit this method.
+    #[allow(unused_variables)]
+    fn start(ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        Ok(())
+    }
 
     /// Optional: suggest the `correlation_id` the registry should assign to
     /// this action instead of the auto-generated one. Returning `Some(id)`
