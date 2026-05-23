@@ -50,6 +50,7 @@ pub use projection::{
     DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupChatMessage,
     GroupChatProjection, GroupChatSnapshot,
 };
+pub use register::register_actions;
 
 #[cfg(test)]
 mod tests;

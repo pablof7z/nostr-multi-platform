@@ -124,7 +124,7 @@ pub(super) fn register_chirp_actions(app: &mut NmpApp) {
 /// [`super::register::nmp_app_chirp_register_group_discovery`] — a
 /// `DiscoveredGroupsProjection` scoped to the same relay.
 pub(super) fn register_nip29_actions(app: &mut NmpApp) {
-    nmp_nip29::register::register_actions(app);
+    nmp_nip29::register_actions(app);
 }
 
 /// Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`) against
