@@ -52,7 +52,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
         .lifecycle
         .set_selection_budget(session.max_connections, session.max_per_user);
     for dead in &session.dead_relays {
-        session.lifecycle.mark_relay_dead(dead.clone());
+        let _ = session.lifecycle.mark_relay_dead(dead.clone()); // state init — change signal unused
     }
 
     // ── 2. Expand $follows (thin kind:3 fetch — variable resolution) ─────
