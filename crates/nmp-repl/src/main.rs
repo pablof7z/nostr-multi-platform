@@ -1,8 +1,9 @@
 //! `nmp-repl` — interactive diagnostic REPL for the NMP planner + outbox.
 //!
-//! Read-only. No publishes, no AUTH, no NIP-77. v1 design lives in
-//! `docs/design/nmp-repl.md`. The binary wires rustyline → parser →
-//! command dispatch over a `Session`.
+//! Diagnostic REPL for the NMP planner and outbox. Includes optional write
+//! commands (create-account, mls-*) gated behind the `mls` Cargo feature.
+//! v1 design lives in `docs/design/nmp-repl.md`. The binary wires rustyline
+//! → parser → command dispatch over a `Session`.
 
 use std::borrow::Cow;
 
@@ -29,9 +30,12 @@ const VERBS: &[&str] = &[
     "refresh",
     "expand",
     "help",
-    // MLS / Marmot
-    "create-account",
+    // Identity — `load-key` is read-only (parses a key for inspection);
+    // `create-account` publishes kind:0 + kind:10002 so it lives behind the
+    // `mls` feature alongside the other write commands.
     "load-key",
+    #[cfg(feature = "mls")]
+    "create-account",
     #[cfg(feature = "mls")]
     "mls-init",
     #[cfg(feature = "mls")]
@@ -189,6 +193,7 @@ fn dispatch(session: &mut Session, cmd: Command) -> Result<bool, String> {
         Command::Expand(var) => commands::expand::run(session, var)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::CreateAccount(name, relays) => commands::create_account::run(session, name, relays)
             .map(|_| false)
             .map_err(|e| e.to_string()),
@@ -263,7 +268,7 @@ fn main() {
     }
 
     if !flags.json {
-        println!("nmp-repl v0.1 — diagnostic REPL (read-only). type 'help' or 'quit'.");
+        println!("nmp-repl v0.1 — diagnostic REPL. type 'help' or 'quit'.");
     }
 
     loop {

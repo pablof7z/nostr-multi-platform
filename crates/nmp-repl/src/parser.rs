@@ -49,6 +49,7 @@ pub fn parse_line(line: &str) -> Result<Command, String> {
         "refresh" => parse_refresh(args),
         "expand" => parse_expand(args),
         "help" => Ok(Command::Help(args.first().map(std::string::ToString::to_string))),
+        #[cfg(feature = "mls")]
         "create-account" => parse_create_account(args),
         "load-key" => parse_load_key(args),
         #[cfg(feature = "mls")]
@@ -444,6 +445,7 @@ fn parse_single_arg(
     Ok(args[0].to_string())
 }
 
+#[cfg(feature = "mls")]
 fn parse_create_account(args: &[&str]) -> Result<Command, String> {
     // Grammar: create-account [name] [relay…]
     // The first non-URL arg (if any) is the name; all wss:// args are relays.

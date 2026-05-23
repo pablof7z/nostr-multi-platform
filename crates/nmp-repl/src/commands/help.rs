@@ -7,11 +7,11 @@ const SHORT: &str = "\
   verbs: set-seed, req, show, set-app-relays, set-indexer, set-dead,
          set-budget, refresh, expand, help, quit
 
-  id:    create-account, load-key
+  id:    load-key
 
   variables: $me, $seed, $follows, $relays, $inbox
   type 'help <verb>' for grammar
-  (rebuild with `--features mls` for MLS / Marmot commands)
+  (rebuild with `--features mls` for create-account + MLS / Marmot commands)
 ";
 
 #[cfg(feature = "mls")]
