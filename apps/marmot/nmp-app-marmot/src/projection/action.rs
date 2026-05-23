@@ -38,9 +38,10 @@
 //! {"op": "publish_key_package"}
 //! ```
 //!
-//! iOS doesn't need to re-encode — flipping the dispatch call from
-//! `nmp_marmot_dispatch(json)` to `nmp_app_dispatch_action("nmp.marmot",
-//! json)` is a one-line change at every call site.
+//! iOS doesn't re-encode — the ADR-0025 PR 2 migration from the legacy
+//! `nmp_marmot_dispatch(json)` symbol to `nmp_app_dispatch_action("nmp.marmot",
+//! json)` was a one-line call-site change per op (and PR 3 then deleted
+//! the legacy symbol entirely).
 //!
 //! # `start()` validates shape; the handler does the work
 //!

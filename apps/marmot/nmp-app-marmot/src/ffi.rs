@@ -269,14 +269,14 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         };
 
     // Step 1: register the substrate-generic `MarmotActionModule` against
-    // the kernel's action registry. This is the SOLE-entry-point
-    // replacement for the bespoke `nmp_marmot_dispatch` C-ABI symbol — once
-    // it lands, hosts can reach every Marmot write through
-    // `nmp_app_dispatch_action("nmp.marmot", action_json)` instead of the
-    // legacy symbol. Registration is idempotent (replaces any prior entry
-    // under the same namespace), so a second `register_with_keys` (account
-    // switch) is safe. Takes `&mut NmpApp` and must run BEFORE any other
-    // `&NmpApp` borrow below.
+    // the kernel's action registry. This is the SOLE host entry point
+    // for Marmot mutating ops (the legacy bespoke `nmp_marmot_dispatch`
+    // C-ABI symbol was deleted in ADR-0025 PR 3, 2026-05-23); hosts
+    // reach every Marmot write through
+    // `nmp_app_dispatch_action("nmp.marmot", action_json)`. Registration
+    // is idempotent (replaces any prior entry under the same namespace),
+    // so a second `register_with_keys` (account switch) is safe. Takes
+    // `&mut NmpApp` and must run BEFORE any other `&NmpApp` borrow below.
     //
     // SAFETY: the caller guarantees `app` is a valid pointer from
     // `nmp_app_new`. No other reference aliases `app` at this point — the
@@ -310,8 +310,10 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // tied to. The actor's `DispatchMlsOp` arm pulls this handler from
     // the slot whenever the `MarmotActionModule::execute` body emits the
     // command — so every `nmp.marmot` dispatch reaches the SAME shared
-    // projection state the bespoke `nmp_marmot_dispatch` symbol already
-    // mutates (one source of truth; D4).
+    // projection state that `MarmotHandle::dispatch` (the in-process
+    // Rust-native accessor) mutates and that the legacy bespoke
+    // `nmp_marmot_dispatch` symbol used to mutate pre-PR-3 (one source of
+    // truth; D4).
     //
     // A second `register_with_keys` (account switch, re-register) installs
     // a fresh handler over the new projection; `set_mls_op_handler`
