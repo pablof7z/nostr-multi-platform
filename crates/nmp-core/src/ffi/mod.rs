@@ -226,6 +226,40 @@ struct UpdateCallbackRegistration {
     callback: UpdateCallback,
 }
 
+/// Typed slot for the active account's MLS nsec (bech32, zeroized on overwrite).
+///
+/// The actor is the sole writer (D4); per-app crates read via
+/// [`NmpApp::mls_local_nsec`]. Follows the same slot-alias pattern as
+/// [`crate::kernel::IndexerRelaysSlot`] so D14 catches shape regressions.
+pub(crate) type MlsLocalNsecSlot = Arc<Mutex<Option<Zeroizing<String>>>>;
+
+/// Typed slot for the active account's parsed `nostr::Keys` (for NIP-17 DM gift-wrap).
+///
+/// Parallel to [`MlsLocalNsecSlot`] but scoped to NIP-17 consumers per ADR-0025.
+/// The actor is the sole writer; per-app crates read via [`NmpApp::nip17_local_keys`].
+pub(crate) type Nip17LocalKeysSlot = Arc<Mutex<Option<nostr::Keys>>>;
+
+/// Typed slot for the FFI-supplied LMDB storage directory path.
+///
+/// Written by [`nmp_app_set_storage_path`] before [`nmp_app_start`]; the actor
+/// reads it once at kernel construction. `None` keeps the in-memory store.
+pub(crate) type StoragePathSlot = Arc<Mutex<Option<String>>>;
+
+/// Construct a fresh, empty [`MlsLocalNsecSlot`].
+pub(crate) fn new_mls_local_nsec_slot() -> MlsLocalNsecSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`Nip17LocalKeysSlot`].
+pub(crate) fn new_nip17_local_keys_slot() -> Nip17LocalKeysSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`StoragePathSlot`].
+pub(crate) fn new_storage_path_slot() -> StoragePathSlot {
+    Arc::new(Mutex::new(None))
+}
+
 pub struct NmpApp {
     tx: Sender<ActorCommand>,
     update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>>,
@@ -304,7 +338,7 @@ pub struct NmpApp {
     /// Wrapped in [`Zeroizing`] so the bech32 secret is wiped from the heap
     /// when the slot is overwritten or the app drops — a plain `String` would
     /// leave the key recoverable in freed memory.
-    mls_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
+    mls_local_nsec: MlsLocalNsecSlot,
     /// Active account's local `nostr::Keys`, or `None` for a remote-signer
     /// (NIP-46 / bunker) account. The actor thread writes this after every
     /// identity mutation that changes the active local key (create, sign-in,
@@ -319,7 +353,7 @@ pub struct NmpApp {
     ///
     /// `nostr::Keys` is `Clone` and zeroizes its own secret on drop, so no
     /// `Zeroizing` wrapper is needed here.
-    nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>>,
+    nip17_local_keys: Nip17LocalKeysSlot,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
@@ -330,7 +364,7 @@ pub struct NmpApp {
     /// `None` (the default until a host calls the setter) keeps the
     /// in-memory store. The path is only honoured when the crate is built
     /// with `--features lmdb-backend`; otherwise it is inert.
-    storage_path: Arc<Mutex<Option<String>>>,
+    storage_path: StoragePathSlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
@@ -553,13 +587,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
-    let mls_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
+    let mls_local_nsec: MlsLocalNsecSlot = new_mls_local_nsec_slot();
     let actor_mls_local_nsec = Arc::clone(&mls_local_nsec);
     // Active local `nostr::Keys` slot — the NIP-44 key seam for non-ADR-0025
     // protocol consumers (NIP-17 DM inbox decryption). Same shared-`Arc`
     // pattern as `mls_local_nsec`: the actor updates it on every identity
     // mutation; per-app crates read via `NmpApp::nip17_local_keys`.
-    let nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>> = Arc::new(Mutex::new(None));
+    let nip17_local_keys: Nip17LocalKeysSlot = new_nip17_local_keys_slot();
     let actor_nip17_local_keys = Arc::clone(&nip17_local_keys);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
@@ -570,7 +604,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // writes through the `NmpApp`'s clone before `nmp_app_start`; the actor
     // reads through this clone when it builds the kernel. Default `None`
     // → in-memory store.
-    let storage_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let storage_path: StoragePathSlot = new_storage_path_slot();
     let actor_storage_path = Arc::clone(&storage_path);
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
@@ -1171,7 +1205,7 @@ impl NmpApp {
     ///
     /// This is DELIBERATELY separate from [`Self::mls_local_nsec`]: that
     /// accessor backs the ADR-0025 Marmot exception; NIP-17 uses this slot.
-    pub fn nip17_local_keys(&self) -> Arc<Mutex<Option<nostr::Keys>>> {
+    pub fn nip17_local_keys(&self) -> Nip17LocalKeysSlot {
         Arc::clone(&self.nip17_local_keys)
     }
 

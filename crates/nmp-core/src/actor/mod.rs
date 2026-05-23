@@ -164,6 +164,8 @@ use std::sync::mpsc::{self, TryRecvError};
 #[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
+use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot};
+#[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
@@ -876,19 +878,19 @@ pub fn run_actor_with_observers(
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
     relay_edit_rows: crate::kernel::RelayEditRowsSlot,
-    mls_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
+    mls_local_nsec: MlsLocalNsecSlot,
     // NIP-17 DM-inbox decryption key seam. Shared `Arc` with the `NmpApp`:
     // per-app crates read the slot through `NmpApp::nip17_local_keys`; this
     // actor thread is the sole writer, updating it on every identity mutation
     // (parallel to `mls_local_nsec`).
-    nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>>,
+    nip17_local_keys: Nip17LocalKeysSlot,
     capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
     // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
     // clone before `nmp_app_start`; this actor thread reads the other when
     // it constructs the kernel below. `None` (the test / web default)
     // keeps the in-memory store.
-    storage_path: Arc<Mutex<Option<String>>>,
+    storage_path: StoragePathSlot,
     // G-S4 — actor command-channel depth straddle counter. Shared `Arc` with
     // the `NmpApp`: `send_cmd` does `fetch_add(1)` before every channel send;
     // this actor thread does `fetch_sub(1)` per dequeued command and binds the

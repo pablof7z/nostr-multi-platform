@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use zeroize::Zeroizing;
 
+use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
@@ -55,8 +56,8 @@ use crate::capability_socket::CapabilityCallbackSlot;
 /// before any snapshot fires.
 fn update_local_key_slots(
     identity: &IdentityRuntime,
-    nsec_slot: &Arc<Mutex<Option<Zeroizing<String>>>>,
-    nip17_keys_slot: &Arc<Mutex<Option<nostr::Keys>>>,
+    nsec_slot: &MlsLocalNsecSlot,
+    nip17_keys_slot: &Nip17LocalKeysSlot,
 ) {
     if let Ok(mut guard) = nsec_slot.lock() {
         *guard = identity.active_nsec_bech32().map(Zeroizing::new);
@@ -168,11 +169,11 @@ pub(super) struct ActorContext<'a> {
     /// Derived per-call value (`all_relays_connected(...)`), not a borrow.
     pub(super) relays_ready: bool,
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
-    pub(super) mls_local_nsec: &'a Arc<Mutex<Option<Zeroizing<String>>>>,
+    pub(super) mls_local_nsec: &'a MlsLocalNsecSlot,
     /// NIP-17 DM-inbox decryption key seam — the active account's local
     /// `nostr::Keys`. Updated alongside `mls_local_nsec` at every identity
     /// mutation. See [`update_local_key_slots`].
-    pub(super) nip17_local_keys: &'a Arc<Mutex<Option<nostr::Keys>>>,
+    pub(super) nip17_local_keys: &'a Nip17LocalKeysSlot,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
     /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
