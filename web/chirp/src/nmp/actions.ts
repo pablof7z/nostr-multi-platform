@@ -18,7 +18,7 @@ export function publishProfileCommand(fields: Record<string, string>): RuntimeCo
 }
 
 export function reactCommand(targetEventId: string, reaction = "+"): RuntimeCommand {
-  return command("chirp.react", { target_event_id: targetEventId, reaction });
+  return command("nmp.nip25.react", { target_event_id: targetEventId, reaction });
 }
 
 export function followCommand(pubkey: string, following: boolean): RuntimeCommand {
