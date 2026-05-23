@@ -1,8 +1,12 @@
 # NMP Backlog
 
-> **Single source of truth** for all active violations, in-flight work, pending decisions, and
-> the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
-> history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
+> Tracker for active violations, pending user decisions, and the ordered v1 feature backlog.
+> Supersedes `docs/perf/pending-user-decisions.md` (append-only history log, kept for audit)
+> and `docs/arch-review-queue.md`.
+>
+> Companion files:
+> - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
+> - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
 > Verified against HEAD **73ab92f5** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
@@ -185,11 +189,8 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 ## Section 2 — In Flight
 
-Work currently on a branch. Agents must not duplicate these tasks.
-
-*No work currently in flight.*
-
-> B-1–B-8, NIP-29 observer fix, and V-05 Stage 1 all merged (PRs #331–#337, #340–#346). WIP.md superseded by this file.
+Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
+before picking up Section 4 work to avoid duplicating an in-progress task.
 
 ---
 
@@ -311,9 +312,11 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Blossom uploads/downloads (M10) | No `nmp-blossom` crate; no blocking user need |
 | Web-of-Trust (M13) | No architecture decision; not user-blocking |
 | UniFFI migration (M14) | Raw C-ABI works; multi-sprint, high churn |
-| Cashu / nutzaps (NIP-60/61) | NWC + NIP-57 cover the v1 zap use case |
-| nmp-codegen full Swift bridge | Pilot (F-05) must land first to prove the pattern |
-| Second non-social app | PD-033-A decision needed first |
+| Cashu wallet (NIP-60) + nutzaps (NIP-61) | NWC + NIP-57 cover the v1 zap use case; nutzap UX layer requires Cashu wallet primitives first. `crates/nmp-nip60` / `crates/nmp-nip61` do not exist on master. |
+| `nmp-codegen` full Swift bridge | Pilot (F-05) must land first to prove the pattern |
+| Second non-social app (shipped product) | PD-033-A decision needed first; the v1 spike is a thesis test, not a shipped product |
+| Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. Parity work blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
+| Nostr-aware UI component registry | Curated reusable UI primitives — components, builders, complete blocks — distributed à la NDK's `svelte/registry` (`/Users/pablofernandez/Work/NDK-nhlteu/svelte/registry`). Blocked on (a) stable snapshot projection contracts so registry components have a versioned surface to bind against, and (b) target-platform decision (SwiftUI registry vs. multi-target via UniFFI views vs. web-only via `nmp-wasm`). Naming TBD; provisional `nmp-ui-registry`. |
 
 ---
 

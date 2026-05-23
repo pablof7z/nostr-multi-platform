@@ -14,6 +14,27 @@
 - Do not open completed work as a draft pull request. If the work is ready and validated, open it as ready for review. Use draft PRs only when explicitly asked or when the work is intentionally incomplete.
 - After opening the PR, clean up the agent-owned worktree before completing the task.
 
+## Planning discipline — three canonical files, no duplicates
+
+This repository has exactly **three canonical planning/status files**. Every plan, todo, roadmap, milestone, violation, decision, and in-flight task lives in one of them. Scattered notes, ad-hoc `TODO.md` / `NOTES.md` / `ROADMAP.md` / `PLAN-foo.md` files, parallel planning docs, and inline `// TODO:` annotations used as a substitute for tracking are **forbidden**.
+
+| File | Role | Update cadence |
+|---|---|---|
+| [`docs/plan.md`](docs/plan.md) | Overarching plan — milestones, doctrine, where we are, v1 exit criteria. | Only when a milestone changes status or the v1 exit criteria move. |
+| [`docs/BACKLOG.md`](docs/BACKLOG.md) | Tactical queue — active violations, pending user decisions, ordered v1 feature backlog, post-v1 list. | Every PR that touches an item listed here. |
+| [`WIP.md`](WIP.md) | Live in-flight tracker — branches currently on a worktree. | When an agent starts work (add entry) and when work merges (remove entry). |
+
+Rules — enforced strictly:
+
+- **Do not create new top-level planning files.** No `PLAN.md`, `TODO.md`, `ROADMAP.md`, `NEXT.md`, `STATUS.md`, or per-feature plan files at the repo root or directly under `docs/`. New detail belongs in one of: `docs/plan/m*.md` (per-milestone), `docs/architecture-audit/<plan>.md` (migration plans gating a specific violation), or `docs/decisions/00NN-*.md` (ADRs). Never as a parallel overview.
+- **Do not duplicate state across files.** A violation tracked in `BACKLOG.md §1` is not also a row in `WIP.md`. If an agent is actively fixing it on a branch, only the branch reference lives in `WIP.md`; the violation entry stays in `BACKLOG.md`.
+- **Plan files have authority over scattered notes.** A `// TODO:` comment in code is not a plan. If it represents work to be done, it belongs in `BACKLOG.md`. If it represents a known limitation, it belongs in an ADR or doctrine clarification.
+- **Single source of truth per fact** — this is D4 (single writer per fact) applied to docs. Memory files, codex review notes (`docs/perf/codex-reviews/`), and audit reports may *reference* the canonical files; they must not become parallel authorities. Post-merge codex review findings are not actionable until they are promoted into `BACKLOG.md`.
+- **Edit existing entries; do not append parallel ones.** If a `BACKLOG.md` item changes, edit it in place. If a milestone status in `docs/plan.md` changes, edit the table. Append-only history files (`docs/perf/pending-user-decisions.md`) are explicitly opt-in and named — do not invent new ones.
+- **When in doubt, fewer files.** The cost of a duplicate plan is divergence: within one sprint two files will describe different states of the same world, and neither will be trustworthy. If a new file feels necessary, justify why it cannot be a section of one of the three canonical files (or a per-milestone / per-ADR / per-audit sub-page) before creating it.
+
+This discipline is non-negotiable. A PR that introduces a duplicate planning file, a scattered todo list, or a parallel roadmap is rejected and the entries are folded back into the canonical files.
+
 ## File Size
 
 - Keep hand-authored source and documentation files under 300 lines of code where practical.
