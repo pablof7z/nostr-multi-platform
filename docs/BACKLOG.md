@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **7166e6d5** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **3e370bb5** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -125,14 +125,15 @@ then `AuthSignerFn` needs a sync-compatible adapter that round-trips through the
 one-shot channel. This is non-trivial broker work.
 
 **Staged fix plan:**
-- Stage 1: Surface the limitation to the user — when active signer is remote and
-  `clear_auth_signer` runs, emit a relay-status note that AUTH relays are not supported
-  for bunker accounts (replaces silent failure with visible degradation).
+- Stage 1 ✅ DONE: When active signer is remote and `clear_auth_signer` runs, toast
+  "Relays requiring NIP-42 authentication are not supported with bunker accounts yet."
+  Only fires on the transition from having auth capability to losing it (not on every
+  `sync_kernel_auth_signer` call). See `identity.rs:703-717`.
 - Stage 2: Broker side — expose `sign_auth_challenge(challenge, relay_url)` RPC.
 - Stage 3: `sync_kernel_auth_signer` — for remote signers, install a
   `AuthSignerFn`-compatible closure that drives the broker RPC synchronously.
 
-**Deadline:** Stage 1 (visibility) must land before v1. Stages 2-3 are post-v1.
+**Deadline:** Stages 2-3 are post-v1.
 
 ### V-08 · DM inbox silent failure for bunker accounts [MEDIUM · staged fix required]
 
@@ -189,10 +190,9 @@ wrong set and produces an under-informed zap flow.
 `ffi/handle.rs`, `ffi/helpers.rs`, `ffi/register.rs`, `ffi/snapshot.rs`, `ffi/tests.rs`.
 All production sub-modules are within the 500-LOC ceiling.
 
-**Follow-up (V-09b):** `ffi/tests.rs` is 790 LOC — still above the ceiling. Split into
-per-module test companions (`tests/register.rs`, `tests/snapshot.rs`, etc.) that live
-alongside their production counterparts. The `dispatch()` + `run_module_execute<M>`
-shared test helpers should move to a `tests/helpers.rs` sub-module first.
+**Follow-up (V-09b) ✅ DONE:** PR #339 split `ffi/tests.rs` (790 LOC) into
+`tests/{mod,helpers,register,social,nip29,nip17,nip57}.rs`. Every sub-file is under
+the 500-LOC ceiling. All 32 lib tests pass.
 
 ---
 
@@ -203,6 +203,7 @@ Work currently on a branch. Agents must not duplicate these tasks.
 | ID | Description | Branch | Status |
 |----|-------------|--------|--------|
 | B-5 | feat(nmp-core): Phase 1c — RelayFrame enum decouples kernel from tungstenite | `fix/v01-phase1c-relay-frame` | In progress |
+| B-6 | fix(nmp-core): bootstrap active account kind:10050 DM relay list on sign-in (F-02) | pending | In progress |
 
 > B-1–B-4 all merged to master (PRs #331–#337). WIP.md superseded by this file.
 
