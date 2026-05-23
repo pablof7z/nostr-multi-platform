@@ -132,6 +132,7 @@ impl UnknownIds {
     /// `(event_ids, pubkeys)` pair in deterministic order. **Idempotent**: a
     /// second call with no intervening `visit_*`/`note_*` returns two empty
     /// vecs (the collector is cleared, not errored).
+    #[must_use]
     pub fn drain(&mut self) -> (Vec<EventId>, Vec<Pubkey>) {
         let events: BTreeSet<EventId> = std::mem::take(&mut self.event_ids);
         let pubkeys: BTreeSet<Pubkey> = std::mem::take(&mut self.pubkeys);

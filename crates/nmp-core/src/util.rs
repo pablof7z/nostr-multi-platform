@@ -112,6 +112,7 @@ impl<T> TimeCached<T> {
     /// when `now` is at or beyond `anchor + ttl`.
     ///
     /// [`invalidate`]: Self::invalidate
+    #[must_use]
     pub fn is_stale(&self, now: Instant) -> bool {
         match self.anchored_at {
             None => true,

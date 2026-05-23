@@ -111,7 +111,9 @@ impl OneshotApi {
         };
         // `ensure_sub`: register-if-absent. A re-request never clobbers an
         // in-flight filter (§3.3); it just attaches this token's owner.
-        registry.ensure_sub(identity.clone(), interest);
+        // Return value (newly installed?) intentionally unused — we only
+        // need the side effect of the registration.
+        let _ = registry.ensure_sub(identity.clone(), interest);
 
         self.pending.insert(
             token,
@@ -168,7 +170,7 @@ impl OneshotApi {
         let Some(p) = self.pending.remove(&token) else {
             return false;
         };
-        registry.drop_owner(&p.identity);
+        let _ = registry.drop_owner(&p.identity);
         true
     }
 

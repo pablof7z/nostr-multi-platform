@@ -64,6 +64,7 @@ impl InterestRegistry {
     /// existing filter — the real bug class §3.3 calls out).
     ///
     /// Returns `true` iff the interest was newly installed.
+    #[must_use]
     pub fn ensure_sub(&mut self, identity: SubIdentity, interest: LogicalInterest) -> bool {
         let shared = identity.shared();
         if let Some(slot) = self.slots.get_mut(&shared) {
@@ -98,6 +99,7 @@ impl InterestRegistry {
     /// leaves, the live interest is dropped (multi-owner GC, §3.2).
     ///
     /// Returns `true` iff the slot was removed (last owner left).
+    #[must_use]
     pub fn drop_owner(&mut self, identity: &SubIdentity) -> bool {
         let shared = identity.shared();
         let Some(slot) = self.slots.get_mut(&shared) else {
