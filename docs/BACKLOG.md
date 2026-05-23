@@ -116,8 +116,25 @@ to it; delete the hand-rolled path.
   inbox), and a planner sub_id bridge (`OneshotApi::request` → `(OneshotToken, InterestId)`,
   `register_planner_wire_frames` re-keys `oneshot_subs` from the planner-assigned `sub-<hash>`
   id). All 1040 nmp-core tests pass.
-- Stage 2: Migrate remaining M1 `req()` call sites (bootstrap REQs, profile claims, etc.).
-- Stage 3: Delete the M1 `req()` helper once all call sites are migrated.
+- Stage 2 precursor — planner Case C bootstrap-content inbox extension
+  (PR pending — `worktree-agent-adff1381808c9be39`): adds a gated fallback in
+  `planner::compiler::partition::case_c_p_tags::route_bootstrap_content_inbox`
+  for `Tailing + Global + #p (Nip65ReadRelays)` interests whose tagged pubkeys all
+  lack a cached NIP-65 inbox. Mirrors M1's `req(RelayRole::Content, …)` cold-start
+  emission for the self zap-receipts subscription (`kind:9735 #p=[self_pk]`,
+  `kernel/requests/startup.rs`). Without this gate, Stage 2 deletion of the M1
+  helper would silently lose every #p Tailing REQ until kind:10002 arrives — the
+  F-04 zap-receipts contract would break on every cold-start sign-in. NIP-17 DM
+  routing is intentionally EXCLUDED (gift-wraps must stay fail-closed). All 1065
+  nmp-core tests pass.
+- Stage 2 (NEXT — blocked on precursor): Migrate the 5 `self.req(...)` call sites in
+  `kernel/requests/startup.rs::active_account_bootstrap_requests` (self kind:0/3/10002/10050
+  via `Indexer`, self kind:9735 via `Content`) onto `InterestRegistry::ensure_sub`. All 5
+  must be registered with `InterestScope::Global` (NOT `Account(self_pk)` as a stale design
+  comment in `pd033c-plan.md` §3.1 suggests) so the planner's Case A and Case C
+  bootstrap-fallback gates fire on cold-start — both gates require `Global` scope.
+- Stage 3: Migrate remaining M1 `req()` call sites in `profile.rs` / `thread.rs`.
+- Stage 4: Delete the M1 `req()` helper once all call sites are migrated.
 
 ### V-05 · D2 enforcement gap — coverage_hook never installed [DONE]
 
