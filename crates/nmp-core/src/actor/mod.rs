@@ -812,11 +812,11 @@ pub fn run_actor_with_observers(
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
     relay_edit_rows: crate::kernel::RelayEditRowsSlot,
-    marmot_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
+    mls_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
     // NIP-17 DM-inbox decryption key seam. Shared `Arc` with the `NmpApp`:
     // per-app crates read the slot through `NmpApp::nip17_local_keys`; this
     // actor thread is the sole writer, updating it on every identity mutation
-    // (parallel to `marmot_local_nsec`).
+    // (parallel to `mls_local_nsec`).
     nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
@@ -1027,7 +1027,7 @@ pub fn run_actor_with_observers(
                         startup_sent: &mut startup_sent,
                         relays_ready,
                         lifecycle_observer: &lifecycle_observer,
-                        marmot_local_nsec: &marmot_local_nsec,
+                        mls_local_nsec: &mls_local_nsec,
                         nip17_local_keys: &nip17_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,

@@ -26,20 +26,20 @@
 //! - `.secret_key()` — direct read of a `Keys`'s secret half.
 //! - `Keys::parse(` — building a `Keys` from a hex/bech32 nsec inside the
 //!   DM path.
-//! - `marmot_local_nsec` — the Marmot ADR-0025 raw-key escape is not a DM
+//! - `mls_local_nsec` — the Marmot ADR-0025 raw-key escape is not a DM
 //!   path concern (D13 Part B forbids it outside the marmot crate; Part A
 //!   forbids the symbol from leaking into the DM seal path even by name).
 //!
-//! ### Part B — `marmot_local_nsec` reads outside the marmot crate
+//! ### Part B — `mls_local_nsec` reads outside the marmot crate
 //!
-//! ADR-0025 names exactly one consumer of the `NmpApp::marmot_local_nsec`
+//! ADR-0025 names exactly one consumer of the `NmpApp::mls_local_nsec`
 //! FFI accessor: the `nmp-marmot` MLS bridge, whose group state cannot be
 //! recovered without the user's raw nsec. Every other crate — and the
 //! kernel itself — must consume key material through the actor's identity
 //! runtime, never through the Marmot ADR-0025 escape.
 //!
 //! In every file outside `crates/nmp-marmot/`, the literal token
-//! `marmot_local_nsec` triggers D13. Comment lines, the per-line
+//! `mls_local_nsec` triggers D13. Comment lines, the per-line
 //! `// doctrine-allow: D13 — reason` opt-out, and `nmp-testing` (this
 //! rule's host) are exempt. The `crates/nmp-core/src/ffi/` and
 //! `crates/nmp-core/src/actor/` trees are exempt too: those define the
@@ -76,7 +76,7 @@ const PART_A_BANNED: &[&str] = &[
     "active_nsec_bech32",
     ".secret_key()",
     "Keys::parse(",
-    "marmot_local_nsec",
+    "mls_local_nsec",
 ];
 
 /// Files that opt in to Part A by default (no marker comment required).
@@ -166,18 +166,18 @@ pub fn check_part_a(
     out
 }
 
-/// Per-line Part-B check — flags any read of `marmot_local_nsec` outside
+/// Per-line Part-B check — flags any read of `mls_local_nsec` outside
 /// the marmot crate. Caller has already established that the file is in
 /// Part B scope via [`file_in_part_b_scope`].
 ///
 /// Comments and the standard per-line opt-out (handled by the driver) are
-/// exempt. Test-cfg is NOT exempt — a test that reads `marmot_local_nsec`
+/// exempt. Test-cfg is NOT exempt — a test that reads `mls_local_nsec`
 /// outside the marmot crate is still leaking the ADR-25 escape.
 pub fn check_part_b(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
     if is_comment {
         return Vec::new();
     }
-    let needle = "marmot_local_nsec";
+    let needle = "mls_local_nsec";
     let Some(idx) = line.find(needle) else {
         return Vec::new();
     };
@@ -192,7 +192,7 @@ pub fn check_part_b(line: &str, is_comment: bool) -> Vec<(usize, String, String)
             needle
         ),
         "route through `IdentityRuntime` (or the NIP-44 signer seam) — only \
-         the `nmp-marmot` crate may read `marmot_local_nsec` directly"
+         the `nmp-marmot` crate may read `mls_local_nsec` directly"
             .to_string(),
     )]
 }
@@ -257,10 +257,10 @@ mod tests {
     }
 
     #[test]
-    fn part_a_flags_marmot_local_nsec() {
-        let hits = check_part_a("    let nsec = app.marmot_local_nsec();", false, false);
+    fn part_a_flags_mls_local_nsec() {
+        let hits = check_part_a("    let nsec = app.mls_local_nsec();", false, false);
         assert_eq!(hits.len(), 1);
-        assert!(hits[0].1.contains("marmot_local_nsec"));
+        assert!(hits[0].1.contains("mls_local_nsec"));
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn part_b_scope_excludes_nmp_core_ffi_and_actor() {
         // The slot itself (ffi/) and the actor wiring (actor/) need to
-        // pass `marmot_local_nsec` around by name; they're not the
+        // pass `mls_local_nsec` around by name; they're not the
         // "remote caller dereferencing the field" target of Part B.
         assert!(!file_in_part_b_scope(&PathBuf::from(
             "crates/nmp-core/src/ffi/mod.rs"
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn part_b_scope_includes_other_crates() {
-        // Any other crate or app code reading `marmot_local_nsec` is the
+        // Any other crate or app code reading `mls_local_nsec` is the
         // exact leak Part B forbids.
         assert!(file_in_part_b_scope(&PathBuf::from(
             "apps/chirp/nmp-app-chirp/src/marmot/ffi.rs"
@@ -364,25 +364,25 @@ mod tests {
     // ── Part B check ─────────────────────────────────────────────────────
 
     #[test]
-    fn part_b_flags_marmot_local_nsec_read() {
-        let hits = check_part_b("    let nsec = app.marmot_local_nsec();", false);
+    fn part_b_flags_mls_local_nsec_read() {
+        let hits = check_part_b("    let nsec = app.mls_local_nsec();", false);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].1.contains("D13"));
-        assert!(hits[0].1.contains("marmot_local_nsec"));
+        assert!(hits[0].1.contains("mls_local_nsec"));
     }
 
     #[test]
     fn part_b_ignores_comments() {
-        let hits = check_part_b("    // marmot_local_nsec is the ADR-25 escape", true);
+        let hits = check_part_b("    // mls_local_nsec is the ADR-25 escape", true);
         assert!(hits.is_empty());
     }
 
     #[test]
     fn part_b_reports_column_at_token_start() {
-        let line = "    let nsec = app.marmot_local_nsec().expect(\"set\");";
+        let line = "    let nsec = app.mls_local_nsec().expect(\"set\");";
         let hits = check_part_b(line, false);
         assert_eq!(hits.len(), 1);
-        let expected_col = line.find("marmot_local_nsec").unwrap() + 1;
+        let expected_col = line.find("mls_local_nsec").unwrap() + 1;
         assert_eq!(hits[0].0, expected_col);
     }
 
