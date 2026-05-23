@@ -405,6 +405,60 @@ impl WasmRuntime {
         build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow())
     }
 
+    /// V-01 Stage 3c — start an async publish for an `AppAction`. Wasm32-only.
+    ///
+    /// Returns a [`std::future::Future`] resolving to the [`WorkerEvent`] the
+    /// host should observe — `ActionAccepted` if the sign + publish succeeded,
+    /// `CapabilityFailure` for every honest failure mode (no signer, wrong
+    /// backend, unsupported action variant, sign rejected, sign failed).
+    ///
+    /// Lifetime / borrow contract: this method snapshots the runtime's `Rc`
+    /// handles up-front (signer, reducer, drivers, snapshot_callback, meta)
+    /// and the returned future owns those clones — no reference into `self`
+    /// outlives the call. That lets the `NmpWasmRuntime` wasm-bindgen wrapper
+    /// hand the future to `wasm_bindgen_futures::future_to_promise(...)` and
+    /// the Promise can outlive any particular `&mut self` borrow window.
+    ///
+    /// `now_secs` is supplied by the wasm bindings layer (which sources it
+    /// from `js_sys::Date::now() / 1000.0`) so the kernel's internal clock
+    /// (which is `pub(crate)` on the native side and not reachable through
+    /// `KernelReducer`) is bypassed. Production correctness is unaffected —
+    /// the publish engine treats `created_at` as a per-event field, not a
+    /// scheduling input.
+    #[cfg(target_arch = "wasm32")]
+    pub fn start_publish_app_action(
+        &self,
+        action: AppAction,
+        correlation_id: String,
+        now_secs: u64,
+    ) -> impl std::future::Future<Output = WorkerEvent> + 'static {
+        let signer_slot = self.signer.clone();
+        let reducer = Rc::clone(&self.reducer);
+        let drivers = Rc::clone(&self.relays);
+        let snapshot_callback = Rc::clone(&self.snapshot_callback);
+        let meta = Rc::clone(&self.meta);
+        async move {
+            let Some(signer) = signer_slot else {
+                let (action_type, _) = action.into_dispatch_parts();
+                return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                    capability: action_type,
+                    correlation_id,
+                    reason: crate::dispatch_routing::write_path_unavailable_reason(None),
+                });
+            };
+            crate::publish_path::publish_app_action(
+                action,
+                correlation_id,
+                signer,
+                reducer,
+                drivers,
+                snapshot_callback,
+                meta,
+                now_secs,
+            )
+            .await
+        }
+    }
 }
 
 fn relay_bootstrap_from_config(

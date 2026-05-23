@@ -33,4 +33,11 @@ pub use signers::{
     Nip07Signer, Signer, SignerBackend, SignerError, SignerOp, SignerPayload,
 };
 
+// V-01 Stage 3c — async sign-via-extension entrypoint, gated on wasm32 + the
+// `wasm` Cargo feature (matches the path's own gating in `signers/nip07.rs`).
+// On every non-wasm target this symbol does not exist; downstream code that
+// imports it must `#[cfg]`-gate the same way.
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub use signers::sign_event_via_extension;
+
 pub use nostr::{PublicKey, SecretKey};

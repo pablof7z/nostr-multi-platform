@@ -26,14 +26,19 @@ use serde_json::Value;
 use crate::protocol::ActionDispatch;
 
 /// Single-source reason string for app-level writes that cannot complete on
-/// the wasm runtime today. Distinguishes the two honest failure modes:
+/// the **synchronous** wasm runtime path. Distinguishes the two honest
+/// failure modes the synchronous `handle()` arm can surface:
 ///
 /// - **No signer installed.** The host hasn't called `SetSigner` yet — the
 ///   user has not signed in. Banner: "sign in to publish".
-/// - **Signer installed but no publish path.** Stage 3b lands the signer
-///   plumbing; Stage 3c will expose the `KernelReducer` publish-from-signed-
-///   event surface and route through `PublishEngine` from wasm. Banner:
-///   "the browser runtime cannot yet route signed events to relays".
+/// - **Signer installed but synchronous-path-only.** A signer IS installed
+///   and the wasm runtime CAN publish — through the asynchronous
+///   `NmpWasmRuntime::dispatch_app_action_async(...)` entrypoint Stage 3c
+///   added. The synchronous `handle_json` cannot route the same action
+///   because `Nip07Signer::sign()` needs to `await` a JS Promise (`window.
+///   nostr.signEvent(...)`) the wasm thread cannot block on. The reason
+///   string points the host at the async entrypoint so the integration is
+///   self-documenting.
 ///
 /// Both strings start with a stable underscore-snake-case prefix the JS host
 /// can pattern-match without parsing the full reason text.
@@ -44,10 +49,13 @@ pub(crate) fn write_path_unavailable_reason(signer: Option<&Arc<dyn Signer>>) ->
                 before dispatching app-level writes."
             .to_string();
     }
-    "publish_path_not_wired: a signer is installed but the wasm runtime does \
-     not yet expose a KernelReducer surface that routes signed events through \
-     PublishEngine. V-01 Stage 3c follow-up — the native path is gated behind \
-     `feature = \"native\"` (actor + relay_worker + PublishEngine glue)."
+    "publish_path_not_wired: a signer is installed but app-level writes \
+     cannot be routed through the synchronous `handle_json` path — the \
+     NIP-07 sign step requires awaiting `window.nostr.signEvent(...)`, \
+     which the wasm thread cannot block on. Use \
+     `NmpWasmRuntime.dispatch_app_action_async(requestJson)` (returns a \
+     Promise) instead. V-01 Stage 3c wired PublishNote (kind:1); React / \
+     Follow / Unfollow follow up."
         .to_string()
 }
 
