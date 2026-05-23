@@ -436,7 +436,31 @@ pub(crate) struct Kernel {
     /// `Kernel::MAX_DISCOVERY_CONCURRENCY` (2): `drain_unknown_oneshots` guards
     /// the cap before inserting, so the map never grows beyond 2 entries in
     /// steady state. Entries are removed on completion.
+    ///
+    /// PD-033-C Stage 1: the key is the **planner-assigned `sub_id`** (`sub-<hash>`,
+    /// see `subs/wire.rs::sub_id_for`), not the legacy `oneshot-disc-<token>`
+    /// kernel-side label. The bridge lives in
+    /// [`Kernel::register_planner_wire_frames`] — it consults
+    /// `pending_discovery_oneshots` to translate `WireFrame::Req.interest_id`
+    /// back into the `OneshotToken` and inserts the row under the planner sub_id.
     oneshot_subs: HashMap<String, (crate::subs::OneshotToken, discovery::OneshotKind)>,
+    /// PD-033-C Stage 1 bridge: `InterestId` → `OneshotToken` map populated by
+    /// [`Kernel::drain_unknown_oneshots`] for every registered discovery
+    /// oneshot, consumed by [`Kernel::register_planner_wire_frames`] when the
+    /// planner emits a `WireFrame::Req` for the corresponding interest. The
+    /// consume step moves the entry into `oneshot_subs` keyed by the
+    /// planner-assigned `sub_id` so the EOSE handler + store-gate routing
+    /// (`is_discovery_oneshot`, `complete_unknown_oneshot`) work against the
+    /// actual wire sub-id.
+    ///
+    /// Bounded by `MAX_DISCOVERY_CONCURRENCY` (2) like `oneshot_subs`: the cap
+    /// on registered interests at any one time keeps this map at ≤2 entries.
+    /// An entry that never sees its REQ frame compiled (no bootstrap relays,
+    /// no NIP-65 mailbox, etc.) leaks until the next `register_planner_wire_frames`
+    /// for the same interest_id (the planner's hash is deterministic across
+    /// recompiles for the same shape, so a re-route consumes the stale entry).
+    pending_discovery_oneshots:
+        HashMap<crate::planner::InterestId, crate::subs::OneshotToken>,
     /// M6 signer injection, per relay role. The actor / iOS layer wires the
     /// user-identity signer for `Content`/`Indexer` from
     /// `nmp_signers::AccountManager::signer_active()`. Other lanes (e.g.
@@ -862,6 +886,7 @@ impl Kernel {
             unknown_ids: UnknownIds::new(),
             oneshot: OneshotApi::new(),
             oneshot_subs: HashMap::new(),
+            pending_discovery_oneshots: HashMap::new(),
             auth_signers: HashMap::new(),
             accounts: Vec::new(),
             active_account: None,
