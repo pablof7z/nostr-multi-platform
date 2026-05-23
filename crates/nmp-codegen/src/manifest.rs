@@ -16,10 +16,12 @@ pub struct ModuleSet {
 }
 
 impl AppManifest {
+    #[must_use]
     pub fn read(path: &Path) -> Result<Self, String> {
         Self::parse(&fs::read_to_string(path).map_err(|error| error.to_string())?)
     }
 
+    #[must_use]
     pub fn parse(input: &str) -> Result<Self, String> {
         let mut section = "";
         let mut name = None;
