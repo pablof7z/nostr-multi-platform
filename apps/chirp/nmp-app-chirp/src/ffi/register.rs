@@ -6,6 +6,7 @@ use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::{KernelEventObserver, NmpApp};
+use nmp_coverage_gate::CoverageGate;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_nip29::group_id::GroupId;
@@ -97,6 +98,36 @@ pub extern "C" fn nmp_app_chirp_register(
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.
     let app_ref = unsafe { &*app };
+
+    // D2 — install the coverage-gate hook on the kernel BEFORE any
+    // subscription compile can run. The hook is a pure-policy closure that
+    // consults `CoverageGate` thresholds (from `nmp-coverage-gate`, zero
+    // `nmp-core` dep) and rewrites the `CompiledPlan` between the M2 compile
+    // step and `plan_diff`. This assembly crate is the only layer entitled to
+    // depend on both `nmp-core` and `nmp-coverage-gate` (D0 — the seam exists
+    // *because* coverage policy is above `nmp-core` in the dep graph).
+    //
+    // Stage 2: connection-count safety net. After `apply_selection` has run
+    // (inside the M2 compiler), enforce `gate.max_relay_connections` as a
+    // backstop trim. `per_relay` is a `BTreeMap` so the "keep first N" trim
+    // is deterministic across runs.
+    //
+    // Stage 3 will extend this with negentropy steering — once the
+    // negentropy infrastructure is available the closure body will check
+    // `gate.should_use_negentropy(author_count)` and mark sub-shapes for a
+    // reconciliation handshake instead of a raw REQ.
+    let gate = CoverageGate::default();
+    app_ref.set_coverage_hook(Arc::new(move |plan| {
+        let cap = gate.max_relay_connections;
+        if plan.per_relay.len() > cap {
+            // `BTreeMap` iteration is deterministic (sorted by key), so the
+            // surviving relays are stable across runs — important for
+            // reproducible test runs and for human-readable diagnostics.
+            let keep: Vec<_> = plan.per_relay.keys().take(cap).cloned().collect();
+            plan.per_relay.retain(|k, _| keep.contains(k));
+        }
+    }));
+
     register_dm_runtime(app_ref);
 
     // Wire the NIP-57 `ZapsAggregateProjection` — a `KernelEventObserver`

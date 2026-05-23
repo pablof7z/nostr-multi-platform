@@ -16,6 +16,7 @@ use zeroize::Zeroizing;
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
+use crate::subs::PlanCoverageHook;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
@@ -187,6 +188,10 @@ pub(super) struct ActorContext<'a> {
     /// A disconnected sender (post-Shutdown) is a benign send-failure on
     /// the worker side; the worker swallows it as a no-op (D6).
     pub(super) command_tx_self: &'a Sender<crate::actor::ActorCommand>,
+    /// D2 — coverage-gate hook slot. Read by the `Reset` arm to re-install
+    /// the hook on the rebuilt kernel (mirrors initial install in
+    /// `run_actor_with_observers`).
+    pub(super) coverage_hook_slot: &'a Arc<Mutex<Option<PlanCoverageHook>>>,
 }
 
 pub(super) fn dispatch_command(
@@ -915,6 +920,18 @@ pub(super) fn dispatch_command(
             }
             if let Some(handle) = relay_edit_rows_handle {
                 ctx.kernel.set_relay_edit_rows_handle(handle);
+            }
+            // D2 — re-install the coverage-gate hook on the rebuilt kernel.
+            // The slot outlives the reset (shared `Arc` with `NmpApp`); reading
+            // it here ensures the rebuilt lifecycle also enforces D2. Mirrors
+            // the initial install in `run_actor_with_observers`.
+            if let Some(hook) = ctx
+                .coverage_hook_slot
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+            {
+                ctx.kernel.lifecycle_mut().set_coverage_hook(hook);
             }
             *ctx.startup_sent = false;
             if *ctx.running {

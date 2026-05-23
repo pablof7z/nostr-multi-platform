@@ -209,6 +209,7 @@ use crate::actor::{
 };
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+use crate::subs::PlanCoverageHook;
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -378,6 +379,14 @@ pub struct NmpApp {
     /// lower bound when a broker is wired. That is acceptable for the
     /// backpressure gate, which watches for *buildup*, not exact occupancy.
     queue_depth: Arc<AtomicU64>,
+    /// D2 coverage-gate hook slot. Set by the per-app crate (`nmp-app-chirp`)
+    /// via [`Self::set_coverage_hook`] before `nmp_app_start`. The actor thread
+    /// reads it once after kernel construction and installs it on the
+    /// `SubscriptionLifecycle`. Re-installed after `Reset`. Kept in an
+    /// `Arc<Mutex<Option<…>>>` slot (rather than passed directly to
+    /// `run_actor_with_observers` as an `Option`) so the per-app registration
+    /// pattern mirrors `storage_path` and the other pre-start slots.
+    coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -573,6 +582,16 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // doc on `NmpApp` for the full contract.
     let queue_depth: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
     let actor_queue_depth = Arc::clone(&queue_depth);
+    // D2 — shared coverage-gate hook slot. The per-app crate (e.g.
+    // `nmp-app-chirp`) writes through the `NmpApp`'s clone via
+    // [`NmpApp::set_coverage_hook`] before `nmp_app_start`; the actor reads
+    // its clone once after kernel construction and installs the hook on the
+    // `SubscriptionLifecycle`. Re-installed by the `Reset` dispatch arm so the
+    // rebuilt lifecycle also enforces D2. `None` (the test default) leaves
+    // the lifecycle's `coverage_hook: None` in place — every plan flows
+    // straight to raw REQ, preserving legacy behaviour.
+    let coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>> = Arc::new(Mutex::new(None));
+    let actor_coverage_hook = Arc::clone(&coverage_hook);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -626,6 +645,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // counter. Decremented per dequeued command; bound onto the
                 // kernel for the `actor_queue_depth` snapshot field.
                 actor_queue_depth,
+                // D2 — the actor's clone of the coverage-gate hook slot. Read
+                // once after kernel construction (and again after `Reset`) and
+                // installed on `SubscriptionLifecycle` so the production plan
+                // pipeline enforces D2 ("negentropy before REQ") via the
+                // per-app crate's policy closure.
+                actor_coverage_hook,
             );
         }));
         if let Err(e) = result {
@@ -688,6 +713,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
         // incremented by `send_cmd`. The actor holds the matching clone.
         queue_depth,
+        // D2 — the `NmpApp`'s clone of the coverage-gate hook slot. Written
+        // by the per-app crate via [`NmpApp::set_coverage_hook`] before
+        // `nmp_app_start`; the actor reads its clone after kernel
+        // construction and installs the hook on `SubscriptionLifecycle`.
+        coverage_hook,
         // NIP-47 wallet `pay_invoice` double-tap guard. Empty at construction;
         // populated by `ffi::wallet::nmp_app_wallet_pay_invoice` on each
         // accepted invoice, swept on TTL expiry (no cross-thread coupling).
@@ -823,6 +853,31 @@ impl NmpApp {
         f: impl Fn(crate::substrate::ActionResult) + Send + Sync + 'static,
     ) {
         self.action_registry.set_result_observer(f);
+    }
+
+    /// Install the D2 coverage-gate hook. MUST be called before
+    /// [`nmp_app_start`]. The hook is a closure that receives a
+    /// [`crate::planner::CompiledPlan`] after M2 compile and may mutate it
+    /// (e.g. prune relays or mark sub-shapes for negentropy). See
+    /// [`crate::subs::PlanCoverageHook`].
+    ///
+    /// D0: `nmp-core` defines the seam; the assembly crate installs the policy
+    /// closure (today `nmp-app-chirp` consumes [`nmp_coverage_gate::CoverageGate`]).
+    ///
+    /// The hook lives in an `Arc<Mutex<Option<…>>>` slot shared with the
+    /// actor thread; the actor reads it once after kernel construction (and
+    /// again after `Reset`) and binds it onto the `SubscriptionLifecycle`.
+    /// A second call replaces the slot's contents — the next `Reset` will
+    /// install the newer hook, but the currently-installed hook on the live
+    /// lifecycle is not retroactively swapped.
+    ///
+    /// D6 — a poisoned slot mutex is a silent no-op (the host's hook is
+    /// dropped); the lifecycle keeps whatever policy was previously
+    /// installed (or `None`).
+    pub fn set_coverage_hook(&self, hook: PlanCoverageHook) {
+        if let Ok(mut slot) = self.coverage_hook.lock() {
+            *slot = Some(hook);
+        }
     }
 
     /// Test-only: run every registered snapshot projection directly against

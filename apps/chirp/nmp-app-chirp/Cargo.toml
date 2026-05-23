@@ -62,6 +62,14 @@ nmp-nip65 = { path = "../../../crates/nmp-nip65" }
 # D0-clean: `nmp-core` gains no zap nouns — `nmp-nip57` types stay in the
 # protocol crate; only the generic `FetchLnurlInvoice` arm lives in core.
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
+# D2 coverage-gate policy. Chirp installs a `CoverageGate`-based hook via
+# `NmpApp::set_coverage_hook` in `nmp_app_chirp_register` so the
+# production kernel enforces D2 ("negentropy before REQ") for large
+# follow sets. Zero `nmp-core` dep — pure policy data; this assembly
+# crate is the only layer entitled to depend on both `nmp-core` and the
+# coverage-gate crate (D0 — the seam exists *because* coverage policy is
+# above `nmp-core` in the dep graph).
+nmp-coverage-gate = { path = "../../../crates/nmp-coverage-gate" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI

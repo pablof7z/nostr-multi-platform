@@ -146,6 +146,8 @@ use tick::{compute_wait, emit_now, flush_due};
 use crate::kernel::Kernel;
 use crate::relay::RelayRole;
 #[cfg(feature = "native")]
+use crate::subs::PlanCoverageHook;
+#[cfg(feature = "native")]
 use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 #[cfg(feature = "native")]
 use crate::relay_worker::{RelayCommand, RelayEvent};
@@ -771,6 +773,10 @@ pub fn run_actor(
         // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
         // point, so the queue-depth counter is a private throwaway.
         Arc::new(AtomicU64::new(0)),
+        // D2 — no `NmpApp` is wired through this backwards-compatible entry
+        // point, so the coverage-gate hook slot is a private throwaway
+        // (`None`); the lifecycle keeps its default `coverage_hook: None`.
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -813,6 +819,10 @@ pub fn run_actor_with_lifecycle_observer(
         // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
         // point, so the queue-depth counter is a private throwaway.
         Arc::new(AtomicU64::new(0)),
+        // D2 — no `NmpApp` is wired through this backwards-compatible entry
+        // point, so the coverage-gate hook slot is a private throwaway
+        // (`None`); the lifecycle keeps its default `coverage_hook: None`.
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -884,6 +894,10 @@ pub fn run_actor_with_observers(
     // this actor thread does `fetch_sub(1)` per dequeued command and binds the
     // handle onto the kernel so `make_update` surfaces `actor_queue_depth`.
     queue_depth: Arc<AtomicU64>,
+    // D2 — coverage-gate hook slot. Set by the per-app crate before
+    // `nmp_app_start`; read here once after kernel construction and installed
+    // on `SubscriptionLifecycle`. Re-installed by the `Reset` dispatch arm.
+    coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -926,6 +940,14 @@ pub fn run_actor_with_observers(
     // sites below). Survives `Reset` the same way the drop counter does —
     // re-bound there so the counter stays visible across a kernel rebuild.
     kernel.set_queue_depth_handle(Arc::clone(&queue_depth));
+    // D2 — install the per-app coverage-gate hook on the subscription
+    // lifecycle. The hook was set by the app crate (e.g. `nmp-app-chirp`)
+    // via `NmpApp::set_coverage_hook` before `nmp_app_start`. If absent
+    // (test builds or app crates that skip D2), the lifecycle's default
+    // `coverage_hook: None` leaves every plan straight to raw REQ.
+    if let Some(hook) = coverage_hook.lock().ok().and_then(|g| g.clone()) {
+        kernel.lifecycle_mut().set_coverage_hook(hook);
+    }
     // T146 — bind the shared kernel event observer slot. The kernel calls
     // `notify_event_observers` after every `EventStore::insert` returning
     // `Inserted | Replaced` (see `kernel/ingest/timeline.rs`). Per-app
@@ -1086,6 +1108,7 @@ pub fn run_actor_with_observers(
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
                         command_tx_self: &command_tx_self,
+                        coverage_hook_slot: &coverage_hook,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
