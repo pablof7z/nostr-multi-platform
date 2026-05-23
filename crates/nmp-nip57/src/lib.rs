@@ -27,6 +27,10 @@ pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
+pub fn register_actions(app: &mut nmp_core::NmpApp) {
+    app.register_action::<ZapAction>();
+}
+
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /
 // `on_event_*` / `snapshot` inherent methods are reached via static dispatch.
 // The live extension path is `KernelEventObserver` — see `nmp_core::substrate` docs.

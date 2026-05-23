@@ -255,6 +255,10 @@ impl ActionModule for PublishRelayListAction {
     }
 }
 
+pub fn register_actions(app: &mut nmp_core::NmpApp) {
+    app.register_action::<PublishRelayListAction>();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

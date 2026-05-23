@@ -10,9 +10,6 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::{ActorCommand, NmpApp};
-use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
-use nmp_nip57::ZapAction;
-use nmp_nip65::PublishRelayListAction;
 
 use super::helpers::{PubkeyAction, ReactAction};
 
@@ -151,8 +148,7 @@ pub(super) fn register_nip29_actions(app: &mut NmpApp) {
 /// `ActorCommand::PublishUnsignedEvent` — kind:10050 is a NIP-65 replaceable
 /// event and routes through the author's kind:10002 write relays.
 pub(super) fn register_nip17_actions(app: &mut NmpApp) {
-    app.register_action::<SendDmAction>();
-    app.register_action::<PublishDmRelayListAction>();
+    nmp_nip17::register_actions(app);
 }
 
 /// Register the NIP-57 lightning-zap [`ActionModule`] (`nmp.nip57.zap`)
@@ -210,7 +206,7 @@ pub(super) fn register_nip17_actions(app: &mut NmpApp) {
 ///   with a clear toast (ADR-0026 Phase 2 follow-up, parallel to the
 ///   NIP-17 DM bunker-send path).
 pub(super) fn register_nip57_actions(app: &mut NmpApp) {
-    app.register_action::<ZapAction>();
+    nmp_nip57::register_actions(app);
 }
 
 /// Register the NIP-65 relay-list `ActionModule` (`nmp.nip65.publish_relay_list`)
@@ -250,5 +246,5 @@ pub(super) fn register_nip57_actions(app: &mut NmpApp) {
 /// paths converge on the same on-wire kind:10002 — the auto-trigger reads
 /// `RelayEditRow`, the action takes explicit input.
 pub(super) fn register_nip65_actions(app: &mut NmpApp) {
-    app.register_action::<PublishRelayListAction>();
+    nmp_nip65::register_actions(app);
 }
