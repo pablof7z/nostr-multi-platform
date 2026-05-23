@@ -225,14 +225,24 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
         let frames_for_relay = reqs
             .get(relay)
             .unwrap_or_else(|| panic!("missing tailing REQ for {relay}; frames={frames:?}"));
-        assert!(
-            frames_for_relay
-                .iter()
-                .any(|(_, lifecycle)| matches!(lifecycle, InterestLifecycle::Tailing)),
-            "follow-feed REQ for {relay} must stay open"
-        );
-        let filter = frames_for_relay[0].0;
-        let json = serde_json::from_str::<Value>(filter).expect("REQ filter JSON");
+        // V-04 Stage 2: the active-account NIP-65 write relay (self-follow.relay)
+        // now also receives the four `OneShot + Global` bootstrap interests
+        // (kind:0 / kind:10002 / kind:10050 / kind:3, all pinned to the active
+        // account with `limit:1`) — they share the active account's mailbox
+        // with the follow-feed interest. The follow-feed REQ is the *Tailing*
+        // one; locate it explicitly rather than assuming it's first in the
+        // per-relay list (BTreeMap ordering by sub-id hash is non-deterministic
+        // relative to interest kinds).
+        let (follow_filter, _) = frames_for_relay
+            .iter()
+            .find(|(_, lifecycle)| matches!(lifecycle, InterestLifecycle::Tailing))
+            .unwrap_or_else(|| {
+                panic!(
+                    "follow-feed REQ for {relay} must stay open as Tailing; \
+                     got: {frames_for_relay:?}"
+                )
+            });
+        let json = serde_json::from_str::<Value>(follow_filter).expect("REQ filter JSON");
         let kinds = json
             .get("kinds")
             .and_then(Value::as_array)

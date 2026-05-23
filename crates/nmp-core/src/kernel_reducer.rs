@@ -145,6 +145,14 @@ impl KernelReducer {
         outbound.extend(self.kernel.mark_publish_relay_available(relay_url));
         outbound.extend(self.kernel.startup_requests());
         outbound.extend(self.kernel.pending_view_requests());
+        // V-04 Stage 2: `startup_requests` no longer emits M1 `OutboundMessage`
+        // frames for the four bootstrap interests (self profile / NIP-65 /
+        // NIP-17 DM relays / contacts) — it now registers them through
+        // `InterestRegistry::ensure_sub` and enqueues a
+        // `CompileTrigger::ViewOpened`. The native actor drains the lifecycle
+        // on its idle loop; the wasm `KernelReducer` has no such loop, so we
+        // drain inline here. Empty diff is a zero-cost no-op (D8).
+        outbound.extend(self.kernel.drain_lifecycle_outbound());
         self.kernel.partition_auth_paused(outbound)
     }
 

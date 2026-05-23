@@ -120,6 +120,14 @@ impl Kernel {
     /// discovery, indexer-only fetches) that legitimately leave on the
     /// bootstrap lanes.  Emits one frame per configured bootstrap URL. Per-author/recipient view emitters use
     /// [`Self::req_for_relay`] to route to the planner-resolved URL instead.
+    ///
+    /// V-04 Stage 2: the last in-tree caller (`active_account_bootstrap_requests`)
+    /// migrated to `InterestRegistry::ensure_sub` + planner-driven wire-frame
+    /// emission. The helper is kept under `#[allow(dead_code)]` because the
+    /// PD-033-C plan retires `Kernel::req` entirely in a later stage; deleting
+    /// it now would touch the doc-comment / `ONESHOT_SUB_PREFIX` retirement
+    /// gates in `kernel/discovery.rs` that still reference the M1 helper name.
+    #[allow(dead_code)]
     pub(crate) fn req(
         &mut self,
         role: RelayRole,
