@@ -3,8 +3,6 @@ import SwiftUI
 struct SettingsHubView: View {
     @EnvironmentObject private var model: KernelModel
 
-    @State private var showRoadmap = false
-
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
@@ -40,11 +38,13 @@ struct SettingsHubView: View {
                     .environmentObject(model)
             }
 
+            #if DEBUG
             Section("Developer") {
                 NavigationLink(destination: DiagnosticsView()) {
                     Label("Diagnostics", systemImage: "waveform.path.ecg")
                 }
             }
+            #endif
 
             Section("About") {
                 Label {
@@ -58,18 +58,6 @@ struct SettingsHubView: View {
                     Spacer()
                     Text(appVersion)
                         .foregroundStyle(.secondary)
-                }
-
-                DisclosureGroup("Roadmap", isExpanded: $showRoadmap) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("DMs — Direct messages via NIP-04 / NIP-17")
-                        Text("Wallet — Lightning wallet integration")
-                        Text("Signer + Wallet auto-link")
-                        Text("Media + Lists")
-                        Text("Push — Real-time push notifications")
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
                 }
             }
         }
