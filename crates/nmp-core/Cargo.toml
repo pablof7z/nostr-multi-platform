@@ -9,20 +9,21 @@ name = "nmp_core"
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# `native` gates all I/O-bound code: the C-ABI FFI layer, the actor thread,
-# relay_worker (tungstenite TCP), LMDB store backend, and the sync HTTP client
-# (ureq/LNURL fetcher). Enabled by default so existing native consumers see no
-# change. Disable with `default-features = false` to compile only the pure
-# kernel types and substrate traits for wasm32 or other no-std-io targets.
+# `native` gates all I/O-bound code: the C-ABI FFI layer, the actor *runtime*
+# (run_actor + dispatch + relay management + tick + LNURL worker + DM /
+# publish executors), relay_worker (tungstenite TCP), LMDB store backend, and
+# the sync HTTP client (ureq/LNURL fetcher). Enabled by default so existing
+# native consumers see no change.
 #
-# Phase 1b (V-01): feature shape established. Phase 1c work remaining:
-# - kernel/mod.rs:145 imports `tungstenite::Message` (introduce RelayFrame enum)
-# - kernel uses crate::actor::{ActorCommand,has_role,KernelEventObserverSlot,…}
-#   (move relay_roles.rs to relay.rs; gate observer-slot fields with cfg)
-# - publish/action.rs:11 uses ActorCommand (needs decoupling or native gate)
-# - kernel/mod.rs:166,549 uses crate::store::{EventStore,MemEventStore,LmdbEventStore}
-# Until Phase 1c lands, `--no-default-features` fails with cascade errors;
-# the native (default) build is unaffected.
+# Disable with `default-features = false` to compile only the pure kernel +
+# `ActorCommand` data type + substrate traits for wasm32 or other no-std-io
+# targets. V-01 Phase 1c (PR #339-ish): the kernel speaks the wire-transport-
+# agnostic [`kernel::RelayFrame`] enum; `tungstenite::Message` is named only
+# inside the gated `relay_worker` module. The `ActorCommand` enum + observer
+# types + `NOSTRCONNECT_DEFAULT_RELAY_URL` stay always-compiled so
+# `publish/action.rs` and every NIP-crate `ActionModule::execute` impl can
+# name them without `native`. Only the actor *runtime* that consumes them is
+# gated.
 default = ["native"]
 # I/O layer — native platforms (Linux, macOS, iOS, Android).
 # Gates: tungstenite, ureq, mio, rustls, heed, nostr-database, nmp-nostr-lmdb,

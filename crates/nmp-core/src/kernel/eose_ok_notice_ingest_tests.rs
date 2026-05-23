@@ -34,7 +34,7 @@ use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::subs::WireFrame;
 use crate::substrate::{SignedEvent, UnsignedEvent};
-use tungstenite::Message;
+use crate::kernel::RelayFrame;
 
 use crate::planner::{InterestId, InterestLifecycle};
 
@@ -59,7 +59,7 @@ fn eose_for_unknown_sub_does_not_mutate_state_but_counts_and_closes() {
     let before = kernel.relay(RelayRole::Content).counters.eose_rx;
 
     let eose = serde_json::json!(["EOSE", "sub-never-opened"]).to_string();
-    let outbound = kernel.handle_message(RelayRole::Content, RELAY, Message::Text(eose));
+    let outbound = kernel.handle_message(RelayRole::Content, RELAY, RelayFrame::Text(eose));
 
     assert_eq!(
         kernel.relay(RelayRole::Content).counters.eose_rx,
@@ -113,7 +113,7 @@ fn eose_for_known_non_persistent_sub_evicts_row_and_emits_close() {
     );
 
     let eose = serde_json::json!(["EOSE", sub_id]).to_string();
-    let outbound = kernel.handle_message(RelayRole::Content, RELAY, Message::Text(eose));
+    let outbound = kernel.handle_message(RelayRole::Content, RELAY, RelayFrame::Text(eose));
 
     assert!(
         kernel
@@ -142,7 +142,7 @@ fn notice_text_is_stored_in_relay_diagnostics() {
     let before = kernel.relay(RelayRole::Content).counters.notices_rx;
 
     let notice = serde_json::json!(["NOTICE", "rate limit: slow down"]).to_string();
-    kernel.handle_message(RelayRole::Content, RELAY, Message::Text(notice));
+    kernel.handle_message(RelayRole::Content, RELAY, RelayFrame::Text(notice));
 
     assert_eq!(
         kernel.relay(RelayRole::Content).last_notice.as_deref(),
@@ -163,7 +163,7 @@ fn notice_with_missing_text_argument_is_handled_without_panic() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     let notice = serde_json::json!(["NOTICE"]).to_string();
-    kernel.handle_message(RelayRole::Content, RELAY, Message::Text(notice));
+    kernel.handle_message(RelayRole::Content, RELAY, RelayFrame::Text(notice));
 
     assert_eq!(
         kernel.relay(RelayRole::Content).last_notice.as_deref(),
@@ -187,7 +187,7 @@ fn notice_oversize_text_is_truncated_to_diagnostic_cap() {
 
     let huge = "z".repeat(500);
     let notice = serde_json::json!(["NOTICE", huge]).to_string();
-    kernel.handle_message(RelayRole::Content, RELAY, Message::Text(notice));
+    kernel.handle_message(RelayRole::Content, RELAY, RelayFrame::Text(notice));
 
     let stored = kernel
         .relay(RelayRole::Content)
@@ -267,7 +267,7 @@ fn ok_true_wire_frame_settles_publish_as_accepted() {
 
     // The OK ack arrives as a raw wire frame on the same write relay.
     let ok = serde_json::json!(["OK", signed.id, true, ""]).to_string();
-    kernel.handle_message(RelayRole::Content, WRITE_R1, Message::Text(ok));
+    kernel.handle_message(RelayRole::Content, WRITE_R1, RelayFrame::Text(ok));
 
     let snap = kernel.publish_status_snapshot();
     assert_eq!(
@@ -296,7 +296,7 @@ fn ok_false_wire_frame_with_reason_settles_publish_as_rejected() {
     // `blocked:` is a terminal NIP-20 rejection prefix — no retry, the
     // publish settles straight to a failure.
     let ok = serde_json::json!(["OK", signed.id, false, "blocked: spam"]).to_string();
-    kernel.handle_message(RelayRole::Content, WRITE_R1, Message::Text(ok));
+    kernel.handle_message(RelayRole::Content, WRITE_R1, RelayFrame::Text(ok));
 
     let snap = kernel.publish_status_snapshot();
     assert_eq!(
@@ -319,7 +319,7 @@ fn ok_wire_frame_for_unknown_event_id_is_a_graceful_no_op() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     let ok = serde_json::json!(["OK", "ff".repeat(32), true, ""]).to_string();
-    let outbound = kernel.handle_message(RelayRole::Content, WRITE_R1, Message::Text(ok));
+    let outbound = kernel.handle_message(RelayRole::Content, WRITE_R1, RelayFrame::Text(ok));
 
     let snap = kernel.publish_status_snapshot();
     assert!(

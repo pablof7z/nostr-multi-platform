@@ -54,14 +54,22 @@ pub(super) fn raw_tap_should_fire(outcome: &crate::store::InsertOutcome) -> bool
 }
 
 impl Kernel {
+    /// Ingest a single inbound relay frame on the named role/url.
+    ///
+    /// V-01 Phase 1c: takes [`RelayFrame`] (a wire-transport-agnostic enum)
+    /// rather than `tungstenite::Message` directly. The native
+    /// `relay_worker` converts each `tungstenite::Message` to a
+    /// [`RelayFrame`] before calling this; a non-native transport (wasm32
+    /// WebSocket) is responsible for its own equivalent conversion. The
+    /// kernel itself never names `tungstenite`.
     pub(crate) fn handle_message(
         &mut self,
         role: RelayRole,
         relay_url: &str,
-        message: Message,
+        message: RelayFrame,
     ) -> Vec<OutboundMessage> {
         match message {
-            Message::Text(text) => {
+            RelayFrame::Text(text) => {
                 let relay = self.relay_mut(role);
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
@@ -74,22 +82,21 @@ impl Kernel {
                 outbound.extend(self.tick_publish_engine_for_now());
                 outbound
             }
-            Message::Binary(bytes) => {
+            RelayFrame::Binary(bytes) => {
                 let relay = self.relay_mut(role);
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx =
                     relay.counters.bytes_rx.saturating_add(bytes.len() as u64);
                 Vec::new()
             }
-            Message::Ping(_) | Message::Pong(_) => Vec::new(),
-            Message::Close(frame) => {
+            RelayFrame::Ping | RelayFrame::Pong => Vec::new(),
+            RelayFrame::Close(reason) => {
                 let relay = self.relay_mut(role);
                 relay.connection = "closed".to_string();
-                relay.last_error = frame.map(|frame| frame.reason.to_string());
+                relay.last_error = reason;
                 self.changed_since_emit = true;
                 Vec::new()
             }
-            Message::Frame(_) => Vec::new(),
         }
     }
 

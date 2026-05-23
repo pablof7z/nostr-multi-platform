@@ -381,7 +381,15 @@ impl Kernel {
     }
 
     pub(crate) fn log(&mut self, message: impl Into<String>) {
+        // `now_hms` is `#[cfg(feature = "native")]` — the wall-clock reader
+        // (`chrono::Local`) lives behind the `native` Cargo feature. Under
+        // `--no-default-features` the log line still records the message;
+        // only the leading `HH:MM:SS` timestamp drops (the kernel still
+        // owns logical ordering via the bounded ring buffer below).
+        #[cfg(feature = "native")]
         let stamp = now_hms();
+        #[cfg(not(feature = "native"))]
+        let stamp = "";
         let line = format!("{stamp} {}", message.into());
         // D6: library code performs no I/O side effects. The line is kept in
         // the bounded ring buffer below; it surfaces via the kernel snapshot

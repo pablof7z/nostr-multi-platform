@@ -51,30 +51,47 @@
 // never compiled into a production build. Exposed up the actor module chain to
 // `lib.rs::testing` so the `tests/nip_tag_conformance.rs` integration test can
 // drive the (otherwise `pub(crate)`) command handlers.
-#[cfg(any(test, feature = "test-support"))]
+// `conformance_support` drives the native publish/dm command helpers — it
+// shares the native-runtime gate with those submodules. V-01 Phase 1c.
+#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 mod conformance_support;
+// V-01 Phase 1c: these handler submodules sit on the native actor runtime
+// (they consume `PendingSign`, drive the publish engine, run the LNURL HTTP
+// worker, etc.). Gated behind `native` to match `mod relay_worker` and the
+// `pub fn run_actor*` family in `actor/mod.rs`. The observer slots
+// (`event_observer`, `raw_event_observer`, `lifecycle`) stay always-compiled
+// because the FFI surface and per-app crates name those types without
+// requiring the native runtime to be present.
+#[cfg(feature = "native")]
 mod dm;
 mod event_observer;
 mod identity;
 mod lifecycle;
+#[cfg(feature = "native")]
 mod publish;
 mod raw_event_observer;
+#[cfg(feature = "native")]
 mod relays;
 mod remote_signer_for_seal;
+#[cfg(feature = "native")]
 mod zap;
 // LNURL-pay decode + URL-encode helpers split out of `zap` so the
 // orchestrator file stays under the 500-LOC file-size gate. Pure
 // functions; no I/O, no mutable state.
+#[cfg(feature = "native")]
 mod zap_lnurl;
 // D0: NIP-47 NWC is an app noun — the wallet command runtime (and its
 // `nmp-nwc` dependency) is gated behind the `wallet` Cargo feature.
-#[cfg(test)]
+// V-01 Phase 1c: every test module below exercises the native actor
+// runtime (publish / dm / relays helpers, `run_actor`, etc.). They share
+// the `native` gate with the modules they drive.
+#[cfg(all(test, feature = "native"))]
 mod registration_seed_follow_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod remote_signer_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod t168_identity_followfeed_reconcile_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod tests;
 #[cfg(feature = "wallet")]
 mod wallet;
@@ -117,7 +134,9 @@ pub use event_observer::{
 // kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
 // up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
 // registration path reach the same `Arc<Mutex<…>>` the kernel taps.
+#[cfg(feature = "native")]
 pub(super) use dm::send_gift_wrapped_dm;
+#[cfg(feature = "native")]
 pub(super) use publish::{
     follow, open_timeline, publish_note, publish_profile, publish_signed_event,
     publish_unsigned_event, publish_unsigned_event_to_relays, react,
@@ -125,6 +144,7 @@ pub(super) use publish::{
 // NIP-57 LNURL-pay handler. The dispatch arm in `actor/dispatch.rs` calls
 // this; the handler signs the kind:9734 on the actor thread and spawns a
 // worker for the HTTP round-trip (D8 — no blocking on the actor).
+#[cfg(feature = "native")]
 pub(super) use zap::handle_fetch_lnurl_invoice;
 pub(crate) use raw_event_observer::{
     new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
@@ -139,8 +159,11 @@ pub use raw_event_observer::{
 // test-support re-export in `lib.rs` reaches the integration test outside the
 // crate. `commands` is itself crate-private, so non-test Rust code only sees
 // this through `lib.rs::testing` when `feature = "test-support"` is on.
-#[cfg(any(test, feature = "test-support"))]
+// V-01 Phase 1c: the harness sits on the native publish helpers, so the
+// re-export shares the native gate with the submodule above.
+#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub use conformance_support::ConformanceHarness;
+#[cfg(feature = "native")]
 pub(super) use relays::{add_relay, build_relay_list_event_from_edit_rows, remove_relay};
 #[cfg(feature = "wallet")]
 pub(super) use wallet::{

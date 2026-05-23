@@ -15,13 +15,13 @@ use zeroize::Zeroizing;
 
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
-use crate::relay_worker::RelayEvent;
+use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
 #[cfg(feature = "wallet")]
 use super::commands::WalletRuntime;
-use super::kernel_action::dispatch_kernel_action;
+use crate::kernel_action::dispatch_kernel_action;
 use super::pending_sign::PendingSign;
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
@@ -1094,7 +1094,13 @@ pub(super) fn handle_relay_event(
             } else {
                 None
             };
-            let mut outbound = kernel.handle_message(role, &relay_url, message);
+            // V-01 Phase 1c: convert the native `tungstenite::Message` into the
+            // wire-transport-agnostic [`RelayFrame`] before crossing the kernel
+            // boundary. The kernel no longer names `tungstenite`; the conversion
+            // lives here (the only native call site) and at the relay-worker
+            // socket-read seam.
+            let frame = tungstenite_message_to_relay_frame(message);
+            let mut outbound = kernel.handle_message(role, &relay_url, frame);
             outbound.extend(kernel.pending_view_requests());
             #[cfg(feature = "wallet")]
             if let Some(text) = wallet_text {

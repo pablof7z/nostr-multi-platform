@@ -32,7 +32,15 @@ impl Kernel {
                 // shell renders `can_retry` directly instead of branching on
                 // `status != "sending"` to decide whether to enable a button.
                 let can_retry = status != "sending";
+                // `format_timestamp` is `#[cfg(feature = "native")]` (it reads
+                // the OS-local wall clock via `chrono::Local`). Under
+                // `--no-default-features` fall back to the raw epoch seconds
+                // — the snapshot still emits a stable string; only the
+                // human-readable formatting drops on non-native builds.
+                #[cfg(feature = "native")]
                 let created_at_display = format_timestamp(row.created_at);
+                #[cfg(not(feature = "native"))]
+                let created_at_display = row.created_at.to_string();
                 let target_summary =
                     publish_outbox_target_summary(relays.len(), &created_at_display);
                 PublishOutboxItem {
