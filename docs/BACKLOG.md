@@ -219,36 +219,39 @@ All production sub-modules are within the 500-LOC ceiling.
 `tests/{mod,helpers,register,social,nip29,nip17,nip57}.rs`. Every sub-file is under
 the 500-LOC ceiling. All 32 lib tests pass.
 
-### V-12 · Five production files above 500-LOC ceiling [MEDIUM · staged]
+### V-12 · Production files above 500-LOC ceiling [MEDIUM · ongoing test extraction]
 
-**Verified (2026-05-23):**
-- `crates/nmp-core/src/actor/mod.rs` — 1487 LOC
+**Production-only files verified over ceiling (2026-05-24):**
+
+*Test-extractable (test section brings production below 500):*
+- `crates/nmp-core/src/actor/relay_mgmt.rs` — 806 total, ~371 prod (tests start 372)
+- `crates/nmp-core/src/actor/commands/raw_event_observer.rs` — 833 total, ~476 prod (tests start 477)
+- `crates/nmp-core/src/actor/commands/dm.rs` — 680 total, ~454 prod (tests start 455)
+- `crates/nmp-core/src/actor/commands/zap.rs` — 682 total, ~426 prod (tests start 427)
+- `crates/nmp-core/src/kernel/outbox.rs` — 713 total, ~384 prod (tests start 385)
+- `crates/nmp-core/src/publish/state.rs` — 516 total, ~345 prod (tests start 346)
+- `crates/nmp-core/src/relay.rs` — 516 total, ~338 prod (tests start 339)
+- `crates/nmp-nip65/src/lib.rs` — 569 total, ~261 prod (tests start 262)
+- `crates/nmp-nostr-lmdb/src/lib.rs` — 1144 total, ~267 prod (tests start 267)
+
+*Production splits needed (no test section to extract; post-v1):*
+- `crates/nmp-core/src/actor/mod.rs` — 1488 LOC
 - `crates/nmp-core/src/actor/dispatch.rs` — 1477 LOC
-- `crates/nmp-core/src/kernel/mod.rs` — 1373 LOC
-- `crates/nmp-core/src/actor/commands/identity.rs` — ~1211 LOC production (1320 total incl. tests)
-- `crates/nmp-core/src/actor/commands/wallet.rs` — 657 LOC production (wallet tests extracted in PR #376)
+- `crates/nmp-core/src/kernel/mod.rs` — 1386 LOC
+- `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
+- `crates/nmp-core/src/actor/commands/identity.rs` — ~1211 LOC production
+- `crates/nmp-core/src/kernel/update.rs` — 983 LOC
+- `crates/nmp-core/src/kernel/action_registry.rs` — 937 LOC
+- `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs` — 1495 LOC
 
-All five breach AGENTS.md §File-size rule ("hard 500-LOC ceiling; test sections extracted to `#[path]` subfiles").
+**Completed test extractions:**
+- handle.rs, signer_seal.rs, view.rs (commit 34fc71a1 — 2026-05-23)
+- action_stages.rs, planner/selection.rs, substrate/bounded.rs, nmp-nip65/src/lib.rs, publish/action.rs (PR in progress — 2026-05-24)
+- identity.rs (commit e79f7a90); wallet.rs (PR #376)
 
-**Staged fix plan (independent per file):**
-
-**(a) identity.rs test extraction ✅ DONE (commit on master 2026-05-23):**
-`mod nip46_onboarding_tests` (108 LOC) extracted to `identity/nip46_onboarding_tests.rs`
-via `#[path = "identity/nip46_onboarding_tests.rs"]`. Production section is 1211 LOC and
-needs its own follow-up production split.
-
-**(b) identity.rs production split:**
-A 3-way split was analyzed: BunkerHandshake dto/types + IdentityRuntime + free functions.
-Requires reshuffling visibility of `BunkerHandshakeSlot` across modules — a real refactor,
-not just a split. Defer until after v1.
-
-**(c) actor/mod.rs, actor/dispatch.rs, kernel/mod.rs:**
-Need command/concern grouping analysis (see Opus direction review #10: the `ActorCommand`
-enum's closed-enum lock-in is the real issue, not just LOC). Do not split blindly — group by
-cohesion. Post-v1.
-
-**Deadline:** identity.rs test extraction done. Production splits of mod.rs, dispatch.rs,
-kernel/mod.rs, and wallet.rs are post-v1.
+**Staged fix plan:**
+Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
+(ActorCommand closed enum analysis required — Opus review #10).
 
 ---
 
