@@ -176,13 +176,20 @@ Every line below is a current `req()` / `req_for_relay()` call site that must
 move to `InterestRegistry::ensure_sub` (or `set_sub` when the filter shape
 mutates over the slot's lifetime). Tests are listed separately in §3.3.
 
+**Scope correction note (Stage 2 implementation, 2026-05-24):** the §3.1
+table originally specified `Account(self_pk)` for the 5 startup interests.
+This is wrong — the planner gates require `Global` (see Stage 2 in §5 below
+for the full rationale). The "Target `LogicalInterest`" column has been
+corrected to `Global` for #1-#5; the original `Account(self_pk)` would land
+every cold-start self-bootstrap REQ in `unroutable_authors`.
+
 | # | File:line | Today | Target `LogicalInterest` |
 |---|-----------|-------|--------------------------|
-| 1 | `kernel/requests/startup.rs:32` | `req(Indexer, "profile-target", …, kind:0 author=self limit:1)` | `InterestShape::profile_for(self_pk)` narrowed to `kinds={0}, limit=1`; scope = `Account(self_pk)`; lifecycle = `OneShot`. |
-| 2 | `kernel/requests/startup.rs:38` | `req(Indexer, "target-relays", kind:10002 author=self limit:1)` | shape `kinds={10002}, authors={self_pk}, limit=1`; scope `Account(self_pk)`; lifecycle `OneShot`. |
-| 3 | `kernel/requests/startup.rs:44` | `req(Indexer, "self-dm-relays", kind:10050 author=self limit:1)` | shape `kinds={10050}, authors={self_pk}, limit=1`; scope `Account(self_pk)`; lifecycle `OneShot`. |
-| 4 | `kernel/requests/startup.rs:50` | `req(Indexer, "self-contacts", kind:3 author=self limit:1)` | shape `kinds={3}, authors={self_pk}, limit=1`; scope `Account(self_pk)`; lifecycle `OneShot`. |
-| 5 | `kernel/requests/startup.rs:64` | `req(Content, "self-zap-receipts", kind:9735 #p=self limit:50)` | shape `kinds={9735}, tags={p: {self_pk}}, limit=50, p_tag_routing=Nip17DmRelays`-equivalent **OR** `PTagRouting::Nip65ReadRelays`; scope `Account(self_pk)`; lifecycle `Tailing`. |
+| 1 | `kernel/requests/startup.rs:32` | `req(Indexer, "profile-target", …, kind:0 author=self limit:1)` | shape `kinds={0}, authors={self_pk}, limit=1`; scope `Global` (Case A `is_discovery_oneshot` gate requires `Global`); lifecycle `OneShot`. |
+| 2 | `kernel/requests/startup.rs:38` | `req(Indexer, "target-relays", kind:10002 author=self limit:1)` | shape `kinds={10002}, authors={self_pk}, limit=1`; scope `Global`; lifecycle `OneShot`. |
+| 3 | `kernel/requests/startup.rs:44` | `req(Indexer, "self-dm-relays", kind:10050 author=self limit:1)` | shape `kinds={10050}, authors={self_pk}, limit=1`; scope `Global`; lifecycle `OneShot`. |
+| 4 | `kernel/requests/startup.rs:50` | `req(Indexer, "self-contacts", kind:3 author=self limit:1)` | shape `kinds={3}, authors={self_pk}, limit=1`; scope `Global`; lifecycle `OneShot`. |
+| 5 | `kernel/requests/startup.rs:64` | `req(Content, "self-zap-receipts", kind:9735 #p=self limit:50)` | shape `kinds={9735}, tags={p: {self_pk}}, limit=50, p_tag_routing=Nip65ReadRelays`; scope `Global` (Case C bootstrap-content gate requires `Tailing + Global`, added in the Stage 2 precursor PR); lifecycle `Tailing`. |
 | 6 | `kernel/requests/profile.rs:252` (`firehose_requests`) | `req_for_relay(Content, recipient_read_relay, "diag-firehose-{seq}-{tag}", kind:1 #t=tag limit:500)` | shape `kinds={1}, tags={t: {tag}}, limit=500, p_tag_routing=Nip65ReadRelays`; scope `ActiveAccount`; lifecycle `Tailing`. Owner key = `("diag-firehose", tag)`. |
 | 7 | `kernel/requests/profile.rs:305` (`pending_profile_claim_requests`, batched) | `req_for_relay(Indexer, per_relay_url, "profile-batch-…", kind:0 authors=[…] limit=n)` | One `LogicalInterest` per claimed author: shape `kinds={0}, authors={pk}, limit=1`; scope `Account(pk)`; lifecycle `OneShot`. Planner merges by `Rule 2` author-set union → one batched REQ per write relay (M3 outbox direction). |
 | 8 | `kernel/requests/profile.rs:331` (`profile_claim_request`, single) | as above, single | same shape; `ensure_sub` with owner = `("profile-claim", consumer_id)`. |
@@ -443,22 +450,94 @@ side exists); failure mode is "discovery doesn't resolve unknown ids,"
 which is loud and CI-detectable via
 `crates/nmp-core/src/kernel/discovery_tests.rs`.
 
+### Stage 2 precursor — Case C bootstrap-content inbox extension
+
+**Goal:** before migrating the kind:9735 self-zap-receipts REQ, the planner
+must learn to route `Tailing + Global + #p (Nip65ReadRelays)` interests with
+no cached inbox to `bootstrap_content_relays`. Without this, Stage 2's
+deletion of M1 would silently lose every #p Tailing REQ until kind:10002
+arrives — breaking the F-04 zap-receipts contract on cold-start sign-ins.
+
+Mirrors the Stage 1 Case D `route_bootstrap_content` precursor
+(`partition::partition_interest`'s `is_oneshot_global_event_ids_discovery`
+gate). The Case C twin lives in
+`partition::case_c_p_tags::route_bootstrap_content_inbox`, gated on:
+
+- `lifecycle == Tailing` AND `scope == Global`
+- `p_tag_routing == Nip65ReadRelays` (NIP-17 DM relays remain fail-closed —
+  gift-wraps must never leak to a non-DM relay)
+- every tagged pubkey has no cached NIP-65 inbox (`get(pk)` is `None` OR
+  `has_inbox_relays()` is `false`)
+- `bootstrap_content_relays` is non-empty
+
+When kind:10002 arrives for any tagged pubkey, the next recompile naturally
+re-routes (the gate flips false; the regular Case C body fires) and
+`plan_diff` emits CLOSE/REQ. `bootstrap_content_relays` stays excluded from
+`compute_plan_id` (matches the Stage 1 treatment) so the toggle does not
+churn sub-ids.
+
+Status: PR pending — `worktree-agent-adff1381808c9be39`. 9 new tests in
+`case_c_p_tags::tests` lock the matrix; total nmp-core test count = 1065.
+
 ### Stage 2 — Bootstrap REQs (`startup.rs`)
 
 **Goal:** migrate the 5 self-bootstrap REQs (#1–#5 in §3.1).
 
+**Blocked on:** Stage 2 precursor (Case C bootstrap-content inbox extension)
+must merge first — interest #5 (kind:9735 `#p=[self_pk]` on
+`RelayRole::Content`) would silently disappear on cold-start sign-ins
+without the planner extension.
+
+**Scope correction (discovered during Stage 2 implementation):**
+
+The §3.1 table specifies `InterestScope::Account(self_pk)` for the 5
+startup interests. This is WRONG — the planner gates for the bootstrap
+fallback paths require `InterestScope::Global`:
+
+- Case A (`if !landed && is_discovery_oneshot`,
+  `case_a_authors.rs:96-97`) requires `OneShot + Global` so #1-#4 (kind:0,
+  kind:10002, kind:10050, kind:3) need `Global` scope to land on
+  `bootstrap_indexer_relays` when self's kind:10002 hasn't arrived yet.
+  Account-scoped would mark them `unroutable` (the
+  `pd033c_case_a_account_scoped_oneshot_does_not_indexer_fallback` test in
+  `case_a_authors.rs` locks the exclusion).
+- Case C (`route_bootstrap_content_inbox`,
+  `case_c_p_tags.rs`) requires `Tailing + Global` so #5 (kind:9735) needs
+  `Global` scope to land on `bootstrap_content_relays`.
+
+This matches the Stage 1 precedent: `discovery.rs::drain_unknown_oneshots`
+registers under `InterestScope::Global` for the same reason (the active
+account's mailbox is unknown at cold-start — that's what we're trying to
+bootstrap). "Account-scoped" is for *recurring* per-account interests that
+re-route on account switch; bootstrap fetches are pre-NIP-65 reads and
+belong on the Global lane.
+
 - Replace the 5 `req(…)` calls in `active_account_bootstrap_requests` with
   5 `lifecycle_mut().registry_mut().ensure_sub(identity, interest)` calls
-  bracketed by `enqueue_trigger(CompileTrigger::InvalidateCompile{…})`.
-- Delete `active_account_bootstrap_requests`'s caller in
-  `startup_requests`; replace with a single trigger enqueue.
-- May require planner extension for bootstrap-cold-start fan-out (see §4.3);
-  if so, land that planner PR first.
-- Update `startup.rs::tests` to assert against `iter_active()` /
-  resolved WireFrames, not against `req()` outputs.
+  using `InterestScope::Global` and the corresponding lifecycle
+  (`OneShot` for #1-#4, `Tailing` for #5 — matches the M1 semantics).
+- Enqueue a single coalesced `CompileTrigger::ViewOpened { interest_ids:
+  Vec::new() }` at the end of `active_account_bootstrap_requests` (Stage 1
+  precedent — see `discovery.rs::drain_unknown_oneshots`); `drain_tick`
+  short-circuits on an empty inbox.
+- `active_account_bootstrap_requests` returns `Vec::new()` (the planner
+  drives the wire emission); callers' `.extend(...)` shape is preserved.
+- Preserve the two side effects Stage 3 will retire separately:
+  `self.contacts_deadline = Some(Instant::now() + Duration::from_secs(3))`
+  in `startup_requests` (gates `maybe_open_timeline`) and
+  `self.profile_requests.requested.insert(self_pk)` (consulted in
+  `profile.rs:147, 190, 270, 294` and `relay_lifecycle.rs:114` — deleting
+  it now would re-fetch own kind:0 on every `claim_profile`).
+- Rewrite `startup.rs::tests` against `drain_lifecycle_tick` WireFrame
+  filter JSON, not against `req()` outputs / sub-id strings (Stage 1
+  precedent — `kernel/discovery_tests.rs::quoted_note_missing_id_…`).
+- Add a t140-style retirement gate that asserts
+  `active_account_bootstrap_requests()` returns `Vec::new()` AND the
+  equivalent kind:0/3/10002/10050/9735 filter signatures appear on the
+  next `drain_lifecycle_tick`.
 
 **Why third:** 5 well-tested REQs with no view-state coupling; clean
-self-contained PR.
+self-contained PR (now that the planner precursor is staged).
 
 ### Stage 3 — Profile claims (`profile.rs::claim/release/firehose/pending`)
 
