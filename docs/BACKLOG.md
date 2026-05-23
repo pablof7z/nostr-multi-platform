@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **3e370bb5** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **2bcc09e5** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -202,10 +202,10 @@ Work currently on a branch. Agents must not duplicate these tasks.
 
 | ID | Description | Branch | Status |
 |----|-------------|--------|--------|
-| B-5 | feat(nmp-core): Phase 1c — RelayFrame enum decouples kernel from tungstenite | `fix/v01-phase1c-relay-frame` | In progress |
-| B-6 | fix(nmp-core): bootstrap active account kind:10050 DM relay list on sign-in (F-02) | pending | In progress |
+| B-5 | feat(nmp-core): Phase 1c — RelayFrame enum decouples kernel from tungstenite | `fix/v01-phase1c-relay-frame` | PR #341 pending CI |
+| B-7 | fix(nmp-core): route kind:9735 to KernelEventObserver + #p bootstrap subscription (F-04) | agent in worktree | In progress |
 
-> B-1–B-4 all merged to master (PRs #331–#337). WIP.md superseded by this file.
+> B-1–B-4 all merged to master (PRs #331–#337). B-6 merged PR #340. WIP.md superseded by this file.
 
 ---
 
@@ -242,7 +242,7 @@ autonomous agent picks the topmost item not already in Section 2.
 
 ### F-01 · Fix V-01 Phase 1c — gate actor/relay_worker, pass no-default-features [V1 BLOCKER]
 
-Phase 1a (native feature gate) done. Phase 1c in progress (RelayFrame enum, B-5 branch).
+Phase 1a (native feature gate) done. Phase 1c complete — PR #341 pending CI merge.
 Once Phase 1c lands, wire nmp-wasm to nmp-core proper (`NmpApp` constructed,
 `dispatch_action` reachable, stub runtime deleted).
 
@@ -272,17 +272,20 @@ A returning user may have correct relays but never re-advertise them.
 confirm the actor does NOT re-publish kind:10002 (correct; the relays came from the wire, not
 from an AddRelay call). Then add/remove a relay in settings → confirm kind:10002 is published.
 
-### F-03b · First-launch defaults — empty timeline [V1 BLOCKER]
+### F-03b · First-launch defaults — empty timeline [DONE]
 
-A new account sees an empty timeline with no discovery surface. No default kind:3 follow list
-is seeded on first sign-in.
-
-**Fix:** on first account creation (or when kind:3 is absent after initial sync), either seed
-a curated default follow list or present a discovery/onboarding surface before the main
-timeline.
+`create_account` (`actor/commands/identity.rs:778`) calls `prepopulate_seed_contacts` with
+`DEFAULT_FOLLOWS` (fiatjaf + npub1l2vyh47…), then `publish_initial_follows` publishes kind:3
+to cold-start relays. New accounts have an immediately-populated follow feed. Verified on
+HEAD `3e370bb5`.
 
 ### F-04 · Zap E2E round-trip verification [V1 BLOCKER]
 
+**Structural gaps fixed (B-7, in progress):**
+1. `handle_event` `_` wildcard never called `notify_event_observers` → kind:9735 events never
+   reached `ZapsAggregateProjection`. Fix: add kind:9735 arm in `kernel/ingest/mod.rs`.
+2. No kind:9735 subscription interest registered at bootstrap. Fix: add `#p <viewer>` REQ in
+   `active_account_bootstrap_requests`.
 
 `ZapAction` is implemented and registered. `ZapsAggregateProjection` is registered. The full
 round-trip — dispatch zap → `FetchLnurlInvoice` → bolt11 toast → `WalletPayInvoice` → NWC
