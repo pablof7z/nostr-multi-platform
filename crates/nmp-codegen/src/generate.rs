@@ -43,14 +43,11 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
 }
 
 fn cargo_toml(manifest: &AppManifest) -> String {
-    // `nmp-core` carries `features = ["test-support"]`: the generated
-    // `FfiApp` (non-test code) calls `nmp_app_new` / `nmp_app_free` /
-    // `nmp_app_dispatch_action` through their Rust paths, which the
-    // `test-support` gate exposes. The generated app crate is an rlib host
-    // shell with no staticlib consumer, so the gate has no downstream
-    // impact.
+    // `nmp_app_new`, `nmp_app_free`, `nmp_app_dispatch_action` are re-exported
+    // under the default `native` feature since PR #356 — no explicit feature
+    // flag is needed for the generated app crate's dependency.
     let mut out = format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\", features = [\"test-support\"] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
         app_crate_name(&manifest.name)
     );
     for module in manifest.ordered_modules() {
@@ -363,16 +360,13 @@ mod tests {
     }
 
     #[test]
-    fn cargo_toml_enables_nmp_core_test_support() {
-        // The generated `FfiApp` calls `nmp_app_new` / `nmp_app_dispatch_action`
-        // through their Rust paths, which `nmp-core`'s `test-support` feature
-        // gate exposes — so the generated `nmp-core` dependency MUST enable it.
+    fn cargo_toml_nmp_core_dep_has_no_extra_features() {
+        // After PR #356, `nmp_app_new` / `nmp_app_free` / `nmp_app_dispatch_action`
+        // are under the default `native` feature — no explicit feature flag needed.
         let out = cargo_toml(&manifest(&[], &["fixture-todo-core"]));
         assert!(
-            out.contains(
-                "nmp-core = { path = \"../../../crates/nmp-core\", features = [\"test-support\"] }"
-            ),
-            "generated nmp-core dep must enable test-support:\n{out}"
+            out.contains("nmp-core = { path = \"../../../crates/nmp-core\" }"),
+            "generated nmp-core dep must use plain path dep (no feature flags):\n{out}"
         );
     }
 
