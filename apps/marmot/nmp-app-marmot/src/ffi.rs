@@ -41,7 +41,7 @@
 //! `invite`'s kind:445 commit + kind:1059 gift-wraps, `send`'s kind:445,
 //! `accept_welcome`'s post-join kind:445 self-update), this crate performs
 //! the `MarmotService` op and then publishes the signed events INTERNALLY
-//! via [`nmp_marmot::projection::publish`] (the workspace-internal
+//! via [`crate::projection::publish`] (the workspace-internal
 //! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
 //! the retained `&NmpApp`). There is NO Swift relay path — that hook never
 //! existed (see `MarmotBridge.swift`). The result still carries the signed
@@ -60,7 +60,7 @@
 //! `nmp_marmot_register` also registers a raw signed-event tap
 //! (`nmp-core` `RawEventObserver`, Rust-trait API) for kinds
 //! `[444, 445, 1059]`. The kernel delivers every accepted inbound signed
-//! event of those kinds to [`nmp_marmot::projection::tap`], which drives them
+//! event of those kinds to [`crate::projection::tap`], which drives them
 //! through the SAME `ops::ingest_signed_event_core` the back-compat
 //! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes /
 //! messages received from relays surface in the next snapshot with no
@@ -77,10 +77,10 @@ use nmp_core::{KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserver
 use nostr::Keys;
 use serde_json::{json, Value};
 
-use nmp_marmot::service::MarmotService;
+use crate::service::MarmotService;
 
-use nmp_marmot::projection::state::MarmotProjection;
-use nmp_marmot::projection::tap::MarmotIngestTap;
+use crate::projection::state::MarmotProjection;
+use crate::projection::tap::MarmotIngestTap;
 
 /// Default page size for [`nmp_marmot_group_messages`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
@@ -101,9 +101,9 @@ pub struct MarmotHandle {
     observer_id: KernelEventObserverId,
     /// Raw signed-event tap (the CLOSED inbound ingest seam — drives
     /// kind:1059/445 into `MarmotService` via the shared core; see
-    /// [`nmp_marmot::projection::tap`]). Separate kernel slot from `observer_id`.
+    /// [`crate::projection::tap`]). Separate kernel slot from `observer_id`.
     raw_observer_id: RawEventObserverId,
-    pub(super) app: *mut NmpApp,
+    pub(crate) app: *mut NmpApp,
 }
 
 // SAFETY: identical rationale to `ChirpHandle` (see `crate::ffi`). The
@@ -152,13 +152,13 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
     let action = json!({ "op": "publish_key_package" });
     let _ = handle
         .projection
-        .with_inner(|h| nmp_marmot::projection::ops::dispatch(h, &action, now_secs()));
+        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
 }
 
 /// Inner registration logic shared by `nmp_marmot_register` and
 /// `nmp_marmot_register_active`. `app` must be non-null and valid.
-pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
-    let Some(use_mock) = super::credential_store::initialize() else {
+pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
+    let Some(use_mock) = crate::credential_store::initialize() else {
         return std::ptr::null_mut();
     };
 
@@ -186,7 +186,7 @@ pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
                         if !use_mock {
                             // D6: mock store construction can fail — never
                             // `unwrap()` across the FFI; degrade to a null handle.
-                            if super::credential_store::install_mock_store().is_none() {
+                            if crate::credential_store::install_mock_store().is_none() {
                                 return std::ptr::null_mut();
                             }
                             match MarmotService::new(
@@ -230,7 +230,7 @@ pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in
     // this glue. The FFI only resolves the concrete pubkey and forwards.
     let pubkey_hex = keys.public_key().to_hex();
-    app_ref.push_interest(nmp_marmot::interest::giftwrap_inbox_interest(&pubkey_hex));
+    app_ref.push_interest(crate::interest::giftwrap_inbox_interest(&pubkey_hex));
 
     Box::into_raw(Box::new(MarmotHandle {
         projection,
@@ -340,7 +340,7 @@ pub extern "C" fn nmp_marmot_group_messages(
     let rows = handle
         .projection
         .with_inner(|h| {
-            nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE, now)
+            crate::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE, now)
         })
         .unwrap_or_default();
     match serde_json::to_string(&rows) {
@@ -369,7 +369,7 @@ pub extern "C" fn nmp_marmot_dispatch(
     };
     let result = handle
         .projection
-        .with_inner(|h| nmp_marmot::projection::ops::dispatch(h, &v, now_secs()))
+        .with_inner(|h| crate::projection::ops::dispatch(h, &v, now_secs()))
         .unwrap_or_else(|| err("projection mutex poisoned"));
     to_c_json(&result)
 }
@@ -417,7 +417,7 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
-pub(super) fn c_str_opt(ptr: *const c_char) -> Option<String> {
+pub(crate) fn c_str_opt(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }

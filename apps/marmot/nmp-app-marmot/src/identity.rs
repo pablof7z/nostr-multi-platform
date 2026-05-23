@@ -1,11 +1,16 @@
 //! Chirp C-ABI glue for Rust-owned identity/Marmot orchestration.
+//!
+//! TODO: rename `nmp_app_chirp_identity_*` symbols to `nmp_marmot_identity_*`
+//! now that the module lives in `nmp-marmot`. Out of scope for the relocation
+//! PR; tracked by Opus direction reviews #50 and #68 as a separate naming
+//! cleanup ("`nmp_app_chirp_*` symbols in Chirp-agnostic crates").
 
 use std::ffi::{c_char, CStr};
 
 use nmp_core::NmpApp;
 use nostr::Keys;
 
-use super::ffi::{register_with_keys, MarmotHandle};
+use crate::ffi::{register_with_keys, MarmotHandle};
 
 const CHIRP_IDENTITY_ACCOUNT_ID: &str = "chirp.marmot.cached_secret";
 
