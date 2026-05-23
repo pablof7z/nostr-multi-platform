@@ -72,6 +72,30 @@ pub mod projection;
 pub mod service;
 pub mod view;
 
+// ── C-ABI shell ──────────────────────────────────────────────────────────
+//
+// The `ffi` / `fetch` / `identity` / `credential_store` modules expose the
+// `nmp_marmot_*` C-ABI symbols (plus the legacy `nmp_app_chirp_identity_*`
+// names tracked for rename in Opus reviews #50 / #68). They were relocated
+// from `apps/chirp/nmp-app-chirp/src/marmot/` so the `nmp-marmot` crate is
+// the structural home of the Marmot shell (PD-033-A second-app
+// independence). Chirp's iOS shell still links the symbols transparently:
+// `nmp-marmot` is pulled in as an `rlib`, and its `#[no_mangle]` symbols
+// flow through `libnmp_app_chirp.a` (the staticlib the iOS target
+// actually links against).
+//
+// Feature-gated behind `ffi` so consumers that only want the protocol
+// types (in-process REPL, headless tests) do not have to pull in
+// `keyring-core` / `apple-native-keyring-store`.
+#[cfg(feature = "ffi")]
+pub mod credential_store;
+#[cfg(feature = "ffi")]
+pub mod fetch;
+#[cfg(feature = "ffi")]
+pub mod ffi;
+#[cfg(feature = "ffi")]
+pub mod identity;
+
 /// Re-exports of the handful of `mdk-core` types that appear in the public
 /// [`service::MarmotService`] signature. Callers that drive the service
 /// (round-trip tests in-crate; the diagnostic REPL out-of-crate) need to

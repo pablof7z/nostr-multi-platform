@@ -3761,10 +3761,6 @@ dependencies = [
 name = "nmp-app-chirp"
 version = "0.1.0"
 dependencies = [
- "apple-native-keyring-store",
- "keyring-core",
- "mdk-core",
- "mdk-sqlite-storage",
  "nmp-core",
  "nmp-coverage-gate",
  "nmp-marmot",
@@ -3882,6 +3878,8 @@ dependencies = [
 name = "nmp-marmot"
 version = "0.1.0"
 dependencies = [
+ "apple-native-keyring-store",
+ "keyring-core",
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",

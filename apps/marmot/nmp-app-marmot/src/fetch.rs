@@ -4,7 +4,7 @@ use std::ffi::c_char;
 
 use nmp_core::{ActorCommand, KernelAction};
 
-use super::ffi::{c_str_opt, MarmotHandle};
+use crate::ffi::{c_str_opt, MarmotHandle};
 
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -31,7 +31,7 @@ pub extern "C" fn nmp_marmot_fetch_key_packages(
             continue;
         };
         let _ = sender.send(ActorCommand::Kernel(KernelAction::OpenView {
-            namespace: nmp_marmot::view::KeyPackageLookupView::NAMESPACE.to_string(),
+            namespace: crate::view::KeyPackageLookupView::NAMESPACE.to_string(),
             key: pk.to_hex(),
         }));
     }

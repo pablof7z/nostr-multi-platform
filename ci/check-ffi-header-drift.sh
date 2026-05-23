@@ -14,19 +14,18 @@
 #   1. crates/nmp-core/src/ffi/            -> libnmp_core.a        (the kernel)
 #   2. crates/nmp-signer-broker/src/ffi.rs -> libnmp_signer_broker.a (NIP-46)
 #   3. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
-#      apps/chirp/nmp-app-chirp/src/marmot/ffi.rs +
-#      apps/chirp/nmp-app-chirp/src/marmot/identity.rs +
-#      apps/chirp/nmp-app-chirp/src/marmot/fetch.rs -> libnmp_app_chirp.a
+#      apps/marmot/nmp-app-marmot/src/ffi.rs +
+#      apps/marmot/nmp-app-marmot/src/identity.rs +
+#      apps/marmot/nmp-app-marmot/src/fetch.rs -> libnmp_app_chirp.a
+#      (relocated from nmp-app-chirp into nmp-marmot, PR #348)
 #
-# The whole `apps/chirp/nmp-app-chirp/src/` tree compiles into the single
-# `libnmp_app_chirp.a` archive, so EVERY `#[no_mangle] extern "C"` symbol in
-# any of its files is in the Chirp link. The chirp glue is enumerated as an
-# explicit file list (not a recursive directory scan) ON PURPOSE: the
-# `marmot/ffi/tests.rs` integration suite is reachable only via a
+# The Chirp link is the union of libnmp_app_chirp.a + libnmp_marmot.a (when the
+# marmot feature is enabled). The marmot C-ABI symbols live in nmp-marmot since
+# PR #348. The chirp glue is enumerated as an explicit file list (not a
+# directory scan) ON PURPOSE: the `ffi/tests.rs` suite is reachable only via a
 # `#[cfg(test)] mod tests;` declaration and carries NO file-level
 # `#![cfg(...test...)]` inner attribute, so a directory scan would mis-include
-# it. New non-test FFI files added under this tree MUST be appended to
-# `FFI_FILE_ROOTS` below.
+# it. New non-test FFI files MUST be appended to `FFI_FILE_ROOTS` below.
 #
 # Doctrine D0 forbids `nmp-core` depending on app/protocol crates, so the
 # broker and chirp glue live in their own archives — but every `nmp_app_*`
@@ -104,9 +103,11 @@ FFI_FILE_ROOTS=(
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/helpers.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/ffi.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/identity.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/fetch.rs"
+    # Marmot C-ABI relocated from nmp-app-chirp → nmp-marmot (PR #348).
+    # Symbols still land in the Chirp link via nmp-marmot's rlib inclusion.
+    "${REPO_ROOT}/apps/marmot/nmp-app-marmot/src/ffi.rs"
+    "${REPO_ROOT}/apps/marmot/nmp-app-marmot/src/identity.rs"
+    "${REPO_ROOT}/apps/marmot/nmp-app-marmot/src/fetch.rs"
 )
 
 if [[ ! -f "${HEADER}" ]]; then
