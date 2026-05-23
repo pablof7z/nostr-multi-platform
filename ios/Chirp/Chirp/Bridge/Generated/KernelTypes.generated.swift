@@ -64,53 +64,6 @@ public struct KernelMetrics: Decodable, Equatable {
     public let visibleItems: Int
     public let visiblePlaceholderAvatarItems: Int
     public let visibleProfiledItems: Int
-
-    private enum CodingKeys: String, CodingKey {
-        case actorQueueDepth = "actor_queue_depth"
-        case bytesRx = "bytes_rx"
-        case bytesTx = "bytes_tx"
-        case claimDropsTotal = "claim_drops_total"
-        case closedRx = "closed_rx"
-        case contactsAuthors = "contacts_authors"
-        case deleteEvents = "delete_events"
-        case diagnosticFirehoseEvents = "diagnostic_firehose_events"
-        case dispatchDropsTotal = "dispatch_drops_total"
-        case duplicateEvents = "duplicate_events"
-        case emitHzConfigured = "emit_hz_configured"
-        case eoseRx = "eose_rx"
-        case estimatedStoreBytes = "estimated_store_bytes"
-        case eventsPerSecondConfigured = "events_per_second_configured"
-        case eventsRx = "events_rx"
-        case eventsSinceLastUpdate = "events_since_last_update"
-        case firstEventMs = "first_event_ms"
-        case framesRx = "frames_rx"
-        case generatedEvents = "generated_events"
-        case insertedCount = "inserted_count"
-        case lastEventToEmitMs = "last_event_to_emit_ms"
-        case makeUpdateUs = "make_update_us"
-        case maxEventToEmitMs = "max_event_to_emit_ms"
-        case maxEventsPerUpdate = "max_events_per_update"
-        case noteEvents = "note_events"
-        case noticesRx = "notices_rx"
-        case openViews = "open_views"
-        case payloadBytes = "payload_bytes"
-        case profileEvents = "profile_events"
-        case removedCount = "removed_count"
-        case serializeUs = "serialize_us"
-        case storeToPayloadRatio = "store_to_payload_ratio"
-        case storedEvents = "stored_events"
-        case targetProfileLoadedMs = "target_profile_loaded_ms"
-        case timelineAuthors = "timeline_authors"
-        case timelineFirstItemMs = "timeline_first_item_ms"
-        case timelineOpenedMs = "timeline_opened_ms"
-        case tombstones
-        case updateEmittedMs = "update_emitted_ms"
-        case updateSequence = "update_sequence"
-        case updatedCount = "updated_count"
-        case visibleItems = "visible_items"
-        case visiblePlaceholderAvatarItems = "visible_placeholder_avatar_items"
-        case visibleProfiledItems = "visible_profiled_items"
-    }
 }
 
 // MARK: - RelayStatus
@@ -134,25 +87,6 @@ public struct RelayStatus: Decodable, Equatable, Identifiable {
     public let role: String
 
     public var id: String { relayUrl }
-
-    private enum CodingKeys: String, CodingKey {
-        case activeWireSubscriptions = "active_wire_subscriptions"
-        case auth
-        case bytesRx = "bytes_rx"
-        case bytesTx = "bytes_tx"
-        case connection
-        case denied
-        case errorCategory = "error_category"
-        case lastCloseReason = "last_close_reason"
-        case lastConnectedAtMs = "last_connected_at_ms"
-        case lastError = "last_error"
-        case lastEventAtMs = "last_event_at_ms"
-        case lastNotice = "last_notice"
-        case nip77Negentropy = "nip77_negentropy"
-        case reconnectCount = "reconnect_count"
-        case relayUrl = "relay_url"
-        case role
-    }
 }
 
 // MARK: - LogicalInterestStatus
@@ -166,15 +100,6 @@ public struct LogicalInterestStatus: Decodable, Equatable, Identifiable {
     public let warmingUntilMs: UInt64?
 
     public var id: String { key }
-
-    private enum CodingKeys: String, CodingKey {
-        case cacheCoverage = "cache_coverage"
-        case key
-        case refcount
-        case relayUrls = "relay_urls"
-        case state
-        case warmingUntilMs = "warming_until_ms"
-    }
 }
 
 // MARK: - WireSubscriptionStatus
@@ -192,19 +117,6 @@ public struct WireSubscriptionStatus: Decodable, Equatable, Identifiable {
     public let wireId: String
 
     public var id: String { wireId }
-
-    private enum CodingKeys: String, CodingKey {
-        case closeReason = "close_reason"
-        case eoseAtMs = "eose_at_ms"
-        case eventsRx = "events_rx"
-        case filterSummary = "filter_summary"
-        case lastEventAtMs = "last_event_at_ms"
-        case logicalConsumerCount = "logical_consumer_count"
-        case openedAtMs = "opened_at_ms"
-        case relayUrl = "relay_url"
-        case state
-        case wireId = "wire_id"
-    }
 }
 
 // MARK: - AccountSummary
@@ -219,18 +131,6 @@ public struct AccountSummary: Decodable, Equatable, Identifiable {
     public let signerKind: String
     public let signerLabel: String
     public let status: String
-
-    private enum CodingKeys: String, CodingKey {
-        case displayName = "display_name"
-        case id
-        case isActive = "is_active"
-        case npub
-        case pictureUrl = "picture_url"
-        case signerIsRemote = "signer_is_remote"
-        case signerKind = "signer_kind"
-        case signerLabel = "signer_label"
-        case status
-    }
 }
 
 // MARK: - RelayEditRow
@@ -242,13 +142,6 @@ public struct RelayEditRow: Decodable, Equatable, Identifiable {
     public let url: String
 
     public var id: String { url }
-
-    private enum CodingKeys: String, CodingKey {
-        case role
-        case roleLabel = "role_label"
-        case roleTint = "role_tint"
-        case url
-    }
 }
 
 // MARK: - RelayRoleOption
@@ -260,13 +153,6 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable {
     public let value: String
 
     public var id: String { value }
-
-    private enum CodingKeys: String, CodingKey {
-        case isDefault = "is_default"
-        case label
-        case tint
-        case value
-    }
 }
 
 // MARK: - SnapshotProjections
