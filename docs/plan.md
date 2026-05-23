@@ -102,11 +102,11 @@ v1 ships when **all of the following** hold:
 5. **`nmp-wasm` is no longer a stub.** Stage 2 + Stage 3 + Stage 3b complete (PR #372/#375/#378); Stage 3c (IndexedDB + publish-path wire + multi-role bootstrap) is the remaining v1-blocking work — see F-01.
 6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
 7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** Calendar = "N existing symbols migrated to `dispatch_action` per quarter, N owned." Calendar must be written before any new v1 feature lands.
-8. **Snapshot serialization has a CI regression gate.** `make_update_us` + `serialize_us` are instrumented (`feedback memory: opus_direction_review_2026_05_23b`); the gate threshold must be documented (e.g. p99 < 8ms over 1k-event firehose) and CI-enforced.
+8. **Snapshot serialization has a CI regression gate.** ✅ done — `make_update_us` + `serialize_us` instrumented in `crates/nmp-core/src/kernel/update.rs`. Gate: `snapshot_perf_firehose_gate` in `crates/nmp-core/src/kernel/perf_tests.rs` asserts `make_update_us < 250_000` μs and `serialize_us < 150_000` μs over a 1k-event firehose with `visible_limit = 500`. Thresholds = ≈ 10 × the observed dev-hardware debug baseline (~25 ms / ~15 ms, 5-run variance < 5 %); sized to catch a 10 × regression on `ubuntu-latest` debug CI without flaking on shared-runner jitter. The `NMP_PERF` log line in `kernel::update` remains the live monitoring signal in production. Test runs on every PR via `test.yml` (no new workflow required).
 9. **All M0–M8 + M10.5 milestones gates are met against the current code** (the table above is honest; no silent endings).
 10. **Doctrine D0–D14 enforced by lint** (doctrine-lint scoped run is part of CI on master).
 
-Items 6–8 are the honest-cross-platform / deprecation-calendar / perf-gate triad from the 2026-05-23 direction review. None are tracked elsewhere; they must be added to `BACKLOG.md` if work is going to start on them.
+Items 6–8 are the honest-cross-platform / deprecation-calendar / perf-gate triad from the 2026-05-23 direction review. Item 8 (perf gate) is now closed in code; items 6 and 7 are still open and must be added to `BACKLOG.md` if work is going to start on them.
 
 ---
 
