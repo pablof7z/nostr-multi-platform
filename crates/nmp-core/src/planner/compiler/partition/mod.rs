@@ -198,20 +198,19 @@ pub(super) fn partition_interest(
 
     // Case C: #p tag values → Inbox (tagged pubkey's read relays).
     if !p_tag_values.is_empty() {
-        // PD-033-C planner extension (Stage 2 precursor): `Tailing + Global +
-        // #p (Nip65ReadRelays)` with EVERY tagged pubkey lacking a cached
-        // NIP-65 inbox routes to `bootstrap_content_relays` BEFORE the
-        // normal Case C body. This is the planner mirror of the M1
-        // `req(RelayRole::Content, …)` emission for the kernel's
-        // self-zap-receipts subscription (`kind:9735 #p=[self_pk]`,
-        // `kernel/requests/startup.rs`) — without it, deleting the M1 helper
-        // would silently lose every #p Tailing REQ until the active account's
-        // kind:10002 lands (breaking the F-04 zap-receipts contract on
-        // cold-start sign-ins). NIP-17 DM routing
-        // (`p_tag_routing == Nip17DmRelays`) is intentionally excluded: those
-        // subscriptions carry gift-wrapped private DMs and MUST stay
-        // fail-closed when DM relays are unknown — diverting them to a
-        // bootstrap content relay would leak gift-wraps to a non-DM relay.
+        // PD-033-C planner extension (Stage 2 precursor): the
+        // `Tailing + Global + #p (Nip65ReadRelays)` interest shape — with
+        // EVERY tagged pubkey lacking a cached NIP-65 inbox — routes to
+        // `bootstrap_content_relays` BEFORE the normal Case C body. This is
+        // the cold-start fallback any host-driven `Tailing + Global +
+        // Nip65ReadRelays + #p` subscription relies on so events keep flowing
+        // until the active account's kind:10002 lands. Without it, every such
+        // interest would silently lose its REQ on cold-start sign-ins. NIP-17
+        // DM routing (`p_tag_routing == Nip17DmRelays`) is intentionally
+        // excluded: those subscriptions carry gift-wrapped private DMs and
+        // MUST stay fail-closed when DM relays are unknown — diverting them
+        // to a bootstrap content relay would leak gift-wraps to a non-DM
+        // relay.
         let is_bootstrap_inbox_eligible =
             matches!(interest.lifecycle, InterestLifecycle::Tailing)
                 && matches!(interest.scope, InterestScope::Global)

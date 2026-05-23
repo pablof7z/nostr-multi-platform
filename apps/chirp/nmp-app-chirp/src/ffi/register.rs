@@ -16,6 +16,7 @@ use nmp_threading::ModulePolicy;
 use nmp_nip02::FollowListProjection;
 
 use crate::dm_runtime::register_dm_runtime;
+use crate::zap_receipts_runtime::register_zap_receipts_runtime;
 
 use super::actions::{
     register_chirp_actions, register_nip17_actions, register_nip29_actions,
@@ -130,6 +131,23 @@ pub extern "C" fn nmp_app_chirp_register(
     }));
 
     register_dm_runtime(app_ref);
+
+    // Wire the NIP-57 self-zap-receipts subscription runtime. The kernel
+    // ships zero zap nouns (D0); the active-account kind:9735 `#p`
+    // subscription that feeds `ZapsAggregateProjection` below is pushed
+    // from a host-side runtime controller as a generic `LogicalInterest`
+    // (`nmp_nip57::self_zap_receipts_interest`). Same shape and
+    // wire-discipline as `register_dm_runtime` immediately above — the
+    // controller is captured by a snapshot-projection closure and
+    // reconciles on every tick. Pre-this-wiring the equivalent REQ was
+    // emitted by `nmp-core`'s `kernel::requests::startup` (deleted in
+    // the same change), which forced `nmp-core` to know about kind:9735.
+    //
+    // SAFETY context: `app_ref` is the shared borrow taken just above; the
+    // controller captures `app_ref.actor_sender()` + `app_ref.nip17_local_keys()`
+    // by value (an `mpsc::Sender` clone and an `Arc<Mutex<…>>` clone),
+    // so it does not outlive the borrow itself.
+    register_zap_receipts_runtime(app_ref);
 
     // Wire the NIP-57 `ZapsAggregateProjection` — a `KernelEventObserver`
     // that indexes incoming kind:9735 zap receipts by their `["e", target]`
