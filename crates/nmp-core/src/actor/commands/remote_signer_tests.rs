@@ -500,6 +500,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             new_capability_callback_slot(),
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(AtomicU64::new(0)),
+            // D2 — test wiring; no coverage hook installed.
+            Arc::new(std::sync::Mutex::new(None)),
         );
     });
 

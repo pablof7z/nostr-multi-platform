@@ -3766,6 +3766,7 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",
+ "nmp-coverage-gate",
  "nmp-marmot",
  "nmp-nip01",
  "nmp-nip17",

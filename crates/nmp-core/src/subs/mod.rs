@@ -90,30 +90,9 @@ pub use wire::{plan_diff, WireFrame};
 /// — keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
 /// ("kernel never grows app nouns").
 ///
-// TODO(D2): `coverage_hook` is NEVER installed in the production kernel.
-//
-// The single production assembly site is `Kernel::with_publish_store`
-// (`crates/nmp-core/src/kernel/mod.rs:535`): it constructs the
-// `SubscriptionLifecycle` and calls `set_watermark_fn`, but it never calls
-// `SubscriptionLifecycle::set_coverage_hook`. Neither `actor::run_actor` nor
-// the `nmp-core/src/ffi` app surface installs it either.
-//
-// Consequence: the shipping kernel does NOT enforce D2 ("negentropy before
-// REQ") — every plan flows straight to a raw REQ. D2 is therefore
-// CONVENTION-ONLY, not a type-system or assembly invariant.
-//
-// This cannot be fixed structurally from inside `nmp-core`: any coverage-gate
-// policy must depend on `nmp-core`, so a `nmp-core → policy-crate` dep is
-// both a D0 app-noun leak AND a dependency cycle. Enforcing D2 structurally
-// requires a HIGHER-LEVEL assembly crate that can depend on both `nmp-core`
-// and the policy crate and installs the hook at kernel-construction time.
-// (The sibling `set_watermark_fn` seam is store-backed and lives entirely
-// inside `nmp-core`, so T129 IS wired in `Kernel::with_publish_store` — only
-// this coverage hook remains unwired.)
-//
-// Open tracking item: the `#[ignore]`d sentinel test
-// `subs::coverage_hook_tests::d2_production_kernel_installs_coverage_hook`.
-// 2026-05-20 D2 audit.
+// D2 hook: installed at production-kernel-construction time by the per-app
+// crate via `NmpApp::set_coverage_hook` (see `actor/mod.rs::run_actor_with_observers`
+// and `apps/chirp/nmp-app-chirp/src/ffi/register.rs`).
 pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 
 /// T129 watermark resolver — returns the most-recent stored `created_at`
