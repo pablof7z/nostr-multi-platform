@@ -238,24 +238,32 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 ### V-12 · Production files above 500-LOC ceiling [MEDIUM · ongoing test extraction]
 
-**Production-only files verified over ceiling (2026-05-24):**
-
-*Test-extractable — all addressed (PRs merged 2026-05-24):*
+*Test-extractable — first batch (all merged 2026-05-24):*
 - ~~`crates/nmp-core/src/actor/relay_mgmt.rs`~~ — 806 → 374 LOC (PR #394)
 - ~~`crates/nmp-core/src/actor/commands/raw_event_observer.rs`~~ — 833 → 479 LOC (PR #398)
 - ~~`crates/nmp-core/src/actor/commands/dm.rs`~~ — 680 → 457 LOC (PR #395)
 - ~~`crates/nmp-core/src/actor/commands/zap.rs`~~ — 682 → 429 LOC (PR #401)
 - ~~`crates/nmp-core/src/kernel/outbox.rs`~~ — 713 → 387 LOC (PR #399)
 - ~~`crates/nmp-core/src/publish/state.rs`~~ — 516 → 348 LOC (PR #396)
-- `crates/nmp-core/src/relay.rs` — 516 → 341 LOC (PR #397, CI re-running)
+- ~~`crates/nmp-core/src/relay.rs`~~ — 516 → 341 LOC (PR #397)
 - ~~`crates/nmp-nip65/src/lib.rs`~~ — 569 → 265 LOC (PR #388)
 - ~~`crates/nmp-nostr-lmdb/src/lib.rs`~~ — 1144 → 269 LOC (PR #400)
 
-*Additional test-extractable (recently discovered; PRs in progress 2026-05-24):*
-- `crates/nmp-codegen/src/swift.rs` — 918 total, tests start 591 (PR pending)
-- `crates/nmp-core/src/planner/compiler/mod.rs` — 864 total, tests start 370 (PR pending)
-- `crates/nmp-core/src/kernel/ingest/mod.rs` — 706 total, tests start 547 (PR pending)
-- `crates/nmp-core/src/planner/compiler/partition/case_a_authors.rs` — 712 total, tests start 251 (PR pending)
+*Test-extractable — second batch (most merged 2026-05-24; remaining PRs pending CI):*
+- ~~`crates/nmp-codegen/src/swift.rs`~~ — 918 → 593 LOC (PR #402)
+- ~~`crates/nmp-core/src/kernel/ingest/mod.rs`~~ — 706 → 549 LOC (PR #403)
+- ~~`crates/nmp-core/src/planner/compiler/partition/case_a_authors.rs`~~ — 712 → 253 LOC (PR #404)
+- ~~`crates/nmp-core/src/actor/commands/event_observer.rs`~~ — 543 → 340 LOC (PR #405)
+- ~~`crates/nmp-core/src/planner/compiler/mod.rs`~~ — 864 → 372 LOC (PR #406)
+- `crates/nmp-core/src/kernel/relay_diagnostics.rs` — 611 → 542 LOC (PR #407, CI pending; production alone 539 LOC — post-v1 split needed)
+- `crates/nmp-content/src/markdown.rs` — 580 → 424 LOC (PR #408, CI pending)
+- ~~`crates/nmp-core/src/nip19.rs`~~ — 568 → 476 LOC (PR #409)
+- `crates/nmp-core/src/planner/compiler/partition/case_c_p_tags.rs` — 604 → 163 LOC (PR #410, CI pending)
+- `crates/nmp-core/src/kernel/action_registry.rs` — 937 → 353 LOC (PR #411, CI pending)
+- `crates/nmp-testing/bin/doctrine-lint/rules/d10.rs` — 725 → 336 LOC (PR #412, CI pending)
+- `crates/nmp-testing/bin/doctrine-lint/rules/d11.rs` — 618 LOC (PR pending)
+- `crates/nmp-testing/bin/doctrine-lint/rules/d12.rs` — 569 LOC (PR pending)
+- `crates/nmp-testing/bin/doctrine-lint/rules/d15.rs` — 672 LOC (PR pending)
 
 *Production splits needed (no test section to extract; post-v1):*
 - `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
@@ -264,16 +272,18 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - `crates/nmp-core/src/actor/dispatch.rs` — 1477 LOC
 - `crates/nmp-core/src/kernel/mod.rs` — 1386 LOC
 - `crates/nmp-core/src/actor/commands/identity.rs` — ~1211 LOC production
+- `crates/nmp-core/src/kernel/update.rs` — 983 LOC
 - `crates/nmp-core/src/publish/engine.rs` — 827 LOC (already has extracted tests.rs)
 - `crates/nmp-core/src/actor/commands/publish.rs` — 803 LOC (no test section)
-- `crates/nmp-core/src/kernel/update.rs` — 983 LOC
-- `crates/nmp-core/src/kernel/action_registry.rs` — 937 LOC
+- `crates/nmp-core/src/kernel/relay_diagnostics.rs` — 539 LOC production (tests extracted PR #407)
 
 **Completed test extractions:**
 - handle.rs, signer_seal.rs, view.rs (commit 34fc71a1 — 2026-05-23)
 - action_stages.rs, planner/selection.rs, substrate/bounded.rs, nmp-nip65/src/lib.rs, publish/action.rs (PR #388 — 2026-05-24)
 - identity.rs (commit e79f7a90); wallet.rs (PR #376)
 - relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs, relay.rs (PRs #394-#401 — 2026-05-24)
+- swift.rs, ingest/mod.rs, case_a_authors.rs, event_observer.rs, compiler/mod.rs, nip19.rs (PRs #402-#406, #409 — 2026-05-24)
+- (pending CI): markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10/d11/d12/d15
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
