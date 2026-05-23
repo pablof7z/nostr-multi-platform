@@ -26,6 +26,12 @@ pub mod nip21;
 pub mod planner;
 pub mod publish;
 mod relay;
+// D0: NIP-47 NWC is an app noun — the `wallet` module is gated behind the
+// `wallet` Cargo feature. Hosts the `nmp.wallet.pay_invoice` `ActionModule`
+// that closes the V3 dispatch-action bypass (`ffi::wallet::nmp_app_wallet_pay_invoice`
+// used to send `ActorCommand::WalletPayInvoice` directly).
+#[cfg(feature = "wallet")]
+pub mod wallet;
 // V-01 Phase 1c: the WebSocket relay worker is the native I/O layer.
 // Gated behind `native` (matches the `tungstenite`/`mio`/`rustls` dep gate
 // in Cargo.toml). The kernel speaks [`crate::kernel::RelayFrame`] instead of

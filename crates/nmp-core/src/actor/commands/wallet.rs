@@ -49,12 +49,14 @@ struct WalletConnection {
     pending: HashMap<String, String>,
     /// Inflight `pay_invoice` requests keyed by the kind:23194 event id, value
     /// is the dispatch correlation_id (`Some(id)` for actions originating from
-    /// `nmp_app_dispatch_action`, `None` for the C-ABI `nmp_app_wallet_pay_invoice`
-    /// path today). On the matching kind:23195 response the entry is drained;
-    /// `Some(id)` routes to [`Kernel::record_action_success`] /
-    /// [`Kernel::record_action_failure`] so the host spinner clears, `None` is
-    /// a no-op on the action_results side (the toast + balance refresh still
-    /// fire).
+    /// `nmp_app_dispatch_action` — every FFI path today, including the thin
+    /// `nmp_app_wallet_pay_invoice` C-ABI wrapper post-V3; `None` for
+    /// actor-internal auto-dispatched payments such as the
+    /// `commands/zap.rs` LNURL → pay_invoice chain). On the matching
+    /// kind:23195 response the entry is drained; `Some(id)` routes to
+    /// [`Kernel::record_action_success`] / [`Kernel::record_action_failure`]
+    /// so the host spinner clears, `None` is a no-op on the action_results
+    /// side (the toast + balance refresh still fire).
     ///
     /// Separated from `pending` so the existing diagnostic map's shape
     /// (`HashMap<String, String>`) is unchanged — `pending_payments` carries
@@ -300,19 +302,23 @@ fn wallet_disconnect_inner(
 /// Sign and send a `pay_invoice` NWC request.
 ///
 /// `correlation_id` is the registry-minted action id when this call originates
-/// from `nmp_app_dispatch_action`. The runtime stores
-/// `kind23194_event_id → correlation_id` in [`WalletConnection::pending_payments`]
-/// so the matching kind:23195 response in `handle_nwc_text` can drain it and
-/// route the outcome to [`Kernel::record_action_success`] /
-/// [`Kernel::record_action_failure`]. `None` for the C-ABI direct-call path
-/// (the iOS shell today): the toast + balance refresh still fire on the
-/// response, but no `action_results` entry is produced.
+/// from `nmp_app_dispatch_action` under namespace `nmp.wallet.pay_invoice`
+/// (every FFI path today, post-V3 — the C-ABI symbol
+/// `nmp_app_wallet_pay_invoice` is a thin wrapper that routes through the
+/// action seam). The runtime stores `kind23194_event_id → correlation_id` in
+/// [`WalletConnection::pending_payments`] so the matching kind:23195 response
+/// in `handle_nwc_text` can drain it and route the outcome to
+/// [`Kernel::record_action_success`] / [`Kernel::record_action_failure`].
+/// `None` is reserved for actor-internal auto-dispatched payments (e.g. the
+/// `commands/zap.rs` LNURL → pay_invoice chain) where no host spinner exists
+/// to close — the toast + balance refresh still fire on the response, but no
+/// `action_results` entry is produced.
 ///
 /// Early-exit failures (wallet not connected / not ready) on a dispatched
 /// action surface the terminal `Failed` into `action_results` immediately —
 /// without this the host spinner would hang on a request that was never put
-/// on the wire. `None`-carrier early exits remain toast-only (the C-ABI
-/// caller has no spinner to clear).
+/// on the wire. `None`-carrier early exits remain toast-only (the
+/// actor-internal caller has no spinner to clear).
 pub(crate) fn wallet_pay_invoice(
     wallet: &mut WalletRuntime,
     kernel: &mut Kernel,
@@ -437,11 +443,14 @@ pub(crate) fn handle_nwc_text(
         );
         if let Some((request_event_id, _response2)) = matched {
             // Drain the per-payment correlation_id slot. `None` value is a
-            // no-op on the action_results side — a direct C-ABI
-            // `nmp_app_wallet_pay_invoice` caller has no spinner to close —
-            // but the toast + balance refresh still fire below. A missing
-            // entry (duplicate response we already drained, or `e` tag
-            // pointing to an unknown request id) is tolerated.
+            // no-op on the action_results side — actor-internal
+            // auto-dispatched payments (e.g. the LNURL → pay_invoice chain
+            // in `commands/zap.rs`) have no host spinner to close — but the
+            // toast + balance refresh still fire below. A missing entry
+            // (duplicate response we already drained, or `e` tag pointing
+            // to an unknown request id) is tolerated. Post-V3 the C-ABI
+            // `nmp_app_wallet_pay_invoice` symbol routes through
+            // `dispatch_action` and therefore always carries `Some(id)`.
             let correlation_id_opt = conn.pending_payments.remove(&request_event_id);
             match (&response.error, correlation_id_opt.and_then(|x| x)) {
                 (None, Some(correlation_id)) => {
