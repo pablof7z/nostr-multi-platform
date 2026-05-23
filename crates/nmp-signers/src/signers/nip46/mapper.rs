@@ -87,11 +87,11 @@ pub fn parse_signed_event_response(
     }
     let kind_u64 = v
         .get("kind")
-        .and_then(|x| x.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| SignerError::Backend("missing kind".to_string()))?;
     let created_at_u64 = v
         .get("created_at")
-        .and_then(|x| x.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| SignerError::Backend("missing created_at".to_string()))?;
     let content = required_str(&v, "content")?.to_string();
     let id_hex = required_str(&v, "id")?.to_string();

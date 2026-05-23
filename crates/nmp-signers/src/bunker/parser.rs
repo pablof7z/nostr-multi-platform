@@ -51,13 +51,13 @@ pub enum BunkerParseError {
 impl fmt::Display for BunkerParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BunkerParseError::Empty => f.write_str("empty bunker uri"),
-            BunkerParseError::TooLong(n) => write!(f, "bunker uri too long ({n} bytes)"),
-            BunkerParseError::WrongScheme(s) => write!(f, "wrong scheme: {s}"),
-            BunkerParseError::InvalidPubkey(s) => write!(f, "invalid pubkey: {s}"),
-            BunkerParseError::NoRelay => f.write_str("at least one relay required"),
-            BunkerParseError::InvalidRelay(s) => write!(f, "invalid relay url: {s}"),
-            BunkerParseError::Malformed(s) => write!(f, "malformed uri: {s}"),
+            Self::Empty => f.write_str("empty bunker uri"),
+            Self::TooLong(n) => write!(f, "bunker uri too long ({n} bytes)"),
+            Self::WrongScheme(s) => write!(f, "wrong scheme: {s}"),
+            Self::InvalidPubkey(s) => write!(f, "invalid pubkey: {s}"),
+            Self::NoRelay => f.write_str("at least one relay required"),
+            Self::InvalidRelay(s) => write!(f, "invalid relay url: {s}"),
+            Self::Malformed(s) => write!(f, "malformed uri: {s}"),
         }
     }
 }

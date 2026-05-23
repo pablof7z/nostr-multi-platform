@@ -28,9 +28,9 @@ pub enum AccountError {
 impl std::fmt::Display for AccountError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AccountError::NotFound(id) => write!(f, "account not found: {id}"),
-            AccountError::SignerMismatch(m) => write!(f, "signer mismatch: {m}"),
-            AccountError::SignerError(e) => write!(f, "signer error: {e}"),
+            Self::NotFound(id) => write!(f, "account not found: {id}"),
+            Self::SignerMismatch(m) => write!(f, "signer mismatch: {m}"),
+            Self::SignerError(e) => write!(f, "signer error: {e}"),
         }
     }
 }

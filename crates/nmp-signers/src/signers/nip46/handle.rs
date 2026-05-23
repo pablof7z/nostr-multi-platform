@@ -85,9 +85,7 @@ impl RemoteSignerHandle for Nip46Signer {
         if let Some(err_val) = v.get("error") {
             if !err_val.is_null() {
                 let msg = err_val
-                    .as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| err_val.to_string());
+                    .as_str().map_or_else(|| err_val.to_string(), str::to_string);
                 self.resolve_response(id, Err(SignerError::Rejected(msg)));
                 return;
             }

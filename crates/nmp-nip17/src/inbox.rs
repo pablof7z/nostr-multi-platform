@@ -272,8 +272,8 @@ impl DmInboxProjection {
         // message (the last entry after the chronological sort above).
         // Tie-break on peer pubkey descending for a total, stable order.
         conversations.sort_by(|a, b| {
-            let a_latest = a.messages.last().map(|m| m.created_at).unwrap_or(0);
-            let b_latest = b.messages.last().map(|m| m.created_at).unwrap_or(0);
+            let a_latest = a.messages.last().map_or(0, |m| m.created_at);
+            let b_latest = b.messages.last().map_or(0, |m| m.created_at);
             b_latest
                 .cmp(&a_latest)
                 .then_with(|| b.peer_pubkey.cmp(&a.peer_pubkey))
