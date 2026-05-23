@@ -46,7 +46,23 @@ pub(crate) fn build_sink(drivers: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>) -> R
 /// [`RelayRole::Indexer`]; for Stage 3 the single-content model matches the
 /// JS host's existing bootstrap shape (`role: "both"` is the default).
 /// Multi-role parsing (split `"both,indexer"` into two drivers) is a
-/// post-Stage-3 follow-up tracked in BACKLOG.
+/// post-Stage-3 follow-up tracked in BACKLOG §V-01 Stage 3b — kernel-side
+/// routing is by URL (T105) so the wire path is correct; only the
+/// `RelayHealth` lane diagnostics for pure-indexer URLs are mis-bucketed.
+///
+/// # Ordering invariant
+///
+/// The runtime calls [`build_sink`] BEFORE `spawn_drivers`, but the sink
+/// captures `Rc<RefCell<Vec<…>>>` that is still empty at that point. The
+/// drivers are then constructed in this loop, and only after the function
+/// returns does the runtime assign `*self.relays.borrow_mut() = drivers`.
+/// This is safe **because** `WebSocket::new()` returns synchronously and the
+/// `onopen` JS closure cannot fire until control returns to the JS event
+/// loop — which happens only after this whole function returns and the
+/// runtime swaps the driver list in. By the time the first `onopen` fires,
+/// the sink can find the driver via URL lookup. Any refactor that moves the
+/// `onopen`-firing call site (e.g. a synchronous polyfill in tests) must
+/// re-establish this invariant.
 pub(crate) fn spawn_drivers(
     bootstrap: &[RelayBootstrapEntry],
     kernel: Rc<RefCell<KernelReducer>>,

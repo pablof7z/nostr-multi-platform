@@ -275,6 +275,13 @@ path (relay → kernel → snapshot projection) is functional end-to-end.
    Add a `js_sys::Function` callback channel through the wasm-bindgen wrapper
    so the relay-driver sink can emit a `WorkerEvent::Update` directly when
    the kernel changes.
+4. **Multi-role bootstrap parsing.** Stage 3 spawns a single Content-lane
+   driver per URL regardless of the bootstrap's declared role string
+   (`"indexer"`, `"both,indexer"`, ...). Kernel routing is by URL (T105) so
+   the wire path is correct, but `RelayHealth` diagnostics for pure-indexer
+   URLs land on the wrong lane. Parse the role string in
+   `nmp-wasm::relay_pool::spawn_drivers` and open one driver per declared
+   role per URL (mirrors the native `spawn_missing_relays` behaviour).
 
 secp256k1-sys wasm32 C build remains environmentally gated on
 `CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need

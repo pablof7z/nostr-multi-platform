@@ -265,7 +265,6 @@ impl BrowserRelayDriver {
         Closure::wrap(Box::new(move |event: CloseEvent| {
             let Some(driver) = weak.upgrade() else { return };
             let reason = event.reason();
-            let was_clean = event.was_clean();
             // Hand a Close frame to the kernel so `relay.last_close_reason`
             // surfaces in the next snapshot. Outbound from a Close is always
             // empty so we ignore the return.
@@ -286,13 +285,23 @@ impl BrowserRelayDriver {
             // Clear current socket — the user-agent already dropped it.
             driver.state.borrow_mut().current_socket = None;
 
-            // Decide reconnect vs. give up. `was_clean=true` typically means
-            // the host called `close()` deliberately. `is_permanent_error`
-            // checks the close reason for HTTP-level denial (browsers expose
-            // 4xx/5xx handshake failures via `reason` for code 1006).
-            let permanent = driver.state.borrow().permanent_failure
-                || was_clean
-                || is_permanent_error(&reason);
+            // Decide reconnect vs. give up. Two skip conditions only —
+            // matches the native `run_connected_relay` exit branches
+            // (`Shutdown` and `PermanentFailure`):
+            //   1. `permanent_failure` — `BrowserRelayDriver::close()` was
+            //      called by the host, mirroring native's `RelayCommand::Shutdown`.
+            //   2. `is_permanent_error(reason)` — HTTP 401/403 (or the literal
+            //      "Forbidden" token) in the close reason, mirroring native's
+            //      `RelayWorkerResult::PermanentFailure` from the same classifier.
+            //
+            // `event.was_clean()` is NOT a skip condition: a relay that closes
+            // gracefully with code 1001 ("going away" — planned restart) or
+            // exchanges close frames before tearing down for a config reload
+            // still fires `wasClean=true`, and the native worker reconnects on
+            // both. Skipping on `was_clean` would silently strand the driver
+            // every time the relay does a clean restart.
+            let permanent =
+                driver.state.borrow().permanent_failure || is_permanent_error(&reason);
             if !permanent {
                 driver.schedule_reconnect();
             }
