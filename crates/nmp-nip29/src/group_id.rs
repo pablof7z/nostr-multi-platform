@@ -76,6 +76,7 @@ impl GroupId {
     /// empty host or local id, or the `local_id` contains characters outside
     /// the NIP-29 charset `[a-z0-9-_]+`. The host is rewrapped as
     /// `wss://<host>` since the URI form omits the scheme.
+    #[must_use]
     pub fn from_uri(s: &str) -> Option<Self> {
         let (host, local) = s.split_once('\'')?;
         if host.is_empty() || local.is_empty() {
