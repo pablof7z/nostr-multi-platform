@@ -138,3 +138,62 @@ pub extern "C" fn nmp_app_inject_signed_events(
 
     app.send_cmd(ActorCommand::IngestPreVerifiedEvents(events));
 }
+
+/// Inject a single real signed event (supplied as NIP-01 JSON) through the
+/// kernel's `IngestPreVerifiedEvents` path.
+///
+/// The JSON string is parsed and passed through full Schnorr + id-hash
+/// verification via `try_from_raw`.  The event then routes through
+/// `ingest_pre_verified_event`, which calls both `notify_event_observers` AND
+/// `notify_raw_event_observers` on `Inserted|Replaced` outcomes (test-seam fix).
+///
+/// This unblocks integration tests that need to inject a real signed event (e.g.
+/// a kind:1059 gift-wrap from `nmp_nip59::gift_wrap`) through the kernel so
+/// registered `RawEventObserver`s (e.g. `DmInboxProjection`) see it exactly as
+/// production relay delivery would.
+///
+/// Returns `true` on success, `false` if the JSON is malformed or Schnorr
+/// verification fails — callers should assert the return value in tests.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`. Never part of the
+/// production FFI ABI.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_inject_signed_event_json(
+    app: *mut NmpApp,
+    event_json: *const c_char,
+) -> bool {
+    use nostr::JsonUtil;
+
+    let Some(app) = app_ref(app) else {
+        return false;
+    };
+    if event_json.is_null() {
+        return false;
+    }
+    // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
+    let json_str = match unsafe { CStr::from_ptr(event_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let nostr_event = match nostr::Event::from_json(json_str) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    let raw = crate::store::RawEvent {
+        id: nostr_event.id.to_hex(),
+        pubkey: nostr_event.pubkey.to_hex(),
+        created_at: nostr_event.created_at.as_secs(),
+        kind: nostr_event.kind.as_u16() as u32,
+        tags: nostr_event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+        content: nostr_event.content.clone(),
+        sig: nostr_event.sig.to_string(),
+    };
+    // Full Schnorr + id-hash verification — real events only.
+    let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    app.send_cmd(ActorCommand::IngestPreVerifiedEvents(vec![verified]));
+    true
+}

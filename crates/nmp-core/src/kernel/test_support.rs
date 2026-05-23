@@ -163,6 +163,13 @@ impl Kernel {
         }
         self.events.insert(id.clone(), cached);
         self.notify_event_observers(&kernel_event);
+        // Also fan out to raw-event observers (e.g. DmInboxProjection for kind:1059).
+        // Mirrors the `verify_and_persist` branch in `ingest/mod.rs` that calls
+        // `notify_raw_event_observers` when the store outcome is Inserted|Replaced.
+        // The `proceed` gate above already enforces that same store-outcome condition.
+        if !self.raw_event_observers_idle_for_kind(raw.kind) {
+            self.notify_raw_event_observers(&raw, &relay_url);
+        }
         // diag-firehose-stress sub_id: always appended to timeline.
         // sort_timeline() is NOT called here; callers that inject a batch of
         // events must call kernel.sort_timeline_deferred() once after the loop
