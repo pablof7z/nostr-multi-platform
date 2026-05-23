@@ -72,6 +72,7 @@ pub struct MarmotMlsOpHandler {
 impl MarmotMlsOpHandler {
     /// Build the handler around the shared projection. Called from the
     /// FFI register path immediately after [`MarmotProjection::new`].
+    #[must_use]
     pub fn new(projection: Arc<MarmotProjection>) -> Self {
         Self { projection }
     }

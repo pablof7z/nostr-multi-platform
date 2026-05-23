@@ -113,6 +113,7 @@ pub trait MlsOpHandler: Send + Sync {
 pub type MlsOpHandlerSlot = Arc<Mutex<Option<Arc<dyn MlsOpHandler>>>>;
 
 /// Construct a fresh, empty [`MlsOpHandlerSlot`].
+#[must_use]
 pub fn new_mls_op_handler_slot() -> MlsOpHandlerSlot {
     Arc::new(Mutex::new(None))
 }
