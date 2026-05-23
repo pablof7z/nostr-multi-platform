@@ -59,7 +59,7 @@ impl std::fmt::Display for NwcBuildError {
             Self::Nip04Encrypt(msg) => write!(f, "nip04 encrypt: {msg}"),
             Self::Nip04Decrypt(msg) => write!(f, "nip04 decrypt: {msg}"),
             Self::Nip44Decrypt(msg) => write!(f, "nip44 decrypt: {msg}"),
-            Self::MalformedNip04Payload(msg) => write!(f, "nip04 decrypt: {msg}"),
+            Self::MalformedNip04Payload(msg) => write!(f, "malformed nip04 payload: {msg}"),
             Self::Json(msg) => write!(f, "json: {msg}"),
         }
     }
@@ -73,11 +73,16 @@ impl std::error::Error for NwcBuildError {}
 /// `wallet_pubkey_hex`: wallet pubkey from the NWC URI.
 /// `method`: the NWC method to call.
 /// `params`: JSON-serializable params (use `serde_json::Value::Object` or typed structs).
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if the secret or pubkey are not valid secp256k1 keys
+/// or if NIP-44 encryption fails.
 pub fn request_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
     method: &NwcMethod,
-    params: Value,
+    params: &Value,
 ) -> Result<String, NwcBuildError> {
     let json = json!({
         "method": method.as_str(),
@@ -89,6 +94,10 @@ pub fn request_content(
 }
 
 /// Build encrypted content for a `get_balance` request.
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if key parsing or encryption fails.
 pub fn get_balance_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -97,11 +106,15 @@ pub fn get_balance_content(
         client_secret_hex,
         wallet_pubkey_hex,
         &NwcMethod::GetBalance,
-        json!({}),
+        &json!({}),
     )
 }
 
 /// Build encrypted content for a `get_info` request.
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if key parsing or encryption fails.
 pub fn get_info_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -110,39 +123,47 @@ pub fn get_info_content(
         client_secret_hex,
         wallet_pubkey_hex,
         &NwcMethod::GetInfo,
-        json!({}),
+        &json!({}),
     )
 }
 
 /// Build encrypted content for a `pay_invoice` request.
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if key parsing, params serialization, or encryption fails.
 pub fn pay_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
-    params: PayInvoiceParams,
+    params: &PayInvoiceParams,
 ) -> Result<String, NwcBuildError> {
-    let params_value = serde_json::to_value(&params)
+    let params_value = serde_json::to_value(params)
         .map_err(|e| NwcBuildError::Json(format!("serialize params: {e}")))?;
     request_content(
         client_secret_hex,
         wallet_pubkey_hex,
         &NwcMethod::PayInvoice,
-        params_value,
+        &params_value,
     )
 }
 
 /// Build encrypted content for a `make_invoice` request.
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if key parsing, params serialization, or encryption fails.
 pub fn make_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
-    params: MakeInvoiceParams,
+    params: &MakeInvoiceParams,
 ) -> Result<String, NwcBuildError> {
-    let params_value = serde_json::to_value(&params)
+    let params_value = serde_json::to_value(params)
         .map_err(|e| NwcBuildError::Json(format!("serialize params: {e}")))?;
     request_content(
         client_secret_hex,
         wallet_pubkey_hex,
         &NwcMethod::MakeInvoice,
-        params_value,
+        &params_value,
     )
 }
 
@@ -195,7 +216,7 @@ mod tests {
             invoice: "lnbc1exampleinvoice".to_string(),
             amount: Some(21_000),
         };
-        let content = pay_invoice_content(CLIENT_SECRET, &wallet_pk, params).unwrap();
+        let content = pay_invoice_content(CLIENT_SECRET, &wallet_pk, &params).unwrap();
         let json = decrypt_built(&content, &wallet_pk);
         assert_eq!(json["method"], "pay_invoice");
         assert_eq!(json["params"]["invoice"], "lnbc1exampleinvoice");
@@ -211,7 +232,7 @@ mod tests {
             invoice: "lnbc1noamount".to_string(),
             amount: None,
         };
-        let content = pay_invoice_content(CLIENT_SECRET, &wallet_pk, params).unwrap();
+        let content = pay_invoice_content(CLIENT_SECRET, &wallet_pk, &params).unwrap();
         let json = decrypt_built(&content, &wallet_pk);
         assert_eq!(json["params"]["invoice"], "lnbc1noamount");
         assert!(
@@ -228,7 +249,7 @@ mod tests {
             description: Some("coffee".to_string()),
             expiry: None,
         };
-        let content = make_invoice_content(CLIENT_SECRET, &wallet_pk, params).unwrap();
+        let content = make_invoice_content(CLIENT_SECRET, &wallet_pk, &params).unwrap();
         let json = decrypt_built(&content, &wallet_pk);
         assert_eq!(json["method"], "make_invoice");
         assert_eq!(json["params"]["amount"], 5_000);

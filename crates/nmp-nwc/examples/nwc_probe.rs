@@ -116,7 +116,7 @@ fn probe_one(
             parsed.client_secret_hex.as_str(),
             &parsed.wallet_pubkey_hex,
             &method,
-            json!({}),
+            &json!({}),
         )
         .map_err(|e| format!("encrypt: {e}"))?;
         let event = EventBuilder::new(Kind::from_u16(23194), &content)

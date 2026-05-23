@@ -18,6 +18,10 @@ use nostr::{Keys, PublicKey, SecretKey};
 /// Encrypt `plaintext` from the NWC client to the wallet pubkey using NIP-04.
 /// This is the historical NIP-47 default and the only flavor universally
 /// supported across wallet implementations (Alby, Mutiny, Zeus, etc.).
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if the secret or pubkey are invalid or encryption fails.
 pub fn encrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -42,6 +46,11 @@ pub fn encrypt(
 /// wrong-length IV would therefore crash the wallet runtime. We pre-validate
 /// the NIP-04 payload shape — `<base64-ciphertext>?iv=<base64-16-byte-iv>` —
 /// and return `Err` for anything malformed before delegating.
+///
+/// # Errors
+///
+/// Returns `NwcBuildError` if the secret or pubkey are invalid, the payload is
+/// malformed, or decryption fails.
 pub fn decrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -123,11 +132,13 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
     let mut acc: u32 = 0;
     let mut bits = 0u32;
     for &b in data {
-        let v = val(b)? as u32;
+        let v = u32::from(val(b)?);
         acc = (acc << 6) | v;
         bits += 6;
         if bits >= 8 {
             bits -= 8;
+            // Safe: after `bits -= 8`, acc >> bits always yields exactly 8 significant bits (≤ 255).
+            #[allow(clippy::cast_possible_truncation)]
             out.push((acc >> bits) as u8);
         }
     }
@@ -135,6 +146,10 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 }
 
 /// Derive the client public key from the client secret hex.
+///
+/// # Errors
+///
+/// Returns `NwcBuildError::InvalidClientSecret` if `client_secret_hex` is not a valid secp256k1 scalar.
 pub fn client_pubkey_hex(client_secret_hex: &str) -> Result<String, NwcBuildError> {
     let sk = parse_secret(client_secret_hex)?;
     let keys = Keys::new(sk);

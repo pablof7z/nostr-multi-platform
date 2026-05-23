@@ -82,9 +82,13 @@ impl NwcUri {
     /// Parse a `nostr+walletconnect://` URI string. The scheme match is
     /// case-insensitive — wallet UIs / mobile deeplink handlers sometimes emit
     /// `Nostr+walletconnect://` (auto-capitalize first letter).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError` if the URI scheme, wallet pubkey, or required `relay` parameter are invalid.
     pub fn parse(uri: &str) -> Result<Self, ParseError> {
-        let uri = uri.trim();
         const SCHEME: &str = "nostr+walletconnect://";
+        let uri = uri.trim();
         let rest = if uri.len() >= SCHEME.len() && uri[..SCHEME.len()].eq_ignore_ascii_case(SCHEME)
         {
             &uri[SCHEME.len()..]

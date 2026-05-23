@@ -515,7 +515,7 @@ fn build_request(
         conn.client_secret_hex.as_str(),
         &conn.wallet_pubkey_hex,
         &method,
-        params,
+        &params,
     ) {
         Ok(c) => c,
         Err(e) => {
