@@ -123,7 +123,7 @@ fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
     );
     let app_ref = unsafe { &*app };
 
-    app_ref.sign_in_local_nsec_with_keyring("test.identity", "nsec1stored".to_string());
+    let _ = app_ref.sign_in_local_nsec_with_keyring("test.identity", "nsec1stored".to_string());
     assert_eq!(
         app_ref
             .restore_local_nsec_from_keyring("test.identity", None)
