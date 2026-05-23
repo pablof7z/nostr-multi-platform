@@ -145,6 +145,10 @@ impl ReactionBuilder {
 
     /// Materialise the `UnsignedEvent`. Validates non-empty `content` and a
     /// non-empty target per D6.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReactionBuildError`] if content is blank or the target is unset.
     pub fn build(
         self,
         author: impl Into<String>,
@@ -218,6 +222,10 @@ impl RepostBuilder {
     }
 
     /// Materialise the `UnsignedEvent`. Validates a non-empty target id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReactionBuildError::MissingTarget`] if the target id is blank.
     pub fn build(
         self,
         author: impl Into<String>,
@@ -283,6 +291,10 @@ impl GenericRepostBuilder {
 
     /// Materialise the `UnsignedEvent`. Validates a non-empty target id. Emits
     /// tags in canonical order `e`, `p`, `k`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReactionBuildError::MissingTarget`] if the target id is blank.
     pub fn build(
         self,
         author: impl Into<String>,

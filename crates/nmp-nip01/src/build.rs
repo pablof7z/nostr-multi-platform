@@ -118,6 +118,10 @@ impl NoteBuilder {
     }
 
     /// Materialise the `UnsignedEvent`. Validates non-empty content (D6).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NoteBuildError::EmptyContent`] if `content` is blank.
     pub fn build(self, author: impl Into<String>, created_at: u64) -> Result<UnsignedEvent, NoteBuildError> {
         if self.content.trim().is_empty() {
             return Err(NoteBuildError::EmptyContent);

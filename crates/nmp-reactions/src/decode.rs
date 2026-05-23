@@ -265,7 +265,7 @@ fn extract_emoji(tags: &[Vec<String>]) -> Option<EmojiRef> {
 fn last_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
     tags.iter()
         .rev()
-        .find(|t| t.first().map(|s| s.as_str()) == Some(key))
+        .find(|t| t.first().map(std::string::String::as_str) == Some(key))
         .and_then(|t| t.get(1))
         .map(String::as_str)
 }

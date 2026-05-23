@@ -6,7 +6,7 @@ use std::ffi::{c_char, CString};
 use super::handle::ChirpHandle;
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
-/// Returns null on any failure (null handle, JSON encode error, CString
+/// Returns null on any failure (null handle, JSON encode error, `CString`
 /// nul-byte conflict). The returned pointer is owned by the caller; pass it
 /// to [`nmp_app_chirp_snapshot_free`] when done.
 #[no_mangle]

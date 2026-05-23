@@ -160,7 +160,7 @@ pub extern "C" fn nmp_app_chirp_register(
         policy: ModulePolicy::default(),
     };
 
-    let projection = Arc::new(ModularTimelineProjection::new(spec));
+    let projection = Arc::new(ModularTimelineProjection::new(&spec));
     let observer_id = app_ref
         .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {

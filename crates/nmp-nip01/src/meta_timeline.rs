@@ -162,10 +162,10 @@ impl Nip10ModularTimelineView {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn open(
         _ctx: &ViewContext,
-        spec: ModularTimelineSpec,
+        spec: &ModularTimelineSpec,
     ) -> (ModularTimelineState, ModularTimelinePayload) {
         let accepted_kinds: BTreeSet<u32> = spec.effective_kinds().into_iter().collect();
         let accepted_authors = spec
@@ -261,7 +261,7 @@ mod tests {
             authors: None,
             policy: ModulePolicy::default(),
         };
-        let (_state, payload) = Nip10ModularTimelineView::open(&ctx(), spec);
+        let (_state, payload) = Nip10ModularTimelineView::open(&ctx(), &spec);
         assert!(payload.blocks.is_empty());
     }
 
@@ -286,7 +286,7 @@ mod tests {
             authors: None,
             policy: ModulePolicy::default(),
         };
-        let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), spec);
+        let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
         let root = note("R", 1, vec![]);
         let reply = marked("C", 2, "R", "R");
         Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
@@ -309,7 +309,7 @@ mod tests {
             authors: None,
             policy: ModulePolicy::default(),
         };
-        let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), spec);
+        let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
         let mut e = note("Z", 1, vec![]);
         e.kind = 30023;
         assert!(Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &e).is_none());
@@ -324,7 +324,7 @@ mod tests {
             authors: Some(vec!["alice".into()]),
             policy: ModulePolicy::default(),
         };
-        let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), spec);
+        let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
         let mut a = note("A", 1, vec![]);
         a.author = "alice".into();
         let mut b = note("B", 2, vec![]);

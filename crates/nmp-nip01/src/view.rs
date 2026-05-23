@@ -6,7 +6,7 @@
 //! single `("e", target)` tag-ref hint so the subscription compiler can
 //! route efficiently.
 //!
-//! ## Lazy `#e` expansion (ThreadView)
+//! ## Lazy `#e` expansion (`ThreadView`)
 //!
 //! `view-catalog.md §5` calls for replies-of-replies to expand the `#e` set
 //! lazily as nested replies arrive. The current `dependencies` method is a
@@ -216,7 +216,7 @@ pub struct ThreadState {
     by_id: BTreeMap<EventId, KernelEvent>,
     /// Resolved parent for each known event id (`None` for the root itself).
     parent_of: BTreeMap<EventId, Option<EventId>>,
-    /// Children index: parent_id → set of child event ids.
+    /// Children index: `parent_id` → set of child event ids.
     children_of: BTreeMap<EventId, BTreeSet<EventId>>,
     /// Events that arrived before their parent (or before the root). Keyed by
     /// the missing parent id; stitched in when the parent later arrives.

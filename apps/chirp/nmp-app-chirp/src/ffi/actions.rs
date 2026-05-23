@@ -197,7 +197,7 @@ pub(super) fn register_nip17_actions(app: &mut NmpApp) {
 /// 2. The `action_stages` mirror — `Requested` is set when the
 ///    dispatch arm fires; `Failed { reason }` is recorded on any
 ///    pre-payment failure so a host spinner keyed on the
-///    `dispatch_action` correlation_id clears on the next tick.
+///    `dispatch_action` `correlation_id` clears on the next tick.
 ///
 /// # Out-of-scope
 ///
@@ -244,7 +244,7 @@ pub(super) fn register_nip57_actions(app: &mut NmpApp) {
 /// `AddRelay` / `RemoveRelay` mutation (see `maybe_publish_relay_list_after_edit`
 /// in `crates/nmp-core/src/actor/dispatch.rs`). The dispatched action seam
 /// here is the host-facing twin: a host that wants to advertise a relay set
-/// it derived in app land (e.g. on first login, before any AddRelay edits)
+/// it derived in app land (e.g. on first login, before any `AddRelay` edits)
 /// can call `nmp_app_dispatch_action("nmp.nip65.publish_relay_list", json)`
 /// and get a `correlation_id` + lifecycle entries it can spinner on. Both
 /// paths converge on the same on-wire kind:10002 — the auto-trigger reads

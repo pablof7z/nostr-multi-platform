@@ -188,16 +188,16 @@ impl CommentBuilder {
         let hint = if v.trim().is_empty() { None } else { Some(v) };
         // Apply to whichever anchor slots are mutable.
         if let Anchor::Event { ref mut relay, .. } = self.root {
-            *relay = hint.clone();
+            relay.clone_from(&hint);
         }
         if let Anchor::Address { ref mut relay, .. } = self.root {
-            *relay = hint.clone();
+            relay.clone_from(&hint);
         }
         if let Anchor::Event { ref mut relay, .. } = self.parent {
-            *relay = hint.clone();
+            relay.clone_from(&hint);
         }
         if let Anchor::Address { ref mut relay, .. } = self.parent {
-            *relay = hint.clone();
+            relay.clone_from(&hint);
         }
         self.relay_hint = hint;
         self
@@ -222,6 +222,10 @@ impl CommentBuilder {
     }
 
     /// Materialise the `UnsignedEvent`. Validates content + root.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommentBuildError`] if content is blank or root is unset.
     pub fn build(
         self,
         author: impl Into<String>,

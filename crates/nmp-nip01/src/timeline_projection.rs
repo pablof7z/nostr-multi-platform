@@ -80,8 +80,8 @@ struct Inner {
 }
 
 impl ModularTimelineProjection {
-    #[must_use] 
-    pub fn new(spec: ModularTimelineSpec) -> Self {
+    #[must_use]
+    pub fn new(spec: &ModularTimelineSpec) -> Self {
         let ctx = ViewContext::default();
         let (state, _payload) = Nip10ModularTimelineView::open(&ctx, spec);
         Self {
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn empty_open_yields_empty_snapshot() {
-        let proj = ModularTimelineProjection::new(spec());
+        let proj = ModularTimelineProjection::new(&spec());
         let snap = proj.snapshot();
         assert!(snap.blocks.is_empty());
         assert!(snap.cards.is_empty());
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn root_plus_reply_collapses_into_one_module() {
-        let proj = ModularTimelineProjection::new(spec());
+        let proj = ModularTimelineProjection::new(&spec());
         proj.on_kernel_event(&note("R", 1, vec![]));
         proj.on_kernel_event(&reply_to("C", 2, "R", "R"));
         let snap = proj.snapshot();
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn standalone_event_becomes_standalone_block() {
-        let proj = ModularTimelineProjection::new(spec());
+        let proj = ModularTimelineProjection::new(&spec());
         proj.on_kernel_event(&note("S", 1, vec![]));
         let snap = proj.snapshot();
         assert_eq!(snap.blocks.len(), 1);
@@ -234,7 +234,7 @@ mod tests {
     fn cards_include_content_tree_wire_for_mentions() {
         const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
         let mention = format!("nostr:{}", encode_npub(PK).expect("fixture npub encodes"));
-        let proj = ModularTimelineProjection::new(spec());
+        let proj = ModularTimelineProjection::new(&spec());
         proj.on_kernel_event(&note_with_content(
             "S",
             1,
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn observer_trait_object_drives_grouper() {
-        let proj: Arc<dyn KernelEventObserver> = Arc::new(ModularTimelineProjection::new(spec()));
+        let proj: Arc<dyn KernelEventObserver> = Arc::new(ModularTimelineProjection::new(&spec()));
         proj.on_kernel_event(&note("X", 1, vec![]));
     }
 }
