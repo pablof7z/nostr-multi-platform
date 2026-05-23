@@ -110,3 +110,7 @@ nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # `crates/nmp-nip17/src/inbox.rs`). Dev-only — Chirp depends on `nmp-nip17`
 # in production but never calls the gift-wrap primitive directly.
 nmp-nip59 = { path = "../../../crates/nmp-nip59" }
+# `nmp-wasm` supplies `AppAction` / `AppActionDispatch` used in the web
+# action contract test (`tests/web_action_contract.rs`) — verifies that the
+# WASM worker's typed intents map correctly to the registered action namespaces.
+nmp-wasm = { path = "../../../crates/nmp-wasm" }
