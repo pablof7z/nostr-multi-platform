@@ -29,7 +29,7 @@ nmp-core    = { path = "../nmp-core" }
 # end-to-end MLS flow over live relays via the raw WebSocket transport.
 # Optional — gated behind the `mls` feature so the default REPL build stays
 # read-only and lighter (no MDK graph).
-nmp-marmot  = { path = "../nmp-marmot", optional = true }
+nmp-marmot  = { path = "../../apps/marmot/nmp-app-marmot", optional = true }
 # `nostr` is pinned identical to nmp-marmot (which re-exports the mdk-core
 # graph) so there is exactly one `nostr` in the build.
 nostr       = { version = "0.44", default-features = false, features = ["std"] }

@@ -13,7 +13,7 @@
 #
 #   1. crates/nmp-core/src/ffi/            -> libnmp_core.a        (the kernel)
 #   2. crates/nmp-signer-broker/src/ffi.rs -> libnmp_signer_broker.a (NIP-46)
-#   3. apps/chirp/nmp-app-chirp/src/ffi.rs +
+#   3. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
 #      apps/chirp/nmp-app-chirp/src/marmot/ffi.rs +
 #      apps/chirp/nmp-app-chirp/src/marmot/identity.rs +
 #      apps/chirp/nmp-app-chirp/src/marmot/fetch.rs -> libnmp_app_chirp.a
@@ -93,7 +93,17 @@ FFI_DIR_ROOTS=(
 )
 FFI_FILE_ROOTS=(
     "${REPO_ROOT}/crates/nmp-signer-broker/src/ffi.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi.rs"
+    # Chirp per-app FFI was split into a ffi/ sub-module directory (V-09).
+    # Listed explicitly (not a directory scan) so ffi/tests.rs is excluded —
+    # it has no file-level #![cfg(test)] and would pass is_test_only_file() as
+    # non-test, but it defines zero #[no_mangle] symbols (it's a caller-only
+    # test file, same posture as marmot/ffi/tests.rs).
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/mod.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/actions.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/handle.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/helpers.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/ffi.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/identity.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/fetch.rs"

@@ -8,7 +8,7 @@ pub mod protocol;
 mod runtime;
 
 pub use protocol::{
-    ActionDispatch, CapabilityFailure, CapabilityResult, ChirpAction, ChirpActionDispatch,
+    ActionDispatch, AppAction, AppActionDispatch, CapabilityFailure, CapabilityResult,
     ClientHello, DegradedMode, RelayBootstrapEntry, RuntimeStatus, StartConfig, WorkerEvent,
     WorkerRequest,
 };

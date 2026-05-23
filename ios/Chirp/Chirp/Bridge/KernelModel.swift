@@ -390,10 +390,13 @@ final class KernelModel: ObservableObject {
     /// The recipient's `lnurl` is sourced from `TimelineItem.authorLnurl`
     /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).
     /// `amountMsats` defaults to 21,000 msats (21 sats) until an amount
-    /// picker lands; the receiver-relays list is derived from the active
-    /// account's `relayEditRows` and falls back to a hard-coded pair when
-    /// the snapshot has none — NIP-57 requires at least one relay in the
-    /// kind:9734 `relays` tag.
+    /// picker lands.
+    ///
+    /// V-07: relay selection is kernel policy. We pass an empty `relays`
+    /// list; the actor auto-selects from the recipient's kind:10002
+    /// (NIP-65) write/both relays via `kernel.author_write_relays`. The
+    /// shell never decides where the LN provider should publish the
+    /// kind:9735 receipt.
     @discardableResult
     func zap(
         targetEventID: String,
@@ -402,29 +405,13 @@ final class KernelModel: ObservableObject {
         amountMsats: UInt64 = 21_000,
         comment: String? = nil
     ) -> DispatchResult {
-        // The kind:9734 `relays` tag tells the LN provider where to publish
-        // the kind:9735 receipt. Use the active account's configured read /
-        // both relays (the surfaces the user actually listens to). Empty
-        // list → fall back to two well-known public relays so the dispatch
-        // doesn't fail validation; ZapAction::start rejects an empty list.
-        // TODO: source the recipient's preferred relays from their kind:10002
-        // (NIP-65) once the snapshot exposes them.
-        let configured: [String] = relayEditRows
-            .filter { row in
-                let role = row.role.lowercased()
-                return role == "read" || role == "both" || role == "primary"
-            }
-            .map(\.url)
-        let relays = configured.isEmpty
-            ? ["wss://relay.damus.io", "wss://nos.lol"]
-            : configured
         return track(
             kernel.zap(
                 targetEventID: targetEventID,
                 authorPubkey: authorPubkey,
                 lnurl: lnurl,
                 amountMsats: amountMsats,
-                relays: relays,
+                relays: [],
                 comment: comment
             )
         )
@@ -477,6 +464,10 @@ final class KernelModel: ObservableObject {
     @discardableResult
     func publishDmRelayList(relays: [String]) -> DispatchResult {
         track(kernel.publishDmRelayList(relays: relays))
+    }
+    @discardableResult
+    func publishRelayList(relays: [RelayEditRow]) -> DispatchResult {
+        track(kernel.publishRelayList(relays: relays))
     }
     func openTimeline() { kernel.openTimeline() }
     func clearErrorToast() { lastErrorToast = nil }

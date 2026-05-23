@@ -291,8 +291,8 @@ pub extern "C" fn nmp_marmot_register_active(
     let app_ref = unsafe { &*app };
     // ADR-0025 raw-nsec escape: Marmot's MLS state cannot be recovered
     // without the user's nsec, so the Marmot FFI bridge is the one
-    // explicitly-allowed consumer of `marmot_local_nsec`.
-    let Some(sk) = app_ref.marmot_local_nsec() else { // doctrine-allow: D13 — ADR-0025 Marmot raw-key escape
+    // explicitly-allowed consumer of `mls_local_nsec`.
+    let Some(sk) = app_ref.mls_local_nsec() else { // doctrine-allow: D13 — ADR-0025 Marmot raw-key escape
         return std::ptr::null_mut();
     };
     let Ok(keys) = Keys::parse(&sk) else {

@@ -67,7 +67,7 @@ nmp-threading = { path = "../../../crates/nmp-threading" }
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI
 # (`group_id` is hex, errors are strings). Optional + feature-gated (`marmot`):
 # deferred post-v1, so the default-off build excludes it.
-nmp-marmot = { path = "../../../crates/nmp-marmot", optional = true }
+nmp-marmot = { path = "../../marmot/nmp-app-marmot", optional = true }
 # `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
 # values from the C-ABI JSON and builds the kind:444 message rumor.
 # Pinned to the workspace `0.44` graph (nmp-core + mdk-core re-export the

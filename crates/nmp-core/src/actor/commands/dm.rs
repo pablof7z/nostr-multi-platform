@@ -35,7 +35,7 @@
 //! - `None` only when no account is active, OR when the active bunker
 //!   handle returns a malformed `pubkey_hex()` (graceful-degrade).
 //!
-//! It deliberately does NOT read the `NmpApp::marmot_local_nsec` FFI field
+//! It deliberately does NOT read the `NmpApp::mls_local_nsec` FFI field
 //! to bypass the actor: that slot is the ADR-0025 Marmot exception and must
 //! not be read for NIP-17 (D13 Part A makes this structural).
 //!

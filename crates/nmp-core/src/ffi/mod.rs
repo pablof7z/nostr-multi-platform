@@ -286,28 +286,29 @@ pub struct NmpApp {
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp` and the typed wrapper makes
     /// the slot's purpose visible at the declaration site.
     relay_edit_rows: crate::kernel::RelayEditRowsSlot,
-    /// Active local (nsec-backed) secret key in bech32 form (`nsec1…`). The
-    /// actor thread writes this after every identity mutation that changes
-    /// the active local key (create, sign-in, switch, remove). Remote-signer
-    /// accounts leave this `None`. Per-app crates (e.g. `nmp-app-chirp`
-    /// Marmot) read it via [`NmpApp::marmot_local_nsec`] so they can
-    /// register a signer without Swift ever seeing the key.
+    /// Raw bech32 nsec (`nsec1…`) for app crates that need local key material
+    /// for MLS (ADR-0025 exception; only the nmp-marmot crate holds the D13
+    /// doctrine-allow). The actor thread writes this after every identity
+    /// mutation that changes the active local key (create, sign-in, switch,
+    /// remove). Remote-signer accounts leave this `None`. Per-app crates
+    /// read it via [`NmpApp::mls_local_nsec`] so they can register a signer
+    /// without Swift ever seeing the key.
     ///
-    /// ADR-0025 exception: Marmot needs the raw nsec for MLS. NIP-17 DMs must
-    /// NOT read this slot.
+    /// ADR-0025 exception: only MLS-based app crates need the raw nsec.
+    /// NIP-17 DMs must NOT read this slot.
     ///
     /// Wrapped in [`Zeroizing`] so the bech32 secret is wiped from the heap
     /// when the slot is overwritten or the app drops — a plain `String` would
     /// leave the key recoverable in freed memory.
-    marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
+    mls_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
     /// Active account's local `nostr::Keys`, or `None` for a remote-signer
     /// (NIP-46 / bunker) account. The actor thread writes this after every
     /// identity mutation that changes the active local key (create, sign-in,
-    /// switch, remove) — exactly parallel to `marmot_local_nsec`.
+    /// switch, remove) — exactly parallel to `mls_local_nsec`.
     ///
     /// This slot is the NIP-44 key seam for protocol-crate consumers that
     /// need the in-process keypair to seal / unseal gift-wraps (NIP-17 DM
-    /// inbox decryption). It is DISTINCT from `marmot_local_nsec`: that field
+    /// inbox decryption). It is DISTINCT from `mls_local_nsec`: that field
     /// is the ADR-0025 bounded exception for MLS, and the ADR explicitly
     /// scopes the exception. A consumer without this exception reads
     /// THIS slot instead.
@@ -539,12 +540,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         crate::kernel::new_relay_edit_rows_slot();
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
-    // identity mutation; per-app crates read via NmpApp::marmot_local_nsec.
-    let marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
-    let actor_marmot_local_nsec = Arc::clone(&marmot_local_nsec);
+    // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
+    let mls_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
+    let actor_mls_local_nsec = Arc::clone(&mls_local_nsec);
     // Active local `nostr::Keys` slot — the NIP-44 key seam for non-ADR-0025
     // protocol consumers (NIP-17 DM inbox decryption). Same shared-`Arc`
-    // pattern as `marmot_local_nsec`: the actor updates it on every identity
+    // pattern as `mls_local_nsec`: the actor updates it on every identity
     // mutation; per-app crates read via `NmpApp::nip17_local_keys`.
     let nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>> = Arc::new(Mutex::new(None));
     let actor_nip17_local_keys = Arc::clone(&nip17_local_keys);
@@ -614,7 +615,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the matching clone.
                 actor_bunker_handshake,
                 actor_relay_edit_rows,
-                actor_marmot_local_nsec,
+                actor_mls_local_nsec,
                 actor_nip17_local_keys,
                 actor_capability_callback,
                 actor_storage_path,
@@ -666,7 +667,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         nip17_dm_inbox_observer_id,
         singleton_event_observer_id,
         relay_edit_rows,
-        marmot_local_nsec,
+        mls_local_nsec,
         nip17_local_keys,
         storage_path,
         pending_mls_autopublish,
@@ -1096,8 +1097,8 @@ impl NmpApp {
     /// always see the up-to-date value. Used by per-app crates (e.g.
     /// per-app crate registration) so the key stays Rust-owned
     /// (D0 — Swift never sees it for the `createAccount` path).
-    pub fn marmot_local_nsec(&self) -> Option<Zeroizing<String>> {
-        self.marmot_local_nsec.lock().ok()?.clone()
+    pub fn mls_local_nsec(&self) -> Option<Zeroizing<String>> {
+        self.mls_local_nsec.lock().ok()?.clone()
     }
 
     /// Clone of the active-local-`nostr::Keys` slot — the NIP-44 key seam
@@ -1110,7 +1111,7 @@ impl NmpApp {
     /// `Option<Keys>` on every identity mutation, so a long-lived consumer
     /// always observes the up-to-date account without re-registering.
     ///
-    /// This is DELIBERATELY separate from [`Self::marmot_local_nsec`]: that
+    /// This is DELIBERATELY separate from [`Self::mls_local_nsec`]: that
     /// accessor backs the ADR-0025 Marmot exception; NIP-17 uses this slot.
     pub fn nip17_local_keys(&self) -> Arc<Mutex<Option<nostr::Keys>>> {
         Arc::clone(&self.nip17_local_keys)

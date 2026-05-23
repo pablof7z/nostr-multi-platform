@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::protocol::{
-    ActionDispatch, CapabilityFailure, ChirpAction, RelayBootstrapEntry, RuntimeStatus,
+    ActionDispatch, AppAction, CapabilityFailure, RelayBootstrapEntry, RuntimeStatus,
     StartConfig, WorkerEvent, WorkerRequest,
 };
 
@@ -39,8 +39,8 @@ impl WasmRuntime {
                 }])
             }
             WorkerRequest::Start(config) => self.start(config),
-            WorkerRequest::ChirpAction(action) => {
-                self.chirp_action(action.action, action.correlation_id)
+            WorkerRequest::AppAction(action) => {
+                self.app_action(action.action, action.correlation_id)
             }
             WorkerRequest::Dispatch(action) => self.dispatch(action),
             WorkerRequest::CapabilityResult(result) => {
@@ -89,13 +89,13 @@ impl WasmRuntime {
         ])
     }
 
-    fn chirp_action(
+    fn app_action(
         &mut self,
-        action: ChirpAction,
+        action: AppAction,
         correlation_id: String,
     ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
         match action {
-            ChirpAction::PublishNote {
+            AppAction::PublishNote {
                 content,
                 reply_to_id,
             } => {

@@ -766,7 +766,7 @@ fn d13_part_a_positive_fixture_fires() {
         "active_local_keys",
         ".secret_key()",
         "Keys::parse",
-        "marmot_local_nsec",
+        "mls_local_nsec",
     ] {
         assert!(
             stdout.contains(token),
@@ -808,7 +808,7 @@ fn d13_negative_fixture_clean() {
 #[test]
 fn d13_part_b_positive_fixture_fires_outside_marmot() {
     // Part B is path-derived: any non-marmot, non-testing, non-actor,
-    // non-ffi file that reads `marmot_local_nsec` is a violation. Stage
+    // non-ffi file that reads `mls_local_nsec` is a violation. Stage
     // the fixture under `target/` (outside the carve-outs) — but path
     // matching uses contains("/crates/") etc., so staging at
     // `target/doctrine_lint_d13_part_b_pos/` puts the file outside the
@@ -841,8 +841,8 @@ fn d13_part_b_positive_fixture_fires_outside_marmot() {
         stdout
     );
     assert!(
-        stdout.contains("marmot_local_nsec"),
-        "d13 Part B finding must name `marmot_local_nsec`; stdout:\n{}",
+        stdout.contains("mls_local_nsec"),
+        "d13 Part B finding must name `mls_local_nsec`; stdout:\n{}",
         stdout
     );
 }

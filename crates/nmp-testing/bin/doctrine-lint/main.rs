@@ -385,7 +385,7 @@ fn scan_one_file(
         }
         // D13 — DM-path raw-key isolation (ADR-0026). Part A fires inside
         // marked DM / zap / NIP-44 files; Part B fires on any read of
-        // `marmot_local_nsec` outside the marmot crate. Both halves are
+        // `mls_local_nsec` outside the marmot crate. Both halves are
         // workspace-wide-relevant correctness rules (a leaked raw nsec is
         // a leak everywhere), so they run regardless of `--workspace-d8`.
         if d13_part_a_in_scope {
