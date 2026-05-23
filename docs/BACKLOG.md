@@ -67,10 +67,19 @@ makes the eventual fix harder.
   pure protocol kernel now drives `Start`/`Stop`/snapshot envelopes. `LocalNote` stub deleted.
   `cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes; relay transport remains
   Stage 3 (app-level intents return `browser_actor_driver_missing` honestly).
-- Stage 3: wire `web_sys::WebSocket` as a `RelayFrame` source so live REQ/EVENT/CLOSE
-  flows through the kernel, then port persistence to IndexedDB-backed `nostr-database` impl.
+- Stage 3 (read path) ✅ IN REVIEW (PR pending): `BrowserRelayDriver` in `nmp-wasm` owns one
+  `web_sys::WebSocket` per (URL, role) pair; inbound frames flow through
+  `KernelReducer::handle_relay_frame` → kernel state; outbound fans back over the same sockets.
+  Shared substrate primitives (backoff constants, jitter, HTTP-denial classifier) moved into
+  always-compiled `nmp_core::relay_protocol`. `RelayFrame` / `OutboundMessage` / `RelayRole`
+  promoted to `pub`. The native `relay_worker` thread is unchanged. Auto-reconnect uses the
+  exact same exponential backoff + per-URL jitter constants the native worker does.
+- Stage 3b (write path): app-level `AppAction` writes (PublishNote / React / Follow / Unfollow)
+  still return `browser_actor_driver_missing` — signing requires the identity runtime + bunker
+  hooks (`actor::commands::sign_in_*`) that live behind `feature = "native"`. Wire IndexedDB
+  store + identity runtime; deliver async snapshot push to JS via `js_sys::Function` callback.
 
-No chirp-web features may be added until Stage 3 lands.
+No chirp-web features may be added until Stage 3b lands.
 
 ### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 
@@ -243,30 +252,35 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Stage 3 — wire web_sys::WebSocket transport + IndexedDB [V1 BLOCKER]
+### F-01 · Fix V-01 Stage 3b — IndexedDB store + write path + async snapshot push [V1 BLOCKER]
 
-Phase 1a/1b/1c + Stage 2 done. Stub runtime is deleted; `WasmRuntime` is now
-driven by `nmp_core::KernelReducer` (the pure reducer the native actor uses).
-Snapshots flow through `wrap_snapshot` — bit-identical envelope to native hosts.
-App-level intents (`PublishNote`, `React`, `Follow`, `Unfollow`) currently
-return `browser_actor_driver_missing` because the relay transport is not yet
-wired. Stage 3 closes that gap.
+Phase 1a/1b/1c + Stage 2 + Stage 3 (read path) done. `WasmRuntime` now drives
+the pure `KernelReducer` AND owns a pool of `BrowserRelayDriver`s
+(`web_sys::WebSocket`-backed, one per (URL, role) pair) with the same
+exponential backoff / jitter / HTTP-401/403 classification the native worker uses.
+Inbound frames route through `KernelReducer::handle_relay_frame`; outbound
+fans back over the same sockets via the runtime's relay-pool sink. The read
+path (relay → kernel → snapshot projection) is functional end-to-end.
 
-**Stage 3 scope:**
-1. Implement a `web_sys::WebSocket`-backed source of `RelayFrame` so the
-   kernel's already-wire-transport-agnostic ingest path can run unchanged
-   under wasm32.
-2. Drive REQ/EVENT/CLOSE end-to-end from the browser; the actor analogue
-   becomes a `spawn_local`-driven loop pumping `KernelAction` values.
-3. Port persistence to an IndexedDB-backed `nostr-database` impl (the native
-   `nmp-nostr-lmdb` fork stays native-only).
+**Stage 3b remaining scope (V1 BLOCKER for chirp-web write features):**
+1. **IndexedDB store.** Port persistence to an IndexedDB-backed
+   `nostr-database` impl (the native `nmp-nostr-lmdb` fork stays native-only).
+   Right now the kernel runs entirely in memory and resets on page reload.
+2. **Write path (signing).** `AppAction` writes (PublishNote / React / Follow /
+   Unfollow) still return `browser_actor_driver_missing`. Wire identity
+   runtime + a wasm-compatible signer (browser-keychain or NIP-46 bunker
+   broker) so the kernel's publish engine can produce kind:1/6/7/3 events.
+3. **Async snapshot push.** Relay-driven kernel mutations don't yet push
+   a fresh snapshot to JS — the host pulls by dispatching a kernel action.
+   Add a `js_sys::Function` callback channel through the wasm-bindgen wrapper
+   so the relay-driver sink can emit a `WorkerEvent::Update` directly when
+   the kernel changes.
 
-secp256k1-sys wasm32 C build is no longer a blocker — Stage 2 confirmed
-`cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes once
-`CC_wasm32_unknown_unknown` resolves to a clang with wasm support (the CI
-workflow now sets this explicitly).
+secp256k1-sys wasm32 C build remains environmentally gated on
+`CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need
+homebrew LLVM on macOS).
 
-No `chirp-web` feature work until Stage 3 lands.
+No `chirp-web` write features may be added until Stage 3b lands.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
