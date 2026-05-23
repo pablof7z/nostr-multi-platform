@@ -1,3 +1,8 @@
+//! WASM runtime: stateful `WasmRuntime` stub that speaks the JSON
+//! postMessage protocol defined in `protocol.rs`.  Handles `Hello`, `Start`,
+//! `Dispatch`, and `Stop` requests; emits `WorkerEvent` responses.
+//! V-01 Phase 2 will wire this to the real `nmp-core` kernel.
+
 use std::fmt;
 
 use crate::protocol::{

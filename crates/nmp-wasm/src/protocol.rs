@@ -1,3 +1,7 @@
+//! WASM postMessage protocol types: `WorkerRequest` (host → worker) and
+//! `WorkerEvent` (worker → host).  All variants are serde-tagged JSON objects
+//! with a `type` field, matching the TypeScript bindings in the web shell.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
