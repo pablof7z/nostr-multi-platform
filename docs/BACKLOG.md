@@ -84,7 +84,7 @@ makes the eventual fix harder.
   correlation_id threading; `nmp_signers::sign_event_via_extension` (async, wasm32+wasm-feature);
   `publish_path.rs` (268 LOC); `NmpWasmRuntime::dispatch_app_action_async` Promise wrapper;
   extracted `nip07/wasm.rs` via `#[path]`. chirp-web now supports NIP-07 PublishNote end-to-end.
-  See F-01 for remaining gaps (multi-role bootstrap + IndexedDB).
+  Multi-role bootstrap parsing done (roles_for_entry + spawn_drivers). See F-01 for IndexedDB.
 
 No chirp-web persistence features may be added until F-01 IndexedDB lands.
 
@@ -302,20 +302,20 @@ hand-rolled path, staged. Stage 1 complete (PR #368). See V-04 staged fix plan a
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 — IndexedDB store + multi-role bootstrap [V1 BLOCKER · partial]
+### F-01 · Fix V-01 — IndexedDB store [V1 BLOCKER · partial]
 
 All prior stages merged. Stage 3c (PR #385 — 2026-05-24) wired the publish path:
 `KernelReducer::publish_signed_event`, `sign_event_via_extension` (async wasm32),
 `dispatch_app_action_async` Promise wrapper. chirp-web now supports NIP-07 PublishNote
 end-to-end (kind:1 write via NIP-07 signer, correlation_id settlement, per-relay terminals).
 
+**Multi-role bootstrap parsing: DONE (PR #385 — 2026-05-24).** `nmp-wasm::relay_pool::roles_for_entry`
+parses `"content"` / `"indexer"` / `"both"` / `"both,indexer"` strings; `spawn_drivers` opens one
+`BrowserRelayDriver` per `(URL, role)` pair. Indexer-lane `RelayHealth` diagnostics are now
+correctly bucketed.
+
 **Remaining scope (still V1 BLOCKER):**
-1. **Multi-role bootstrap parsing.** Stage 3c spawns one Content-lane driver per URL
-   regardless of the declared role string (`"indexer"`, `"both,indexer"`, ...). Parse
-   in `nmp-wasm::relay_pool::spawn_drivers`; open one driver per declared role per URL
-   (mirrors native `spawn_missing_relays`). `RelayHealth` diagnostics for pure-indexer
-   URLs currently land on the wrong lane.
-2. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl.
+1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl.
    Kernel runs in-memory only and resets on page reload. Requires sync/async model decision
    (write-behind queue + in-memory cache vs. warm-boot-from-IDB on Start).
 
