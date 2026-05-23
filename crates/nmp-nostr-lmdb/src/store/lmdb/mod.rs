@@ -252,6 +252,7 @@ impl Lmdb {
     /// open their own sub-dbs on the same environment (atomicity
     /// guarantee). The env is `Clone`able under heed's semantics — clone
     /// it freely.
+    #[must_use] 
     pub fn env(&self) -> &Env {
         &self.env
     }
@@ -655,7 +656,7 @@ impl Lmdb {
         output: &mut BTreeSet<EventBorrow<'a>>,
     ) -> Result<(), Error> {
         // Fetch by id
-        for id in filter.ids.iter() {
+        for id in &filter.ids {
             // Check if limit is set
             if let Some(limit) = limit {
                 // Stop if limited
@@ -687,8 +688,8 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for author in filter.authors.iter() {
-            for kind in filter.kinds.iter() {
+        for author in &filter.authors {
+            for kind in &filter.kinds {
                 let iter = self.akc_iter(txn, author, *kind, since, until)?;
 
                 // Count how many we have found of this author-kind pair, so we
@@ -754,9 +755,9 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for author in filter.authors.iter() {
-            for (tagname, set) in filter.generic_tags.iter() {
-                for tag_value in set.iter() {
+        for author in &filter.authors {
+            for (tagname, set) in &filter.generic_tags {
+                for tag_value in set {
                     let iter = self
                         .atc_iter(txn, author, tagname, tag_value, since, until)?
                         .filter_map(|res| {
@@ -784,8 +785,8 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for author in filter.authors.iter() {
-            for kind in filter.kinds.iter() {
+        for author in &filter.authors {
+            for kind in &filter.kinds {
                 // Author + Kind index
                 let akc_iter = self.akc_iter(txn, author, *kind, since, until)?;
 
@@ -797,8 +798,8 @@ impl Lmdb {
                     })
                     .collect();
 
-                for (tagname, set) in filter.generic_tags.iter() {
-                    for tag_value in set.iter() {
+                for (tagname, set) in &filter.generic_tags {
+                    for tag_value in set {
                         // Author + Tag index
                         let atc_iter =
                             self.atc_iter(txn, author, tagname, tag_value, since, until)?;
@@ -838,9 +839,9 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for kind in filter.kinds.iter() {
-            for (tag_name, set) in filter.generic_tags.iter() {
-                for tag_value in set.iter() {
+        for kind in &filter.kinds {
+            for (tag_name, set) in &filter.generic_tags {
+                for tag_value in set {
                     let iter = self
                         .ktc_iter(txn, *kind, tag_name, tag_value, since, until)?
                         .filter_map(|res| {
@@ -868,8 +869,8 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for (tag_name, set) in filter.generic_tags.iter() {
-            for tag_value in set.iter() {
+        for (tag_name, set) in &filter.generic_tags {
+            for tag_value in set {
                 let iter = self
                     .tc_iter(txn, tag_name, tag_value, since, until)?
                     .filter_map(|res| {
@@ -896,7 +897,7 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for author in filter.authors.iter() {
+        for author in &filter.authors {
             let iter = self.ac_iter(txn, author, since, until)?.filter_map(|res| {
                 let (_k, v) = res.ok()?;
                 Some(v)
@@ -920,7 +921,7 @@ impl Lmdb {
         // far, so we use a mutable since:
         let mut since: Timestamp = since;
 
-        for kind in filter.kinds.iter() {
+        for kind in &filter.kinds {
             let iter = self.kc_iter(txn, *kind, since, until)?.filter_map(|res| {
                 let (_k, v) = res.ok()?;
                 Some(v)

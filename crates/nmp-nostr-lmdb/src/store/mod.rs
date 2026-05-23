@@ -39,7 +39,7 @@ impl Store {
         map_size: usize,
         max_readers: u32,
         additional_dbs: u32,
-    ) -> Result<Store, Error>
+    ) -> Result<Self, Error>
     where
         P: AsRef<Path>,
     {
