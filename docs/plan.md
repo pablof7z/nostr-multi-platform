@@ -1,6 +1,6 @@
 # Build & Validation Plan
 
-> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `73ab92f5`.
+> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `20a3794f`.
 >
 > **Sources of truth:**
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
@@ -17,12 +17,12 @@
 **What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
 
 **What does not work yet** (v1 blockers):
-1. **V-01** — `nmp-wasm` is a 295-line stub with no `nmp-core` linkage. Cross-platform claim is false until wired (Phases 1a/b/c done; Stage 2 WebSocket + Stage 3 IndexedDB pending). No `chirp-web` features allowed on top of the stub.
+1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` now drives the real `KernelReducer` (Stage 2, PR #372) and owns a `BrowserRelayDriver` pool over `web_sys::WebSocket` for the read path (Stage 3, PR #375). **Stage 3b remains v1-blocking**: IndexedDB persistence, wasm-compatible signer (browser-keychain / NIP-46 bunker broker), async snapshot push to JS via `js_sys::Function` callback, and multi-role bootstrap parsing. App-level writes (PublishNote / React / Follow / Unfollow) still return `browser_actor_driver_missing`. No `chirp-web` write features allowed until Stage 3b lands.
 2. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
 3. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
 4. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`; deletes the 1,988-LOC handwritten counterpart in `KernelBridge.swift`.
 
-**Strategic gap (not v1-blocking but framework-thesis-blocking):** No stateful second app exists. `apps/longform` proves read-only; `apps/fixture` proves non-Nostr write. NIP-01 publish + NIP-46 signin from a non-Chirp binary, ≤300 LOC Swift, **zero new bespoke FFI symbols** — that spike either confirms or falsifies the framework thesis in one sprint. See [PD-033-A](BACKLOG.md#pd-033-a--framework-thesis--second-non-social-app).
+**Framework thesis — CONFIRMED 2026-05-23 (PR #377):** `apps/notes/` is a stateful second app — NIP-01 publish (kind:1) + NIP-46 bunker sign-in built entirely on existing substrate seams. 299 LOC Swift (under the ≤300 budget), 25 LOC Rust, **zero new bespoke C-ABI symbols** (the lone `nmp_app_notes_init` is an empty app-registration marker). Together with `apps/longform` (read-only consumption) and `apps/fixture` (non-Nostr write), the substrate now hosts a second non-Chirp app with no protocol-crate dependency. See [PD-033-A](BACKLOG.md#pd-033-a--framework-thesis--second-non-social-app--confirmed-2026-05-23).
 
 **Largest accumulated debt:** 48 bespoke `nmp_app_*` FFI symbols in `crates/nmp-core/src/ffi/mod.rs` (1,487 LOC) competing with `dispatch_action`. Every non-`dispatch_action` verb is migration debt. D11 covers publish; everything else is open. No deprecation calendar exists yet.
 
@@ -83,7 +83,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
-| M15 Cross-platform | pending | 🟡 Desktop + Android shells; **wasm shell = V-01 stub (v1 blocker)** |
+| M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stage 2 + Stage 3 read path landed (PR #372/#375); **Stage 3b write path + IndexedDB still v1-blocking** |
 | M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
 | M17 v1 release | pending | ❌ Pending |
 
@@ -97,9 +97,9 @@ v1 ships when **all of the following** hold:
 
 1. **No `BACKLOG.md` Section 1 violation is open** (or every open one has a staged plan that crosses the v1 line with progress per sprint).
 2. **Every `BACKLOG.md` Section 4 v1-blocker item is closed.** Today: F-01, F-02, F-04, F-05.
-3. **Every pending user decision in Section 3 is resolved** (today: PD-033-A, PD-033-C, PD-037).
-4. **Stateful second-app spike is run** (either confirms the framework thesis or produces a written falsification with `BACKLOG.md` findings for each substrate gap encountered).
-5. **`nmp-wasm` is no longer a stub.** Either it is wired (V-01 Stages 2/3 complete) or it is deleted from the workspace — keeping a maintained stub is forbidden.
+3. **Every pending user decision in Section 3 is resolved** (today: PD-033-C, PD-037; PD-033-A confirmed 2026-05-23 by `apps/notes/`).
+4. **Stateful second-app spike is run** — ✅ done (PR #377: `apps/notes/` confirms the framework thesis; 299 LOC Swift, 25 LOC Rust, 0 new C-ABI symbols).
+5. **`nmp-wasm` is no longer a stub.** Stage 2 + Stage 3 read path complete (PR #372/#375); Stage 3b (write path + IndexedDB + async snapshot push) is the remaining v1-blocking work — see F-01.
 6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
 7. **No new bespoke `nmp_app_*` FFI symbol has been added since the deprecation calendar started.** Calendar = "N existing symbols migrated to `dispatch_action` per quarter, N owned." Calendar must be written before any new v1 feature lands.
 8. **Snapshot serialization has a CI regression gate.** `make_update_us` + `serialize_us` are instrumented (`feedback memory: opus_direction_review_2026_05_23b`); the gate threshold must be documented (e.g. p99 < 8ms over 1k-event firehose) and CI-enforced.

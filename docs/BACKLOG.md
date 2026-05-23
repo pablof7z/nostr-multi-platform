@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **40d77e4d** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **20a3794f** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -67,7 +67,7 @@ makes the eventual fix harder.
   pure protocol kernel now drives `Start`/`Stop`/snapshot envelopes. `LocalNote` stub deleted.
   `cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes; relay transport remains
   Stage 3 (app-level intents return `browser_actor_driver_missing` honestly).
-- Stage 3 (read path) ✅ IN REVIEW (PR pending): `BrowserRelayDriver` in `nmp-wasm` owns one
+- Stage 3 (read path) ✅ DONE (PR #375 — merged 2026-05-23): `BrowserRelayDriver` in `nmp-wasm` owns one
   `web_sys::WebSocket` per (URL, role) pair; inbound frames flow through
   `KernelReducer::handle_relay_frame` → kernel state; outbound fans back over the same sockets.
   Shared substrate primitives (backoff constants, jitter, HTTP-denial classifier) moved into
@@ -78,6 +78,8 @@ makes the eventual fix harder.
   still return `browser_actor_driver_missing` — signing requires the identity runtime + bunker
   hooks (`actor::commands::sign_in_*`) that live behind `feature = "native"`. Wire IndexedDB
   store + identity runtime; deliver async snapshot push to JS via `js_sys::Function` callback.
+  An in-flight branch (`feat/wasm-stage3b-write-path`) prototypes the NIP-07 signer + snapshot
+  push callback; not yet merged to master.
 
 No chirp-web features may be added until Stage 3b lands.
 
@@ -257,14 +259,24 @@ before picking up Section 4 work to avoid duplicating an in-progress task.
 Items that cannot be resolved autonomously. An agent that encounters one of these must log
 its finding in the decision thread below and move on to the next item, not block.
 
-### PD-033-A · Framework thesis — second non-social app
+### PD-033-A · Framework thesis — second non-social app — CONFIRMED 2026-05-23
 
-Each app requires: protocol crate + projection crate + 4–6 C-ABI symbols + payload types +
-Swift decoder. A second non-social app built using only generic `dispatch_action` + kernel
-projections (no new C-ABI symbols, no new projection crate) would validate or falsify the
-framework claim in one sprint.
+**Decision settled (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
+client (read kind:1, publish kind:1, sign-in via nsec or NIP-46 bunker) built entirely on
+substrate seams already exported by `nmp-core` + `nmp-signer-broker`. **Zero new C-ABI
+protocol symbols** — the only `#[no_mangle]` introduced is `nmp_app_notes_init` (empty
+app-registration marker; binary would still link without it). Swift surface is **299 LOC**
+(under the ≤300 LOC budget). Rust surface is 25 LOC of code (plus docs + 2 tests).
 
-**Decision needed:** next sprint priority, or continue adding Chirp features first?
+The framework thesis — generic `dispatch_action` + kernel projections + signer-broker can
+host a second non-social app without any new protocol crate — is now proven for both the
+**read path** (verified earlier by `apps/longform/`) and the **stateful write path** (this
+spike: publish kind:1 + NIP-46 bunker sign-in, both via existing seams).
+
+**Original framing kept for history:** each protocol-bound app (e.g. Chirp social) requires
+a protocol crate + projection crate + 4–6 C-ABI symbols + payload types + Swift decoder.
+PD-033-A asked whether the substrate could host an app that needs none of those. Answer: yes,
+when the app is built on generic seams (raw_event_observer + dispatch_action + signer-broker).
 
 ### PD-033-C · Two subscription systems (gates V-04 fix) — DECISION MADE
 
@@ -285,9 +297,9 @@ autonomous agent picks the topmost item not already in Section 2.
 
 ### F-01 · Fix V-01 Stage 3b — IndexedDB store + write path + async snapshot push [V1 BLOCKER]
 
-Phase 1a/1b/1c + Stage 2 + Stage 3 (read path) done. `WasmRuntime` now drives
-the pure `KernelReducer` AND owns a pool of `BrowserRelayDriver`s
-(`web_sys::WebSocket`-backed, one per (URL, role) pair) with the same
+Phase 1a/1b/1c (PRs #341/#343) + Stage 2 (PR #372) + Stage 3 read path (PR #375) all merged
+to master. `WasmRuntime` now drives the pure `KernelReducer` AND owns a pool of
+`BrowserRelayDriver`s (`web_sys::WebSocket`-backed, one per (URL, role) pair) with the same
 exponential backoff / jitter / HTTP-401/403 classification the native worker uses.
 Inbound frames route through `KernelReducer::handle_relay_frame`; outbound
 fans back over the same sockets via the runtime's relay-pool sink. The read
