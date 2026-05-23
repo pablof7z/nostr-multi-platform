@@ -3862,6 +3862,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-coverage-gate"
+version = "0.1.0"
+
+[[package]]
 name = "nmp-desktop"
 version = "0.1.0"
 dependencies = [
