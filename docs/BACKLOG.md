@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **3744f255** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **88a9fc4d** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -201,12 +201,9 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 Work currently on a branch. Agents must not duplicate these tasks.
 
-| ID | Description | Branch | Status |
-|----|-------------|--------|--------|
-| B-7 | fix(nmp-core): route kind:9735 to KernelEventObserver + #p bootstrap subscription (F-04) | merged | DONE — PR #342 |
-| B-8 | test(nmp-app-chirp): DM inbox FFI round-trip — unignore dm_inbox_full_round_trip_through_ffi | `worktree-agent-ae8ca2fe461608b8a` | PR #344 pending CI merge |
+*No work currently in flight.*
 
-> B-1–B-4 all merged to master (PRs #331–#337). B-5 merged PR #341. B-6 merged PR #340. Phase 1b merged PR #343. WIP.md superseded by this file.
+> B-1–B-8 all merged to master (PRs #331–#337, #340–#344). WIP.md superseded by this file.
 
 ---
 
@@ -255,6 +252,14 @@ No `chirp-web` feature work until stub runtime is deleted.
 Gift-wrap **send** landed; kind:10050 relay-list publish is wired. The **receive** side on a
 fresh install has not been verified end-to-end. A new user who signs in for the first time
 must receive DMs before NIP-17 can be called done.
+
+**Rust-layer pipeline verified (PR #344 — merged):** `nmp_app_inject_signed_event_json` injects
+a real signed kind:1059 gift-wrap through `IngestPreVerifiedEvents` → `notify_raw_event_observers`
+→ `DmInboxProjection`. `nmp_app_read_projection_json("nmp.nip17.dm_inbox")` confirms the message
+appears in the snapshot. The `dm_inbox_full_round_trip_through_ffi` test passes (no longer ignored).
+The test also gates that cold-start `nip17_local_keys` seed path works without calling `Start`.
+
+**Remaining:** device-level acceptance test against live relays (product QA, not CI-gatable).
 
 **Acceptance test:** fresh account → receive a gift-wrapped kind:1059 from a second account →
 message appears in the `nmp.nip17.dm_inbox` snapshot projection.
