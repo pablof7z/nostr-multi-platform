@@ -579,6 +579,7 @@ impl PublishEngine {
     /// its `PublishQueueEntry` projection. Pure drain — the engine retains no
     /// per-publish history after this call (the snapshot's `recent_ok` /
     /// `recent_errors` carry the longer view).
+    #[must_use]
     pub(crate) fn take_completed(&mut self) -> Vec<TerminalOutcome> {
         std::mem::take(&mut self.recently_completed)
             .into_values()
@@ -819,6 +820,7 @@ impl PublishEngine {
     /// (`make_update` → `take_action_results_projection`) so each tick surfaces
     /// every action that settled. Pure drain: after this call the engine
     /// retains no per-tick terminal history.
+    #[must_use]
     pub(crate) fn take_pending_terminals(&mut self) -> Vec<LastTerminal> {
         std::mem::take(&mut self.pending_terminals)
     }

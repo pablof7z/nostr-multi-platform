@@ -22,6 +22,7 @@ pub(crate) struct CapabilityCallbackRegistration {
 
 pub(crate) type CapabilityCallbackSlot = Arc<Mutex<Option<CapabilityCallbackRegistration>>>;
 
+#[must_use]
 pub(crate) fn new_capability_callback_slot() -> CapabilityCallbackSlot {
     Arc::new(Mutex::new(None))
 }

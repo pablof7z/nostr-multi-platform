@@ -54,6 +54,7 @@ const RELAY_ROLE_METADATA: &[RelayRoleMetadata] = &[
     },
 ];
 
+#[must_use]
 pub(crate) fn relay_role_options() -> Vec<RelayRoleOption> {
     RELAY_ROLE_METADATA
         .iter()
@@ -86,6 +87,7 @@ pub(crate) fn has_role(role: &str, needle: &str) -> bool {
 }
 
 /// Normalize a relay role string into the stored `RelayEditRow.role` form.
+#[must_use]
 pub(crate) fn canonical_relay_role(role: &str) -> Option<String> {
     let mut read = false;
     let mut write = false;

@@ -168,6 +168,7 @@ pub(crate) struct ActionLifecycleTracker {
 }
 
 impl ActionLifecycleTracker {
+    #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()
     }

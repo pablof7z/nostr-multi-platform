@@ -14,6 +14,7 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 pub(crate) struct StableHasher(u64);
 
 impl StableHasher {
+    #[must_use]
     pub(crate) fn new() -> Self {
         Self(FNV_OFFSET)
     }

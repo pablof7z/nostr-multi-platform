@@ -103,6 +103,7 @@ pub(crate) enum RelayRole {
 impl RelayRole {
     /// Bootstrap-only roles (spawned at start, gate for startup REQs).
     /// `Wallet` is excluded: it spawns on demand, not at startup.
+    #[must_use]
     pub(crate) fn all() -> [Self; 2] {
         [Self::Content, Self::Indexer]
     }
@@ -184,6 +185,7 @@ impl CanonicalRelayUrl {
     ///
     /// Returns `None` when the URL cannot be canonicalized (bad scheme, missing
     /// authority, etc.). The caller MUST NOT spawn a relay worker in that case.
+    #[must_use]
     pub(crate) fn parse(raw: &str) -> Option<Self> {
         let s = raw.trim();
         // Find the scheme separator "://".
@@ -220,6 +222,7 @@ impl CanonicalRelayUrl {
     /// URLs so a lookup against the same malformed input still matches. A truly
     /// non-canonical key can only enter the maps when *every* path agrees on
     /// the identical raw spelling — which is exactly the prior behavior.
+    #[must_use]
     pub(crate) fn parse_or_raw(raw: &str) -> Self {
         Self::parse(raw).unwrap_or_else(|| Self(raw.to_string()))
     }
