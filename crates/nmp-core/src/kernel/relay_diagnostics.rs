@@ -241,38 +241,29 @@ fn build_relay_row(
     subs: Vec<WireSubscriptionStatus>,
     now_ms: u128,
 ) -> RelayDiagnosticsRow {
-    let (role, connection, auth, reconnect_count, last_connected, last_event, last_notice,
-        last_error, bytes_rx, bytes_tx) = match status {
-        Some(s) => (
-            s.role.as_str(),
-            s.connection.as_str(),
-            s.auth.as_str(),
-            s.reconnect_count,
-            s.last_connected_at_ms,
-            s.last_event_at_ms,
-            s.last_notice.clone(),
-            s.last_error.clone(),
-            s.bytes_rx,
-            s.bytes_tx,
-        ),
-        // Synthetic row for an outbox-only URL with no `RelayStatus` lane —
-        // mirrors the old Swift `syntheticRelayStatus` helper but stays Rust-
-        // owned so the shell renders fields directly.
-        None => {
-            let active_count = subs
-                .iter()
-                .filter(|s| is_active_state(&s.state))
-                .count();
-            let connection = if active_count > 0 {
-                "connected"
-            } else {
-                "unknown"
-            };
-            let last_event = subs.iter().filter_map(|s| s.last_event_at_ms).max();
-            return finish_row(relay_url, "outbox", connection, "—", 0, None, last_event,
-                None, None, 0, 0, subs, now_ms);
-        }
+    // Synthetic row for an outbox-only URL with no `RelayStatus` lane —
+    // mirrors the old Swift `syntheticRelayStatus` helper but stays Rust-
+    // owned so the shell renders fields directly.
+    let Some(s) = status else {
+        let active_count = subs.iter().filter(|s| is_active_state(&s.state)).count();
+        let connection = if active_count > 0 { "connected" } else { "unknown" };
+        let last_event = subs.iter().filter_map(|s| s.last_event_at_ms).max();
+        return finish_row(relay_url, "outbox", connection, "—", 0, None, last_event,
+            None, None, 0, 0, subs, now_ms);
     };
+    let (role, connection, auth, reconnect_count, last_connected, last_event, last_notice,
+        last_error, bytes_rx, bytes_tx) = (
+        s.role.as_str(),
+        s.connection.as_str(),
+        s.auth.as_str(),
+        s.reconnect_count,
+        s.last_connected_at_ms,
+        s.last_event_at_ms,
+        s.last_notice.clone(),
+        s.last_error.clone(),
+        s.bytes_rx,
+        s.bytes_tx,
+    );
     finish_row(
         relay_url,
         role,

@@ -748,14 +748,11 @@ pub(crate) fn sign_in_nsec(
     secret: &str,
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
-    let keys = match parse_secret(secret) {
-        Some(k) => k,
-        None => {
-            kernel.set_last_error_toast(Some(
-                "invalid secret key — expected nsec1… or 64-hex".to_string(),
-            ));
-            return Vec::new();
-        }
+    let Some(keys) = parse_secret(secret) else {
+        kernel.set_last_error_toast(Some(
+            "invalid secret key — expected nsec1… or 64-hex".to_string(),
+        ));
+        return Vec::new();
     };
     let id = identity.add(keys);
     identity.active = Some(id);

@@ -206,11 +206,10 @@ pub fn register_rust_observer(
     slot: &KernelEventObserverSlot,
     observer: Arc<dyn KernelEventObserver>,
 ) -> KernelEventObserverId {
-    let mut guard = match slot.lock() {
-        Ok(g) => g,
+    let Ok(mut guard) = slot.lock() else {
         // Poisoned mutex — D6 silent fail. Return a sentinel id; the caller
         // will eventually try to unregister it as a no-op.
-        Err(_) => return KernelEventObserverId(0),
+        return KernelEventObserverId(0);
     };
     let id = guard.alloc_id();
     guard.rust.push((id, observer));
@@ -223,10 +222,7 @@ pub fn register_c_observer(
     slot: &KernelEventObserverSlot,
     registration: KernelEventObserverRegistration,
 ) -> KernelEventObserverId {
-    let mut guard = match slot.lock() {
-        Ok(g) => g,
-        Err(_) => return KernelEventObserverId(0),
-    };
+    let Ok(mut guard) = slot.lock() else { return KernelEventObserverId(0); };
     let id = guard.alloc_id();
     guard.c_abi.push((id, registration));
     id

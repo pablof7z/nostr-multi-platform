@@ -37,11 +37,10 @@ pub(crate) fn dispatch_capability(slot: &CapabilityCallbackSlot, request_json: &
     let Ok(request) = CString::new(request_json) else {
         return capability_error_envelope(request_json, "malformed-request");
     };
-    let raw = match crate::ffi_guard::guard_ffi_callback("capability handler", || {
+    let Some(raw) = crate::ffi_guard::guard_ffi_callback("capability handler", || {
         (registration.callback)(registration.context as *mut c_void, request.as_ptr())
-    }) {
-        Some(raw) => raw,
-        None => return capability_error_envelope(request_json, "handler-panicked"),
+    }) else {
+        return capability_error_envelope(request_json, "handler-panicked");
     };
     if raw.is_null() {
         return capability_error_envelope(request_json, "handler-returned-null");

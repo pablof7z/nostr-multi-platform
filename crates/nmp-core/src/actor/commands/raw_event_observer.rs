@@ -316,10 +316,9 @@ pub fn register_rust_raw_observer(
     kinds: KindFilter,
     observer: Arc<dyn RawEventObserver>,
 ) -> RawEventObserverId {
-    let mut guard = match slot.lock() {
-        Ok(g) => g,
+    let Ok(mut guard) = slot.lock() else {
         // Poisoned mutex — D6 silent fail.
-        Err(_) => return RawEventObserverId(0),
+        return RawEventObserverId(0);
     };
     let id = guard.alloc_id();
     guard.rust.push(Arc::new(RawRustObserverEntry {
@@ -337,10 +336,7 @@ pub fn register_c_raw_observer(
     slot: &RawEventObserverSlot,
     registration: RawEventObserverRegistration,
 ) -> RawEventObserverId {
-    let mut guard = match slot.lock() {
-        Ok(g) => g,
-        Err(_) => return RawEventObserverId(0),
-    };
+    let Ok(mut guard) = slot.lock() else { return RawEventObserverId(0); };
     let id = guard.alloc_id();
     guard.c_abi.push(Arc::new(RawCObserverEntry {
         id,

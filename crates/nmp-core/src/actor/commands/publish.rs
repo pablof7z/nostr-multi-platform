@@ -474,17 +474,14 @@ pub(crate) fn publish_note(
                 correlation_id,
             );
         }
-        match kernel.reply_tags_for_parent(reply) {
-            Some(reply_tags) => tags = reply_tags,
-            None => {
-                // Cold reply — parent not in `kernel.events`. Emit a minimal
-                // reply marker so the event is at least thread-discoverable,
-                // and enqueue a one-shot hydration REQ (T121) so the next
-                // reply on this id can be built with full NIP-10 structure
-                // once the parent lands.
-                tags.push(crate::tags::e_tag(reply, None, Some("reply")));
-                hydration_kick = Some(reply.to_string());
-            }
+        if let Some(reply_tags) = kernel.reply_tags_for_parent(reply) { tags = reply_tags } else {
+            // Cold reply — parent not in `kernel.events`. Emit a minimal
+            // reply marker so the event is at least thread-discoverable,
+            // and enqueue a one-shot hydration REQ (T121) so the next
+            // reply on this id can be built with full NIP-10 structure
+            // once the parent lands.
+            tags.push(crate::tags::e_tag(reply, None, Some("reply")));
+            hydration_kick = Some(reply.to_string());
         }
     }
 

@@ -90,28 +90,16 @@ pub fn merge(
     }
 
     // Rule 1 — kinds
-    let merged_kinds = match rule1_kinds(a, b) {
-        Some(k) => k,
-        None => return MergeOutcome::Refused,
-    };
+    let Some(merged_kinds) = rule1_kinds(a, b) else { return MergeOutcome::Refused };
 
     // Rule 2 — tag dimensions
-    let merged_tags = match rule2_tags(a, b, DEFAULT_VALUE_LIMIT) {
-        Some(t) => t,
-        None => return MergeOutcome::Refused,
-    };
+    let Some(merged_tags) = rule2_tags(a, b, DEFAULT_VALUE_LIMIT) else { return MergeOutcome::Refused };
 
     // Rule 3 — since
-    let merged_since = match rule3_since(a, b) {
-        Some(s) => s,
-        None => return MergeOutcome::Refused,
-    };
+    let Some(merged_since) = rule3_since(a, b) else { return MergeOutcome::Refused };
 
     // Rule 4 — until
-    let merged_until = match rule4_until(a, b) {
-        Some(u) => u,
-        None => return MergeOutcome::Refused,
-    };
+    let Some(merged_until) = rule4_until(a, b) else { return MergeOutcome::Refused };
 
     // Rule 5 — limit
     if !rule5_limit(a, b) {
@@ -119,16 +107,10 @@ pub fn merge(
     }
 
     // Rule 7 — event_ids union
-    let merged_event_ids = match rule7_event_ids(a, b, DEFAULT_VALUE_LIMIT) {
-        Some(ids) => ids,
-        None => return MergeOutcome::Refused,
-    };
+    let Some(merged_event_ids) = rule7_event_ids(a, b, DEFAULT_VALUE_LIMIT) else { return MergeOutcome::Refused };
 
     // Rule 8 — addresses union (requires prior rules to have passed)
-    let merged_addresses = match rule8_addresses(a, b, DEFAULT_VALUE_LIMIT) {
-        Some(addrs) => addrs,
-        None => return MergeOutcome::Refused,
-    };
+    let Some(merged_addresses) = rule8_addresses(a, b, DEFAULT_VALUE_LIMIT) else { return MergeOutcome::Refused };
 
     MergeOutcome::Merged(InterestShape {
         authors: a.authors.union(&b.authors).cloned().collect(),

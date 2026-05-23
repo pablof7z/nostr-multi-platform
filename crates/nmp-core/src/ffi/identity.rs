@@ -62,24 +62,18 @@ pub extern "C" fn nmp_app_create_new_account(
     };
 
     let profile: std::collections::HashMap<String, String> =
-        match serde_json::from_str(&profile_json) {
-            Ok(p) => p,
-            Err(_) => {
-                app.send_cmd(ActorCommand::ShowToast {
-                    message: "Failed to decode profile JSON".to_string(),
-                });
-                return;
-            }
-        };
-
-    let relays: Vec<(String, String)> = match serde_json::from_str(&relays_json) {
-        Ok(r) => r,
-        Err(_) => {
+        if let Ok(p) = serde_json::from_str(&profile_json) { p } else {
             app.send_cmd(ActorCommand::ShowToast {
-                message: "Failed to decode relays JSON".to_string(),
+                message: "Failed to decode profile JSON".to_string(),
             });
             return;
-        }
+        };
+
+    let relays: Vec<(String, String)> = if let Ok(r) = serde_json::from_str(&relays_json) { r } else {
+        app.send_cmd(ActorCommand::ShowToast {
+            message: "Failed to decode relays JSON".to_string(),
+        });
+        return;
     };
 
     // Idempotency guard: two rapid taps mint two distinct keypairs (the second

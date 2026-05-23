@@ -147,14 +147,11 @@ pub(crate) fn build_relay_list_event_from_edit_rows(
 /// Returns `Some(canonical_url)` on success, `None` on any validation error
 /// (an error toast is set on the kernel in that case).
 pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) -> Option<String> {
-    let canonical = match canonical_relay_url(url) {
-        Some(u) => u,
-        None => {
-            kernel.set_last_error_toast(Some(
-                "invalid relay URL — expected wss:// or ws://".to_string(),
-            ));
-            return None;
-        }
+    let Some(canonical) = canonical_relay_url(url) else {
+        kernel.set_last_error_toast(Some(
+            "invalid relay URL — expected wss:// or ws://".to_string(),
+        ));
+        return None;
     };
     let Some(role) = normalize_role(role) else {
         kernel.set_last_error_toast(Some(

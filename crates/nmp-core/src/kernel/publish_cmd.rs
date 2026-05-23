@@ -247,10 +247,7 @@ impl Kernel {
         else {
             return Vec::new();
         };
-        let stored = match iter.next() {
-            Some(Ok(stored)) => stored,
-            _ => return Vec::new(),
-        };
+        let Some(Ok(stored)) = iter.next() else { return Vec::new(); };
         stored
             .raw
             .tags

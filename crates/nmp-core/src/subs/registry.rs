@@ -65,17 +65,14 @@ impl InterestRegistry {
     /// Returns `true` iff the interest was newly installed.
     pub fn ensure_sub(&mut self, identity: SubIdentity, interest: LogicalInterest) -> bool {
         let shared = identity.shared();
-        match self.slots.get_mut(&shared) {
-            Some(slot) => {
-                slot.owners.insert(identity.owner);
-                false
-            }
-            None => {
-                let mut owners = std::collections::BTreeSet::new();
-                owners.insert(identity.owner);
-                self.slots.insert(shared, Slot { interest, owners });
-                true
-            }
+        if let Some(slot) = self.slots.get_mut(&shared) {
+            slot.owners.insert(identity.owner);
+            false
+        } else {
+            let mut owners = std::collections::BTreeSet::new();
+            owners.insert(identity.owner);
+            self.slots.insert(shared, Slot { interest, owners });
+            true
         }
     }
 
@@ -86,16 +83,13 @@ impl InterestRegistry {
     /// updating as the user types). Owners already attached stay attached.
     pub fn set_sub(&mut self, identity: SubIdentity, interest: LogicalInterest) {
         let shared = identity.shared();
-        match self.slots.get_mut(&shared) {
-            Some(slot) => {
-                slot.owners.insert(identity.owner);
-                slot.interest = interest;
-            }
-            None => {
-                let mut owners = std::collections::BTreeSet::new();
-                owners.insert(identity.owner);
-                self.slots.insert(shared, Slot { interest, owners });
-            }
+        if let Some(slot) = self.slots.get_mut(&shared) {
+            slot.owners.insert(identity.owner);
+            slot.interest = interest;
+        } else {
+            let mut owners = std::collections::BTreeSet::new();
+            owners.insert(identity.owner);
+            self.slots.insert(shared, Slot { interest, owners });
         }
     }
 
