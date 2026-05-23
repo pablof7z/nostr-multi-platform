@@ -48,7 +48,7 @@ pub fn parse_line(line: &str) -> Result<Command, String> {
         "set-budget" => parse_set_budget(args),
         "refresh" => parse_refresh(args),
         "expand" => parse_expand(args),
-        "help" => Ok(Command::Help(args.first().map(|s| s.to_string()))),
+        "help" => Ok(Command::Help(args.first().map(std::string::ToString::to_string))),
         "create-account" => parse_create_account(args),
         "load-key" => parse_load_key(args),
         #[cfg(feature = "mls")]
@@ -304,7 +304,7 @@ fn parse_url_list(args: &[&str], verb: &'static str) -> Result<Vec<String>, Stri
     let parts: Vec<String> = args[0]
         .split(',')
         .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
     if parts.is_empty() {
         return Err(format!("parse error: {verb} — empty URL list"));
@@ -450,10 +450,10 @@ fn parse_create_account(args: &[&str]) -> Result<Command, String> {
     let (name, relays) = match args {
         [] => (None, vec![]),
         [first, rest @ ..] if !first.starts_with("wss://") && !first.starts_with("ws://") => {
-            let relays = rest.iter().map(|s| s.to_string()).collect();
+            let relays = rest.iter().map(std::string::ToString::to_string).collect();
             (Some(first.to_string()), relays)
         }
-        all => (None, all.iter().map(|s| s.to_string()).collect()),
+        all => (None, all.iter().map(std::string::ToString::to_string).collect()),
     };
     Ok(Command::CreateAccount(name, relays))
 }

@@ -221,6 +221,6 @@ fn partition(reqs: &[ContentReq]) -> BTreeMap<String, Vec<ContentReq>> {
 fn author_count(filter_json: &str) -> usize {
     serde_json::from_str::<Value>(filter_json)
         .ok()
-        .and_then(|v| v.get("authors").and_then(Value::as_array).map(|a| a.len()))
+        .and_then(|v| v.get("authors").and_then(Value::as_array).map(std::vec::Vec::len))
         .unwrap_or(0)
 }

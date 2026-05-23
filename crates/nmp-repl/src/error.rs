@@ -24,13 +24,13 @@ pub enum ReplError {
 impl fmt::Display for ReplError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ReplError::Parse(s) => write!(f, "{s}"),
-            ReplError::Variable(s) => write!(f, "{s}"),
-            ReplError::Network(s) => write!(f, "network error: {s}"),
-            ReplError::Nip05(s) => write!(f, "nip-05 error: {s}"),
-            ReplError::Planner(s) => write!(f, "planner error: {s}"),
-            ReplError::Io(s) => write!(f, "io error: {s}"),
-            ReplError::Other(s) => write!(f, "{s}"),
+            Self::Parse(s) => write!(f, "{s}"),
+            Self::Variable(s) => write!(f, "{s}"),
+            Self::Network(s) => write!(f, "network error: {s}"),
+            Self::Nip05(s) => write!(f, "nip-05 error: {s}"),
+            Self::Planner(s) => write!(f, "planner error: {s}"),
+            Self::Io(s) => write!(f, "io error: {s}"),
+            Self::Other(s) => write!(f, "{s}"),
         }
     }
 }
@@ -39,7 +39,7 @@ impl std::error::Error for ReplError {}
 
 impl From<std::io::Error> for ReplError {
     fn from(e: std::io::Error) -> Self {
-        ReplError::Io(e.to_string())
+        Self::Io(e.to_string())
     }
 }
 

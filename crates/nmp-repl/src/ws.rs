@@ -214,8 +214,7 @@ pub fn summarize_filter(filter_json: &str) -> String {
     let authors = v
         .get("authors")
         .and_then(Value::as_array)
-        .map(|a| a.len())
-        .unwrap_or(0);
+        .map_or(0, std::vec::Vec::len);
     if authors == 0 {
         kind_part
     } else if authors == 1 {

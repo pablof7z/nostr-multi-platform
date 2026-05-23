@@ -85,8 +85,7 @@ impl Completer for ReplHelper {
         // Variable completion: the current token starts with `$`.
         let token_start = upto
             .rfind(|c: char| c.is_whitespace() || c == ',' || c == '=')
-            .map(|i| i + 1)
-            .unwrap_or(0);
+            .map_or(0, |i| i + 1);
         let token = &upto[token_start..];
         if token.starts_with('$') {
             let matches: Vec<Pair> = VARS

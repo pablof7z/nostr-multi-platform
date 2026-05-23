@@ -221,10 +221,7 @@ pub fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot)> {
     let pk = event["pubkey"].as_str()?.to_string();
     let mut snap = MailboxSnapshot::default();
     for tag in event["tags"].as_array().into_iter().flatten() {
-        let arr = match tag.as_array() {
-            Some(a) => a,
-            None => continue,
-        };
+        let Some(arr) = tag.as_array() else { continue };
         if arr.first().and_then(Value::as_str) != Some("r") {
             continue;
         }

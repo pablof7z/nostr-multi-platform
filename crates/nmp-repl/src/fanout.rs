@@ -120,7 +120,7 @@ pub fn run_discovery(probes: &[(String, String, String)]) -> Vec<(String, Mailbo
             .push((sub_id.clone(), filter.clone()));
     }
 
-    let n_subs: usize = by_relay.values().map(|v| v.len()).sum();
+    let n_subs: usize = by_relay.values().map(std::vec::Vec::len).sum();
     println!(
         "  discovery: {} implicit kind:10002 probe REQ{} across {} indexer{}",
         n_subs,
@@ -273,7 +273,7 @@ pub fn launch(
                 return;
             }
             let job = {
-                let lock = work_rx.lock().unwrap_or_else(|e| e.into_inner());
+                let lock = work_rx.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 lock.recv()
             };
             match job {

@@ -20,9 +20,7 @@ fn print_state(session: &Session) {
     println!("  seed_hex:        {}", session.seed_hex.as_deref().unwrap_or("<none>"));
     let f = session
         .follows_cache
-        .as_ref()
-        .map(|s| s.len().to_string())
-        .unwrap_or_else(|| "<none>".to_string());
+        .as_ref().map_or_else(|| "<none>".to_string(), |s| s.len().to_string());
     println!("  follows_cache:   {f}");
     println!(
         "  mailbox_cache:   {} authors",
