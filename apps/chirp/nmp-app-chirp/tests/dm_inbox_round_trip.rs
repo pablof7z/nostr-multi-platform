@@ -1,9 +1,9 @@
 //! NIP-17 DM inbox round-trip — FFI registration chain proofs.
 //!
 //! These three tests collectively prove the wiring `nmp_app_chirp_register_dm_inbox`
-//! sets up — covering as much of the `kind:1059 → DmInboxProjection →
-//! projections["nmp.nip17.dm_inbox"]` round-trip as the public crate surface
-//! currently permits.
+//! sets up — covering the full `kind:1059 → DmInboxProjection →
+//! projections["nmp.nip17.dm_inbox"]` round-trip through the public crate
+//! surface.
 //!
 //! Lifted out of `src/ffi.rs` to keep the FFI module under the AGENTS.md
 //! 500-LOC hard cap. Living in `tests/` (the integration-test target) means
@@ -20,14 +20,18 @@
 //!   5. Pushes the kind:1059 `#p` gift-wrap interest when a viewer pubkey
 //!      is supplied so the kernel actually opens a REQ.
 //!
-//! The first two tests below exercise steps 1+2 (the slot-binding seam) by
+//! The first two tests exercise steps 1+2 (the slot-binding seam) by
 //! mirroring the registration's projection construction with the SAME slot
 //! the FFI captures, then proving the gift-wrap unseal works through it.
-//! The third test documents the gap that prevents a *single* FFI-driven
-//! round-trip from running end-to-end inside this crate today.
+//! The third test drives the full FFI-only round-trip — verbatim signed-event
+//! injection through `nmp_app_inject_signed_event_json` then snapshot read
+//! through `nmp_app_read_projection_json`, both gated on `test-support`.
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
-use nmp_core::{nmp_app_free, nmp_app_new, NmpApp, RawEventObserver};
+use nmp_core::{
+    nmp_app_free, nmp_app_free_string, nmp_app_inject_signed_event_json, nmp_app_new,
+    nmp_app_read_projection_json, NmpApp, RawEventObserver,
+};
 use nmp_nip17::{DmInboxProjection, DmInboxSnapshot};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
@@ -65,12 +69,11 @@ fn gift_wrapped_dm(
 /// - The full gift-wrap → unseal → conversation projection pipeline runs
 ///   through the slot a real FFI registration binds to.
 ///
-/// What this test does NOT prove (see `dm_inbox_full_round_trip_through_ffi`
-/// below for the gap): that the FFI-registered projection's
-/// `RawEventObserver::on_raw_event` is reachable from `IngestPreVerifiedEvents`
-/// or any other public path. The `raw_event_observers_slot()` accessor
-/// is `pub(crate)` on `NmpApp`, so a chirp-side test cannot fan out a
-/// kind:1059 to the registered observer without a new test-support seam.
+/// Complementary to `dm_inbox_full_round_trip_through_ffi` below: that test
+/// proves the full FFI-driven round-trip (verbatim signed-event injection →
+/// kernel ingest → `notify_raw_event_observers` → registered observer →
+/// snapshot projection); this test proves the auxiliary-projection slot-
+/// binding contract the FFI registration relies on.
 #[test]
 fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
     let app: *mut NmpApp = nmp_app_new();
@@ -217,83 +220,127 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     nmp_app_free(app);
 }
 
-/// THE END-TO-END ROUND-TRIP THROUGH THE FFI REGISTRATION CHAIN — currently
-/// blocked on a missing public test-support seam.
+/// THE END-TO-END ROUND-TRIP THROUGH THE FFI REGISTRATION CHAIN.
 ///
-/// Ideal shape (what this test would prove if the seam existed):
+/// Proves the full kind:1059 gift-wrap → kernel ingest → `RawEventObserver`
+/// fan-out → `DmInboxProjection` → `projections["nmp.nip17.dm_inbox"]`
+/// pipeline is wired correctly, exercised entirely through the public
+/// `nmp-core` FFI surface (no private types or pub(crate) accessors).
 ///
-/// 1. Build `nmp_app` via `nmp_app_new()`.
-/// 2. Generate Alice's and Bob's keys; write Bob's into
-///    `app.nip17_local_keys()` (or sign Bob in via the actor).
-/// 3. Call `nmp_app_chirp_register_dm_inbox(app)`.
-/// 4. Construct a kind:1059 gift-wrap from Alice to Bob via
-///    `nmp_nip59::gift_wrap` and inject it through a public test-support
-///    path that drives `kernel.handle_event` (the ONLY path that fans out
-///    to registered `RawEventObserver`s — see kernel/ingest/mod.rs:365).
-/// 5. Read the snapshot JSON via the update callback path and assert
-///    `projections["nmp.nip17.dm_inbox"]["conversations"]` contains an entry
-///    with Alice's content.
+/// The previously-documented seam gap (`FIXME(nip17-e2e-test-seam)`) is now
+/// closed by two test-support additions on `nmp-core`:
 ///
-/// The gap: step 4 has no public path from `nmp-app-chirp`. Concretely:
+/// * `kernel::Kernel::ingest_pre_verified_event` (test-support path) now also
+///   calls `notify_raw_event_observers` on `Inserted|Replaced` outcomes —
+///   the kernel-level ingest of injected events is symmetric with the
+///   production `handle_event` path.
+/// * `nmp_app_inject_signed_event_json` — verbatim signed-event injector
+///   that Schnorr-verifies and routes through `IngestPreVerifiedEvents`.
+/// * `nmp_app_read_projection_json` — runs every registered snapshot
+///   projection and returns the value at a single key as a caller-owned
+///   C string (freed via `nmp_app_free_string`).
 ///
-/// * `ActorCommand::IngestPreVerifiedEvents` (the only `pub` event-inject
-///   surface, gated on `cfg(any(test, feature = "test-support"))`) routes
-///   through `kernel.ingest_pre_verified_event` which calls only
-///   `notify_event_observers` — NOT `notify_raw_event_observers`. See
-///   `crates/nmp-core/src/kernel/test_support.rs:165` and the comment in
-///   `crates/nmp-core/src/kernel/raw_event_observer_tests.rs` distinguishing
-///   the two ingest paths.
-/// * `NmpApp::raw_event_observers_slot()` is `pub(crate)` (see
-///   `crates/nmp-core/src/ffi/mod.rs:878`), so a chirp-side test cannot
-///   directly invoke `notify_raw_observers` on the slot the FFI
-///   registration wrote into.
-/// * No public C-ABI symbol injects a verbatim signed-event JSON through
-///   `kernel.handle_event`.
-///
-/// FIXME(nip17-e2e-test-seam): unblock this test by adding ONE of:
-///   (a) `pub fn test_inject_signed_event_json(&self, kind: u32, json: &str)`
-///       on `NmpApp` (`cfg(any(test, feature = "test-support"))`) that
-///       fans out to `notify_raw_observers` on the shared slot — smallest
-///       blast radius, mirrors the existing `nmp_app_inject_signed_events`
-///       pattern in `crates/nmp-core/src/ffi/testing.rs`;
-///   (b) extend `ingest_pre_verified_event` to also call
-///       `notify_raw_event_observers` — narrows the production / test
-///       drift but changes a non-test path; or
-///   (c) expose `raw_event_observers_slot()` as `pub` so the test can
-///       call `nmp_core::actor::notify_raw_observers` directly — leaks
-///       internal type to the public API.
-///
-/// Until then, the two passing tests above (`dm_inbox_decrypts_through_
-/// the_shared_local_keys_slot` and `dm_inbox_snapshot_json_round_trips_
-/// through_dm_inbox_snapshot`) cover the slot-binding seam and wire
-/// shape — every part of the chain EXCEPT the
-/// `kernel.handle_event → notify_raw_event_observers → registered
-/// observer` edge.
+/// Together these let `nmp-app-chirp` (or any per-app crate) prove its
+/// registered raw-event observers and snapshot projections fire end-to-end
+/// without leaking any internal type onto the production FFI ABI — both
+/// symbols are gated on `cfg(any(test, feature = "test-support"))`.
 #[test]
-#[ignore = "blocked on test-support seam — see FIXME(nip17-e2e-test-seam) in docstring"]
 fn dm_inbox_full_round_trip_through_ffi() {
-    // This body is a structural sketch of the test the FIXME would
-    // unblock; it is `#[ignore]`'d so `cargo test -p nmp-app-chirp` is
-    // green today and surfaces the gap via `cargo test -- --ignored`.
+    use std::ffi::{CStr, CString};
+    use std::time::Duration;
+
     let app: *mut NmpApp = nmp_app_new();
     let alice = Keys::generate();
     let bob = Keys::generate();
 
+    // Register the DM inbox raw-event observer AND the
+    // "nmp.nip17.dm_inbox" snapshot-projection closure through the
+    // production FFI symbol — exactly the call Swift makes at startup.
+    nmp_app_chirp_register_dm_inbox(app);
+
+    // Write Bob's keys into the shared NIP-17 local-keys slot. In production
+    // the actor mutates this on every identity reducer; here the test plays
+    // the role of the actor — same surrogate the two preceding tests use.
+    //
+    // NB: `nmp_app_start` is deliberately NOT called here. The actor thread
+    // is already spawned by `nmp_app_new`, and `ActorCommand::IngestPreVerifiedEvents`
+    // is dispatched unconditionally regardless of `*ctx.running` (see
+    // `actor/dispatch.rs:958`). Calling `Start` would synchronously fire
+    // `update_local_key_slots` (`actor/dispatch.rs:213`) which clobbers
+    // `nip17_local_keys` with `identity.active_local_keys()` (None here, no
+    // sign-in), defeating the slot write below and causing the projection
+    // to surface `remote_signer_unsupported:true` instead of decrypting.
     // SAFETY: app came from nmp_app_new() and is live for this call.
     *unsafe { (*app).nip17_local_keys() }.lock().unwrap() = Some(bob.clone());
 
-    nmp_app_chirp_register_dm_inbox(app);
+    // Build the gift-wrap envelope (kind:1059) from Alice to Bob through the
+    // exact production primitive (`nmp_nip59::gift_wrap`).
+    let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "round-trip", 100);
+    let envelope_json = nostr::JsonUtil::as_json(&envelope);
 
-    let _envelope = gift_wrapped_dm(&alice, &bob.public_key(), "round-trip", 100);
-    // FIXME(nip17-e2e-test-seam): inject `_envelope` through a path that
-    // fans out to `notify_raw_event_observers`. No public path exists today
-    // (see docstring above). When the seam lands, the body below should:
-    //
-    //   1. inject the envelope via the new test-support symbol;
-    //   2. read the snapshot JSON via `nmp_app_set_update_callback`
-    //      (the same path Swift consumes);
-    //   3. parse and assert `projections["nmp.nip17.dm_inbox"]
-    //      ["conversations"][0]["messages"][0]["content"] == "round-trip"`.
+    // Inject the verbatim signed event. The test-support symbol Schnorr-
+    // verifies then routes through `IngestPreVerifiedEvents`, which the
+    // actor dispatches to `kernel.ingest_pre_verified_event` — which now
+    // fans out to `notify_raw_event_observers` so the registered
+    // `DmInboxProjection` sees the kind:1059 envelope.
+    let json_cstr = CString::new(envelope_json.as_str())
+        .expect("envelope JSON must be NUL-free");
+    // The FFI symbol is `extern "C" fn` (no `unsafe`) with
+    // `#[allow(clippy::not_unsafe_ptr_arg_deref)]` — pointer validity is
+    // upheld by the caller, but the call itself is language-safe.
+    let ok = nmp_app_inject_signed_event_json(app, json_cstr.as_ptr());
+    assert!(
+        ok,
+        "nmp_app_inject_signed_event_json must return true for a valid gift-wrap envelope",
+    );
+
+    // Give the actor thread time to drain the `IngestPreVerifiedEvents`
+    // command. Polling matches the established pattern in
+    // `tests/end_to_end.rs` (500 ms between command send and snapshot read).
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Read the projection JSON via the symmetric output-side seam. The
+    // function runs every registered snapshot-projection closure (same path
+    // the kernel's `make_update` drives on each tick) and returns the
+    // serialized value at the requested key.
+    let key = CString::new("nmp.nip17.dm_inbox").expect("key must be NUL-free");
+    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
+    assert!(
+        !ptr.is_null(),
+        "nmp.nip17.dm_inbox projection must be registered after \
+         nmp_app_chirp_register_dm_inbox",
+    );
+    // SAFETY: ptr was returned by nmp_app_read_projection_json and is a
+    // heap-owned, NUL-terminated UTF-8 C string. Copy out before freeing
+    // so the borrow is decoupled from the allocation lifetime.
+    let json_str = unsafe { CStr::from_ptr(ptr) }
+        .to_str()
+        .expect("projection JSON must be valid UTF-8")
+        .to_owned();
+    nmp_app_free_string(ptr);
+
+    // Decode through the typed `DmInboxSnapshot` to assert the wire shape
+    // matches what Swift consumes off the kernel update channel — same
+    // round-trip the second test in this file proves directly on
+    // `DmInboxProjection`, now driven entirely through the public FFI.
+    let snapshot: DmInboxSnapshot = serde_json::from_str(&json_str)
+        .expect("nmp.nip17.dm_inbox projection must decode to DmInboxSnapshot");
+    assert_eq!(
+        snapshot.conversations.len(),
+        1,
+        "exactly one conversation expected after one ingest, got {json_str}",
+    );
+    let convo = &snapshot.conversations[0];
+    assert_eq!(
+        convo.peer_pubkey,
+        alice.public_key().to_hex(),
+        "conversation peer must be Alice (the sender, taken from the verified seal)",
+    );
+    assert_eq!(convo.messages.len(), 1, "exactly one decrypted message expected");
+    assert_eq!(
+        convo.messages[0].content, "round-trip",
+        "decrypted content must round-trip verbatim from gift_wrap → DmInboxProjection",
+    );
 
     nmp_app_free(app);
 }

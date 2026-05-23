@@ -100,7 +100,10 @@ pub use raw_event_tap::{
 // test-support facade in `lib.rs`. The symbols stay `#[no_mangle] extern "C"`
 // in `testing`; the `pub use` is only consumed under the test-support gate.
 #[cfg(any(test, feature = "test-support"))]
-pub use testing::{nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events};
+pub use testing::{
+    nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
+    nmp_app_inject_signed_events, nmp_app_read_projection_json,
+};
 
 // Re-exported so `crate::ffi::nmp_app_{open_author,open_thread,...}` stays
 // byte-stable for the test-support facade in `lib.rs`. The symbols stay
