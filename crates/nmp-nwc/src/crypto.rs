@@ -150,6 +150,7 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 /// # Errors
 ///
 /// Returns `NwcBuildError::InvalidClientSecret` if `client_secret_hex` is not a valid secp256k1 scalar.
+#[must_use]
 pub fn client_pubkey_hex(client_secret_hex: &str) -> Result<String, NwcBuildError> {
     let sk = parse_secret(client_secret_hex)?;
     let keys = Keys::new(sk);

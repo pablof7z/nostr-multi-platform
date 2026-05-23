@@ -88,6 +88,7 @@ impl NwcUri {
     /// # Errors
     ///
     /// Returns `ParseError` if the URI scheme, wallet pubkey, or required `relay` parameter are invalid.
+    #[must_use]
     pub fn parse(uri: &str) -> Result<Self, ParseError> {
         const SCHEME: &str = "nostr+walletconnect://";
         let uri = uri.trim();
