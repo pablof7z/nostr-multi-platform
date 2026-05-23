@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **20a3794f** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **76bc8547** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -295,42 +295,33 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Stage 3b — IndexedDB store + write path + async snapshot push [V1 BLOCKER]
+### F-01 · Fix V-01 Stage 3c — IndexedDB store + write path + multi-role bootstrap [V1 BLOCKER]
 
-Phase 1a/1b/1c (PRs #341/#343) + Stage 2 (PR #372) + Stage 3 read path (PR #375) all merged
-to master. `WasmRuntime` now drives the pure `KernelReducer` AND owns a pool of
-`BrowserRelayDriver`s (`web_sys::WebSocket`-backed, one per (URL, role) pair) with the same
-exponential backoff / jitter / HTTP-401/403 classification the native worker uses.
-Inbound frames route through `KernelReducer::handle_relay_frame`; outbound
-fans back over the same sockets via the runtime's relay-pool sink. The read
-path (relay → kernel → snapshot projection) is functional end-to-end.
+Phase 1a/1b/1c (PRs #341/#343) + Stage 2 (PR #372) + Stage 3 read path (PR #375) +
+Stage 3b NIP-07 signer + snapshot push (PR #378) all merged to master.
+`WasmRuntime` owns a pool of `BrowserRelayDriver`s with shared backoff/jitter/HTTP-denial
+constants. Read path (relay → kernel → snapshot projection) is functional end-to-end.
+`Nip07Signer::sign()` bridges `window.nostr.signEvent(...)` on wasm32. Async snapshot push
+via `set_snapshot_callback(Option<js_sys::Function>)` is live.
 
-**Stage 3b remaining scope (V1 BLOCKER for chirp-web write features):**
-1. **IndexedDB store.** Port persistence to an IndexedDB-backed
-   `nostr-database` impl (the native `nmp-nostr-lmdb` fork stays native-only).
-   Right now the kernel runs entirely in memory and resets on page reload.
-2. **Write path (signing).** `AppAction` writes (PublishNote / React / Follow /
-   Unfollow) still return `browser_actor_driver_missing`. Wire identity
-   runtime + a wasm-compatible signer (browser-keychain or NIP-46 bunker
-   broker) so the kernel's publish engine can produce kind:1/6/7/3 events.
-3. **Async snapshot push.** Relay-driven kernel mutations don't yet push
-   a fresh snapshot to JS — the host pulls by dispatching a kernel action.
-   Add a `js_sys::Function` callback channel through the wasm-bindgen wrapper
-   so the relay-driver sink can emit a `WorkerEvent::Update` directly when
-   the kernel changes.
-4. **Multi-role bootstrap parsing.** Stage 3 spawns a single Content-lane
-   driver per URL regardless of the bootstrap's declared role string
-   (`"indexer"`, `"both,indexer"`, ...). Kernel routing is by URL (T105) so
-   the wire path is correct, but `RelayHealth` diagnostics for pure-indexer
-   URLs land on the wrong lane. Parse the role string in
-   `nmp-wasm::relay_pool::spawn_drivers` and open one driver per declared
-   role per URL (mirrors the native `spawn_missing_relays` behaviour).
+**Stage 3c remaining scope (V1 BLOCKER for chirp-web write features):**
+1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl
+   (the native `nmp-nostr-lmdb` fork stays native-only). Kernel runs in-memory only
+   and resets on page reload.
+2. **Write-path wiring.** `publish_path_not_wired` error returns for all `AppAction`
+   writes. Expose `dispatch_action_json` surface from `KernelReducer` → wasm-bindgen
+   wrapper so the NIP-07 signer (already wired) can drive kind:1/3/7 publishes.
+3. **Multi-role bootstrap parsing.** Stage 3 spawns one Content-lane driver per URL
+   regardless of the declared role string (`"indexer"`, `"both,indexer"`, ...). Parse
+   in `nmp-wasm::relay_pool::spawn_drivers`; open one driver per declared role per URL
+   (mirrors native `spawn_missing_relays`). `RelayHealth` diagnostics for pure-indexer
+   URLs currently land on the wrong lane.
 
 secp256k1-sys wasm32 C build remains environmentally gated on
-`CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need
-homebrew LLVM on macOS).
+`CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need homebrew LLVM on macOS).
 
-No `chirp-web` write features may be added until Stage 3b lands.
+No `chirp-web` features requiring persistence across reloads or writes may be added until
+Stage 3c lands.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
