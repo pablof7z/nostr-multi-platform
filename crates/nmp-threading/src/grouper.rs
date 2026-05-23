@@ -98,20 +98,24 @@ impl<R: ParentResolver> Grouper<R> {
         }
     }
 
+    #[must_use]
     pub fn blocks(&self) -> &[TimelineBlock] {
         &self.blocks
     }
 
+    #[must_use]
     pub fn pending_ancestor_ids(&self) -> &BTreeSet<EventId> {
         &self.pending_ancestor_ids
     }
 
+    #[must_use]
     pub fn event(&self, id: &EventId) -> Option<&KernelEvent> {
         self.by_id.get(id)
     }
 
     /// Process an inserted event. Returns the strongest single delta
     /// (wrappers re-snapshot anyway).
+    #[must_use]
     pub fn on_insert(&mut self, event: &KernelEvent) -> Option<GroupDelta> {
         if self.by_id.contains_key(&event.id) {
             return None;
@@ -144,6 +148,7 @@ impl<R: ParentResolver> Grouper<R> {
     }
 
     /// Process a removed event. Returns at most one delta.
+    #[must_use]
     pub fn on_remove(&mut self, id: &EventId) -> Option<GroupDelta> {
         self.by_id.remove(id);
         self.pending_ancestor_ids.remove(id);
@@ -200,8 +205,9 @@ impl<R: ParentResolver> Grouper<R> {
 
     /// Process a replaced event. Modelled as remove + insert; wrappers see a
     /// single delta — the inserted one.
+    #[must_use]
     pub fn on_replace(&mut self, old_id: &EventId, new_event: &KernelEvent) -> Option<GroupDelta> {
-        self.on_remove(old_id);
+        let _ = self.on_remove(old_id); // delta from remove is subsumed by the insert delta below
         self.on_insert(new_event)
     }
 
