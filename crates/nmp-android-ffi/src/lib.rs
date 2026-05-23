@@ -175,6 +175,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
     }
 }
 
+#[must_use]
 pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
     if handle == 0 {
         None

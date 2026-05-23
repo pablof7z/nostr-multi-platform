@@ -136,6 +136,7 @@ impl TofuSignerCache {
             .collect()
     }
 
+    #[must_use]
     pub fn pinned_signer(&self, group: &GroupId) -> Option<&str> {
         self.pinned.get(group).map(String::as_str)
     }

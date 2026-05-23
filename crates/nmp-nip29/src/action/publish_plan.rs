@@ -48,6 +48,7 @@ pub struct PublishPlan {
 }
 
 impl PublishPlan {
+    #[must_use]
     pub fn pinned(group: &GroupId, kind: u32, content: impl Into<String>, tags: Vec<Vec<String>>) -> Self {
         Self {
             kind,
