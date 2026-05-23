@@ -95,6 +95,7 @@ pub struct TungsteniteRelayClient {
 impl TungsteniteRelayClient {
     /// Connect synchronously to `url` and spawn the read/write loop.
     /// Returns once the WebSocket handshake completes (or fails).
+    #[must_use]
     pub fn connect(url: &str, on_event: EventCallback) -> Result<Self, RelayError> {
         install_rustls_provider();
         let (mut socket, _resp) =
