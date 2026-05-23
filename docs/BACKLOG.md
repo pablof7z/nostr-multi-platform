@@ -308,14 +308,33 @@ via `set_snapshot_callback(Option<js_sys::Function>)` is live.
 1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl
    (the native `nmp-nostr-lmdb` fork stays native-only). Kernel runs in-memory only
    and resets on page reload.
-2. **Write-path wiring.** `publish_path_not_wired` error returns for all `AppAction`
-   writes. Expose `dispatch_action_json` surface from `KernelReducer` → wasm-bindgen
-   wrapper so the NIP-07 signer (already wired) can drive kind:1/3/7 publishes.
+2. **Write-path wiring — PublishNote (kind:1).** DONE — first Stage 3c PR added
+   `KernelReducer::publish_signed_event(...)`, the pure-async
+   `nmp_signers::sign_event_via_extension(...)` twin of
+   `Nip07Signer::sign()`, and the `NmpWasmRuntime::dispatch_app_action_async(...)`
+   Promise wrapper. The synchronous `handle_json` path still returns
+   `publish_path_not_wired` (now pointing hosts at the async entrypoint).
+   - **Follow-up: React / Follow / Unfollow.** The async path returns
+     `publish_path_not_wired_for_kind` for these variants today. Each kind has
+     tag-construction subtleties (NIP-25 `k` tag derivation for React,
+     kind:3 follow-set merging for Follow/Unfollow) that the native
+     `actor/commands/publish.rs::react` / `follow` / `unfollow` handlers own.
+     Wire them kind-by-kind so the wasm path doesn't silently drift from native.
+   - **Follow-up: PublishNote reply (`reply_to_id: Some(_)`).** The wasm
+     path returns `publish_path_not_wired_for_kind` for replies today;
+     the native `publish_note` walks the kernel's `events` read-cache for
+     NIP-10 root/parent reply tags. Lifting that into a substrate helper
+     (so both paths share it) is the cleanest fix.
+   - **Follow-up: non-NIP-07 signers.** Only `SignerBackend::Nip07` is
+     wired through the async path. LocalKey signers can't run in the wasm
+     runtime (the runtime should not hold key material); NIP-46 bunker on
+     wasm needs a wasm-native NIP-46 transport the broker side does not yet
+     expose. Both are tracked as follow-ups.
 3. **Multi-role bootstrap parsing.** Stage 3 spawns one Content-lane driver per URL
    regardless of the declared role string (`"indexer"`, `"both,indexer"`, ...). Parse
    in `nmp-wasm::relay_pool::spawn_drivers`; open one driver per declared role per URL
    (mirrors native `spawn_missing_relays`). `RelayHealth` diagnostics for pure-indexer
-   URLs currently land on the wrong lane.
+   URLs currently land on the wrong lane. Still pending.
 
 secp256k1-sys wasm32 C build remains environmentally gated on
 `CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need homebrew LLVM on macOS).

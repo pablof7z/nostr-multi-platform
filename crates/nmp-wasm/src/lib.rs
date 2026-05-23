@@ -27,6 +27,13 @@ mod runtime;
 // inside it is `cfg(target_arch = "wasm32")`-gated, with a native no-op
 // shim so call sites stay shim-free.
 mod dispatch_routing;
+// V-01 Stage 3c — async publish path for app-level write actions on wasm32.
+// Always-compiled (the pure reason-string helpers are needed on the native
+// `runtime.rs` write-path failure arms too); the `publish_app_action` async
+// function and `fan_out_outbound` helper are `cfg(target_arch = "wasm32")`-
+// gated because they own `BrowserRelayDriver` and `js_sys::Function`
+// references — neither exists off-wasm.
+mod publish_path;
 mod signer_slot;
 mod snapshot;
 
@@ -40,8 +47,12 @@ pub use runtime::{WasmRuntime, WasmRuntimeError};
 #[cfg(target_arch = "wasm32")]
 mod bindings {
     use wasm_bindgen::prelude::*;
+    use wasm_bindgen_futures::future_to_promise;
 
-    use crate::{protocol::WorkerRequest, runtime::WasmRuntime};
+    use crate::{
+        protocol::{AppActionDispatch, WorkerRequest},
+        runtime::WasmRuntime,
+    };
 
     #[wasm_bindgen]
     pub struct NmpWasmRuntime {
@@ -90,6 +101,77 @@ mod bindings {
         #[wasm_bindgen]
         pub fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
             self.runtime.set_snapshot_callback(callback);
+        }
+
+        /// V-01 Stage 3c — async dispatch entrypoint for app-level write
+        /// actions that need an installed signer.
+        ///
+        /// `request_json` is a JSON-serialized [`AppActionDispatch`] — same
+        /// payload shape `handle_json` accepts inside the
+        /// `{"type":"chirp_action","action":…,"correlation_id":…}` envelope,
+        /// but unwrapped to the inner dispatch. (The host already knows it's
+        /// dispatching an app action when it calls this method, so the
+        /// `"type":"chirp_action"` discriminator is redundant.)
+        ///
+        /// Returns a `js_sys::Promise` resolving to the JSON-serialized
+        /// [`WorkerEvent`] — either `ActionAccepted` on a successful sign +
+        /// publish, or `CapabilityFailure` for every honest failure mode
+        /// (no signer, wrong backend, action variant not yet wired, sign
+        /// rejected, sign failed). The Promise rejects only on invalid
+        /// `request_json` (deserialisation failure) — the JS host should
+        /// treat a rejection as a programmer error, not a runtime failure
+        /// to surface to the user.
+        ///
+        /// # Why a separate entrypoint
+        ///
+        /// `handle_json` is synchronous (`-> Result<JsValue, JsValue>`) so
+        /// the JS host gets the result on the same call. The write path
+        /// requires awaiting `window.nostr.signEvent(...)` — a JS Promise
+        /// the wasm thread cannot block on. Exposing the async path as a
+        /// separate method keeps the synchronous `handle_json` shape
+        /// unchanged (kernel-namespaced dispatches, Start, Stop, SetSigner,
+        /// and read-side traffic stay fast) while routing the only path
+        /// that needs an await through a Promise the host can `await`
+        /// directly.
+        ///
+        /// # Doctrine
+        ///
+        /// - **D6**: every failure mode surfaces as a `CapabilityFailure`
+        ///   inside the resolved Promise — never a Promise rejection on
+        ///   anything the user can cause (signer not installed, denial,
+        ///   relay timeout). Rejection is reserved for caller bugs.
+        /// - **D8**: the only `.await` is `JsFuture::from(promise).await`
+        ///   inside `sign_event_via_extension`, which yields to the JS
+        ///   event loop in the standard wasm-bindgen-futures way. No
+        ///   `try_recv` busy-loop, no `recv_timeout` blocking.
+        #[wasm_bindgen]
+        pub fn dispatch_app_action_async(&mut self, request_json: &str) -> js_sys::Promise {
+            let parsed: Result<AppActionDispatch, _> = serde_json::from_str(request_json);
+            let dispatch = match parsed {
+                Ok(d) => d,
+                Err(err) => {
+                    let message = format!("dispatch_app_action_async: invalid request_json: {err}");
+                    return js_sys::Promise::reject(&JsValue::from_str(&message));
+                }
+            };
+            // Source `created_at` from `Date.now()` — the kernel's own
+            // FixedClock-aware path is `pub(crate)` and not reachable through
+            // `KernelReducer`. Production callers never rely on a kernel
+            // clock for publish timestamps; tests on wasm32 are TBD (this PR
+            // does not add `wasm-bindgen-test` infrastructure).
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let now_secs = (js_sys::Date::now() / 1000.0) as u64;
+            let future = self.runtime.start_publish_app_action(
+                dispatch.action,
+                dispatch.correlation_id,
+                now_secs,
+            );
+            future_to_promise(async move {
+                let event = future.await;
+                serde_json::to_string(&event)
+                    .map(|s| JsValue::from_str(&s))
+                    .map_err(|err| JsValue::from_str(&err.to_string()))
+            })
         }
     }
 

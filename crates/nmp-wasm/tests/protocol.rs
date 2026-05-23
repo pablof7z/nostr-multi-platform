@@ -285,9 +285,11 @@ fn publish_note_after_set_signer_returns_publish_path_not_wired() {
     }
 
     // Now the same app-level write surfaces the *second* honest error: the
-    // signer is installed but the publish path is not wired yet. Hosts can
-    // distinguish "you need to sign in" from "the runtime can't publish
-    // yet" by pattern-matching the reason prefix.
+    // signer is installed but the SYNCHRONOUS publish path is not wired —
+    // V-01 Stage 3c added an asynchronous publish entrypoint
+    // (`NmpWasmRuntime::dispatch_app_action_async(...)`) which the message
+    // points hosts at. Hosts can distinguish "you need to sign in" from
+    // "use the async entrypoint" by pattern-matching the reason prefix.
     let events = runtime
         .handle(WorkerRequest::AppAction(AppActionDispatch {
             action: AppAction::PublishNote {
@@ -303,6 +305,16 @@ fn publish_note_after_set_signer_returns_publish_path_not_wired() {
             assert!(
                 failure.reason.starts_with("publish_path_not_wired"),
                 "expected publish_path_not_wired prefix, got: {}",
+                failure.reason
+            );
+            // V-01 Stage 3c contract: the failure reason MUST point hosts at
+            // the new async entrypoint so the integration is self-documenting.
+            // A host that pattern-matches on the prefix already knows what to
+            // do, but a developer reading the reason string in DevTools should
+            // see exactly which method to call.
+            assert!(
+                failure.reason.contains("dispatch_app_action_async"),
+                "expected reason to point host at the async entrypoint, got: {}",
                 failure.reason
             );
         }

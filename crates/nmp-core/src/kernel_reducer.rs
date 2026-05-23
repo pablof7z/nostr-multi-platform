@@ -45,6 +45,7 @@ use crate::app::{KernelAction, KernelUpdate};
 use crate::kernel::{Kernel, RelayFrame};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::substrate::SignedEvent;
 
 /// Encapsulated kernel + public pure reducer.
 ///
@@ -176,6 +177,55 @@ impl KernelReducer {
     /// from any relay.
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
         let outbound = self.kernel.tick_publish_engine_for_now();
+        self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// V-01 Stage 3c — public publish-from-signed-event surface for non-actor
+    /// consumers (today: the wasm32 `WasmRuntime` write path after the
+    /// `Nip07Signer::sign()` Promise resolves; tomorrow: any in-process Rust
+    /// caller that signs out-of-band and wants to feed the result through the
+    /// kernel's publish engine).
+    ///
+    /// Internally delegates to `Kernel::publish_signed_with_correlation` —
+    /// byte-for-byte the same entrypoint `actor::commands::publish::publish_note`
+    /// reaches after `sign_active_nonblocking` resolves on the dispatched
+    /// path. The returned `Vec<OutboundMessage>` is the engine's per-(outbox-
+    /// relay) `EVENT` frame set, already AUTH-pause-partitioned through
+    /// `partition_auth_paused` for symmetry with the `handle_relay_*` surface
+    /// above.
+    ///
+    /// `p_tags` mirrors the legacy parameter on `Kernel::publish_signed` —
+    /// callers that have no extra `#p` tags pass an empty slice. The engine
+    /// recomputes `#p` tags from `signed.unsigned.tags` itself, so this slice
+    /// is informational only (kept on the surface so a future caller that
+    /// needs additional outbox routing tags has a place to inject them).
+    ///
+    /// `correlation_id` is the host-visible action id the publish should
+    /// report in the `action_results` projection on terminal verdicts (per-
+    /// relay OK / failed). Pass `Some(id)` when the publish is a dispatched
+    /// action whose host caller is awaiting a terminal under `id` (the wasm
+    /// runtime's `dispatch_app_action_async` Promise path); pass `None` for
+    /// non-dispatch callers (the engine then reports the event id as the
+    /// terminal key, matching every existing non-dispatched native publish).
+    ///
+    /// Without correlation threading the wasm host receives a publish-engine
+    /// terminal keyed on an event id it never saw — defeating partial-success
+    /// UX (e.g. "2/3 relays accepted"). Pinning the contract here keeps the
+    /// wasm path byte-for-byte aligned with the native `publish_note` dispatch.
+    ///
+    /// Doctrine (D0/D6): the surface is substrate-typed (`SignedEvent`,
+    /// `OutboundMessage`); failure is encoded as an empty outbound vec plus a
+    /// kernel-side toast / `RecentFailure` row (no `Result` across this
+    /// boundary, matching every other `KernelReducer` method).
+    pub fn publish_signed_event(
+        &mut self,
+        signed: &SignedEvent,
+        p_tags: &[String],
+        correlation_id: Option<String>,
+    ) -> Vec<OutboundMessage> {
+        let outbound = self
+            .kernel
+            .publish_signed_with_correlation(signed, p_tags, correlation_id);
         self.kernel.partition_auth_paused(outbound)
     }
 }
@@ -325,5 +375,86 @@ mod tests {
         let mut r = KernelReducer::new();
         let _ = r.reduce(KernelAction::Start);
         assert!(r.tick().is_empty());
+    }
+
+    // ─── V-01 Stage 3c publish-from-signed-event surface ─────────────────────
+    //
+    // `publish_signed_event` is the new public seam the wasm runtime uses to
+    // feed `Nip07Signer::sign()` results through the publish engine. The
+    // tests here pin only the contract — total, no panic, returns an
+    // outbound vec — and defer deep publish-engine behaviour to the
+    // existing kernel-side tests in `publish/engine/tests.rs`.
+
+    use crate::substrate::{SignedEvent, UnsignedEvent};
+
+    fn synthetic_signed_note() -> SignedEvent {
+        // Synthetic SignedEvent — the id and sig are placeholder hex strings
+        // (the publish engine never re-verifies the signature; it just routes
+        // the wire form). The kind:1 payload reaches the engine and goes
+        // through NIP-65 outbox resolution, which on a fresh kernel with no
+        // kind:10002 events in the store returns no targets and produces a
+        // `NoTargets` `RecentFailure` row (empty outbound). That's exactly
+        // the contract we want to assert: total, no panic, returns
+        // `Vec::new()` rather than throwing.
+        SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned: UnsignedEvent {
+                pubkey: PK.to_string(),
+                kind: 1,
+                tags: Vec::new(),
+                content: "hello from wasm".to_string(),
+                created_at: 1_700_000_000,
+            },
+        }
+    }
+
+    #[test]
+    fn publish_signed_event_on_fresh_kernel_does_not_panic() {
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        let signed = synthetic_signed_note();
+        // No kind:10002 known → engine records NoTargets → returns empty.
+        // The important assertion is the absence of a panic; the empty-
+        // outbound semantic is the documented D6 path.
+        let out = r.publish_signed_event(&signed, &[], None);
+        assert!(
+            out.is_empty(),
+            "fresh kernel has no NIP-65 outbox; publish must surface NoTargets, not outbound"
+        );
+    }
+
+    #[test]
+    fn publish_signed_event_accepts_empty_p_tags() {
+        // The engine recomputes `#p` from `signed.unsigned.tags`; the slice
+        // is informational. Pinning that empty is accepted is the smoke
+        // test for the doc contract.
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        let signed = synthetic_signed_note();
+        let _ = r.publish_signed_event(&signed, &[], None);
+        // Pass: no panic.
+    }
+
+    #[test]
+    fn publish_signed_event_threads_correlation_id_into_engine() {
+        // The correlation_id parameter must reach the publish engine so
+        // terminals land in `action_results` keyed on the dispatch id.
+        // Without this, the wasm host receives terminals keyed on the
+        // event id it never saw (partial-success UX would have no key to
+        // correlate on). The contract is byte-identical with the native
+        // `publish_note` dispatched path which uses
+        // `Kernel::publish_signed_to_with_correlation`.
+        //
+        // We can't directly observe the engine's correlation_id table from
+        // here (it's `pub(crate)`); the assertion below pins the surface
+        // shape (no panic when correlation_id is `Some(_)`) — the deep
+        // wire-up is exercised by the native `publish_note` tests in
+        // `actor::commands::tests` and `publish::engine::tests`.
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        let signed = synthetic_signed_note();
+        let _ = r.publish_signed_event(&signed, &[], Some("dispatch-1".to_string()));
+        // Pass: no panic with Some correlation_id.
     }
 }
