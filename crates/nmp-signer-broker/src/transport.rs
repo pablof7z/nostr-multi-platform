@@ -2,7 +2,7 @@
 //! publish kind:24133 RPCs.
 //!
 //! The signer (in `nmp-signers`) emits `Nip46Rpc` values where
-//! `encrypted_payload` is plaintext JSON — see `nmp_signers::signers::nip46`:
+//! `body_json_to_encrypt` is plaintext JSON — see `nmp_signers::signers::nip46`:
 //! the signer is transport-agnostic and defers the actual NIP-44
 //! encryption + kind:24133 wrapping to whichever `Nip46Transport` impl is
 //! plugged in. This module is that impl for the production kernel.
@@ -93,13 +93,13 @@ impl BrokerTransport {
 
 impl Nip46Transport for BrokerTransport {
     fn send_rpc(&self, rpc: Nip46Rpc) -> Result<(), SignerError> {
-        // `rpc.encrypted_payload` is plaintext JSON per the contract in
+        // `rpc.body_json_to_encrypt` is plaintext JSON per the contract in
         // `nmp_signers::signers::nip46` (the signer defers NIP-44 encryption
         // to the transport, which is us). Wrap, encrypt, sign, publish.
         let ciphertext = nostr::nips::nip44::encrypt(
             self.local_keys.secret_key(),
             &self.remote_pubkey,
-            rpc.encrypted_payload.as_bytes(),
+            rpc.body_json_to_encrypt.as_bytes(),
             nostr::nips::nip44::Version::V2,
         )
         .map_err(|e| SignerError::Backend(format!("nip44 encrypt: {e}")))?;
@@ -156,7 +156,7 @@ mod tests {
         let rpc = Nip46Rpc {
             id: "abc".to_string(),
             body_json: r#"{"id":"abc","method":"sign_event","params":[]}"#.to_string(),
-            encrypted_payload: r#"{"id":"abc","method":"sign_event","params":[]}"#.to_string(),
+            body_json_to_encrypt: r#"{"id":"abc","method":"sign_event","params":[]}"#.to_string(),
             relays: vec!["wss://example.com".to_string()],
             remote_pubkey_hex: remote.to_hex(),
         };
@@ -196,7 +196,7 @@ mod tests {
         let rpc = Nip46Rpc {
             id: "abc".to_string(),
             body_json: r#"{"id":"abc"}"#.to_string(),
-            encrypted_payload: r#"{"id":"abc","method":"sign_event","params":[]}"#.to_string(),
+            body_json_to_encrypt: r#"{"id":"abc","method":"sign_event","params":[]}"#.to_string(),
             relays: vec!["wss://example.com".to_string()],
             remote_pubkey_hex: remote.to_hex(),
         };

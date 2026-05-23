@@ -43,7 +43,7 @@ fn sample_rpc() -> Nip46Rpc {
     Nip46Rpc {
         id: "rpc-1".into(),
         body_json: r#"{"id":"rpc-1","method":"sign_event","params":["..."]}"#.into(),
-        encrypted_payload: "base64-blob==".into(),
+        body_json_to_encrypt: "base64-blob==".into(),
         relays: vec!["wss://relay.example".into(), "wss://relay.test".into()],
         remote_pubkey_hex: "ff".repeat(32),
     }
@@ -84,7 +84,7 @@ fn box_dyn_transport_round_trips_rpc() {
     let got = &captured[0];
     assert_eq!(got.id, rpc.id);
     assert_eq!(got.body_json, rpc.body_json);
-    assert_eq!(got.encrypted_payload, rpc.encrypted_payload);
+    assert_eq!(got.body_json_to_encrypt, rpc.body_json_to_encrypt);
     assert_eq!(got.relays, rpc.relays);
     assert_eq!(got.remote_pubkey_hex, rpc.remote_pubkey_hex);
 }
@@ -156,7 +156,7 @@ fn nip46_rpc_debug_does_not_panic_on_empty_fields() {
     let empty = Nip46Rpc {
         id: String::new(),
         body_json: String::new(),
-        encrypted_payload: String::new(),
+        body_json_to_encrypt: String::new(),
         relays: Vec::new(),
         remote_pubkey_hex: String::new(),
     };

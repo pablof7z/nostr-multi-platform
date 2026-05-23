@@ -19,7 +19,7 @@ pub struct Nip46Rpc {
     pub body_json: String,
     /// Payload body to publish as kind:24133 after the transport applies
     /// NIP-46 encryption.
-    pub encrypted_payload: String,
+    pub body_json_to_encrypt: String,
     /// Target relays (mirrors what `bunker://?relay=...` declared).
     pub relays: Vec<String>,
     /// Remote pubkey to address the kind:24133 event to (in a `p` tag).

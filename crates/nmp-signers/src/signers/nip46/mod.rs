@@ -234,7 +234,7 @@ impl Nip46Signer {
             // pubkey.  Kept as plain JSON here so unit tests can inspect what
             // would have been sent; the production transport is responsible
             // for performing the encryption per its policy contract.
-            encrypted_payload: body_json,
+            body_json_to_encrypt: body_json,
             relays: self.uri.relays.clone(),
             remote_pubkey_hex: self.uri.remote_pubkey_hex.clone(),
         };
