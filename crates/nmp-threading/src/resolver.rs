@@ -1,7 +1,6 @@
 //! `ParentResolver` — per-NIP plug for the kind-agnostic [`crate::Grouper`].
 //!
-//! `nmp-nip01` impls it over NIP-10 markers (`Nip10Refs`); `nmp-nip22` impls
-//! it over NIP-22 lowercase root / parent tags (`CommentRecord`). The grouper
+//! `nmp-nip01` impls it over NIP-10 markers (`Nip10Refs`). The grouper
 //! never sees kind numbers or tag conventions — it only asks "what is this
 //! event's parent / root / parent-author?".
 

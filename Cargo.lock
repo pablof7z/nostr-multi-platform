@@ -3921,16 +3921,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip22"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-threading",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-nip29"
 version = "0.1.0"
 dependencies = [
@@ -4012,18 +4002,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-relations"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-nip01",
- "nmp-nip22",
- "nmp-nip57",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-repl"
 version = "0.1.0"
 dependencies = [
@@ -4085,10 +4063,8 @@ dependencies = [
  "nmp-core",
  "nmp-marmot",
  "nmp-nip01",
- "nmp-nip22",
  "nmp-nip42",
  "nmp-nip57",
- "nmp-relations",
  "nmp-signer-broker",
  "nmp-signer-iface",
  "nmp-signers",
