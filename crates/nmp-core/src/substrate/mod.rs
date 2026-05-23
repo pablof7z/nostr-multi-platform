@@ -44,7 +44,7 @@ mod capability;
 mod domain;
 mod identity;
 mod keyring;
-mod mls_op_handler;
+mod host_op_handler;
 pub mod placeholder;
 mod view;
 
@@ -53,7 +53,7 @@ pub use action::{
 };
 pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
-pub use mls_op_handler::{new_mls_op_handler_slot, MlsOpHandler, MlsOpHandlerSlot};
+pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 pub use domain::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use keyring::{

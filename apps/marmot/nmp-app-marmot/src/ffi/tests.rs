@@ -497,7 +497,7 @@ fn raw_tap_malformed_and_unsupported_are_silent() {
 // `nmp_marmot_dispatch` C-ABI symbol). The proof points:
 //
 //   1. `MarmotActionModule` registered against `NmpApp::register_action`
-//      and `MarmotMlsOpHandler` installed via `NmpApp::set_mls_op_handler`
+//      and `MarmotMlsOpHandler` installed via `NmpApp::set_host_op_handler`
 //      are reachable through the kernel's `dispatch_action` path: a
 //      `nmp_app_dispatch_action("nmp.marmot", action_json)` call routes
 //      to the same `ops::dispatch` handler the legacy bespoke symbol
@@ -549,8 +549,8 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     // dispatch_action seam:
     app_mut.register_action::<MarmotActionModule>();
     let handler =
-        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::MlsOpHandler>;
-    app_mut.set_mls_op_handler(handler);
+        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
+    app_mut.set_host_op_handler(handler);
 
     // Dispatch the legacy envelope through the generic seam. The JSON
     // shape is byte-identical with what iOS used to send to the legacy
@@ -628,8 +628,8 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let app_mut = unsafe { &mut *app };
     app_mut.register_action::<MarmotActionModule>();
     let handler =
-        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::MlsOpHandler>;
-    app_mut.set_mls_op_handler(handler);
+        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
+    app_mut.set_host_op_handler(handler);
 
     // Generic seam: create the group via dispatch_action.
     let envelope = json!({

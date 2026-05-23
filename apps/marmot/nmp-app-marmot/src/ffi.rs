@@ -181,7 +181,7 @@ impl MarmotHandle {
     /// `AppRuntime`s — namely `chirp-repl` / `chirp-tui` / their
     /// integration tests — depend on the synchronous envelope. This
     /// accessor invokes the SAME [`crate::projection::ops::dispatch`]
-    /// entry point both seams reach (the kernel actor's `DispatchMlsOp`
+    /// entry point both seams reach (the kernel actor's `DispatchHostOp`
     /// arm and the legacy C symbol used) without going through any FFI.
     ///
     /// ## D0 / layering
@@ -305,9 +305,9 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         return std::ptr::null_mut();
     }
 
-    // Step 2: install the substrate-generic MLS-op handler against the
+    // Step 2: install the substrate-generic host-op handler against the
     // same `MarmotProjection` the observer + tap registered above are
-    // tied to. The actor's `DispatchMlsOp` arm pulls this handler from
+    // tied to. The actor's `DispatchHostOp` arm pulls this handler from
     // the slot whenever the `MarmotActionModule::execute` body emits the
     // command — so every `nmp.marmot` dispatch reaches the SAME shared
     // projection state that `MarmotHandle::dispatch` (the in-process
@@ -316,11 +316,11 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // truth; D4).
     //
     // A second `register_with_keys` (account switch, re-register) installs
-    // a fresh handler over the new projection; `set_mls_op_handler`
+    // a fresh handler over the new projection; `set_host_op_handler`
     // replaces the prior slot entry atomically.
-    app_ref.set_mls_op_handler(
+    app_ref.set_host_op_handler(
         Arc::new(MarmotMlsOpHandler::new(Arc::clone(&projection)))
-            as Arc<dyn nmp_core::substrate::MlsOpHandler>,
+            as Arc<dyn nmp_core::substrate::HostOpHandler>,
     );
 
     // D7: the gift-wrap inbox subscription (kind:1059 `#p` filter, deterministic

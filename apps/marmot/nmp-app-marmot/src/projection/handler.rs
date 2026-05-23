@@ -1,15 +1,15 @@
-//! `MarmotMlsOpHandler` — the [`nmp_core::substrate::MlsOpHandler`] impl that
+//! `MarmotMlsOpHandler` — the [`nmp_core::substrate::HostOpHandler`] impl that
 //! routes [`MarmotAction`](super::action::MarmotAction) JSON envelopes
 //! through the live [`MarmotProjection`](super::state::MarmotProjection)
 //! and the existing [`super::ops::dispatch`] handlers.
 //!
 //! # The bridge between the kernel's generic seam and Marmot's typed ops
 //!
-//! `nmp-core` defines [`MlsOpHandler::handle`](nmp_core::substrate::MlsOpHandler::handle)
+//! `nmp-core` defines [`HostOpHandler::handle`](nmp_core::substrate::HostOpHandler::handle)
 //! as `(&str, &str) -> serde_json::Value` — exactly the JSON-in / JSON-out
 //! shape the legacy bespoke `nmp_marmot_dispatch` envelope spoke (deleted
 //! in ADR-0025 PR 3, 2026-05-23), with `correlation_id` added so the
-//! actor's `DispatchMlsOp` arm can record the terminal verdict in the
+//! actor's `DispatchHostOp` arm can record the terminal verdict in the
 //! kernel's `action_stages` mirror.
 //!
 //! This handler:
@@ -39,8 +39,8 @@
 //!
 //! # Threading
 //!
-//! `MlsOpHandler::handle` runs INLINE on the actor thread (the
-//! `DispatchMlsOp` dispatch arm). The handler acquires the projection's
+//! `HostOpHandler::handle` runs INLINE on the actor thread (the
+//! `DispatchHostOp` dispatch arm). The handler acquires the projection's
 //! `Mutex<Inner>` via `with_inner`. After ADR-0025 PR 3 (2026-05-23,
 //! deleted the legacy bespoke `nmp_marmot_dispatch` C-ABI symbol), the
 //! actor thread is the sole HOST writer (D4) — the only other caller of
@@ -53,13 +53,13 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::substrate::MlsOpHandler;
+use nmp_core::substrate::HostOpHandler;
 
 use crate::projection::action::MarmotAction;
 use crate::projection::ops;
 use crate::projection::state::MarmotProjection;
 
-/// `MlsOpHandler` impl that delegates to a shared [`MarmotProjection`].
+/// `HostOpHandler` impl that delegates to a shared [`MarmotProjection`].
 ///
 /// Holds an `Arc<MarmotProjection>` — the same `Arc` the FFI register path
 /// installs into the [`crate::ffi::MarmotHandle`]. The register-with-keys
@@ -82,7 +82,7 @@ impl MarmotMlsOpHandler {
     }
 }
 
-impl MlsOpHandler for MarmotMlsOpHandler {
+impl HostOpHandler for MarmotMlsOpHandler {
     fn handle(&self, action_json: &str, _correlation_id: &str) -> serde_json::Value {
         // (1) Parse the action JSON into the typed enum. The registry's
         // adapter already did this once before `execute` ran (which is
@@ -135,8 +135,8 @@ mod tests {
     use super::*;
 
     /// The handler is `Send + Sync` — required for storage in
-    /// `nmp_core::substrate::MlsOpHandlerSlot` (which holds
-    /// `Arc<dyn MlsOpHandler: Send + Sync>`).
+    /// `nmp_core::substrate::HostOpHandlerSlot` (which holds
+    /// `Arc<dyn HostOpHandler: Send + Sync>`).
     #[test]
     fn handler_satisfies_send_and_sync_trait_bounds() {
         fn assert_send_sync<T: Send + Sync>() {}

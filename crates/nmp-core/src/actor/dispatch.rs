@@ -15,7 +15,7 @@ use zeroize::Zeroizing;
 
 use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
 use crate::kernel::Kernel;
-use crate::substrate::MlsOpHandlerSlot;
+use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
 use crate::subs::PlanCoverageHook;
@@ -194,12 +194,12 @@ pub(super) struct ActorContext<'a> {
     /// the hook on the rebuilt kernel (mirrors initial install in
     /// `run_actor_with_observers`).
     pub(super) coverage_hook_slot: &'a Arc<Mutex<Option<PlanCoverageHook>>>,
-    /// Host-installed [`crate::substrate::MlsOpHandler`] slot. Read by the
-    /// [`ActorCommand::DispatchMlsOp`] arm to route the action body to the
-    /// owner of the app-side MLS state (today: `nmp-app-marmot`). `None`
-    /// means no handler was installed before the dispatch — the arm records
-    /// a `Failed` terminal stage for the correlation id.
-    pub(super) mls_op_handler: &'a MlsOpHandlerSlot,
+    /// Host-installed [`crate::substrate::HostOpHandler`] slot. Read by the
+    /// [`ActorCommand::DispatchHostOp`] arm to route the action body to the
+    /// owner of the app-side state (today: `nmp-app-marmot`'s MLS service).
+    /// `None` means no handler was installed before the dispatch — the arm
+    /// records a `Failed` terminal stage for the correlation id.
+    pub(super) host_op_handler: &'a HostOpHandlerSlot,
 }
 
 pub(super) fn dispatch_command(
@@ -859,13 +859,13 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::DispatchMlsOp {
+        ActorCommand::DispatchHostOp {
             action_json,
             correlation_id,
         } => {
             // Substrate-generic seam for stateful, app-owned op handlers
             // (today: `nmp-app-marmot`'s MLS service). The handler was installed
-            // via `NmpApp::set_mls_op_handler` during host init.
+            // via `NmpApp::set_host_op_handler` during host init.
             //
             // Record `Requested` first so the host's spinner sees the action
             // entered the actor lane even if the handler is absent or panics
@@ -879,7 +879,7 @@ pub(super) fn dispatch_command(
             // so the outer mutex is not held across the SQLite-bound work
             // (D8 — long-running ops must not block the slot writer).
             let handler = ctx
-                .mls_op_handler
+                .host_op_handler
                 .lock()
                 .ok()
                 .and_then(|guard| guard.as_ref().cloned());
@@ -894,13 +894,13 @@ pub(super) fn dispatch_command(
                     .unwrap_or_else(|_| {
                         serde_json::json!({
                             "ok": false,
-                            "error": "MLS op handler panicked"
+                            "error": "host op handler panicked"
                         })
                     })
                 }
                 None => serde_json::json!({
                     "ok": false,
-                    "error": "no MLS op handler installed"
+                    "error": "no host op handler installed"
                 }),
             };
             // Route the envelope to the action_results/action_stages mirror.
@@ -918,7 +918,7 @@ pub(super) fn dispatch_command(
                 let reason = result
                     .get("error")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or("MLS op failed without an error message")
+                    .unwrap_or("host op failed without an error message")
                     .to_string();
                 ctx.kernel.record_action_failure(correlation_id, reason);
             }

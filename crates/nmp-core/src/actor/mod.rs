@@ -713,19 +713,20 @@ pub enum ActorCommand {
     ShowToast {
         message: String,
     },
-    /// Dispatch a stateful "MLS op" action to the host-installed
-    /// [`crate::substrate::MlsOpHandler`].
+    /// Dispatch a stateful, host-owned action to the host-installed
+    /// [`crate::substrate::HostOpHandler`].
     ///
     /// This is the substrate-generic seam that lets the actor invoke ops
     /// against app-owned state (e.g. the Marmot MLS service in
-    /// `nmp-app-marmot`) without `nmp-core` ever naming the app's nouns (D0).
-    /// The producer is an `ActionModule::execute` body in the app crate that
-    /// serializes its typed action to JSON; the handler installed by the same
-    /// crate parses the JSON back into its typed enum, runs the op, and
-    /// returns a `serde_json::Value` envelope.
+    /// `nmp-app-marmot`, the fixture crate's TODO-list projection) without
+    /// `nmp-core` ever naming the app's nouns (D0). The producer is an
+    /// `ActionModule::execute` body in the app crate that serializes its
+    /// typed action to JSON; the handler installed by the same crate parses
+    /// the JSON back into its typed enum, runs the op, and returns a
+    /// `serde_json::Value` envelope.
     ///
     /// The actor's dispatch arm pulls the handler from the slot
-    /// ([`crate::NmpApp::set_mls_op_handler`]), calls `handle` under
+    /// ([`crate::NmpApp::set_host_op_handler`]), calls `handle` under
     /// `catch_unwind` (D6 — a panicking handler maps to a `Failed` action
     /// stage), and routes the resulting envelope:
     ///
@@ -734,17 +735,18 @@ pub enum ActorCommand {
     ///   `action_stages` mirror.
     /// * `{"ok":false,"error":"..."}` → [`ActorCommand::RecordActionFailure`]
     ///   with the reason copied from the envelope.
-    /// * No handler installed → `Failed { reason: "no MLS op handler installed" }`.
+    /// * No handler installed → `Failed { reason: "no host op handler installed" }`.
     ///
     /// D8 — `handle` runs INLINE on the actor thread (the same thread that
-    /// ticks the kernel). MLS state mutations are SQLite-bound and typically
-    /// sub-100ms; handlers whose ops routinely exceed that should spawn a
-    /// worker internally (the [`FetchLnurlInvoice`](Self::FetchLnurlInvoice)
-    /// pattern). See the [`crate::substrate::MlsOpHandler`] rustdoc.
-    DispatchMlsOp {
+    /// ticks the kernel). The current MLS-state consumer's mutations are
+    /// SQLite-bound and typically sub-100ms; handlers whose ops routinely
+    /// exceed that should spawn a worker internally (the
+    /// [`FetchLnurlInvoice`](Self::FetchLnurlInvoice) pattern). See the
+    /// [`crate::substrate::HostOpHandler`] rustdoc.
+    DispatchHostOp {
         /// JSON-encoded action body. The handler parses this into its own
-        /// typed action enum. No MLS type crosses the FFI boundary — this
-        /// is the same translation layer the legacy bespoke
+        /// typed action enum. No protocol type crosses the FFI boundary —
+        /// this is the same translation layer the legacy bespoke
         /// `nmp_marmot_dispatch` envelope used (deleted in ADR-0025 PR 3,
         /// 2026-05-23).
         action_json: String,
@@ -847,12 +849,12 @@ pub fn run_actor(
         // point, so the coverage-gate hook slot is a private throwaway
         // (`None`); the lifecycle keeps its default `coverage_hook: None`.
         Arc::new(Mutex::new(None)),
-        // MLS-op handler slot — no `NmpApp` is wired through this
+        // Host-op handler slot — no `NmpApp` is wired through this
         // backwards-compatible entry point, so the handler slot is a private
-        // throwaway. Any `DispatchMlsOp` command reaching the actor here
-        // would record a `Failed { reason: "no MLS op handler installed" }`
+        // throwaway. Any `DispatchHostOp` command reaching the actor here
+        // would record a `Failed { reason: "no host op handler installed" }`
         // terminal — tests on this path do not enqueue such commands.
-        crate::substrate::new_mls_op_handler_slot(),
+        crate::substrate::new_host_op_handler_slot(),
     );
 }
 
@@ -899,10 +901,10 @@ pub fn run_actor_with_lifecycle_observer(
         // point, so the coverage-gate hook slot is a private throwaway
         // (`None`); the lifecycle keeps its default `coverage_hook: None`.
         Arc::new(Mutex::new(None)),
-        // MLS-op handler slot — private throwaway here (no FFI surface). A
-        // `DispatchMlsOp` reaching the actor on this path would record a
-        // `Failed { reason: "no MLS op handler installed" }` terminal.
-        crate::substrate::new_mls_op_handler_slot(),
+        // Host-op handler slot — private throwaway here (no FFI surface). A
+        // `DispatchHostOp` reaching the actor on this path would record a
+        // `Failed { reason: "no host op handler installed" }` terminal.
+        crate::substrate::new_host_op_handler_slot(),
     );
 }
 
@@ -978,15 +980,15 @@ pub fn run_actor_with_observers(
     // `nmp_app_start`; read here once after kernel construction and installed
     // on `SubscriptionLifecycle`. Re-installed by the `Reset` dispatch arm.
     coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
-    // Substrate-generic MLS-op handler slot. Set by an app crate (today
+    // Substrate-generic host-op handler slot. Set by an app crate (today
     // `nmp-app-marmot`) before `nmp_app_start` via
-    // `NmpApp::set_mls_op_handler`. Read by the `DispatchMlsOp` dispatch arm
+    // `NmpApp::set_host_op_handler`. Read by the `DispatchHostOp` dispatch arm
     // so a host-extensible `ActionModule` whose `execute()` body emits
-    // `ActorCommand::DispatchMlsOp` can reach the app-owned state
+    // `ActorCommand::DispatchHostOp` can reach the app-owned state
     // (D0 — `nmp-core` never names the app's nouns; the slot speaks JSON).
-    // `None` (the test / no-MLS-app default) makes any `DispatchMlsOp` arm
-    // record a `Failed` terminal stage; nothing else changes.
-    mls_op_handler: crate::substrate::MlsOpHandlerSlot,
+    // `None` (the test / no-stateful-app default) makes any `DispatchHostOp`
+    // arm record a `Failed` terminal stage; nothing else changes.
+    host_op_handler: crate::substrate::HostOpHandlerSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1198,7 +1200,7 @@ pub fn run_actor_with_observers(
                         pending_signs: &mut pending_signs,
                         command_tx_self: &command_tx_self,
                         coverage_hook_slot: &coverage_hook,
-                        mls_op_handler: &mls_op_handler,
+                        host_op_handler: &host_op_handler,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
