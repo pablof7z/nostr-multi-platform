@@ -30,10 +30,13 @@ use crate::protocol::ActionDispatch;
 ///
 /// - **No signer installed.** The host hasn't called `SetSigner` yet — the
 ///   user has not signed in. Banner: "sign in to publish".
-/// - **Signer installed but no publish path.** Stage 3b lands the signer
-///   plumbing; Stage 3c will expose the `KernelReducer` publish-from-signed-
-///   event surface and route through `PublishEngine` from wasm. Banner:
-///   "the browser runtime cannot yet route signed events to relays".
+/// - **Signer installed but this action's publish path is not wired.**
+///   Stage 3c wires `nmp.publish` (kind:1 top-level text notes); other
+///   app-namespaced actions (`nmp.nip25.react`, `nmp.follow`,
+///   `nmp.unfollow`) and threaded replies (`nmp.publish` with `reply_to_id`)
+///   still need an `ActionModule`-style payload-to-`SignedEvent` step.
+///   Banner: "the browser runtime cannot yet route this action's signed
+///   event to relays".
 ///
 /// Both strings start with a stable underscore-snake-case prefix the JS host
 /// can pattern-match without parsing the full reason text.
@@ -44,10 +47,11 @@ pub(crate) fn write_path_unavailable_reason(signer: Option<&Arc<dyn Signer>>) ->
                 before dispatching app-level writes."
             .to_string();
     }
-    "publish_path_not_wired: a signer is installed but the wasm runtime does \
-     not yet expose a KernelReducer surface that routes signed events through \
-     PublishEngine. V-01 Stage 3c follow-up — the native path is gated behind \
-     `feature = \"native\"` (actor + relay_worker + PublishEngine glue)."
+    "publish_path_not_wired: a signer is installed but this action's publish \
+     path is not yet wired in the wasm runtime. V-01 Stage 3c shipped the \
+     kind:1 top-level text-note path (`nmp.publish` with a non-empty \
+     `content`); `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` and \
+     threaded replies are Stage 3d follow-ups."
         .to_string()
 }
 

@@ -80,8 +80,17 @@ makes the eventual fix harder.
   `signer_not_installed` vs. `publish_path_not_wired`. `NmpWasmRuntime::set_snapshot_callback`
   pushes a JSON frame to JS after every inbound relay frame. New files: `dispatch_routing.rs`,
   `signer_slot.rs`, `snapshot.rs` (all under 500-LOC ceiling).
-- Stage 3c (remaining gaps): IndexedDB store + publish-path wire (`publish_path_not_wired` →
-  real `dispatch_action_json`) + multi-role bootstrap parsing — see F-01.
+- Stage 3c (kind:1 publish path) ✅ PARTIAL (this PR): `nmp.publish` text notes now sign
+  via `window.nostr.signEvent(...)` (async future, not `SignerOp::Pending`) and route through
+  `KernelReducer::publish_signed_event` → `Kernel::publish_signed` → `PublishEngine` →
+  per-relay `BrowserRelayDriver::send_text`. Snapshot push fires when the publish-engine state
+  changes. New files: `nmp-wasm/src/publish.rs`. New surface: `KernelReducer::publish_signed_event`
+  (ungated, mirrors `handle_relay_*` shape). `AppAction::PublishNote` now funnels through
+  `WasmRuntime::dispatch` (single writer for action routing). Other app-namespaced writes
+  (`nmp.nip25.react`, `nmp.follow`, `nmp.unfollow`) and `nmp.publish` replies still return
+  `publish_path_not_wired` — Stage 3d follow-up.
+- Stage 3c (remaining gaps): IndexedDB store + react/follow/unfollow + threaded reply wiring +
+  multi-role bootstrap parsing — see F-01.
 
 No chirp-web write features requiring persistence across reloads may be added until Stage 3c lands.
 
@@ -297,22 +306,26 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Stage 3c — IndexedDB store + write path + multi-role bootstrap [V1 BLOCKER]
+### F-01 · Fix V-01 Stage 3c — IndexedDB store + react/follow/unfollow + multi-role bootstrap [V1 BLOCKER]
 
 Phase 1a/1b/1c (PRs #341/#343) + Stage 2 (PR #372) + Stage 3 read path (PR #375) +
-Stage 3b NIP-07 signer + snapshot push (PR #378) all merged to master.
+Stage 3b NIP-07 signer + snapshot push (PR #378) + Stage 3c kind:1 publish path
+(this PR) all merged to master.
 `WasmRuntime` owns a pool of `BrowserRelayDriver`s with shared backoff/jitter/HTTP-denial
 constants. Read path (relay → kernel → snapshot projection) is functional end-to-end.
 `Nip07Signer::sign()` bridges `window.nostr.signEvent(...)` on wasm32. Async snapshot push
-via `set_snapshot_callback(Option<js_sys::Function>)` is live.
+via `set_snapshot_callback(Option<js_sys::Function>)` is live. Kind:1 top-level text-note
+publish (`nmp.publish`) routes sign → publish-engine → per-relay fan → snapshot push.
 
 **Stage 3c remaining scope (V1 BLOCKER for chirp-web write features):**
 1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl
    (the native `nmp-nostr-lmdb` fork stays native-only). Kernel runs in-memory only
    and resets on page reload.
-2. **Write-path wiring.** `publish_path_not_wired` error returns for all `AppAction`
-   writes. Expose `dispatch_action_json` surface from `KernelReducer` → wasm-bindgen
-   wrapper so the NIP-07 signer (already wired) can drive kind:1/3/7 publishes.
+2. **Remaining writes.** `nmp.nip25.react`, `nmp.follow`, `nmp.unfollow`, and threaded
+   `nmp.publish` replies (kind:1 with `reply_to_id`) still return `publish_path_not_wired`.
+   Each needs an `ActionModule`-style payload-to-`SignedEvent` step (kind:7 + `e` tag for
+   reactions, kind:3 with full follow set for follow/unfollow, NIP-10 `e`/`p` tag
+   construction for replies). Patterned on the kind:1 path in `nmp-wasm/src/publish.rs`.
 3. **Multi-role bootstrap parsing.** Stage 3 spawns one Content-lane driver per URL
    regardless of the declared role string (`"indexer"`, `"both,indexer"`, ...). Parse
    in `nmp-wasm::relay_pool::spawn_drivers`; open one driver per declared role per URL
@@ -322,8 +335,8 @@ via `set_snapshot_callback(Option<js_sys::Function>)` is live.
 secp256k1-sys wasm32 C build remains environmentally gated on
 `CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need homebrew LLVM on macOS).
 
-No `chirp-web` features requiring persistence across reloads or writes may be added until
-Stage 3c lands.
+No `chirp-web` features requiring persistence across reloads may be added until
+Stage 3c lands; kind:1 top-level publish is the only write currently wired.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 

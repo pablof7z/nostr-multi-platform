@@ -27,6 +27,13 @@ mod runtime;
 // inside it is `cfg(target_arch = "wasm32")`-gated, with a native no-op
 // shim so call sites stay shim-free.
 mod dispatch_routing;
+// V-01 Stage 3c — wasm32 publish path. The `nip07_sign_async` future and the
+// `spawn_publish_text_note` glue both depend on `wasm_bindgen_futures::spawn_local`
+// and `web_sys::window` (for `Date::now()`), so the async-publish helpers are
+// gated to `target_arch = "wasm32"`. The pure `extract_publish_content` helper
+// (and its unit tests) is always-on so native CI exercises the payload-shape
+// invariants without a wasm runner.
+mod publish;
 mod signer_slot;
 mod snapshot;
 

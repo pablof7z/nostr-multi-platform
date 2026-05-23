@@ -178,6 +178,34 @@ impl KernelReducer {
         let outbound = self.kernel.tick_publish_engine_for_now();
         self.kernel.partition_auth_paused(outbound)
     }
+
+    /// Enqueue a pre-signed event through the publish engine. Returns the
+    /// outbound frames the kernel wants sent immediately — one per resolved
+    /// NIP-65 outbox relay (D3). Caller fans those out over its transport.
+    ///
+    /// V-01 Stage 3c — the wasm32 runtime calls this after
+    /// `window.nostr.signEvent(...)` resolves: the signer hands back a
+    /// `SignedEvent`, the runtime feeds it here, and the resulting
+    /// `Vec<OutboundMessage>` fans out over the same `BrowserRelayDriver`
+    /// pool the read path uses. Mirrors the native actor's
+    /// `kernel.publish_signed(&signed, &[])` call (the actor takes the
+    /// same dual-arity for replies — empty slice means "no extra `p` tags").
+    /// Retry / ack / reauth lifecycle stays inside the engine; the caller
+    /// only fans the immediate per-relay frames and lets later `OK`
+    /// inbounds settle through `handle_relay_frame`.
+    ///
+    /// Ungated: mirrors `handle_relay_frame` / `handle_relay_connected` /
+    /// `handle_relay_failed` / `handle_relay_closed` / `tick` — all
+    /// unconditionally `pub` because `Kernel::publish_signed` itself is
+    /// `pub(crate)` with no native gate (kernel/publish_cmd.rs:35), and
+    /// the wasm32 build of nmp-core (`--no-default-features`) compiles
+    /// every module the kernel touches.
+    pub fn publish_signed_event(
+        &mut self,
+        signed: &crate::substrate::SignedEvent,
+    ) -> Vec<OutboundMessage> {
+        self.kernel.publish_signed(signed, &[])
+    }
 }
 
 impl Default for KernelReducer {
@@ -325,5 +353,45 @@ mod tests {
         let mut r = KernelReducer::new();
         let _ = r.reduce(KernelAction::Start);
         assert!(r.tick().is_empty());
+    }
+
+    #[test]
+    fn publish_signed_event_with_no_outbox_returns_empty_no_panic() {
+        // V-01 Stage 3c contract: the wasm32 runtime hands a signed event in
+        // (`SignedEvent` from `window.nostr.signEvent`) and expects a per-
+        // relay outbound vec to fan out. With a fresh kernel and no NIP-65
+        // outbox cached for the author, the publish engine resolves to zero
+        // relays and the kernel records a `RecentFailure` (D6 toast surface).
+        // The contract we pin here is that the call is total — no panic, the
+        // returned vec is empty, and the reducer remains usable for further
+        // calls.
+        use crate::substrate::{SignedEvent, UnsignedEvent};
+
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+
+        let signed = SignedEvent {
+            id: "deadbeef".repeat(8),
+            sig: "ab".repeat(32),
+            unsigned: UnsignedEvent {
+                pubkey: PK.to_string(),
+                kind: 1,
+                tags: Vec::new(),
+                content: "hello, browser publish".to_string(),
+                created_at: 1_700_000_000,
+            },
+        };
+
+        let outbound = r.publish_signed_event(&signed);
+        // No NIP-65 outbox is cached for this author on a fresh reducer; the
+        // engine resolves to zero relays and the return is empty. The
+        // important assertion is the absence of a panic.
+        assert!(
+            outbound.is_empty(),
+            "fresh kernel with no NIP-65 outbox cache must return empty outbound"
+        );
+
+        // Reducer is still usable after the empty-outbox path.
+        let _ = r.tick();
     }
 }

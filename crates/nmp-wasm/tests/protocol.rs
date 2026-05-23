@@ -259,14 +259,24 @@ fn publish_note_without_signer_returns_signer_not_installed() {
 }
 
 #[test]
-fn publish_note_after_set_signer_returns_publish_path_not_wired() {
+fn publish_note_after_set_signer_on_native_returns_publish_path_not_wired() {
+    // V-01 Stage 3c contract on **native targets**: the wasm32 build wires
+    // the real `nmp.publish` text-note path (sign via `window.nostr.signEvent`,
+    // route through `KernelReducer::publish_signed_event`, fan to the
+    // BrowserRelayDriver pool, push a snapshot). Native has no JS event
+    // loop, so the runtime falls through to the honest `publish_path_not_wired`
+    // error rather than synthesising a fake "accepted" verdict. The native
+    // test target asserts that fall-through; the wasm32 success path is
+    // covered by the spawn-and-await contract in `crates/nmp-wasm/src/publish.rs`
+    // (`spawn_publish_text_note` is `target_arch = "wasm32"`-gated and
+    // exercised in-browser).
     let mut runtime = WasmRuntime::new();
 
     // Install a nip07 signer with a real (test-fixture) pubkey hex. On
     // native this constructs a stub that returns `Unsupported` from sign();
     // we don't reach sign() in this assertion — the runtime stops at the
-    // publish-path-not-wired error because Stage 3b ships the signer slot,
-    // not the publish path.
+    // publish-path-not-wired error because the native target has no
+    // wasm-bindgen-futures `spawn_local` to drive the async sign round-trip.
     let set_events = runtime
         .handle(WorkerRequest::SetSigner(SetSigner {
             kind: "nip07".to_string(),
@@ -284,10 +294,10 @@ fn publish_note_after_set_signer_returns_publish_path_not_wired() {
         other => panic!("expected ActionAccepted, got {other:?}"),
     }
 
-    // Now the same app-level write surfaces the *second* honest error: the
-    // signer is installed but the publish path is not wired yet. Hosts can
-    // distinguish "you need to sign in" from "the runtime can't publish
-    // yet" by pattern-matching the reason prefix.
+    // The signer is installed but the native target cannot drive the async
+    // publish path — surface the honest `publish_path_not_wired` reason.
+    // Hosts can distinguish "you need to sign in" (signer_not_installed)
+    // from "this build can't publish yet" by pattern-matching the prefix.
     let events = runtime
         .handle(WorkerRequest::AppAction(AppActionDispatch {
             action: AppAction::PublishNote {

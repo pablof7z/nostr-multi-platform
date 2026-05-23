@@ -24,15 +24,27 @@
 //!   synchronously, so the JS event-handling code does not branch on push
 //!   vs. pull.
 //!
-//! What Stage 3b deliberately does NOT do (Stage 3c follow-up):
+//! # V-01 Stage 3c — kind:1 top-level publish path
 //!
-//! - **In-process publish path.** App-level writes (PublishNote / React /
-//!   Follow / Unfollow) need a `KernelReducer` surface that takes a
-//!   `SignedEvent` and routes it through `PublishEngine`. That surface does
-//!   not yet exist — the native path goes through `ActorCommand` which is
-//!   `feature = "native"`-gated. Until that lands, app writes return
-//!   `signer_not_installed` (no signer in the slot) or `publish_path_not_wired`
-//!   (signer present but no kernel-publish surface to feed it through).
+//! `nmp.publish` (kind:1 text note, no `reply_to_id`) now signs through the
+//! NIP-07 extension's `signEvent` and routes through
+//! [`nmp_core::KernelReducer::publish_signed_event`] →
+//! `Kernel::publish_signed` → `PublishEngine` → the per-relay
+//! `BrowserRelayDriver::send_text`. The async cycle runs inside a
+//! `wasm_bindgen_futures::spawn_local` task; the dispatch arm returns
+//! `ActionAccepted` synchronously so the host's spinner can advance, and a
+//! fresh snapshot is pushed through the registered callback when the
+//! publish-engine state changes. Implementation: `crate::publish` module.
+//!
+//! What Stage 3c deliberately does NOT do (Stage 3d follow-up):
+//!
+//! - **Other app-namespaced writes.** `nmp.nip25.react`, `nmp.follow`,
+//!   `nmp.unfollow`, and threaded `nmp.publish` replies (with `reply_to_id`)
+//!   still return `publish_path_not_wired`. Each needs an `ActionModule`-style
+//!   payload-to-`SignedEvent` step (kind:7 + `e` tag for reactions, kind:3
+//!   with full follow set for follow/unfollow, NIP-10 `e`/`p` tag
+//!   construction for replies). Patterned on the kind:1 path in
+//!   `crate::publish`.
 //! - **IndexedDB store.** Kernel still runs in memory, resets on page reload.
 //!
 //! # What is real (Stage 3 + Stage 3b combined)
@@ -66,9 +78,11 @@ use crate::dispatch_routing::{
     browser_driver_missing_reason, kernel_action_from_dispatch, write_path_unavailable_reason,
 };
 use crate::protocol::{
-    ActionDispatch, AppAction, CapabilityFailure, RuntimeStatus, SetSigner, StartConfig,
+    ActionDispatch, AppActionDispatch, CapabilityFailure, RuntimeStatus, SetSigner, StartConfig,
     WorkerEvent, WorkerRequest,
 };
+#[cfg(target_arch = "wasm32")]
+use crate::publish::extract_publish_content;
 use crate::signer_slot;
 use crate::snapshot::{build_snapshot_value, RuntimeMeta};
 
@@ -189,9 +203,7 @@ impl WasmRuntime {
                 }])
             }
             WorkerRequest::Start(config) => self.start(config),
-            WorkerRequest::AppAction(action) => {
-                self.app_action(action.action, action.correlation_id)
-            }
+            WorkerRequest::AppAction(action) => self.app_action(action),
             WorkerRequest::Dispatch(action) => self.dispatch(action),
             WorkerRequest::CapabilityResult(result) => {
                 // The native actor handles capability completions through its
@@ -340,26 +352,34 @@ impl WasmRuntime {
         }
     }
 
+    /// Funnel `AppAction` dispatches through the generic `dispatch` arm. This
+    /// keeps one writer for action routing: `AppAction::PublishNote`'s nested
+    /// `{"PublishNote": {"content": ..., ...}}` payload survives the
+    /// conversion (see `protocol::AppAction::into_dispatch_parts`) and reaches
+    /// `dispatch` with `action_type = "nmp.publish"`. From there the publish
+    /// path in `dispatch` handles signer-installed vs. unavailable identically
+    /// regardless of which `WorkerRequest` arm originated the call.
     fn app_action(
         &mut self,
-        action: AppAction,
-        correlation_id: String,
+        dispatch: AppActionDispatch,
     ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        let (action_type, _payload) = action.into_dispatch_parts();
-        Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action_type,
-            correlation_id,
-            reason: write_path_unavailable_reason(self.signer.as_ref()),
-        })])
+        self.dispatch(dispatch.into_action_dispatch())
     }
 
     fn dispatch(&mut self, action: ActionDispatch) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
         // Generic `ActionDispatch` covers everything `AppAction` does plus the
         // kernel-namespaced actions (`nmp.open_uri`, `nmp.kernel.diagnostics`,
-        // ...) the bible specifies. The kernel-namespaced ones map directly to
-        // `KernelAction` variants and run through `KernelReducer::reduce`; the
-        // app-namespaced ones (anything that emits a signed event) hit the
-        // same write-path-unavailable wall as `app_action` above.
+        // ...) the bible specifies. Routing is layered:
+        //
+        // 1. Kernel-namespaced actions map directly to `KernelAction` variants
+        //    and run through `KernelReducer::reduce`. Synchronous.
+        // 2. V-01 Stage 3c — `nmp.publish` (kind:1 text note) with a signer
+        //    installed: extract content, spawn the async sign → publish →
+        //    fan-outbound → push-snapshot cycle, return `ActionAccepted`
+        //    synchronously so the host's spinner can advance.
+        // 3. Any other app-namespaced action (or `nmp.publish` without a
+        //    signer / without parseable content): surface the honest
+        //    write-path-unavailable reason.
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
             let update = self.reducer.borrow_mut().reduce(kernel_action);
             match update {
@@ -383,6 +403,36 @@ impl WasmRuntime {
                 self.snapshot_event(),
             ]);
         }
+
+        // V-01 Stage 3c — text-note publish path. Other app-namespaced
+        // actions (react/follow/unfollow) and `nmp.publish` with a signer
+        // but an empty/missing `content` payload fall through to the
+        // unavailable arm. The reason string is slightly imprecise for
+        // the empty-content case (the path IS wired, the payload had
+        // nothing to sign) but the host should validate non-empty content
+        // client-side. Native targets always fall through honestly — no JS
+        // event loop = no real publish path.
+        #[cfg(target_arch = "wasm32")]
+        if action.action_type == "nmp.publish" {
+            if let (Some(signer), Some(content)) = (
+                self.signer.as_ref(),
+                extract_publish_content(&action.payload),
+            ) {
+                crate::publish::spawn_publish_text_note(
+                    signer.pubkey(),
+                    content,
+                    Rc::clone(&self.reducer),
+                    Rc::clone(&self.relays),
+                    Rc::clone(&self.snapshot_callback),
+                    Rc::clone(&self.meta),
+                );
+                return Ok(vec![WorkerEvent::ActionAccepted {
+                    action_type: action.action_type,
+                    correlation_id: action.correlation_id,
+                }]);
+            }
+        }
+
         Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
             capability: action.action_type,
             correlation_id: action.correlation_id,
