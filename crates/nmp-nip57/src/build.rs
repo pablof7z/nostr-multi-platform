@@ -38,6 +38,7 @@ pub struct ZapRequest;
 
 impl ZapRequest {
     /// Begin a zap-request targeting `recipient_pubkey`.
+    #[must_use]
     pub fn to_pubkey(recipient_pubkey: impl Into<String>) -> ZapRequestBuilder {
         ZapRequestBuilder {
             recipient: recipient_pubkey.into(),

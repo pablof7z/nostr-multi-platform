@@ -93,6 +93,7 @@ impl Default for NoteRelationIndex {
 }
 
 impl NoteRelationIndex {
+    #[must_use]
     pub fn counts_for(&self, event_id: &str) -> NoteRelationCounts {
         NoteRelationCounts::for_note(event_id, self.reply_count_for(event_id))
     }

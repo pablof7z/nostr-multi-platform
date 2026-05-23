@@ -139,6 +139,7 @@ impl RepliesView {
         (state, payload)
     }
 
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut RepliesState,
@@ -147,6 +148,7 @@ impl RepliesView {
         s.insert(e)
     }
 
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut RepliesState,
@@ -155,6 +157,7 @@ impl RepliesView {
         s.remove(id)
     }
 
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut RepliesState,
@@ -426,6 +429,7 @@ impl ThreadView {
         (state, payload)
     }
 
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut ThreadState,
@@ -434,6 +438,7 @@ impl ThreadView {
         s.insert(e)
     }
 
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut ThreadState,
@@ -442,6 +447,7 @@ impl ThreadView {
         s.remove(id)
     }
 
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut ThreadState,
@@ -526,8 +532,8 @@ mod tests {
         let r_later = ke("LATER", "a", 20, vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]], "");
         let r_earlier = ke("EARLY", "a", 10, vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]], "");
 
-        RepliesView::on_event_inserted(&ctx(), &mut state, &r_later);
-        RepliesView::on_event_inserted(&ctx(), &mut state, &r_earlier);
+        let _ = RepliesView::on_event_inserted(&ctx(), &mut state, &r_later);
+        let _ = RepliesView::on_event_inserted(&ctx(), &mut state, &r_earlier);
         // Duplicate insert returns None.
         assert!(RepliesView::on_event_inserted(&ctx(), &mut state, &r_later).is_none());
 

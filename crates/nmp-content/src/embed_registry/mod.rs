@@ -68,6 +68,7 @@ impl EmbedClaimRegistry {
     /// embed is no longer visible.
     ///
     /// [`release`]: EmbedClaimRegistry::release
+    #[must_use]
     pub fn claim(
         state: &mut EmbedClaimState,
         target: EmbedTarget,
@@ -84,6 +85,7 @@ impl EmbedClaimRegistry {
     /// target *or* a stale/already-released handle id), is a no-op
     /// returning `false`; it never decrements another live claim's
     /// refcount.
+    #[must_use]
     pub fn release(state: &mut EmbedClaimState, handle: &ClaimHandle) -> bool {
         state::release(state, handle)
     }
