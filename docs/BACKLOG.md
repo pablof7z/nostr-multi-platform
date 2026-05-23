@@ -349,7 +349,7 @@ surface for "bunker connection lost" exists because the broker has no state for 
 - **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
   NIP-46 as a v1 sign-in method.
 
-### V-15 · Real-relay test suite never runs in CI — v1 live-relay claims are unfalsifiable [HIGH]
+### V-15 · Real-relay test suite never runs in CI — v1 live-relay claims are unfalsifiable [HIGH] — **DONE** (commit 41feec14)
 
 **Verified:** `.github/workflows/test.yml:41` runs `cargo test --workspace --exclude ...` without
 `--ignored`. Every integration test in `crates/nmp-testing/tests/` (`real_relay_smoke.rs`,
@@ -372,7 +372,7 @@ already exists — this is one new workflow file.
 **Deadline:** before declaring F-02 or F-04 closed. Until this workflow exists, the v1 exit
 criterion for F-02/F-04 is literally unevaluable.
 
-### V-16 · `SearchView.swift` is dead code that ships in the Chirp binary [MEDIUM]
+### V-16 · `SearchView.swift` is dead code that ships in the Chirp binary [MEDIUM] — **DONE** (PR #427 pending CI)
 
 **Verified:** `ios/Chirp/Chirp/Features/SearchView.swift:3` defines `struct SearchView` and is
 compiled into `Chirp.app` (`project.pbxproj:468`). Zero `SearchView()` call sites exist in the
