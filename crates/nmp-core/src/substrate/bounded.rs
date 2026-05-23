@@ -190,11 +190,13 @@ where
     }
 
     /// Iterate `(key, value)` pairs in insertion order (oldest first).
+    #[must_use]
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.map.iter()
     }
 
     /// Iterate values in insertion order (oldest first).
+    #[must_use]
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.map.values()
     }
@@ -203,6 +205,7 @@ where
     ///
     /// Mutation through this handle does **not** affect eviction order —
     /// only [`Self::insert`] can move entries to the back.
+    #[must_use]
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
         self.map.values_mut()
     }

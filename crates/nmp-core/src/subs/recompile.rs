@@ -181,6 +181,7 @@ impl SubscriptionLifecycle {
     /// `HashingFailed`) are surfaced into `last_planner_error` (observable via
     /// [`Self::last_planner_error`]) before returning empty, so the error is
     /// never silently lost.
+    #[must_use]
     pub fn drain_tick(&mut self, mailbox_cache: &dyn MailboxCache) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {

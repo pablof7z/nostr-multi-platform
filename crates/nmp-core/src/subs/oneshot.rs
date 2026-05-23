@@ -143,6 +143,7 @@ impl OneshotApi {
     /// still registered (the actor releases explicitly via [`Self::release`]
     /// once it has consumed the result). **Idempotent**: calling twice with no
     /// intervening [`Self::complete`] returns an empty vec the second time.
+    #[must_use]
     pub fn drain_completed(&mut self) -> Vec<OneshotToken> {
         let done: Vec<OneshotToken> = self
             .pending

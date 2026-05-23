@@ -165,6 +165,7 @@ impl ReplayDispatcher {
             .insert(relay_url.to_string(), acks);
     }
 
+    #[must_use]
     pub fn sent_frames(&self) -> Vec<(RelayUrl, String)> {
         self.sent.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
@@ -214,6 +215,7 @@ impl QueueDispatcher {
 
     /// Drain every queued frame in FIFO order. Returned `(relay_url, frame)`
     /// pairs are ready for the kernel to wrap as `OutboundMessage`s.
+    #[must_use]
     pub fn drain(&self) -> Vec<(RelayUrl, String)> {
         // D2: recover from a poisoned lock rather than panic — this seam is
         // driven by the single actor thread and a panic here would take the
