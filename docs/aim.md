@@ -168,7 +168,7 @@ The framework ships **test utilities**: a mock relay (already provided by the re
 
 ### 4.14 Scaffolding CLI
 
-A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the UniFFI binding generator, an iOS SwiftUI app, an Android Compose app, an iced desktop app, a web wasm shell, the `justfile` build orchestrator, an optional Nix flake. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on all four platforms immediately. This is modeled directly on RMP's `rmp init`.
+A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI, CI-frozen at 71 symbols; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, an iced desktop app, a web wasm shell, the `justfile` build orchestrator, an optional Nix flake. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on all four platforms immediately. This is modeled directly on RMP's `rmp init`.
 
 ---
 
@@ -182,9 +182,13 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   ├── <framework>-core         # Actor, AppState, AppAction, AppUpdate,
 │   │                              # event store, subscription planner, sessions,
 │   │                              # outbox routing. Pure Rust, no FFI.
-│   ├── <framework>-ffi          # UniFFI scaffolding. FfiApp object,
+│   ├── <framework>-ffi          # Binding scaffolding. FfiApp object,
 │   │                              # AppReconciler callback interface,
-│   │                              # uniffi::Record/Enum derives on state types.
+│   │                              # state-type carriers across the FFI seam.
+│   │                              # TODAY: hand-rolled C-ABI (CI-frozen at 71
+│   │                              # symbols). UniFFI migration deferred to M14
+│   │                              # when the write surface stabilizes — see
+│   │                              # ADR-0030.
 │   ├── <framework>-wasm         # wasm-bindgen wrapper for web/Node/RN.
 │   ├── <framework>-actions      # Built-in actions: send, follow, profile,
 │   │                              # zap, react, repost, list management, DM, etc.
@@ -200,8 +204,13 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   ├── <framework>-testing      # Mock relay, factories, simulated time.
 │   └── <framework>-cli          # Scaffolding tool.
 ├── bindings/
-│   ├── swift/                   # Generated UniFFI Swift, checked in.
-│   ├── kotlin/                  # Generated UniFFI Kotlin, checked in.
+│   ├── swift/                   # Generated Swift bindings, checked in.
+│   │                              # TODAY: hand-mirrored Decodables in
+│   │                              # KernelBridge.swift; nmp-codegen Swift
+│   │                              # emitter is the planned replacement
+│   │                              # (ADR-0030 §(b)). UniFFI deferred to M14.
+│   ├── kotlin/                  # Generated Kotlin bindings, checked in.
+│   │                              # Same pattern as Swift; not yet wired.
 │   └── typescript/              # Generated wasm-bindgen TS, checked in.
 ├── examples/
 │   ├── chat-ios/
