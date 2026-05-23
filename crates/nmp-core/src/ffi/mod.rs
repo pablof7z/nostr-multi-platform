@@ -909,6 +909,7 @@ impl NmpApp {
     /// atomic step (`swap`), so a second caller cannot re-observe the flag.
     /// Atomics cannot poison, so — unlike the previous `Mutex<bool>` — there
     /// is no lock-failure fallback path that could silently drop the intent.
+    #[must_use]
     pub fn take_pending_mls_autopublish(&self) -> bool {
         self.pending_mls_autopublish.swap(false, Ordering::AcqRel)
     }
@@ -924,6 +925,7 @@ impl NmpApp {
     /// `actor_queue_depth` snapshot metric is therefore a lower bound when a
     /// broker is wired — acceptable for a backpressure gate that watches for
     /// buildup, not exact occupancy.
+    #[must_use]
     pub fn actor_sender(&self) -> Sender<ActorCommand> {
         self.tx.clone()
     }
@@ -950,6 +952,7 @@ impl NmpApp {
 
     /// Persist a newly-imported local secret through the keyring capability,
     /// then sign it in through the identity reducer.
+    #[must_use]
     pub fn sign_in_local_nsec_with_keyring(&self, account_id: &str, secret: String) -> String {
         let req = crate::substrate::KeyringIdentityWiring::persist_secret(
             "nmp.identity.persist",
@@ -999,6 +1002,7 @@ impl NmpApp {
     /// (`nmp-nip01`) and need typed `&KernelEvent` access on the kernel's
     /// ingest fan-out. D0 — `nmp-core` never names the protocol crate; this
     /// trait is the seam.
+    #[must_use]
     pub fn register_event_observer(
         &self,
         observer: Arc<dyn KernelEventObserver>,
@@ -1028,6 +1032,7 @@ impl NmpApp {
     /// (`sig` included) — e.g. an inbound-ingest seam that must hand the
     /// whole signed event to its own state machine. D0 — `nmp-core` never
     /// names the protocol; this trait is the generic seam.
+    #[must_use]
     pub fn register_raw_event_observer(
         &self,
         kinds: KindFilter,
@@ -1071,6 +1076,7 @@ impl NmpApp {
     /// new observer live (no inbox-gap window), and the take-and-set under a
     /// single lock acquisition makes the previous id impossible to lose to a
     /// concurrent re-invoke. A poisoned mutex degrades to `None` (D6).
+    #[must_use]
     pub fn swap_nip17_dm_inbox_observer(
         &self,
         new: Option<RawEventObserverId>,
@@ -1094,6 +1100,7 @@ impl NmpApp {
     /// The slot is substrate-generic (D0 — the kernel never names the app
     /// noun); the per-app crate decides what protocol surface the singleton
     /// observer projects.
+    #[must_use]
     pub fn swap_singleton_event_observer(
         &self,
         new: Option<KernelEventObserverId>,
@@ -1119,6 +1126,7 @@ impl NmpApp {
     /// Route a typed capability request through the registered native
     /// callback. Protocol/app composition crates use this when Rust owns the
     /// policy and native only executes the platform capability.
+    #[must_use]
     pub fn dispatch_capability(
         &self,
         request: &crate::substrate::CapabilityRequest,
@@ -1140,6 +1148,7 @@ impl NmpApp {
     /// always see the up-to-date value. Used by per-app crates (e.g.
     /// per-app crate registration) so the key stays Rust-owned
     /// (D0 — Swift never sees it for the `createAccount` path).
+    #[must_use]
     pub fn mls_local_nsec(&self) -> Option<Zeroizing<String>> {
         self.mls_local_nsec.lock().ok()?.clone()
     }
@@ -1156,6 +1165,7 @@ impl NmpApp {
     ///
     /// This is DELIBERATELY separate from [`Self::mls_local_nsec`]: that
     /// accessor backs the ADR-0025 Marmot exception; NIP-17 uses this slot.
+    #[must_use]
     pub fn nip17_local_keys(&self) -> Nip17LocalKeysSlot {
         Arc::clone(&self.nip17_local_keys)
     }
@@ -1172,6 +1182,7 @@ impl NmpApp {
     /// (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) forbids new bare
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp`; the typed alias makes the
     /// slot's purpose visible at every call site.
+    #[must_use]
     pub fn relay_edit_rows_handle(&self) -> crate::kernel::RelayEditRowsSlot {
         Arc::clone(&self.relay_edit_rows)
     }
@@ -1183,6 +1194,7 @@ impl NmpApp {
     /// The underlying slot is a typed `RelayEditRowList`; the
     /// reader iterates via `as_slice()` so it never touches the inner `Vec`
     /// directly.
+    #[must_use]
     pub fn write_relay_urls(&self) -> Vec<String> {
         let Ok(guard) = self.relay_edit_rows.lock() else {
             return Vec::new();
@@ -1271,6 +1283,7 @@ impl NmpApp {
     /// handshake from the shared kernel relay-edit projection. Empty or
     /// poisoned state falls back through the same Rust-owned policy as an app
     /// with no configured write relays.
+    #[must_use]
     pub fn nostrconnect_relay_url(&self) -> String {
         let Ok(guard) = self.relay_edit_rows.lock() else {
             return crate::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
