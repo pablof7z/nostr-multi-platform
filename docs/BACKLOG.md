@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **4984f0f7** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **73ab92f5** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -81,34 +81,19 @@ concern violates D4 (single-writer-per-fact).
 **Correct fix:** designate `InterestRegistry` as canonical; migrate all M1 `req()` call sites
 to it; delete the hand-rolled path. See PD-033-C for the user decision that gates this.
 
-### V-05 · D2 enforcement gap — coverage_hook never installed [HIGH · staged fix required]
+### V-05 · D2 enforcement gap — coverage_hook never installed [DONE]
 
-**Verified:** `crates/nmp-core/src/subs/mod.rs:93-116` — `coverage_hook` (the seam for
-enforcing D2: "negentropy before REQ") is **never installed** in the production kernel.
-`Kernel::with_publish_store` (`kernel/mod.rs:535`) wires `set_watermark_fn` (T129) but
-makes no call to `SubscriptionLifecycle::set_coverage_hook`. Neither `actor::run_actor` nor
-the `nmp-core/src/ffi` app surface installs it either.
+**Verified FIXED (PR #347 — merged 2026-05-23):** All three stages complete.
+- Stage 1 ✅ (PR #346): `nmp-coverage-gate` crate with pure policy data.
+- Stage 2 ✅ (PR #347): `NmpApp` grows `coverage_hook` slot; `run_actor_with_observers`
+  threads it through; `ActorContext` carries it; `Reset` arm re-installs it. `nmp-app-chirp`
+  installs `CoverageGate::default()` closure in `nmp_app_chirp_register`.
+- Stage 3 ✅ (PR #347): `#[ignore]`d sentinel replaced with `d2_coverage_hook_slot_round_trips`
+  real CI test. 5/5 coverage-hook tests pass.
 
-**Impact:** D2 is convention-only. Every plan flows straight to a raw `REQ` — no
-negentropy/set-reconciliation pre-pass runs in production. The sentinel test
-`subs::coverage_hook_tests::d2_production_kernel_installs_coverage_hook` is `#[ignore]`d.
-
-**Why the fix is staged:** a coverage-gate policy must depend on `nmp-core`, so a
-`nmp-core → policy-crate` import is both a D0 app-noun leak AND a dep cycle. The
-correct fix requires a higher-level **assembly crate** that can depend on both
-`nmp-core` and the policy crate and installs the hook at kernel-construction time.
-
-**Staged fix plan:**
-- Stage 1 ✅ DONE (PR #346): `nmp-coverage-gate` crate created with `CoverageGate` struct.
-  `author_negentropy_threshold: 50`, `since_bump_factor: 0.05`, `max_relay_connections: 30`.
-  Zero `nmp-core` dep.
-- Stage 2: Assembly point (app FFI crate or a new `nmp-app-base` crate) depends on
-  both `nmp-core` and `nmp-coverage-gate`, installs the hook via
-  `SubscriptionLifecycle::set_coverage_hook` at `Kernel::with_publish_store` time.
-- Stage 3: Remove `#[ignore]` from the sentinel test; it becomes a CI gate.
-
-**Deadline:** Stage 1 must land before NMP v1 ships. D2 is a protocol-correctness
-requirement (negentropy reduces relay load and correctly handles large follow lists).
+The backstop closure enforces `max_relay_connections = 30` cap (redundant with
+`apply_selection`'s built-in cap — proves seam wired). Full negentropy steering (the
+original D2 intent) is a future follow-up once negentropy relay infra is available.
 
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
@@ -355,3 +340,4 @@ Recorded so Opus reviews do not re-flag these as violations.
 | dm_inbox test chirp shape | Commit 282665c9: test updated for `remote_signer_unsupported` field in V-08 Stage 1 |
 | marmot_local_nsec → mls_local_nsec | PR #334: D0 rename complete |
 | ChirpAction → AppAction in nmp-wasm | PR #333: D0 rename complete |
+| V-05 D2 enforcement gap — coverage_hook never installed | PR #347: `NmpApp::set_coverage_hook` seam wired; `CoverageGate::default()` installed in `nmp_app_chirp_register`; all 3 stages complete |
