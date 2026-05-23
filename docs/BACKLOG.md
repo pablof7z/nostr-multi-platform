@@ -99,7 +99,7 @@ correct fix requires a higher-level **assembly crate** that can depend on both
 `nmp-core` and the policy crate and installs the hook at kernel-construction time.
 
 **Staged fix plan:**
-- Stage 1 ✅ DONE (PR #TBD): `nmp-coverage-gate` crate created with `CoverageGate` struct.
+- Stage 1 ✅ DONE (PR #346): `nmp-coverage-gate` crate created with `CoverageGate` struct.
   `author_negentropy_threshold: 50`, `since_bump_factor: 0.05`, `max_relay_connections: 30`.
   Zero `nmp-core` dep.
 - Stage 2: Assembly point (app FFI crate or a new `nmp-app-base` crate) depends on
