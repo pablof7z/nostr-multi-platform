@@ -167,6 +167,7 @@ fn apply_relay_hints(shape: &mut InterestShape, relays: &[String]) -> Vec<RelayH
 ///
 /// Pure and side-effect-free: the caller decides registry/dispatch sequencing.
 /// Never panics — every failure path is a typed [`OpenUriError`] (D6).
+#[must_use]
 pub fn resolve_open_uri(uri: &str) -> Result<OpenUriRouting, OpenUriError> {
     let target = parse_target(uri)?;
 
