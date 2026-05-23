@@ -35,7 +35,6 @@ use super::helpers::{PubkeyAction, ReactAction};
 /// Hex-shape validation deliberately stays in the actor's command handlers
 /// (which own the user-facing toasts) — the module validators here only check
 /// JSON shape, mirroring the comment the deleted FFI symbols carried (D6).
-
 pub(super) struct ChirpReactModule;
 impl ActionModule for ChirpReactModule {
     const NAMESPACE: &'static str = "nmp.nip25.react";

@@ -96,7 +96,7 @@ impl Nip65OutboxResolver {
         )
     }
 
-    pub fn with_local_relays(
+    pub(crate) fn with_local_relays(
         store: Arc<dyn EventStore>,
         indexer_relays: IndexerRelaysSlot,
         local_write_relays: LocalWriteRelaysSlot,

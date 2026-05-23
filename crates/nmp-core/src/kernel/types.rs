@@ -375,7 +375,7 @@ pub(super) struct PublishOutboxRelay {
 /// the shell only binds the strings.
 ///
 /// Doctrine §6 anti-pattern #1 ("Duplicated formatting logic across platforms")
-/// + RMP bible commandment #4 ("no native business logic"). The shell never
+/// and RMP bible commandment #4 ("no native business logic"). The shell never
 /// counts `publish_outbox` entries by status to derive a subtitle; it reads
 /// `outbox_summary.subtitle` directly.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

@@ -167,7 +167,7 @@ impl RawObserverLifecycle {
             return;
         };
         state.active = false;
-        while state.in_flight > 0 && !state.callers.iter().any(|id| *id == current) {
+        while state.in_flight > 0 && !state.callers.contains(&current) {
             let Ok(next) = self.idle.wait(state) else {
                 return;
             };
