@@ -230,6 +230,7 @@ impl MarmotProjection {
     }
 
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
+    #[must_use]
     pub fn snapshot(&self, now_secs: u64) -> MarmotSnapshot {
         let Ok(inner) = self.inner.lock() else {
             return MarmotSnapshot::empty();

@@ -107,6 +107,7 @@ pub struct DiscoveredGroupsSnapshot {
 impl DiscoveredGroupsSnapshot {
     /// Empty snapshot — what a freshly-constructed projection (or one whose
     /// internal lock is poisoned, D6) reports.
+    #[must_use]
     pub fn empty(host_relay_url: impl Into<String>) -> Self {
         Self {
             host_relay_url: host_relay_url.into(),
