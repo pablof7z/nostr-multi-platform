@@ -3935,6 +3935,7 @@ name = "nmp-nip02"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nostr",
  "serde",
  "serde_json",
 ]
