@@ -148,7 +148,12 @@ use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
+// `SystemTime` and `UNIX_EPOCH` are only consumed by native-gated functions in
+// `kernel/nostr.rs` (format_timestamp/now_hms) and `kernel/ingest/auth_handlers.rs`.
+// Both callers use `#[cfg(feature = "native")]` so these imports can also be gated.
+#[cfg(feature = "native")]
+use std::time::{SystemTime, UNIX_EPOCH};
 // V-01 Phase 1c: the kernel no longer names `tungstenite`. The native
 // `relay_worker` converts `tungstenite::Message` → [`RelayFrame`] before
 // handing it to [`Kernel::handle_message`]; a non-native transport (wasm32)
@@ -179,7 +184,8 @@ use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds}
 use auth::{AuthSignerFn, Nip42DriverState};
 use clock::{Clock, SystemClock};
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
-// `nmp_app_dispatch_action` entry point.
+// `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
+#[cfg(feature = "native")]
 pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
     new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry, RelayAckOutcome,
@@ -188,7 +194,11 @@ pub(crate) use identity_state::{
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
-pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProjectionSlot};
+// `SnapshotProjectionSlot` is a Kernel struct field type (always-compiled);
+// `new_snapshot_projection_slot` is only called from native-only callers.
+pub(crate) use snapshot_registry::SnapshotProjectionSlot;
+#[cfg(feature = "native")]
+pub(crate) use snapshot_registry::new_snapshot_projection_slot;
 // Typed slot wrappers + constructors. `RelayEditRowsSlot` /
 // `RelayEditRowList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via
@@ -199,9 +209,11 @@ pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProject
 // `new_*_slot()` helpers and reads through `as_slice()`).
 pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
 pub(crate) use relay_projection::{
-    new_indexer_relays_slot, new_local_write_relays_slot, new_relay_edit_rows_slot,
-    IndexerRelaysSlot, LocalWriteRelaysSlot,
+    new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
+// `new_relay_edit_rows_slot` is only called from native actor / FFI code.
+#[cfg(feature = "native")]
+pub(crate) use relay_projection::new_relay_edit_rows_slot;
 pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // D0: NIP-47 NWC is an app noun. `WalletStatus` no longer lives in the kernel
 // — it moved to the wallet command runtime (`actor::commands::wallet`) and is

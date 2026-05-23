@@ -41,6 +41,8 @@ mod tests;
 mod traits;
 mod view;
 
+// Validation helpers called only from native actor command handlers.
+#[cfg(feature = "native")]
 pub(crate) use action::{validate_explicit_relays, validate_publish_target};
 pub use action::{
     PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishTarget, RelayUrl,

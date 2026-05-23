@@ -47,7 +47,10 @@ mod tests;
 #[cfg(feature = "native")]
 mod tick;
 
+// V-01 Phase 1c: capability callback and identity runtime are native actor runtime only.
+#[cfg(feature = "native")]
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
+#[cfg(feature = "native")]
 use commands::IdentityRuntime;
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
 #[cfg(feature = "wallet")]
@@ -62,15 +65,21 @@ pub(crate) use commands::{new_wallet_status_slot, WalletStatusSlot};
 // `"wallet"` projection through `make_update`.
 #[cfg(all(test, feature = "wallet"))]
 pub(crate) use commands::WalletStatus;
+// `KernelEventObserverSlot` and `notify_observers` are consumed by `kernel/event_observer.rs`
+// unconditionally — keep them always-compiled. The slot constructors, registration helpers,
+// and lifecycle observer types are only consumed by the native FFI and actor runtime.
+pub(crate) use commands::{notify_observers, KernelEventObserverSlot};
+#[cfg(feature = "native")]
 pub(crate) use commands::{
-    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, notify_observers,
-    register_c_observer, register_rust_observer, unregister_observer, KernelEventObserverSlot,
-    LifecycleObserverRegistration, LifecycleObserverSlot,
+    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, register_c_observer,
+    register_rust_observer, unregister_observer, LifecycleObserverRegistration, LifecycleObserverSlot,
 };
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
 // `"bunker_handshake"` snapshot-projection closure.
+// V-01 Phase 1c: bunker types are native actor / FFI only.
+#[cfg(feature = "native")]
 pub(crate) use commands::{
     build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
 };
@@ -144,6 +153,7 @@ use tick::{compute_wait, emit_now, flush_due};
 
 #[cfg(feature = "native")]
 use crate::kernel::Kernel;
+#[cfg(feature = "native")]
 use crate::relay::RelayRole;
 #[cfg(feature = "native")]
 use crate::subs::PlanCoverageHook;
@@ -158,6 +168,7 @@ use std::collections::HashSet;
 use std::panic::{self, AssertUnwindSafe};
 #[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "native")]
 use std::sync::mpsc::{Receiver, Sender};
 #[cfg(feature = "native")]
 use std::sync::mpsc::{self, TryRecvError};
@@ -170,9 +181,11 @@ use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
 pub(crate) use relay_roles::{
-    canonical_relay_role, has_role, nostrconnect_relay_url, relay_role_label, relay_role_options,
-    relay_role_tint,
+    canonical_relay_role, has_role, relay_role_label, relay_role_options, relay_role_tint,
 };
+// `nostrconnect_relay_url` is consumed by `ffi/mod.rs` (native only).
+#[cfg(feature = "native")]
+pub(crate) use relay_roles::nostrconnect_relay_url;
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate

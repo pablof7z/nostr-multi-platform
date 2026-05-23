@@ -96,6 +96,8 @@ mod tests;
 #[cfg(feature = "wallet")]
 mod wallet;
 
+// V-01 Phase 1c: identity command handlers sit on the native actor runtime.
+#[cfg(feature = "native")]
 pub(super) use identity::{
     add_remote_signer, bunker_handshake_progress, create_account, ensure_default_onboarding_relays,
     remove_account, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
@@ -106,10 +108,16 @@ pub(super) use identity::{
 // shared slot and register the built-in `"bunker_handshake"` snapshot
 // projection. `BunkerHandshakeDto` stays `identity`-private — callers drive it
 // only through `bunker_handshake_progress` / `sign_in_bunker`.
+// V-01 Phase 1c: bunker types consumed only by native FFI / actor runtime.
+#[cfg(feature = "native")]
 pub(crate) use identity::{
     build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
 };
+// V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
+#[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;
+// V-01 Phase 1c: lifecycle slot/registration types consumed only by native FFI / actor runtime.
+#[cfg(feature = "native")]
 pub(crate) use lifecycle::{
     new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,
 };
@@ -121,9 +129,12 @@ pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_P
 // `ffi/event_observer.rs` and the per-app crate registration path (via
 // `NmpApp::kernel_event_observers`) reach the same `Arc<Mutex<…>>` instance
 // the kernel holds for fan-out.
+// `KernelEventObserverSlot` and `notify_observers` are used by kernel/event_observer.rs
+// unconditionally. The slot constructors and registration helpers are native FFI only.
+pub(crate) use event_observer::{notify_observers, KernelEventObserverSlot};
+#[cfg(feature = "native")]
 pub(crate) use event_observer::{
-    new_event_observer_slot, notify_observers, register_c_observer, register_rust_observer,
-    unregister_observer, KernelEventObserverSlot,
+    new_event_observer_slot, register_c_observer, register_rust_observer, unregister_observer,
 };
 pub use event_observer::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
