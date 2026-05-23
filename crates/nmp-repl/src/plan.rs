@@ -121,14 +121,10 @@ pub fn build_interest(
         }
     }
     if let Some(since) = filter.since {
-        if since >= 0 {
-            shape.since = Some(since as u64);
-        }
+        shape.since = u64::try_from(since).ok();
     }
     if let Some(until) = filter.until {
-        if until >= 0 {
-            shape.until = Some(until as u64);
-        }
+        shape.until = u64::try_from(until).ok();
     }
     shape.limit = filter.limit;
 

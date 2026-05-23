@@ -112,9 +112,8 @@ pub fn fetch_follows(session: &mut Session) -> Result<FollowsResult> {
                     events += 1;
                     collect_p_tags(&event, &mut follows);
                 }
-                Frame::Timeout | Frame::Other | Frame::Event { .. } => continue,
                 Frame::Eose { sub_id: s } if s == sub_id => break Outcome::Eose,
-                Frame::Eose { .. } => continue,
+                Frame::Timeout | Frame::Other | Frame::Event { .. } | Frame::Eose { .. } => continue,
                 Frame::Closed { message, .. } => break Outcome::Closed(message),
                 Frame::Auth { .. } => break Outcome::Auth,
                 Frame::Notice { message } => {
