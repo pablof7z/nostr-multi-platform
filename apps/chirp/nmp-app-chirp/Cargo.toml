@@ -101,7 +101,6 @@ zeroize.workspace = true
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
 # the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
-nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
 # the Marmot FFI smoke tests to `nmp-marmot`'s `src/ffi/tests.rs`; Chirp no
 # longer references any MLS types directly.)
