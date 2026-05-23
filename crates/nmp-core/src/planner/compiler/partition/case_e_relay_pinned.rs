@@ -40,7 +40,7 @@ use super::RelayEntry;
 /// caller guarantees `Some(_)` before invoking this routine.
 ///
 /// `base_shape` carries the non-routing-derived fields (kinds, tags, since,
-/// until, limit, event_ids); the partition retains `addresses` and `authors`
+/// until, limit, `event_ids`); the partition retains `addresses` and `authors`
 /// on the resulting entry so the wire-emitter sends the full filter shape.
 /// Routing itself ignores them — only the pin matters.
 pub(super) fn route(

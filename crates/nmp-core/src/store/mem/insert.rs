@@ -5,7 +5,7 @@
 //!
 //! P2 fixes applied here:
 //!   - Duplicate check BEFORE kind-specific supersession (provenance merge).
-//!   - Tombstone max-merge (`deleted_at` max + source union instead of or_insert).
+//!   - Tombstone max-merge (`deleted_at` max + source union instead of `or_insert`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -165,7 +165,7 @@ pub(super) fn delete_by_filter(
 // ─── Shared supersession helper ───────────────────────────────────────────────
 
 /// Unified supersession logic for both replaceable and param-replaceable kinds.
-/// `key` = (pubkey_hex, kind, Option<d_tag_str>) — None means any d-tag (replaceable).
+/// `key` = (`pubkey_hex`, kind, Option<`d_tag_str`>) — None means any d-tag (replaceable).
 fn handle_supersession(
     st: &mut MemState,
     event: RawEvent,
@@ -283,7 +283,7 @@ fn handle_kind5_insert(
         let (tgt_kind_str, tgt_pk, tgt_dtag) = (parts[0], parts[1], parts[2]);
         if tgt_pk != kind5_pubkey { continue; }
         let Ok(tgt_kind) = tgt_kind_str.parse::<u32>() else { continue };
-        let addr_key = format!("{}:{}:{}", tgt_kind_str, tgt_pk, tgt_dtag);
+        let addr_key = format!("{tgt_kind_str}:{tgt_pk}:{tgt_dtag}");
 
         let to_delete: Vec<String> = st.events.iter()
             .filter(|(_, ev)| {

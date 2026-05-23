@@ -16,7 +16,7 @@
 //! compiler also reads the same cache for active gift-wrap inbox interests, so
 //! a kind:10050 change fans a recompile trigger.
 
-use super::super::*;
+use super::super::{HashSet, CanonicalRelayUrl, Kernel, NostrEvent, short_hex};
 use crate::subs::CompileTrigger;
 
 /// Parse the `["relay", <url>]` tags of a kind:10050 event into a deduped,
@@ -58,7 +58,7 @@ impl Kernel {
     /// (D4) — the store has already enforced replaceable-event supersession
     /// (strict `>` on `created_at`, lexicographic event-id tiebreak), so the
     /// `dm_relay_lists` cache always reflects the canonical kind:10050 for the
-    /// author. No created_at guard is kept on the cache itself: the store is the
+    /// author. No `created_at` guard is kept on the cache itself: the store is the
     /// supersession authority and this handler runs only on the winning event.
     ///
     /// ## Empty-list semantics

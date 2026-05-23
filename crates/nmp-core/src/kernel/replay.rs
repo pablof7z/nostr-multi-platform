@@ -8,11 +8,11 @@
 //!
 //! See `docs/research/relay-lifecycle-and-pools.md` G1 for the gap that this
 //! closes, and `docs/design/subscription-compilation/recompilation.md` §4.2
-//! (A5 — RelayReconnected) for the semantics: pure replay of the current
+//! (A5 — `RelayReconnected`) for the semantics: pure replay of the current
 //! plan's sub-shapes targeting this URL, with `since` bumped through the T129
 //! watermark resolver so we don't re-download already-stored events.
 
-use super::*;
+use super::{json, Kernel, RelayRole, OutboundMessage, Value};
 use crate::subs::WireFrame;
 
 impl Kernel {
@@ -64,7 +64,7 @@ impl Kernel {
 /// Unlike `auth_handlers::wire_frames_to_outbound` this helper does NOT gate on
 /// `relay_url == role.url()` — `handle_reconnect` already scopes its output to
 /// the target URL, and post-T105 most URLs are NOT the bootstrap host for
-/// their role (the AuthGate helper's filter is a pre-T125 vestige that drops
+/// their role (the `AuthGate` helper's filter is a pre-T125 vestige that drops
 /// every per-author/per-mailbox frame; reusing it would silently lose every
 /// replay frame for non-bootstrap URLs).
 ///

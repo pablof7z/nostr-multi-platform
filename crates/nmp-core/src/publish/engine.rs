@@ -67,11 +67,11 @@ pub(super) struct InFlight {
     pub per_relay: BTreeMap<RelayUrl, PerRelayState>,
     pub pending_retries: BTreeMap<RelayUrl, u64>, // relay -> earliest retry epoch ms
     pub dirty: bool,
-    /// Optional action correlation_id to report in `LastTerminal` instead of
+    /// Optional action `correlation_id` to report in `LastTerminal` instead of
     /// the publish `handle` (== event id). Set when the publish originates
     /// from `nmp_app_dispatch_action`'s `PublishAction::PublishNote` path: the
     /// actor signs the event, so its `id` is not known at dispatch time and
-    /// the host received a registry-minted correlation_id that differs from
+    /// the host received a registry-minted `correlation_id` that differs from
     /// the event id. The terminal sites (`on_ack`, `tick`) report this id so
     /// the host spinner can be cleared. `None` for every other publish path
     /// (pre-signed `Publish`, `react`, `follow`, …) — the terminal verdict
@@ -87,7 +87,7 @@ pub(super) struct InFlight {
 ///
 /// `accepted` is the relays that landed `PerRelayState::Ok`; `failed` carries
 /// the `(relay_url, reason)` pairs from `FailedAfterRetries`. Mixed publishes
-/// (at least one Ok + at least one FailedAfterRetries) are reported here with
+/// (at least one Ok + at least one `FailedAfterRetries`) are reported here with
 /// both lists populated — the kernel decides what status string to surface.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalOutcome {
@@ -119,7 +119,7 @@ impl LastTerminal {
     /// kernel's `classify_terminal_outcome` status rule: any accepted relay →
     /// `"ok"`, otherwise `"failed"`.
     ///
-    /// `correlation_id_override` is the action correlation_id the host received
+    /// `correlation_id_override` is the action `correlation_id` the host received
     /// from `nmp_app_dispatch_action` when it differs from the publish handle
     /// (the `PublishNote` path — the actor signs the event, so the host got a
     /// registry-minted id, not the event id). When `Some`, the returned
@@ -139,7 +139,7 @@ impl LastTerminal {
                     outcome
                         .failed
                         .iter()
-                        .map(|(url, reason)| format!("{}: {}", url, reason))
+                        .map(|(url, reason)| format!("{url}: {reason}"))
                         .collect::<Vec<_>>()
                         .join("; "),
                 )
@@ -170,7 +170,7 @@ pub struct PublishEngine {
     #[allow(dead_code)]
     signer: Arc<dyn Signer>,
     /// Set when a handle was just removed from `in_flight` (completed or
-    /// cancelled) — flush_view consults this so the snapshot's `in_flight`
+    /// cancelled) — `flush_view` consults this so the snapshot's `in_flight`
     /// vector clears the stale row even though nothing in the live map is
     /// marked dirty.
     needs_in_flight_rebuild: bool,
@@ -253,14 +253,14 @@ impl PublishEngine {
 
     /// Drive a `PublishAction` into the engine.
     ///
-    /// `correlation_id_override` is the action correlation_id to report in
+    /// `correlation_id_override` is the action `correlation_id` to report in
     /// `action_results` when it differs from the publish handle — set for
     /// the `PublishNote` dispatch path (the actor signs the event, so the host
     /// received a registry-minted id, not the event id). `None` for every
     /// other caller: the terminal verdict then reports the handle, preserving
     /// the prior behaviour. Only the `Publish` variant carries the override
     /// into an `InFlight` row; `Cancel` already reports `handle` as the
-    /// correlation_id (which is what the host got back from dispatch).
+    /// `correlation_id` (which is what the host got back from dispatch).
     pub fn start_publish(
         &mut self,
         action: PublishAction,
@@ -377,7 +377,7 @@ impl PublishEngine {
         Ok(())
     }
 
-    /// Drive any per-relay states that are due (Pending → InFlight, or retry
+    /// Drive any per-relay states that are due (Pending → `InFlight`, or retry
     /// after backoff has elapsed). Called by the actor on its tick.
     pub fn tick(&mut self, now_ms: u64) {
         let deadline_ms = self.policy.inflight_deadline_ms;
@@ -528,7 +528,7 @@ impl PublishEngine {
                     handle: handle.clone(),
                     event_id,
                     relay_url: "(store)".to_string(),
-                    reason: format!("store delete failed: {:?}", err),
+                    reason: format!("store delete failed: {err:?}"),
                     at_ms: now_ms,
                 });
             }
@@ -546,7 +546,7 @@ impl PublishEngine {
                 handle: handle.clone(),
                 event_id,
                 relay_url: "(store)".to_string(),
-                reason: format!("store upsert failed: {:?}", err),
+                reason: format!("store upsert failed: {err:?}"),
                 at_ms: now_ms,
             });
         }

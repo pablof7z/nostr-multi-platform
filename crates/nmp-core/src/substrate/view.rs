@@ -29,7 +29,7 @@ pub struct ViewDependencies {
     /// Maximum number of historical events to fetch per REQ subscription.
     /// Maps directly to [`InterestShape::limit`]. `None` means no client-side
     /// limit (relay applies its own default). Use for bounded lookups such as
-    /// KeyPackage fetch (`limit: Some(4)`) or chat history (`limit: Some(200)`).
+    /// `KeyPackage` fetch (`limit: Some(4)`) or chat history (`limit: Some(200)`).
     pub limit: Option<u32>,
 }
 

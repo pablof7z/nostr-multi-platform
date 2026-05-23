@@ -2,7 +2,7 @@
 //!
 //! Routes address-pointer coordinates to the coordinate pubkey's outbox
 //! relays. Per the routing-rules clarification, indexer relays are NOT
-//! a content fallback; app_relays substitute when NIP-65 is unknown.
+//! a content fallback; `app_relays` substitute when NIP-65 is unknown.
 //!
 //! - Coord pubkey with NIP-65 → REQ to `outbox_relays()` ∪ `app_relays`.
 //! - Coord pubkey without NIP-65 → REQ to `app_relays` ONLY; we still

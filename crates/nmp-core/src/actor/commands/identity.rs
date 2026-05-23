@@ -271,7 +271,7 @@ pub(crate) fn build_nip46_onboarding_dto(
     };
     let is_in_flight = matches!(
         stage_kind,
-        Some(BunkerStageKind::Connecting) | Some(BunkerStageKind::AwaitingPubkey)
+        Some(BunkerStageKind::Connecting | BunkerStageKind::AwaitingPubkey)
     );
     let is_failed = matches!(stage_kind, Some(BunkerStageKind::Failed));
     let is_terminal_success = matches!(stage_kind, Some(BunkerStageKind::Ready));
@@ -302,7 +302,7 @@ pub(crate) fn build_nip46_onboarding_dto(
 /// completes inside 5s.
 const REMOTE_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// IdentityId is the hex pubkey (matches NDK / applesauce / `AccountManager`).
+/// `IdentityId` is the hex pubkey (matches NDK / applesauce / `AccountManager`).
 pub(crate) type IdentityId = String;
 
 /// Actor-local multi-account state. Insertion-ordered for deterministic UI.
@@ -524,7 +524,7 @@ impl IdentityRuntime {
 pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedEvent, String> {
     // Finding 1: validate kind is within the Nostr-defined u16 range before
     // casting. kind:65559 → kind:23 would be a silent correctness violation.
-    if unsigned.kind > u16::MAX as u32 {
+    if unsigned.kind > u32::from(u16::MAX) {
         return Err(format!(
             "invalid kind {}: must be in range [0, 65535]",
             unsigned.kind
@@ -558,7 +558,7 @@ pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedE
         sig: event.sig.to_string(),
         unsigned: UnsignedEvent {
             pubkey: event.pubkey.to_hex(),
-            kind: event.kind.as_u16() as u32,
+            kind: u32::from(event.kind.as_u16()),
             tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
             content: event.content.clone(),
             created_at: event.created_at.as_secs(),
@@ -800,7 +800,7 @@ pub(crate) fn create_account(
     let kind0_content = match serde_json::to_string(profile) {
         Ok(json) => json,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("profile serialisation: {}", e)));
+            kernel.set_last_error_toast(Some(format!("profile serialisation: {e}")));
             String::new()
         }
     };

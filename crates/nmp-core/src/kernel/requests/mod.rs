@@ -14,7 +14,7 @@ mod relay_lifecycle;
 mod startup;
 mod thread;
 
-use super::*;
+use super::{json, Kernel, RelayRole, OutboundMessage, CanonicalRelayUrl, Value, WireSub, Instant};
 
 impl Kernel {
     #[allow(dead_code)] // Per-lane snapshot retained for diagnostic surface (M11).

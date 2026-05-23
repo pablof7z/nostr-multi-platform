@@ -1333,7 +1333,7 @@ impl NmpApp {
             id: event.id.to_hex(),
             pubkey: event.pubkey.to_hex(),
             created_at: event.created_at.as_secs(),
-            kind: event.kind.as_u16() as u32,
+            kind: u32::from(event.kind.as_u16()),
             tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
             content: event.content.clone(),
             sig: event.sig.to_string(),

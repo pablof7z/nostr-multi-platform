@@ -37,13 +37,13 @@
 //!    — when a `correlation_id` was supplied — a
 //!    [`ActorCommand::RecordActionSuccess`] so the host's `dispatch_action`
 //!    spinner closes; on failure a `ShowToast` and a
-//!    [`ActorCommand::RecordActionFailure`] (same correlation_id guard).
+//!    [`ActorCommand::RecordActionFailure`] (same `correlation_id` guard).
 //!
 //! # ADR-0026 / bunker accounts — out of scope
 //!
 //! The handler reads `IdentityRuntime::active_local_keys`. Bunker (NIP-46
 //! remote-signer) accounts return `None`; the handler fails closed with a
-//! clear toast and records `Failed` against the correlation_id. NIP-46
+//! clear toast and records `Failed` against the `correlation_id`. NIP-46
 //! signing of kind:9734 zap requests is the ADR-0026 Phase 2 follow-up
 //! (parallel to the NIP-17 DM bunker-send path documented in
 //! `commands/dm.rs`).
@@ -279,7 +279,7 @@ fn inject_recipient_relays(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
 /// Mirrors the wallet-runtime `sign_nwc_request` precedent — build a
 /// `nostr::Event` via `EventBuilder`, then re-serialize to JSON. The reseat
 /// step is the bridge between the substrate's typed `UnsignedEvent` shape
-/// (kind / tags / content / created_at) and the nostr crate's signer API.
+/// (kind / tags / content / `created_at`) and the nostr crate's signer API.
 fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<String, String> {
     let kind = Kind::from_u16(
         u16::try_from(unsigned.kind).map_err(|e| format!("zap kind out of range: {e}"))?,

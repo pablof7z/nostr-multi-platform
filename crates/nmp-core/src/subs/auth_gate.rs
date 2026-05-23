@@ -50,9 +50,8 @@ impl AuthGate {
     pub(super) fn is_paused(&self, relay_url: &str) -> bool {
         matches!(
             self.state.get(relay_url),
-            Some(RelayAuthState::ChallengeReceived)
-                | Some(RelayAuthState::Authenticating)
-                | Some(RelayAuthState::Failed)
+            Some(RelayAuthState::ChallengeReceived | RelayAuthState::Authenticating |
+RelayAuthState::Failed)
         )
     }
 

@@ -76,15 +76,15 @@ pub(crate) struct AccountSummary {
 /// Status lifecycle (T128 — terminal transitions):
 /// - `"accepted_locally"` — engine has emitted EVENT frames; awaiting acks.
 /// - `"ok"` — every required relay has terminally settled (at least one Ok,
-///   no remaining FailedAfterRetries). Surfaces partial success too (Mixed
+///   no remaining `FailedAfterRetries`). Surfaces partial success too (Mixed
 ///   outcome → `"ok"` with per-relay detail in `relay_outcomes`).
-/// - `"failed"` — every relay reached FailedAfterRetries (no Oks survived).
+/// - `"failed"` — every relay reached `FailedAfterRetries` (no Oks survived).
 /// - Pre-T128 holdovers: `"pending_relays_unknown"` | `"duplicate"` |
 ///   `"store_error"`.
 ///
 /// `relay_outcomes` carries the per-relay result map when the publish has
 /// terminally settled; empty while still in flight or when the engine never
-/// got that far (e.g. NoTargets). The iOS / Kotlin layers render this only
+/// got that far (e.g. `NoTargets`). The iOS / Kotlin layers render this only
 /// once `status` is terminal — they never read partial-state outcomes.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct PublishQueueEntry {
@@ -103,7 +103,7 @@ pub(crate) struct PublishQueueEntry {
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct RelayAckOutcome {
     pub(crate) relay_url: String,
-    /// `"ok"` for an accepted relay, `"failed"` for FailedAfterRetries.
+    /// `"ok"` for an accepted relay, `"failed"` for `FailedAfterRetries`.
     pub(crate) status: String,
     /// Empty for `"ok"`; carries the engine's give-up reason for `"failed"`.
     #[serde(default, skip_serializing_if = "String::is_empty")]

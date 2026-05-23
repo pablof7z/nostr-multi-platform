@@ -2,7 +2,7 @@
 //!
 //! `PublishEngine` owns delivery state, but the bytes must survive process
 //! death when the app is backed by LMDB. This adapter stores `PublishRecord`
-//! rows in an EventStore domain namespace so the existing memory and LMDB
+//! rows in an `EventStore` domain namespace so the existing memory and LMDB
 //! backends share the same contract.
 
 use std::sync::Arc;

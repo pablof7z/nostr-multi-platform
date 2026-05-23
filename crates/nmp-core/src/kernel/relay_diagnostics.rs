@@ -1,3 +1,7 @@
+// Display-only formatters: float casts and count truncations are acceptable
+// for metrics labels that are never used in arithmetic.
+#![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+
 //! Diagnostics-screen projection: pre-rolled relay + wire-subscription rows.
 //!
 //! The three iOS diagnostics surfaces (`DiagnosticsView`, `RelayDetailView`,
@@ -29,7 +33,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
-use super::*;
+use super::{Kernel, RelayStatus, WireSubscriptionStatus};
 
 /// Snapshot-projection key under which the diagnostics roll-up is emitted.
 /// Keep in sync with the Swift `SnapshotProjections.relayDiagnostics`
@@ -79,10 +83,10 @@ pub(super) struct RelayDiagnosticsRow {
     pub(super) total_events_display: String,
     /// Reconnect attempts since process start.
     pub(super) reconnect_count: u32,
-    /// Pre-formatted "X bytes" / "Y KB" / "Z MB" label for bytes_rx, or
+    /// Pre-formatted "X bytes" / "Y KB" / "Z MB" label for `bytes_rx`, or
     /// `None` when the counter is zero.
     pub(super) bytes_rx_display: Option<String>,
-    /// Same for bytes_tx.
+    /// Same for `bytes_tx`.
     pub(super) bytes_tx_display: Option<String>,
     /// Pre-formatted relative time for the last successful connect, e.g.
     /// `"3s ago"`. `None` when the relay never connected.
@@ -151,7 +155,7 @@ pub(super) struct RelayDiagnosticsInterest {
 pub(super) struct RelayDiagnosticsSnapshot {
     /// One row per known relay URL (typed lanes + outbox-only URLs merged).
     /// Ordered: typed lanes first (content, indexer, …) in role-enum order,
-    /// then outbox-only URLs in BTreeSet (lexicographic) order. The shell
+    /// then outbox-only URLs in `BTreeSet` (lexicographic) order. The shell
     /// never re-sorts.
     pub(super) relays: Vec<RelayDiagnosticsRow>,
     /// Pre-rolled interest rows — same prose as the legacy
@@ -382,7 +386,6 @@ fn is_active_state(state: &str) -> bool {
 fn role_tone(role: &str) -> &'static str {
     match role {
         "write" => "write",
-        "read" => "accent",
         _ => "accent",
     }
 }
@@ -418,7 +421,6 @@ fn state_tone(state: &str) -> &'static str {
     match state.to_ascii_lowercase().as_str() {
         "open" | "active" | "live" => "ok",
         "pending" | "warming" | "opening" | "auth_paused" => "warn",
-        "closed" | "done" | "closed_by_relay" => "muted",
         _ => "muted",
     }
 }
@@ -427,7 +429,6 @@ fn interest_state_tone(state: &str) -> &'static str {
     match state {
         "active" | "warming" | "tailing" | "complete" => "ok",
         "idle" => "muted",
-        "opening" | "queued" | "loading" | "backfilling" => "warn",
         _ => "warn",
     }
 }
@@ -486,9 +487,9 @@ fn short_id(id: &str) -> String {
 fn format_bytes(bytes: u64) -> String {
     let kb = bytes as f64 / 1024.0;
     if kb < 1.0 {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     } else if kb < 1024.0 {
-        format!("{:.1} KB", kb)
+        format!("{kb:.1} KB")
     } else {
         format!("{:.1} MB", kb / 1024.0)
     }
@@ -502,18 +503,18 @@ fn compact_count(n: u64) -> String {
         if v.fract() == 0.0 {
             format!("{}K", v as u64)
         } else {
-            format!("{:.1}K", v)
+            format!("{v:.1}K")
         }
     } else if n < 1_000_000_000 {
         let v = n as f64 / 1_000_000.0;
         if v.fract() == 0.0 {
             format!("{}M", v as u64)
         } else {
-            format!("{:.1}M", v)
+            format!("{v:.1}M")
         }
     } else {
         let v = n as f64 / 1_000_000_000.0;
-        format!("{:.1}B", v)
+        format!("{v:.1}B")
     }
 }
 
@@ -527,7 +528,7 @@ fn format_ago_ms(now_ms: u128, then_ms: u128) -> String {
     let diff_ms = now_ms - then_ms;
     let secs = diff_ms / 1_000;
     if secs < 60 {
-        format!("{}s ago", secs)
+        format!("{secs}s ago")
     } else if secs < 3_600 {
         format!("{}m ago", secs / 60)
     } else if secs < 86_400 {

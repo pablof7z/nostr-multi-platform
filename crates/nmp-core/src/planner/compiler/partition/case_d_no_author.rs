@@ -13,7 +13,7 @@
 //!   last-resort cold-start landing pad. This is the only remaining content
 //!   path that touches the indexer set and exists purely so kernel-driven
 //!   bootstrap traffic still lands somewhere before the user has configured
-//!   anything; it is not a substitute for app_relays in normal operation.
+//!   anything; it is not a substitute for `app_relays` in normal operation.
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1 / §3.2
 //! Doctrine: D3 (outbox routing automatic).
@@ -26,7 +26,7 @@ use crate::planner::{
 };
 use super::RelayEntry;
 
-/// Route a no-author/no-address/no-p interest to active-account ∪ app_relays.
+/// Route a no-author/no-address/no-p interest to active-account ∪ `app_relays`.
 pub(super) fn route(
     interest: &LogicalInterest,
     base_shape: &InterestShape,

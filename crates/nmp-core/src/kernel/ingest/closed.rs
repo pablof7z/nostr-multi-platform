@@ -5,7 +5,7 @@
 //! (`auth-required:`, `restricted:`, `rate-limited:`, …) that the kernel
 //! must route to distinct actions: AUTH-pause vs back-off vs mark-denied
 //! vs give-up. Before T120 the kernel folded every CLOSED to a generic
-//! "closed_by_relay" — UI saw the reason string but the actor had no
+//! "`closed_by_relay`" — UI saw the reason string but the actor had no
 //! signal to suppress retries against a denied relay or pause REQs to a
 //! relay that just demanded AUTH.
 //!
@@ -43,7 +43,7 @@
 //! convention as `update_relay_auth_status` in `auth_handlers.rs`.
 
 use super::super::closed_reason::{classify, CloseReason};
-use super::super::*;
+use super::super::{Kernel, RelayRole, truncate};
 use crate::subs::RelayAuthState;
 
 impl Kernel {
@@ -67,7 +67,7 @@ impl Kernel {
 
         match class {
             CloseReason::AuthRequired => {
-                self.on_closed_auth_required(role, relay_url, sub_id, raw)
+                self.on_closed_auth_required(role, relay_url, sub_id, raw);
             }
             CloseReason::Restricted | CloseReason::Blocked | CloseReason::Shadowbanned => {
                 self.on_closed_denied(role, sub_id, class, raw);
@@ -84,7 +84,7 @@ impl Kernel {
         }
     }
 
-    /// `auth-required:` — pause this relay via the lifecycle AuthGate and
+    /// `auth-required:` — pause this relay via the lifecycle `AuthGate` and
     /// reflect the demand into `RelayStatus.auth`. The relay is expected to
     /// follow up with a real `["AUTH", challenge]` frame; the existing
     /// `handle_auth_challenge` path then drives signing. Synthesizing a
@@ -92,7 +92,7 @@ impl Kernel {
     ///
     /// T148: `relay_url` is the delivering socket's URL. Pre-T148 this
     /// stamped `role.url()` (the lane bootstrap), mis-keying the lifecycle's
-    /// per-URL AuthGate and leaving the actual paused URL unguarded.
+    /// per-URL `AuthGate` and leaving the actual paused URL unguarded.
     fn on_closed_auth_required(
         &mut self,
         role: RelayRole,

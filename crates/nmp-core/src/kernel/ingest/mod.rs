@@ -18,7 +18,7 @@ mod relay_list;
 mod timeline;
 mod timeline_order;
 
-use super::*;
+use super::{json, NostrEvent, Kernel, RelayRole, RelayFrame, OutboundMessage, CanonicalRelayUrl, Value, truncate, Instant};
 
 /// Returns up to the first 16 chars of an event id, safe for any length.
 fn event_short_id(id: &str) -> &str {
@@ -471,7 +471,7 @@ impl Kernel {
         }
     }
 
-    /// Verify and persist an event to the EventStore.
+    /// Verify and persist an event to the `EventStore`.
     ///
     /// Returns `Some(outcome)` with the store's [`InsertOutcome`] when
     /// verification succeeds, or `None` when signature verification fails.

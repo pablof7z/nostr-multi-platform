@@ -1,6 +1,6 @@
 //! Ordering helpers for the bounded visible timeline.
 
-use super::super::*;
+use super::super::{Kernel};
 
 const TIMELINE_CACHE_LIMIT: usize = 500;
 

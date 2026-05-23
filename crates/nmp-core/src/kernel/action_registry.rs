@@ -317,7 +317,7 @@ fn new_action_id(now_ms: u64) -> ActionId {
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     // 64-bit now_ms + 64-bit sequence → 32 hex. The sequence guarantees
     // uniqueness within a single millisecond.
-    format!("{:016x}{:016x}", now_ms, seq)
+    format!("{now_ms:016x}{seq:016x}")
 }
 
 /// Build the registry the kernel ships with.

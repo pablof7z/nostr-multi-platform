@@ -1,6 +1,6 @@
 //! Kind:10002 (NIP-65 relay list) ingest.
 
-use super::super::*;
+use super::super::{Kernel, NostrEvent, parse_relay_list, short_hex};
 use crate::subs::CompileTrigger;
 
 impl Kernel {

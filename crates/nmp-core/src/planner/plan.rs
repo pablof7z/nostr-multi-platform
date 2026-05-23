@@ -106,7 +106,7 @@ pub enum RoutingSource {
 /// The compiler already computes lifecycle during the Stage 3 greedy merge;
 /// lifecycle equality is enforced by Rule 6 before any two shapes are merged.
 /// The wire-emitter needs lifecycle to decide whether to send CLOSE on EOSE
-/// (OneShot) or keep the subscription open (Tailing).
+/// (`OneShot`) or keep the subscription open (Tailing).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubShape {
     /// The canonical, post-merge filter description.

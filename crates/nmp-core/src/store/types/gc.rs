@@ -34,7 +34,7 @@ pub struct GcReport {
 
 use super::ids::{EventId, PubKey, RelayUrl};
 
-/// NMP-internal delete filter — NOT a pass-through to nostr::Filter.
+/// NMP-internal delete filter — NOT a pass-through to `nostr::Filter`.
 /// Only exposes operations the kernel legitimately needs; does not allow
 /// arbitrary remote filters as a delete vector.
 #[derive(Clone, Debug)]

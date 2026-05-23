@@ -19,7 +19,7 @@
 //! This file remains the kernel's public `publish_signed` entrypoint so
 //! `actor/commands/publish.rs` stays untouched.
 
-use super::*;
+use super::{Kernel, OutboundMessage, is_hex_pubkey};
 use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 
@@ -42,7 +42,7 @@ impl Kernel {
 
     /// [`Kernel::publish_signed`] with an action `correlation_id` to report in
     /// `action_results`. The `PublishNote` dispatch path uses this: the
-    /// host received a registry-minted correlation_id before the actor signed
+    /// host received a registry-minted `correlation_id` before the actor signed
     /// the event, so the publish engine must report that id (not the signed
     /// event's `id`) for the host spinner to be cleared. Every other publish
     /// path (`react`, `follow`, `publish_unsigned_event`, …) uses the plain
@@ -75,9 +75,9 @@ impl Kernel {
 
     /// [`Kernel::publish_signed_to`] with an action `correlation_id` override.
     /// The remote-signer (NIP-46) `PublishNote` path uses this: a parked sign
-    /// op carries the registry-minted correlation_id, and when the broker
+    /// op carries the registry-minted `correlation_id`, and when the broker
     /// turns the request around the idle-tick loop publishes through here so
-    /// the engine reports the dispatch correlation_id rather than the freshly
+    /// the engine reports the dispatch `correlation_id` rather than the freshly
     /// signed event's `id`.
     pub(crate) fn publish_signed_to_with_correlation(
         &mut self,
@@ -100,11 +100,11 @@ impl Kernel {
     /// failure (no active account, malformed reply id, local-key sign error,
     /// remote-signer timeout / rejection) bypasses the engine entirely — so
     /// without this call the host's spinner keyed on that `correlation_id`
-    /// would hang forever (a broken promise: a correlation_id was returned but
+    /// would hang forever (a broken promise: a `correlation_id` was returned but
     /// its outcome is never observable).
     ///
     /// Callers pass `Some(id)` only on a dispatched action that carried a
-    /// correlation_id; a `react` / `follow` / conformance-harness publish
+    /// `correlation_id`; a `react` / `follow` / conformance-harness publish
     /// carries `None` and is a no-op here (nothing is waiting on an id).
     pub(crate) fn record_action_failure(&mut self, correlation_id: String, error: String) {
         // A sign-step failure also lifts into the `action_stages`
@@ -145,7 +145,7 @@ impl Kernel {
     /// `record_action_failure` closes on the failure leg.
     ///
     /// Callers pass `Some(id)` only on a dispatched action that carried a
-    /// correlation_id; a C-ABI-direct `pay_invoice` (no ActionModule executor
+    /// `correlation_id`; a C-ABI-direct `pay_invoice` (no `ActionModule` executor
     /// yet — the iOS shell calls `nmp_app_wallet_pay_invoice` directly today)
     /// carries `None` and the wallet runtime simply skips this call (nothing
     /// is waiting on an id).
@@ -211,7 +211,7 @@ impl Kernel {
     }
 
     /// Read accessor for [`update`]'s projection emit site. Returns
-    /// the full JSON mirror as a copy (NOT a drain): the same correlation_id
+    /// the full JSON mirror as a copy (NOT a drain): the same `correlation_id`
     /// stays in the snapshot across every tick until the host acks. Returns
     /// `serde_json::Value::Null` when nothing is tracked so the helper can
     /// omit the projection key in steady state.

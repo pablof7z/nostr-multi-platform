@@ -184,11 +184,10 @@ impl PerRelayState {
     #[must_use] 
     pub fn attempt(&self) -> u32 {
         match self {
-            Self::Pending => 0,
             Self::InFlight { attempt, .. }
             | Self::RelayError { attempt, .. }
             | Self::TimedOut { attempt, .. } => *attempt,
-            Self::Ok { .. } | Self::FailedAfterRetries { .. } => 0,
+            Self::Pending | Self::Ok { .. } | Self::FailedAfterRetries { .. } => 0,
         }
     }
 }
@@ -252,7 +251,7 @@ impl RetryPolicy {
         // We want 1s after attempt 1, 4s after attempt 2, 16s after attempt 3.
         let mut delay = self.backoff_base_ms;
         for _ in 1..attempt_just_failed {
-            delay = delay.saturating_mul(self.backoff_factor as u64);
+            delay = delay.saturating_mul(u64::from(self.backoff_factor));
         }
         delay
     }
@@ -310,8 +309,7 @@ pub fn apply_ack(
             if attempt > policy.auth_required_max_retries {
                 RetryVerdict::Settled(PerRelayState::FailedAfterRetries {
                     reason: format!(
-                        "auth-required after {} reauth attempts: {}",
-                        attempt, message
+                        "auth-required after {attempt} reauth attempts: {message}"
                     ),
                     last_at_ms: now_ms,
                 })
@@ -325,11 +323,11 @@ pub fn apply_ack(
         AckClass::Transient => {
             if attempt >= policy.transient_max_retries {
                 let reason = if ack.code == TIMEOUT_CODE {
-                    format!("timeout after {} retries", attempt)
+                    format!("timeout after {attempt} retries")
                 } else if message.is_empty() {
                     format!("transient after {} retries: {}", attempt, ack.code)
                 } else {
-                    format!("transient after {} retries: {}", attempt, message)
+                    format!("transient after {attempt} retries: {message}")
                 };
                 RetryVerdict::Settled(PerRelayState::FailedAfterRetries {
                     reason,

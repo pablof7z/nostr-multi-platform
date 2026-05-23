@@ -58,7 +58,7 @@ fn toast_no_account(
 /// Used by sign-setup and sign-error branches across every publish handler;
 /// previously these were ~3-line `set_last_error_toast` + `if let Some(id)`
 /// copy-pastes (with one branch in `publish_unsigned_event_to_relays`
-/// silently DROPPING the correlation_id, which orphaned the host spinner on
+/// silently DROPPING the `correlation_id`, which orphaned the host spinner on
 /// a dispatched NIP-29 group-message sign failure — fixed by this consolidation).
 fn fail_publish(
     kernel: &mut Kernel,
@@ -545,7 +545,7 @@ pub(crate) fn publish_note(
 /// hand-rolls the timestamp — D7: the kernel owns the wall clock), signs with
 /// the active account, and routes through the NIP-65 outbox (D3).
 ///
-/// Sibling of [`publish_note`] — same non-blocking sign + correlation_id
+/// Sibling of [`publish_note`] — same non-blocking sign + `correlation_id`
 /// threading, kind:0 instead of kind:1. `correlation_id` is the
 /// registry-minted action id; threading it through makes the publish engine
 /// report it in `action_results` so the host spinner keyed on the dispatch

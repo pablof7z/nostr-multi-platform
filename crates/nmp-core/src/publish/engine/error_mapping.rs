@@ -40,11 +40,11 @@ pub fn engine_error_to_failure(
 ) -> RecentFailure {
     let reason = match err {
         PublishEngineError::DuplicateHandle(h) => {
-            format!("duplicate publish handle: {}", h)
+            format!("duplicate publish handle: {h}")
         }
         PublishEngineError::NoTargets => "no relays resolved for publish target".to_string(),
         PublishEngineError::Store(store_err) => {
-            format!("publish store backend failure: {:?}", store_err)
+            format!("publish store backend failure: {store_err:?}")
         }
         PublishEngineError::UnsupportedAction(detail) => {
             format!("publish engine received an unsupported action: {detail}")

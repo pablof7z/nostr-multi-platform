@@ -105,7 +105,7 @@ pub(crate) fn url_encode_query(value: &str) -> String {
             out.push(byte as char);
         } else {
             out.push('%');
-            out.push_str(&format!("{:02X}", byte));
+            out.push_str(&format!("{byte:02X}"));
         }
     }
     out

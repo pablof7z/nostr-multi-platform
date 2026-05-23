@@ -120,11 +120,11 @@ pub enum PublishAction {
     /// # Why this exists
     ///
     /// `nmp_app_publish_unsigned_event` was deleted to enforce the
-    /// dispatch_action seam. Without `PublishRaw`, every new event kind
+    /// `dispatch_action` seam. Without `PublishRaw`, every new event kind
     /// requires a Rust `ActionModule` impl — a 2-week barrier for app
     /// developers. `PublishRaw` restores the generic publish capability
-    /// while keeping it routed through the action lifecycle (correlation_id,
-    /// action_stages, NIP-65 outbox).
+    /// while keeping it routed through the action lifecycle (`correlation_id`,
+    /// `action_stages`, NIP-65 outbox).
     ///
     /// # Restrictions
     ///
@@ -182,7 +182,7 @@ impl ActionModule for PublishModule {
     type Action = PublishAction;
 
     /// For pre-signed `Publish` actions, use the event's `id` as the
-    /// correlation_id. The publish engine's `LastTerminal.correlation_id` is
+    /// `correlation_id`. The publish engine's `LastTerminal.correlation_id` is
     /// already the `PublishHandle` (== `event.id`), so using the same value
     /// here means `dispatch_action`'s return and `action_results` in the
     /// snapshot share the same identifier.

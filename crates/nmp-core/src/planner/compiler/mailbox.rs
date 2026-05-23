@@ -15,7 +15,7 @@ use crate::planner::interest::{Pubkey, RelayUrl};
 /// Minimal mailbox snapshot used by the compiler.
 ///
 /// Phase 1: only `write_relays` and `both_relays` are consumed (Outbox
-/// direction). Inbox direction (read_relays) is used for `#p` interests.
+/// direction). Inbox direction (`read_relays`) is used for `#p` interests.
 ///
 /// Full trait lives in `nmp-nip65::cache::MailboxCache` (later slice).
 #[derive(Clone, Debug, Default)]

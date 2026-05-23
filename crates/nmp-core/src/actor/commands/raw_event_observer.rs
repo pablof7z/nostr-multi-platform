@@ -34,7 +34,7 @@
 //!   the symbol set is `RawEvent*`, no app or higher-protocol
 //!   nouns. Any consumer can register a raw tap.
 //! * **D6** — observers fire best-effort. A poisoned mutex, missing C
-//!   string (CString conversion failure), or panicking observer are silent
+//!   string (`CString` conversion failure), or panicking observer are silent
 //!   no-ops; nothing crosses the FFI as an exception.
 //! * **Re-entrancy** — observers snapshot the registration list under the
 //!   lock, then release the lock before invoking. Observers may
@@ -454,7 +454,7 @@ pub fn notify_raw_observers(
         let _ = catch_unwind(AssertUnwindSafe(|| {
             entry
                 .observer
-                .on_raw_event_with_source(kind, &payload, source_relay_url)
+                .on_raw_event_with_source(kind, &payload, source_relay_url);
         }));
     }
 

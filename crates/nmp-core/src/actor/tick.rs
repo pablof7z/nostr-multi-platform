@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 ///
 /// When the kernel has un-emitted changes and we are running, returns the
 /// time remaining until the next emit window (clamped to zero). Otherwise
-/// returns 250 ms so that time-gated kernel gates (e.g. contacts_deadline)
+/// returns 250 ms so that time-gated kernel gates (e.g. `contacts_deadline`)
 /// are checked at a reasonable cadence even with no relay traffic.
 pub(super) fn compute_wait(
     kernel: &Kernel,
@@ -31,7 +31,7 @@ pub(super) fn compute_wait(
 }
 
 pub(super) fn emit_interval(emit_hz: u32) -> Duration {
-    Duration::from_secs_f64(1.0 / emit_hz.max(1) as f64)
+    Duration::from_secs_f64(1.0 / f64::from(emit_hz.max(1)))
 }
 
 pub(super) fn flush_due(kernel: &Kernel, running: bool, last_emit: Instant, emit_hz: u32) -> bool {
@@ -75,7 +75,7 @@ pub(super) fn emit_now(
 ///
 /// When `running=true`, behavior is identical to [`emit_now`] (immediate
 /// snapshot delivery). The bottom-of-main-loop `flush_due` gate already
-/// enforces emit_hz rate-limit for state that changes faster than the UI
+/// enforces `emit_hz` rate-limit for state that changes faster than the UI
 /// can consume — this helper does not duplicate that.
 pub(super) fn maybe_emit_after_dispatch(
     kernel: &mut Kernel,

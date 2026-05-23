@@ -6,7 +6,7 @@
 //! - `requests`     — relay state transitions, startup/view REQs, req/defer primitives
 //! - `status`       — diagnostics, metrics, and update-payload assembly
 //! - `update`       — diff/emit logic for the FFI update loop
-//! - `nostr`        — NostrEvent deserialization + helper functions
+//! - `nostr`        — `NostrEvent` deserialization + helper functions
 //! - `test_support` — signature-free injection helpers (test / test-support feature)
 //! - `tests`        — unit tests (cfg(test) only)
 
@@ -160,7 +160,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // is responsible for its own equivalent conversion.
 pub(crate) use relay_frame::RelayFrame;
 
-use nostr::*;
+use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, format_timestamp, now_hms, diff_items, ratio, short_pubkey_display, avatar_color, root_event_id, first_event_ref};
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
 
 /// Decode a 64-char lowercase/uppercase-hex pubkey into the store's
@@ -220,19 +220,19 @@ pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
 // `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
-use types::*;
+use types::{StoredEvent, Profile, TimelineItem, AuthorRelayList, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
 use crate::util::sort_dedup;
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
 ///
 /// `profile_claims[pk]: BTreeSet<consumer_id>` grows once per `claim_profile` call;
-/// without a cap a long-lived process accumulates consumer_ids in proportion to
+/// without a cap a long-lived process accumulates `consumer_ids` in proportion to
 /// dispatch count rather than working-set size (a D8 violation — see PD-021
 /// line-11 and `docs/perf/m10.5/s2-drain-analysis.md`). The S2 flood mix issues
-/// unique consumer_ids per dispatch with no matching release, isolating this leak.
+/// unique `consumer_ids` per dispatch with no matching release, isolating this leak.
 ///
 /// 256 is generous for legitimate UI: every concurrent view that
-/// calls `ProfileInterestAvatar` carries its own consumer_id; real apps hold
+/// calls `ProfileInterestAvatar` carries its own `consumer_id`; real apps hold
 /// at most a few dozen simultaneously (one per visible row in a list view).
 /// Caps worst-case retention per pubkey at ~12 KiB (256 × ~50 B node + key);
 /// across 50 pubkeys (S2's working set) that's ~600 KiB, well under the 1 MiB
@@ -294,11 +294,11 @@ pub(crate) struct Kernel {
     /// Incrementally-maintained diagnostic counters for the `Metrics` snapshot
     /// fields `note_events` / `duplicate_events` / `stored_events`. Maintained
     /// at the `events` ingest/mutation sites so `make_update` (up to 60 Hz)
-    /// never has to walk the whole `events` HashMap to recompute them — see
+    /// never has to walk the whole `events` `HashMap` to recompute them — see
     /// `docs/perf` and the O(events) snapshot-emit violation this replaced.
     ///
-    /// `events` is insert-only today (no eviction path mutates the HashMap;
-    /// `sort_timeline` truncates only the `timeline` VecDeque). The
+    /// `events` is insert-only today (no eviction path mutates the `HashMap`;
+    /// `sort_timeline` truncates only the `timeline` `VecDeque`). The
     /// `stored_events` counter therefore only ever increments; should an
     /// eviction path be added, decrement it there to keep the invariant.
     ///
@@ -380,11 +380,11 @@ pub(crate) struct Kernel {
     /// to `ChallengeReceived` and triggers signer invocation.
     nip42_drivers: HashMap<RelayRole, Nip42DriverState>,
     /// M5+M2+M8 wiring: subscription lifecycle. Today the kernel uses ONLY
-    /// `handle_auth_state_change` (diagnostic state fan-in to AuthGate); the
+    /// `handle_auth_state_change` (diagnostic state fan-in to `AuthGate`); the
     /// compile / registry / wire-diff machinery stays dormant because the
     /// kernel's M1 hand-rolled `req()` path is still authoritative per
     /// `docs/plan/m8-subscription-lifecycle.md` §4 (both paths coexist until
-    /// M11 migrates view modules onto `LogicalInterest`). The AuthGate's
+    /// M11 migrates view modules onto `LogicalInterest`). The `AuthGate`'s
     /// pending-REQ buffer is the seam that activates on that migration;
     /// kernel-side AUTH-pause is currently routed through `defer_outbound`
     /// (the existing M1 generic queue) via `partition_auth_paused`.
@@ -443,12 +443,12 @@ pub(crate) struct Kernel {
     /// dispatcher into outbound frames. Per-relay OKs are folded back via
     /// `Kernel::handle_publish_ok` (called from `ingest::handle_text`).
     /// Actor-owned tracker for the snapshot-mirror `action_stages`
-    /// projection. Records lifecycle transitions per dispatched correlation_id
+    /// projection. Records lifecycle transitions per dispatched `correlation_id`
     /// and retains them until the host acks via `nmp_app_ack_action_stage`.
     /// Caps and drop-oldest semantics live in [`action_stages`].
     action_stages: action_stages::ActionStageTracker,
     publish_engine: crate::publish::PublishEngine,
-    /// Buffered (relay_url, frame) pairs produced by the engine. The kernel
+    /// Buffered (`relay_url`, frame) pairs produced by the engine. The kernel
     /// drains this after each engine call and wraps the pairs as
     /// `OutboundMessage`s on the `RelayRole::Content` lane (the publish
     /// lane). Shared `Arc` so the engine's `Arc<dyn RelayDispatcher>` and the
@@ -467,7 +467,7 @@ pub(crate) struct Kernel {
     /// (`docs/design/outbox-explorer-diagnostics.md` §2 line 152).
     pub(in crate::kernel) event_provenance: provenance::EventProvenance,
     /// T114b — count of `claim_profile` requests dropped because a single
-    /// pubkey's consumer_id set hit `MAX_CLAIMS_PER_PUBKEY`. Surfaced on the
+    /// pubkey's `consumer_id` set hit `MAX_CLAIMS_PER_PUBKEY`. Surfaced on the
     /// snapshot via [`Metrics::claim_drops_total`] for D8 visibility into
     /// per-dispatch retention pressure.
     claim_drops_total: u64,
@@ -533,7 +533,7 @@ pub(crate) struct Kernel {
     /// onboarding relay rows into publish routing before the user's freshly
     /// published kind:10002 has round-tripped from a relay.
     ///
-    /// Typed slot ([`LocalWriteRelaysSlot`]) — see relay_projection.rs.
+    /// Typed slot ([`LocalWriteRelaysSlot`]) — see `relay_projection.rs`.
     local_write_relays_handle: LocalWriteRelaysSlot,
     /// Shared active-account pubkey used by the publish resolver to scope the
     /// local relay-row fallback to the viewer's own events only.
@@ -985,11 +985,11 @@ impl Kernel {
             .queue_depth
             .as_ref()
             .map_or(0, |c| c.load(Ordering::Relaxed));
-        depth.min(u32::MAX as u64) as u32
+        depth.min(u64::from(u32::MAX)) as u32
     }
 
     /// T114b — number of `claim_profile` requests dropped because a pubkey's
-    /// consumer_id set hit `MAX_CLAIMS_PER_PUBKEY`. Read-only accessor; the
+    /// `consumer_id` set hit `MAX_CLAIMS_PER_PUBKEY`. Read-only accessor; the
     /// counter is owned by the kernel and mutated only by `claim_profile`.
     pub(crate) fn claim_drops_total(&self) -> u64 {
         self.claim_drops_total

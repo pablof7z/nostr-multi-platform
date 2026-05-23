@@ -92,7 +92,7 @@ pub(super) fn apply_verdict(
             next_attempt,
         } => {
             *state = PerRelayState::RelayError {
-                message: format!("retry scheduled (attempt {})", next_attempt),
+                message: format!("retry scheduled (attempt {next_attempt})"),
                 attempt: next_attempt - 1,
                 last_at_ms: now_ms,
             };
@@ -111,7 +111,7 @@ pub(super) fn apply_verdict(
             // the test in tests.rs exercises this by re-feeding the original
             // event on the next dispatch tick.
             *state = PerRelayState::RelayError {
-                message: format!("auth-required, reauth attempt {}", next_attempt),
+                message: format!("auth-required, reauth attempt {next_attempt}"),
                 attempt: next_attempt - 1,
                 last_at_ms: now_ms,
             };
@@ -236,7 +236,7 @@ pub(super) fn sweep_inflight_timeouts(
             if now_ms.saturating_sub(sent_at_ms) >= deadline_ms {
                 *state = if attempt >= policy.transient_max_retries {
                     PerRelayState::FailedAfterRetries {
-                        reason: format!("timeout after {} retries", attempt),
+                        reason: format!("timeout after {attempt} retries"),
                         last_at_ms: now_ms,
                     }
                 } else {

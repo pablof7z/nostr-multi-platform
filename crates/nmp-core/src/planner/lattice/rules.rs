@@ -64,6 +64,7 @@ pub(super) fn rule2_tags(
 ///
 /// Returns `min(a.since, b.since)` iff both are `Some` or both are `None`.
 /// Mixed (one bounded, one unbounded) returns `None` (refuse).
+#[allow(clippy::option_option)] // Outer None = merge refused; Some(None) = unbounded; Some(Some(x)) = bounded
 pub(super) fn rule3_since(a: &InterestShape, b: &InterestShape) -> Option<Option<u64>> {
     match (a.since, b.since) {
         (None, None) => Some(None),
@@ -76,6 +77,7 @@ pub(super) fn rule3_since(a: &InterestShape, b: &InterestShape) -> Option<Option
 ///
 /// Returns `max(a.until, b.until)` iff both are `Some` or both are `None`.
 /// Mixed returns `None` (refuse).
+#[allow(clippy::option_option)] // Outer None = merge refused; Some(None) = unbounded; Some(Some(x)) = bounded
 pub(super) fn rule4_until(a: &InterestShape, b: &InterestShape) -> Option<Option<u64>> {
     match (a.until, b.until) {
         (None, None) => Some(None),

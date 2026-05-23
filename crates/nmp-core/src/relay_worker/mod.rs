@@ -133,7 +133,7 @@ const KEEPALIVE_PONG_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) fn jittered_backoff(base: Duration, url: &str) -> Duration {
     let hash = url
         .bytes()
-        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(u64::from(b)));
     let jitter_ms = hash % 5000; // 0–4999 ms spread
     base + Duration::from_millis(jitter_ms)
 }
@@ -148,7 +148,7 @@ fn is_permanent_error(error: &str) -> bool {
 ///
 /// T105: the worker dials the explicit URL (the resolved write/read relay),
 /// not `role.url()`. `role` is retained as the diagnostic lane label so the
-/// kernel keeps per-lane RelayHealth rows while the actual sockets multiply
+/// kernel keeps per-lane `RelayHealth` rows while the actual sockets multiply
 /// per resolved URL.
 ///
 /// T120b: production calls into [`spawn_relay_worker_with_keepalive`] with the
@@ -192,7 +192,7 @@ pub(crate) fn spawn_relay_worker_with_keepalive(
             control_rx,
             keepalive_idle,
             keepalive_pong_timeout,
-        )
+        );
     });
     control_tx
 }
@@ -255,8 +255,7 @@ fn run_relay_worker(
                     }
                     // HTTP 401/403 received mid-session (e.g., after NIP-42 auth
                     // failure): relay is denying this client permanently.
-                    RelayWorkerResult::PermanentFailure => return,
-                    RelayWorkerResult::Shutdown => return,
+                    RelayWorkerResult::PermanentFailure | RelayWorkerResult::Shutdown => return,
                 }
             }
             Err(error) => {
@@ -425,9 +424,8 @@ fn wait_before_reconnect(
         }
         match control.recv_timeout(remaining) {
             Ok(RelayCommand::Send(text)) => pending.push_back(text),
-            Ok(RelayCommand::Shutdown) => return false,
             Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => return false,
+            Ok(RelayCommand::Shutdown) | Err(RecvTimeoutError::Disconnected) => return false,
         }
     }
 }

@@ -89,7 +89,7 @@ impl SubscriptionLifecycle {
     /// re-fetch already-stored events. Per recompilation.md §4.2 "this is a
     /// pure replay, not a recompile" — we deliberately do NOT mutate
     /// `current_plan`; only the on-the-wire `since` is bumped. This keeps
-    /// sub_id stability (`canonical_filter_hash` is computed off `shape` not
+    /// `sub_id` stability (`canonical_filter_hash` is computed off `shape` not
     /// the post-watermark filter — see `planner/mod.rs::canonical_filter_hash`
     /// rationale and the T129 carve-out in `apply_watermark_rewrite`).
     pub fn handle_reconnect(&mut self, relay_url: RelayUrl) -> Vec<WireFrame> {

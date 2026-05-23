@@ -7,7 +7,7 @@
 //!
 //! When inbox relays are unknown, we emit NO relay entries (fail-closed) and
 //! emit a probe so the next recompile has data. The plan will have an empty
-//! per_relay map for this interest until kind:10002 or kind:10050 arrives.
+//! `per_relay` map for this interest until kind:10002 or kind:10050 arrives.
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1 / §3.2
 //! Doctrine: D3 (outbox routing automatic).

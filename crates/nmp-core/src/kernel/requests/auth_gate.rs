@@ -5,7 +5,7 @@
 //! `relay_lifecycle` (which resets drivers on reconnect) and the deferred-
 //! queue drain in `pending_view_requests`.
 
-use super::super::*;
+use super::super::{Kernel, RelayRole, OutboundMessage};
 
 impl Kernel {
     /// True when REQs to `role` must be withheld from the wire:

@@ -1,4 +1,4 @@
-use super::*;
+use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSet, StoredEvent, BTreeSet, UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -246,7 +246,7 @@ pub(super) fn initials(display: &str) -> String {
     let mut chars = display.chars().filter(|ch| ch.is_alphanumeric());
     let first = chars.next().unwrap_or('.');
     let second = chars.next().unwrap_or('.');
-    format!("{}{}", first, second).to_uppercase()
+    format!("{first}{second}").to_uppercase()
 }
 
 pub(super) fn avatar_color(pubkey: &str) -> String {

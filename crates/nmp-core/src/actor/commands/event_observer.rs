@@ -32,7 +32,7 @@
 //!   them into typed views (e.g. `nmp_nip01::Nip10ModularTimelineView`).
 //!   The kernel never names NIP types. ADR-0009.
 //! * **D6** — observers fire best-effort. A poisoned mutex, missing C string
-//!   (CString conversion failure), or panicking observer are silent no-ops;
+//!   (`CString` conversion failure), or panicking observer are silent no-ops;
 //!   nothing crosses the FFI as an exception.
 //! * **Re-entrancy** — observers snapshot the registration list under the
 //!   lock, then release the lock before invoking. Observers may re-register

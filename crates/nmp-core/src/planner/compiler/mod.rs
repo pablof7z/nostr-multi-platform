@@ -62,7 +62,7 @@ pub struct SubscriptionCompiler<'a> {
     /// Discovery-only relay set (kind:0/3/10002 lookups).
     ///
     /// Per the routing-rules clarification (T134), the indexer set is NEVER
-    /// a content fallback for case_a/case_b. It survives on the compiler for
+    /// a content fallback for `case_a/case_b`. It survives on the compiler for
     /// two reasons:
     /// 1. Case D's cold-start fallback when both `active_account_read_relays`
     ///    and `app_relays` are empty (kernel-driven discovery bootstrap).
@@ -76,9 +76,9 @@ pub struct SubscriptionCompiler<'a> {
     active_account_read_relays: &'a [RelayUrl],
     /// Operator-configured app relays (T134).
     ///
-    /// Additive to NIP-65 for authored REQs (case_a / case_b) and unioned
-    /// with `active_account_read_relays` for the no-author firehose (case_d).
-    /// When an author has no NIP-65 mailbox AND no app_relays are configured,
+    /// Additive to NIP-65 for authored REQs (`case_a` / `case_b`) and unioned
+    /// with `active_account_read_relays` for the no-author firehose (`case_d`).
+    /// When an author has no NIP-65 mailbox AND no `app_relays` are configured,
     /// the author is reported via `CompiledPlan::unroutable_authors`.
     app_relays: &'a [RelayUrl],
 }
@@ -124,8 +124,8 @@ impl<'a> SubscriptionCompiler<'a> {
     /// account read (firehose), and operator-configured app relays.
     ///
     /// Production callers (the subscription lifecycle) use this form so
-    /// app_relays land on the additive NIP-65 lane in case_a/case_b and on
-    /// the union with active-account read relays in case_d.
+    /// `app_relays` land on the additive NIP-65 lane in `case_a/case_b` and on
+    /// the union with active-account read relays in `case_d`.
     pub fn with_relays(
         mailbox_cache: &'a dyn MailboxCache,
         indexer_relays: &'a [RelayUrl],

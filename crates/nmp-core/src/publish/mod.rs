@@ -3,7 +3,7 @@
 //! This module owns the substrate-level publish engine: the action shape, the
 //! per-(event, relay) state machine, the durable retry queue contract, and the
 //! `PublishStatusView` payload. The kernel actor and relay-manager wiring land
-//! when their respective milestones ship (#43 Signer, #46 RelayManager, M3
+//! when their respective milestones ship (#43 Signer, #46 `RelayManager`, M3
 //! LMDB persistence). Until then the engine consumes minimal trait shims that
 //! the downstream milestones will satisfy without forcing the publish
 //! pipeline to be rewritten — see `traits.rs`.

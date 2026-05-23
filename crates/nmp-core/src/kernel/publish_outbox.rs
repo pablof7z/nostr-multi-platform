@@ -8,7 +8,7 @@ use crate::publish::{PerRelayState, PublishAction};
 use crate::relay::{OutboundMessage, RelayRole};
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
-use super::*;
+use super::{Kernel, PublishOutboxItem, format_timestamp, OutboxSummarySnapshot, PublishOutboxRelay, truncate};
 
 impl Kernel {
     pub(super) fn publish_outbox_items(&self) -> Vec<PublishOutboxItem> {
@@ -212,7 +212,7 @@ fn publish_outbox_status_label(status: &str) -> String {
     .to_string()
 }
 
-/// Pre-formatted "N relays · <created_at>" header line for a single outbox
+/// Pre-formatted "N relays · <`created_at`>" header line for a single outbox
 /// row. Server-side pluralization keeps the shell free of the
 /// `count == 1 ? "" : "s"` ternary (§6 anti-pattern #1).
 fn publish_outbox_target_summary(target_relays: usize, created_at_display: &str) -> String {

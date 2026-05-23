@@ -17,7 +17,7 @@
 //! * `action_stages` answers "what is this action doing right now?" on every
 //!   tick. It is NOT drained on emit because the host's progress indicator
 //!   needs the stable state across many ticks; it persists until the host
-//!   *acks* the correlation_id via `nmp_app_ack_action_stage`.
+//!   *acks* the `correlation_id` via `nmp_app_ack_action_stage`.
 //!
 //! # Retention: ack-based (option B)
 //!
@@ -57,7 +57,7 @@
 //!    never acks would otherwise accumulate one entry per dispatched
 //!    action forever. We cap at 1024 — large enough for any realistic
 //!    in-flight backlog, small enough to bound memory at ~1 MiB of stage
-//!    JSON. When the cap is exceeded, the *oldest* correlation_id (by
+//!    JSON. When the cap is exceeded, the *oldest* `correlation_id` (by
 //!    insertion order) is evicted whole (drop-oldest semantics, mirroring
 //!    [`MAX_CLAIMS_PER_PUBKEY`]) and a counter increments for diagnostic
 //!    visibility.
@@ -75,7 +75,7 @@ use std::collections::HashMap;
 pub(crate) const MAX_STAGES_PER_CORRELATION: usize = 64;
 
 /// Global map cardinality cap. A pathological host that never acks any
-/// correlation_id would otherwise leak one entry per dispatch. We cap at
+/// `correlation_id` would otherwise leak one entry per dispatch. We cap at
 /// 1024 in-flight tracked actions; the oldest is evicted whole when a new
 /// correlation pushes past this.
 pub(crate) const MAX_TRACKED_CORRELATIONS: usize = 1024;
@@ -108,7 +108,7 @@ impl ActionStage {
     /// snapshot mirror until the eventual ack.
     ///
     /// `allow(dead_code)`: used by callers outside the crate (the iOS
-    /// shell's KernelBridge decodes the stage and reads this to gate the
+    /// shell's `KernelBridge` decodes the stage and reads this to gate the
     /// auto-ack path); no internal `nmp-core` site consumes it, so rustc's
     /// per-crate dead-code lint cannot see the live usage.
     #[allow(dead_code)]
@@ -117,7 +117,7 @@ impl ActionStage {
     }
 }
 
-/// One row in a correlation_id's stage history. Carries the stage, an
+/// One row in a `correlation_id`'s stage history. Carries the stage, an
 /// optional opaque detail payload (relay url, retry count, error text —
 /// per-stage convention), and the wall-clock timestamp at which the
 /// reducer recorded the transition. `at_ms` is sourced from the kernel
@@ -146,16 +146,16 @@ pub struct StageEntry {
 /// Actor-owned per-correlation_id stage tracker.
 ///
 /// Insertion order is preserved: `correlation_order` is a parallel ring of
-/// keys that grows on first record for a correlation_id and shrinks on
+/// keys that grows on first record for a `correlation_id` and shrinks on
 /// ack. When the map exceeds [`MAX_TRACKED_CORRELATIONS`] the *front* of
 /// the order (oldest first-recorded id) is evicted. The map and the order
 /// are kept in sync: every entry in `entries` has exactly one matching
 /// slot in `correlation_order`.
 #[derive(Default)]
 pub(crate) struct ActionStageTracker {
-    /// correlation_id → ordered stage history.
+    /// `correlation_id` → ordered stage history.
     entries: HashMap<String, Vec<StageEntry>>,
-    /// First-recorded order of correlation_ids; the oldest entry is
+    /// First-recorded order of `correlation_ids`; the oldest entry is
     /// evicted when the map exceeds [`MAX_TRACKED_CORRELATIONS`].
     correlation_order: Vec<String>,
     /// D8 visibility: count of evictions caused by the global cardinality
@@ -184,7 +184,7 @@ impl ActionStageTracker {
     }
 
     /// Append `stage` (with optional `detail`) onto `correlation_id`'s
-    /// history, stamped at `at_ms`. New correlation_ids are placed at the
+    /// history, stamped at `at_ms`. New `correlation_ids` are placed at the
     /// back of the eviction order; existing ids retain their original
     /// position so a long-running action does not get re-prioritised by
     /// activity (drop-oldest is by first-record, not by last-touch — the
@@ -207,7 +207,7 @@ impl ActionStageTracker {
     ///   `per_correlation_cap_drops` increments — the diagnostic loss is
     ///   safe (a non-terminal stage never drives UI cleanup).
     /// * If the global map would exceed [`MAX_TRACKED_CORRELATIONS`] the
-    ///   oldest correlation_id (front of `correlation_order`) is evicted
+    ///   oldest `correlation_id` (front of `correlation_order`) is evicted
     ///   wholesale, `global_cap_evictions` increments, and the append
     ///   proceeds.
     pub(crate) fn record(
@@ -284,7 +284,7 @@ impl ActionStageTracker {
         removed
     }
 
-    /// Serialize every tracked correlation_id's history into the JSON
+    /// Serialize every tracked `correlation_id`'s history into the JSON
     /// shape the snapshot mirror exposes:
     /// `{ "<correlation_id>": [ { "stage": ..., "at_ms": ..., ... }, ... ], ... }`.
     ///

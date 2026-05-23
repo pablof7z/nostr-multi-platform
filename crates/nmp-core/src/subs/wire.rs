@@ -19,16 +19,16 @@
 //! This is the critical distinction from the wire id: a sub is "present" only
 //! on the specific relay that carries it. Without relay-scoped keying, two
 //! relays sharing the same filter hash would share a single diff entry, causing:
-//! - **Dead-relay exclusion**: surviving relay contributes sub_id → no CLOSE
+//! - **Dead-relay exclusion**: surviving relay contributes `sub_id` → no CLOSE
 //!   emitted for the dead relay.
-//! - **App-relay add**: new relay's sub_id already present via prior relay →
+//! - **App-relay add**: new relay's `sub_id` already present via prior relay →
 //!   REQ skipped on the newly-added relay.
 //!
 //! Codex F-CROSS-1 (HIGH) — fixed here.
 //!
 //! ## D8 cost shape
 //!
-//! `plan_diff` is O(N_prior + N_next) where N is the number of `SubShape`s.
+//! `plan_diff` is `O(N_prior` + `N_next`) where N is the number of `SubShape`s.
 //! No per-event allocation; two `BTreeSet`s and one `Vec::with_capacity`.
 
 use std::collections::BTreeSet;
@@ -151,7 +151,7 @@ fn emit_req(
 /// no-op. A shape merging differently across recompiles gets a new sub-id
 /// because the underlying `canonical_filter_hash` would change.
 ///
-/// We deliberately do NOT include the plan_id in the sub-id — that would
+/// We deliberately do NOT include the `plan_id` in the sub-id — that would
 /// force every shape to be CLOSE+REQ'd on every plan-id change, defeating
 /// the diff. Instead, the sub-id is derived purely from the shape's hash.
 pub fn sub_id_for(_plan_id: &str, shape: &SubShape) -> String {

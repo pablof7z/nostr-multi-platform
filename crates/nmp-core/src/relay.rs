@@ -27,7 +27,7 @@ pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 /// `planner`, `publish`, and `store` each re-export it (`pub use
 /// crate::relay::RelayUrl`) so their existing import paths are unchanged —
 /// previously each of the three module families defined its own identical
-/// `pub type RelayUrl = String`, which made a "what is a RelayUrl" search
+/// `pub type RelayUrl = String`, which made a "what is a `RelayUrl`" search
 /// return three competing answers.
 ///
 /// It stays a transparent `String` alias (grep-able, swappable): the routing

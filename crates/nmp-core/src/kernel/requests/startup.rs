@@ -1,7 +1,7 @@
 //! Cold-start REQ emission: self profile / NIP-65 relay list / NIP-17 DM relay
 //! list, and the active account's kind:3 follow list. No hardcoded seed timeline.
 
-use super::super::*;
+use super::super::{json, Kernel, OutboundMessage, Instant, Duration, RelayRole};
 
 impl Kernel {
     pub(crate) fn startup_requests(&mut self) -> Vec<OutboundMessage> {

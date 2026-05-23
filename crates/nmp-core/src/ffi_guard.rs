@@ -5,7 +5,7 @@
 //! MUST be wrapped here. Two failure modes both produce undefined
 //! behaviour if a Rust stack frame is unwound across the C ABI boundary:
 //!
-//! * the foreign side raises (an ObjC `NSException`, a Swift `fatalError`,
+//! * the foreign side raises (an `ObjC` `NSException`, a Swift `fatalError`,
 //!   a Kotlin exception) — the unwinder has no Rust landing pads to run;
 //! * Rust code reachable from the callback panics (e.g. a `CStr` decode
 //!   inside a Rust trait observer that the same fan-out also invokes).

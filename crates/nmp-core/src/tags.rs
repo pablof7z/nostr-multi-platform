@@ -194,7 +194,6 @@ pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
                         refs.reply = Some(eref);
                     }
                 }
-                Some("mention") => refs.mentions.push(eref),
                 _ => refs.mentions.push(eref),
             }
         }

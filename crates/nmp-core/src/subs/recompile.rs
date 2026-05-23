@@ -21,7 +21,7 @@ use super::{SubscriptionLifecycle, MAILBOX_PROBE_BATCH};
 
 impl SubscriptionLifecycle {
     /// Recompile from current registry + caller-supplied mailbox state, diff
-    /// against the last-compiled plan, and return the WireFrame delta.
+    /// against the last-compiled plan, and return the `WireFrame` delta.
     ///
     /// T132: the mailbox cache is no longer owned by the lifecycle. The kernel
     /// passes its `KernelMailboxes` adapter (a view onto `author_relay_lists`,

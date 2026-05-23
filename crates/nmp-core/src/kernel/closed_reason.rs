@@ -11,7 +11,7 @@
 //! - `error:`         — generic relay-side error
 //! - `invalid:`       — malformed REQ shape
 //! - `unsupported:`   — the relay does not implement the requested filter
-//! - `pow:`           — the relay requires a higher PoW threshold (NIP-13)
+//! - `pow:`           — the relay requires a higher `PoW` threshold (NIP-13)
 //! - `duplicate:`     — this REQ is a duplicate of an existing subscription
 //!
 //! This module is pure policy: a `&str` reason → a [`CloseReason`] enum. The
@@ -68,8 +68,8 @@ pub(crate) enum CloseReason {
     Invalid,
     /// `unsupported:` — relay does not implement the filter; log + give up.
     Unsupported,
-    /// `pow:` — relay demands higher PoW (NIP-13); treated as Error (NMP does
-    /// not generate PoW events, so there is no recovery action available).
+    /// `pow:` — relay demands higher `PoW` (NIP-13); treated as Error (NMP does
+    /// not generate `PoW` events, so there is no recovery action available).
     Pow,
     /// `duplicate:` — relay says this sub overlaps an existing one; log only.
     Duplicate,

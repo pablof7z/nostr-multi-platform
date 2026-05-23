@@ -14,7 +14,7 @@
 //! [`InterestRegistry::ensure_sub`]. The wire side CLOSEs the REQ on first
 //! EOSE in `kernel/ingest`'s `handle_text` (the `keep_live` computation that
 //! evicts non-persistent `wire_subs` rows) — this module adds **only** the
-//! request → completion bookkeeping the actor polls. No parallel OneShot
+//! request → completion bookkeeping the actor polls. No parallel `OneShot`
 //! tracker exists.
 //!
 //! ## Delivery model

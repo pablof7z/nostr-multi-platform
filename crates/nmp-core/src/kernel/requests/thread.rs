@@ -3,12 +3,12 @@
 //! # M2 migration plan (compiler.md §3.5)
 //! Per `docs/design/subscription-compilation/compiler.md` §3.5, these request
 //! builders are scheduled for replacement by `SubscriptionCompiler`-driven
-//! interest registration once the wire-emitter, InterestRegistry, and
+//! interest registration once the wire-emitter, `InterestRegistry`, and
 //! trigger-based recompilation infrastructure land (M2 full migration):
 //!
 //! - `open_thread` → register Thread view-module spec; return interests with
-//!   event_ids + #e-tag shapes
-//! - `close_thread` → drop interests by InterestId; recompile(Trigger::ViewClose)
+//!   `event_ids` + #e-tag shapes
+//! - `close_thread` → drop interests by `InterestId`; `recompile(Trigger::ViewClose)`
 //! - `prepare_thread_requests` → moves to `nmp_nip01::ThreadView` /
 //!   `nmp_nip01::Nip10ModularTimelineView` (the latter wrapping
 //!   `nmp_threading::Grouper`); the hydration cascade becomes a view module
@@ -18,9 +18,9 @@
 //! - `maybe_open_thread_hydration` → `reduce()` on the chosen NIP-01 view module
 //!
 //! The `close_subscriptions_with_prefixes` helper disappears: the wire-emitter
-//! closes by WireSubId (compiler diff output), not string-prefix matching.
+//! closes by `WireSubId` (compiler diff output), not string-prefix matching.
 
-use super::super::*;
+use super::super::{json, Kernel, OutboundMessage, ViewInterest, short_hex, referenced_event_ids, is_hex_id, RelayRole};
 use crate::stable_hash::stable_hash64;
 
 /// Deterministic 8-char tag over `relay_url` for thread hydration sub-ids.

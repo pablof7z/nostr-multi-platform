@@ -5,7 +5,7 @@
 //! marking wire-subs as `retrying`/`closed`, and bumping `changed_since_emit`
 //! so the actor surfaces the transition in the next snapshot.
 
-use super::super::*;
+use super::super::{Kernel, RelayRole, Instant, CanonicalRelayUrl, truncate};
 
 impl Kernel {
     pub(crate) fn relay_connecting(&mut self, role: RelayRole) {

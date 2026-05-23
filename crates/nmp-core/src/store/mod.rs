@@ -5,7 +5,7 @@
 //! The store lives in `nmp-core::store` (not a separate crate) because the
 //! `EventStore::run_migrations` method references `crate::substrate::DomainMigration`.
 //! A separate crate would create a circular dependency:
-//!   `nmp-store` → `nmp-core` (for DomainMigration) → `nmp-store`
+//!   `nmp-store` → `nmp-core` (for `DomainMigration`) → `nmp-store`
 //!
 //! # Backends
 //!

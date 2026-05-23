@@ -158,7 +158,7 @@ pub struct InterestShape {
     ///
     /// `relay_pin` is purely an out-of-band routing hint; it is NEVER
     /// serialized onto the wire as part of the filter. The relay receives only
-    /// the regular filter shape (kinds + tags + since/until/limit/event_ids
+    /// the regular filter shape (kinds + tags + `since/until/limit/event_ids`
     /// + addresses); routing happens entirely on the client side.
     ///
     /// Example use case: NIP-29 relay-based groups (each group is bound to its

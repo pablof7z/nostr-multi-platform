@@ -60,7 +60,7 @@ pub extern "C" fn nmp_app_lifecycle_foreground(app: *mut NmpApp) {
 ///
 /// `.inactive` (the iOS interstitial state between active and background)
 /// has NO FFI symbol — the shell silently no-ops on `.inactive` per the
-/// PulseApp scenePhase observer. The kernel-side `LifecyclePhase::Inactive`
+/// `PulseApp` scenePhase observer. The kernel-side `LifecyclePhase::Inactive`
 /// is the boot sentinel, not a phase the shell ever reports.
 #[no_mangle]
 pub extern "C" fn nmp_app_lifecycle_background(app: *mut NmpApp) {

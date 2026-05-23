@@ -1,4 +1,4 @@
-use super::*;
+use super::{Kernel, RelayStatus, RelayRole, LogicalInterestStatus, short_hex, BTreeSet, WireSubscriptionStatus, RelayHealth, Counters, Instant, now_hms};
 
 impl Kernel {
     pub(super) fn relay_status(&self) -> RelayStatus {
@@ -67,7 +67,7 @@ impl Kernel {
     /// T112 — update the NIP-77 probe state for a relay lane. Called by the
     /// actor/observer layer when the shell's NIP-77 capability probe
     /// transitions (`Unknown → Probing → Supported/Unsupported`). The string
-    /// key must match a probe-state variant name in snake_case:
+    /// key must match a probe-state variant name in `snake_case`:
     /// `"unknown"`, `"probing"`, `"supported"`, or `"unsupported"`.
     ///
     /// `nmp-core` does not name any shell-side probe types (D0); the caller

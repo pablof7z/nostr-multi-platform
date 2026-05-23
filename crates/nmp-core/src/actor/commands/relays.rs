@@ -55,6 +55,7 @@ fn normalize_role(role: &str) -> Option<String> {
 /// * `write,indexer`            → write-only
 /// * `indexer` (alone)          → no NIP-65 representation; row is dropped
 /// * unrecognised role          → row is dropped (D6 — degrade gracefully)
+#[allow(clippy::option_option)] // Outer None = drop row; Some(None) = both-marker; Some(Some(x)) = directional marker
 fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
     let canonical = crate::actor::canonical_relay_role(role)?;
     // `canonical_relay_role` returns one of:
@@ -65,9 +66,8 @@ fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
         "both" | "both,indexer" => Some(None),
         "read" | "read,indexer" => Some(Some("read")),
         "write" | "write,indexer" => Some(Some("write")),
-        // Pure-indexer rows have no NIP-65 read/write semantics — they are
-        // a NMP-internal lane (discovery probes). Don't advertise them.
-        "indexer" => None,
+        // Pure-indexer rows have no NIP-65 read/write semantics (internal
+        // discovery lane) — drop them, along with any unrecognised role.
         _ => None,
     }
 }

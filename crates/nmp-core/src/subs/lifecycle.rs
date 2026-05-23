@@ -133,7 +133,7 @@ impl SubscriptionLifecycle {
 
     /// Install (or replace) the active-account read relay list (T134).
     ///
-    /// Used by case_d (no-author firehose) as the primary routing target,
+    /// Used by `case_d` (no-author firehose) as the primary routing target,
     /// unioned with `app_relays`. The kernel populates this from the active
     /// account's kind:10002 read-relays.
     pub fn set_active_account_read_relays(&mut self, relays: Vec<RelayUrl>) {
@@ -185,7 +185,7 @@ impl SubscriptionLifecycle {
     }
 
     /// Install (or replace) the *discovery* indexer relay set used for
-    /// kind:0 / kind:3 / kind:10002 lookups, event_id resolution, and the
+    /// kind:0 / kind:3 / kind:10002 lookups, `event_id` resolution, and the
     /// case-D cold-start fallback when both `app_relays` and the
     /// active-account read set are empty.
     ///

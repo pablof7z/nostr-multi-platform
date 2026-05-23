@@ -1,7 +1,7 @@
 //! Trait shims for dependencies that have not landed yet.
 //!
 //! The publish engine is built against these traits so the implementations
-//! from #43 (Signer), #46 (RelayManager), M2 (NIP-65 outbox resolver), and M3
+//! from #43 (Signer), #46 (`RelayManager`), M2 (NIP-65 outbox resolver), and M3
 //! (LMDB store) can swap in without rewriting the engine. Each trait is
 //! intentionally minimal; richer surfaces ship inside the milestones that
 //! own them.
@@ -120,7 +120,7 @@ impl OutboxResolver for NoopOutboxResolver {
 // ---------------- Relay dispatcher (M8 / task #46) ----------------
 
 /// Send a single frame to a single relay. Implementations may be async +
-/// websocket-backed (M8 RelayManager) or in-process replay queues (tests).
+/// websocket-backed (M8 `RelayManager`) or in-process replay queues (tests).
 ///
 /// Per D7, the dispatcher returns raw transport results; classification +
 /// retry policy live in the engine.

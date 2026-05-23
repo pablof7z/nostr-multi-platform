@@ -20,7 +20,7 @@
 //! tag itself signals.  `Close` carries the optional reason string because
 //! the kernel surfaces it on `relay.last_error`. The tungstenite
 //! `Message::Frame` raw-frame variant has no kernel-side observable, so it
-//! has no counterpart here — the relay_worker drops it before conversion.
+//! has no counterpart here — the `relay_worker` drops it before conversion.
 
 /// One inbound WebSocket frame, observed by the kernel.
 #[derive(Debug)]

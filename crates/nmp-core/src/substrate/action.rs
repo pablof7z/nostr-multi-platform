@@ -70,7 +70,7 @@ pub trait ActionModule: Send + Sync + 'static {
         action: Self::Action,
     ) -> Result<(), ActionRejection>;
 
-    /// Optional: suggest the correlation_id the registry should assign to
+    /// Optional: suggest the `correlation_id` the registry should assign to
     /// this action instead of the auto-generated one. Returning `Some(id)`
     /// makes `dispatch_action`'s return value and `action_results` in the
     /// snapshot use the same identifier — a requirement for hosts that key

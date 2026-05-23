@@ -104,7 +104,7 @@ impl SignerForSeal for RemoteSignerForSeal {
         // shape every `RemoteSignerHandle::sign` impl consumes.
         let substrate_unsigned = SubstrateUnsignedEvent {
             pubkey: unsigned.pubkey.to_hex(),
-            kind: unsigned.kind.as_u16() as u32,
+            kind: u32::from(unsigned.kind.as_u16()),
             tags: unsigned
                 .tags
                 .iter()

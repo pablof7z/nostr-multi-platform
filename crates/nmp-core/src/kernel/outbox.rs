@@ -340,7 +340,7 @@ impl<'a> KernelMailboxes<'a> {
     }
 }
 
-impl<'a> MailboxCache for KernelMailboxes<'a> {
+impl MailboxCache for KernelMailboxes<'_> {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot> {
         self.inner.get(pubkey).map(|list| MailboxSnapshot {
             write_relays: list.write_relays.clone(),

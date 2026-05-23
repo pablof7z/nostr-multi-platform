@@ -13,13 +13,13 @@
 //! `crate::remote_signer` so the actor uses signers without importing the
 //! `nmp-signers` crate; concrete impls live in `nmp-signers` and reach the
 //! actor through the broker (below). Full `AccountManager` integration is
-//! M14 (UniFFI), when the FFI surface can move to a crate that may depend
+//! M14 (`UniFFI`), when the FFI surface can move to a crate that may depend
 //! on both `nmp-core` and `nmp-signers`.
 //!
 //! ## NIP-46
 //!
 //! Doctrine D0 still forbids `nmp-core -> nmp-signers`, so the NIP-46
-//! handshake (kind:24133 relay subscription, connect/get_public_key RPCs)
+//! handshake (kind:24133 relay subscription, `connect/get_public_key` RPCs)
 //! lives in a separate broker crate that depends on BOTH `nmp-core` and
 //! `nmp-signers`. The actor's role is purely to host the `Box<dyn
 //! RemoteSignerHandle>` once the broker has completed the handshake:

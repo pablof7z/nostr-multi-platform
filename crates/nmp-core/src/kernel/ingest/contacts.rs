@@ -1,6 +1,6 @@
 //! Kind:3 (contact list) ingest.
 
-use super::super::*;
+use super::super::{Kernel, BTreeSet, NostrEvent, is_hex_pubkey, TIMELINE_AUTHOR_LIMIT, short_hex};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };

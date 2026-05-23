@@ -25,7 +25,7 @@ use super::{MailboxCache, RelayEntry};
 ///
 /// Structural ban: if inbox relays are unknown for a tagged pubkey, emit
 /// NO relay entries for that pubkey (fail-closed). A probe is emitted so
-/// the next recompile has data (§3.2 — IndexerProbe side-effect).
+/// the next recompile has data (§3.2 — `IndexerProbe` side-effect).
 ///
 /// Stage 3 (mod.rs) is responsible for deduping repeated `interest_id`
 /// pushes on the same relay (e.g. when an outbox and inbox push land on the

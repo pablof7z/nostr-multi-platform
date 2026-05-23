@@ -44,7 +44,7 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
 /// `kernel.bootstrap_urls_for_role(role)`. Called from `Start` so the cold-start
 /// kind:10002 discovery fetch has a socket to leave on before any NIP-65
 /// list is cached. Per-author/recipient sockets spawn on demand in
-/// `send_outbound` as the kernel emits OutboundMessages targeting their
+/// `send_outbound` as the kernel emits `OutboundMessages` targeting their
 /// resolved relay URLs.
 pub(super) fn spawn_missing_relays(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,

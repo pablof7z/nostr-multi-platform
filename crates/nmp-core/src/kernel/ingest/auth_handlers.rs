@@ -4,7 +4,7 @@
 //! glue** that drives the driver, dispatches the signer, and reflects state
 //! into `RelayHealth`.
 
-use super::super::*;
+use super::super::{RelayRole, OutboundMessage, Kernel, Arc};
 use crate::subs::RelayAuthState;
 use serde_json::{json, Value};
 use std::time::UNIX_EPOCH;
@@ -25,13 +25,13 @@ pub(super) fn auth_state_key(state: &RelayAuthState) -> &'static str {
 
 /// Convert lifecycle `WireFrame`s (emitted by AuthGate-on-Authenticated) into
 /// the kernel's `OutboundMessage` shape. Every flushed frame already carries
-/// the correct per-URL relay target (the AuthGate's pending buffer is keyed
+/// the correct per-URL relay target (the `AuthGate`'s pending buffer is keyed
 /// by `RelayUrl` — see `subs/auth_gate.rs`). The translation is therefore a
 /// straight pass-through with `role` stamped for the diagnostic lane.
 ///
 /// **T148**: pre-fix this dropped any frame whose `relay_url != role.url()`
 /// (the bootstrap host), which silently discarded every flushed REQ
-/// targeting a NIP-65 resolved relay. Post-T148 we trust the AuthGate's
+/// targeting a NIP-65 resolved relay. Post-T148 we trust the `AuthGate`'s
 /// per-URL bookkeeping and forward every frame as-is.
 pub(super) fn wire_frames_to_outbound(
     frames: Vec<crate::subs::WireFrame>,
@@ -218,11 +218,11 @@ impl Kernel {
 
     /// M5+M2+M8 wiring: handle an `["OK", <event_id>, <accepted>, <reason>]`
     /// frame. Correlates against the per-relay pending kind:22242. On match,
-    /// transitions to `Authenticated` (and flushes AuthGate's buffered REQs
+    /// transitions to `Authenticated` (and flushes `AuthGate`'s buffered REQs
     /// back to outbound) or `Failed`. Non-AUTH OKs are no-ops here.
     ///
     /// T148: `delivering_relay_url` is the URL of the socket the OK arrived on;
-    /// it is threaded into the lifecycle's per-URL AuthGate so the right
+    /// it is threaded into the lifecycle's per-URL `AuthGate` so the right
     /// per-URL pending buffer is drained on `Authenticated`. Pre-T148 this
     /// stamped `role.url()` (the lane bootstrap), which mis-routed the flush.
     pub(super) fn handle_auth_ok(
@@ -270,7 +270,7 @@ impl Kernel {
 
     /// Reflect the per-relay auth state into the diagnostic
     /// `RelayStatus.auth` field. AUTH-state transitions DO bump
-    /// `changed_since_emit` so the diagnostic surface (RelayStatus + toast)
+    /// `changed_since_emit` so the diagnostic surface (`RelayStatus` + toast)
     /// re-emits; the actor's ≤60 Hz/view cap (D8) handles throughput. The
     /// `nip42_kernel_auth_does_not_bump_view_rev` test pins the narrower
     /// invariant that AUTH does NOT directly bump `rev` — that's done by

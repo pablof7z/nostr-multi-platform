@@ -1,9 +1,9 @@
-//! Claim / release / gc_step for `MemEventStore`.
+//! Claim / release / `gc_step` for `MemEventStore`.
 //!
-//! Implements the HotSet semantics from `docs/design/lmdb/gc.md` §2:
+//! Implements the `HotSet` semantics from `docs/design/lmdb/gc.md` §2:
 //!   - per-view ceiling: `DEFAULT_VIEW_CEILING` (1000 events).
 //!   - global pinned ceiling: `MAX_PINNED_TOTAL` (20000 events).
-//!   - BTreeSet idempotency per T25: re-claiming a known id is a no-op.
+//!   - `BTreeSet` idempotency per T25: re-claiming a known id is a no-op.
 //!   - `StoreError::OverPinned` on breach (D8).
 
 use super::{bytes_to_hex, MemEventStore, DEFAULT_VIEW_CEILING, MAX_PINNED_TOTAL, TOMBSTONE_MAX_AGE_SECS};

@@ -1,4 +1,4 @@
-use super::*;
+use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, avatar_color, truncate, format_timestamp, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
 use crate::substrate::placeholder::picture_placeholder;
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.

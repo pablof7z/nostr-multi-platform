@@ -1,4 +1,4 @@
-//! T142 — WireFrame → OutboundMessage conversion bridge.
+//! T142 — `WireFrame` → `OutboundMessage` conversion bridge.
 //!
 //! Converts planner-generated [`WireFrame`]s into actor-layer
 //! [`OutboundMessage`]s, attaching the relay lane discriminator

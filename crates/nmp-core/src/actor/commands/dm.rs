@@ -137,8 +137,7 @@ pub(crate) fn send_gift_wrapped_dm(
                     .to_string()
             }
             Some(other) => format!(
-                "cannot send DM: remote signer ({}) reported a malformed pubkey",
-                other
+                "cannot send DM: remote signer ({other}) reported a malformed pubkey"
             ),
             None => "cannot send DM: no active account".to_string(),
         };
@@ -412,7 +411,7 @@ fn build_nostr_rumor(
     rumor: &UnsignedEvent,
     pubkey: PublicKey,
 ) -> Result<nostr::UnsignedEvent, String> {
-    if rumor.kind > u16::MAX as u32 {
+    if rumor.kind > u32::from(u16::MAX) {
         return Err(format!(
             "invalid kind {}: must be in range [0, 65535]",
             rumor.kind
@@ -446,7 +445,7 @@ fn nostr_event_to_raw(event: &nostr::Event) -> RawEvent {
         id: event.id.to_hex(),
         pubkey: event.pubkey.to_hex(),
         created_at: event.created_at.as_secs(),
-        kind: event.kind.as_u16() as u32,
+        kind: u32::from(event.kind.as_u16()),
         tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
         content: event.content.clone(),
         sig: event.sig.to_string(),

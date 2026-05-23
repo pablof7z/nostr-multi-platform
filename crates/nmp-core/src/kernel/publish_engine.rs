@@ -86,7 +86,7 @@ impl Kernel {
     /// kernel surfaces a `last_error_toast` (D6 — never an exception).
     ///
     /// Uses `event_id` as the publish handle: signers guarantee unique event
-    /// ids per publish, so the handle <-> event_id collapse is sound and
+    /// ids per publish, so the handle <-> `event_id` collapse is sound and
     /// eliminates a reverse lookup map on the kernel side.
     pub(super) fn run_publish_engine(
         &mut self,
@@ -111,7 +111,7 @@ impl Kernel {
     /// `Nip65OutboxResolver` (kind:10002 outbox); `Explicit { relays }` is the
     /// named opt-out and routes the verbatim event to exactly those relays.
     ///
-    /// `correlation_id_override` is the action correlation_id to report in
+    /// `correlation_id_override` is the action `correlation_id` to report in
     /// `action_results` instead of the publish handle (== event id). It is
     /// `Some` only on the `PublishNote` dispatch path — the host received a
     /// registry-minted id before the actor signed the event, so the engine

@@ -120,11 +120,11 @@ pub extern "C" fn nmp_app_dispatch_action(
 /// map) on every tick. Unlike `action_results` (drain on emit), the same
 /// entry reappears every tick until the host calls this symbol. After the
 /// host's UI has reacted to the terminal stage (`Accepted` / `Failed`) it
-/// passes the correlation_id here to drop the entry from the projection.
+/// passes the `correlation_id` here to drop the entry from the projection.
 ///
 /// `correlation_id` is the 32-hex (or event-id) value the host received from
-/// `nmp_app_dispatch_action`. A null `app`, a null/empty correlation_id, or
-/// an unknown correlation_id is a silent no-op (D6 — never a crash).
+/// `nmp_app_dispatch_action`. A null `app`, a null/empty `correlation_id`, or
+/// an unknown `correlation_id` is a silent no-op (D6 — never a crash).
 ///
 /// THREADING: dispatch is non-blocking — this only enqueues
 /// [`crate::actor::ActorCommand::AckActionStage`] on the actor channel
@@ -229,7 +229,7 @@ pub extern "C" fn nmp_app_register_action_result_observer(
         // of the gap.
         let _: Option<()> =
             crate::ffi_guard::guard_ffi_callback("action result observer", || unsafe {
-                observer(cstr.as_ptr())
+                observer(cstr.as_ptr());
             });
     });
 }
@@ -247,7 +247,7 @@ pub extern "C" fn nmp_app_register_action_result_observer(
 /// [`INFLIGHT_DISPATCH_TTL`] short-circuits the call: no `start()`, no
 /// executor, no `ActorCommand` enqueued — the call returns
 /// `{"correlation_id":"<original>"}` carrying the FIRST dispatch's
-/// correlation_id so the host's spinner stays bound to the in-flight action.
+/// `correlation_id` so the host's spinner stays bound to the in-flight action.
 /// This collapses rapid re-taps (the classic DM double-send pathology) into a
 /// single wire-side request without changing the host's accepted-action
 /// contract.
@@ -382,7 +382,7 @@ fn execute_action(
 ) -> Result<(), String> {
     app.action_registry
         .execute(namespace, action_json, correlation_id, &|cmd| {
-            app.send_cmd(cmd)
+            app.send_cmd(cmd);
         })
 }
 
@@ -401,7 +401,7 @@ fn error_json(msg: &str) -> String {
 }
 
 /// `{"correlation_id":"…","error":"…"}` envelope for the post-mint
-/// failure path. The correlation_id was already minted by
+/// failure path. The `correlation_id` was already minted by
 /// [`ActionRegistry::start`] and a `Failed` terminal stage has been queued
 /// to the actor; including the id here lets the host drive the ACK
 /// lifecycle (`nmp_app_ack_action_stage`) once the next snapshot carries

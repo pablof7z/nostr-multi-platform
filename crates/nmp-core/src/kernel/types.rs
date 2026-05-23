@@ -1,10 +1,10 @@
 //! Pure data types shared across kernel sub-modules.
 //!
-//! Holds all struct/enum definitions with no behaviour of their own: StoredEvent,
-//! Profile, TimelineItem, ProfileCard, view payloads, relay health/status, wire
-//! subscription state, counters, and the AuthorRelayList cache entry.
+//! Holds all struct/enum definitions with no behaviour of their own: `StoredEvent`,
+//! Profile, `TimelineItem`, `ProfileCard`, view payloads, relay health/status, wire
+//! subscription state, counters, and the `AuthorRelayList` cache entry.
 
-use super::*;
+use super::{Serialize, RelayRole, CanonicalRelayUrl, Instant, BTreeSet, HashSet, HashMap};
 
 // ── Seed accounts (test fixtures only) ──────────────────────────────────────
 
@@ -191,7 +191,7 @@ pub(super) struct ProfileDispatchSpec {
 /// `dispatch` carries the namespace+body the shell must send through
 /// `nmp_app_dispatch_action` for write verbs (follow / unfollow). When
 /// `dispatch` is `None` the action is a pure local-UI intent (open the edit
-/// sheet) — there is no registered ActionModule for it. The shell branches on
+/// sheet) — there is no registered `ActionModule` for it. The shell branches on
 /// `dispatch.is_some()`, not on the `kind` string, killing the §4.4 switch.
 ///
 /// `icon_name` is the SF Symbol (or equivalent) the shell renders next to
@@ -346,7 +346,7 @@ pub(super) struct PublishOutboxItem {
     /// deciding what the app should *do*.
     pub(super) can_retry: bool,
     pub(super) target_relays: usize,
-    /// Pre-formatted "N relays · <created_at>" header line (or "1 relay · …"
+    /// Pre-formatted "N relays · <`created_at`>" header line (or "1 relay · …"
     /// — pluralization is server-side). The shell renders this verbatim
     /// instead of reconstructing the plural with a ternary on `target_relays`.
     pub(super) target_summary: String,

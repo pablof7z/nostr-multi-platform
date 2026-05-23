@@ -8,7 +8,7 @@
 //! ## State machine
 //!
 //! - **Quiet** — `last_inbound_at` aged < `idle_threshold`. Nothing to do.
-//! - **PingPending** — emitted a Ping at `ping_sent_at`. Waiting for a Pong (or
+//! - **`PingPending`** — emitted a Ping at `ping_sent_at`. Waiting for a Pong (or
 //!   any inbound frame; a relay that's alive must respond to *something*).
 //! - **Dead** — `ping_sent_at` aged past `pong_timeout`. Caller marks the
 //!   connection unhealthy and reconnects.
@@ -24,7 +24,7 @@
 //!
 //! Per the T120b spec: 30s idle → emit Ping, 30s no response → unhealthy.
 //! These are knobs on `KeepaliveState::new`; production wires the constants
-//! at the relay_worker layer.
+//! at the `relay_worker` layer.
 //!
 //! ## D7 — actor decides
 //!

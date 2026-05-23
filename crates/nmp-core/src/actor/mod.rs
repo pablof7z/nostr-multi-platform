@@ -242,7 +242,7 @@ pub enum ActorCommand {
         mls: bool,
     },
     /// T66a identity — switch the active account (synchronous re-bind +
-    /// timeline retarget, mirrors AccountManager::switch_active semantics).
+    /// timeline retarget, mirrors `AccountManager::switch_active` semantics).
     SwitchActive {
         identity_id: String,
     },
@@ -289,7 +289,7 @@ pub enum ActorCommand {
     /// `correlation_id` is the registry-minted action id when this command
     /// originates from `nmp_app_dispatch_action` (`PublishAction::PublishNote`).
     /// The actor signs the event, so its `id` is unknown at dispatch time and
-    /// `preferred_action_id()` could not pre-bind the host's correlation_id to
+    /// `preferred_action_id()` could not pre-bind the host's `correlation_id` to
     /// it. Threading the minted id here makes the publish engine report it in
     /// `action_results` (instead of the signed event's `id`), so the host
     /// spinner keyed on the dispatch return value can be cleared. `None` for
@@ -627,7 +627,7 @@ pub enum ActorCommand {
     /// `ActorCommand` carrying it could be enqueued).
     ///
     /// Without this seam the failure is orphaned: the host received a
-    /// correlation_id from `nmp_app_dispatch_action`'s error envelope but
+    /// `correlation_id` from `nmp_app_dispatch_action`'s error envelope but
     /// has no way to ACK an `action_stages` entry that was never produced.
     /// The actor folds this command into [`Kernel::record_action_failure`]
     /// — same engine the sign-step failure path uses — so a `Failed`
@@ -724,7 +724,7 @@ pub enum ActorCommand {
 /// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the
 /// pool key — every resolved write/read relay gets its own socket. `role`
 /// is retained so the actor can route diagnostic-bucket updates back to
-/// the kernel's lane-keyed RelayHealth rows until per-URL health lands (M11).
+/// the kernel's lane-keyed `RelayHealth` rows until per-URL health lands (M11).
 #[cfg(feature = "native")]
 pub(super) struct RelayControl {
     pub(super) generation: u64,
@@ -1053,7 +1053,7 @@ pub fn run_actor_with_observers(
     let mut next_relay_generation = 1;
     let mut running = false;
     let mut emit_hz = DEFAULT_EMIT_HZ;
-    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    let mut last_emit = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
     let mut startup_sent = false;
     // Remote (NIP-46) sign ops parked off the blocking path. `dispatch_command`
     // pushes a `PendingSign` when a publish-command sign goes `Pending`; the

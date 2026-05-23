@@ -41,7 +41,7 @@
 //!
 //! Module layout:
 //!   mod.rs        — factory, `MemState`, `MemEventStore`, provenance helpers
-//!   store_impl.rs — `EventStore` trait impl (delegation to sub-modules)
+//!   `store_impl.rs` — `EventStore` trait impl (delegation to sub-modules)
 //!   insert.rs     — §7.1 insert invariants (replaceable, kind:5, normal)
 //!   query.rs      — read / scan methods
 //!   gc.rs         — claim / release / prune
@@ -85,19 +85,19 @@ type DomainMap = Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>;
 // ─── Inner state ─────────────────────────────────────────────────────────────
 
 pub(super) struct MemState {
-    /// Primary event store: hex id → StoredEvent.
+    /// Primary event store: hex id → `StoredEvent`.
     pub(super) events: HashMap<String, StoredEvent>,
 
-    /// Tombstone rows: hex target_id → TombstoneRow.
+    /// Tombstone rows: hex `target_id` → `TombstoneRow`.
     pub(super) tombstones: HashMap<String, TombstoneRow>,
 
-    /// Address tombstones (kind:5 `a`-tag): "kind:pubkey:dtag" → TombstoneRow.
+    /// Address tombstones (kind:5 `a`-tag): "kind:pubkey:dtag" → `TombstoneRow`.
     pub(super) addr_tombstones: HashMap<String, TombstoneRow>,
 
-    /// Provenance: hex event_id → sorted Vec<ProvenanceEntry>.
+    /// Provenance: hex `event_id` → sorted Vec<ProvenanceEntry>.
     pub(super) provenance: HashMap<String, Vec<ProvenanceEntry>>,
 
-    /// Watermarks: (filter_hash_hex, relay_url) → WatermarkRow.
+    /// Watermarks: (`filter_hash_hex`, `relay_url`) → `WatermarkRow`.
     pub(super) watermarks: HashMap<(String, String), WatermarkRow>,
 
     /// Domain data per namespace.
@@ -109,8 +109,8 @@ pub(super) struct MemState {
     /// Claim budgets: claimer → max pinned.
     pub(super) claim_budgets: HashMap<ClaimerId, usize>,
 
-    /// Current claims: claimer → BTreeSet of hex event ids.
-    /// BTreeSet gives idempotency per T25 — re-claiming a known id is a no-op.
+    /// Current claims: claimer → `BTreeSet` of hex event ids.
+    /// `BTreeSet` gives idempotency per T25 — re-claiming a known id is a no-op.
     pub(super) claims: HashMap<ClaimerId, BTreeSet<String>>,
 }
 

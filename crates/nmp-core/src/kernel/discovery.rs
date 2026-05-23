@@ -24,7 +24,7 @@
 //! the hot path (D8). The actor owns all this state; nothing crosses FFI and
 //! no `Result` is produced (D6).
 
-use super::*;
+use super::{json, Kernel, OutboundMessage, RelayRole};
 use crate::planner::{InterestScope, InterestShape};
 
 /// Typed discriminant for entries in [`Kernel::oneshot_subs`].
@@ -196,7 +196,7 @@ impl Kernel {
     ///
     /// Callers that previously used `sub_id.starts_with(ONESHOT_SUB_PREFIX)`
     /// to route EOSE / store-gate decisions should use this instead — the
-    /// HashMap lookup is O(1) and the routing decision is made on the typed
+    /// `HashMap` lookup is O(1) and the routing decision is made on the typed
     /// [`OneshotKind`] stored alongside the token, not on a string prefix.
     pub(in crate::kernel) fn is_discovery_oneshot(&self, sub_id: &str) -> bool {
         matches!(

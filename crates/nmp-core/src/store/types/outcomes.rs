@@ -39,9 +39,9 @@ pub enum RejectReason {
 #[derive(Clone, Debug)]
 pub struct TombstoneRow {
     pub target_id: EventId,
-    /// None for NIP-40 expiry and AdminPurge tombstones.
+    /// None for NIP-40 expiry and `AdminPurge` tombstones.
     pub kind5_event_id: Option<EventId>,
-    /// None for NIP40Expiry / AdminPurge.
+    /// None for `NIP40Expiry` / `AdminPurge`.
     pub deleter_pubkey: Option<PubKey>,
     /// Unix seconds; max observed across redeliveries.
     pub deleted_at: u64,
