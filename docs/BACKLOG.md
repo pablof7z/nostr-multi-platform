@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **49b927ff** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **7166e6d5** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -35,7 +35,7 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-01 · nmp-wasm stub — multi-platform claim is false [CRITICAL · staged fix allowed]
+### V-01 · nmp-wasm stub — multi-platform claim is false [CRITICAL · staged fix in progress]
 
 **Verified:** `crates/nmp-wasm/Cargo.toml` has zero `nmp-core` dependency (only
 `nmp-chirp-config`, `serde`, `serde_json`, `wasm-bindgen`). `src/runtime.rs` is a ~295-line
@@ -47,13 +47,17 @@ fixed. Each sprint that adds chirp-web features on top of the stub incurs diverg
 makes the eventual fix harder.
 
 **Staged fix plan:**
-- Stage 1 (next sprint): add `nmp-core` dep behind `cfg(target_arch = "wasm32")`; construct
-  `NmpApp` and call `nmp_app_dispatch_action`; delete synthesized-JSON stub. No relay
-  transport yet. This alone makes the single-kernel thesis testable.
+- Phase 1a ✅ DONE: `native` Cargo feature added to `nmp-core` gating tungstenite, ureq,
+  heed, nostr-database, mio, rustls, chrono/clock. `mod ffi` gated behind
+  `#[cfg(feature = "native")]`. Default build unchanged. (commit `5e36e158`)
+- Phase 1b ✅ DEFERRED (pending Phase 1c): `nmp-core = { default-features = false }` dep in
+  `nmp-wasm/Cargo.toml` is commented out until Phase 1c removes the tungstenite cascade errors.
+- Phase 1c IN PROGRESS: introduce `RelayFrame` enum; gate `actor/` and `relay_worker/` behind
+  `#[cfg(feature = "native")]`; verify `cargo check -p nmp-core --no-default-features` passes.
 - Stage 2: replace stub relay transport with `gloo-net`/`web-sys` WebSocket.
 - Stage 3: port persistence to IndexedDB-backed `nostr-database` impl.
 
-No chirp-web features may be added until Stage 1 lands.
+No chirp-web features may be added until Phase 1c lands.
 
 ### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 
@@ -154,13 +158,12 @@ exist" — both are wrong. Silent degradation with no user-visible signal.
 
 **Deadline:** Stage 3 is post-v1.
 
-### V-07 · Zap relay selection in Swift — D0 policy leak [HIGH · immediate fix]
+### V-07 · Zap relay selection in Swift — D0 policy leak [DONE]
 
-**Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:405-421` — the `zap()` call
-filters `relayEditRows` (the sender's own configured relays) to build the
-`relays` tag for the kind:9734 zap request. This is policy (which relays the LN
-provider should publish the kind:9735 receipt to), not rendering. A hardcoded
-fallback to `wss://relay.damus.io` + `wss://nos.lol` is also embedded in Swift.
+**Verified FIXED:** PR #331 (`fix(zap): auto-select recipient relays from kind:10002 (V-07)`)
+resolved this. `inject_recipient_relays` in `actor/commands/zap.rs` now looks up the
+recipient's kind:10002 write relays from the kernel cache. Swift passes an empty `relays`
+array; relay selection is fully Rust-owned.
 
 **D0 violation:** "if you would write an `if` statement in Swift that decides
 what the app should *do*, that logic belongs in Rust" (AGENTS.md §Architecture).
@@ -180,27 +183,13 @@ correct answer is the RECIPIENT's write/both relays from their kind:10002 (so th
 receipt lands where the recipient listens). Using the sender's own relays is the
 wrong set and produces an under-informed zap flow.
 
-### V-09 · `nmp-app-chirp/src/ffi.rs` exceeds 500-LOC hard ceiling [MEDIUM · split required]
+### V-09 · `nmp-app-chirp/src/ffi.rs` split — [DONE]
 
-**Verified:** `apps/chirp/nmp-app-chirp/src/ffi.rs` is 1,540 LOC — 3× the AGENTS.md hard
-ceiling of 500 LOC for hand-authored files.
+**Verified FIXED:** PR #332 split `ffi.rs` into `ffi/mod.rs`, `ffi/actions.rs`,
+`ffi/handle.rs`, `ffi/helpers.rs`, `ffi/register.rs`, `ffi/snapshot.rs`, `ffi/tests.rs`.
+All production sub-modules are within the 500-LOC ceiling.
 
-**Contents that can be split:**
-- `ChirpHandle` struct + `Send+Sync` impl + helpers (lines 55–110) → `ffi/handle.rs`
-- `nmp_app_chirp_register*` entry points (lines 112–435) → `ffi/register.rs`
-- `nmp_app_chirp_snapshot*` + `nmp_app_chirp_unregister` (lines 436–488) → `ffi/snapshot.rs`
-- `ChirpReactModule`, `ChirpFollowModule`, `ChirpUnfollowModule`, `register_chirp_actions`,
-  `register_nip*_actions` (lines 522–742) → `ffi/actions.rs`
-- `c_string_opt`, `ReactAction`, `PubkeyAction`, `default_reaction` → `ffi/helpers.rs`
-
-**Fix:** convert `ffi.rs` to a `ffi/mod.rs` façade that `pub use`s its sub-modules; each
-sub-module stays within the 300-LOC soft limit. Tests stay in `ffi/tests.rs`.
-
-**Constraint:** all `pub extern "C"` symbols must remain in the top-level namespace so
-the C-ABI export name is unchanged. The split is purely organizational — no logic moves.
-
-**Follow-up (V-09b):** PR #332 landed production files within the 500-LOC ceiling but
-`ffi/tests.rs` is 790 LOC — still above the ceiling. After merge, split `tests.rs` into
+**Follow-up (V-09b):** `ffi/tests.rs` is 790 LOC — still above the ceiling. Split into
 per-module test companions (`tests/register.rs`, `tests/snapshot.rs`, etc.) that live
 alongside their production counterparts. The `dispatch()` + `run_module_execute<M>`
 shared test helpers should move to a `tests/helpers.rs` sub-module first.
@@ -211,16 +200,11 @@ shared test helpers should move to a `tests/helpers.rs` sub-module first.
 
 Work currently on a branch. Agents must not duplicate these tasks.
 
-| ID | Description | Branch | Commits ahead of master |
-|----|-------------|--------|------------------------|
-| B-2 | feat(chirp-web): parity shell | `codex/chirp-web-parity-polish` | 1 |
-| B-3 | fix(zap): auto-select recipient relays V-07 | `worktree-agent-a0dcdab25a3d4995c` | PR #331 open |
-| B-4 | split(ffi): V-09 nmp-app-chirp ffi.rs → sub-modules | `worktree-agent-a5e5b7cfa1e4000ee` | PR #332 open |
+| ID | Description | Branch | Status |
+|----|-------------|--------|--------|
+| B-5 | feat(nmp-core): Phase 1c — RelayFrame enum decouples kernel from tungstenite | `fix/v01-phase1c-relay-frame` | In progress |
 
-> B-1 (`wt-nip17-fix`) and B-3 (agent worktree) no longer exist on remote — merged or
-> abandoned. WIP.md entries for PR-G (action_stages), PR-I (relay slots), chirp-tui-spec,
-> and chirp-repl-author-names show zero commits ahead of master — merged or abandoned.
-> WIP.md is now superseded by this file.
+> B-1–B-4 all merged to master (PRs #331–#337). WIP.md superseded by this file.
 
 ---
 
@@ -255,12 +239,13 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Stage 1 — wire nmp-wasm to nmp-core [V1 BLOCKER]
+### F-01 · Fix V-01 Phase 1c — gate actor/relay_worker, pass no-default-features [V1 BLOCKER]
 
-See V-01 staged fix plan. Stage 1 is the immediate deliverable: `nmp-core` dep added,
-`NmpApp` constructed, `dispatch_action` reachable, stub runtime deleted.
+Phase 1a (native feature gate) done. Phase 1c in progress (RelayFrame enum, B-5 branch).
+Once Phase 1c lands, wire nmp-wasm to nmp-core proper (`NmpApp` constructed,
+`dispatch_action` reachable, stub runtime deleted).
 
-No `chirp-web` feature work until this lands.
+No `chirp-web` feature work until Phase 1c lands.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
@@ -355,3 +340,10 @@ Recorded so Opus reviews do not re-flag these as violations.
 | V-03 `wallet_status` app noun in `Kernel` struct | Fixed: no typed field in `KernelSnapshot`; surfaced via host-registered `"wallet"` snapshot projection (`kernel/types.rs:741`) |
 | D0 `chirp.follow`/`chirp.unfollow` hardcoded in `nmp-core` | Confirmed removed: zero occurrences in `crates/nmp-core/` (verified 2026-05-23) |
 | F-06 CI lint: freeze C-ABI surface | Already shipped: `ci/check-ffi-surface-freeze.sh` + `.github/workflows/ffi-surface-freeze.yml`; ADR-override process live |
+| V-07 zap relay selection D0 leak | PR #331: `inject_recipient_relays` in zap.rs; Swift passes empty relays array |
+| V-09 ffi.rs LOC violation | PR #332: split into ffi/ sub-modules; all production files within 500-LOC ceiling |
+| V-02 nmp-marmot in crates/ | PR #337: moved to `apps/marmot/nmp-app-marmot/` |
+| `chirp.follow_list` projection key | Commits 570b7d2a + 5742c7fe: renamed to `nmp.follow_list` across all consumers |
+| dm_inbox test chirp shape | Commit 282665c9: test updated for `remote_signer_unsupported` field in V-08 Stage 1 |
+| marmot_local_nsec → mls_local_nsec | PR #334: D0 rename complete |
+| ChirpAction → AppAction in nmp-wasm | PR #333: D0 rename complete |
