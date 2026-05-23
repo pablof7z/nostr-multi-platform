@@ -102,6 +102,7 @@ pub struct FollowListProjection {
 
 impl FollowListProjection {
     /// Construct with a shared `active_pubkey` slot.
+    #[must_use]
     pub fn new(active_pubkey: Arc<Mutex<Option<String>>>) -> Self {
         Self {
             active_pubkey,

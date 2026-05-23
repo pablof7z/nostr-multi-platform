@@ -52,6 +52,7 @@ pub struct Note;
 
 impl Note {
     /// Start building a kind-1 note.
+    #[must_use]
     #[allow(clippy::new_ret_no_self)]
     pub fn new(content: impl Into<String>) -> NoteBuilder {
         NoteBuilder {

@@ -33,6 +33,7 @@ pub struct GroupId {
 
 impl GroupId {
     /// Construct from owned strings.
+    #[must_use]
     pub fn new(host_relay_url: impl Into<RelayUrl>, local_id: impl Into<String>) -> Self {
         Self {
             host_relay_url: host_relay_url.into(),

@@ -67,6 +67,7 @@ pub struct MarmotIngestTap {
 }
 
 impl MarmotIngestTap {
+    #[must_use]
     pub fn new(projection: Arc<MarmotProjection>) -> Self {
         Self { projection }
     }

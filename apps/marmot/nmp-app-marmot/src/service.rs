@@ -192,6 +192,7 @@ impl MarmotService {
     /// Production constructor: encrypted SQLite via the platform keyring.
     /// `db_path` is `<app_support>/marmot-mls-state.sqlite` (owned by this
     /// crate). `service_id` / `db_key_id` are the keyring coordinates.
+    #[must_use]
     pub fn new(
         db_path: impl AsRef<Path>,
         service_id: &str,
