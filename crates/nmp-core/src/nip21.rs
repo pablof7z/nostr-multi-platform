@@ -111,6 +111,7 @@ impl From<Nip19Error> for Nip21Error {
 ///     assert!(!relays.is_empty());
 /// }
 /// ```
+#[must_use]
 pub fn parse_nostr_uri(uri: &str) -> Result<NostrUri, Nip21Error> {
     let bech = uri.strip_prefix(SCHEME).ok_or(Nip21Error::MissingScheme)?;
     match nip19::parse(bech)? {
@@ -137,6 +138,7 @@ pub fn parse_nostr_uri(uri: &str) -> Result<NostrUri, Nip21Error> {
 /// Format a [`NostrUri`] back to a canonical `nostr:` URI string.
 ///
 /// The inverse of [`parse_nostr_uri`].
+#[must_use]
 pub fn format_nostr_uri(target: &NostrUri) -> Result<String, Nip19Error> {
     let entity = match target {
         NostrUri::Profile { pubkey, relays } => {

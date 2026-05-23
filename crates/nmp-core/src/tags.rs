@@ -161,6 +161,7 @@ fn e_ref_from_tag(tag: &[String]) -> Option<EventRef> {
 /// When a `root` marker is present but no `reply` marker is, the reply target
 /// is the root (a top-level reply to the thread root) — matching the common
 /// client interpretation and applesauce's behaviour.
+#[must_use]
 pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
     let e_tags: Vec<&Vec<String>> = tags
         .iter()

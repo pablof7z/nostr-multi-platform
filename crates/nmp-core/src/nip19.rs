@@ -186,31 +186,37 @@ fn decode_bare(bech: &str, expected_hrp: &str) -> Result<String, Nip19Error> {
 }
 
 /// Encode a public key hex string as an `npub` bech32 string.
+#[must_use]
 pub fn encode_npub(hex: &str) -> Result<String, Nip19Error> {
     encode_bare(HRP_NPUB, hex)
 }
 
 /// Decode an `npub` bech32 string to a hex public key.
+#[must_use]
 pub fn decode_npub(bech: &str) -> Result<String, Nip19Error> {
     decode_bare(bech, HRP_NPUB)
 }
 
 /// Encode a private key hex string as an `nsec` bech32 string.
+#[must_use]
 pub fn encode_nsec(hex: &str) -> Result<String, Nip19Error> {
     encode_bare(HRP_NSEC, hex)
 }
 
 /// Decode an `nsec` bech32 string to a hex private key.
+#[must_use]
 pub fn decode_nsec(bech: &str) -> Result<String, Nip19Error> {
     decode_bare(bech, HRP_NSEC)
 }
 
 /// Encode an event id hex string as a `note` bech32 string.
+#[must_use]
 pub fn encode_note(hex: &str) -> Result<String, Nip19Error> {
     encode_bare(HRP_NOTE, hex)
 }
 
 /// Decode a `note` bech32 string to a hex event id.
+#[must_use]
 pub fn decode_note(bech: &str) -> Result<String, Nip19Error> {
     decode_bare(bech, HRP_NOTE)
 }
@@ -275,6 +281,7 @@ fn decode_tlv(bech: &str, expected_hrp: &str) -> Result<Vec<u8>, Nip19Error> {
 // ─── nprofile ──────────────────────────────────────────────────────────────
 
 /// Encode an `NprofileData` as an `nprofile` bech32m string.
+#[must_use]
 pub fn encode_nprofile(data: &NprofileData) -> Result<String, Nip19Error> {
     let key_bytes = hex_to_bytes(&data.pubkey)?;
     let mut tlv = Vec::new();
@@ -286,6 +293,7 @@ pub fn encode_nprofile(data: &NprofileData) -> Result<String, Nip19Error> {
 }
 
 /// Decode an `nprofile` bech32m string into `NprofileData`.
+#[must_use]
 pub fn decode_nprofile(bech: &str) -> Result<NprofileData, Nip19Error> {
     let bytes = decode_tlv(bech, HRP_NPROFILE)?;
     let mut pubkey: Option<String> = None;
@@ -312,6 +320,7 @@ pub fn decode_nprofile(bech: &str) -> Result<NprofileData, Nip19Error> {
 // ─── nevent ────────────────────────────────────────────────────────────────
 
 /// Encode an `NeventData` as an `nevent` bech32m string.
+#[must_use]
 pub fn encode_nevent(data: &NeventData) -> Result<String, Nip19Error> {
     let id_bytes = hex_to_bytes(&data.event_id)?;
     let mut tlv = Vec::new();
@@ -329,6 +338,7 @@ pub fn encode_nevent(data: &NeventData) -> Result<String, Nip19Error> {
 }
 
 /// Decode an `nevent` bech32m string into `NeventData`.
+#[must_use]
 pub fn decode_nevent(bech: &str) -> Result<NeventData, Nip19Error> {
     let bytes = decode_tlv(bech, HRP_NEVENT)?;
     let mut event_id: Option<String> = None;
@@ -371,6 +381,7 @@ pub fn decode_nevent(bech: &str) -> Result<NeventData, Nip19Error> {
 // ─── naddr ─────────────────────────────────────────────────────────────────
 
 /// Encode an `NaddrData` as an `naddr` bech32m string.
+#[must_use]
 pub fn encode_naddr(data: &NaddrData) -> Result<String, Nip19Error> {
     let author_bytes = hex_to_bytes(&data.pubkey)?;
     let mut tlv = Vec::new();
@@ -384,6 +395,7 @@ pub fn encode_naddr(data: &NaddrData) -> Result<String, Nip19Error> {
 }
 
 /// Decode an `naddr` bech32m string into `NaddrData`.
+#[must_use]
 pub fn decode_naddr(bech: &str) -> Result<NaddrData, Nip19Error> {
     let bytes = decode_tlv(bech, HRP_NADDR)?;
     let mut identifier: Option<String> = None;
@@ -430,6 +442,7 @@ pub fn decode_naddr(bech: &str) -> Result<NaddrData, Nip19Error> {
 /// let entity = parse(bech).unwrap();
 /// assert!(matches!(entity, Nip19Entity::Npub(_)));
 /// ```
+#[must_use]
 pub fn parse(bech: &str) -> Result<Nip19Entity, Nip19Error> {
     let sep = bech
         .rfind('1')
@@ -446,6 +459,7 @@ pub fn parse(bech: &str) -> Result<Nip19Entity, Nip19Error> {
 }
 
 /// Format any `Nip19Entity` back to a bech32 string.
+#[must_use]
 pub fn format(entity: &Nip19Entity) -> Result<String, Nip19Error> {
     match entity {
         Nip19Entity::Npub(hex) => encode_npub(hex),
