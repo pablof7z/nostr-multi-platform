@@ -94,6 +94,7 @@ impl ModularTimelineProjection {
         }
     }
 
+    #[must_use]
     pub fn snapshot(&self) -> ModularTimelineSnapshot {
         let Ok(inner) = self.inner.lock() else {
             return ModularTimelineSnapshot::empty();
@@ -133,7 +134,7 @@ impl KernelEventObserver for ModularTimelineProjection {
                 TimelineEventCard::from_event(event, profile.as_ref(), relation_counts),
             );
         }
-        Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
+        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event); // delta unused — projection takes snapshots directly
     }
 }
 

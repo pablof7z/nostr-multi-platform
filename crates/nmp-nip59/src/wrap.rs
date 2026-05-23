@@ -37,6 +37,7 @@ pub struct UnwrappedGift {
 /// # Errors
 ///
 /// Returns `Nip59Error` if the NIP-59 seal or wrap construction fails.
+#[must_use]
 pub fn gift_wrap(
     sender: &Keys,
     receiver: &PublicKey,
@@ -60,6 +61,7 @@ pub fn gift_wrap(
 /// # Errors
 ///
 /// Returns `Nip59Error` if the gift-wrap is malformed or the seal cannot be verified.
+#[must_use]
 pub fn unwrap_gift_wrap(receiver: &Keys, gift_wrap: &Event) -> Result<UnwrappedGift, Nip59Error> {
     let inner = futures::executor::block_on(
         nostr::nips::nip59::UnwrappedGift::from_gift_wrap(receiver, gift_wrap),

@@ -122,6 +122,7 @@ impl AccountManager {
     /// the applesauce "two accounts for one pubkey" model: one pubkey is always
     /// exactly one account slot (at most a future relay-policy merge — the
     /// `Signer` trait carries no policy today, so nothing to merge yet).
+    #[must_use]
     pub fn add(&mut self, signer: Arc<dyn Signer>) -> Result<IdentityId, AccountError> {
         let pubkey = signer.pubkey();
         let id = pubkey.to_hex();
@@ -142,6 +143,7 @@ impl AccountManager {
     /// **PD-004:** same idempotent one-account-per-pubkey contract as
     /// [`AccountManager::add`] — a known pubkey returns its existing id and
     /// keeps the originally-installed signer.
+    #[must_use]
     pub fn add_unverified(&mut self, signer: Arc<dyn Signer>) -> Result<IdentityId, AccountError> {
         let pubkey = signer.pubkey();
         let id = pubkey.to_hex();

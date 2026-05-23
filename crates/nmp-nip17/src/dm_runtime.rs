@@ -54,6 +54,7 @@ impl DmRuntimeState {
     /// never emit a kind:10050 that would clear the user's cache. (The
     /// `nmp.nip17.publish_relay_list` action validator enforces the same
     /// guard on the dispatch seam.)
+    #[must_use]
     pub fn reconcile(
         &mut self,
         active_pubkey: Option<&str>,

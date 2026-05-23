@@ -63,6 +63,7 @@ impl GroupListView {
             GroupListPayload { groups: Vec::new() },
         )
     }
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -70,6 +71,7 @@ impl GroupListView {
     ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -77,6 +79,7 @@ impl GroupListView {
     ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -85,7 +88,7 @@ impl GroupListView {
     ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> GroupListPayload {
         // Authoritative list is MDK-side; the service/actor layer fills this
         // snapshot. The structural accumulator only drives re-projection ticks.
@@ -151,6 +154,7 @@ impl GroupMessagesView {
             },
         )
     }
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -158,6 +162,7 @@ impl GroupMessagesView {
     ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -165,6 +170,7 @@ impl GroupMessagesView {
     ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -173,7 +179,7 @@ impl GroupMessagesView {
     ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> GroupMessagesPayload {
         // Decrypted messages are filled by the service after MDK processing;
         // the structural accumulator only drives re-projection ticks.
@@ -235,6 +241,7 @@ impl MemberListView {
             },
         )
     }
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -242,6 +249,7 @@ impl MemberListView {
     ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -249,6 +257,7 @@ impl MemberListView {
     ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut EventAccumulator,
@@ -257,7 +266,7 @@ impl MemberListView {
     ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> MemberListPayload {
         // Authoritative member set is MDK-side; the service/actor layer fills
         // this snapshot. The structural accumulator only drives ticks.
@@ -318,12 +327,15 @@ impl KeyPackageLookupView {
             KeyPackageLookupPayload { owner_pubkey: spec.owner_pubkey, found: false },
         )
     }
+    #[must_use]
     pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
+    #[must_use]
     pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
+    #[must_use]
     pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }

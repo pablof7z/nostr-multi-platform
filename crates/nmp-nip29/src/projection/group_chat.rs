@@ -179,6 +179,7 @@ impl GroupChatProjection {
     /// D6: a poisoned mutex degrades to [`GroupChatSnapshot::empty`] rather
     /// than panicking — this can run on the actor thread inside a snapshot
     /// tick, where a panic would unwind the kernel.
+    #[must_use]
     pub fn snapshot(&self) -> GroupChatSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return GroupChatSnapshot::empty();
@@ -199,6 +200,7 @@ impl GroupChatProjection {
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
     /// collapses to `json!({"messages": []})` rather than propagating.
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot())
             .unwrap_or_else(|_| serde_json::json!({ "messages": [] }))

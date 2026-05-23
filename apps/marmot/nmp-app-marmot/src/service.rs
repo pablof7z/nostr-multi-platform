@@ -192,6 +192,7 @@ impl MarmotService {
     /// Production constructor: encrypted SQLite via the platform keyring.
     /// `db_path` is `<app_support>/marmot-mls-state.sqlite` (owned by this
     /// crate). `service_id` / `db_key_id` are the keyring coordinates.
+    #[must_use]
     pub fn new(
         db_path: impl AsRef<Path>,
         service_id: &str,
@@ -214,6 +215,7 @@ impl MarmotService {
     /// Construct from an already-built storage backend + a custom MDK config
     /// (e.g. `max_past_epochs`). Used by tests (`new_in_memory`) and advanced
     /// callers.
+    #[must_use]
     pub fn from_storage(storage: MdkSqliteStorage, keys: Keys, config: MdkConfig) -> Self {
         Self {
             mdk: MDK::builder(storage).with_config(config).build(),

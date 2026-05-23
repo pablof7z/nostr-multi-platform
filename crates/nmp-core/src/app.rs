@@ -81,6 +81,8 @@ impl std::fmt::Display for OpenUriError {
     }
 }
 
+impl std::error::Error for OpenUriError {}
+
 /// The fully-resolved routing outcome of a `KernelAction::OpenUri`.
 ///
 /// Carries both halves the task requires: the [`LogicalInterest`] to register

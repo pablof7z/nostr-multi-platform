@@ -68,7 +68,7 @@ fn relation_counts_serialize_loading_vs_known_zero() {
 
 #[test]
 fn cards_include_known_reply_counts_and_loading_relation_interests() {
-    let proj = ModularTimelineProjection::new(spec());
+    let proj = ModularTimelineProjection::new(&spec());
     proj.on_kernel_event(&note("R", 1, vec![]));
     proj.on_kernel_event(&reply_to("C1", 2, "R", "R"));
     proj.on_kernel_event(&reply_to("C2", 3, "R", "R"));
@@ -98,7 +98,7 @@ fn cards_include_known_reply_counts_and_loading_relation_interests() {
 #[test]
 fn kind0_profile_refines_existing_author_display() {
     let author = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    let proj = ModularTimelineProjection::new(spec());
+    let proj = ModularTimelineProjection::new(&spec());
     proj.on_kernel_event(&note_by("S", author, 1, vec![]));
 
     let before = proj.snapshot();
@@ -114,7 +114,7 @@ fn kind0_profile_refines_existing_author_display() {
 
 #[test]
 fn reply_counts_handle_out_of_order_and_duplicate_delivery() {
-    let proj = ModularTimelineProjection::new(spec());
+    let proj = ModularTimelineProjection::new(&spec());
     let reply = reply_to("C", 2, "R", "R");
     proj.on_kernel_event(&reply);
     proj.on_kernel_event(&note("R", 1, vec![]));

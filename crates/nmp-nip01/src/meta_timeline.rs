@@ -181,6 +181,7 @@ impl Nip10ModularTimelineView {
         (state, payload)
     }
 
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut ModularTimelineState,
@@ -192,6 +193,7 @@ impl Nip10ModularTimelineView {
         s.grouper.on_insert(e).map(Into::into)
     }
 
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut ModularTimelineState,
@@ -200,6 +202,7 @@ impl Nip10ModularTimelineView {
         s.grouper.on_remove(id).map(Into::into)
     }
 
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut ModularTimelineState,
@@ -289,8 +292,8 @@ mod tests {
         let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
         let root = note("R", 1, vec![]);
         let reply = marked("C", 2, "R", "R");
-        Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
-        Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &reply);
+        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
+        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &reply);
         let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
         assert_eq!(snap.blocks.len(), 1);
         match &snap.blocks[0] {
@@ -329,8 +332,8 @@ mod tests {
         a.author = "alice".into();
         let mut b = note("B", 2, vec![]);
         b.author = "bob".into();
-        Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &a);
-        Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &b);
+        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &a);
+        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &b);
         let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
         assert_eq!(snap.blocks.len(), 1);
     }

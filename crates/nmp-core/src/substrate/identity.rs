@@ -28,3 +28,15 @@ pub enum SigningError {
     Rejected(String),
     Failed(String),
 }
+
+impl std::fmt::Display for SigningError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported(msg) => write!(f, "signing unsupported: {msg}"),
+            Self::Rejected(msg) => write!(f, "signing rejected: {msg}"),
+            Self::Failed(msg) => write!(f, "signing failed: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for SigningError {}

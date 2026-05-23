@@ -197,6 +197,7 @@ impl MarmotProjection {
     /// `app` starts `null`; the FFI `register` path calls
     /// [`MarmotProjection::set_app`] with the retained pointer. Tests that
     /// build the projection directly leave it `null` → publish no-ops.
+    #[must_use]
     pub fn new(service: MarmotService) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -229,6 +230,7 @@ impl MarmotProjection {
     }
 
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
+    #[must_use]
     pub fn snapshot(&self, now_secs: u64) -> MarmotSnapshot {
         let Ok(inner) = self.inner.lock() else {
             return MarmotSnapshot::empty();

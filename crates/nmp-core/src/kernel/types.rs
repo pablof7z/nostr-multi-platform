@@ -676,6 +676,15 @@ pub(crate) struct Metrics {
     /// overflow. Kernel-lifetime counter; resets on `ActorCommand::Reset`
     /// (the cap is a per-kernel D8 invariant, not a process metric).
     pub(super) claim_drops_total: u64,
+    /// Microseconds spent in `make_update` on the PREVIOUS tick (one-tick lag,
+    /// same as `payload_bytes`): full time from `emit_started` through the
+    /// `serde_json::to_string` call. Covers projection builds + serialize.
+    /// Zero on the first tick. Feed to per-session p50/p95/p99 diagnostics.
+    pub(super) make_update_us: u128,
+    /// Microseconds spent in `serde_json::to_string` alone on the PREVIOUS
+    /// tick (one-tick lag). Combined with `make_update_us` this lets callers
+    /// separate "building the snapshot tree" from "serializing it to JSON".
+    pub(super) serialize_us: u128,
 }
 
 // ── Update envelope ───────────────────────────────────────────────────────────

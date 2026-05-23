@@ -96,6 +96,7 @@ pub struct KindFilter(BTreeSet<u32>);
 impl KindFilter {
     /// Build a filter from a kind list. An empty list yields the
     /// match-everything filter.
+    #[must_use]
     pub fn from_kinds<I: IntoIterator<Item = u32>>(kinds: I) -> Self {
         Self(kinds.into_iter().collect())
     }
@@ -298,7 +299,7 @@ fn drain_c_raw_envelope(envelope: CRawFanoutEnvelope) {
 /// dropped sender ends the thread cleanly on teardown.
 ///
 /// Called once in `nmp_app_new`.
-pub fn new_raw_event_observer_slot() -> RawEventObserverSlot {
+pub(crate) fn new_raw_event_observer_slot() -> RawEventObserverSlot {
     let (tx, rx) = sync_channel::<CRawFanoutEnvelope>(C_FANOUT_CHANNEL_BOUND);
     let _drain: JoinHandle<()> = std::thread::Builder::new()
         .name("nmp-raw-observer-drain".into())
@@ -313,7 +314,7 @@ pub fn new_raw_event_observer_slot() -> RawEventObserverSlot {
 
 /// Register an in-process Rust observer with a kind filter. Returns an
 /// opaque id the caller retains to unregister later.
-pub fn register_rust_raw_observer(
+pub(crate) fn register_rust_raw_observer(
     slot: &RawEventObserverSlot,
     kinds: KindFilter,
     observer: Arc<dyn RawEventObserver>,
@@ -334,7 +335,7 @@ pub fn register_rust_raw_observer(
 
 /// Register a C-ABI observer. Returns an opaque id the caller retains to
 /// unregister later.
-pub fn register_c_raw_observer(
+pub(crate) fn register_c_raw_observer(
     slot: &RawEventObserverSlot,
     registration: RawEventObserverRegistration,
 ) -> RawEventObserverId {
@@ -355,7 +356,7 @@ pub fn register_c_raw_observer(
 /// hold lifecycle-aware registration entries, so unregister marks the entry
 /// inactive and waits for any in-flight callback to return before the call
 /// completes. After this function returns, no callback for `id` can start.
-pub fn unregister_raw_observer(slot: &RawEventObserverSlot, id: RawEventObserverId) {
+pub(crate) fn unregister_raw_observer(slot: &RawEventObserverSlot, id: RawEventObserverId) {
     let mut lifecycles = Vec::new();
     if let Ok(mut guard) = slot.lock() {
         guard.rust.retain(|entry| {
@@ -384,7 +385,7 @@ pub fn unregister_raw_observer(slot: &RawEventObserverSlot, id: RawEventObserver
 /// this first; on `true` it skips building / re-verifying / serializing the
 /// event entirely (zero cost on the hot path when nobody taps that kind).
 /// A poisoned mutex reports "no listener" (D6 — best-effort, never panics).
-pub fn raw_observers_idle_for_kind(slot: &RawEventObserverSlot, kind: u32) -> bool {
+pub(crate) fn raw_observers_idle_for_kind(slot: &RawEventObserverSlot, kind: u32) -> bool {
     match slot.lock() {
         Ok(guard) => guard.no_listener_for_kind(kind),
         Err(_) => true,
@@ -404,7 +405,7 @@ pub fn raw_observers_idle_for_kind(slot: &RawEventObserverSlot, kind: u32) -> bo
 /// duration. On channel overflow the envelope is dropped silently (D6
 /// backpressure — library code performs no I/O). Serialization failure is a
 /// D6 silent no-op.
-pub fn notify_raw_observers(
+pub(crate) fn notify_raw_observers(
     slot: &RawEventObserverSlot,
     raw: &RawEvent,
     source_relay_url: Option<&str>,

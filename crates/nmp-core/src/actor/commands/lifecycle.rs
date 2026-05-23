@@ -56,7 +56,7 @@ pub struct LifecycleObserverRegistration {
 pub type LifecycleObserverSlot = Arc<Mutex<Option<LifecycleObserverRegistration>>>;
 
 /// Construct an empty slot. Called once in `nmp_app_new`.
-pub fn new_observer_slot() -> LifecycleObserverSlot {
+pub(crate) fn new_observer_slot() -> LifecycleObserverSlot {
     Arc::new(Mutex::new(None))
 }
 

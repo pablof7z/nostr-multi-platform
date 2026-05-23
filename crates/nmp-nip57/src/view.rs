@@ -110,6 +110,7 @@ impl ZapsView {
         (state, payload)
     }
 
+    #[must_use]
     pub fn on_event_inserted(
         _c: &ViewContext,
         s: &mut ZapsState,
@@ -118,6 +119,7 @@ impl ZapsView {
         s.insert(e)
     }
 
+    #[must_use]
     pub fn on_event_removed(
         _c: &ViewContext,
         s: &mut ZapsState,
@@ -126,6 +128,7 @@ impl ZapsView {
         s.remove(id)
     }
 
+    #[must_use]
     pub fn on_event_replaced(
         _c: &ViewContext,
         s: &mut ZapsState,

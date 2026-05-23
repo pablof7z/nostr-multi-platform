@@ -154,7 +154,6 @@ pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE
 // `nmp_app_register_event_observer`.
 pub use actor::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
-    KernelEventObserverRegistration,
 };
 
 // Raw signed-event tap surface exposed to per-app Rust crates. Apps
@@ -166,7 +165,6 @@ pub use actor::{
 // capability (D0) — no protocol nouns.
 pub use actor::{
     KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-    RawEventObserverRegistration,
 };
 
 /// Test-support facade: gives live-bench binaries access to the actor

@@ -41,12 +41,14 @@ pub struct SubKey(pub u64);
 
 impl SubKey {
     /// Hash any single `Hash`-able value into a `SubKey`.
+    #[must_use]
     pub fn new(value: impl Hash) -> Self {
         Self(stable_hash64(value))
     }
 
     /// Start an incremental builder seeded with `seed`. Fold further parts in
     /// with [`SubKeyBuilder::with`], then [`SubKeyBuilder::finish`].
+    #[must_use]
     pub fn builder(seed: impl Hash) -> SubKeyBuilder {
         let mut h = StableHasher::new();
         seed.hash(&mut h);
@@ -88,6 +90,7 @@ pub struct SubOwnerKey(pub u64);
 
 impl SubOwnerKey {
     /// Hash any single `Hash`-able value into a `SubOwnerKey`.
+    #[must_use]
     pub fn new(value: impl Hash) -> Self {
         Self(stable_hash64(value))
     }

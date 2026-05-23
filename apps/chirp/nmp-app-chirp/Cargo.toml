@@ -101,7 +101,6 @@ zeroize.workspace = true
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
 # the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
-nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
 # the Marmot FFI smoke tests to `nmp-marmot`'s `src/ffi/tests.rs`; Chirp no
 # longer references any MLS types directly.)
@@ -111,3 +110,7 @@ nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # `crates/nmp-nip17/src/inbox.rs`). Dev-only — Chirp depends on `nmp-nip17`
 # in production but never calls the gift-wrap primitive directly.
 nmp-nip59 = { path = "../../../crates/nmp-nip59" }
+# `nmp-wasm` supplies `AppAction` / `AppActionDispatch` used in the web
+# action contract test (`tests/web_action_contract.rs`) — verifies that the
+# WASM worker's typed intents map correctly to the registered action namespaces.
+nmp-wasm = { path = "../../../crates/nmp-wasm" }

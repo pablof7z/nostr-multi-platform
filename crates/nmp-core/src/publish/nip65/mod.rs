@@ -87,6 +87,7 @@ impl Nip65OutboxResolver {
     /// relay list. The kernel holds a clone of the Arc and updates it whenever
     /// relay config changes, so the resolver always sees current URLs.
     ///
+    #[must_use]
     pub fn new(store: Arc<dyn EventStore>, indexer_relays: IndexerRelaysSlot) -> Self {
         Self::with_local_relays(
             store,
@@ -119,6 +120,7 @@ impl Nip65OutboxResolver {
     /// live indexer handle. Not `#[cfg(test)]` because the consumers are
     /// integration tests in a sibling crate.
     #[doc(hidden)]
+    #[must_use]
     pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
         Self::new(store, new_indexer_relays_slot())
     }

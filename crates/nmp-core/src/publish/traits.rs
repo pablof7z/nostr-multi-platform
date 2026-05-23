@@ -32,6 +32,17 @@ pub enum SignerError {
     Rejected(String),
 }
 
+impl std::fmt::Display for SignerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable(msg) => write!(f, "signer unavailable: {msg}"),
+            Self::Rejected(msg) => write!(f, "signing rejected: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for SignerError {}
+
 /// Test-only signer that refuses every AUTH request. Used in tests that
 /// exercise non-auth paths.
 #[derive(Clone, Debug, Default)]
@@ -154,6 +165,7 @@ impl ReplayDispatcher {
             .insert(relay_url.to_string(), acks);
     }
 
+    #[must_use]
     pub fn sent_frames(&self) -> Vec<(RelayUrl, String)> {
         self.sent.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
@@ -203,6 +215,7 @@ impl QueueDispatcher {
 
     /// Drain every queued frame in FIFO order. Returned `(relay_url, frame)`
     /// pairs are ready for the kernel to wrap as `OutboundMessage`s.
+    #[must_use]
     pub fn drain(&self) -> Vec<(RelayUrl, String)> {
         // D2: recover from a poisoned lock rather than panic — this seam is
         // driven by the single actor thread and a panic here would take the
@@ -258,6 +271,17 @@ pub enum PublishStoreError {
     NotFound,
     Backend(String),
 }
+
+impl std::fmt::Display for PublishStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "publish record not found"),
+            Self::Backend(msg) => write!(f, "publish store backend error: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for PublishStoreError {}
 
 #[derive(Default)]
 pub struct InMemoryPublishStore {

@@ -27,6 +27,7 @@ pub struct MailboxSnapshot {
 
 impl MailboxSnapshot {
     /// All relays relevant for Outbox direction (write + both).
+    #[must_use]
     pub fn outbox_relays(&self) -> impl Iterator<Item = &RelayUrl> {
         self.write_relays.iter().chain(self.both_relays.iter())
     }
@@ -36,6 +37,7 @@ impl MailboxSnapshot {
     /// Used for `#p` interests (DMs, notifications) where we want to reach the
     /// tagged pubkey's declared read relays. `both_relays` are included because
     /// the pubkey reads from them too (NIP-65 semantics: `both` = read + write).
+    #[must_use]
     pub fn inbox_relays(&self) -> impl Iterator<Item = &RelayUrl> {
         self.read_relays.iter().chain(self.both_relays.iter())
     }

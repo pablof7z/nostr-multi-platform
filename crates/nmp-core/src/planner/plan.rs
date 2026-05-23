@@ -205,6 +205,7 @@ pub struct CompiledPlan {
 
 impl CompiledPlan {
     /// Returns an empty plan with the given id (used by tests and stubs).
+    #[must_use]
     pub fn empty(plan_id: impl Into<String>) -> Self {
         Self {
             plan_id: plan_id.into(),

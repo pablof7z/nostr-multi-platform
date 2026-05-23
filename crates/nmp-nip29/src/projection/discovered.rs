@@ -107,6 +107,7 @@ pub struct DiscoveredGroupsSnapshot {
 impl DiscoveredGroupsSnapshot {
     /// Empty snapshot — what a freshly-constructed projection (or one whose
     /// internal lock is poisoned, D6) reports.
+    #[must_use]
     pub fn empty(host_relay_url: impl Into<String>) -> Self {
         Self {
             host_relay_url: host_relay_url.into(),
@@ -167,6 +168,7 @@ pub struct DiscoveredGroupsProjection {
 impl DiscoveredGroupsProjection {
     /// Construct a projection scoped to `host_relay_url`. The internal map
     /// starts empty; events arrive via [`KernelEventObserver::on_kernel_event`].
+    #[must_use]
     pub fn new(host_relay_url: impl Into<RelayUrl>) -> Self {
         Self {
             host_relay_url: host_relay_url.into(),
@@ -194,6 +196,7 @@ impl DiscoveredGroupsProjection {
     /// D6: a poisoned mutex degrades to [`DiscoveredGroupsSnapshot::empty`]
     /// rather than panicking — this can run on the actor thread inside a
     /// snapshot tick, where a panic would unwind the kernel.
+    #[must_use]
     pub fn snapshot(&self) -> DiscoveredGroupsSnapshot {
         let Ok(latest) = self.latest.lock() else {
             return DiscoveredGroupsSnapshot::empty(self.host_relay_url.clone());
@@ -227,6 +230,7 @@ impl DiscoveredGroupsProjection {
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
     /// collapses to an empty payload rather than propagating.
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot()).unwrap_or_else(|_| {
             serde_json::json!({

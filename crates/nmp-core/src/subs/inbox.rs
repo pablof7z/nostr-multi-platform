@@ -40,6 +40,7 @@ impl TriggerInbox {
     /// runs at most one compile across the lot).
     ///
     /// Empty queue → empty vec, no allocation beyond a default `Vec::new()`.
+    #[must_use]
     pub fn drain_coalesced(&mut self) -> Vec<CompileTrigger> {
         if self.queue.is_empty() {
             return Vec::new();

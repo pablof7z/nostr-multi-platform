@@ -141,6 +141,7 @@ impl Default for Nip42DriverState {
 }
 
 impl Nip42DriverState {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

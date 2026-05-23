@@ -125,6 +125,8 @@ impl Kernel {
                 // T114b — per-dispatch retention audit visibility.
                 dispatch_drops_total: self.dispatch_drops_total(),
                 claim_drops_total: self.claim_drops_total(),
+                make_update_us: self.last_make_update_us,
+                serialize_us: self.last_serialize_us,
             },
             relay_status: self.relay_status(),
             relay_statuses: self.relay_statuses(),
@@ -176,10 +178,17 @@ impl Kernel {
         // Serialize the snapshot exactly once. The on-wire `payload_bytes`
         // metric above already reflects the previous tick's size; the perf log
         // below uses this tick's true length so the diagnostic stays accurate.
+        // Capture the serialize start so we can report "build" vs "encode" time.
+        let before_serialize = Instant::now();
         let serialized = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());
+        // Compute this tick's timing immediately after serialize; the log below
+        // uses these current values while the snapshot above carries the previous
+        // tick's values (one-tick lag, same pattern as `payload_bytes`).
+        let this_serialize_us = before_serialize.elapsed().as_micros();
+        let this_make_update_us = emit_started.elapsed().as_micros();
         if batch_events > 0 || !inserted.is_empty() || !updated.is_empty() || !removed.is_empty() {
             self.log(format!(
-                "NMP_PERF rust_update rev={} batch_events={} inserted={} updated={} removed={} visible={} payload_bytes={} event_to_emit_ms={} max_event_to_emit_ms={}",
+                "NMP_PERF rust_update rev={} batch_events={} inserted={} updated={} removed={} visible={} payload_bytes={} make_update_us={} serialize_us={} event_to_emit_ms={} max_event_to_emit_ms={}",
                 self.rev,
                 batch_events,
                 inserted.len(),
@@ -187,6 +196,8 @@ impl Kernel {
                 removed.len(),
                 self.last_emitted_items.len(),
                 serialized.len(),
+                this_make_update_us,
+                this_serialize_us,
                 last_event_to_emit_ms
                     .map_or_else(|| "none".to_string(), |value| value.to_string()),
                 self.max_event_to_emit_ms
@@ -194,8 +205,10 @@ impl Kernel {
         }
         self.events_since_last_update = 0;
         self.changed_since_emit = false;
-        // Remember this tick's size so the next tick's `payload_bytes` metric
-        // can be set without a throwaway serialize.
+        // One-tick-lag diagnostics: store this tick's measurements so the
+        // NEXT tick's Metrics reflect them. Same pattern as `last_payload_bytes`.
+        self.last_serialize_us = this_serialize_us;
+        self.last_make_update_us = this_make_update_us;
         self.last_payload_bytes = serialized.len();
         serialized
     }

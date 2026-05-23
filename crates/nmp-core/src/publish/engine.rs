@@ -55,6 +55,19 @@ pub enum PublishEngineError {
     UnsupportedAction(&'static str),
 }
 
+impl std::fmt::Display for PublishEngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateHandle(h) => write!(f, "duplicate publish handle: {:?}", h),
+            Self::NoTargets => write!(f, "no relay targets for publish"),
+            Self::Store(e) => write!(f, "publish store error: {e}"),
+            Self::UnsupportedAction(name) => write!(f, "unsupported action: {name}"),
+        }
+    }
+}
+
+impl std::error::Error for PublishEngineError {}
+
 impl From<PublishStoreError> for PublishEngineError {
     fn from(err: PublishStoreError) -> Self {
         Self::Store(err)
@@ -190,6 +203,7 @@ pub struct PublishEngine {
 }
 
 impl PublishEngine {
+    #[must_use]
     pub fn new(
         outbox: Arc<dyn OutboxResolver>,
         dispatcher: Arc<dyn RelayDispatcher>,

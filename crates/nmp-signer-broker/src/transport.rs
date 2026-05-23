@@ -46,6 +46,7 @@ impl BrokerTransport {
     /// Construct without the signer yet (the signer is built from the
     /// transport via `Nip46SignerHandle::complete`, so they're chicken-and-
     /// egg). After constructing the signer, call [`Self::bind_signer`].
+    #[must_use]
     pub fn new(
         relay: Arc<dyn RelayClient>,
         local_keys: Keys,

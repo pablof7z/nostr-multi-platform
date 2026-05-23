@@ -72,6 +72,7 @@ impl LongformProjection {
     ///
     /// Factored out as a free method so the snapshot-projection closure and
     /// the FFI getter both call it (no duplicated sort/serialize).
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         let Ok(guard) = self.store.lock() else {
             // D6 — a poisoned store mutex degrades to an empty list rather than

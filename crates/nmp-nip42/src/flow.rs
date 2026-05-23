@@ -112,6 +112,7 @@ impl Nip42Driver {
     /// [`Nip42Driver::deliver_signed`] with the result. The driver
     /// produces no wire frames on this call — those land when the signed
     /// event arrives.
+    #[must_use]
     pub fn on_auth_frame(&mut self, challenge: AuthChallenge) -> HandshakeOutcome {
         self.challenge = Some(challenge);
         self.pending_event_id = None;
@@ -143,6 +144,7 @@ impl Nip42Driver {
     /// arrives mid-handshake (relay reconnect, relay-initiated re-auth)
     /// the stale signer result will be silently discarded by the
     /// challenge-match check there.
+    #[must_use]
     pub fn deliver_signed(&mut self, result: Result<SignedEvent, Nip42Error>) -> HandshakeOutcome {
         let Some(challenge) = self.challenge.clone() else {
             return HandshakeOutcome::empty();
@@ -165,6 +167,7 @@ impl Nip42Driver {
     /// for. Callers obtain it from [`Self::pending_challenge`] before
     /// dispatching the signer call and pass the same value here when the
     /// result returns.
+    #[must_use]
     pub fn deliver_signed_for(
         &mut self,
         expected_challenge: &str,
@@ -219,6 +222,7 @@ impl Nip42Driver {
     ///
     /// When matched, transitions to `Authenticated` on `accepted = true`
     /// or `Failed` on `accepted = false`.
+    #[must_use]
     pub fn on_ok_frame(&mut self, ok: &AuthOk) -> HandshakeOutcome {
         let matches_pending = self
             .pending_event_id
@@ -251,6 +255,7 @@ impl Nip42Driver {
 /// or a `Nip42Error::SignerFailed`. The caller chooses how to bridge to
 /// `nmp_core::publish::traits::Signer::sign_auth` (returns `SignedEvent`
 /// synchronously) or `nmp_signers::Signer::sign` (returns `SignerOp`).
+#[must_use]
 pub fn run_handshake<F>(
     driver: &mut Nip42Driver,
     challenge: AuthChallenge,

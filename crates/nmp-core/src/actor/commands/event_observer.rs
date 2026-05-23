@@ -167,7 +167,7 @@ fn drain_c_envelope(envelope: CFanoutEnvelope) {
 /// to join it, and on process teardown the dropped sender ends it cleanly.
 ///
 /// Called once in `nmp_app_new`.
-pub fn new_event_observer_slot() -> KernelEventObserverSlot {
+pub(crate) fn new_event_observer_slot() -> KernelEventObserverSlot {
     let (tx, rx) = sync_channel::<CFanoutEnvelope>(C_FANOUT_CHANNEL_BOUND);
     let _drain: JoinHandle<()> = std::thread::Builder::new()
         .name("nmp-kev-observer-drain".into())
@@ -202,7 +202,7 @@ pub trait KernelEventObserver: Send + Sync {
 /// retains to unregister later. Idempotent across distinct observers; the
 /// same `Arc` can be registered multiple times and will fire once per
 /// registration.
-pub fn register_rust_observer(
+pub(crate) fn register_rust_observer(
     slot: &KernelEventObserverSlot,
     observer: Arc<dyn KernelEventObserver>,
 ) -> KernelEventObserverId {
@@ -218,7 +218,7 @@ pub fn register_rust_observer(
 
 /// Register a C-ABI observer. Returns an opaque id the caller retains to
 /// unregister later. `Copy` registration record allows lock-free invocation.
-pub fn register_c_observer(
+pub(crate) fn register_c_observer(
     slot: &KernelEventObserverSlot,
     registration: KernelEventObserverRegistration,
 ) -> KernelEventObserverId {
@@ -237,7 +237,7 @@ pub fn register_c_observer(
 /// the channel decoupling — do not free the registration's `context`
 /// pointer until you have fenced against any in-flight callback (the
 /// decoupling only widens that pre-existing window by the drain latency).
-pub fn unregister_observer(slot: &KernelEventObserverSlot, id: KernelEventObserverId) {
+pub(crate) fn unregister_observer(slot: &KernelEventObserverSlot, id: KernelEventObserverId) {
     if let Ok(mut guard) = slot.lock() {
         guard.rust.retain(|(rid, _)| *rid != id);
         guard.c_abi.retain(|(rid, _)| *rid != id);
@@ -261,7 +261,7 @@ pub fn unregister_observer(slot: &KernelEventObserverSlot, id: KernelEventObserv
 ///
 /// Serialization failure is a D6 silent no-op (no C observers fire for this
 /// event; Rust observers still see the typed event).
-pub fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEvent) {
+pub(crate) fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEvent) {
     // Hold the lock only to snapshot registrations + clone the sender; all
     // observer invocation (Rust inline, C-ABI via channel) happens after the
     // lock is released so re-entrant registration cannot deadlock.

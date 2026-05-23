@@ -33,6 +33,7 @@ pub(super) struct EventIndexKeys {
 }
 
 impl EventIndexKeys {
+    #[must_use]
     pub fn new(event: EventBorrow<'_>) -> Self {
         // Index by created_at and id
         let ci_index: Vec<u8> = make_ci_index_key(event.created_at, event.id);
@@ -119,6 +120,7 @@ fn extend_key_with_tag_value(key: &mut Vec<u8>, len: usize, tag_value: &str) {
 /// ## Structure
 ///
 /// `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_ci_index_key(created_at: Timestamp, event_id: &[u8; EventId::LEN]) -> Vec<u8> {
     let mut key: Vec<u8> = Vec::with_capacity(CREATED_AT_BE + EventId::LEN);
     key.extend(reverse_and_conv_to_be64(created_at));
@@ -131,6 +133,7 @@ pub fn make_ci_index_key(created_at: Timestamp, event_id: &[u8; EventId::LEN]) -
 /// ## Structure
 ///
 /// `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_tc_index_key(
     tag_name: SingleLetterTag,
     tag_value: &str,
@@ -155,6 +158,7 @@ pub fn make_tc_index_key(
 /// ## Structure
 ///
 /// `author(32)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_ac_index_key(
     author: &[u8; PublicKey::LEN],
     created_at: Timestamp,
@@ -172,6 +176,7 @@ pub fn make_ac_index_key(
 /// ## Structure
 ///
 /// `author(32)` + `kind(2)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_akc_index_key(
     author: &[u8; PublicKey::LEN],
     kind: u16,
@@ -192,6 +197,7 @@ pub fn make_akc_index_key(
 /// ## Structure
 ///
 /// `kind(2)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_kc_index_key(
     kind: u16,
     created_at: Timestamp,
@@ -209,6 +215,7 @@ pub fn make_kc_index_key(
 /// ## Structure
 ///
 /// `author(32)` + `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_atc_index_key(
     author: &[u8; PublicKey::LEN],
     tag_name: SingleLetterTag,
@@ -242,6 +249,7 @@ pub fn make_atc_index_key(
 /// ## Structure
 ///
 /// `kind(2)` + `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_ktc_index_key(
     kind: u16,
     tag_name: SingleLetterTag,
@@ -264,6 +272,7 @@ pub fn make_ktc_index_key(
 /// ## Structure
 ///
 /// `kind(2)` + `author(32)` + `d_len(1)` + `d(182)`
+#[must_use]
 pub fn make_coordinate_index_key(coordinate: &CoordinateBorrow<'_>) -> Vec<u8> {
     let mut key: Vec<u8> = Vec::with_capacity(KIND_BE + PublicKey::LEN + 1 + TAG_VALUE_PAD_LEN);
     key.extend(coordinate.kind.as_u16().to_be_bytes());

@@ -33,6 +33,7 @@ pub struct GroupId {
 
 impl GroupId {
     /// Construct from owned strings.
+    #[must_use]
     pub fn new(host_relay_url: impl Into<RelayUrl>, local_id: impl Into<String>) -> Self {
         Self {
             host_relay_url: host_relay_url.into(),
@@ -75,6 +76,7 @@ impl GroupId {
     /// empty host or local id, or the `local_id` contains characters outside
     /// the NIP-29 charset `[a-z0-9-_]+`. The host is rewrapped as
     /// `wss://<host>` since the URI form omits the scheme.
+    #[must_use]
     pub fn from_uri(s: &str) -> Option<Self> {
         let (host, local) = s.split_once('\'')?;
         if host.is_empty() || local.is_empty() {

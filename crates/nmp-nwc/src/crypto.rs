@@ -22,6 +22,7 @@ use nostr::{Keys, PublicKey, SecretKey};
 /// # Errors
 ///
 /// Returns `NwcBuildError` if the secret or pubkey are invalid or encryption fails.
+#[must_use]
 pub fn encrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -51,6 +52,7 @@ pub fn encrypt(
 ///
 /// Returns `NwcBuildError` if the secret or pubkey are invalid, the payload is
 /// malformed, or decryption fails.
+#[must_use]
 pub fn decrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -150,6 +152,7 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 /// # Errors
 ///
 /// Returns `NwcBuildError::InvalidClientSecret` if `client_secret_hex` is not a valid secp256k1 scalar.
+#[must_use]
 pub fn client_pubkey_hex(client_secret_hex: &str) -> Result<String, NwcBuildError> {
     let sk = parse_secret(client_secret_hex)?;
     let keys = Keys::new(sk);

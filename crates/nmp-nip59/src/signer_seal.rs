@@ -230,6 +230,7 @@ fn wrap_signed_seal(
 ///   wrap. Callers passing a NIP-59-tweaked timestamp (per
 ///   [`nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK`]) get the
 ///   privacy property the spec intends.
+#[must_use]
 pub fn gift_wrap_with_signer(
     signer: &Arc<dyn SignerForSeal>,
     receiver_pubkey: &PublicKey,

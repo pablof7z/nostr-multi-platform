@@ -72,6 +72,7 @@ pub fn q_tag(id: &str, relay: Option<&str>) -> Vec<String> {
 ///
 /// Promoted here from the copy that was private to `nmp-nip23::decode` so
 /// every protocol crate shares one implementation.
+#[must_use]
 pub fn first_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
     tags.iter()
         .find(|t| t.first().map(String::as_str) == Some(key))
@@ -81,6 +82,7 @@ pub fn first_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str
 
 /// Return the second column of every tag whose first column equals `key`,
 /// in document order.
+#[must_use]
 pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
     tags.iter()
         .filter(|t| t.first().map(String::as_str) == Some(key))
@@ -159,6 +161,7 @@ fn e_ref_from_tag(tag: &[String]) -> Option<EventRef> {
 /// When a `root` marker is present but no `reply` marker is, the reply target
 /// is the root (a top-level reply to the thread root) — matching the common
 /// client interpretation and applesauce's behaviour.
+#[must_use]
 pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
     let e_tags: Vec<&Vec<String>> = tags
         .iter()

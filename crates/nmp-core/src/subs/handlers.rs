@@ -92,6 +92,7 @@ impl SubscriptionLifecycle {
     /// `sub_id` stability (`canonical_filter_hash` is computed off `shape` not
     /// the post-watermark filter — see `planner/mod.rs::canonical_filter_hash`
     /// rationale and the T129 carve-out in `apply_watermark_rewrite`).
+    #[must_use]
     pub fn handle_reconnect(&mut self, relay_url: RelayUrl) -> Vec<WireFrame> {
         let Some(plan) = self.current_plan.as_ref() else {
             return Vec::new();

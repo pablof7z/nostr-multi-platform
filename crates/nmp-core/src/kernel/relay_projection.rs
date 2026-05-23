@@ -155,16 +155,19 @@ pub type LocalWriteRelaysSlot = Arc<Mutex<RelayUrls>>;
 pub type RelayEditRowsSlot = Arc<Mutex<RelayEditRowList>>;
 
 /// Construct a fresh, empty [`IndexerRelaysSlot`].
+#[must_use]
 pub fn new_indexer_relays_slot() -> IndexerRelaysSlot {
     Arc::new(Mutex::new(RelayUrls::new()))
 }
 
 /// Construct a fresh, empty [`LocalWriteRelaysSlot`].
+#[must_use]
 pub fn new_local_write_relays_slot() -> LocalWriteRelaysSlot {
     Arc::new(Mutex::new(RelayUrls::new()))
 }
 
 /// Construct a fresh, empty [`RelayEditRowsSlot`].
+#[must_use]
 pub fn new_relay_edit_rows_slot() -> RelayEditRowsSlot {
     Arc::new(Mutex::new(RelayEditRowList::new()))
 }

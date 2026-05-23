@@ -90,6 +90,7 @@ impl Hasher for StableHasher {
     }
 }
 
+#[must_use]
 pub fn stable_hash64(value: impl Hash) -> u64 {
     let mut hasher = StableHasher::new();
     value.hash(&mut hasher);

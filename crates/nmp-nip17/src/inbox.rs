@@ -192,6 +192,7 @@ pub struct DmInboxProjection {
 impl DmInboxProjection {
     /// Construct an inbox bound to the shared local-keys slot. The message
     /// store starts empty; envelopes arrive via [`RawEventObserver::on_raw_event`].
+    #[must_use]
     pub fn new(local_keys: Arc<Mutex<Option<nostr::Keys>>>) -> Self {
         Self {
             local_keys,
@@ -221,6 +222,7 @@ impl DmInboxProjection {
     /// a meaningful message instead of a misleading empty list (V-08 Stage 1).
     /// ADR-0026 Phase 2 (Stage 3) removes the flag by wiring gift-wrap
     /// unsealing through the remote signer RPC.
+    #[must_use]
     pub fn snapshot(&self) -> DmInboxSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return DmInboxSnapshot::empty();
@@ -289,6 +291,7 @@ impl DmInboxProjection {
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
     /// collapses to `{"conversations": []}` rather than propagating.
+    #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot())
             .unwrap_or_else(|_| serde_json::json!({ "conversations": [], "remote_signer_unsupported": false }))

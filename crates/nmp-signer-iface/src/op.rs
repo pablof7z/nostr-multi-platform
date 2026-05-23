@@ -31,6 +31,7 @@ pub enum SignerOp<T: Send + 'static> {
 
 impl<T: Send + 'static> SignerOp<T> {
     /// Construct a ready-now success.
+    #[must_use]
     pub fn ok(value: T) -> Self {
         Self::Ready(Ok(value))
     }
@@ -65,6 +66,7 @@ impl<T: Send + 'static> SignerOp<T> {
 
     /// Non-blocking poll.  Returns `None` if still pending, `Some(result)` if
     /// completed.  Disconnect surfaces as `Some(Err(SignerError::Backend))`.
+    #[must_use]
     pub fn poll(&mut self) -> Option<Result<T, SignerError>> {
         match self {
             Self::Ready(_) => {
