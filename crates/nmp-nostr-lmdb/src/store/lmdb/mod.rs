@@ -308,7 +308,7 @@ impl Lmdb {
 
         // Collect all kc_index keys first to avoid borrow conflicts
         let kc_indexes: Vec<(Vec<u8>, [u8; 32])> = {
-            let mut indexes = Vec::with_capacity(event_count as usize);
+            let mut indexes = Vec::with_capacity(usize::try_from(event_count).unwrap_or(usize::MAX));
             for result in self.events.iter(txn)? {
                 let (_id, event_bytes) = result?;
 
@@ -565,7 +565,7 @@ impl Lmdb {
 
         // Empty filter with no time constraints = O(1) using index length
         if filter == empty_with_maybe_limit {
-            let total: usize = self.ci_index.len(txn)? as usize;
+            let total: usize = usize::try_from(self.ci_index.len(txn)?).unwrap_or(usize::MAX);
             return Ok(match filter.limit {
                 Some(limit) => total.min(limit), // Return min of limit and total
                 None => total,
@@ -1202,12 +1202,12 @@ impl Lmdb {
         until: Timestamp,
     ) -> Result<RoRange<'a, Bytes, Bytes>, Error> {
         let start_prefix = index::make_tc_index_key(
-            tag_name,
+            *tag_name,
             tag_value,
             until, // scan goes backwards in time
             &EVENT_ID_ALL_ZEROS,
         );
-        let end_prefix = index::make_tc_index_key(tag_name, tag_value, since, &EVENT_ID_ALL_255);
+        let end_prefix = index::make_tc_index_key(*tag_name, tag_value, since, &EVENT_ID_ALL_255);
         let range = (
             Bound::Included(start_prefix.as_slice()),
             Bound::Excluded(end_prefix.as_slice()),
@@ -1275,13 +1275,13 @@ impl Lmdb {
     ) -> Result<RoRange<'a, Bytes, Bytes>, Error> {
         let start_prefix: Vec<u8> = index::make_atc_index_key(
             author,
-            tag_name,
+            *tag_name,
             tag_value,
             until, // scan goes backwards in time
             &EVENT_ID_ALL_ZEROS,
         );
         let end_prefix: Vec<u8> =
-            index::make_atc_index_key(author, tag_name, tag_value, since, &EVENT_ID_ALL_255);
+            index::make_atc_index_key(author, *tag_name, tag_value, since, &EVENT_ID_ALL_255);
         let range = (
             Bound::Included(start_prefix.as_slice()),
             Bound::Excluded(end_prefix.as_slice()),
@@ -1344,13 +1344,13 @@ impl Lmdb {
     ) -> Result<RoRange<'a, Bytes, Bytes>, Error> {
         let start_prefix = index::make_ktc_index_key(
             kind,
-            tag_name,
+            *tag_name,
             tag_value,
             until, // scan goes backwards in time
             &EVENT_ID_ALL_ZEROS,
         );
         let end_prefix =
-            index::make_ktc_index_key(kind, tag_name, tag_value, since, &EVENT_ID_ALL_255);
+            index::make_ktc_index_key(kind, *tag_name, tag_value, since, &EVENT_ID_ALL_255);
         let range = (
             Bound::Included(start_prefix.as_slice()),
             Bound::Excluded(end_prefix.as_slice()),

@@ -49,6 +49,14 @@
 // Storage backend: every function returns the same `Error` type; `# Errors`
 // docs would be pure repetition with no diagnostic value.
 #![allow(clippy::missing_errors_doc)]
+// Upstream fork: index key builder locals are intentionally named atc/ktc/kc/ac
+// to mirror the index names — renaming would harm re-sync ergonomics.
+#![allow(clippy::similar_names)]
+// Upstream fork: field names *_index on index-key structs are the upstream convention.
+#![allow(clippy::struct_field_names)]
+// Upstream fork: DatabaseFilter is taken by value in 8 filter-dispatch methods
+// (upstream API shape). Changing all callers would diverge from upstream.
+#![allow(clippy::needless_pass_by_value)]
 
 use std::path::{Path, PathBuf};
 

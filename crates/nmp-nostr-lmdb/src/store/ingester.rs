@@ -226,11 +226,7 @@ impl Ingester {
                     tracing::error!(error = %e, "Failed to delete event, aborting batch");
                     true
                 }
-                OperationResult::Save {
-                    result: Ok(SaveEventStatus::Rejected(_)),
-                    ..
-                } => false, // Rejections are expected, don't abort
-                _ => false,
+                _ => false, // Rejections (SaveEventStatus::Rejected) and all other non-errors don't abort
             };
 
             // Add operation to results

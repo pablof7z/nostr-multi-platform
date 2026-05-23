@@ -55,7 +55,7 @@ impl EventIndexKeys {
                 // Index by author and tag (with created_at and id)
                 let atc_index: Vec<u8> = make_atc_index_key(
                     event.pubkey,
-                    &tag_name,
+                    tag_name,
                     tag_value,
                     event.created_at,
                     event.id,
@@ -64,7 +64,7 @@ impl EventIndexKeys {
                 // Index by kind and tag (with created_at and id)
                 let ktc_index: Vec<u8> = make_ktc_index_key(
                     event.kind,
-                    &tag_name,
+                    tag_name,
                     tag_value,
                     event.created_at,
                     event.id,
@@ -72,7 +72,7 @@ impl EventIndexKeys {
 
                 // Index by tag (with created_at and id)
                 let tc_index: Vec<u8> =
-                    make_tc_index_key(&tag_name, tag_value, event.created_at, event.id);
+                    make_tc_index_key(tag_name, tag_value, event.created_at, event.id);
 
                 TagIndexKeySet {
                     atc_index,
@@ -132,7 +132,7 @@ pub fn make_ci_index_key(created_at: Timestamp, event_id: &[u8; EventId::LEN]) -
 ///
 /// `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
 pub fn make_tc_index_key(
-    tag_name: &SingleLetterTag,
+    tag_name: SingleLetterTag,
     tag_value: &str,
     created_at: Timestamp,
     event_id: &[u8; EventId::LEN],
@@ -211,7 +211,7 @@ pub fn make_kc_index_key(
 /// `author(32)` + `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
 pub fn make_atc_index_key(
     author: &[u8; PublicKey::LEN],
-    tag_name: &SingleLetterTag,
+    tag_name: SingleLetterTag,
     tag_value: &str,
     created_at: Timestamp,
     event_id: &[u8; EventId::LEN],
@@ -244,7 +244,7 @@ pub fn make_atc_index_key(
 /// `kind(2)` + `tag_name(1)` + `tag_value(182)` + `reverse_created_at(8)` + `event_id(32)`
 pub fn make_ktc_index_key(
     kind: u16,
-    tag_name: &SingleLetterTag,
+    tag_name: SingleLetterTag,
     tag_value: &str,
     created_at: Timestamp,
     event_id: &[u8; EventId::LEN],
@@ -272,6 +272,8 @@ pub fn make_coordinate_index_key(coordinate: &CoordinateBorrow<'_>) -> Vec<u8> {
     let identifier: &str = coordinate.identifier.unwrap_or_default();
 
     let dlen: usize = cmp::min(identifier.len(), TAG_VALUE_PAD_LEN);
+    // Safe: dlen = min(len, TAG_VALUE_PAD_LEN=182) which is always ≤ 255.
+    #[allow(clippy::cast_possible_truncation)]
     key.push(dlen as u8);
 
     extend_key_with_tag_value(&mut key, dlen, identifier);
