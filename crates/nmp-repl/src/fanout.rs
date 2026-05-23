@@ -290,6 +290,12 @@ pub fn launch(
     (msg_rx, workers, global_deadline)
 }
 
+/// Socket-wide terminal condition for a relay worker.
+enum SocketTerminal {
+    AuthRequired,
+    Error(String),
+}
+
 fn run_relay_thread(
     relay_url: String,
     reqs: Vec<ContentReq>,
@@ -383,7 +389,7 @@ fn run_relay_thread(
     }
 
     // A socket-wide terminal (AUTH / relay close / IO) ends EVERY open sub.
-    let mut socket_terminal: Option<String> = None;
+    let mut socket_terminal: Option<SocketTerminal> = None;
     while !open.is_empty() && Instant::now() < deadline {
         match next_frame(&mut socket) {
             Frame::Timeout | Frame::Other => continue,
@@ -443,15 +449,17 @@ fn run_relay_thread(
                 }
             }
             Frame::Auth { .. } => {
-                socket_terminal = Some("__auth__".to_string());
+                socket_terminal = Some(SocketTerminal::AuthRequired);
                 break;
             }
             Frame::RelayClosed => {
-                socket_terminal = Some("connection closed by relay".to_string());
+                socket_terminal = Some(SocketTerminal::Error(
+                    "connection closed by relay".to_string(),
+                ));
                 break;
             }
             Frame::Io { kind } => {
-                socket_terminal = Some(format!("error: {kind}"));
+                socket_terminal = Some(SocketTerminal::Error(format!("error: {kind}")));
                 break;
             }
         }
@@ -461,7 +469,7 @@ fn run_relay_thread(
     let still_open: Vec<String> = open.iter().cloned().collect();
     for sub_id in still_open {
         match &socket_terminal {
-            Some(s) if s == "__auth__" => {
+            Some(SocketTerminal::AuthRequired) => {
                 let _ = tx.send(RelayEvent::Auth {
                     relay: relay_url.clone(),
                     sub_id: sub_id.clone(),
@@ -470,7 +478,7 @@ fn run_relay_thread(
                     st.error = Some("AUTH required".to_string());
                 }
             }
-            Some(reason) => {
+            Some(SocketTerminal::Error(reason)) => {
                 let _ = tx.send(RelayEvent::Error {
                     relay: relay_url.clone(),
                     sub_id: sub_id.clone(),
