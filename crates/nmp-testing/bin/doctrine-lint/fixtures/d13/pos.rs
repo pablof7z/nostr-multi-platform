@@ -19,8 +19,8 @@ pub fn send_dm_with_local_key_gate() {
     let _ = Keys::parse("nsec1...");
 }
 
-pub fn read_marmot_local_nsec_from_a_dm_path() {
-    // Part A also bans `marmot_local_nsec` reads on the DM seal path —
+pub fn read_mls_local_nsec_from_a_dm_path() {
+    // Part A also bans `mls_local_nsec` reads on the DM seal path —
     // the ADR-0025 raw-key escape is not a DM concern.
-    let _ = app.marmot_local_nsec();
+    let _ = app.mls_local_nsec();
 }
