@@ -80,10 +80,13 @@ makes the eventual fix harder.
   `signer_not_installed` vs. `publish_path_not_wired`. `NmpWasmRuntime::set_snapshot_callback`
   pushes a JSON frame to JS after every inbound relay frame. New files: `dispatch_routing.rs`,
   `signer_slot.rs`, `snapshot.rs` (all under 500-LOC ceiling).
-- Stage 3c (remaining gaps): IndexedDB store + publish-path wire (`publish_path_not_wired` →
-  real `dispatch_action_json`) + multi-role bootstrap parsing — see F-01.
+- Stage 3c ✅ DONE (PR #385 — merged 2026-05-24): `KernelReducer::publish_signed_event` with
+  correlation_id threading; `nmp_signers::sign_event_via_extension` (async, wasm32+wasm-feature);
+  `publish_path.rs` (268 LOC); `NmpWasmRuntime::dispatch_app_action_async` Promise wrapper;
+  extracted `nip07/wasm.rs` via `#[path]`. chirp-web now supports NIP-07 PublishNote end-to-end.
+  See F-01 for remaining gaps (multi-role bootstrap + IndexedDB).
 
-No chirp-web write features requiring persistence across reloads may be added until Stage 3c lands.
+No chirp-web persistence features may be added until F-01 IndexedDB lands.
 
 ### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 
@@ -296,52 +299,27 @@ hand-rolled path, staged. Stage 1 complete (PR #368). See V-04 staged fix plan a
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Stage 3c — IndexedDB store + write path + multi-role bootstrap [V1 BLOCKER]
+### F-01 · Fix V-01 — IndexedDB store + multi-role bootstrap [V1 BLOCKER · partial]
 
-Phase 1a/1b/1c (PRs #341/#343) + Stage 2 (PR #372) + Stage 3 read path (PR #375) +
-Stage 3b NIP-07 signer + snapshot push (PR #378) all merged to master.
-`WasmRuntime` owns a pool of `BrowserRelayDriver`s with shared backoff/jitter/HTTP-denial
-constants. Read path (relay → kernel → snapshot projection) is functional end-to-end.
-`Nip07Signer::sign()` bridges `window.nostr.signEvent(...)` on wasm32. Async snapshot push
-via `set_snapshot_callback(Option<js_sys::Function>)` is live.
+All prior stages merged. Stage 3c (PR #385 — 2026-05-24) wired the publish path:
+`KernelReducer::publish_signed_event`, `sign_event_via_extension` (async wasm32),
+`dispatch_app_action_async` Promise wrapper. chirp-web now supports NIP-07 PublishNote
+end-to-end (kind:1 write via NIP-07 signer, correlation_id settlement, per-relay terminals).
 
-**Stage 3c remaining scope (V1 BLOCKER for chirp-web write features):**
-1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl
-   (the native `nmp-nostr-lmdb` fork stays native-only). Kernel runs in-memory only
-   and resets on page reload.
-2. **Write-path wiring — PublishNote (kind:1).** DONE — first Stage 3c PR added
-   `KernelReducer::publish_signed_event(...)`, the pure-async
-   `nmp_signers::sign_event_via_extension(...)` twin of
-   `Nip07Signer::sign()`, and the `NmpWasmRuntime::dispatch_app_action_async(...)`
-   Promise wrapper. The synchronous `handle_json` path still returns
-   `publish_path_not_wired` (now pointing hosts at the async entrypoint).
-   - **Follow-up: React / Follow / Unfollow.** The async path returns
-     `publish_path_not_wired_for_kind` for these variants today. Each kind has
-     tag-construction subtleties (NIP-25 `k` tag derivation for React,
-     kind:3 follow-set merging for Follow/Unfollow) that the native
-     `actor/commands/publish.rs::react` / `follow` / `unfollow` handlers own.
-     Wire them kind-by-kind so the wasm path doesn't silently drift from native.
-   - **Follow-up: PublishNote reply (`reply_to_id: Some(_)`).** The wasm
-     path returns `publish_path_not_wired_for_kind` for replies today;
-     the native `publish_note` walks the kernel's `events` read-cache for
-     NIP-10 root/parent reply tags. Lifting that into a substrate helper
-     (so both paths share it) is the cleanest fix.
-   - **Follow-up: non-NIP-07 signers.** Only `SignerBackend::Nip07` is
-     wired through the async path. LocalKey signers can't run in the wasm
-     runtime (the runtime should not hold key material); NIP-46 bunker on
-     wasm needs a wasm-native NIP-46 transport the broker side does not yet
-     expose. Both are tracked as follow-ups.
-3. **Multi-role bootstrap parsing.** Stage 3 spawns one Content-lane driver per URL
+**Remaining scope (still V1 BLOCKER):**
+1. **Multi-role bootstrap parsing.** Stage 3c spawns one Content-lane driver per URL
    regardless of the declared role string (`"indexer"`, `"both,indexer"`, ...). Parse
    in `nmp-wasm::relay_pool::spawn_drivers`; open one driver per declared role per URL
    (mirrors native `spawn_missing_relays`). `RelayHealth` diagnostics for pure-indexer
-   URLs currently land on the wrong lane. Still pending.
+   URLs currently land on the wrong lane.
+2. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl.
+   Kernel runs in-memory only and resets on page reload. Requires sync/async model decision
+   (write-behind queue + in-memory cache vs. warm-boot-from-IDB on Start).
 
 secp256k1-sys wasm32 C build remains environmentally gated on
 `CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need homebrew LLVM on macOS).
 
-No `chirp-web` features requiring persistence across reloads or writes may be added until
-Stage 3c lands.
+No `chirp-web` features requiring persistence across reloads may be added until IndexedDB lands.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
