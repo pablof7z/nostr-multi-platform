@@ -11,8 +11,9 @@ struct RelaySettingsView: View {
     @State private var isEditing = false
     /// Correlation id minted by `dispatch_action("nmp.nip17.publish_relay_list", …)`
     /// — set on tap, cleared either when the user re-publishes or when the
-    /// asynchronous terminal verdict (`projections["action_results"]`)
-    /// surfaces through `model.terminalActionStage(correlationId:)`.
+    /// asynchronous terminal verdict surfaces through
+    /// `model.recentTerminal(correlationId:)` (V5: the kernel's
+    /// `action_lifecycle` projection owns the lifecycle bookkeeping).
     /// Without this seam the "Published ✓" label would lie: it would render
     /// the instant the button was tapped, even if the relay rejected the
     /// kind:10050 publish — a trust failure on the single switch that
@@ -105,7 +106,7 @@ struct RelaySettingsView: View {
     ///   * terminal `.failed(reason)`          → red error + button re-enabled
     @ViewBuilder
     private var dmInboxPublishRow: some View {
-        if let stage = publishCid.flatMap({ model.terminalActionStage(correlationId: $0)?.stage }) {
+        if let stage = publishCid.flatMap({ model.recentTerminal(correlationId: $0)?.stage }) {
             switch stage {
             case .accepted:
                 Text("Published ✓")
@@ -126,16 +127,17 @@ struct RelaySettingsView: View {
                 }
                 .padding(.vertical, ChirpSpace.s)
             case .requested, .awaitingCapability, .publishing, .unknown(_):
-                // A non-terminal stage surfaced here is unusual (the snapshot
-                // mirror only feeds terminals into `terminalActionStage`),
-                // but defensively render it as the in-flight spinner so the
-                // user never sees an empty row.
+                // V5: `recentTerminal` only returns terminal entries, so this
+                // arm is theoretically unreachable. Render the in-flight
+                // spinner defensively so the user never sees an empty row.
                 publishingRow
             }
         } else if publishCid != nil {
-            // Correlation id stashed, but no terminal has landed yet — the
-            // verdict is still in flight (in-flight publish, or a fast next
-            // snapshot that overwrote `actionStages` before SwiftUI re-read).
+            // V5: correlation id stashed, but no terminal has landed yet —
+            // the action is either still in flight (kernel's
+            // `action_lifecycle.inFlight`) or its terminal has already
+            // dropped past the 3-second TTL. Render the spinner either way;
+            // the next user action publishes a fresh correlation id.
             publishingRow
         } else {
             publishButton(label: "Publish as DM inboxes", systemImage: "tray.and.arrow.up")
