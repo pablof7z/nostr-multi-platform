@@ -411,6 +411,36 @@ impl Kernel {
                 }
                 self.changed_since_emit = true;
             }
+            9735 => {
+                // F-04: NIP-57 zap receipt. ZapsAggregateProjection is registered
+                // as a KernelEventObserver, so it can only learn about a kind:9735
+                // event if this arm fans it out via `notify_event_observers`.
+                // Pre-F-04 the `_` wildcard below only called `verify_and_persist`
+                // — the receipt landed in the store but never reached the
+                // projection, so per-note zap counts never updated. The D4
+                // store-outcome gate is preserved (same shape as kinds 0/3/10002/
+                // 10050): only an Inserted | Replaced outcome means the receipt
+                // is canonical and worth observer fan-out — duplicates are
+                // already-known and replays from a sibling relay would
+                // double-count the projection's per-note tally.
+                use crate::store::InsertOutcome;
+                let outcome = self.verify_and_persist(relay_url, &event);
+                if matches!(
+                    outcome,
+                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
+                ) {
+                    let kernel_event = crate::substrate::KernelEvent {
+                        id: event.id.clone(),
+                        author: event.pubkey.clone(),
+                        kind: event.kind,
+                        created_at: event.created_at,
+                        tags: event.tags.clone(),
+                        content: event.content.clone(),
+                    };
+                    self.notify_event_observers(&kernel_event);
+                }
+                self.changed_since_emit = true;
+            }
             _ => {
                 self.verify_and_persist(relay_url, &event);
                 self.changed_since_emit = true;
