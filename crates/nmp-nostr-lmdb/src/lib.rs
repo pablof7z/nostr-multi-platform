@@ -145,6 +145,7 @@ impl NostrLmdbBuilder {
     }
 
     /// Build
+    #[must_use]
     pub fn build(self) -> Result<NostrLMDB, DatabaseError> {
         let map_size: usize = self.map_size.unwrap_or(MAP_SIZE);
         let max_readers: u32 = self.max_readers.unwrap_or(126);
@@ -163,6 +164,7 @@ pub struct NostrLMDB {
 
 impl NostrLMDB {
     /// Open LMDB database
+    #[must_use]
     #[inline]
     pub fn open<P>(path: P) -> Result<Self, DatabaseError>
     where

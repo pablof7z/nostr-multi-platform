@@ -45,6 +45,7 @@ pub fn build_auth_event(
 /// crate's [`Nip42Error::SignerReturnedInvalid`] so callers can route the
 /// typed error directly into [`crate::flow::HandshakeOutcome`] without
 /// double-wrapping a `String` (D6).
+#[must_use]
 pub fn validate_signed_for(
     signed: &nmp_core::substrate::SignedEvent,
     challenge: &AuthChallenge,

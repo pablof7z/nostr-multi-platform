@@ -64,6 +64,7 @@ impl Nip07Signer {
     /// the structured-error equivalent of the panic this module used to throw
     /// when `pubkey()` was called on an empty signer (D6: errors never cross
     /// FFI as panics).
+    #[must_use]
     pub fn from_payload(p: &Nip07Payload) -> Result<Self, SignerError> {
         let hex = p.cached_pubkey_hex.as_deref().ok_or_else(|| {
             SignerError::NotReady(

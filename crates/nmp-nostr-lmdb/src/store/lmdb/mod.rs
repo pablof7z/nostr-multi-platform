@@ -244,6 +244,7 @@ impl Lmdb {
     /// caller's own sub-dbs).
     ///
     /// Runs upstream migrations on the env before returning.
+    #[must_use]
     pub fn with_env(env: Env) -> Result<Self, Error> {
         Self::open_databases_on_env(env, true)
     }
@@ -335,6 +336,7 @@ impl Lmdb {
     /// Get a read transaction
     ///
     /// This should never block the current thread
+    #[must_use]
     #[inline]
     pub fn read_txn(&self) -> Result<RoTxn<'_>, Error> {
         Ok(self.env.read_txn()?)
@@ -343,6 +345,7 @@ impl Lmdb {
     /// Get a write transaction
     ///
     /// This blocks the current thread if there is another write txn
+    #[must_use]
     #[inline]
     pub fn write_txn(&self) -> Result<RwTxn<'_>, Error> {
         Ok(self.env.write_txn()?)
@@ -414,6 +417,7 @@ impl Lmdb {
         Ok(())
     }
 
+    #[must_use]
     pub fn wipe(&self, txn: &mut RwTxn) -> Result<(), Error> {
         // Wipe events
         self.events.clear(txn)?;
@@ -437,6 +441,7 @@ impl Lmdb {
         Ok(())
     }
 
+    #[must_use]
     #[inline]
     pub fn has_event(&self, txn: &RoTxn, event_id: &[u8; 32]) -> Result<bool, Error> {
         Ok(self.get_event_by_id(txn, event_id)?.is_some())
@@ -526,6 +531,7 @@ impl Lmdb {
     }
 
     /// Delete events
+    #[must_use]
     pub fn delete(&self, txn: &mut RwTxn, filter: Filter) -> Result<(), Error> {
         // First, collect all deletion info while we have immutable borrows
         let indexes: Vec<EventIndexKeys> = {
@@ -544,6 +550,7 @@ impl Lmdb {
         Ok(())
     }
 
+    #[must_use]
     pub fn count(&self, txn: &RoTxn, filter: Filter) -> Result<usize, Error> {
         // Check if we can use fast counting
         let can_fast_count: bool = filter.ids.is_none()
@@ -1145,11 +1152,13 @@ impl Lmdb {
         Ok(())
     }
 
+    #[must_use]
     #[inline]
     pub fn is_deleted(&self, txn: &RoTxn, event_id: &EventId) -> Result<bool, Error> {
         Ok(self.deleted_ids.get(txn, event_id.as_bytes())?.is_some())
     }
 
+    #[must_use]
     pub fn mark_deleted(&self, txn: &mut RwTxn, event_id: &EventId) -> Result<(), Error> {
         self.deleted_ids.put(txn, event_id.as_bytes(), &())?;
         Ok(())

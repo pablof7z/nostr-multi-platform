@@ -160,6 +160,7 @@ impl AccountManager {
     ///    observers run.
     /// 2. Observers run **after** the flip, in registration order.
     /// 3. Switching to the already-active id is a no-op (no observer fires).
+    #[must_use]
     pub fn switch_active(&mut self, id: &IdentityId) -> Result<(), AccountError> {
         if !self.accounts.contains_key(id) {
             return Err(AccountError::NotFound(id.clone()));
@@ -193,6 +194,7 @@ impl AccountManager {
     ///   notify once with `ActiveChangeEvent { current: None, current_pubkey:
     ///   None }`.  This is the kind:3 / kind:10002 teardown + `FullState
     ///   { active_account: None }` signal.
+    #[must_use]
     pub fn remove(&mut self, id: &IdentityId) -> Result<(), AccountError> {
         if !self.accounts.contains_key(id) {
             return Ok(());
