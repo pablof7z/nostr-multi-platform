@@ -183,7 +183,7 @@ impl<R: ParentResolver> Grouper<R> {
                         break;
                     }
                 }
-                _ => {}
+                TimelineBlock::Standalone(_) => {}
             }
         }
 
@@ -234,7 +234,7 @@ impl<R: ParentResolver> Grouper<R> {
 
             if let Some(idx) = self.find_block_with_leaf(parent_id) {
                 let parent_kev = self.by_id.get(parent_id).cloned();
-                let extended = self.try_extend_block(idx, event, parent_kev.as_ref(), &root_hint);
+                let extended = self.try_extend_block(idx, event, parent_kev.as_ref(), root_hint.as_ref());
                 if extended {
                     self.seen.insert(event.id.clone());
                     self.orphaned.remove(&event.id);
@@ -278,7 +278,7 @@ impl<R: ParentResolver> Grouper<R> {
         idx: usize,
         event: &KernelEvent,
         parent_kev: Option<&KernelEvent>,
-        root_hint: &Option<ThreadPointer>,
+        root_hint: Option<&ThreadPointer>,
     ) -> bool {
         let max_size = self.policy.max_module_size as usize;
         let gap_threshold = self.policy.max_lookback_gap_secs;
@@ -289,11 +289,11 @@ impl<R: ParentResolver> Grouper<R> {
                 if max_size < 2 {
                     return false;
                 }
-                let mismatched = root_id_mismatched(root_hint.as_ref(), parent_id.as_str());
+                let mismatched = root_id_mismatched(root_hint, parent_id.as_str());
                 let promoted = TimelineBlock::Module {
                     events: vec![parent_id.clone(), event.id.clone()],
                     has_gap: leaf_gap || mismatched,
-                    root: root_hint.clone(),
+                    root: root_hint.cloned(),
                 };
                 self.blocks[idx] = promoted;
                 true
@@ -309,7 +309,7 @@ impl<R: ParentResolver> Grouper<R> {
                 events.push(event.id.clone());
                 *has_gap = *has_gap || leaf_gap;
                 if root.is_none() {
-                    *root = root_hint.clone();
+                    *root = root_hint.cloned();
                 }
                 // Mismatched root: chain top is not the declared root id.
                 // `events` was just pushed to above, so `first()` is `Some`

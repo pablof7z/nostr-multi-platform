@@ -104,9 +104,19 @@ impl CoverageGate {
     /// watermark, given the age of the most-recent stored event.
     ///
     /// Returns `0` when `since_bump_factor` is zero or the bump rounds down.
-    #[must_use] 
+    #[must_use]
     pub fn since_bump_secs(&self, watermark_age_secs: u64) -> u64 {
-        (watermark_age_secs as f64 * self.since_bump_factor) as u64
+        // watermark_age_secs is a cache age in seconds — practically bounded
+        // by a few years (well within f64's 2^53 exact-integer range).
+        // since_bump_factor is always >= 0.0 per construction, so sign loss is
+        // impossible. The .max(0.0) guard makes both invariants explicit.
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        let bump = (watermark_age_secs as f64 * self.since_bump_factor).max(0.0) as u64;
+        bump
     }
 }
 
