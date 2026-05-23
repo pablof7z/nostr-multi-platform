@@ -30,6 +30,7 @@ pub struct AuthOk {
 /// Parse an `["AUTH", <challenge>]` frame. Returns `None` when the frame
 /// has the wrong shape or an empty challenge (NIP-42 requires a non-empty
 /// challenge string; an empty one cannot produce a valid signable event).
+#[must_use]
 pub fn parse_auth_frame(frame: &[Value], relay_url: &str) -> Option<AuthChallenge> {
     if frame.first().and_then(Value::as_str) != Some("AUTH") {
         return None;
@@ -57,6 +58,7 @@ pub fn parse_auth_frame(frame: &[Value], relay_url: &str) -> Option<AuthChalleng
 /// security-conscious choice — silently treating a malformed `accepted`
 /// as `false` could promote an unparseable success into a spurious failure
 /// (and vice versa for a buggy relay sending non-bool truthy values).
+#[must_use]
 pub fn parse_ok_frame(frame: &[Value]) -> Option<AuthOk> {
     if frame.first().and_then(Value::as_str) != Some("OK") {
         return None;

@@ -102,6 +102,7 @@ pub struct NostrLmdbBuilder {
 
 impl NostrLmdbBuilder {
     /// New `LMDb` builder
+    #[must_use]
     pub fn new<P>(path: P) -> Self
     where
         P: AsRef<Path>,

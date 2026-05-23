@@ -120,6 +120,7 @@ fn extend_key_with_tag_value(key: &mut Vec<u8>, len: usize, tag_value: &str) {
 /// ## Structure
 ///
 /// `reverse_created_at(8)` + `event_id(32)`
+#[must_use]
 pub fn make_ci_index_key(created_at: Timestamp, event_id: &[u8; EventId::LEN]) -> Vec<u8> {
     let mut key: Vec<u8> = Vec::with_capacity(CREATED_AT_BE + EventId::LEN);
     key.extend(reverse_and_conv_to_be64(created_at));
@@ -265,6 +266,7 @@ pub fn make_ktc_index_key(
 /// ## Structure
 ///
 /// `kind(2)` + `author(32)` + `d_len(1)` + `d(182)`
+#[must_use]
 pub fn make_coordinate_index_key(coordinate: &CoordinateBorrow<'_>) -> Vec<u8> {
     let mut key: Vec<u8> = Vec::with_capacity(KIND_BE + PublicKey::LEN + 1 + TAG_VALUE_PAD_LEN);
     key.extend(coordinate.kind.as_u16().to_be_bytes());
