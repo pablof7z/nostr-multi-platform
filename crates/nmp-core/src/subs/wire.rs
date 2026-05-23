@@ -178,46 +178,127 @@ pub fn lifecycle_for_shape(
 
 /// Serialise an `InterestShape` into the Nostr filter JSON object form.
 ///
-/// This is a minimal serializer — only the fields a relay accepts. Internal
-/// fields like `relay_pin` and `addresses` are translated to wire-equivalent
-/// forms (`#a` tags for addresses) or omitted (`relay_pin` is client-side
-/// only — it never appears on the wire).
+/// Delegates to `nostr::Filter`'s builder + serde serializer so escaping,
+/// field ordering, and NIP-01 conformance match the canonical `nostr` crate
+/// implementation. The previous hand-rolled string concatenation had a real
+/// correctness risk — tag values were interpolated into JSON with no escaping
+/// (a `"` or `\` in a tag value would have produced malformed JSON).
+///
+/// ## Field mapping
+///
+/// - `authors` → `Filter::authors` (parses each `Pubkey` hex via
+///   `PublicKey::from_hex`; entries that fail strict hex parsing are dropped
+///   — see "behaviour notes" below).
+/// - `kinds` → `Filter::kinds` (`u32 → u16` cast: NIP-01 kinds fit in `u16`).
+/// - `event_ids` → `Filter::ids` (parses each `EventId` hex; failures dropped).
+/// - `tags` → `Filter::custom_tags`, one entry per single-letter `TagKey`.
+///   Multi-character tag keys are unrepresentable in NIP-01 and are dropped.
+/// - `addresses` → `#a` via `Filter::coordinates` (matches the prior
+///   hand-rolled `"kind:pubkey:d-tag"` serialisation through `Coordinate`'s
+///   `Display`).
+/// - `since` / `until` → `Filter::since` / `Filter::until` via `Timestamp::from_secs`.
+/// - `limit` → `Filter::limit` (`u32 → usize` cast, always lossless on the
+///   targets we ship).
+///
+/// Client-side-only fields (`relay_pin`, `p_tag_routing`) never appear on the
+/// wire and are deliberately omitted, exactly as before.
+///
+/// ## Behaviour notes vs. the prior hand-rolled version
+///
+/// - Hex-validation gap is closed: invalid hex authors / event ids are now
+///   dropped at serialise time rather than being smuggled onto the wire as
+///   malformed strings. Tests that wanted observable behaviour use valid hex
+///   (`"ab".repeat(32)`, etc.); fixtures that pad arbitrary identifiers to
+///   64 chars (`pubkey("overlap_a")`) intentionally exercise the
+///   relay-routing path, not the filter-string path.
+/// - JSON field ordering changes (nostr emits `ids, authors, kinds, since,
+///   until, limit, #<tags>` in struct-declaration order; the hand-rolled
+///   version emitted `authors` first). No caller asserts on byte-exact JSON
+///   shape; `kernel::replay` re-parses via `serde_json::from_str::<Value>`
+///   so ordering is irrelevant downstream.
+/// - `canonical_filter_hash` is independent — it hashes the `InterestShape`
+///   struct directly via `serde_json::to_string`, not this function's output.
+///   `plan_id` stability is preserved.
 pub fn filter_json_for(shape: &InterestShape) -> String {
-    let mut parts: Vec<String> = Vec::new();
+    use nostr::nips::nip01::Coordinate;
+    use nostr::{EventId as NostrEventId, Filter, Kind, PublicKey, SingleLetterTag, Timestamp};
+
+    let mut filter = Filter::new();
+
     if !shape.authors.is_empty() {
-        let arr: Vec<String> = shape.authors.iter().map(|a| format!("\"{a}\"")).collect();
-        parts.push(format!("\"authors\":[{}]", arr.join(",")));
+        let authors: Vec<PublicKey> = shape
+            .authors
+            .iter()
+            .filter_map(|a| PublicKey::from_hex(a).ok())
+            .collect();
+        if !authors.is_empty() {
+            filter = filter.authors(authors);
+        }
     }
+
     if !shape.kinds.is_empty() {
-        let arr: Vec<String> = shape.kinds.iter().map(std::string::ToString::to_string).collect();
-        parts.push(format!("\"kinds\":[{}]", arr.join(",")));
+        // NIP-01 kinds fit in u16; the cast is lossless for every kind
+        // defined by the spec or in use across the codebase.
+        filter = filter.kinds(shape.kinds.iter().map(|k| Kind::from(*k as u16)));
     }
+
     if !shape.event_ids.is_empty() {
-        let arr: Vec<String> = shape.event_ids.iter().map(|e| format!("\"{e}\"")).collect();
-        parts.push(format!("\"ids\":[{}]", arr.join(",")));
+        let ids: Vec<NostrEventId> = shape
+            .event_ids
+            .iter()
+            .filter_map(|e| NostrEventId::from_hex(e).ok())
+            .collect();
+        if !ids.is_empty() {
+            filter = filter.ids(ids);
+        }
     }
+
     for (tag_key, values) in &shape.tags {
-        let arr: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
-        parts.push(format!("\"#{tag_key}\":[{}]", arr.join(",")));
+        // NIP-01 generic tag keys are single ASCII letters. Multi-character
+        // keys are unrepresentable and silently dropped — no callsite in the
+        // workspace constructs one (all uses: `p`, `e`, `a`, `t`, `h`, `d`).
+        let mut chars = tag_key.chars();
+        let (Some(c), None) = (chars.next(), chars.next()) else {
+            continue;
+        };
+        let Ok(letter) = SingleLetterTag::from_char(c) else {
+            continue;
+        };
+        filter = filter.custom_tags(letter, values.iter().cloned());
     }
+
     if !shape.addresses.is_empty() {
-        let arr: Vec<String> = shape
+        let coords: Vec<Coordinate> = shape
             .addresses
             .iter()
-            .map(|a| format!("\"{}:{}:{}\"", a.kind, a.pubkey, a.d_tag))
+            .filter_map(|a| {
+                let pk = PublicKey::from_hex(&a.pubkey).ok()?;
+                Some(Coordinate {
+                    kind: Kind::from(a.kind as u16),
+                    public_key: pk,
+                    identifier: a.d_tag.clone(),
+                })
+            })
             .collect();
-        parts.push(format!("\"#a\":[{}]", arr.join(",")));
+        if !coords.is_empty() {
+            filter = filter.coordinates(coords.iter());
+        }
     }
+
     if let Some(since) = shape.since {
-        parts.push(format!("\"since\":{since}"));
+        filter = filter.since(Timestamp::from_secs(since));
     }
     if let Some(until) = shape.until {
-        parts.push(format!("\"until\":{until}"));
+        filter = filter.until(Timestamp::from_secs(until));
     }
     if let Some(limit) = shape.limit {
-        parts.push(format!("\"limit\":{limit}"));
+        filter = filter.limit(limit as usize);
     }
-    format!("{{{}}}", parts.join(","))
+
+    // `serde_json::to_string` on `Filter` cannot realistically fail (no
+    // non-string map keys, no NaN/Infinity floats), but fall back to an empty
+    // filter JSON rather than panic across the FFI boundary (D6).
+    serde_json::to_string(&filter).unwrap_or_else(|_| "{}".to_string())
 }
 
 #[cfg(test)]
