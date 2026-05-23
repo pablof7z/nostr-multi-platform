@@ -111,6 +111,7 @@ pub struct ContentReq {
 /// and returns the parsed snapshots.
 ///
 /// `probes`: `(relay_url, sub_id, filter_json)` triples.
+#[must_use]
 pub fn run_discovery(probes: &[(String, String, String)]) -> Vec<(String, MailboxSnapshot)> {
     let mut by_relay: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     for (relay, sub_id, filter) in probes {

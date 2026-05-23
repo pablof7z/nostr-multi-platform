@@ -293,6 +293,7 @@ impl PartialEq<CanonicalRelayUrl> for &str {
 ///
 /// New kernel code should prefer [`CanonicalRelayUrl`] directly — the newtype
 /// makes the canonicalization invariant compiler-enforced.
+#[must_use]
 pub fn canonical_relay_url(raw: &str) -> Option<String> {
     CanonicalRelayUrl::parse(raw).map(CanonicalRelayUrl::into_string)
 }

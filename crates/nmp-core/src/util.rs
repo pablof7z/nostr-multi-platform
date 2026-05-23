@@ -142,6 +142,7 @@ impl<T> TimeCached<T> {
 
     /// Borrow the currently cached value without consulting the clock or
     /// refreshing. Returns `None` if nothing has been cached yet.
+    #[must_use]
     pub fn peek(&self) -> Option<&T> {
         self.value.as_ref()
     }

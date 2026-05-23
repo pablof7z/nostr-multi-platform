@@ -123,6 +123,7 @@ impl NoteBuilder {
     /// # Errors
     ///
     /// Returns [`NoteBuildError::EmptyContent`] if `content` is blank.
+    #[must_use]
     pub fn build(self, author: impl Into<String>, created_at: u64) -> Result<UnsignedEvent, NoteBuildError> {
         if self.content.trim().is_empty() {
             return Err(NoteBuildError::EmptyContent);
