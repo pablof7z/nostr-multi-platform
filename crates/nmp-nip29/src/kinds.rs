@@ -11,12 +11,12 @@ use crate::group_id::{GroupId, RelayUrl};
 pub const KIND_CHAT_MESSAGE: u32 = 9;
 /// Group discussion / artifact share (kind 11) — only when `h` tag present.
 pub const KIND_DISCUSSION_OR_ARTIFACT: u32 = 11;
-/// Generic repost (kind 16) — group variant when `h` tag present.
-pub const KIND_REPOST: u32 = 16;
-/// Reaction (kind 7) — group variant when `h` tag present.
-pub const KIND_REACTION: u32 = 7;
-/// NIP-84 highlight (kind 9802) — group variant when `h` tag present.
-pub const KIND_HIGHLIGHT: u32 = 9802;
+
+// Note: NIP-29 deliberately does NOT define constants for kind:7 (NIP-25
+// reactions), kind:16 (NIP-18 reposts), or kind:9802 (NIP-84 highlights).
+// Those kinds are owned by their respective NIPs; NIP-29 only adds the
+// `h`-tag routing concern. Any kind that carries an `h` tag is a group event
+// (kinds.md §4) and falls through to `KindClass::UnknownGroupEvent` here.
 
 // Moderation actions (9000-9009 + 9021 + 9022) — all admin-signed (9007/9021/9022 user).
 pub const KIND_PUT_USER: u32 = 9000;
@@ -44,10 +44,15 @@ pub enum KindClass {
     Moderation,
     /// User-signed user-management request (9021 / 9022).
     UserManagement,
-    /// Known h-tagged user-sent group event (9, 11, 16, 7, 9802 if h-tagged).
+    /// Known h-tagged user-sent group event — currently only the
+    /// NIP-29-native kinds 9 (chat) and 11 (discussion/artifact). Cross-NIP
+    /// kinds (kind:7 reactions, kind:16 reposts, kind:9802 highlights, etc.)
+    /// are routed via `UnknownGroupEvent` because NIP-29 does not own them.
     KnownGroupEvent,
-    /// Unknown h-tagged kind — routed to `GroupContextEvent` fallback per
-    /// `kinds.md` §2.1 "Future / extensibility".
+    /// Unknown-to-NIP-29 h-tagged kind — routed to `GroupContextEvent`
+    /// fallback per `kinds.md` §2.1 "Future / extensibility". Includes any
+    /// cross-NIP kind that carries an `h` tag (e.g. kind:7, kind:16,
+    /// kind:9802) — those are owned by their respective NIP crates.
     UnknownGroupEvent,
     /// Not a NIP-29 event at all.
     NotGroup,
@@ -71,11 +76,7 @@ pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
         }
         KIND_JOIN_REQUEST | KIND_LEAVE_REQUEST if has_h_tag => KindClass::UserManagement,
         _ if has_h_tag => match kind {
-            KIND_CHAT_MESSAGE
-            | KIND_DISCUSSION_OR_ARTIFACT
-            | KIND_REPOST
-            | KIND_REACTION
-            | KIND_HIGHLIGHT => KindClass::KnownGroupEvent,
+            KIND_CHAT_MESSAGE | KIND_DISCUSSION_OR_ARTIFACT => KindClass::KnownGroupEvent,
             _ => KindClass::UnknownGroupEvent,
         },
         _ => KindClass::NotGroup,
@@ -93,9 +94,6 @@ pub enum GroupEventClass {
     Chat,
     Discussion,
     Artifact,
-    Repost,
-    Reaction,
-    Highlight,
 }
 
 /// Refine a `KIND_DISCUSSION_OR_ARTIFACT` (kind 11) event by inspecting whether
@@ -112,15 +110,15 @@ pub fn classify_kind11(tags: &[Vec<String>]) -> GroupEventClass {
     }
 }
 
-/// Pick the owning `GroupEventClass` for a `KnownGroupEvent`.
-#[must_use] 
+/// Pick the owning `GroupEventClass` for a `KnownGroupEvent`. Returns `None`
+/// for any kind not natively owned by NIP-29 — cross-NIP h-tagged kinds
+/// (kind:7, kind:16, kind:9802, …) are classified as `UnknownGroupEvent` by
+/// [`classify`] and routed via the generic group-context fallback.
+#[must_use]
 pub fn group_event_class(kind: u32, tags: &[Vec<String>]) -> Option<GroupEventClass> {
     match kind {
         KIND_CHAT_MESSAGE => Some(GroupEventClass::Chat),
         KIND_DISCUSSION_OR_ARTIFACT => Some(classify_kind11(tags)),
-        KIND_REPOST => Some(GroupEventClass::Repost),
-        KIND_REACTION => Some(GroupEventClass::Reaction),
-        KIND_HIGHLIGHT => Some(GroupEventClass::Highlight),
         _ => None,
     }
 }

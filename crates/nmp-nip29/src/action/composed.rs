@@ -9,9 +9,15 @@ use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
-use crate::kinds::KIND_REACTION;
 
 use super::publish_plan::PublishPlan;
+
+/// NIP-25 reaction kind. Kept file-private to `composed.rs` because NIP-29
+/// does not own kind:7 — it only adds the `h`-tag routing concern. The
+/// producer for the `h`-tagged variant lives here per `kinds.md` §4; the
+/// kind constant itself stays inlined to avoid asserting NIP-29 ownership
+/// over a foreign-NIP kind.
+const REACTION_KIND: u32 = 7;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ReactInGroupInput {
@@ -30,7 +36,7 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
     if let Some(p) = &action.target_author_pubkey {
         tags.push(vec!["p".into(), p.clone()]);
     }
-    PublishPlan::pinned(&action.group, KIND_REACTION, action.content.clone(), tags)
+    PublishPlan::pinned(&action.group, REACTION_KIND, action.content.clone(), tags)
 }
 
 pub struct ReactInGroupAction;
@@ -67,7 +73,6 @@ impl ActionModule for ReactInGroupAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kinds::KIND_REACTION;
     use std::cell::RefCell;
 
     fn react_input() -> ReactInGroupInput {
@@ -148,7 +153,7 @@ mod tests {
         assert_eq!(cmds.len(), 1, "react executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
-                assert_eq!(event.kind, KIND_REACTION, "react must emit kind:7");
+                assert_eq!(event.kind, REACTION_KIND, "react must emit kind:7");
                 assert_eq!(
                     relays,
                     vec!["wss://groups.example.com".to_string()],
