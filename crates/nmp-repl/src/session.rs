@@ -80,10 +80,10 @@ pub struct Session {
 
     // ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────
     // The identity used for MLS ops (KeyPackage signing, gift-wrap, kind:0).
-    // Set by `create-account` or `load-key`. Distinct from `seed_hex` (the
-    // read-only diagnostic seed); `load-key`/`create-account` ALSO set
-    // `seed_hex` so the prompt + `req` reflect the active identity. Kept
-    // ungated so the default build's `create-account` / `load-key` can still
+    // Set by `load-key` (always) or `create-account` (under the `mls`
+    // feature). Distinct from `seed_hex` (the diagnostic seed); both setters
+    // ALSO update `seed_hex` so the prompt + `req` reflect the active
+    // identity. Kept ungated so the default build's `load-key` can still
     // adopt an identity for `req`/`show` purposes.
     pub mls_keys: Option<nostr::Keys>,
     // The MDK-driving service (in-memory MLS store). `Arc<Mutex<…>>` because

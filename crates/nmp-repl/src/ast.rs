@@ -21,6 +21,8 @@ pub enum Command {
     // ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────
     /// `create-account [name] [relay…]` — generate keys, publish kind:0 + kind:10002.
     /// Relay URLs are set as `app_relays` for the session before account creation.
+    /// Gated behind the `mls` feature because it writes to the network.
+    #[cfg(feature = "mls")]
     CreateAccount(Option<String>, Vec<String>),
     /// `load-key <nsec|hex>` — adopt an existing identity.
     LoadKey(String),

@@ -12,12 +12,15 @@ pub mod refresh;
 pub mod expand;
 pub mod help;
 
-// ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────────
+// ── Identity + MLS / Marmot (bypass-kernel, direct-WebSocket) ────────────
 //
-// `create-account` + `load-key` only touch identity (`Option<nostr::Keys>`),
-// so they remain available in the default build. The `mls_*` commands drive
-// `MarmotService` (from `nmp-marmot`) and the MDK-backed in-memory store, so
-// they're gated behind the `mls` Cargo feature.
+// `load-key` only touches identity (`Option<nostr::Keys>`) so it stays in
+// the default build. `create-account` publishes kind:0 + kind:10002 to the
+// network, so the dispatch arm + parser arm are gated behind the `mls`
+// feature; the module itself stays compiled (its deps are unconditional)
+// to keep the source tree simple. The `mls_*` commands drive
+// `MarmotService` (from `nmp-marmot`) and the MDK-backed in-memory store,
+// so they're gated behind the `mls` Cargo feature.
 pub mod create_account;
 pub mod load_key;
 #[cfg(feature = "mls")]

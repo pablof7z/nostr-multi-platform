@@ -235,6 +235,7 @@ fn control_chars_rejected() {
 
 // ── MLS / Marmot verbs ──────────────────────────────────────────────
 
+#[cfg(feature = "mls")]
 #[test]
 fn create_account_optional_name() {
     assert_eq!(
