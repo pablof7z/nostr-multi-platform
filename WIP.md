@@ -9,7 +9,8 @@
 
 ## Active
 
-- PR #431 — fix(signer-broker): V-13 + V-14 — mio readiness + auto-reconnect with backoff — CI pending
+- PR #431 — fix(signer-broker): V-13 + V-14 — mio readiness + auto-reconnect with backoff — CI re-running after rebase
+- PR #432 — fix(nip29/ios): move GroupChatMessage.relativeTime to Rust — V-22 — CI pending
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

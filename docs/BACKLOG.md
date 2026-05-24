@@ -298,7 +298,7 @@ the 500-LOC ceiling. All 32 lib tests pass.
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
 (ActorCommand closed enum analysis required — Opus review #10).
 
-### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM]
+### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM] — **DONE** (PR #431)
 
 **Verified:** `crates/nmp-signer-broker/src/relay_client.rs:103` calls
 `set_read_timeout(&mut socket, Duration::from_millis(100))`. The worker loop at
@@ -325,7 +325,7 @@ and the broker then depend on the same shared primitive.
   polling loop.
 - **Deadline:** before v1-A (any user sign-in via bunker hits this path).
 
-### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM]
+### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
 
 **Verified:** `crates/nmp-signer-broker/src/relay_client.rs` exposes only `send`
 and `shutdown`. `broker.rs:114` exposes only `cancel`. Neither file has a
@@ -378,7 +378,7 @@ already exists — this is one new workflow file.
 **Deadline:** before declaring F-02 or F-04 closed. Until this workflow exists, the v1 exit
 criterion for F-02/F-04 is literally unevaluable.
 
-### V-16 · `SearchView.swift` is dead code that ships in the Chirp binary [MEDIUM] — **DONE** (PR #427 pending CI)
+### V-16 · `SearchView.swift` is dead code that ships in the Chirp binary [MEDIUM] — **DONE** (PR #427 merged)
 
 **Verified:** `ios/Chirp/Chirp/Features/SearchView.swift:3` defines `struct SearchView` and is
 compiled into `Chirp.app` (`project.pbxproj:468`). Zero `SearchView()` call sites exist in the
@@ -389,7 +389,7 @@ it is an "open hex pubkey or event id" form (lines 31–47), not a search featur
 **Correct fix:** delete `SearchView.swift` and remove it from `project.pbxproj`, or wire it
 back into HomeFeed's toolbar and rename to `OpenByIdView`.
 
-### V-17 · `MarmotMemberList::snapshot` returns `Vec::new()` — no group-member visibility [HIGH]
+### V-17 · `MarmotMemberList::snapshot` returns `Vec::new()` — no group-member visibility [HIGH] — **DONE** (PR #429 merged)
 
 **Verified:** `apps/marmot/nmp-app-marmot/src/view/views.rs:270` — `MemberListView::snapshot`
 returns `MemberListPayload { members: Vec::new() }` with a comment "Authoritative member set is
