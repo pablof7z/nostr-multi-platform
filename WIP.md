@@ -23,7 +23,8 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
+| 8 phase B (push-model `Pool` API in `nmp-network`) | 🟡 PR open — `Pool` / `RelayHandle` / `PoolEvent` / `PoolConfig` / `PoolSnapshot` shipped as additive surface over existing `relay_worker`. Actor migration (~38 callsites in `nmp-core::actor::relay_mgmt`) deferred to a follow-up PR. |
+| 8 phases C/D/E (`BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
 | 10 (`nmp-app-template`, V-48) | 🟡 PR #467 open — `crates/nmp-app-template/` extracted; Chirp uses it; Chirp `src/` shrank 1003 → 456 LOC |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode; `nmp-ffi` extraction not started |
@@ -34,6 +35,7 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 ## Active
 
 - 2026-05-24 — fix(nmp-core/nmp-nip17): V-08 — bunker (NIP-46) DM send via signer_for_seal capability — PR #466 (rebased onto master)
+- 2026-05-24 — feat(nmp-network): step 8 phase B — push-model `Pool` API. New module `crates/nmp-network/src/pool/` (types.rs + inner.rs + mod.rs + tests.rs ≤ 500 LOC each) defines `Pool` / `RelayHandle` / `PoolEvent` / `PoolConfig` / `PoolSnapshot` / `WireFrame` / `RelayFrame` / `RelayHealth` / `ClosedReason` / `TransportError` per `docs/architecture/crate-boundaries.md` §3.8. Implemented as a thin wrapper around the existing `relay_worker::spawn_relay_worker_with_keepalive` — per-URL state machine, jittered exponential backoff, T120b keepalive FSM preserved bit-for-bit. Generational `RelayHandle` makes stale handles structurally invalid (rejected by `send`/`health`/`close` and dropped by the translator thread). **No "send to all" method exists on `Pool`** — structural answer to NDK #175. The legacy `RelayEvent`/`RelayCommand`/`spawn_relay_worker` entry points stay re-exported so the actor compiles unchanged. The actor migration (~38 callsites in `nmp-core::actor::relay_mgmt`) is the follow-up PR in this lane. 15 new pool tests including end-to-end loopback dial → Opened → outbound text → server-side receive, and inbound text → `PoolEvent::Frame(RelayFrame::Text)`. Branch `step-8-phase-b-pool-api`.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
