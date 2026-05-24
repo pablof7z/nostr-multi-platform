@@ -210,7 +210,7 @@ private struct GroupChatMessageRow: View {
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(relativeTime(message.createdAt))
+                    Text(message.createdAtDisplay)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -252,12 +252,5 @@ private struct GroupChatMessageRow: View {
     /// avatar label. No npub decoding (thin-shell: no protocol logic).
     private var initials: String {
         String(message.pubkey.prefix(2)).uppercased()
-    }
-
-    private func relativeTime(_ unixSecs: UInt64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(unixSecs))
-        let fmt = RelativeDateTimeFormatter()
-        fmt.unitsStyle = .abbreviated
-        return fmt.localizedString(for: date, relativeTo: Date())
     }
 }

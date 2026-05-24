@@ -53,6 +53,7 @@
 //! relay; this projection trusts that pin and matches on `local_id` alone.
 
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
@@ -76,6 +77,19 @@ pub struct GroupChatMessage {
     pub content: String,
     /// Event `created_at` (unix seconds).
     pub created_at: u64,
+    /// Pre-formatted abbreviated relative-time label for `created_at`
+    /// (e.g. `"3s ago"`, `"12m ago"`, `"5h ago"`, `"2d ago"`). Computed in
+    /// Rust at snapshot time via [`format_ago_secs`] so the host shell never
+    /// reaches for `RelativeDateTimeFormatter` or any other date-formatting
+    /// API (V-22 thin-shell fix — aim.md §2: display formatting is
+    /// Rust-owned). Mirrors the V-20 fix on `DmMessage` in `nmp-nip17`.
+    ///
+    /// Computed against the snapshot's wall-clock "now" (read once per
+    /// `snapshot()` call); stored as the empty string in the ingest-time
+    /// `GroupChatMessage` and overwritten on every snapshot so the label is
+    /// always fresh on render — never stale across ticks.
+    #[serde(default)]
+    pub created_at_display: String,
     /// Event kind — one of 9 (chat), 11 (thread).
     pub kind: u32,
 }
@@ -83,15 +97,68 @@ pub struct GroupChatMessage {
 impl GroupChatMessage {
     /// Build a message row from a kernel event. The caller is responsible for
     /// having already checked kind + `h`-tag membership.
+    ///
+    /// `created_at_display` is left empty; the snapshot path (re)computes it
+    /// against the snapshot's wall-clock "now" so the label is always fresh
+    /// (V-22 — mirrors V-20's pattern on `DmMessage`).
     fn from_event(event: &KernelEvent) -> Self {
         Self {
             id: event.id.clone(),
             pubkey: event.author.clone(),
             content: event.content.clone(),
             created_at: event.created_at,
+            created_at_display: String::new(),
             kind: event.kind,
         }
     }
+}
+
+/// Abbreviated "X ago" relative-time label for a Unix-seconds timestamp.
+///
+/// Deliberate micro-duplication of `nmp_nip17::display::format_ago_secs` (and
+/// of the avatar-colour djb2 helper that lives in both `nmp-nip17` and
+/// `nmp-marmot`) — the same pattern documented in those crates: a NIP crate
+/// should not pull another NIP crate in just to share a trivial bucketed-time
+/// formatter. Kept byte-identical so every surface (DMs, group chat) speaks
+/// the same dialect.
+///
+/// `now_secs` is the wall-clock "now" in Unix seconds — injected so the
+/// snapshot path stays deterministic in tests and the helper itself does no
+/// I/O. The projection reads `SystemTime::now()` once per snapshot tick and
+/// threads it through; the helper never reaches for a clock.
+///
+/// When `then_secs == 0` or the message is "in the future" relative to `now`
+/// (clock skew, or a sender stamp slightly ahead of the receiver), the label
+/// is `"now"` — matching the relay-diagnostics convention.
+#[must_use]
+fn format_ago_secs(now_secs: u64, then_secs: u64) -> String {
+    if then_secs == 0 || now_secs <= then_secs {
+        return "now".to_string();
+    }
+    let diff = now_secs - then_secs;
+    if diff < 60 {
+        format!("{diff}s ago")
+    } else if diff < 3_600 {
+        format!("{}m ago", diff / 60)
+    } else if diff < 86_400 {
+        format!("{}h ago", diff / 3_600)
+    } else {
+        format!("{}d ago", diff / 86_400)
+    }
+}
+
+/// Wall-clock "now" in Unix seconds — the time source the production
+/// [`GroupChatProjection::snapshot`] path uses to fill `created_at_display`.
+///
+/// D6: a clock that pre-dates the Unix epoch (impossible on any sane device)
+/// degrades to `0`, which [`format_ago_secs`] renders as `"now"`. Tests pin
+/// the clock via [`GroupChatProjection::snapshot_at`] instead of reaching for
+/// this helper.
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// The serialised read-model a group-chat screen consumes.
@@ -107,7 +174,7 @@ pub struct GroupChatSnapshot {
 impl GroupChatSnapshot {
     /// An empty snapshot — what a freshly-constructed projection (or a poisoned
     /// internal mutex, D6) reports.
-    #[must_use] 
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             messages: Vec::new(),
@@ -140,7 +207,7 @@ pub struct GroupChatProjection {
 impl GroupChatProjection {
     /// Construct a projection scoped to `group_id`. The message store starts
     /// empty; events arrive via [`KernelEventObserver::on_kernel_event`].
-    #[must_use] 
+    #[must_use]
     pub fn new(group_id: GroupId) -> Self {
         Self {
             group_id,
@@ -181,10 +248,30 @@ impl GroupChatProjection {
     /// tick, where a panic would unwind the kernel.
     #[must_use]
     pub fn snapshot(&self) -> GroupChatSnapshot {
+        self.snapshot_at(now_unix_secs())
+    }
+
+    /// Snapshot the message set against a caller-supplied wall-clock "now"
+    /// (Unix seconds). Exposed so tests can pin the clock and assert on the
+    /// `created_at_display` relative-time labels deterministically. Production
+    /// callers should use [`Self::snapshot`], which reads `SystemTime::now()`.
+    #[must_use]
+    pub fn snapshot_at(&self, now_secs: u64) -> GroupChatSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return GroupChatSnapshot::empty();
         };
-        let mut ordered: Vec<GroupChatMessage> = messages.values().cloned().collect();
+        // Each message is cloned out of the bounded store; the
+        // `created_at_display` field is (re)computed here against `now_secs`
+        // so it never goes stale across ticks (V-22 thin-shell fix — host
+        // renders the label verbatim).
+        let mut ordered: Vec<GroupChatMessage> = messages
+            .values()
+            .cloned()
+            .map(|mut msg| {
+                msg.created_at_display = format_ago_secs(now_secs, msg.created_at);
+                msg
+            })
+            .collect();
         // Newest-first. Tie-break on id (descending) so the order is total and
         // stable across ticks even when two events share a `created_at`.
         ordered.sort_by(|a, b| {
@@ -405,5 +492,109 @@ mod tests {
     fn group_id_accessor_returns_construction_value() {
         let proj = GroupChatProjection::new(group());
         assert_eq!(proj.group_id(), &group());
+    }
+
+    // ── V-22: created_at_display relative-time labels ────────────────────
+
+    #[test]
+    fn format_ago_secs_zero_then_is_now() {
+        assert_eq!(format_ago_secs(1_000_000_000, 0), "now");
+    }
+
+    #[test]
+    fn format_ago_secs_future_then_is_now() {
+        assert_eq!(format_ago_secs(100, 200), "now");
+        assert_eq!(format_ago_secs(100, 100), "now");
+    }
+
+    #[test]
+    fn format_ago_secs_seconds_bucket() {
+        assert_eq!(format_ago_secs(105, 100), "5s ago");
+        assert_eq!(format_ago_secs(159, 100), "59s ago");
+    }
+
+    #[test]
+    fn format_ago_secs_minutes_bucket() {
+        assert_eq!(format_ago_secs(160, 100), "1m ago");
+        assert_eq!(format_ago_secs(100 + 59 * 60, 100), "59m ago");
+    }
+
+    #[test]
+    fn format_ago_secs_hours_bucket() {
+        assert_eq!(format_ago_secs(100 + 3_600, 100), "1h ago");
+        assert_eq!(format_ago_secs(100 + 23 * 3_600, 100), "23h ago");
+    }
+
+    #[test]
+    fn format_ago_secs_days_bucket() {
+        assert_eq!(format_ago_secs(100 + 86_400, 100), "1d ago");
+        assert_eq!(format_ago_secs(100 + 7 * 86_400, 100), "7d ago");
+    }
+
+    #[test]
+    fn snapshot_at_populates_created_at_display() {
+        // Pin the clock so the bucket assertions are deterministic.
+        let proj = GroupChatProjection::new(group());
+        // Three events at known offsets from `now = 10_000`.
+        proj.on_kernel_event(&event("seconds", KIND_CHAT_MESSAGE, 10_000 - 5, h_tag("rust-nostr")));
+        proj.on_kernel_event(&event("minutes", KIND_CHAT_MESSAGE, 10_000 - 120, h_tag("rust-nostr")));
+        proj.on_kernel_event(&event("hours", KIND_CHAT_MESSAGE, 10_000 - 7_200, h_tag("rust-nostr")));
+
+        let snap = proj.snapshot_at(10_000);
+        // Newest-first: seconds (now-5), minutes (now-120), hours (now-7200).
+        assert_eq!(snap.messages[0].id, "seconds");
+        assert_eq!(snap.messages[0].created_at_display, "5s ago");
+        assert_eq!(snap.messages[1].id, "minutes");
+        assert_eq!(snap.messages[1].created_at_display, "2m ago");
+        assert_eq!(snap.messages[2].id, "hours");
+        assert_eq!(snap.messages[2].created_at_display, "2h ago");
+    }
+
+    #[test]
+    fn snapshot_at_refreshes_created_at_display_across_ticks() {
+        // The label must be (re)computed every tick — never stale.
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 1_000, h_tag("rust-nostr")));
+
+        // Tick at `now = 1_005` → "5s ago".
+        let snap_a = proj.snapshot_at(1_005);
+        assert_eq!(snap_a.messages[0].created_at_display, "5s ago");
+
+        // Tick at `now = 1_065` → "1m ago" (same underlying message).
+        let snap_b = proj.snapshot_at(1_065);
+        assert_eq!(snap_b.messages[0].created_at_display, "1m ago");
+    }
+
+    #[test]
+    fn ingest_leaves_created_at_display_empty() {
+        // The ingest path must NOT pre-compute the label — only the snapshot
+        // path may, so the label cannot leak a stale value if a code path
+        // ever reads the bounded store directly.
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+
+        // Drop into the internal store directly to assert the ingest-time
+        // shape. (Tests live in-module so this private field is reachable.)
+        let messages = proj.messages.lock().expect("lock");
+        let stored = messages
+            .values()
+            .next()
+            .expect("one message stored");
+        assert_eq!(stored.created_at_display, "", "ingest must not populate the label");
+    }
+
+    #[test]
+    fn snapshot_json_includes_created_at_display() {
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+
+        let json = proj.snapshot_json();
+        let msg = &json["messages"][0];
+        // Even with the production `snapshot()` clock the field is present
+        // and non-empty — for any sane host clock it renders as `Xd ago`.
+        let display = msg["created_at_display"]
+            .as_str()
+            .expect("created_at_display present");
+        assert!(!display.is_empty(), "snapshot_json must populate the label");
     }
 }

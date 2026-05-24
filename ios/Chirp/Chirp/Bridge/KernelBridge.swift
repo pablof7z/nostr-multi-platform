@@ -1004,14 +1004,21 @@ struct SettingsHubSummary: Decodable, Equatable {
 /// (comment). `id` is the event id (hex) and the stable list identity.
 ///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// (inherited by every nested type) maps the kernel's `"created_at"` to
-/// `createdAt` automatically. An explicit enum would have to spell the
-/// post-transform name and is pure surface area — omitted deliberately.
+/// (inherited by every nested type) maps the kernel's `"created_at"` /
+/// `"created_at_display"` to `createdAt` / `createdAtDisplay` automatically.
+/// An explicit enum would have to spell the post-transform name and is pure
+/// surface area — omitted deliberately.
 struct GroupChatMessage: Decodable, Identifiable, Equatable {
     let id: String
     let pubkey: String
     let content: String
     let createdAt: UInt64
+    /// Pre-formatted abbreviated relative-time label (e.g. `"3s ago"`,
+    /// `"12m ago"`, `"5h ago"`, `"2d ago"`) computed by the Rust NIP-29
+    /// group-chat projection at every snapshot tick (V-22 thin-shell fix —
+    /// aim.md §2: display formatting is Rust-owned). The view binds this
+    /// directly and never calls `RelativeDateTimeFormatter`.
+    let createdAtDisplay: String
     let kind: UInt32
 }
 
