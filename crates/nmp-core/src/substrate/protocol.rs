@@ -74,8 +74,15 @@ impl<'a> ProtocolCommandContext<'a> {
 
     /// Re-enter the actor loop with `cmd`. The actor processes it in a
     /// subsequent dispatch cycle (same thread, same channel).
+    ///
+    /// D15: the closure is host-supplied (constructed by the dispatch
+    /// arm but conceptually owned by the kernel boundary), so the
+    /// invocation is wrapped in [`catch_unwind`] to keep a panicking
+    /// follow-up from unwinding the calling `ProtocolCommand`'s
+    /// `run()` frame.
     pub fn send(&self, cmd: ActorCommand) {
-        (self.send)(cmd)
+        let send = self.send;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| send(cmd)));
     }
 }
 
