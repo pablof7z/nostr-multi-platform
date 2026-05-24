@@ -28,8 +28,9 @@
 //! - Planner-side: mixed-purpose, holds NIP-65 *and* NIP-17 mailbox snapshots
 //!   together so the subscription compiler can route to inbox / outbox /
 //!   DM-inbox relays in one pass.
-//! - Substrate-side: NIP-65-only; the lean dependency the substrate-grade
-//!   `Nip65WriteSetRouter` requires to resolve write-relays for an author.
+//! - Substrate-side: NIP-65-only; the lean dependency
+//!   `nmp_router::GenericOutboxRouter` requires to resolve write-relays
+//!   for an author.
 //!
 //! Unifying them is out of scope for the extraction PR — they are reached
 //! through fully-qualified module paths (`nmp_core::substrate::MailboxCache`

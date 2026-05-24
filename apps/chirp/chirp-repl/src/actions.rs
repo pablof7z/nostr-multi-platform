@@ -216,7 +216,8 @@ fn unsupported(command: &str) -> Result<()> {
 /// V-51 phase 4 — dump the kernel's routing-trace projection. Reads through
 /// `NmpApp::routing_trace`, which returns `None` until the actor has built
 /// the kernel; once `Some`, the projection is the live ring buffer the
-/// default `Nip65WriteSetRouter` writes into on every routing decision.
+/// production `nmp_router::GenericOutboxRouter` (installed by chirp's
+/// `set_routing_substrate` factory) writes into on every routing decision.
 fn routing_trace(session: &Session) {
     let projection = session.app.routing_trace();
     render::routing_trace(projection.as_ref());

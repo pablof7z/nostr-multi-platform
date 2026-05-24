@@ -109,8 +109,9 @@ pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 // V-51 phase 4 (validation harness) — the projection's three public types
 // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
-// is the bounded ring-buffer the kernel auto-binds onto the default
-// `Nip65WriteSetRouter` at composition; `PublishTraceEntry` /
+// is the bounded ring-buffer the kernel hands to production composition
+// (via `routing_trace()` → `set_routing_substrate` factory →
+// `GenericOutboxRouter::with_trace_observer`); `PublishTraceEntry` /
 // `SubscriptionTraceEntry` are the entry shapes the `snapshot_*` accessors
 // return. See `kernel::routing_trace` module doc.
 pub use kernel::routing_trace::{

@@ -9,8 +9,8 @@
 //!    [`nmp_router::GenericOutboxRouter`] + [`nmp_router::InMemoryMailboxCache`].
 //! 2. Wires a fresh [`nmp_core::RoutingTraceProjection`] onto the router
 //!    via `with_trace_observer` — exactly the same projection type the
-//!    kernel auto-binds onto its default `Nip65WriteSetRouter` and what an
-//!    app would thread through a `Kernel::set_routing` injection.
+//!    kernel creates and threads through production composition's
+//!    `set_routing_substrate` factory (`Kernel::set_routing` injection).
 //! 3. Fetches the real, signed kind:10002 for **pablof7z** (`fa984bd7…`)
 //!    from a small set of public relays.
 //! 4. Feeds the live kind:10002 through [`nmp_router::Kind10002Parser`] to

@@ -140,11 +140,11 @@ pub fn register_defaults(app: &mut NmpApp) {
     // ── Routing substrate (V-51 phase 5) ────────────────────────────────
     //
     // Install the production substrate-routing factory. Without this swap
-    // the kernel keeps its in-crate `Nip65WriteSetRouter` +
-    // `DefaultInMemoryMailboxCache` defaults — functionally equivalent
-    // for lanes 1+7 but architecturally wrong: routing is a Layer-2
-    // concern, `nmp-core` is Layer 3 substrate. The injected
-    // `GenericOutboxRouter` carries the documented routing lanes
+    // the kernel keeps its in-crate `EmptyOutboxRouter` (substrate-honest
+    // debt B, 2026-05-24) — every routing decision returns `Unroutable`.
+    // `nmp-core` (Layer 3) cannot depend on `nmp-router` (Layer 2), so the
+    // production router is injected through this factory slot. The
+    // injected `GenericOutboxRouter` carries the documented routing lanes
     // (1+7 today; 2/3/4/5/6 are `TODO §3.1 lane X` insertion points).
     //
     // The supplied `RoutingTraceObserver` is threaded through

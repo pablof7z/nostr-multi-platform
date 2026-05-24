@@ -204,8 +204,10 @@ pub(crate) fn new_routing_trace_slot() -> RoutingTraceSlot {
 /// the supplied observer threaded through its `with_trace_observer`
 /// builder) and `nmp_router::InMemoryMailboxCache`. `None` (the default,
 /// and the state every test build sits in) leaves the kernel's
-/// `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults in place
-/// — behaviour-neutral.
+/// `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache` defaults
+/// in place (substrate-honest debt B, 2026-05-24). A production session
+/// that fails to install a routing factory will never route — the kernel
+/// surfaces this as `RoutingError::Unroutable` from every router call.
 ///
 /// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke the
 /// factory against the rebuilt kernel's fresh projection clone, mirroring
@@ -384,8 +386,9 @@ pub struct NmpApp {
     /// reads it after kernel construction (and again after `Reset`) and
     /// invokes [`crate::kernel::Kernel::set_routing`] with the produced
     /// `(Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)` pair. `None` (the
-    /// default) leaves the kernel's `Nip65WriteSetRouter` +
-    /// `DefaultInMemoryMailboxCache` defaults in place.
+    /// default) leaves the kernel's `EmptyOutboxRouter` + (test-only)
+    /// `TestInMemoryMailboxCache` defaults in place (substrate-honest
+    /// debt B, 2026-05-24).
     routing_substrate: RoutingSubstrateSlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
@@ -1482,10 +1485,12 @@ impl NmpApp {
     /// [`crate::RoutingTraceProjection::snapshot_publishes`] /
     /// `snapshot_subscriptions` on the returned `Arc`. The projection is
     /// the consumer side of the V-51 substrate `RoutingTraceObserver` seam;
-    /// the kernel auto-binds the projection onto its default
-    /// `Nip65WriteSetRouter` (and the production injection
-    /// `nmp_router::GenericOutboxRouter`, when threaded through with the
-    /// same projection via `with_trace_observer`).
+    /// the kernel hands the projection to the production router
+    /// (`nmp_router::GenericOutboxRouter::with_trace_observer`) via the
+    /// `RoutingSubstrateSlot` factory invoked at actor-startup time.
+    /// The default `EmptyOutboxRouter` never fires the observer, so a
+    /// session that never installs a real router will see an empty
+    /// projection (substrate-honest debt B, 2026-05-24).
     #[must_use]
     pub fn routing_trace(
         &self,
