@@ -33,9 +33,7 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 
 ## Active
 
-- 2026-05-24 — feat(nmp-app-template/nmp-app-chirp): step 10 — `nmp-app-template` crate (V-48) — PR #467 open. One `register_defaults(&mut NmpApp)` call wires NIP-02/17/57/65 actions + kind:10050 ingest parser + `GenericOutboxRouter` + `InMemoryMailboxCache` routing substrate + D2 coverage hook + DM-inbox / zap-receipts runtimes. Chirp refactored to use it; Chirp `src/` shrank 1003 → 456 LOC (547 LOC reduction, 55% smaller). Branch `step-10-nmp-app-template`.
-- 2026-05-24 — refactor(nmp-core/nmp-router/nmp-app-chirp): "make substrate honest" — router becomes decision authority (not observe-only), delete `nmp-core::substrate::default_routing.rs`, eliminate `ProtocolCommandContext` 11-accessor balloon (capability traits), fix 14 `expect("RwLock poisoned")` panics. Branch `worktree-agent-ac01eccb4cdd13a99`.
-- 2026-05-24 — docs(plan): reconcile WIP.md / BACKLOG.md / plan.md / crate-boundaries.md after today's 16 merges — branch `worktree-docs-reconcile-plan-files` (this branch)
+- 2026-05-24 — fix(nmp-core/nmp-nip17): V-08 — bunker (NIP-46) DM send via signer_for_seal capability — PR #466 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

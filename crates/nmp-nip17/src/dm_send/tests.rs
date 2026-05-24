@@ -13,6 +13,7 @@ use nmp_core::substrate::{
     UnsignedEvent,
 };
 use nmp_core::ActorCommand;
+use nmp_nip59::SignerForSeal;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -41,6 +42,13 @@ struct Recorder {
 
 /// Drive a command body through a fully-wired
 /// [`ProtocolCommandContext`] and return the recorded side effects.
+///
+/// V-08 — the DM send path now resolves the signer via
+/// [`ProtocolCommandContext::signer_for_seal`]. Tests with `Some(keys)`
+/// install a closure that returns the `nostr::Keys` blanket impl as the
+/// `SignerForSeal`; `None` mirrors the no-active-account path. End-to-
+/// end remote-signer (NIP-46 bunker) coverage lives in
+/// `nmp_core::actor::commands::remote_signer_tests`.
 fn run_cmd(
     cmd: SendGiftWrappedDmCommand,
     keys: Option<nostr::Keys>,
@@ -55,12 +63,16 @@ fn run_cmd(
         let send = |c: ActorCommand| sent_ref.borrow_mut().push(c);
         let toast_fn = |t: Option<String>| toast_ref.borrow_mut().push(t);
         let fail_fn = |cid: String, err: String| fail_ref.borrow_mut().push((cid, err));
+        let signer_arc: Option<Arc<dyn SignerForSeal>> =
+            keys.as_ref().map(|k| Arc::new(k.clone()) as Arc<dyn SignerForSeal>);
+        let signer_fn = move || signer_arc.clone();
         let mut ctx = ProtocolCommandContext::with_send_only(&send)
             .with_nip17_local_keys(keys)
             .with_dm_inbox_relays(dm_lookup)
             .with_now_secs(now_secs)
             .with_set_last_error_toast(&toast_fn)
-            .with_record_action_failure(&fail_fn);
+            .with_record_action_failure(&fail_fn)
+            .with_signer_for_seal(&signer_fn);
         Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
     }
     recorder
@@ -85,7 +97,7 @@ fn no_active_account_toasts_and_records_failure() {
     assert!(
         toasts[0]
             .as_deref()
-            .map(|s| s.contains("no active local account"))
+            .map(|s| s.contains("no active account"))
             .unwrap_or(false),
         "toast carries the no-account reason: {:?}",
         toasts[0]

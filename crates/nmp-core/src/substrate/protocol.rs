@@ -39,6 +39,7 @@
 
 use std::fmt;
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 
 use crate::ActorCommand;
 
@@ -126,6 +127,16 @@ pub struct ProtocolCommandContext<'a> {
     dm_inbox_relays: &'a dyn crate::substrate::DmInboxRelayLookup,
     set_last_error_toast: &'a dyn Fn(Option<String>),
     record_action_failure: &'a dyn Fn(String, String),
+    /// V-08 (bunker DM send) — resolve a `SignerForSeal` for the active
+    /// account. Returns `Some(Arc<dyn SignerForSeal>)` for **both** local
+    /// (nsec) and remote (NIP-46 bunker) accounts — the dispatch arm
+    /// routes through `IdentityRuntime::active_signer_for_seal`, which
+    /// hands back `Arc<Keys>` for local accounts and a
+    /// `RemoteSignerForSeal` adapter for remote handles. `None` when no
+    /// account is active OR a remote signer reports a malformed pubkey
+    /// (graceful-degrade). Replaces the V-39 local-only
+    /// `nip17_local_keys` snapshot on the NIP-17 DM send path.
+    signer_for_seal: &'a dyn Fn() -> Option<Arc<dyn nmp_nip59::SignerForSeal>>,
     /// Snapshot override for [`Self::now_secs`]. When `Some`, the accessor
     /// returns it verbatim and skips the `now_secs` closure. The V-39+V-40
     /// `with_now_secs(u64)` builder writes this slot so tests can drive
@@ -159,6 +170,7 @@ impl<'a> ProtocolCommandContext<'a> {
         dm_inbox_relays: &'a dyn crate::substrate::DmInboxRelayLookup,
         set_last_error_toast: &'a dyn Fn(Option<String>),
         record_action_failure: &'a dyn Fn(String, String),
+        signer_for_seal: &'a dyn Fn() -> Option<Arc<dyn nmp_nip59::SignerForSeal>>,
     ) -> Self {
         Self {
             send,
@@ -172,6 +184,7 @@ impl<'a> ProtocolCommandContext<'a> {
             dm_inbox_relays,
             set_last_error_toast,
             record_action_failure,
+            signer_for_seal,
             now_secs_snapshot: None,
         }
     }
@@ -201,6 +214,8 @@ impl<'a> ProtocolCommandContext<'a> {
         const STAGE_REQ: &dyn Fn(&str) = &(|_: &str| ());
         const TOAST: &dyn Fn(Option<String>) = &(|_: Option<String>| ());
         const FAIL: &dyn Fn(String, String) = &(|_: String, _: String| ());
+        const SIGNER_FOR_SEAL: &dyn Fn() -> Option<Arc<dyn nmp_nip59::SignerForSeal>> =
+            &(|| None);
         static EMPTY: crate::substrate::EmptyDmInboxRelayLookup =
             crate::substrate::EmptyDmInboxRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<ActorCommand>();
@@ -216,6 +231,7 @@ impl<'a> ProtocolCommandContext<'a> {
             dm_inbox_relays: &EMPTY,
             set_last_error_toast: TOAST,
             record_action_failure: FAIL,
+            signer_for_seal: SIGNER_FOR_SEAL,
             now_secs_snapshot: None,
         }
     }
@@ -236,6 +252,8 @@ impl<'a> ProtocolCommandContext<'a> {
         const STAGE_REQ: &dyn Fn(&str) = &(|_: &str| ());
         const TOAST: &dyn Fn(Option<String>) = &(|_: Option<String>| ());
         const FAIL: &dyn Fn(String, String) = &(|_: String, _: String| ());
+        const SIGNER_FOR_SEAL: &dyn Fn() -> Option<Arc<dyn nmp_nip59::SignerForSeal>> =
+            &(|| None);
         static EMPTY: crate::substrate::EmptyDmInboxRelayLookup =
             crate::substrate::EmptyDmInboxRelayLookup;
         Self {
@@ -250,6 +268,7 @@ impl<'a> ProtocolCommandContext<'a> {
             dm_inbox_relays: &EMPTY,
             set_last_error_toast: TOAST,
             record_action_failure: FAIL,
+            signer_for_seal: SIGNER_FOR_SEAL,
             now_secs_snapshot: None,
         }
     }
@@ -453,6 +472,52 @@ impl<'a> ProtocolCommandContext<'a> {
             f(correlation_id, error);
         }));
     }
+
+    /// Builder — install a [`SignerForSeal`][nmp_nip59::SignerForSeal]
+    /// resolver. The DM send path uses this on every account flavour
+    /// (local nsec via the blanket impl on `nostr::Keys`; NIP-46 bunker
+    /// via the `RemoteSignerForSeal` adapter the actor wires through
+    /// `IdentityRuntime::active_signer_for_seal`). Tests stage one of
+    /// these to drive the bunker path through `with_send_only`; the
+    /// production dispatch arm passes the closure positionally to
+    /// [`Self::new`].
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn with_signer_for_seal(
+        mut self,
+        f: &'a dyn Fn() -> Option<Arc<dyn nmp_nip59::SignerForSeal>>,
+    ) -> Self {
+        self.signer_for_seal = f;
+        self
+    }
+
+    /// V-08 (bunker DM send) — resolve a `SignerForSeal` for the active
+    /// account. Returns:
+    ///
+    /// - `Some(Arc<dyn SignerForSeal>)` for a **local** account — the
+    ///   blanket impl on `nostr::Keys` resolves every chain step
+    ///   synchronously, so the seal runs on the actor thread.
+    /// - `Some(Arc<dyn SignerForSeal>)` for a **remote (NIP-46 bunker)**
+    ///   account — `RemoteSignerForSeal` adapts the active
+    ///   `RemoteSignerHandle`; `gift_wrap_with_signer` spawns a per-
+    ///   invocation driver thread for the `Pending` chain so the actor
+    ///   itself does not block on bunker RPCs.
+    /// - `None` when no account is active OR a remote signer reports a
+    ///   malformed pubkey (graceful-degrade — the DM send path surfaces
+    ///   a toast).
+    ///
+    /// Wrapped in `catch_unwind` for D15 (panicking accessor falls back
+    /// to `None`, matching the genuinely-absent-signer branch).
+    ///
+    /// This replaces the V-39 [`Self::nip17_local_keys`] read on the
+    /// NIP-17 DM send path: the legacy accessor returned `None` for
+    /// bunker accounts and is kept only so existing callers (none on the
+    /// seal path after V-08) compile unchanged.
+    #[must_use]
+    pub fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+        let f = self.signer_for_seal;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f())).unwrap_or(None)
+    }
 }
 
 /// Open-seam command dispatched as [`ActorCommand::Protocol`].
@@ -580,6 +645,8 @@ mod tests {
         assert!(ctx.dm_inbox_relays("anything").is_none());
         ctx.set_last_error_toast(Some("toast".to_string()));
         ctx.record_action_failure("cid".to_string(), "err".to_string());
+        // V-08 surface default — no active account ⇒ no signer.
+        assert!(ctx.signer_for_seal().is_none());
     }
 
     // The full constructor threads its closures through unchanged — the
@@ -607,6 +674,11 @@ mod tests {
         };
         let dm_empty = crate::substrate::EmptyDmInboxRelayLookup;
         let (tx, rx) = mpsc::channel::<ActorCommand>();
+        // V-08: the signer-for-seal closure resolves to the active account's
+        // `SignerForSeal`; the no-active-account branch returns `None`
+        // (covered here so the positional shape stays exercised). End-to-end
+        // bunker coverage lives in the `remote_signer_tests` module.
+        let signer_for_seal = || None::<Arc<dyn nmp_nip59::SignerForSeal>>;
 
         let ctx = ProtocolCommandContext::new(
             &send,
@@ -620,6 +692,7 @@ mod tests {
             &dm_empty,
             &toast,
             &fail,
+            &signer_for_seal,
         );
 
         assert_eq!(ctx.now_secs(), 123_456);
@@ -639,6 +712,8 @@ mod tests {
         assert!(ctx.dm_inbox_relays("anyone").is_none());
         ctx.set_last_error_toast(Some("hello".to_string()));
         ctx.record_action_failure("cid-z".to_string(), "boom".to_string());
+        // V-08 — the signer-for-seal closure reaches its field too.
+        assert!(ctx.signer_for_seal().is_none());
         assert_eq!(*toast_seen.lock().unwrap(), vec![Some("hello".to_string())]);
         assert_eq!(
             *fail_seen.lock().unwrap(),
@@ -683,14 +758,23 @@ mod tests {
             &["wss://dm.example"],
         );
         let keys = nostr::Keys::generate();
+        let seal_keys = keys.clone();
+        let signer_for_seal = move || {
+            Some(Arc::new(seal_keys.clone()) as Arc<dyn nmp_nip59::SignerForSeal>)
+        };
         let ctx = ProtocolCommandContext::with_send_only(&send)
             .with_nip17_local_keys(Some(keys.clone()))
             .with_dm_inbox_relays(&dm)
             .with_now_secs(987_654)
             .with_set_last_error_toast(&toast)
-            .with_record_action_failure(&fail);
+            .with_record_action_failure(&fail)
+            .with_signer_for_seal(&signer_for_seal);
         assert_eq!(ctx.now_secs(), 987_654);
         assert!(ctx.nip17_local_keys().is_some());
+        assert!(
+            ctx.signer_for_seal().is_some(),
+            "with_signer_for_seal overrides the noop default"
+        );
         assert_eq!(
             ctx.dm_inbox_relays("pk1").as_deref(),
             Some(&["wss://dm.example".to_string()][..])
