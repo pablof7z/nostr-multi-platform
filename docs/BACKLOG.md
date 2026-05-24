@@ -684,6 +684,343 @@ infrastructure.
 
 ---
 
+### V-37 · NIP-47 NWC wallet stack wrongly in `nmp-core` [HIGH · post-v1 · staged fix required]
+
+**Verified:** the entire NIP-47 Nostr Wallet Connect runtime lives inside
+`nmp-core`, with an inverted dependency direction that no other NIP-crate in
+the workspace exhibits:
+
+- `crates/nmp-core/Cargo.toml:90` — `nmp-nwc = { path = "../nmp-nwc", optional = true }`.
+  Every other NIP crate (`nmp-nip02`, `nmp-nip17`, `nmp-nip57`, `nmp-nip65`) goes
+  `nip-crate → nmp-core`; only NWC inverts this so `nmp-core → nmp-nwc`. The
+  module docstring at `actor/commands/wallet.rs:6` says the quiet part out
+  loud: *"D0: nmp-core may depend on nmp-nwc (the protocol crate). The
+  inverse is not true."* That is exactly the inversion the substrate doctrine
+  forbids — the kernel must be the substrate every protocol crate adapts to,
+  never a consumer of protocol semantics.
+- `crates/nmp-core/src/actor/commands/wallet.rs` (716 LOC) — `WalletRuntime`,
+  `WalletConnection`, `WalletStatus`, `WalletStatusSlot`, the kind:23194
+  builder, the kind:23195 response handler, NWC URI parse, NIP-04 encrypt
+  bridge. Uses `nmp_nwc::{decode, parse, types, NwcMethod, crypto, build}`
+  throughout.
+- `crates/nmp-core/src/wallet/mod.rs` + `wallet/action.rs` — `WalletAction`
+  enum + `WalletPayInvoiceModule` `ActionModule` impl, registered in
+  `kernel/action_registry.rs:347`. Mounted at `lib.rs:45` as a top-level
+  `pub mod wallet` of `nmp-core`.
+- `crates/nmp-core/src/actor/mod.rs:540,546,569` — three protocol-noun
+  variants on the closed `ActorCommand` enum (`WalletConnect`,
+  `WalletDisconnect`, `WalletPayInvoice`) gated on `feature = "wallet"`.
+- `crates/nmp-core/src/actor/dispatch.rs:737,749` — dispatch arms calling
+  the wallet runtime helpers.
+- `crates/nmp-core/src/ffi/wallet.rs` — three bespoke C-ABI symbols
+  (`nmp_app_wallet_connect`, `nmp_app_wallet_disconnect`,
+  `nmp_app_wallet_pay_invoice`).
+
+**Correct destination:** a new `crates/nmp-nip47/` (or `crates/nmp-nwc-runtime/`)
+that depends on BOTH `nmp-core` (for `ActorCommand`/`ActionModule`/`NmpApp`)
+and `nmp-nwc` (for `NwcUri`/`NwcMethod`/`decode`/`build`/`crypto`). Direction
+flips from `nmp-core → nmp-nwc` (today) to `<new crate> → nmp-core` and
+`<new crate> → nmp-nwc` (post-fix). The Theme A discriminator in PD-039
+(`docs/architecture-audit/ffi-deprecation-calendar.md`) classifies wallet
+connection lifecycle (`wallet_connect` / `wallet_disconnect`) as permanent
+bespoke FFI — those C symbols stay byte-stable, only their bodies move to a
+thin shim that forwards into the new crate.
+
+**Blast radius:** ~720 LOC moves out of `nmp-core` (`actor/commands/wallet.rs`
++ `wallet/`); 3 ActorCommand variants delete; 3 FFI symbols re-implement as
+thin shims; the `wallet` Cargo feature deletes from `nmp-core/Cargo.toml`;
+`kernel/action_registry.rs:347` loses one `register::<WalletPayInvoiceModule>`
+call (the new crate exposes a `register_actions(app)` helper mirroring
+`nmp-nip57` / `nmp-nip02` / `nmp-nip17`); iOS `KernelBridge.swift` callers
+unchanged because the C-ABI surface stays byte-stable per the V3 / PD-039
+contract.
+
+**Migration difficulty: HARD.** Three substrate seams must land first:
+
+1. **Open `ActorCommand` for protocol crates.** Today the enum is closed and
+   lives in `nmp-core`; every variant is hard-coded into `actor/dispatch.rs`.
+   A NIP-47 crate cannot add `WalletConnect` / `WalletDisconnect` /
+   `WalletPayInvoice` without modifying `nmp-core`. The seam Opus direction
+   review #10 already named — a generic `dyn ActorCommand` / `ActionExecutor`
+   trait that lets external crates register command handlers — is the
+   prerequisite. Until that seam exists, this violation cannot be cleanly
+   fixed; an interim cheat (leave the three variants in `nmp-core`, move only
+   the helpers) would just relocate the smell.
+2. **Relay-text handler plug-in seam.** `actor/dispatch.rs` routes inbound
+   text on the NWC relay (`RelayRole::Wallet`) to `wallet::handle_nwc_text`.
+   The new crate needs a way to register "I own messages on this role" with
+   `nmp-core` without `nmp-core` naming `nmp-nip47`.
+3. **Wallet-status `Arc<Mutex<_>>` slot wiring.** `NmpApp` holds the
+   `WalletStatusSlot` and registers the `"wallet"` snapshot projection.
+   Today that slot is constructed inside `nmp-core` (`new_wallet_status_slot`,
+   `actor/commands/mod.rs:187`). The seam must let the new crate own slot
+   construction and projection registration via `NmpApp` extension points
+   (mirroring how `nmp-nip17` registers its DM-inbox projection).
+
+**Staged fix plan:**
+- Stage 1 (substrate work — gates V-38 / V-39 / V-40 too): land the
+  open-ActorCommand / external-command-handler seam from Opus direction
+  review #10. This is the same prerequisite the DM / zap violations below
+  depend on; do it once.
+- Stage 2: create `crates/nmp-nip47/`, depend on `nmp-core` + `nmp-nwc`.
+  Move `actor/commands/wallet.rs`, `wallet/mod.rs`, `wallet/action.rs`,
+  `kernel/action_registry.rs:347`'s `register` call (replaced by
+  `nmp_nip47::register_actions(app)`), and the relay-text handler. Delete
+  the three `ActorCommand::Wallet*` variants and replace with the generic
+  command-handler trait from Stage 1.
+- Stage 3: rewrite `ffi/wallet.rs` bodies as thin shims that forward into
+  the new crate; keep the three `nmp_app_wallet_*` C-ABI symbols byte-stable
+  per PD-039 Theme A. Delete `feature = "wallet"` from `nmp-core/Cargo.toml`
+  along with the `nmp-nwc` optional dep.
+- Stage 4: delete the dead-end module path. `nmp-core` no longer mentions
+  NIP-47, NWC, or wallet anywhere; `grep -r "nmp_nwc\|wallet" crates/nmp-core/`
+  returns zero hits outside historical comments.
+
+**Deadline:** post-v1. PD-039 classifies wallet lifecycle as Theme A
+"v1-B batch"; the open-ActorCommand seam is the prerequisite. V-37 closes
+when both land.
+
+### V-38 · NIP-17 DM send handler + `SendGiftWrappedDm` `ActorCommand` variant in `nmp-core` [HIGH · post-v1 · staged fix required]
+
+**Verified:** the NIP-17 gift-wrap send orchestration lives entirely in
+`nmp-core`, even though a dedicated `nmp-nip17` crate exists and already
+depends on `nmp-core` (`crates/nmp-nip17/Cargo.toml:15`):
+
+- `crates/nmp-core/src/actor/commands/dm.rs` (457 LOC) — `send_gift_wrapped_dm`
+  resolves the active `SignerForSeal`, calls `nmp_nip59::gift_wrap_with_signer`
+  twice (recipient + self-copy), and dispatches each kind:1059 envelope
+  through `publish_signed_event`. The handler's entire purpose — gating
+  kind:1059 publish on the receivers' kind:10050 DM-inbox relays
+  (`required_dm_relays` → `DmRelayNotReady`) — is a literal NIP-17 §2 wire
+  rule, not a substrate concern.
+- `crates/nmp-core/src/actor/mod.rs:460` — `ActorCommand::SendGiftWrappedDm`
+  variant carries `recipient_pubkey: String` and an `UnsignedEvent` rumor
+  built by `nmp_nip17::build_dm_rumor`. Pure NIP-17 protocol noun on the
+  kernel's command enum.
+- `crates/nmp-core/src/actor/dispatch.rs:568` — dispatch arm.
+- `crates/nmp-core/src/actor/commands/mod.rs:149` — `pub(super) use dm::send_gift_wrapped_dm`.
+
+The send handler does NOT belong in the substrate kernel. The kernel's job
+is "publish a signed event"; NIP-17's job is "the kind:14 chat rumor must be
+double-wrapped and pinned to kind:10050 relays." The latter is exactly the
+class of logic `nmp-nip17` already owns (it owns the DM inbox projection,
+the build helper, the action namespace — but not, today, the send-side
+handler).
+
+**Correct destination:** `crates/nmp-nip17/` already exists with the
+right dep direction (`nmp-nip17 → nmp-core`). `send_gift_wrapped_dm` and
+the helper types (`DmRelayNotReady`, `required_dm_relays`,
+`build_nostr_rumor`, `nostr_event_to_raw`) move to a new
+`crates/nmp-nip17/src/dm_send.rs` (parallel to the existing `dm_runtime.rs`
+and `inbox.rs`). The NIP-17 crate exposes the send entry point as an
+`ActionModule` (`nmp.nip17.send`) — same pattern `nmp_nip57::ZapAction` and
+`nmp_nip02::FollowModule` follow. The `ActorCommand::SendGiftWrappedDm`
+variant deletes; the new module's `execute` enqueues via the generic
+external-command seam from V-37 Stage 1.
+
+**Blast radius:** ~460 LOC moves out of `nmp-core`; 1 ActorCommand variant
+deletes; `actor/dispatch.rs:568` dispatch arm deletes; one `register::<>`
+call lands in `nmp_nip17::register_actions(app)` (callsite already exists —
+the existing chirp registration line `nmp_nip17::register_actions(app)` in
+`nmp-app-chirp` picks it up for free). FFI surface: there is no bespoke
+`nmp_app_dm_send` symbol today — every DM send already routes through
+`nmp_app_dispatch_action` (per PD-039 §5 — `nmp.nip17.send` is already
+the canonical namespace), so the C-ABI is unchanged.
+
+**Migration difficulty: MEDIUM-HARD.** Two seams must land before this is
+clean:
+
+1. **External-command seam (shared with V-37 / V-39 / V-40).** The
+   `SendGiftWrappedDm` variant cannot move to `nmp-nip17` until external
+   crates can register command handlers with the actor. Same Stage 1
+   prerequisite as V-37.
+2. **`IdentityRuntime::active_signer_for_seal` exposed via a substrate
+   trait.** Today `dm::send_gift_wrapped_dm` reaches into the actor-private
+   `IdentityRuntime`. The seam must surface "the active account's
+   `SignerForSeal` (local Keys-backed OR `RemoteSignerForSeal`-adapted)"
+   on a public trait that an external command handler can consume. A naive
+   approach — re-exporting `IdentityRuntime` — leaks too much actor private
+   state; the right shape is a narrow `Capability` trait on `ActorContext`
+   the external handler asks for by capability id.
+
+**Staged fix plan:**
+- Stage 1: ride V-37 Stage 1 (external-command seam) + introduce the
+  `SignerForSealCapability` trait on the actor's context.
+- Stage 2: move `dm.rs` into `crates/nmp-nip17/src/dm_send.rs`; rewrite
+  as a `DmSendModule: ActionModule` whose `execute` enqueues the generic
+  command via the Stage 1 seam. Delete `ActorCommand::SendGiftWrappedDm`
+  and the dispatch arm at `actor/dispatch.rs:568`.
+- Stage 3: confirm `register_actions` in `nmp-nip17/src/lib.rs` registers
+  the new module; the FFI surface is already `nmp.nip17.send` so no
+  C-ABI churn.
+
+**Deadline:** post-v1. F-02 (DM cold-start receive-side verification) ships
+on the current layout because moving the send handler does not change the
+on-wire shape; this is a structural cleanup, not a correctness gate.
+
+### V-39 · NIP-17 kind:10050 ingest + `dm_relay_lists` cache wrongly in kernel [MEDIUM · post-v1 · staged fix required]
+
+**Verified:** kernel state and ingest logic for NIP-17's DM-inbox relay
+mechanism live in `nmp-core`, paired with V-38 but distinct in surface:
+
+- `crates/nmp-core/src/kernel/ingest/dm_relay_list.rs` (107 LOC) —
+  parses kind:10050 `["relay", <wss-url>]` tags into `dm_relay_lists`.
+  Module docstring at line 5 names NIP-17 §2 by spec section — pure
+  protocol semantics.
+- `crates/nmp-core/src/kernel/mod.rs:386` — `Kernel` struct carries a
+  typed `dm_relay_lists: HashMap<String, Vec<String>>` field. The
+  in-line comment at `:382` cites "NIP-17 gift-wrap envelopes" as the
+  cache's purpose.
+- `crates/nmp-core/src/kernel/outbox.rs:169` — `Kernel::recipient_dm_relays`
+  reader, called by V-38's `send_gift_wrapped_dm` to pin kind:1059
+  envelopes to the receiver's DM inbox.
+- `crates/nmp-core/src/kernel/ingest/mod.rs:397` — kind:10050 match arm
+  in the kernel's central kind-dispatch table, alongside genuinely-required
+  routing kinds (0 / 3 / 10002).
+- `crates/nmp-core/src/subs/CompileTrigger::DmRelayListChanged` — kernel
+  recompile trigger named after a NIP-17 noun.
+
+The contrast with the kinds the kernel is genuinely entitled to know
+(0 / 3 / 10002) is the test: those kinds drive the **outbox router** —
+the substrate primitive every Nostr app uses to know which relays an
+author writes to. kind:10050 drives a **NIP-17-specific** routing decision
+(kind:1059 envelopes go to a NIP-17-specific relay set). The substrate
+should expose "store-of-typed-replaceable-events, keyed by author" once;
+NIP-17 should consume that primitive and own kind:10050 parsing itself.
+
+**Correct destination:** `crates/nmp-nip17/`. kind:10050 parsing moves to
+a new `nmp-nip17/src/dm_relay_list_ingest.rs` (already partly modelled —
+the crate has `dm_relay_list.rs` for the publish side; this adds the
+ingest side). The `dm_relay_lists` cache becomes a NIP-17-owned projection
+that the kernel surfaces under `projections["nmp.nip17.dm_relay_lists"]`
+(or similar) via the existing snapshot-projection seam. The send-path
+`required_dm_relays` helper in V-38 reads the projection through a
+narrowly-scoped accessor rather than touching kernel internals.
+
+**Cache stays read-accessible from the outbox router.** `outbox.rs:244`
+constructs a `KernelMailboxes` view that includes `dm_relay_lists` for
+publish-time relay resolution. This stays correct post-migration: the
+projection-lookup seam returns the NIP-17 projection's snapshot as a
+borrowed view; `KernelMailboxes` (or its successor) reads it under the
+same name and the publish path is unchanged. The migration does NOT
+require the outbox router to forget NIP-17's existence — it requires the
+parsing and storage to leave `Kernel` proper, with a generic
+projection-lookup hop in between.
+
+**Blast radius:** ~110 LOC moves out of `nmp-core` (kind:10050 ingest);
+one field deletes from `Kernel`; one match arm deletes from
+`kernel/ingest/mod.rs:397`; one `CompileTrigger` variant renames or
+generalises (probably `ReplaceableProjectionChanged { kind }`); the
+read-side accessor `recipient_dm_relays` becomes a thin projection lookup;
+13 test sites in `kernel/ingest_tests.rs` re-target the new module.
+
+**Migration difficulty: MEDIUM.** One substrate seam must land first:
+
+- **Kernel-owned projection of a NIP-crate-parsed event.** Today
+  projections are an FFI-side concept (`projections["wallet"]`,
+  `projections["bunker_handshake"]`, …). The seam must let a NIP crate
+  register "I own the typed cache for kind:N from author X" so the
+  kernel's ingest dispatcher routes `Inserted | Replaced` outcomes to
+  the right projection without naming the kind in `kernel/ingest/mod.rs`.
+  This is the inverse of the existing snapshot-projection seam (output
+  side); the missing piece is the input side. Once it exists, any future
+  NIP-X replaceable-event cache uses the same hook.
+
+**Staged fix plan:**
+- Stage 1: design + land the "input-side projection" seam — a NIP crate
+  registers `(kind, parser_fn)` with the kernel ingest dispatcher;
+  parser writes into a NIP-owned cache; `KernelMailboxes` consults the
+  registered NIP-17 cache by name.
+- Stage 2: move `dm_relay_list.rs` ingest into `crates/nmp-nip17/`;
+  delete `Kernel::dm_relay_lists` and the kind:10050 match arm in
+  `kernel/ingest/mod.rs`; update `recipient_dm_relays` to read through
+  the seam.
+- Stage 3: rename `CompileTrigger::DmRelayListChanged` to a generic
+  shape, or move the trigger into a NIP-17 sub-trigger surfaced via
+  the existing planner seam.
+
+**Deadline:** post-v1. F-02 ships with kind:10050 still parsed in the
+kernel — the cache contents and `recipient_dm_relays` semantics are
+unchanged by this refactor; only the file location moves.
+
+### V-40 · NIP-57 zap LNURL handler + `FetchLnurlInvoice` `ActorCommand` variant in `nmp-core` [HIGH · post-v1 · staged fix required]
+
+**Verified:** the NIP-57 LNURL-pay round-trip orchestration lives in
+`nmp-core`, even though `crates/nmp-nip57/` exists and already owns the
+zap-request builder, the kind:9735 receipt decoder, the aggregate
+projection, and the `ZapAction` `ActionModule`:
+
+- `crates/nmp-core/src/actor/commands/zap.rs` (429 LOC) —
+  `handle_fetch_lnurl_invoice` resolves the active `Keys`, signs the
+  kind:9734 zap request, spawns an HTTP worker, and runs the two-leg
+  LNURL-pay round-trip (`fetch_lnurl_invoice_blocking`,
+  `inject_recipient_relays`, `sign_zap_request`, `http_get_json`). Every
+  one of these is a NIP-57 concern. The module docstring at lines 7–17
+  justifies the location with two reasons, both of which dissolve once
+  the substrate seams below exist: (a) "needs `Sender<ActorCommand>`"
+  is solved by the open-ActorCommand seam; (b) "needs `nostr::Keys`"
+  is solved by the `SignerForSealCapability`-style trait.
+- `crates/nmp-core/src/actor/commands/zap_lnurl.rs` (252 LOC) —
+  `lnurl_to_well_known_url`, `decode_bech32_lnurl`, `url_encode_query`,
+  `looks_like_bolt11`. Pure LUD-01 / LUD-06 / LUD-16 / bolt11 helpers
+  that the kernel has zero need to host.
+- `crates/nmp-core/src/actor/mod.rs:610` — `ActorCommand::FetchLnurlInvoice`
+  variant carries `unsigned: UnsignedEvent` (the kind:9734),
+  `lnurl_or_address: String`, `amount_msats: u64`. NIP-57 protocol noun
+  on the kernel's command enum.
+- `crates/nmp-core/src/actor/dispatch.rs:773` — dispatch arm.
+- `crates/nmp-core/src/actor/commands/mod.rs:159` — `pub(super) use zap::handle_fetch_lnurl_invoice`.
+- `nmp_nip57::ZapAction::execute` (`crates/nmp-nip57/src/action.rs:176`)
+  already enqueues `ActorCommand::FetchLnurlInvoice`. The action side is
+  already in the right crate; only the handler side leaked into
+  `nmp-core` to access `IdentityRuntime` + `Sender<ActorCommand>`.
+
+**Correct destination:** `crates/nmp-nip57/`. `zap.rs` + `zap_lnurl.rs`
+move to `nmp-nip57/src/lnurl/{mod,handler,decode}.rs` (LOC budget keeps
+each file under the 500 cap — same split rationale documented at
+`zap_lnurl.rs:1-6`). The NIP-57 crate exposes a command handler the new
+external-command seam registers; `ZapAction::execute` enqueues that
+handler's typed command via the seam instead of `ActorCommand::FetchLnurlInvoice`
+on the kernel enum.
+
+**Blast radius:** ~681 LOC moves out of `nmp-core` (`zap.rs` + `zap_lnurl.rs`);
+1 ActorCommand variant deletes; `actor/dispatch.rs:773` dispatch arm
+deletes; the `pub(super) use zap::handle_fetch_lnurl_invoice` re-export
+deletes; FFI surface unchanged (zap already routes through
+`nmp_app_dispatch_action` under `nmp.nip57.zap`); `kernel/action_registry.rs`
+loses any direct mention of zap. The wallet auto-pay chain
+(`commands/zap.rs:201` sends `ActorCommand::WalletPayInvoice` on success)
+becomes "fire `nmp.wallet.pay_invoice` via the dispatch seam" — this
+already works as a generic mechanism; it just reaches the new NIP-47 crate
+post-V-37 instead of `nmp-core::wallet`.
+
+**Migration difficulty: MEDIUM-HARD.** Same two substrate seams as V-38:
+
+1. **External-command seam (shared with V-37 / V-38 / V-39).** Stage 1
+   from V-37.
+2. **Local-signer access via substrate trait.** The handler needs the
+   active account's `nostr::Keys` to sign kind:9734. The
+   `SignerForSealCapability` trait from V-38 covers the local-keys case
+   (the trait already takes `&dyn SignerForSeal`); the bunker case
+   (ADR-0026 Phase 2) is V-06 Stage 2-3 follow-up regardless.
+
+**Staged fix plan:**
+- Stage 1: ride V-37 Stage 1 + V-38 Stage 1 (external-command seam +
+  `SignerForSealCapability`).
+- Stage 2: move `zap.rs` + `zap_lnurl.rs` into `crates/nmp-nip57/src/lnurl/`;
+  rewrite the `ZapAction::execute` enqueue site to use the new seam.
+  Delete `ActorCommand::FetchLnurlInvoice` and the dispatch arm.
+- Stage 3: confirm the wallet auto-pay chain still works via
+  `nmp.wallet.pay_invoice` dispatch (the FFI-level
+  `dispatch_action_json` call already exists in `commands/zap.rs:201` as
+  a `WalletPayInvoice` direct send; the seam version uses the action
+  registry — same observable behaviour).
+
+**Deadline:** post-v1. F-04 (zap E2E round-trip) ships on the current
+layout — the wire shape and LNURL semantics do not change.
+
+---
+
 ## Section 2 — In Flight
 
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
