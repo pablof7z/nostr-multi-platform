@@ -162,6 +162,28 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable {
     let createdAt: UInt64
     let content: String
     let contentTree: ContentTreeWire?
+    /// V-27 thin-shell: relative "Xs ago" string computed in Rust at
+    /// snapshot construction. Replaces the iOS `relativeTime(card:)` helper.
+    let createdAtDisplay: String
+    /// V-27 thin-shell: two-char uppercase avatar initials from
+    /// `author_pubkey`. Replaces the iOS `defaultInitials(pubkey:)` helper.
+    let authorAvatarInitials: String
+    /// V-27 thin-shell: deterministic 6-hex avatar background colour
+    /// (uppercase, no `#`). Same djb2 algorithm as DM and NIP-29 surfaces so
+    /// every author renders with the same tint across the app. Replaces the
+    /// iOS `defaultColor(pubkey:)` helper (which used a different algorithm
+    /// and produced inconsistent tints across surfaces).
+    let authorAvatarColor: String
+    /// V-27 thin-shell: abbreviated hex pubkey (`<first 8>…<last 8>`) for
+    /// the Twitter-style secondary-identifier slot. Replaces the iOS
+    /// `displayPubkey(item:card:)` helper (which used 6/4 abbreviation —
+    /// the move to the cross-surface 8/8 algorithm shifts the abbreviation
+    /// by two characters; deliberate consistency fix, not a regression).
+    let authorPubkeyShort: String
+    /// V-27 thin-shell: flat mirror of `author_display.name` so Swift can
+    /// bind a single string without decoding the nested `AuthorDisplay`
+    /// struct. Used by `syntheticItem` as the display-name fallback.
+    let authorDisplayName: String
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -170,6 +192,11 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable {
         case createdAt = "created_at"
         case content
         case contentTree = "content_tree"
+        case createdAtDisplay = "created_at_display"
+        case authorAvatarInitials = "author_avatar_initials"
+        case authorAvatarColor = "author_avatar_color"
+        case authorPubkeyShort = "author_pubkey_short"
+        case authorDisplayName = "author_display_name"
     }
 }
 

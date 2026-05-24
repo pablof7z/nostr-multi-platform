@@ -62,7 +62,15 @@ final class NoteContentRenderingTests: XCTestCase {
                         nodes: [.paragraph(children: [1]), .text("embedded note body")],
                         roots: [0],
                         mode: nil
-                    )
+                    ),
+                    // V-27 thin-shell: display fields computed in Rust on the
+                    // real snapshot path; this fixture supplies fixed values
+                    // since the test exercises content-tree rendering only.
+                    createdAtDisplay: "now",
+                    authorAvatarInitials: "PF",
+                    authorAvatarColor: "4B7BEC",
+                    authorPubkeyShort: "\(pubkey.prefix(8))…\(pubkey.suffix(8))",
+                    authorDisplayName: "pablof7z"
                 ),
             ],
             timelineItems: [:],

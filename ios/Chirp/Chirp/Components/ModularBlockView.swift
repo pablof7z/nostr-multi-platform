@@ -132,7 +132,11 @@ struct ModularBlockView: View {
     private func moduleRow(id: String, isLast: Bool) -> some View {
         let item = items[id]
         let card = cards[id]
-        let display = displayPubkey(item: item, card: card)
+        // V-27 thin-shell: the secondary monospaced caption is the abbreviated
+        // hex pubkey shipped by Rust on the card. Falls back to "" when there
+        // is no card (no abbreviated form exists for an item-only row; the
+        // dual-identity row collapses to just the primary display name).
+        let display = card?.authorPubkeyShort ?? ""
         let content = item?.content ?? card?.content ?? ""
 
         return Button {
@@ -171,10 +175,15 @@ struct ModularBlockView: View {
     /// the inter-row gap without disturbing the parent layout.
     private func avatarColumn(item: TimelineItem?, card: ChirpEventCard?, isLast: Bool) -> some View {
         let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+        // V-27 thin-shell: initials and colour come from Rust (`TimelineItem`
+        // for the kernel's visible-items row, `ChirpEventCard` for the
+        // synthetic-from-card row). The `"?"` / `"888888"` final fallbacks
+        // only fire when both lookups miss — i.e., a row that wasn't shipped
+        // by either projection, which the renderer should not surface anyway.
         return ChirpAvatar(
             url: item?.authorPictureUrl ?? "identicon:\(pubkey.prefix(8))",
-            initials: item?.authorAvatarInitials ?? defaultInitials(pubkey: pubkey),
-            colorHex: item?.authorAvatarColor ?? defaultColor(pubkey: pubkey),
+            initials: item?.authorAvatarInitials ?? card?.authorAvatarInitials ?? "?",
+            colorHex: item?.authorAvatarColor ?? card?.authorAvatarColor ?? "888888",
             size: ModuleLayout.avatarSize
         )
         .overlay(alignment: .bottom) {
@@ -208,7 +217,9 @@ struct ModularBlockView: View {
 
             Spacer(minLength: 0)
 
-            if let ts = item?.createdAtDisplay ?? card.map(relativeTime(card:)) {
+            // V-27 thin-shell: both `TimelineItem` and `ChirpEventCard` now
+            // carry `createdAtDisplay` computed in Rust.
+            if let ts = item?.createdAtDisplay ?? card?.createdAtDisplay {
                 Text(ts)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -247,28 +258,12 @@ struct ModularBlockView: View {
         root?.eventID
     }
 
-    private func displayPubkey(item: TimelineItem?, card: ChirpEventCard?) -> String {
-        let hex = item?.authorPubkey ?? card?.authorPubkey ?? ""
-        guard hex.count >= 12 else { return hex }
-        return "\(hex.prefix(6))…\(hex.suffix(4))"
-    }
-
     private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
         if let item, !item.authorDisplay.isEmpty { return item.authorDisplay }
         // No profile yet — use the truncated pubkey as a fallback (matches
         // the `short_pubkey_display` behaviour of the Rust side).
         let hex = card?.authorPubkey ?? item?.authorPubkey ?? ""
         return hex.isEmpty ? "Unknown" : "\(hex.prefix(8))…"
-    }
-
-    private func relativeTime(card: ChirpEventCard) -> String {
-        let now = Date().timeIntervalSince1970
-        let then = TimeInterval(card.createdAt)
-        let delta = max(0, now - then)
-        if delta < 60 { return "\(Int(delta))s" }
-        if delta < 3600 { return "\(Int(delta / 60))m" }
-        if delta < 86_400 { return "\(Int(delta / 3600))h" }
-        return "\(Int(delta / 86_400))d"
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
@@ -285,15 +280,20 @@ struct ModularBlockView: View {
         // provides explicit fallbacks here instead of relying on the
         // hand-written struct's `decodeIfPresent ??` defaults. Mirrors the
         // Rust `identicon:<prefix>` placeholder contract (D1).
+        // V-27 thin-shell: all formerly-Swift display strings now come from
+        // Rust on the card (`createdAtDisplay`, `authorAvatarColor`,
+        // `authorAvatarInitials`, `authorDisplayName`). The four helpers
+        // (`defaultInitials`, `defaultColor`, `displayPubkey`, `relativeTime`)
+        // are deleted.
         TimelineItem(
-            authorAvatarColor: item?.authorAvatarColor ?? defaultColor(pubkey: card.authorPubkey),
-            authorAvatarInitials: item?.authorAvatarInitials ?? defaultInitials(pubkey: card.authorPubkey),
+            authorAvatarColor: item?.authorAvatarColor ?? card.authorAvatarColor,
+            authorAvatarInitials: item?.authorAvatarInitials ?? card.authorAvatarInitials,
             // `authorAvatarSource` was never decoded by the hand-written
             // struct; for a synthetic card we mirror the Rust placeholder
             // discriminator (`"kind0"` when the source item already carried
             // a kind:0-backed avatar, `"placeholder"` otherwise).
             authorAvatarSource: item?.authorAvatarSource ?? "placeholder",
-            authorDisplay: item?.authorDisplay ?? "\(card.authorPubkey.prefix(8))…",
+            authorDisplay: item?.authorDisplay ?? card.authorDisplayName,
             // Inherit lnurl from the cached TimelineItem when present so a
             // synthetic-from-card row still exposes the zap affordance.
             // `nil` for cards without a backing item is correct — the row
@@ -306,7 +306,7 @@ struct ModularBlockView: View {
             authorPubkey: card.authorPubkey,
             content: card.content,
             contentPreview: String(card.content.prefix(180)),
-            createdAtDisplay: relativeTime(card: card),
+            createdAtDisplay: card.createdAtDisplay,
             id: card.id,
             isRepost: false,
             kind: card.kind,
@@ -314,17 +314,6 @@ struct ModularBlockView: View {
             relayCount: 0,
             repostInnerContent: ""
         )
-    }
-
-    private func defaultInitials(pubkey: String) -> String {
-        String(pubkey.prefix(2))
-    }
-
-    private func defaultColor(pubkey: String) -> String {
-        // Deterministic-ish hex from the first two chars; mirrors the
-        // Rust `avatar_color` function's purpose without duplicating its
-        // exact algorithm (D6 — display field is best-effort).
-        "#" + String(pubkey.prefix(6))
     }
 
     private func truncate(_ s: String, _ n: Int) -> String {
