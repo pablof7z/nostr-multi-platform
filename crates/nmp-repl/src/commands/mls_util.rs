@@ -7,7 +7,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use nostr::nips::nip19::{FromBech32, ToBech32};
+use nostr::nips::nip19::FromBech32;
 use nostr::{PublicKey, RelayUrl};
 
 use crate::error::{ReplError, Result};
@@ -79,5 +79,19 @@ pub fn group_id_bytes(hex: &str) -> Result<Vec<u8>> {
 /// other NMP surface speak the same abbreviated-pubkey dialect.
 pub fn short_npub(pk: &PublicKey) -> String {
     nmp_core::display::short_npub(&pk.to_hex())
+}
+
+/// Encode a raw byte slice as a lowercase hex string.
+///
+/// Used by MLS commands to display `GroupId` bytes, which MDK stores as
+/// `Vec<u8>` with no built-in `Display`. Canonical single definition —
+/// previously duplicated in `mls_accept` and `mls_status`.
+pub fn bytes_to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 

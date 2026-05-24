@@ -5,7 +5,7 @@
 //! hex, runs the mandatory post-join `self_update` (MIP-02), and publishes
 //! the resulting evolution_event.
 
-use crate::commands::mls_util::require_service;
+use crate::commands::mls_util::{bytes_to_hex, require_service};
 use crate::error::{ReplError, Result};
 use crate::publish;
 use crate::session::Session;
@@ -57,7 +57,7 @@ pub fn run(session: &mut Session, welcome_hex: Option<String>) -> Result<()> {
         .unwrap_and_process_welcome(&gift_wrap)
         .map_err(|e| ReplError::Other(format!("unwrap_and_process_welcome: {e}")))?;
     let group_id = welcome.mls_group_id.clone();
-    let group_id_hex = hex(group_id.as_slice());
+    let group_id_hex = bytes_to_hex(group_id.as_slice());
 
     guard
         .accept_welcome(&welcome)
@@ -88,13 +88,4 @@ pub fn run(session: &mut Session, welcome_hex: Option<String>) -> Result<()> {
 
     println!("  joined group {group_id_hex}");
     Ok(())
-}
-
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
 }

@@ -1,3 +1,4 @@
+use nmp_core::display::short_npub;
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +55,7 @@ impl TimelineRow {
             .and_then(Value::as_str)
             .map(str::to_string)
             .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| short_key(&author_pubkey));
+            .unwrap_or_else(|| short_npub(&author_pubkey));
         let content = string_field(card, "content");
         let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
         Self {
@@ -165,12 +166,6 @@ fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
     }
 }
 
-fn short_key(value: &str) -> String {
-    if value.len() <= 12 {
-        return value.to_string();
-    }
-    format!("{}...{}", &value[..8], &value[value.len() - 4..])
-}
 
 fn content_preview(content: &str) -> String {
     let compact = content.split_whitespace().collect::<Vec<_>>().join(" ");
