@@ -1,26 +1,41 @@
 //! Browser-side relay driver: one `web_sys::WebSocket` per (URL, role) pair.
 //!
+//! # Step 8 phase C — relocation
+//!
+//! Moved verbatim from `nmp-wasm/src/relay_driver.rs` so both transports
+//! (native `relay_worker` + browser `BrowserRelayDriver`) live side-by-side in
+//! `nmp-network`, matching spec §3.8. The driver's behavior is unchanged; the
+//! only structural difference vs. the prior location is that the kernel
+//! handle is no longer `Rc<RefCell<KernelReducer>>` — `nmp-network` cannot
+//! depend on `nmp-core` (that direction would close a Cargo-level dep cycle
+//! since `nmp-core` already depends on `nmp-network`). Instead the driver now
+//! holds a [`BrowserKernelHandlers`] bag of `Rc<dyn Fn(...)>` closures that
+//! `nmp-wasm::relay_pool` constructs from its `KernelReducer` handle. The
+//! closures still own the same four kernel touchpoints — they just live one
+//! crate up. The data-flow shape (driver -> handler -> kernel -> outbound
+//! sink -> drivers) is identical; only the indirection changed.
+//!
 //! # V-01 Stage 3 — the wasm32 transport
 //!
-//! Mirrors the native `nmp_core::relay_worker` thread shape *behaviourally*
-//! while using a fundamentally different I/O model. Where the native worker
-//! drives `tungstenite` + `mio` from a dedicated OS thread, the browser has
-//! neither threads nor a blocking `read_frame`: every inbound frame arrives
-//! through a `web_sys::MessageEvent` callback on the main JS event loop. So
-//! the protocol-loop split is intentional and unavoidable:
+//! Mirrors the native `relay_worker` thread shape *behaviourally* while using
+//! a fundamentally different I/O model. Where the native worker drives
+//! `tungstenite` + `mio` from a dedicated OS thread, the browser has neither
+//! threads nor a blocking `read_frame`: every inbound frame arrives through a
+//! `web_sys::MessageEvent` callback on the main JS event loop. So the
+//! protocol-loop split is intentional and unavoidable:
 //!
-//! | Concern                  | Native (`relay_worker`)              | WASM (`relay_driver`)               |
+//! | Concern                  | Native (`relay_worker`)              | WASM (`browser_driver`)             |
 //! |--------------------------|--------------------------------------|-------------------------------------|
 //! | Socket I/O               | `tungstenite` over `TcpStream`+`mio` | `web_sys::WebSocket` callbacks      |
 //! | Read loop                | blocking `read()` on poll-readable   | `onmessage` JS closure              |
 //! | Reconnect scheduling     | `recv_timeout` on control channel    | `setTimeout` + `Closure` callback   |
 //! | Keepalive                | `KeepaliveState` FSM, OS-thread tick | Browser sends Pong automatically    |
-//! | Backoff constants        | `relay_protocol::*` ← shared         | `relay_protocol::*` ← shared        |
-//! | HTTP 401/403 detection   | `is_permanent_error` ← shared        | `is_permanent_error` ← shared       |
-//! | Kernel frame ingest      | `Kernel::handle_message` (private)   | `KernelReducer::handle_relay_frame` |
+//! | Backoff constants        | `relay_protocol::*` <- shared        | `relay_protocol::*` <- shared       |
+//! | HTTP 401/403 detection   | `is_permanent_error` <- shared       | `is_permanent_error` <- shared      |
+//! | Kernel frame ingest      | `Kernel::handle_message` (private)   | `BrowserKernelHandlers` closures    |
 //!
 //! The kernel never knows which transport produced a frame — both paths feed
-//! [`nmp_core::RelayFrame`] into the same kernel methods.
+//! the kernel's frame-ingest entry points (`KernelReducer::handle_relay_*`).
 //!
 //! # Keepalive (browser-native)
 //!
@@ -38,30 +53,64 @@
 //! Reconnect deadlines are scheduled through `setTimeout` — a one-shot
 //! deadline that re-arms only after the next failure. There is no
 //! `setInterval` and no sleep+check loop. The driver is purely event-driven.
+//!
+//! # Compilation gate
+//!
+//! The entire module is `#[cfg(target_arch = "wasm32")]`-gated at the
+//! `nmp-network` `lib.rs` re-export site: `web_sys`/`js-sys`/`wasm-bindgen`
+//! only exist on wasm32 targets. The native build of `nmp-network` does not
+//! see this file at all.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use nmp_core::{KernelReducer, OutboundMessage, RelayFrame, RelayRole};
-use nmp_network::relay_protocol::{
-    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-    RELAY_RECONNECT_DELAY_MAX,
-};
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 
-/// Sink the driver pushes "the kernel produced N outbound frames" reports to.
+use crate::relay_protocol::{
+    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
+    RELAY_RECONNECT_DELAY_MAX,
+};
+use crate::role::RelayRole;
+
+/// Kernel-touchpoint callbacks the driver invokes from its JS event handlers.
 ///
-/// The runtime registers this sink at driver-construction time and uses it
-/// to: (1) route any outbound the kernel returns into the appropriate sibling
-/// driver's [`BrowserRelayDriver::send_text`] (typical: kernel emits an AUTH
-/// response or a view REQ in reaction to an inbound frame), and (2) emit a
-/// fresh `WorkerEvent::Update` snapshot to the JS host so the UI reflects
-/// the new kernel state.
+/// Each closure wraps one kernel-ingest method (`handle_relay_connected`,
+/// `handle_relay_frame`, `handle_relay_failed`, `handle_relay_closed`) and
+/// also owns the outbound-fan-out + snapshot-push side-effects that used to
+/// live inline in the driver. Keeping the kernel completely opaque to
+/// `nmp-network` lets the layering rule hold (`nmp-network -> nmp-core` would
+/// be a cycle), while preserving the driver's exact event ordering and
+/// borrow semantics.
 ///
-/// Substrate-grade (D0): receives only protocol-neutral [`OutboundMessage`]s.
-pub type RelaySink = Rc<dyn Fn(Vec<OutboundMessage>)>;
+/// All six closures are required — `nmp-wasm::relay_pool::build_handlers`
+/// is the single construction site and supplies all six. The driver never
+/// sees `RelayFrame`, `OutboundMessage`, or any other kernel type; it hands
+/// raw text / bytes / close reasons through and the closures translate.
+#[derive(Clone)]
+pub struct BrowserKernelHandlers {
+    /// Called from `onopen`. `is_reconnect` is `true` for every connect
+    /// after the first — drives the kernel's T116/G1 replay path.
+    pub on_connected: Rc<dyn Fn(RelayRole, &str, bool)>,
+    /// Called from `onmessage` when the inbound is a text frame
+    /// (NIP-01 traffic is exclusively text over the wire).
+    pub on_text: Rc<dyn Fn(RelayRole, &str, String)>,
+    /// Called from `onmessage` when the inbound is an `ArrayBuffer` —
+    /// kernel counts bytes for the `RelayStatus.frames_rx` diagnostic.
+    pub on_binary: Rc<dyn Fn(RelayRole, &str, Vec<u8>)>,
+    /// Called from `onclose` BEFORE `on_closed`. `reason` is `Some(...)` if
+    /// the close event carried a non-empty reason string. Surfaces the close
+    /// frame to the kernel so `relay.last_close_reason` shows up in the next
+    /// snapshot.
+    pub on_close: Rc<dyn Fn(RelayRole, &str, Option<String>)>,
+    /// Called from `onclose` AFTER `on_close`, signalling the socket-level
+    /// teardown (kernel evicts wire-subs, marks publish-relay unavailable).
+    pub on_closed: Rc<dyn Fn(RelayRole, &str)>,
+    /// Called from `onerror`. The native worker surfaces transient socket
+    /// errors through the same kernel ingest point.
+    pub on_failed: Rc<dyn Fn(RelayRole, &str, String)>,
+}
 
 /// Browser-side relay driver — one `web_sys::WebSocket` per (URL, role) pair.
 ///
@@ -73,13 +122,10 @@ pub struct BrowserRelayDriver {
     url: String,
     role: RelayRole,
     state: RefCell<DriverState>,
-    /// Shared kernel handle. Every driver in the runtime points at the same
-    /// `KernelReducer`; the JS event loop serializes access so concurrent
-    /// borrow conflicts are impossible at runtime (a closure that needs the
-    /// kernel borrows briefly, then drops).
-    kernel: Rc<RefCell<KernelReducer>>,
-    /// Outbound + snapshot sink installed by the runtime.
-    sink: RelaySink,
+    /// Kernel-touchpoint closures installed by `nmp-wasm::relay_pool`. The
+    /// closures are already `Rc<dyn Fn>` internally — cheap to invoke without
+    /// any `RefCell` borrow on the driver's part.
+    kernel: BrowserKernelHandlers,
 }
 
 /// Internal driver state mutated from JS closures.
@@ -130,12 +176,11 @@ impl BrowserRelayDriver {
     ///
     /// Returns `Err(JsValue)` only if the WebSocket constructor itself rejects
     /// the URL (bad scheme, invalid characters). Subsequent connect failures
-    /// are surfaced through the kernel via `handle_relay_failed`.
+    /// are surfaced through the `on_failed` kernel handler.
     pub fn new(
         url: String,
         role: RelayRole,
-        kernel: Rc<RefCell<KernelReducer>>,
-        sink: RelaySink,
+        kernel: BrowserKernelHandlers,
     ) -> Result<Rc<Self>, JsValue> {
         let driver = Rc::new(Self {
             url,
@@ -149,7 +194,6 @@ impl BrowserRelayDriver {
                 _reconnect_timer: None,
             }),
             kernel,
-            sink,
         });
         driver.dial()?;
         Ok(driver)
@@ -235,11 +279,7 @@ impl BrowserRelayDriver {
                 s.has_connected_before = true;
                 was_connected
             };
-            let outbound = driver
-                .kernel
-                .borrow_mut()
-                .handle_relay_connected(driver.role, &driver.url, is_reconnect);
-            (driver.sink)(outbound);
+            (driver.kernel.on_connected)(driver.role, &driver.url, is_reconnect);
         }) as Box<dyn FnMut()>)
     }
 
@@ -247,14 +287,15 @@ impl BrowserRelayDriver {
         let weak = Rc::downgrade(self);
         Closure::wrap(Box::new(move |event: MessageEvent| {
             let Some(driver) = weak.upgrade() else { return };
-            let Some(frame) = relay_frame_from_message(&event) else {
+            let data: JsValue = event.data();
+            if let Some(text) = data.as_string() {
+                (driver.kernel.on_text)(driver.role, &driver.url, text);
                 return;
-            };
-            let outbound = driver
-                .kernel
-                .borrow_mut()
-                .handle_relay_frame(driver.role, &driver.url, frame);
-            (driver.sink)(outbound);
+            }
+            if let Ok(buffer) = data.dyn_into::<js_sys::ArrayBuffer>() {
+                let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+                (driver.kernel.on_binary)(driver.role, &driver.url, bytes);
+            }
         }) as Box<dyn FnMut(MessageEvent)>)
     }
 
@@ -264,21 +305,14 @@ impl BrowserRelayDriver {
             let Some(driver) = weak.upgrade() else { return };
             let reason = event.reason();
             // Hand a Close frame to the kernel so `relay.last_close_reason`
-            // surfaces in the next snapshot. Outbound from a Close is always
-            // empty so we ignore the return.
-            let _ = driver.kernel.borrow_mut().handle_relay_frame(
-                driver.role,
-                &driver.url,
-                RelayFrame::Close(if reason.is_empty() {
-                    None
-                } else {
-                    Some(reason.clone())
-                }),
-            );
-            driver
-                .kernel
-                .borrow_mut()
-                .handle_relay_closed(driver.role, &driver.url);
+            // surfaces in the next snapshot.
+            let reason_opt = if reason.is_empty() {
+                None
+            } else {
+                Some(reason.clone())
+            };
+            (driver.kernel.on_close)(driver.role, &driver.url, reason_opt);
+            (driver.kernel.on_closed)(driver.role, &driver.url);
 
             // Clear current socket — the user-agent already dropped it.
             driver.state.borrow_mut().current_socket = None;
@@ -314,15 +348,12 @@ impl BrowserRelayDriver {
             // ErrorEvent on a WebSocket is followed by a CloseEvent — the
             // close handler owns the reconnect decision. We only report the
             // error string into the kernel so the snapshot surfaces it.
-            driver.kernel.borrow_mut().handle_relay_failed(
-                driver.role,
-                &driver.url,
-                if message.is_empty() {
-                    "websocket error".to_string()
-                } else {
-                    message
-                },
-            );
+            let error = if message.is_empty() {
+                "websocket error".to_string()
+            } else {
+                message
+            };
+            (driver.kernel.on_failed)(driver.role, &driver.url, error);
         }) as Box<dyn FnMut(ErrorEvent)>)
     }
 
@@ -350,11 +381,7 @@ impl BrowserRelayDriver {
             // memory pressure), drop the timer and report the failure.
             if let Err(error) = driver.dial() {
                 let error_str = format!("reconnect dial failed: {error:?}");
-                driver.kernel.borrow_mut().handle_relay_failed(
-                    driver.role,
-                    &driver.url,
-                    error_str,
-                );
+                (driver.kernel.on_failed)(driver.role, &driver.url, error_str);
             }
         }) as Box<dyn FnMut()>);
         let result = window.set_timeout_with_callback_and_timeout_and_arguments_0(
@@ -368,21 +395,4 @@ impl BrowserRelayDriver {
             self.state.borrow_mut()._reconnect_timer = Some(cb);
         }
     }
-}
-
-/// Convert a `web_sys::MessageEvent` into a [`RelayFrame`]. Returns `None`
-/// for payload types the kernel never observes (e.g. JS objects that are
-/// neither strings nor `ArrayBuffer`s). NIP-01 traffic is exclusively text
-/// over the wire; the binary path exists only to count bytes for the
-/// `RelayStatus.frames_rx` diagnostic.
-fn relay_frame_from_message(event: &MessageEvent) -> Option<RelayFrame> {
-    let data: JsValue = event.data();
-    if let Some(text) = data.as_string() {
-        return Some(RelayFrame::Text(text));
-    }
-    if let Ok(buffer) = data.dyn_into::<js_sys::ArrayBuffer>() {
-        let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
-        return Some(RelayFrame::Binary(bytes));
-    }
-    None
 }

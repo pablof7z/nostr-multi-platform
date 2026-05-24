@@ -3955,9 +3955,12 @@ dependencies = [
 name = "nmp-network"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "mio",
  "rustls",
  "tungstenite",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -4214,7 +4217,6 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]

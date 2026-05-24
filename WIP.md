@@ -24,7 +24,8 @@ The crate-boundary spec lives at
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
 | 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
-| 8 phases C/D/E (`BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
+| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ⏳ in flight (subagent) |
+| 8 phases D/E (broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
 | 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode |
@@ -33,14 +34,14 @@ The crate-boundary spec lives at
 
 Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
-**Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C ✅ merged as PR #471. C follow-up (NIP-57 LNURL `inject_recipient_relays` no-op + 3 `#[ignore]`d tests) ⏳ in flight on `worktree-debt-c-followup-lnurl-relays` — adds substrate `RecipientRelayLookup` capability + kernel adapter routing through `outbox_router`.
+**Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C (`ProtocolCommandContext` capability-trait bundling, currently 12 accessors with `#[allow(clippy::too_many_arguments)]`) ❌ not started.
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core/nmp-nip57): Debt C follow-up — close the NIP-57 LNURL `inject_recipient_relays` TODO and un-ignore the 3 LNURL `#[ignore]`d tests. Adds the `RecipientRelayLookup` substrate capability trait (kernel-side adapter drives `outbox_router.route_publish` with a synthetic kind:9735 publish-direction event — recipient's NIP-65 write set falling back through the router's lane-7 AppRelay cold-start seed). Also deletes the now-dead `Kernel::author_write_relays` content-payload helper. Branch `worktree-debt-c-followup-lnurl-relays`.
 - 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468. **Needs follow-up before merge**: `kernel/requests/profile.rs:431` routes kind:10002 discovery through the cached write set, which can self-seal stale metadata (if the cached relay list is old, asking only the old write relays misses the author's newer kind:10002 elsewhere). Discovery kinds (0/3/10000–19999) must hit the Indexer lane (router §3.1 lane 6).
 - 2026-05-24 — refactor(nmp-core): Debt B — delete `default_routing.rs` (484 LOC algorithm duplicate); kernel defaults switched to `EmptyOutboxRouter` + `(test) TestInMemoryMailboxCache` — branch `worktree-agent-a635030638058cda7`.
 - 2026-05-24 — feat(nmp-network): step 8 phase B — push-model `Pool` API + generational `RelayHandle` + `PoolEvent` channel — subagent in flight.
+- 2026-05-24 — feat(nmp-network): step 8 phase C — move `BrowserRelayDriver` from `nmp-wasm/src/relay_driver.rs` into `nmp-network/src/browser_driver.rs` (gated `#[cfg(target_arch = "wasm32")]`). Driver's kernel touchpoints abstracted behind `BrowserKernelHandlers` (`Rc<dyn Fn>` callback bag) so the layering invariant (`nmp-network` does not depend on `nmp-core`) holds. `nmp-wasm::relay_pool::build_handlers` is the single construction site. — branch `feat/nmp-network-step-8-phase-c-browser-driver-move`.
 - 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
 - 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
 
