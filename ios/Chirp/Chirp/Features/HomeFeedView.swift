@@ -68,6 +68,12 @@ struct HomeFeedView: View {
             blocks: effectiveBlocks,
             cards: model.modularTimeline.cards,
             items: model.items,
+            // V-31 — kernel-owned `mention_profiles` projection covers every
+            // home-timeline author (and any open author/thread view),
+            // replacing the Swift Dictionary derivation `TimelineListView`
+            // used to build from `items.map(...)` (D4: derived view from
+            // kernel, not reconstructed by shell).
+            mentionProfiles: model.mentionProfiles,
             onRefresh: { model.openTimeline() },
             onLike: { model.react(targetEventID: $0, reaction: "❤") },
             // NIP-57 — 21 sats default until an amount picker lands.
@@ -169,6 +175,12 @@ private struct TimelineListView: View, Equatable {
     let blocks: [TimelineBlock]
     let cards: [ChirpEventCard]
     let items: [TimelineItem]
+    /// V-31 — kernel-owned mention-profile map (replaces the Swift
+    /// `Dictionary(items.map …)` derivation this view used to build). Bound
+    /// from `model.mentionProfiles`, which reads the `mention_profiles`
+    /// snapshot projection (`update.rs` covers home-timeline + author-view
+    /// + thread-view items).
+    let mentionProfiles: [String: MentionProfile]
     let onRefresh: () -> Void
     let onLike: (String) -> Void
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. The row
@@ -178,23 +190,15 @@ private struct TimelineListView: View, Equatable {
     let onZap: (String, String, String) -> Void
 
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
-        lhs.blocks == rhs.blocks && lhs.cards == rhs.cards && lhs.items == rhs.items
+        lhs.blocks == rhs.blocks
+            && lhs.cards == rhs.cards
+            && lhs.items == rhs.items
+            && lhs.mentionProfiles == rhs.mentionProfiles
     }
 
     var body: some View {
         let cardLookup = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
         let itemLookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        let profileLookup = Dictionary(
-            items.map {
-                ($0.authorPubkey, MentionProfile(
-                    display: $0.authorDisplay,
-                    pictureUrl: $0.authorPictureUrl,
-                    initials: $0.authorAvatarInitials,
-                    colorHex: $0.authorAvatarColor
-                ))
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
 
         return List {
             ForEach(blocks, id: \.stableID) { block in
@@ -202,7 +206,7 @@ private struct TimelineListView: View, Equatable {
                     block: block,
                     cards: cardLookup,
                     items: itemLookup,
-                    mentionProfiles: profileLookup,
+                    mentionProfiles: mentionProfiles,
                     onLike: onLike,
                     onZap: onZap
                 )

@@ -617,7 +617,7 @@ fn mention_profiles_projection_carries_each_author_in_author_view() {
 }
 
 #[test]
-fn mention_profiles_projection_empty_when_no_author_view_open() {
+fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
 
@@ -627,8 +627,32 @@ fn mention_profiles_projection_empty_when_no_author_view_open() {
     assert_eq!(
         mp.as_object().map(|m| m.len()),
         Some(0),
-        "mention_profiles must be empty when no author view is open"
+        "mention_profiles must be empty when no events are visible and no view is open"
     );
+}
+
+/// V-31 — `mention_profiles` MUST carry an entry for every author in the
+/// home `timeline` even when no author-view / thread-view is open, so
+/// HomeFeedView resolves authors via `model.mentionProfiles` rather than
+/// reconstructing the dict in Swift (replaces `HomeFeedView.swift:187-197`).
+#[test]
+fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "hello home feed");
+
+    let snap = snapshot(&mut kernel);
+    let mp = &snap["projections"]["mention_profiles"];
+    assert!(mp.is_object(), "mention_profiles must be a JSON object");
+    let entry = &mp[ACCOUNT];
+    assert!(
+        !entry.is_null(),
+        "mention_profiles must cover the home-timeline author with no author/thread view open"
+    );
+    assert!(entry["display"].is_string());
+    assert!(entry["picture_url"].is_string());
+    assert!(entry["avatar_initials"].is_string());
+    assert!(entry["avatar_color"].is_string());
 }
 
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar
