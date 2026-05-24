@@ -1045,6 +1045,24 @@ pub(super) fn dispatch_command(
             ctx.connected_urls.clear();
             None
         }
+        ActorCommand::Protocol(cmd) => {
+            // Step 1.b — the open-seam dispatch arm. Hands the command a
+            // `ProtocolCommandContext` wired to the actor's own command
+            // channel so the body can re-enter the loop with follow-ups
+            // (the LNURL fetcher pattern). Step 1.b ships the arm; the
+            // first migration onto it is step 4 (V-41).
+            let tx = ctx.command_tx_self.clone();
+            let send = move |c: crate::actor::ActorCommand| {
+                // D6 — disconnected sender (post-Shutdown) is a benign
+                // send-failure on the worker side; swallow as a no-op.
+                let _ = tx.send(c);
+            };
+            let mut pctx = crate::substrate::ProtocolCommandContext::new(&send);
+            if let Err(e) = cmd.run(&mut pctx) {
+                tracing::warn!(error = %e, "ProtocolCommand returned error");
+            }
+            Some(Vec::new())
+        }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::IngestPreVerifiedEvents(events) => {
             // D4 (single writer per fact): actor thread is the sole mutator.

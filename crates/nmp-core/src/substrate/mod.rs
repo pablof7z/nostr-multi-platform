@@ -46,6 +46,7 @@ mod identity;
 mod keyring;
 mod host_op_handler;
 pub mod placeholder;
+mod protocol;
 mod view;
 
 pub use action::{
@@ -61,6 +62,7 @@ pub use keyring::{
     MALFORMED_RESULT,
 };
 pub use placeholder::{picture_placeholder, Placeholder};
+pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
