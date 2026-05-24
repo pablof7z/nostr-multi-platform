@@ -3883,7 +3883,6 @@ dependencies = [
  "tempfile",
  "tracing",
  "tungstenite",
- "ureq",
  "zeroize",
 ]
 
@@ -3982,9 +3981,13 @@ dependencies = [
 name = "nmp-nip57"
 version = "0.1.0"
 dependencies = [
+ "bech32",
  "nmp-core",
+ "nostr",
  "serde",
  "serde_json",
+ "tracing",
+ "ureq",
 ]
 
 [[package]]

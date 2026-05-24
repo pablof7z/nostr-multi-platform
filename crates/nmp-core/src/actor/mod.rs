@@ -571,48 +571,12 @@ pub enum ActorCommand {
         amount_msats: Option<u64>,
         correlation_id: Option<String>,
     },
-    /// NIP-57 LNURL-pay round-trip. The actor signs `unsigned` (the kind:9734
-    /// zap request) with the active local identity, then spawns a worker
-    /// thread that completes the two-leg LNURL-pay HTTP round-trip
-    /// (well-known fetch → callback fetch) and surfaces the resulting bolt11
-    /// invoice as a [`ActorCommand::ShowToast`] follow-up.
-    ///
-    /// `lnurl_or_address` may be a lightning address (`user@domain`), a
-    /// bech32 `lnurl1…`, or a bare `https://` URL — `commands::zap` decodes
-    /// all three shapes into the LNURL-pay well-known URL per LUD-01/06/16.
-    ///
-    /// # NIP-57 wire-routing — kind:9734 NEVER reaches relays
-    ///
-    /// The signed zap request is delivered to the LNURL callback as a
-    /// `nostr=<urlencoded>` query parameter (NIP-57 § "Appendix C"). It is
-    /// NOT broadcast to Nostr relays — the receipt (kind:9735) is, and the
-    /// LN provider mints it after the invoice settles. This arm therefore
-    /// emits NO `PublishUnsignedEventToRelays` follow-up; any caller that
-    /// expects relay traffic from a zap intent has misunderstood NIP-57.
-    ///
-    /// # ADR-0026 Phase 1 — local keys only
-    ///
-    /// Bunker (NIP-46 remote-signer) accounts fail closed with a clear
-    /// toast and a `RecordActionFailure` (when a `correlation_id` was
-    /// supplied) — kind:9734 signing through a remote signer is the
-    /// follow-up parallel to the NIP-17 DM Phase-2 work.
-    ///
-    /// # ADR-0024 minimum-viable observable surface
-    ///
-    /// The bolt11 invoice is surfaced via `ShowToast`. A snapshot-projection
-    /// surface (`last_action_outcomes` per memory note #57) is the designed
-    /// follow-up; the toast is the minimum-viable observable so a host can
-    /// substring-match the `lnbc…` prefix and drive its NWC pay flow.
-    /// `correlation_id` is the registry-minted action id when this arm
-    /// originates from `dispatch_action` (`nmp.nip57.zap`); a `Failed`
-    /// terminal is recorded against it on any pre-payment failure so the
-    /// host spinner clears.
-    FetchLnurlInvoice {
-        unsigned: crate::substrate::UnsignedEvent,
-        lnurl_or_address: String,
-        amount_msats: u64,
-        correlation_id: Option<String>,
-    },
+    // V-41: the closed-enum `FetchLnurlInvoice` variant moved to
+    // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` and dispatches through
+    // [`ActorCommand::Protocol`]. `nmp-core` no longer carries any zap
+    // nouns (D0). The dispatch arm + handler are deleted; the surface a
+    // host sees is unchanged (toast + correlation_id closure remain
+    // identical).
     /// T118 / G3 — app lifecycle phase transition reported by the host shell
     /// (or any conforming consumer). The actor folds the phase into the
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
@@ -747,9 +711,10 @@ pub enum ActorCommand {
     /// D8 — `handle` runs INLINE on the actor thread (the same thread that
     /// ticks the kernel). The current MLS-state consumer's mutations are
     /// SQLite-bound and typically sub-100ms; handlers whose ops routinely
-    /// exceed that should spawn a worker internally (the
-    /// [`FetchLnurlInvoice`](Self::FetchLnurlInvoice) pattern). See the
-    /// [`crate::substrate::HostOpHandler`] rustdoc.
+    /// exceed that should spawn a worker internally (the LNURL fetcher
+    /// pattern — see `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` for the
+    /// canonical V-41 example). See the [`crate::substrate::HostOpHandler`]
+    /// rustdoc.
     DispatchHostOp {
         /// JSON-encoded action body. The handler parses this into its own
         /// typed action enum. No protocol type crosses the FFI boundary —
@@ -933,12 +898,13 @@ pub fn run_actor_with_lifecycle_observer(
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
     // Self-feedback sender — a clone of `command_rx`'s upstream `Sender`,
-    // handed to dispatch arms that spawn background workers (currently the
-    // `FetchLnurlInvoice` LNURL-pay HTTP round-trip). The worker uses it to
-    // send a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11)
-    // back into this loop without needing access to the `NmpApp`. The actor
-    // itself never `recv`s on this sender — it only hands clones out via
-    // `ActorContext::command_tx_self`.
+    // handed to dispatch arms that spawn background workers (the LNURL-pay
+    // HTTP round-trip dispatched via `ActorCommand::Protocol` carries one
+    // through `ProtocolCommandContext::command_sender_clone`). The worker
+    // uses it to send a follow-up `ActorCommand` (e.g. `ShowToast` with
+    // the bolt11) back into this loop without needing access to the
+    // `NmpApp`. The actor itself never `recv`s on this sender — it only
+    // hands clones out via `ActorContext::command_tx_self`.
     command_tx_self: Sender<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,

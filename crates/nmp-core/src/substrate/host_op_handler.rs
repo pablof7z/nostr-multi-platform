@@ -68,11 +68,12 @@
 //! mutations are SQLite-bound and typically sub-100ms, which is within the
 //! actor's tick budget. A handler whose op routinely exceeds ~50ms SHOULD
 //! spawn a worker thread internally and fan a follow-up `ActorCommand` back
-//! via the actor's self-feedback sender (the same pattern `FetchLnurlInvoice`
-//! uses for the LNURL HTTP round-trip — see
-//! [`crate::actor::ActorCommand::FetchLnurlInvoice`]). The trait does not
-//! enforce this — it's the implementor's responsibility, same as for every
-//! other `ActorCommand` dispatch arm.
+//! via the actor's self-feedback sender (the same pattern the NIP-57 LNURL
+//! fetcher uses for its HTTP round-trip — see
+//! `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`, dispatched through
+//! [`crate::actor::ActorCommand::Protocol`]). The trait does not enforce
+//! this — it's the implementor's responsibility, same as for every other
+//! `ActorCommand` dispatch arm.
 
 use std::sync::{Arc, Mutex};
 

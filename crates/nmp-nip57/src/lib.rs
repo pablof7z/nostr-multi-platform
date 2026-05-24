@@ -18,6 +18,7 @@ pub mod build;
 pub mod decode;
 pub mod interests;
 pub mod kinds;
+pub mod lnurl;
 pub mod projection;
 pub mod view;
 
@@ -26,6 +27,7 @@ pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
 pub use interests::{self_zap_receipts_interest, self_zap_receipts_interest_id};
 pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
+pub use lnurl::FetchLnurlInvoiceCommand;
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 

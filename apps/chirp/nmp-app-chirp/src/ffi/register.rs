@@ -77,8 +77,10 @@ pub extern "C" fn nmp_app_chirp_register(
 
     // Register the NIP-57 lightning-zap `ActionModule` (`nmp.nip57.zap`).
     // The executor builds the unsigned kind:9734 via `ZapRequestBuilder`
-    // and enqueues `ActorCommand::FetchLnurlInvoice`; the actor signs the
-    // request on-thread (D7) and spawns a worker for the LNURL-pay HTTP
+    // and enqueues `ActorCommand::Protocol(FetchLnurlInvoiceCommand{...})`
+    // (V-41 — `nmp-core` carries no LNURL HTTP code or `FetchLnurlInvoice`
+    // closed-enum variant). The protocol command signs the request on the
+    // actor thread (D7) and spawns a worker for the LNURL-pay HTTP
     // round-trip (D8). The resulting bolt11 invoice surfaces as a
     // `ShowToast` follow-up (ADR-0024 minimum-viable observable surface).
     //

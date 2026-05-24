@@ -10,10 +10,11 @@ crate-type = ["staticlib", "rlib"]
 
 [features]
 # `native` gates all I/O-bound code: the C-ABI FFI layer, the actor *runtime*
-# (run_actor + dispatch + relay management + tick + LNURL worker + DM /
-# publish executors), relay_worker (tungstenite TCP), LMDB store backend, and
-# the sync HTTP client (ureq/LNURL fetcher). Enabled by default so existing
-# native consumers see no change.
+# (run_actor + dispatch + relay management + tick + DM / publish executors),
+# relay_worker (tungstenite TCP), and the LMDB store backend. Enabled by
+# default so existing native consumers see no change. V-41 — the LNURL HTTP
+# worker (`ureq`) moved to `nmp-nip57::lnurl`; `nmp-core` no longer pulls
+# `ureq`.
 #
 # Disable with `default-features = false` to compile only the pure kernel +
 # `ActorCommand` data type + substrate traits for wasm32 or other no-std-io
@@ -26,11 +27,11 @@ crate-type = ["staticlib", "rlib"]
 # gated.
 default = ["native"]
 # I/O layer — native platforms (Linux, macOS, iOS, Android).
-# Gates: tungstenite, ureq, mio, rustls, heed, nostr-database, nmp-nostr-lmdb,
-# and the chrono/clock feature (wall-clock reads via the OS).
+# Gates: tungstenite, mio, rustls, heed, nostr-database, nmp-nostr-lmdb,
+# and the chrono/clock feature (wall-clock reads via the OS). V-41 — `ureq`
+# moved out with the LNURL fetcher (`nmp-nip57::lnurl`).
 native = [
     "dep:tungstenite",
-    "dep:ureq",
     "dep:mio",
     "dep:rustls",
     "dep:heed",
@@ -99,15 +100,6 @@ serde_json = { workspace = true, features = ["raw_value"] }
 # tungstenite: native WebSocket over TCP (relay_worker and actor). optional=true
 # so wasm32 builds (which use web_sys::WebSocket) compile without it.
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
-# Sync HTTP client used by the LNURL fetcher worker spawned from the
-# `ActorCommand::FetchLnurlInvoice` arm (NIP-57 zaps, ADR-0024 minimum-viable
-# path). `tls` rides the same rustls graph the rest of nmp-core uses
-# (rustls + webpki-roots, ring crypto provider). `json` enables `Response::into_json`
-# for the LNURL-pay endpoint responses. No async runtime is introduced — the
-# worker runs on `std::thread::spawn` and sends a follow-up `ActorCommand`
-# back to the actor through a cloned `Sender<ActorCommand>` (D8: no blocking
-# on the actor thread). optional=true — native-only (wasm uses fetch() instead).
-ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 # Lightweight logging facade. Used by the NIP-17 DM send path to emit a
 # diagnostic `warn!` when the recipient's kind:10050 DM-relay list is not yet
 # cached and the send falls back to the configured Content relays — making the
