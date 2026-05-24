@@ -1,9 +1,10 @@
 # Build & Validation Plan
 
-> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `20a3794f`.
+> Single overarching plan for shipping NMP v1. Reconciled 2026-05-24 against HEAD `8a3cd62b` (post step 9 nmp-store + nmp-planner extraction).
 >
 > **Sources of truth:**
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
+> - **Architectural migration spec** — [`docs/architecture/crate-boundaries.md`](architecture/crate-boundaries.md) (12-step crate-boundary plan; §5 is the migration order).
 > - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (work currently on a branch).
 > - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
 > - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-14-review-product-honesty.md`](perf/codex-reviews/opus-direction-14-review-product-honesty.md).
@@ -14,7 +15,11 @@
 
 ## TL;DR — one screen
 
-**What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
+**Architecture migration (2026-05-24, 16 PRs merged in one day).** The 12-step crate-boundary plan in `docs/architecture/crate-boundaries.md` is structurally ~70% complete. Steps 1 (substrate seams: `IngestParser`, `ProtocolCommand`, `OutboxRouter`, `MailboxCache`), 2 (`nmp-router` crate), 3 (kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65`), 4 (V-41 LNURL → `nmp-nip57`), 5+6 (V-39+V-40 NIP-17 DM stack → `nmp-nip17`), 8 phase A (`nmp-network` extraction), 9 (`nmp-store` + `nmp-planner` extraction), 11 partial (chirp-* → `apps/chirp/`) ✅ merged. V-51 routing observability phases 1+4+5 ✅ merged. Step 7 (V-38 NWC) ⚠ PR #460 sitting deprioritized. Remaining: steps 10 (`nmp-app-template`), 11 final (`nmp-ffi` extraction + `fixture-todo-core` move), 12 (`nmp-marmot` return), step 8 phases B–E (Pool API redesign, `BrowserRelayDriver` move, signer-broker dedupe, NIP-42 split), V-51 phases 2+3 (FFI/wasm snapshot surface + iOS inspector UI).
+
+**Live validation works.** `cargo test -p nmp-testing --test routing_trace_real_nostr -- --ignored` fetches pablof7z's real NIP-65 from `wss://relay.damus.io`, hands it to `nmp_router::GenericOutboxRouter::route_subscription`, asserts the resolved set (`r.f7z.io`, `relay.damus.io`, `relay.primal.net`) is attributed to `Nip65/Read` lane with zero `AppRelay/Fallback` leak. `scripts/validate-routing.sh` drives chirp-repl end-to-end. **Caveat**: the kernel currently invokes the router for *observability* (V-51 phase 5) but still picks REQ relays via its own cache helpers — the "make substrate honest" follow-up (router becomes decision authority, delete `default_routing.rs`, eliminate `ProtocolCommandContext` 11-accessor balloon, fix `RwLock` panics) is the next priority PR.
+
+**What works on master** (≈137k LOC, 31 crates): kernel substrate (`nmp-core`, NIP-clean post step 9 + V-39+V-40 + V-41) · LMDB persistence (`nmp-store`) · planner (`nmp-planner`) · single-algorithm router (`nmp-router`) with NIP-65 outbox + AppRelay fallback + blocked-relay filter + explicit_targets override seam · routing-trace observability projection · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47, still in `nmp-core` — V-38 deprioritized) · NIP-57 zaps (LNURL fetcher in `nmp-nip57`) · NIP-17 DMs (full stack in `nmp-nip17`, bunker NIP-46 sealing regressed: V-08) · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check` · chirp-repl `routing-trace` subcommand + `scripts/validate-routing.sh` end-to-end smoke.
 
 **What does not work yet** (v1 blockers):
 1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool (Stage 3, PR #375), NIP-07 signer + async snapshot push (Stage 3b, PR #378), publish-path wire + multi-role bootstrap (Stage 3c, PR #385 — merged 2026-05-24). **Only F-01 IndexedDB persistence remains v1-blocking.** No persistent chirp-web features may be added until F-01 lands.
