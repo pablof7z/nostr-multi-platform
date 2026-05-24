@@ -495,13 +495,13 @@ impl MarmotService {
         self.mdk.get_group(group_id).map_err(MarmotError::from)
     }
 
-    /// The current member set (Nostr pubkeys). Backs `MemberList`.
+    /// The current member set (Nostr pubkeys). Backs `MarmotGroupRow.members`.
     #[must_use]
     pub fn get_members(&self, group_id: &GroupId) -> Result<std::collections::BTreeSet<PublicKey>> {
         self.mdk.get_members(group_id).map_err(MarmotError::from)
     }
 
-    /// MLS leaf-index → pubkey map. Backs `MemberList` leaf indices.
+    /// MLS leaf-index → pubkey map. Backs `MarmotGroupRow.members` leaf indices.
     pub fn group_leaf_map(
         &self,
         group_id: &GroupId,
