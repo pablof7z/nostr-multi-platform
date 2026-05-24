@@ -78,6 +78,13 @@ mod publish_terminal_status_tests;
 // derivations the three iOS diagnostics views used to do client-side. See
 // the module doc for the bible references.
 mod relay_diagnostics;
+// V-51 phase 1 — bounded ring-buffer projection of recent routing decisions
+// fed by the `RoutingTraceObserver` substrate seam. Constructed by
+// `Kernel::new` and held as `Arc<RoutingTraceProjection>` so the same
+// allocation is shared with whichever `OutboxRouter` impl the kernel
+// installs (the router stores `Arc<dyn RoutingTraceObserver>` — the
+// projection is the only concrete impl).
+pub(crate) mod routing_trace;
 // Typed slot wrappers for relay-shaped actor-owned caches. The bare
 // `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
 // publish resolver and `NmpApp` move behind named types here so D14 can flag
@@ -412,6 +419,14 @@ pub(crate) struct Kernel {
     /// Follow-on steps wire actual `route_publish` / `route_subscription`
     /// call sites.
     outbox_router: Arc<dyn OutboxRouter>,
+    /// V-51 phase 1 — bounded ring-buffer projection of recent routing
+    /// decisions. Constructed once in `Kernel::with_optional_publish_store_and_path`
+    /// and wired into the default `Nip65WriteSetRouter` via
+    /// `with_trace_observer`. Production composition that swaps in
+    /// `nmp_router::GenericOutboxRouter` via [`Kernel::set_routing`] re-wires
+    /// the observer by passing this same `Arc` through. Read by the FFI
+    /// surface in phase 2 (`recent_routing_decisions` snapshot field).
+    routing_trace: Arc<routing_trace::RoutingTraceProjection>,
     /// NIP-17 kind:10050 DM-relay lists, keyed by author pubkey (hex). Each
     /// value is the deduped, canonicalized set of DM-inbox relay URLs the
     /// author declared. Populated by `ingest_dm_relay_list`; read by
@@ -820,6 +835,18 @@ impl Kernel {
         self.mailbox_cache = cache;
     }
 
+    /// V-51 phase 1 — borrow the kernel's routing-trace projection.
+    ///
+    /// Returns an `Arc<RoutingTraceProjection>` so a host that swaps in a
+    /// production router (`nmp_router::GenericOutboxRouter`) via
+    /// [`Self::set_routing`] can pass the same projection through the
+    /// router's `with_trace_observer` builder, and so phase 2's FFI snapshot
+    /// surface can read the rings without holding a `&Kernel` borrow.
+    #[allow(dead_code)]
+    pub(crate) fn routing_trace(&self) -> Arc<routing_trace::RoutingTraceProjection> {
+        Arc::clone(&self.routing_trace)
+    }
+
     /// Construct a Kernel with an externally-supplied publish store. Used by
     /// integration tests that need two kernel instances to share one store
     /// (proving `PublishEngine::resume_from_store` survives a "restart"). The
@@ -926,6 +953,19 @@ impl Kernel {
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
 
+        // V-51 phase 1 — construct the routing-trace projection and wire it
+        // into the default router. `Arc<RoutingTraceProjection>` clones to
+        // both the kernel field (read by phase 2's FFI surface) and the
+        // router's `Arc<dyn RoutingTraceObserver>` slot (write end).
+        // Production composition that swaps in `nmp_router::GenericOutboxRouter`
+        // via `set_routing` is expected to thread the same projection
+        // through via its own `with_trace_observer` builder.
+        let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::new());
+        let trace_obs: Arc<dyn crate::substrate::RoutingTraceObserver> =
+            Arc::clone(&routing_trace) as Arc<dyn crate::substrate::RoutingTraceObserver>;
+        let outbox_router: Arc<dyn OutboxRouter> =
+            Arc::new(Nip65WriteSetRouter::new().with_trace_observer(trace_obs));
+
         Self {
             store,
             clock: Arc::new(SystemClock),
@@ -949,7 +989,8 @@ impl Kernel {
             deferred_outbound: VecDeque::new(),
             seed_contacts: HashMap::new(),
             mailbox_cache: Arc::new(DefaultInMemoryMailboxCache::new()),
-            outbox_router: Arc::new(Nip65WriteSetRouter::new()),
+            outbox_router,
+            routing_trace,
             dm_relay_lists: HashMap::new(),
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),

@@ -50,6 +50,7 @@ mod host_op_handler;
 pub mod placeholder;
 mod protocol;
 mod routing;
+mod routing_trace;
 mod view;
 
 pub use action::{
@@ -75,6 +76,9 @@ pub use routing::{
     OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,
     RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, SessionKeySet,
     UserConfiguredCategory,
+};
+pub use routing_trace::{
+    truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace,
 };
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 

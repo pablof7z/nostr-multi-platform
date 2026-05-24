@@ -19,24 +19,38 @@
 //! `explicit_targets` paths the NIP-17/NIP-29/Marmot migrations (steps 5,
 //! 6) need.
 
+use std::sync::Arc;
+
 use nmp_core::planner::LogicalInterest;
 use nmp_core::substrate::{
-    AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
-    RoutingSource, UnsignedEvent,
+    truncate_event_id, AppRelayMode, Direction, OutboxRouter, PublishTrace, RoutedRelaySet,
+    RoutingContext, RoutingError, RoutingSource, RoutingTraceObserver, SubscriptionTrace,
+    UnsignedEvent,
 };
 
-pub struct GenericOutboxRouter;
+#[derive(Default)]
+pub struct GenericOutboxRouter {
+    /// V-51 phase 1 — optional trace observer fired after every successful
+    /// `route_publish` / `route_subscription`. `None` by default; production
+    /// composition binds the kernel's `RoutingTraceProjection` clone via
+    /// [`Self::with_trace_observer`]. D8: the `Option::is_some` gate keeps
+    /// the no-observer path zero-alloc.
+    trace_observer: Option<Arc<dyn RoutingTraceObserver>>,
+}
 
 impl GenericOutboxRouter {
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
-}
 
-impl Default for GenericOutboxRouter {
-    fn default() -> Self {
-        Self::new()
+    /// Install a [`RoutingTraceObserver`] (V-51 phase 1). The router fires
+    /// `on_publish` / `on_subscription` after every successful resolution;
+    /// `Err(RoutingError::*)` returns are NOT observed.
+    #[must_use]
+    pub fn with_trace_observer(mut self, obs: Arc<dyn RoutingTraceObserver>) -> Self {
+        self.trace_observer = Some(obs);
+        self
     }
 }
 
@@ -46,44 +60,60 @@ impl OutboxRouter for GenericOutboxRouter {
         evt: &UnsignedEvent,
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
-        if let Some(explicit) = ctx.explicit_targets {
+        let explicit_targets_set = ctx.explicit_targets.is_some();
+        let out = if let Some(explicit) = ctx.explicit_targets {
             // §3.4 — the override seam. Skip the generic algorithm.
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
-        }
+            RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays)
+        } else {
+            let mut out = RoutedRelaySet::new();
 
-        let mut out = RoutedRelaySet::new();
-
-        // Lane 1 — author's NIP-65 write set.
-        if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
-            for url in writes {
-                if ctx.blocked_relays.contains(&url) {
-                    continue;
+            // Lane 1 — author's NIP-65 write set.
+            if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
+                for url in writes {
+                    if ctx.blocked_relays.contains(&url) {
+                        continue;
+                    }
+                    out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
                 }
-                out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
             }
-        }
 
-        // Lane 7 — AppRelay fallback when lane 1 returned nothing.
-        if out.is_empty() {
-            for url in ctx.session_keys.app_relays.iter() {
-                if ctx.blocked_relays.contains(url) {
-                    continue;
+            // Lane 7 — AppRelay fallback when lane 1 returned nothing.
+            if out.is_empty() {
+                for url in ctx.session_keys.app_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(url.clone(), RoutingSource::AppRelay {
+                        mode: AppRelayMode::Fallback,
+                    });
                 }
-                out.add(url.clone(), RoutingSource::AppRelay {
-                    mode: AppRelayMode::Fallback,
-                });
             }
+
+            // TODO §3.1 lane 2 — relay-hint tags on `evt`.
+            // TODO §3.1 lane 3 — provenance (kind/event-id seen at relay X).
+            // TODO §3.1 lane 4 — UserConfigured (active-account write).
+            // TODO §3.1 lane 5 — NIP-51 ClassRouted (search/draft/wiki).
+            // TODO §3.1 lane 6 — Indexer eligibility for kind:0 / kind:3 / 10000–19999.
+
+            if out.is_empty() {
+                return Err(RoutingError::Unroutable(evt.pubkey.clone()));
+            }
+            out
+        };
+
+        // V-51 — fire trace observer if installed (D8 gate).
+        if let Some(obs) = self.trace_observer.as_ref() {
+            obs.on_publish(
+                PublishTrace {
+                    kind: evt.kind,
+                    author: evt.pubkey.clone(),
+                    event_id_short: truncate_event_id(None),
+                    explicit_targets_set,
+                },
+                &out,
+            );
         }
 
-        // TODO §3.1 lane 2 — relay-hint tags on `evt`.
-        // TODO §3.1 lane 3 — provenance (kind/event-id seen at relay X).
-        // TODO §3.1 lane 4 — UserConfigured (active-account write).
-        // TODO §3.1 lane 5 — NIP-51 ClassRouted (search/draft/wiki).
-        // TODO §3.1 lane 6 — Indexer eligibility for kind:0 / kind:3 / 10000–19999.
-
-        if out.is_empty() {
-            return Err(RoutingError::Unroutable(evt.pubkey.clone()));
-        }
         Ok(out)
     }
 
@@ -92,54 +122,69 @@ impl OutboxRouter for GenericOutboxRouter {
         interest: &LogicalInterest,
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
-        if let Some(explicit) = ctx.explicit_targets {
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
-        }
+        let explicit_targets_set = ctx.explicit_targets.is_some();
+        let out = if let Some(explicit) = ctx.explicit_targets {
+            RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays)
+        } else {
+            let mut out = RoutedRelaySet::new();
 
-        let mut out = RoutedRelaySet::new();
+            // Lane 1 — each author's NIP-65 read set.
+            for author in &interest.shape.authors {
+                if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
+                    for url in reads {
+                        if ctx.blocked_relays.contains(&url) {
+                            continue;
+                        }
+                        out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
+                    }
+                }
+            }
 
-        // Lane 1 — each author's NIP-65 read set.
-        for author in &interest.shape.authors {
-            if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
-                for url in reads {
-                    if ctx.blocked_relays.contains(&url) {
+            // Lane 7 — AppRelay fallback when lane 1 returned nothing.
+            if out.is_empty() {
+                for url in ctx.session_keys.app_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
                         continue;
                     }
-                    out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
+                    out.add(url.clone(), RoutingSource::AppRelay {
+                        mode: AppRelayMode::Fallback,
+                    });
                 }
             }
-        }
 
-        // Lane 7 — AppRelay fallback when lane 1 returned nothing.
-        if out.is_empty() {
-            for url in ctx.session_keys.app_relays.iter() {
-                if ctx.blocked_relays.contains(url) {
-                    continue;
-                }
-                out.add(url.clone(), RoutingSource::AppRelay {
-                    mode: AppRelayMode::Fallback,
-                });
+            // TODO §3.1 lane 6 — Indexer eligibility for discovery kinds in
+            // `interest.shape.kinds` (kind:0 / kind:3 / 10000–19999).
+
+            if out.is_empty() {
+                // No author resolved and no AppRelay configured — surface as
+                // Unroutable for the first author so the kernel toast points
+                // at a concrete pubkey. Empty author set is a different shape
+                // (wildcard) that the generic algorithm can't currently route
+                // — also Unroutable, attributed to the empty string author.
+                let pk = interest
+                    .shape
+                    .authors
+                    .iter()
+                    .next()
+                    .cloned()
+                    .unwrap_or_default();
+                return Err(RoutingError::Unroutable(pk));
             }
+            out
+        };
+
+        if let Some(obs) = self.trace_observer.as_ref() {
+            obs.on_subscription(
+                SubscriptionTrace {
+                    interest_id: interest.id.0,
+                    kinds: interest.shape.kinds.iter().copied().collect(),
+                    authors_count: interest.shape.authors.len(),
+                    explicit_targets_set,
+                },
+                &out,
+            );
         }
 
-        // TODO §3.1 lane 6 — Indexer eligibility for discovery kinds in
-        // `interest.shape.kinds` (kind:0 / kind:3 / 10000–19999).
-
-        if out.is_empty() {
-            // No author resolved and no AppRelay configured — surface as
-            // Unroutable for the first author so the kernel toast points
-            // at a concrete pubkey. Empty author set is a different shape
-            // (wildcard) that the generic algorithm can't currently route
-            // — also Unroutable, attributed to the empty string author.
-            let pk = interest
-                .shape
-                .authors
-                .iter()
-                .next()
-                .cloned()
-                .unwrap_or_default();
-            return Err(RoutingError::Unroutable(pk));
-        }
         Ok(out)
     }
 }
@@ -364,5 +409,80 @@ mod tests {
         // Compile-test: confirm the impl is object-safe and the kernel can
         // hold it as Arc<dyn OutboxRouter>.
         let _: Box<dyn OutboxRouter> = Box::new(GenericOutboxRouter::new());
+    }
+
+    #[derive(Default)]
+    struct TestObserver {
+        publishes: std::sync::Mutex<Vec<(PublishTrace, usize)>>,
+        subscriptions: std::sync::Mutex<Vec<SubscriptionTrace>>,
+    }
+
+    impl RoutingTraceObserver for TestObserver {
+        fn on_publish(&self, summary: PublishTrace, routed: &RoutedRelaySet) {
+            self.publishes
+                .lock()
+                .unwrap()
+                .push((summary, routed.relays.len()));
+        }
+        fn on_subscription(&self, summary: SubscriptionTrace, _routed: &RoutedRelaySet) {
+            self.subscriptions.lock().unwrap().push(summary);
+        }
+    }
+
+    #[test]
+    fn trace_observer_fires_on_success_and_skips_unroutable() {
+        // Two route_publish calls and one route_subscription against a single
+        // router+observer instance. Asserts the observer fires once per
+        // successful call (with the right trace payload), and NOT at all when
+        // the router returns Unroutable.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        cache.upsert(pubkey(), ParsedRelayList {
+            write: vec!["wss://w.example".into()],
+            read: vec!["wss://r.example".into()],
+            ..ParsedRelayList::default()
+        });
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let obs = Arc::new(TestObserver::default());
+        let router = GenericOutboxRouter::new()
+            .with_trace_observer(obs.clone() as Arc<dyn RoutingTraceObserver>);
+
+        // 1. Successful publish — explicit_targets unset.
+        let c = ctx(&*cache, &blocked, None, &app);
+        let _ = router.route_publish(&unsigned(), &c).unwrap();
+        // 2. Successful publish — explicit_targets set.
+        let explicit = vec!["wss://forced.example".to_string()];
+        let c = ctx(&*cache, &blocked, Some(&explicit), &app);
+        let _ = router.route_publish(&unsigned(), &c).unwrap();
+        // 3. Successful subscription with a non-default interest id.
+        let c = ctx(&*cache, &blocked, None, &app);
+        let mut interest = interest_for(&["alice"]);
+        interest.id = nmp_core::planner::InterestId(42);
+        let _ = router.route_subscription(&interest, &c).unwrap();
+        // 4. Unroutable publish (no cache, no app-relay) — observer MUST NOT fire.
+        let empty_cache = InMemoryMailboxCache::new();
+        let c = ctx(&empty_cache, &blocked, None, &app);
+        let _ = router
+            .route_publish(
+                &UnsignedEvent {
+                    pubkey: "ghost".into(),
+                    ..unsigned()
+                },
+                &c,
+            )
+            .unwrap_err();
+
+        let pubs = obs.publishes.lock().unwrap();
+        assert_eq!(pubs.len(), 2, "two publish successes only");
+        assert_eq!(pubs[0].0.kind, 1);
+        assert_eq!(pubs[0].0.author, pubkey());
+        assert!(!pubs[0].0.explicit_targets_set);
+        assert!(pubs[1].0.explicit_targets_set);
+
+        let subs = obs.subscriptions.lock().unwrap();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].interest_id, 42);
+        assert_eq!(subs[0].authors_count, 1);
+        assert!(!subs[0].explicit_targets_set);
     }
 }
