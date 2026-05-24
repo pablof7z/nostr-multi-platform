@@ -153,30 +153,12 @@ private struct DiscoveredGroupRow: View {
     let isJoined: Bool
     let onJoin: () -> Void
 
-    private var initials: String {
-        if let name = group.name, !name.isEmpty {
-            return String(name.prefix(2)).uppercased()
-        }
-        return String(group.groupId.prefix(2)).uppercased()
-    }
-
-    private var displayName: String {
-        if let name = group.name, !name.isEmpty {
-            return name
-        }
-        return group.groupId
-    }
-
-    /// `"# Public · N members"` / `"🔒 Private · N members"` — pre-classified
-    /// from the projection's booleans + counts; no Swift derivation.
-    private var subtitle: String {
-        let visibility = group.public ? "# Public" : "🔒 Private"
-        let access = group.open ? "Open" : "Closed"
-        let members = group.memberCount == 1
-            ? "1 member"
-            : "\(group.memberCount) members"
-        return "\(visibility) · \(access) · \(members)"
-    }
+    // V-24 thin-shell — `initials`, `displayName`, `subtitle` arrive
+    // pre-computed on `DiscoveredGroup` from `nmp-nip29`'s
+    // `DiscoveredGroupsProjection`. The Swift-side derivations that
+    // used to live here (string prefix + uppercase, name/groupId
+    // fallback, visibility-glyph + pluralized member-count assembly)
+    // are owned by Rust now.
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -184,18 +166,18 @@ private struct DiscoveredGroupRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(.quaternary)
                     .frame(width: 44, height: 44)
-                Text(initials)
+                Text(group.initials)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
             }
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(displayName)
+                Text(group.displayName)
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text(subtitle)
+                Text(group.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let about = group.about, !about.isEmpty {
@@ -222,7 +204,7 @@ private struct DiscoveredGroupRow: View {
             .buttonStyle(.plain)
             .disabled(isJoined)
             .accessibilityIdentifier("join-group-join-button-\(group.groupId)")
-            .accessibilityLabel(isJoined ? "Join requested" : "Join \(displayName)")
+            .accessibilityLabel(isJoined ? "Join requested" : "Join \(group.displayName)")
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())

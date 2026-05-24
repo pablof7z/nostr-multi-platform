@@ -15,7 +15,7 @@ use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
-use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
+use crate::kernel::{account_npub_short, AccountSummary, Kernel, RelayEditRow};
 use crate::relay::{canonical_relay_url, default_relay_bootstrap, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
@@ -678,9 +678,14 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
                     return None;
                 };
             let is_active = active.as_deref() == Some(id);
+            // V-24 — Rust owns the abbreviated bech32 form so the iOS
+            // `AccountsView` can render `account.npubShort` verbatim
+            // instead of slicing the `npub` string in-view.
+            let npub_short = account_npub_short(&npub);
             Some(AccountSummary {
                 id: id.clone(),
                 npub,
+                npub_short,
                 display_name: display_name_from_hex(id),
                 signer_label: signer_label_for_kind(&signer_kind),
                 signer_kind,

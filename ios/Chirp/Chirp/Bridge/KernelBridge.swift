@@ -1059,6 +1059,19 @@ struct DiscoveredGroup: Decodable, Identifiable, Equatable {
     let adminCount: UInt32
     let `public`: Bool
     let open: Bool
+    /// Pre-computed 2-char uppercase initials for the avatar tile (Rust:
+    /// first 2 chars of `name` if non-empty, else of `group_id`,
+    /// uppercased). Thin-shell V-24 — no Swift derivation.
+    let initials: String
+    /// Display name: `name` when non-empty, `groupId` as fallback. The
+    /// shell renders this verbatim without a null-coalescing conditional
+    /// (V-24).
+    let displayName: String
+    /// Pre-formatted accessibility subtitle, e.g.
+    /// `"# Public · Open · 5 members"` / `"🔒 Private · Closed · 1 member"`.
+    /// Visibility glyphs (`#` / `🔒`) and pluralization live in Rust
+    /// (V-24).
+    let subtitle: String
 
     var id: String { "\(hostRelayUrl)|\(groupId)" }
 }

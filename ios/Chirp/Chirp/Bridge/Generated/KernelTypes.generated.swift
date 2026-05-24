@@ -126,6 +126,7 @@ public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
     public let id: String
     public let isActive: Bool
     public let npub: String
+    public let npubShort: String
     public let pictureUrl: String?
     public let signerIsRemote: Bool
     public let signerKind: String

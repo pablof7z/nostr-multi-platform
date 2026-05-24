@@ -50,6 +50,14 @@ pub(crate) struct AccountSummary {
     /// Hex pubkey — the canonical `IdentityId` (matches NDK / applesauce).
     pub(crate) id: String,
     pub(crate) npub: String,
+    /// Pre-formatted abbreviated bech32 npub (`npub1abcd…xyz`). Computed at
+    /// construction time so Swift never abbreviates npubs in-view (thin-shell
+    /// V-24; same pattern as `ProfileCard.npub_short`). The algorithm
+    /// matches `profile_npub_short` in `kernel/update.rs` byte-for-byte —
+    /// deliberate micro-duplication keeps the kernel modules decoupled
+    /// (`identity_state.rs` does not reach across into `update.rs`'s
+    /// private helpers).
+    pub(crate) npub_short: String,
     pub(crate) display_name: String,
     pub(crate) signer_kind: String,
     /// `"active"` for the active account, `"idle"` otherwise.
@@ -370,12 +378,52 @@ impl super::Kernel {
 
 }
 
+/// Abbreviated npub: `<first10>…<last8>` for values longer than 20 chars;
+/// the value verbatim otherwise. Mirrors the `profile_npub_short` policy
+/// in `kernel/update.rs` byte-for-byte. Lives here (not as a re-import)
+/// so `identity_state.rs` does not depend on a private helper inside the
+/// sibling `update.rs` — keeps the kernel modules independently testable
+/// and respects the V-22 precedent of accepting a single line of micro-
+/// duplication over a cross-module coupling.
+pub(crate) fn account_npub_short(npub: &str) -> String {
+    let count = npub.chars().count();
+    if count <= 20 {
+        return npub.to_string();
+    }
+    let prefix: String = npub.chars().take(10).collect();
+    let suffix: String = npub
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}…{suffix}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn row(url: &str, role: &str) -> RelayEditRow {
         RelayEditRow::new(url.to_string(), role.to_string())
+    }
+
+    #[test]
+    fn account_npub_short_returns_value_verbatim_under_20_chars() {
+        assert_eq!(account_npub_short(""), "");
+        assert_eq!(account_npub_short("abc"), "abc");
+        let twenty = "a".repeat(20);
+        assert_eq!(account_npub_short(&twenty), twenty);
+    }
+
+    #[test]
+    fn account_npub_short_truncates_long_value_first10_last8_with_ellipsis() {
+        let npub = "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
+        let out = account_npub_short(npub);
+        assert_eq!(out, "npub1l2vyh…fqutajft");
+        assert!(out.contains('…'));
     }
 
     #[test]

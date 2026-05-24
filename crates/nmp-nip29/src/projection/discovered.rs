@@ -88,6 +88,20 @@ pub struct DiscoveredGroup {
     /// `true` iff the latest 39000 lacks a `["closed"]` tag. Defaults to
     /// `true` (open) when no 39000 has arrived.
     pub open: bool,
+    /// Pre-computed two-character uppercase initials for the avatar tile
+    /// (the first two chars of `name` if present, otherwise of `group_id`).
+    /// Rust owns this so the iOS / Android shell never derives initials
+    /// from row data (thin-shell V-24).
+    pub initials: String,
+    /// Display name: `name` when non-empty, `group_id` as fallback. Lets
+    /// the shell render the field verbatim without a null-coalescing
+    /// conditional (thin-shell V-24).
+    pub display_name: String,
+    /// Pre-formatted accessibility subtitle, e.g.
+    /// `"# Public · Open · 5 members"` / `"🔒 Private · Closed · 1 member"`.
+    /// The visibility-glyph + pluralization convention lives here (Rust),
+    /// not in the platform shell (thin-shell V-24).
+    pub subtitle: String,
 }
 
 /// The serialised read-model a discovery screen consumes.
@@ -219,6 +233,16 @@ impl DiscoveredGroupsProjection {
             apply_event_to_row(row, *kind, &entry.tags);
         }
 
+        // Finalize-pass — populate the V-24 thin-shell display fields
+        // (`initials`, `display_name`, `subtitle`) AFTER all kinds have
+        // been folded in. These fields depend on the rolled-up state
+        // (`name`, `public`, `open`, `member_count`), so they must be
+        // computed once per row at the end rather than per-event mutation
+        // inside `apply_event_to_row`.
+        for row in by_d.values_mut() {
+            finalize_display_fields(row);
+        }
+
         DiscoveredGroupsSnapshot {
             host_relay_url: self.host_relay_url.clone(),
             groups: by_d.into_values().collect(),
@@ -265,6 +289,52 @@ fn apply_event_to_row(row: &mut DiscoveredGroup, kind: u32, tags: &[Vec<String>]
         }
         _ => {}
     }
+}
+
+/// Populate the V-24 thin-shell display fields once the rolled-up state is
+/// known: `display_name` (name with `group_id` fallback), `initials`
+/// (first two uppercased chars of the same source), and `subtitle`
+/// (`"<visibility> · <access> · N member(s)"` with Highlighter glyphs).
+///
+/// Runs once per row in the snapshot finalize-pass so the fields reflect
+/// the latest state for ALL three kinds — `initials` keys off `name`
+/// (kind:39000), `subtitle` keys off `member_count` (kind:39002) and the
+/// `public` / `open` markers (kind:39000). Splitting the per-kind
+/// mutation (`apply_event_to_row`) from the per-row finalization
+/// (this function) keeps the per-event hot path allocation-free for
+/// fields no kind reads back.
+fn finalize_display_fields(row: &mut DiscoveredGroup) {
+    // Display name: `name` when non-empty, else fall back to `group_id`.
+    let display_source = row
+        .name
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(row.group_id.as_str());
+    row.display_name = display_source.to_string();
+
+    // Initials: first two chars of the display source, uppercased.
+    // Per-char `.to_uppercase().next()` keeps `String::prefix(2)` parity
+    // with the Swift form for ASCII names; multi-codepoint upper-mappings
+    // (e.g. `ß` → `"SS"`) collapse to their first codepoint here — the
+    // platform shell renders the result verbatim, so the choice is
+    // owned in one place (Rust).
+    row.initials = display_source
+        .chars()
+        .take(2)
+        .map(|c| c.to_uppercase().next().unwrap_or(c))
+        .collect::<String>();
+
+    // Subtitle: glyph for visibility + access keyword + pluralized member
+    // count. Mirrors the format the iOS view previously assembled in-line
+    // (`"# Public · Open · 5 members"`); the `🔒` glyph is part of the
+    // NIP-29 convention and stays in Rust (V-24).
+    let visibility = if row.public { "# Public" } else { "🔒 Private" };
+    let access = if row.open { "Open" } else { "Closed" };
+    let members = match row.member_count {
+        1 => "1 member".to_string(),
+        n => format!("{n} members"),
+    };
+    row.subtitle = format!("{visibility} · {access} · {members}");
 }
 
 /// First `["<key>", <value>]` tag value, if any.

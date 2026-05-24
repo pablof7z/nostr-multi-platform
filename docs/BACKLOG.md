@@ -460,12 +460,32 @@ byte-for-byte (deliberate micro-duplication — a NIP crate should not depend on
 crate just for a trivial bucketed-time formatter). Swift view binds the field directly and the
 `relativeTime` Swift helper is deleted.
 
-### V-23 · `WalletView` thin-shell doctrine violations — **DONE** (this PR)
+### V-23 · `WalletView` thin-shell doctrine violations — **DONE** (PR #434)
 
 `WalletView.swift` computed `balanceSats` (msats÷1000), formatted it with
 `.formatted()`, and abbreviated `walletNpub` using a private `shortNpub()` function.
 All three moved to Rust: `WalletStatus` now carries `balance_sats`, `balance_sats_display`,
 `wallet_npub_short`, `is_ready`, and `is_connected`.
+
+### V-24 · `AccountsView` + `JoinGroupView` thin-shell doctrine violations — **DONE** (PR #435)
+
+**Verified:** `ios/Chirp/Chirp/Features/AccountsView.swift:68,90-93` abbreviated npubs in Swift
+via a private `shortNpub(_:)` helper (`<first10>…<last6>`). `ios/Chirp/Chirp/Features/JoinGroupView.swift:156-178`
+computed `initials`, `displayName`, and `subtitle` from `DiscoveredGroup` projection data inside
+the SwiftUI row view — first-two-char uppercase, name/groupId fallback, and visibility-glyph +
+pluralized member-count assembly all lived in Swift. aim.md §2 thin-shell rule places all
+display formatting in Rust.
+
+**Fixed:** `AccountSummary` (`crates/nmp-core/src/kernel/identity_state.rs`) gains a
+`npub_short: String` field computed by a new `account_npub_short(&str)` helper. The algorithm
+mirrors `profile_npub_short` in `kernel/update.rs` byte-for-byte (deliberate micro-duplication —
+`identity_state.rs` does not reach into `update.rs`'s private helpers; V-22 precedent).
+`DiscoveredGroup` (`crates/nmp-nip29/src/projection/discovered.rs`) gains `initials`,
+`display_name`, and `subtitle` fields populated by a new `finalize_display_fields` pass in
+`DiscoveredGroupsProjection::snapshot`. Visibility glyphs (`#` / `🔒`) and pluralization
+(`"1 member"` / `"N members"`) live in Rust. iOS views bind the new fields verbatim;
+`shortNpub` and the three `JoinGroupView` computed properties are deleted. Swift codegen
+(`KernelTypes.generated.swift`) regenerated to surface `npubShort`.
 
 ---
 
