@@ -19,7 +19,8 @@
 
 use std::sync::Arc;
 
-use nmp_core::{KernelEventObserver, NmpApp};
+use nmp_core::KernelEventObserver;
+use nmp_ffi::NmpApp;
 
 use crate::action::{
     DiscoverGroupsAction, JoinGroupAction, PostChatMessageAction, ReactInGroupAction,

@@ -16,7 +16,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Path-dep on the SAME kernel the iOS app consumes.
-nmp-core = { path = "../nmp-core", features = ["android-ffi"] }
+nmp-core = { path = "../nmp-core" }
+# C-ABI surface owner (extracted from `nmp-core::ffi` in step 11-final of
+# `docs/architecture/crate-boundaries.md` §5). The JNI shim consumes the
+# `nmp_app_*` Rust paths through this crate.
+nmp-ffi = { path = "../nmp-ffi", features = ["android-ffi"] }
 # Android registers the same Chirp modular timeline observer as iOS, but keeps
 # deferred post-v1 surfaces (Marmot/wallet) out of the Android .so.
 nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false }

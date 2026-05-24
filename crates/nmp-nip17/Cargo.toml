@@ -13,6 +13,10 @@ description = "NIP-17 private direct messages — kind:14 chat-message rumor bui
 # `DmInboxProjection` plugs into and the `ActionModule` substrate trait the
 # `nmp.nip17.send` action implements.
 nmp-core = { path = "../nmp-core" }
+# C-ABI handle owner (`NmpApp`) — moved out of `nmp-core::ffi` in step
+# 11-final. `register_actions` takes `&mut NmpApp`, so this crate names
+# the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 # `nmp-nip59` owns the gift-wrap primitives — the inbox calls
 # `unwrap_gift_wrap` to unseal an incoming kind:1059 envelope.
 nmp-nip59 = { path = "../nmp-nip59" }

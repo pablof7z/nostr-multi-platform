@@ -147,8 +147,8 @@ fn ack_action_stage_well_formed_enqueues_command() {
     });
 }
 
-use crate::publish::{PublishAction, PublishTarget};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_core::publish::{PublishAction, PublishTarget};
+use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 
 fn fixture_signed_event() -> SignedEvent {
     SignedEvent {
@@ -260,7 +260,7 @@ fn greeting_flag() -> Arc<AtomicBool> {
 }
 
 struct TestGreetingModule;
-impl crate::substrate::ActionModule for TestGreetingModule {
+impl nmp_core::substrate::ActionModule for TestGreetingModule {
     const NAMESPACE: &'static str = "test.greeting"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
@@ -272,7 +272,7 @@ impl crate::substrate::ActionModule for TestGreetingModule {
     fn execute(
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(crate::actor::ActorCommand),
+        _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
         greeting_flag().store(true, Ordering::SeqCst);
         Ok(())
@@ -281,7 +281,7 @@ impl crate::substrate::ActionModule for TestGreetingModule {
 
 /// Failing test module — always returns `Err` from `execute`.
 struct TestFailingModule;
-impl crate::substrate::ActionModule for TestFailingModule {
+impl nmp_core::substrate::ActionModule for TestFailingModule {
     const NAMESPACE: &'static str = "test.failing"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
@@ -293,7 +293,7 @@ impl crate::substrate::ActionModule for TestFailingModule {
     fn execute(
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(crate::actor::ActorCommand),
+        _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
         Err("host rejected the action".to_string())
     }
@@ -302,7 +302,7 @@ impl crate::substrate::ActionModule for TestFailingModule {
 /// Accept-everything test module under `test.todo`. Used by the
 /// dispatch-action end-to-end tests below.
 struct TestTodoModule;
-impl crate::substrate::ActionModule for TestTodoModule {
+impl nmp_core::substrate::ActionModule for TestTodoModule {
     const NAMESPACE: &'static str = "test.todo"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
@@ -314,7 +314,7 @@ impl crate::substrate::ActionModule for TestTodoModule {
     fn execute(
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(crate::actor::ActorCommand),
+        _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }
@@ -323,7 +323,7 @@ impl crate::substrate::ActionModule for TestTodoModule {
 /// Rejecting test module under `test.todo_reject` — `start()` always
 /// returns `ActionRejection::Invalid`.
 struct TestTodoRejectModule;
-impl crate::substrate::ActionModule for TestTodoRejectModule {
+impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
     const NAMESPACE: &'static str = "test.todo_reject"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
@@ -337,7 +337,7 @@ impl crate::substrate::ActionModule for TestTodoRejectModule {
     fn execute(
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(crate::actor::ActorCommand),
+        _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }
@@ -346,7 +346,7 @@ impl crate::substrate::ActionModule for TestTodoRejectModule {
 /// Panicking test module under `test.panic` — `execute()` panics. Used by
 /// `executor_failure_returns_correlation_id_and_enqueues_failed_terminal`.
 struct TestPanicModule;
-impl crate::substrate::ActionModule for TestPanicModule {
+impl nmp_core::substrate::ActionModule for TestPanicModule {
     const NAMESPACE: &'static str = "test.panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
@@ -358,7 +358,7 @@ impl crate::substrate::ActionModule for TestPanicModule {
     fn execute(
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(crate::actor::ActorCommand),
+        _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
         panic!("buggy executor")
     }
@@ -494,7 +494,7 @@ use std::sync::Mutex;
 /// registry slot in isolation.
 #[test]
 fn dispatch_action_delivers_result_to_observer_with_correlation_id() {
-    let seen: Arc<Mutex<Vec<crate::substrate::ActionResult>>> =
+    let seen: Arc<Mutex<Vec<nmp_core::substrate::ActionResult>>> =
         Arc::new(Mutex::new(Vec::new()));
     let seen_in_observer = Arc::clone(&seen);
 
@@ -975,7 +975,7 @@ fn rejected_dispatch_does_not_pollute_inflight_set() {
 /// will use — the handler is the only D0-naming piece, kept in the
 /// app crate.
 struct TestHostOpModule;
-impl crate::substrate::ActionModule for TestHostOpModule {
+impl nmp_core::substrate::ActionModule for TestHostOpModule {
     const NAMESPACE: &'static str = "test.host_op"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
@@ -990,11 +990,11 @@ impl crate::substrate::ActionModule for TestHostOpModule {
     fn execute(
         action: Self::Action,
         correlation_id: &str,
-        send: &dyn Fn(crate::actor::ActorCommand),
+        send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
         let action_json =
             serde_json::to_string(&action).map_err(|e| e.to_string())?;
-        send(crate::actor::ActorCommand::DispatchHostOp {
+        send(nmp_core::ActorCommand::DispatchHostOp {
             action_json,
             correlation_id: correlation_id.to_string(),
         });
@@ -1009,7 +1009,7 @@ struct RecordingHostHandler {
     seen: Arc<Mutex<Vec<(String, String)>>>,
     respond_ok: bool,
 }
-impl crate::substrate::HostOpHandler for RecordingHostHandler {
+impl nmp_core::substrate::HostOpHandler for RecordingHostHandler {
     fn handle(&self, action_json: &str, correlation_id: &str) -> serde_json::Value {
         self.seen
             .lock()
@@ -1051,7 +1051,7 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
     // Install the substrate-generic handler BEFORE dispatching — the
     // production order is: host init wires both the handler AND the
     // module before any `nmp_app_dispatch_action` arrives.
-    app_mut.set_host_op_handler(handler as Arc<dyn crate::substrate::HostOpHandler>);
+    app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
     app_mut.register_action::<TestHostOpModule>();
 
     let out = dispatch_action_json(
@@ -1165,7 +1165,7 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
     let app = nmp_app_new();
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
-    app_mut.set_host_op_handler(handler as Arc<dyn crate::substrate::HostOpHandler>);
+    app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
     app_mut.register_action::<TestHostOpModule>();
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);

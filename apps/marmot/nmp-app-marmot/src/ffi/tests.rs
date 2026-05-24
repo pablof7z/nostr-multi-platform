@@ -113,8 +113,8 @@ const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9l
 
 #[test]
 fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
-    let app = nmp_core::nmp_app_new();
-    nmp_core::nmp_app_set_capability_callback(
+    let app = nmp_ffi::nmp_app_new();
+    nmp_ffi::nmp_app_set_capability_callback(
         app,
         std::ptr::null_mut(),
         Some(mock_keyring_callback),
@@ -136,7 +136,7 @@ fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
         None
     );
 
-    nmp_core::nmp_app_free(app);
+    nmp_ffi::nmp_app_free(app);
 }
 
 // ── Round-trip over the real projection / ops code paths ─────────────────
@@ -542,7 +542,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let alice_keys = Keys::generate();
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone())));
 
-    let app = nmp_core::nmp_app_new();
+    let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
     let app_mut = unsafe { &mut *app };
 
@@ -562,7 +562,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope_json).unwrap();
     let out_ptr =
-        nmp_core::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+        nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
     assert!(!out_ptr.is_null(), "dispatch_action must return a non-null envelope (D6)");
     // SAFETY: the dispatcher returns a freshly-allocated NUL-terminated
     // string the caller must release via `nmp_app_free_string`.
@@ -576,7 +576,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("dispatch envelope must carry a correlation_id; got: {out}"));
     assert_eq!(id.len(), 32, "correlation_id must be 32 hex chars; got: {id}");
-    nmp_core::nmp_app_free_string(out_ptr);
+    nmp_ffi::nmp_app_free_string(out_ptr);
 
     // The handler ran on the actor thread; poll the projection's
     // snapshot for the published key-package mutation. 2 s deadline
@@ -598,7 +598,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
          the legacy bespoke nmp_marmot_dispatch symbol used to mutate, pre-PR-3)"
     );
 
-    nmp_core::nmp_app_free(app);
+    nmp_ffi::nmp_app_free(app);
 }
 
 /// Parity test: the host (generic `dispatch_action`) seam and the
@@ -624,7 +624,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
 
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone())));
 
-    let app = nmp_core::nmp_app_new();
+    let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
     app_mut.register_action::<MarmotActionModule>();
@@ -645,7 +645,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope).unwrap();
     let out_ptr =
-        nmp_core::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+        nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
     assert!(!out_ptr.is_null());
     // SAFETY: out_ptr came from nmp_app_dispatch_action (D6 contract).
     let out = unsafe { CStr::from_ptr(out_ptr) }
@@ -655,7 +655,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         .ok()
         .and_then(|v| v.get("correlation_id").and_then(|c| c.as_str()).map(str::to_owned))
         .expect("dispatch must return correlation_id");
-    nmp_core::nmp_app_free_string(out_ptr);
+    nmp_ffi::nmp_app_free_string(out_ptr);
 
     // Poll for the create_group to complete on the actor thread.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -701,5 +701,5 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
          generic dispatch_action seam: {r}"
     );
 
-    nmp_core::nmp_app_free(app);
+    nmp_ffi::nmp_app_free(app);
 }

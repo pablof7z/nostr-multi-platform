@@ -13,8 +13,8 @@
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use crate::actor::ActorCommand;
-use crate::ffi::action::INFLIGHT_DISPATCH_TTL;
+use nmp_core::ActorCommand;
+use crate::action::INFLIGHT_DISPATCH_TTL;
 use std::ffi::c_char;
 
 #[no_mangle]

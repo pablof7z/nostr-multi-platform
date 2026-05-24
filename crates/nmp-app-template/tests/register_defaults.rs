@@ -9,7 +9,7 @@
 
 use std::ffi::{CStr, CString};
 
-use nmp_core::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
 
 /// All action namespaces [`nmp_app_template::register_defaults`] is
 /// contracted to register.
@@ -87,7 +87,7 @@ fn register_defaults_is_repeatable_for_routing_and_runtime_slots() {
     nmp_app_free(app);
 }
 
-fn dispatch(app: *mut nmp_core::NmpApp, namespace: &str, action_json: &str) -> String {
+fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
     let ns_c = CString::new(namespace).unwrap();
     let json_c = CString::new(action_json).unwrap();
     let raw = nmp_app_dispatch_action(app, ns_c.as_ptr(), json_c.as_ptr());

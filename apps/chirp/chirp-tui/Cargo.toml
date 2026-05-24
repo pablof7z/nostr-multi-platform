@@ -17,6 +17,9 @@ path = "src/main.rs"
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support", "wallet"] }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final.
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support", "wallet"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"

@@ -18,6 +18,9 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
 # NIP-46 signer broker. Re-exports `nmp_signer_broker_init`,
 # `nmp_app_nostrconnect_uri`, `nmp_app_cancel_bunker_handshake`, and
 # `nmp_broker_free_string` — the bunker sign-in surface the iOS shell needs.

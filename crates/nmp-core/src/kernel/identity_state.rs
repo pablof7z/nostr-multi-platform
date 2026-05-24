@@ -161,6 +161,26 @@ impl RelayEditRow {
             role_tint,
         }
     }
+
+    /// Borrow the relay URL string.
+    ///
+    /// Read-only accessor so external readers (the `nmp-ffi` shell, per-app
+    /// crates) can iterate the relay-edit projection without naming the
+    /// crate-private `url` field directly. The actor is the sole writer
+    /// (D4); no setter exists.
+    #[must_use]
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// Borrow the relay role string (canonicalised — `read`, `write`,
+    /// `both`, `indexer`, or a composite like `both,indexer`).
+    ///
+    /// Read-only accessor; same reasoning as [`Self::url`].
+    #[must_use]
+    pub fn role(&self) -> &str {
+        &self.role
+    }
 }
 
 /// URLs whose relay role includes the read lane.

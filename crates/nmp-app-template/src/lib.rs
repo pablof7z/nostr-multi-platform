@@ -79,7 +79,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
-use nmp_core::NmpApp;
+use nmp_ffi::NmpApp;
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache};
 

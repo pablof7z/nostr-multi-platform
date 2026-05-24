@@ -16,8 +16,8 @@
 //! bootstrap seed is no longer consulted for that author (D3: outbox routing
 //! automatic — `docs/product-spec/overview-and-dx.md` §1.5).
 
-pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
-pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
+pub const DEFAULT_VISIBLE_LIMIT: usize = 80;
+pub const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 
 /// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string

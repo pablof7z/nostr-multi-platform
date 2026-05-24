@@ -199,7 +199,10 @@ use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, ev
 // already `#[cfg(feature = "native")]`, so the re-export is gated too.
 #[cfg(feature = "native")]
 use nostr::{format_timestamp, now_hms};
-pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
+// `is_hex_id` / `is_hex_pubkey` reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` (the FFI surface uses them to validate
+// `*const c_char` arguments for `open_thread` / `open_author` etc.).
+pub use nostr::{is_hex_id, is_hex_pubkey};
 
 /// Decode a 64-char lowercase/uppercase-hex pubkey into the store's
 /// `[u8; 32]` `PubKey`. Returns `None` on any malformed input — callers
@@ -223,8 +226,11 @@ use auth::{AuthSignerFn, Nip42DriverState};
 use clock::{Clock, SystemClock};
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
+// `default_registry` / `ActionRegistry` are reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` (the FFI surface owns the
+// `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
-pub(crate) use action_registry::{default_registry, ActionRegistry};
+pub use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
     account_avatar_color_hex, account_avatar_initials, account_npub_short,
     new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry,
@@ -272,9 +278,13 @@ pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 // `SnapshotProjectionSlot` is a Kernel struct field type (always-compiled);
 // `new_snapshot_projection_slot` is only called from native-only callers.
-pub(crate) use snapshot_registry::SnapshotProjectionSlot;
+// `SnapshotProjectionSlot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::SnapshotProjectionSlot` (the NmpApp struct
+// field type); `new_snapshot_projection_slot` is called once from
+// `nmp_app_new`.
+pub use snapshot_registry::SnapshotProjectionSlot;
 #[cfg(feature = "native")]
-pub(crate) use snapshot_registry::new_snapshot_projection_slot;
+pub use snapshot_registry::new_snapshot_projection_slot;
 // Typed slot wrappers + constructors. `RelayEditRowsSlot` /
 // `RelayEditRowList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via
@@ -287,10 +297,18 @@ pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
 pub(crate) use relay_projection::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-// `new_relay_edit_rows_slot` is only called from native actor / FFI code.
+// `new_relay_edit_rows_slot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::new_relay_edit_rows_slot` (called once from
+// `nmp_app_new` to construct the slot the actor and the per-app crate
+// share).
 #[cfg(feature = "native")]
-pub(crate) use relay_projection::new_relay_edit_rows_slot;
-pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
+pub use relay_projection::new_relay_edit_rows_slot;
+// `LifecyclePhase` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::LifecyclePhase` (the C-ABI lifecycle
+// background / foreground entry points construct it before sending the
+// `ActorCommand::LifecycleEvent`).
+pub use lifecycle::LifecyclePhase;
+pub(crate) use lifecycle::LifecycleTransition;
 // D0: NIP-47 NWC is an app noun. `WalletStatus` no longer lives in the kernel
 // — it moved to the wallet command runtime (`actor::commands::wallet`) and is
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed

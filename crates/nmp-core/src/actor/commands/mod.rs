@@ -113,15 +113,23 @@ pub(super) use identity::{
 // only through `bunker_handshake_progress` / `sign_in_bunker`.
 // V-01 Phase 1c: bunker types consumed only by native FFI / actor runtime.
 #[cfg(feature = "native")]
-pub(crate) use identity::{
-    build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
-};
+pub(crate) use identity::build_nip46_onboarding_dto;
+// `new_bunker_handshake_slot` + `BunkerHandshakeSlot` reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*`. The slot type is `#[doc(hidden)] pub` (the
+// inner `BunkerHandshakeDto` likewise) so `nmp_app_new` can construct an
+// `Arc<Mutex<Option<BunkerHandshakeDto>>>` without re-implementing the slot
+// shape — but the type stays out of the public docs.
+#[cfg(feature = "native")]
+pub use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;
 // V-01 Phase 1c: lifecycle slot/registration types consumed only by native FFI / actor runtime.
+// `new_observer_slot` + `LifecycleObserverSlot` + `LifecycleObserverRegistration`
+// are reached by `nmp-ffi` through `nmp_core::__ffi_internal::*` (after the
+// step 11-final extraction).
 #[cfg(feature = "native")]
-pub(crate) use lifecycle::{
+pub use lifecycle::{
     new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,
 };
 // `pub` (not `pub(crate)`) so the test-support re-export in `lib.rs` works.
@@ -134,10 +142,19 @@ pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_P
 // the kernel holds for fan-out.
 // `KernelEventObserverSlot` and `notify_observers` are used by kernel/event_observer.rs
 // unconditionally. The slot constructors and registration helpers are native FFI only.
-pub(crate) use event_observer::{notify_observers, KernelEventObserverSlot};
+pub(crate) use event_observer::notify_observers;
+// `KernelEventObserverSlot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::KernelEventObserverSlot`.
+pub use event_observer::KernelEventObserverSlot;
+// `register_c_observer` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::register_c_observer`.
 #[cfg(feature = "native")]
-pub(crate) use event_observer::{
-    new_event_observer_slot, register_c_observer, register_rust_observer, unregister_observer,
+pub use event_observer::register_c_observer;
+// Slot constructor + Rust-side register/unregister helpers reach `nmp-ffi`
+// through `nmp_core::__ffi_internal::*`.
+#[cfg(feature = "native")]
+pub use event_observer::{
+    new_event_observer_slot, register_rust_observer, unregister_observer,
 };
 pub use event_observer::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
@@ -159,9 +176,14 @@ pub(super) use publish::{
 // variant. The replacement (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`)
 // is a `ProtocolCommand` dispatched through `ActorCommand::Protocol`;
 // `nmp-core` no longer carries the entry point.
-pub(crate) use raw_event_observer::{
-    new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
-    register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
+pub(crate) use raw_event_observer::{notify_raw_observers, raw_observers_idle_for_kind};
+// `register_c_raw_observer` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::register_c_raw_observer`.
+pub use raw_event_observer::register_c_raw_observer;
+// Slot constructor + Rust-side register/unregister helpers + slot type
+// reach `nmp-ffi` through `nmp_core::__ffi_internal::*`.
+pub use raw_event_observer::{
+    new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
     RawEventObserverSlot,
 };
 pub use raw_event_observer::{
@@ -185,8 +207,10 @@ pub(super) use wallet::{
 // D0: NIP-47 NWC is an app noun — the wallet-status slot + its constructor are
 // re-exported (crate-wide) so the `ffi` module can build the shared slot and
 // register the `"wallet"` snapshot projection.
+// `WalletStatusSlot` + `new_wallet_status_slot` reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*`. The slot type is `#[doc(hidden)] pub`.
 #[cfg(feature = "wallet")]
-pub(crate) use wallet::{new_wallet_status_slot, WalletStatusSlot};
+pub use wallet::{new_wallet_status_slot, WalletStatusSlot};
 // `WalletStatus` is re-exported for the snapshot-projection test only, which
 // constructs a status value when driving the `"wallet"` projection through
 // `make_update`.

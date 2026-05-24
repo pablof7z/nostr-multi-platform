@@ -11,11 +11,11 @@ use nmp_app_chirp::{
 };
 use std::sync::Arc;
 
-use nmp_core::{
+use nmp_core::RoutingTraceProjection;
+use nmp_ffi::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_dispatch_action, nmp_app_free,
     nmp_app_free_string, nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread,
     nmp_app_open_timeline, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, NmpApp,
-    RoutingTraceProjection,
 };
 use serde_json::{json, Value};
 
@@ -42,7 +42,7 @@ impl std::fmt::Debug for AppRuntime {
 
 impl AppRuntime {
     pub fn new() -> Self {
-        let app = nmp_core::nmp_app_new();
+        let app = nmp_ffi::nmp_app_new();
         let chirp = nmp_app_chirp_register(app, ptr::null());
         nmp_app_start(app, 30, 200, 4);
         let id = NEXT_RUNTIME_ID.fetch_add(1, Ordering::Relaxed);

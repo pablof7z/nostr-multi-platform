@@ -31,7 +31,7 @@ pub use lnurl::FetchLnurlInvoiceCommand;
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
-pub fn register_actions(app: &mut nmp_core::NmpApp) {
+pub fn register_actions(app: &mut nmp_ffi::NmpApp) {
     app.register_action::<ZapAction>();
 }
 

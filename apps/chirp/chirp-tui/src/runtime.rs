@@ -9,7 +9,7 @@ use nmp_app_chirp::{
     nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, nmp_signer_broker_init, ChirpHandle,
     MarmotHandle,
 };
-use nmp_core::{
+use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
     nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline, nmp_app_release_profile,
     nmp_app_start, NmpApp,
@@ -33,7 +33,7 @@ pub struct AppRuntime {
 impl AppRuntime {
     #[must_use]
     pub fn new() -> Result<(Self, Receiver<NmpEvent>)> {
-        let app = nmp_core::nmp_app_new();
+        let app = nmp_ffi::nmp_app_new();
         if app.is_null() {
             return Err("nmp_app_new returned null".to_string());
         }
@@ -66,7 +66,7 @@ impl AppRuntime {
     pub fn add_relay(&self, url: &str, role: &str) -> Result<()> {
         let url = CString::new(url).map_err(|_| "relay URL contains NUL byte".to_string())?;
         let role = CString::new(role).map_err(|_| "relay role contains NUL byte".to_string())?;
-        nmp_core::nmp_app_add_relay(self.app, url.as_ptr(), role.as_ptr());
+        nmp_ffi::nmp_app_add_relay(self.app, url.as_ptr(), role.as_ptr());
         Ok(())
     }
 
@@ -129,7 +129,7 @@ impl AppRuntime {
 
     pub fn ack_action_stage(&self, correlation_id: &str) -> Result<()> {
         self.with_cstr(correlation_id, |c| {
-            nmp_core::nmp_app_ack_action_stage(self.app, c.as_ptr())
+            nmp_ffi::nmp_app_ack_action_stage(self.app, c.as_ptr())
         })
     }
 

@@ -63,10 +63,13 @@ test-support = ["nmp-store/test-support"]
 # nostr-database). ADR-0011, ADR-0012. lmdb-backend implies native (LMDB
 # requires OS file I/O).
 lmdb-backend = ["nmp-store/lmdb-backend", "native"]
-# Re-export all FFI entry-points via Rust paths so nmp-android-ffi can call them
-# through the rlib dependency (extern "C" declarations are opaque to Rust CGU
-# compilation — the android-ffi feature is the portable fix).
-# android-ffi implies native (the FFI layer is C-ABI, native-only).
+# Step 11 final — the `android-ffi` feature used to gate the FFI
+# re-export surface that nmp-android-ffi consumed. The whole `ffi::`
+# module moved to the standalone `nmp-ffi` crate; the JNI shim now
+# depends on `nmp-ffi` directly, so this feature is a thin alias for
+# `native` retained for downstream compatibility (the workspace still
+# has callers passing `--features android-ffi` to mean "give me the
+# native FFI graph").
 android-ffi = ["native"]
 # V6 Stage 1 — Swift `Decodable` emitter. Adds `schemars::JsonSchema` derives
 # to the projection types `nmp-codegen` reflects into Swift, and exposes the

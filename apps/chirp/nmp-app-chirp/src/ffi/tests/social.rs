@@ -1,7 +1,7 @@
 //! Social-verb migration proof: react / follow / unfollow are reachable
 //! through the generic `dispatch_action` path after `nmp_app_chirp_register`.
 
-use nmp_core::{nmp_app_free, nmp_app_new};
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister};
 use super::helpers::dispatch;

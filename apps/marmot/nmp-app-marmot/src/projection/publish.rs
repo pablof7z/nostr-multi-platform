@@ -11,7 +11,7 @@
 //!
 //! This module closes that seam by publishing INTERNALLY through the
 //! kernel: it calls the workspace-internal pure-Rust kernel API
-//! [`nmp_core::NmpApp::publish_signed_explicit`] against the `&NmpApp` the
+//! [`nmp_ffi::NmpApp::publish_signed_explicit`] against the `&NmpApp` the
 //! host shell's Marmot handle already retains. The seam is now strictly
 //! explicit-target: empty relay sets fail closed in the kernel instead of
 //! widening to the author NIP-65 outbox. It is a generic kernel capability
@@ -23,7 +23,7 @@
 //! signature — so MDK cannot ingest from it). This module does not touch
 //! that direction.
 
-use nmp_core::NmpApp;
+use nmp_ffi::NmpApp;
 use nostr::{Event, RelayUrl};
 
 /// Publish a signed event to an explicit relay set (Explicit routing).

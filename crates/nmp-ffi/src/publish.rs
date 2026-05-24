@@ -37,7 +37,7 @@
 //! re-opening the deleted door.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use crate::actor::ActorCommand;
+use nmp_core::ActorCommand;
 use std::ffi::c_char;
 
 /// Retry a failed publish, addressed by its handle. This is the intentional

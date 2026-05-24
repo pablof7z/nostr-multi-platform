@@ -71,7 +71,7 @@ pub use nmp_signer_broker::{
 /// `app` must be a valid pointer returned by `nmp_app_new`. NULL is
 /// tolerated (silent no-op, matching every other `nmp_app_*` D6 contract).
 #[no_mangle]
-pub extern "C" fn nmp_app_notes_init(_app: *mut nmp_core::NmpApp) {
+pub extern "C" fn nmp_app_notes_init(_app: *mut nmp_ffi::NmpApp) {
     // No custom projections needed for the spike.
 }
 

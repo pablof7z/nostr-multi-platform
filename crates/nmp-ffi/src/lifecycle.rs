@@ -11,7 +11,7 @@
 //!   actor thread is still running, `0` when it has terminated (panic, drop,
 //!   or pre-`nmp_app_start`-but-handle-already-finished — all collapse to
 //!   "dead from the host's perspective"). Pairs with the
-//!   [`crate::update_envelope::UpdateEnvelope::Panic`] frame (D7): the panic
+//!   [`nmp_core::UpdateEnvelope::Panic`] frame (D7): the panic
 //!   frame is the *push* death signal on the update channel; this probe is
 //!   the *pull* sibling, queryable on demand (e.g. on
 //!   `applicationWillEnterForeground` after the host has been backgrounded
@@ -32,8 +32,8 @@
 //!   surfaces it to the host.
 
 use super::{app_ref, NmpApp};
-use crate::actor::{ActorCommand, LifecycleObserverFn, LifecycleObserverRegistration};
-use crate::kernel::LifecyclePhase;
+use nmp_core::ActorCommand;
+use nmp_core::__ffi_internal::{LifecycleObserverFn, LifecycleObserverRegistration, LifecyclePhase};
 use std::ffi::c_void;
 
 /// Report iOS `scenePhase == .active` (or platform equivalent). Fire-and-
@@ -70,8 +70,8 @@ pub extern "C" fn nmp_app_lifecycle_background(app: *mut NmpApp) {
 
 /// Register a native handler that fires on meaningful phase transitions.
 /// The callback receives a `u32` phase code:
-/// * `0` ([`crate::actor::LIFECYCLE_PHASE_FOREGROUND`]) — entered foreground.
-/// * `1` ([`crate::actor::LIFECYCLE_PHASE_BACKGROUND`]) — entered background.
+/// * `0` ([`nmp_core::__ffi_internal::LIFECYCLE_PHASE_FOREGROUND`]) — entered foreground.
+/// * `1` ([`nmp_core::__ffi_internal::LIFECYCLE_PHASE_BACKGROUND`]) — entered background.
 ///
 /// Passing `None` unregisters. The callback executes on the actor thread;
 /// it must be cheap and re-entrancy-safe (the actor releases its internal
@@ -96,7 +96,7 @@ pub extern "C" fn nmp_app_set_lifecycle_callback(
 }
 
 /// Actor-liveness probe (D7 pull-side sibling of the
-/// [`crate::update_envelope::UpdateEnvelope::Panic`] push-side frame).
+/// [`nmp_core::UpdateEnvelope::Panic`] push-side frame).
 ///
 /// Returns `1` when the actor `JoinHandle` is still running, `0` otherwise:
 /// * `app == NULL` → `0` (no kernel to be alive)
@@ -150,8 +150,8 @@ mod tests {
     //! thread.
 
     use super::*;
-    use crate::actor::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
-    use crate::ffi::nmp_app_new;
+    use nmp_core::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+    use crate::nmp_app_new;
     use std::sync::mpsc::{channel, Sender};
     use std::sync::{Mutex, OnceLock};
     use std::time::Duration;
@@ -293,7 +293,7 @@ mod tests {
     /// internal accessor and joining out-of-band before `free`.
     #[test]
     fn is_alive_returns_zero_after_actor_shutdown() {
-        use crate::actor::ActorCommand;
+        use nmp_core::ActorCommand;
         let _g = SERIAL.lock().unwrap();
         let app = nmp_app_new();
         // Push `Shutdown` straight onto the actor's command channel

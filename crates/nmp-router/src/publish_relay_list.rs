@@ -261,7 +261,7 @@ impl ActionModule for PublishRelayListAction {
 }
 
 /// Register the `nmp.nip65.publish_relay_list` action module on the app.
-pub fn register_actions(app: &mut nmp_core::NmpApp) {
+pub fn register_actions(app: &mut nmp_ffi::NmpApp) {
     app.register_action::<PublishRelayListAction>();
 }
 

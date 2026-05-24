@@ -35,7 +35,7 @@
 //!
 //! The dispatch ops now publish their signed events to relays INTERNALLY
 //! via [`crate::projection::publish`] (the workspace-internal pure-Rust
-//! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
+//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
 //! the retained `&NmpApp`). They no longer rely on a non-existent Swift
 //! relay path. The publish module is `unsafe`-free for publish routing. The op result still
 //! carries the signed event JSON (`event` / `events` / `evolution_event`
@@ -107,7 +107,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{ActorCommand, KernelAction, KernelEventObserver, NmpApp};
+use nmp_core::{ActorCommand, KernelAction, KernelEventObserver};
+use nmp_ffi::NmpApp;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
 use crate::service::MarmotService;

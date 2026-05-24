@@ -40,8 +40,9 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::{
-    ActorCommand, NmpApp, RawEventObserver, RelayEditRowsSlot, read_eligible_relay_urls,
+    read_eligible_relay_urls, ActorCommand, RawEventObserver, RelayEditRowsSlot,
 };
+use nmp_ffi::NmpApp;
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,

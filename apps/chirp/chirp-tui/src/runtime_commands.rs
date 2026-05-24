@@ -11,7 +11,7 @@ use nmp_app_chirp::{
     nmp_marmot_snapshot, nmp_marmot_string_free,
     nmp_marmot_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
 };
-use nmp_core::{
+use nmp_ffi::{
     nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_firehose_tag,
     nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
 };

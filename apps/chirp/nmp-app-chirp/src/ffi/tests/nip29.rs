@@ -5,7 +5,8 @@
 use std::ffi::CString;
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::{nmp_app_free, nmp_app_new, ActorCommand};
+use nmp_core::ActorCommand;
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
     DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction, JoinGroupInput,
     PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,

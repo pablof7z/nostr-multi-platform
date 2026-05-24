@@ -8,8 +8,8 @@
 //! of the Rust module split.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use crate::actor::ActorCommand;
-use crate::kernel::{is_hex_id, is_hex_pubkey};
+use nmp_core::ActorCommand;
+use nmp_core::__ffi_internal::{is_hex_id, is_hex_pubkey};
 use std::ffi::c_char;
 
 #[no_mangle]
@@ -67,7 +67,7 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
         return;
     };
 
-    app.send_cmd(ActorCommand::Kernel(crate::app::KernelAction::OpenUri {
+    app.send_cmd(ActorCommand::Kernel(nmp_core::KernelAction::OpenUri {
         uri,
     }));
 }

@@ -28,9 +28,10 @@
 //! through `nmp_app_read_projection_json`, both gated on `test-support`.
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
-use nmp_core::{
+use nmp_core::RawEventObserver;
+use nmp_ffi::{
     nmp_app_free, nmp_app_free_string, nmp_app_inject_signed_event_json, nmp_app_new,
-    nmp_app_read_projection_json, NmpApp, RawEventObserver,
+    nmp_app_read_projection_json, NmpApp,
 };
 use nmp_nip17::{DmInboxProjection, DmInboxSnapshot};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};

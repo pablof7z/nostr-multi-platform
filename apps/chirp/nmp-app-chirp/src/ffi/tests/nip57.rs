@@ -1,6 +1,6 @@
 //! NIP-57 zap dispatch proof.
 
-use nmp_core::{nmp_app_free, nmp_app_new};
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister};
 use super::helpers::dispatch;

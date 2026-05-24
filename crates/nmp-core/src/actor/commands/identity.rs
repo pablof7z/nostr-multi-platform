@@ -44,7 +44,8 @@ use crate::util::sort_dedup;
 ///
 /// `Deserialize` is retained so Swift codegen / round-trip tests can decode it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct BunkerHandshakeDto {
+#[doc(hidden)]
+pub struct BunkerHandshakeDto {
     /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`
     /// (the wire never carries `"idle"` from the actor — `bunker_handshake_progress`
     /// maps it to `None` — but a broker that emits `"idle"` directly through
@@ -135,10 +136,15 @@ fn stage_label_for(kind: BunkerStageKind, raw_stage: &str) -> String {
 /// contributes JSON `null` under the `"bunker_handshake"` key, preserving the
 /// "key present, value null when idle" semantic host sign-in flows
 /// decode (an explicit `"idle"` stage from the broker maps to `None`).
-pub(crate) type BunkerHandshakeSlot = Arc<Mutex<Option<BunkerHandshakeDto>>>;
+#[doc(hidden)]
+pub type BunkerHandshakeSlot = Arc<Mutex<Option<BunkerHandshakeDto>>>;
 
 /// Construct a fresh, empty [`BunkerHandshakeSlot`].
-pub(crate) fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
+///
+/// `pub` so `nmp-ffi`'s `nmp_app_new` can build the slot before handing it
+/// to the actor; the slot type is `pub(crate)` because only the identity
+/// runtime owns the writer side.
+pub fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
     Arc::new(Mutex::new(None))
 }
 

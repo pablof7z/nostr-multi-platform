@@ -8,12 +8,12 @@
 
 use std::ffi::{CStr, CString};
 
-use nmp_core::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
 
 /// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and return
 /// the parsed JSON result. The returned C string is freed.
 fn dispatch(
-    app: *mut nmp_core::NmpApp,
+    app: *mut nmp_ffi::NmpApp,
     namespace: &str,
     action_json: &str,
 ) -> serde_json::Value {
