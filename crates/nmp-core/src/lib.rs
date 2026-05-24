@@ -209,6 +209,12 @@ pub use actor::{
 // crate root: keeps the public surface area visibly identical to before the
 // extraction, and gives `cargo doc` users a single place to spot "this is
 // an extraction seam, not a real API".
+// Gated on `feature = "native"` because the re-exports below pull in
+// `run_actor_with_observers` and friends from `crate::actor`, which are
+// themselves `#[cfg(feature = "native")]`. The wasm32 build
+// (`--no-default-features`) has no actor thread and no FFI shell consuming
+// this module.
+#[cfg(feature = "native")]
 #[doc(hidden)]
 pub mod __ffi_internal {
     pub use crate::actor::{
