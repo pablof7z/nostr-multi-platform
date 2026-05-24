@@ -8,4 +8,4 @@ license.workspace = true
 nmp-core = { path = "../../../crates/nmp-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-fixture_todo_core = { package = "fixture-todo-core", path = "../fixture-todo-core" }
+fixture_todo_core = { package = "fixture-todo-core", path = "../../../crates/fixture-todo-core" }
