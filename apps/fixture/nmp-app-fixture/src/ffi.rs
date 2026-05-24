@@ -1,6 +1,6 @@
 use std::ffi::{CStr, CString};
 
-use nmp_ffi::{
+use nmp_core::{
     nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp,
 };
 
