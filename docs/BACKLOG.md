@@ -431,6 +431,13 @@ formatting is Rust-owned; `DiagnosticsView.swift` itself cites this rule. DM mes
 **Correct fix:** add `createdAtDisplay: String` to `DmMessage` in
 `crates/nmp-nip17/src/inbox.rs` (Rust-side formatting), delete `dmRelativeTime` from Swift.
 
+### V-23 · `WalletView` thin-shell doctrine violations — **DONE** (this PR)
+
+`WalletView.swift` computed `balanceSats` (msats÷1000), formatted it with
+`.formatted()`, and abbreviated `walletNpub` using a private `shortNpub()` function.
+All three moved to Rust: `WalletStatus` now carries `balance_sats`, `balance_sats_display`,
+`wallet_npub_short`, `is_ready`, and `is_connected`.
+
 ---
 
 ## Section 2 — In Flight
