@@ -660,6 +660,11 @@ script greps the action-module files and asserts the catalog is not stale. Compa
 codegen (typed Swift dispatch API is the end state; the markdown catalog is the immediate
 legibility fix).
 
+**Staleness risk (open):** Every new `ActionModule` registration can silently make
+`docs/dispatch-actions.md` stale within 2 PRs. No CI drift gate exists today.
+The real fix is F-05 codegen sweep — until that lands, every PR adding an `ActionModule`
+must manually update the catalog. Tracked under F-05.
+
 ---
 
 ### V-36 · `nmp-signer-broker` reimplements NIP-46 without an ADR [MEDIUM]
@@ -681,6 +686,47 @@ was insufficient for the bunker relay-multiplexing model, (b) what NIP-46 featur
 event-loop integration), and (c) the long-term exit: either upstream the missing features to
 `nostr-connect` and delete the crate, or declare it canonical and track it as maintained
 infrastructure.
+
+---
+
+### V-37 · Snapshot output seam doesn't support non-Chirp apps reading kernel state [HIGH]
+
+**Verified (2026-05-24 — Notes rewrite investigation):** PD-033-A requires Notes to be
+rewritten against "real framework seams (LogicalInterest, kernel-owned timeline projection,
+handshake gate)." Code-grounded inspection found the current framework does not expose those
+seams generically:
+
+1. **`NmpSnapshotProjector` is zero-arg** (`crates/nmp-core/src/ffi/snapshot.rs:39`):
+   ```rust
+   pub type NmpSnapshotProjector = unsafe extern "C" fn() -> *const c_char;
+   ```
+   The callback receives no kernel-state argument and no context pointer. A registered
+   projector must obtain state through side-channels (raw event observers, separate globals).
+   There is no mechanism for the kernel to *push* a typed view to a non-Chirp app.
+
+2. **No generic `nmp_app_snapshot`** — only `nmp_app_chirp_snapshot` exists
+   (`apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs:14`), typed to `*mut ChirpHandle`.
+   A non-Chirp app has no pull path either.
+
+3. **No follow-set-aware `LogicalInterest` seam without `nmp-nip02`** — subscribing to
+   "kind:1 from the active user's follow set, outbox-routed" requires `nmp-nip02`'s
+   `FollowListProjection`. A second app that doesn't want Chirp's full NIP-02 stack has no
+   lightweight path to the canonical social feed.
+
+**Impact:** PD-033-A cannot be closed by a rewrite alone — the prerequisites don't exist.
+Any honest "rewrite Notes" attempt will rediscover these three gaps and either (a) use the
+same raw-event bypass again, or (b) pull in all of `nmp-nip02` as a hidden Chirp dependency.
+V-37 is the *blocker* for PD-033-A, not a separate concern.
+
+**Required:** Add three affordances before attempting the rewrite:
+- (a) `NmpSnapshotProjector` gains a `*const c_void` context pointer (or is replaced by a
+  richer registration model);
+- (b) a generic `nmp_app_get_snapshot(app, namespace) -> *mut c_char` pull path;
+- (c) a `LogicalInterest::FollowSetKind1` variant (or equivalent) in a substrate crate
+  that does not pull in Chirp-level NIP-02 machinery.
+
+These are new framework affordances — they require an ADR before implementation
+(ffi-surface-freeze gate). Tag: **needs ADR before work begins**.
 
 ---
 

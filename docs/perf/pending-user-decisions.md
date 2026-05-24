@@ -994,3 +994,56 @@ Opening a PR anyway — manufacturing a doc tweak or dead-field cleanup to satis
 - Refactor `ProfileEditSheet` into its own file (separate concern; not requested by the audit).
 
 **Why flagged:** the explicit `≥25%` definition-of-done item is not met. Recording the gap honestly per advisor guidance.
+
+---
+
+## 2026-05-24 — PD-033-A: Notes rewrite vs. delete — binary user decision required
+
+**Status: BLOCKED ON USER DECISION. Cannot be resolved autonomously.**
+
+**Background:** `apps/notes/` was merged 2026-05-23 (PR #377) as confirmation that the NMP
+framework supports a second non-social app. Opus direction review #13 (2026-05-24) found it
+bypasses every defining framework property — raw event tap instead of `LogicalInterest`, Swift
+JSON parsing, Swift timeline ordering, synchronous sign-in flag with no handshake gate.
+`plan.md` falsely claimed this as "CONFIRMED." PD-033-A was re-opened.
+
+**New blocker found (V-37, 2026-05-24):** A rewrite of Notes using the *correct* seams is
+not currently possible. The framework is missing three affordances:
+- `NmpSnapshotProjector` is zero-arg (`ffi/snapshot.rs:39`) — no push path to non-Chirp apps.
+- No generic `nmp_app_get_snapshot` — only `nmp_app_chirp_snapshot` exists.
+- No `LogicalInterest` for follow-set kind:1 that doesn't pull in all of `nmp-nip02`.
+
+This means the "rewrite Notes" path requires *new framework work first* (V-37, needs ADR).
+The "delete Notes" path is available immediately and is an honest acknowledgement that the
+substrate is not yet expressive enough for a second stateful app.
+
+**Binary decision required:**
+
+**Option A — Add the missing affordances (V-37) then rewrite Notes:**
+- Write ADR for V-37 affordances (context-arg projector, generic snapshot pull, substrate
+  LogicalInterest)
+- Implement the three affordances (new C-ABI surface → ffi-surface-freeze review required)
+- Rewrite `apps/notes/` against those seams
+- Close PD-033-A only when the rewrite passes code-grounded inspection
+
+This path takes 2–4 weeks and is the honest v1-B framework proof. The affordances are
+load-bearing for any future non-Chirp consumer.
+
+**Option B — Delete `apps/notes/` with written acknowledgement:**
+- Delete `apps/notes/` (25 LOC Rust + 299 LOC Swift)
+- Add a one-paragraph note to `docs/aim.md` or `docs/plan.md` stating: "As of v1-A, the
+  framework's generic output seam (V-37) is not implemented. The cross-app thesis is deferred
+  to v1-B alongside the UniFFI migration (M14) and the bespoke FFI deprecation calendar
+  (PD-039 Batch 2–3)."
+- Close PD-033-A as "deferred to v1-B"
+
+This path takes 1 day and is honest about what v1-A is actually shipping.
+
+**Why agents cannot decide:** Both options are correct given different product goals (v1-A
+as a framework vs. v1-A as an iOS client). Only the user can decide whether framework
+expressiveness is a v1-A exit criterion.
+
+**Recommended:** Option B — delete Notes + defer V-37 to v1-B. Chirp already proves the
+substrate for the social use case; the framework thesis for non-social apps belongs in v1-B
+alongside M14 (UniFFI). Every week PD-033-A stays open as "NEEDS REVALIDATION" blocks an
+honest v1-A ship date.
