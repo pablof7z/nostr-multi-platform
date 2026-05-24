@@ -11,8 +11,10 @@
 //!
 //! Prior to Debt C the dispatch arm threaded 12 individual closures
 //! into [`ProtocolCommandContext::new`] (with `#[allow(clippy::too_many_arguments)]`).
-//! That bundle has been replaced by 5 typed capability traits the dispatch
-//! arm wires in once:
+//! That bundle has been replaced by 6 typed capability traits the dispatch
+//! arm wires in once (the sixth, [`RecipientRelayLookup`], was added by
+//! the Debt-C follow-up that lifted NIP-57 LNURL `inject_recipient_relays`
+//! off its no-op-with-TODO state onto a router-driven path):
 //!
 //! - [`KernelClock`] — wall-clock seam (D7).
 //! - [`LocalSignerAccess`] — local `nostr::Keys` snapshot + the V-08
@@ -26,21 +28,30 @@
 //!   early-exit branch.
 //! - [`ActionStageTracker`] — the `Requested` action stage write the
 //!   substrate arm performs when a `correlation_id` is in flight.
+//! - [`RecipientRelayLookup`] — V-07 NIP-57 LNURL `relays` tag injection;
+//!   kernel-side adapter wraps `outbox_router.route_publish` with a
+//!   synthetic publish-direction `UnsignedEvent` (recipient's NIP-65
+//!   write set, with router lane-7 / lane-6 cold-start fallback).
 //!
-//! `ProtocolCommandContext::new` now takes 7 args (`send`,
-//! `command_sender`, plus the five `&dyn Capability` references). NIP
+//! `ProtocolCommandContext::new` now takes 8 args (`send`,
+//! `command_sender`, plus the six `&dyn Capability` references). NIP
 //! commands call `ctx.clock().now_secs()`, `ctx.signers().signer_for_seal()`,
-//! `ctx.dms().dm_inbox_relays(pk)`, etc. — the trait names tell every reader
-//! which surface a given call belongs to.
+//! `ctx.dms().dm_inbox_relays(pk)`, `ctx.recipients().recipient_publish_relays(pk, kind)`,
+//! etc. — the trait names tell every reader which surface a given call
+//! belongs to.
 //!
 //! ## Routing accessors removed (Debt A + Debt C overlap)
 //!
 //! `author_write_relays` and `bootstrap_discovery_relays` were removed.
 //! Routing is the kernel's `OutboxRouter` — NIP commands that need a
 //! recipient relay set MUST route via `OutboxRouter::route_publish` (or
-//! populate `RoutingContext::explicit_targets`). The NIP-57 LNURL fetcher
-//! that previously consulted those accessors carries a
-//! `// TODO Debt C follow-up` until its routing path is migrated.
+//! populate `RoutingContext::explicit_targets`). The Debt-C follow-up
+//! formalised this through the [`RecipientRelayLookup`] capability trait:
+//! the kernel side implements it by driving its own `outbox_router` slot
+//! with a synthetic publish-direction `UnsignedEvent` (recipient's NIP-65
+//! write set falling back through the router's lane 7 / lane 6 cold-start
+//! seeds). NIP-57 LNURL kind:9734 `relays` tag injection consumes this
+//! capability.
 //!
 //! ## Why a wrapper context type (`ProtocolCommandContext`) and not `ActorContext`
 //!
@@ -151,6 +162,34 @@ pub trait ActionStageTracker: Send + Sync {
     fn record_requested(&self, correlation_id: &str);
 }
 
+/// Recipient-relay lookup surface — the substrate-level wrapper around
+/// `OutboxRouter::route_publish` that NIP commands need to materialise a
+/// recipient's "where would your followers / your own outbox publish a
+/// kind:K event under your authorship?" relay set. Concretely: the NIP-57
+/// LNURL fetcher's kind:9734 `relays` tag must carry the recipient's
+/// NIP-65 write list so the LN provider knows where to publish the
+/// kind:9735 zap receipt (NIP-57 § "Appendix F").
+///
+/// This is **not** a bare cache accessor. The kernel-side adapter drives
+/// the injected `outbox_router` slot with a synthetic publish-direction
+/// `UnsignedEvent { pubkey: recipient, kind, .. }`; the router's lane 1
+/// resolves to the cached NIP-65 write set, lane 7 falls back to the
+/// AppRelay cold-start seed. NIP crates therefore never read the
+/// substrate `MailboxCache` directly — they go through the router via
+/// this capability (Debt-A: router is the live decision authority).
+pub trait RecipientRelayLookup: Send + Sync {
+    /// Resolve the relay URLs the LN provider (or analogous downstream
+    /// publisher) should publish a `kind`-typed event authored by
+    /// `recipient` to. Empty `Vec` when the router returns `Unroutable`
+    /// (no NIP-65 cache hit AND no AppRelay seed) — the caller decides
+    /// whether to fall back further or surface the empty tag.
+    ///
+    /// `kind` is the synthetic event kind the router uses to drive
+    /// lane-6 / lane-7 discriminators; pass the kind the downstream
+    /// publication carries (e.g. `9735` for NIP-57 zap-receipt routing).
+    fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String>;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Noop default impls — used by `with_send_only` and as fall-throughs for
 // NIP crate tests that don't exercise a given capability surface.
@@ -198,18 +237,38 @@ impl ActionStageTracker for NoopActionStageTracker {
     fn record_requested(&self, _correlation_id: &str) {}
 }
 
+/// Noop [`RecipientRelayLookup`] — returns an empty `Vec` for every
+/// recipient. Mirrors the "router not wired / no NIP-65 cached" branch;
+/// the [`with_send_only`](ProtocolCommandContext::with_send_only) default
+/// and NIP crate tests that don't exercise the routing surface install
+/// this singleton.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopRecipientRelayLookup;
+
+impl RecipientRelayLookup for NoopRecipientRelayLookup {
+    fn recipient_publish_relays(&self, _recipient: &str, _kind: u32) -> Vec<String> {
+        Vec::new()
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // ProtocolCommandContext
 // ──────────────────────────────────────────────────────────────────────────
 
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
 ///
-/// Post-Debt C the context exposes 5 typed capability traits
+/// Post-Debt C the context exposes 6 typed capability traits
 /// ([`KernelClock`], [`LocalSignerAccess`], [`DmInboxLookup`],
-/// [`ErrorSurface`], [`ActionStageTracker`]) plus the two channel-shaped
-/// primitives ([`send`](Self::send) and
+/// [`ErrorSurface`], [`ActionStageTracker`], [`RecipientRelayLookup`])
+/// plus the two channel-shaped primitives ([`send`](Self::send) and
 /// [`command_sender_clone`](Self::command_sender_clone)). The previous
-/// 12-positional-closure constructor is gone — `new()` takes 7 args.
+/// 12-positional-closure constructor is gone — `new()` takes 8 args.
+///
+/// The `RecipientRelayLookup` slot is the Debt-C-follow-up: it lets NIP
+/// crates ask "what relays would a synthetic `kind`-typed event from
+/// `recipient` route to?" without naming `OutboxRouter` or the substrate
+/// `MailboxCache` directly. The kernel-side adapter drives the injected
+/// `outbox_router` slot with a synthetic [`UnsignedEvent`].
 ///
 /// NIP crates never name `Kernel` / `IdentityRuntime` (both crate-private).
 /// They only see this context and the capability traits.
@@ -229,13 +288,15 @@ pub struct ProtocolCommandContext<'a> {
     dms: &'a dyn DmInboxLookup,
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
+    recipients: &'a dyn RecipientRelayLookup,
 }
 
 impl<'a> ProtocolCommandContext<'a> {
     /// Construct the production context — used by the kernel dispatch arm.
-    /// The 5 capability references close over the actor thread's mutable
+    /// The 6 capability references close over the actor thread's mutable
     /// references to the kernel + identity runtime; the resulting context's
     /// lifetime is the dispatch arm's stack frame.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         send: &'a dyn Fn(ActorCommand),
         command_sender: Sender<ActorCommand>,
@@ -244,6 +305,7 @@ impl<'a> ProtocolCommandContext<'a> {
         dms: &'a dyn DmInboxLookup,
         errors: &'a dyn ErrorSurface,
         stages: &'a dyn ActionStageTracker,
+        recipients: &'a dyn RecipientRelayLookup,
     ) -> Self {
         Self {
             send,
@@ -253,6 +315,7 @@ impl<'a> ProtocolCommandContext<'a> {
             dms,
             errors,
             stages,
+            recipients,
         }
     }
 
@@ -276,6 +339,7 @@ impl<'a> ProtocolCommandContext<'a> {
             crate::substrate::EmptyDmInboxRelayLookup;
         static ERRORS: NoopErrorSurface = NoopErrorSurface;
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
+        static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<ActorCommand>();
         Self {
             send,
@@ -285,6 +349,7 @@ impl<'a> ProtocolCommandContext<'a> {
             dms: &DMS,
             errors: &ERRORS,
             stages: &STAGES,
+            recipients: &RECIPIENTS,
         }
     }
 
@@ -344,6 +409,12 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn stages(&self) -> &dyn ActionStageTracker {
         self.stages
+    }
+
+    /// Borrow the [`RecipientRelayLookup`] capability.
+    #[must_use]
+    pub fn recipients(&self) -> &dyn RecipientRelayLookup {
+        self.recipients
     }
 
     // ── D15 catch_unwind shortcuts ──
@@ -415,6 +486,19 @@ impl<'a> ProtocolCommandContext<'a> {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             s.record_requested(correlation_id);
         }));
+    }
+
+    /// D15-wrapped [`RecipientRelayLookup::recipient_publish_relays`].
+    /// Returns an empty `Vec` on a panicking adapter — matches the
+    /// "router returned `Unroutable`" branch (caller decides how to
+    /// fall back further).
+    #[must_use]
+    pub fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
+        let r = self.recipients;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            r.recipient_publish_relays(recipient, kind)
+        }))
+        .unwrap_or_default()
     }
 }
 
@@ -538,6 +622,7 @@ mod tests {
         ctx.set_last_error_toast(Some("toast".to_string()));
         ctx.record_action_failure("cid".to_string(), "err".to_string());
         ctx.record_action_stage_requested("cid-noop");
+        assert!(ctx.recipient_publish_relays("anyone", 9735).is_empty());
     }
 
     // ── Capability adapters used by the full-constructor test ──
@@ -584,6 +669,20 @@ mod tests {
         }
     }
 
+    struct RecordingRecipients {
+        seen: Mutex<Vec<(String, u32)>>,
+        respond: Vec<String>,
+    }
+    impl RecipientRelayLookup for RecordingRecipients {
+        fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
+            self.seen
+                .lock()
+                .unwrap()
+                .push((recipient.to_string(), kind));
+            self.respond.clone()
+        }
+    }
+
     #[test]
     fn full_constructor_threads_capabilities() {
         use std::sync::mpsc;
@@ -596,10 +695,14 @@ mod tests {
             failures: Mutex::new(Vec::new()),
         };
         let stages = RecordingStages { seen: Mutex::new(Vec::new()) };
+        let recipients = RecordingRecipients {
+            seen: Mutex::new(Vec::new()),
+            respond: vec!["wss://r.example".to_string()],
+        };
         let (tx, rx) = mpsc::channel::<ActorCommand>();
 
         let ctx = ProtocolCommandContext::new(
-            &send, tx, &clock, &signers, &dms, &errors, &stages,
+            &send, tx, &clock, &signers, &dms, &errors, &stages, &recipients,
         );
 
         assert_eq!(ctx.now_secs(), 123_456);
@@ -615,6 +718,13 @@ mod tests {
             vec![("cid-z".to_string(), "boom".to_string())]
         );
         assert_eq!(*stages.seen.lock().unwrap(), vec!["cid-abc".to_string()]);
+
+        let urls = ctx.recipient_publish_relays("alice", 9735);
+        assert_eq!(urls, vec!["wss://r.example".to_string()]);
+        assert_eq!(
+            *recipients.seen.lock().unwrap(),
+            vec![("alice".to_string(), 9735u32)]
+        );
 
         // Worker-side sender clone reaches the matching receiver.
         let cloned = ctx.command_sender_clone();

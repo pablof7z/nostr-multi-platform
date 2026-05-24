@@ -337,6 +337,31 @@ impl<'a> crate::substrate::ActionStageTracker for ActionStageTrackerAdapter<'a> 
     }
 }
 
+/// Debt-C-follow-up — bridge the kernel's `outbox_router` slot into the
+/// substrate [`crate::substrate::RecipientRelayLookup`] capability. NIP-57
+/// LNURL fetcher consumes this to populate the kind:9734 `relays` tag
+/// (recipient's NIP-65 write set + cold-start fallback) without naming
+/// `OutboxRouter` or the substrate `MailboxCache` directly.
+struct RecipientRelayLookupAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for RecipientRelayLookupAdapter<'a> {}
+unsafe impl<'a> Sync for RecipientRelayLookupAdapter<'a> {}
+
+impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<'a> {
+    fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
+        // Kernel read; no mutation required. `try_borrow` keeps the
+        // adapter total in the presence of a re-entrant kernel borrow on
+        // the dispatch arm (defensive — production has no such cycle).
+        self.kernel
+            .try_borrow()
+            .ok()
+            .map(|k| k.recipient_publish_relays(recipient, kind))
+            .unwrap_or_default()
+    }
+}
+
 pub(super) fn dispatch_command(
     command: ActorCommand,
     ctx: &mut ActorContext<'_>,
@@ -1209,6 +1234,7 @@ pub(super) fn dispatch_command(
             let signers = LocalSignerAccessAdapter { identity: &identity_cell };
             let errors = ErrorSurfaceAdapter { kernel: &kernel_cell };
             let stages = ActionStageTrackerAdapter { kernel: &kernel_cell };
+            let recipients = RecipientRelayLookupAdapter { kernel: &kernel_cell };
 
             // A second sender clone for the worker-thread surface. Cloning
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
@@ -1222,6 +1248,7 @@ pub(super) fn dispatch_command(
                 &*dm_lookup,
                 &errors,
                 &stages,
+                &recipients,
             );
             if let Err(e) = cmd.run(&mut pctx) {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");
@@ -1233,6 +1260,7 @@ pub(super) fn dispatch_command(
             // drop the adapters here so the `emit_now` below sees a fully
             // released `ctx.kernel`.
             drop(pctx);
+            drop(recipients);
             drop(stages);
             drop(errors);
             drop(signers);

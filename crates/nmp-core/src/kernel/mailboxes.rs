@@ -92,32 +92,6 @@ impl Kernel {
         self.dm_inbox_relays_arc().dm_inbox_relays(pubkey)
     }
 
-    /// NIP-65 write-set read for **content-payload** consumers (NOT
-    /// routing). The NIP-57 LNURL zap request injects the recipient's
-    /// declared write relays into the kind:9734 event's `relays` tag —
-    /// that is event content semantics, not a kernel routing decision.
-    ///
-    /// Cold-start (no cached kind:10002): returns an empty vec. NIP-57's
-    /// `inject_recipient_relays` independently falls back to its own
-    /// discovery seed via [`Kernel::bootstrap_discovery_relays`] when
-    /// the recipient pubkey is empty; for an unknown recipient that
-    /// produces a `relays` tag with only the bootstrap entries, which
-    /// keeps the zap request well-formed.
-    ///
-    /// **NOT a routing helper.** Production REQ dispatch flows through
-    /// [`Kernel::route_subscription_relays`] (`outbox_router` slot); the
-    /// publish-side resolver lives in `kernel/publish_engine.rs`.
-    pub(crate) fn author_write_relays(&self, author: &str) -> Vec<String> {
-        match self.mailbox_cache().snapshot(&author.to_string()) {
-            Some(parsed) if !parsed.write.is_empty() || !parsed.both.is_empty() => {
-                let mut out: Vec<String> =
-                    parsed.write.iter().chain(parsed.both.iter()).cloned().collect();
-                sort_dedup(&mut out);
-                out
-            }
-            _ => Vec::new(),
-        }
-    }
 }
 
 // ─── Router-driven REQ-relay resolution (Debt A) ─────────────────────────────
@@ -395,6 +369,45 @@ impl Kernel {
             sort_dedup(ids);
         }
         by_relay
+    }
+
+    /// Resolve the relay URLs a downstream publisher (NIP-57 LN provider,
+    /// etc.) should publish a `kind`-typed event authored by `recipient`
+    /// to, via the kernel's `outbox_router` slot. Drives the router with a
+    /// synthetic publish-direction [`UnsignedEvent`] so lane 1 returns the
+    /// recipient's NIP-65 write set; lane 6 stacks the indexer URLs when
+    /// `kind` is a discovery kind; lane 7 fires the Discovery cold-start
+    /// seed when neither earlier lane resolved anything.
+    ///
+    /// This is the substrate seam the [`crate::substrate::RecipientRelayLookup`]
+    /// capability is wired through. The Debt-C-follow-up replaced the
+    /// pre-Debt-C `author_write_relays` bare cache accessor that
+    /// `nmp-nip57::lnurl::inject_recipient_relays` consumed — the routing
+    /// decision now belongs to the router, not a cache read.
+    ///
+    /// Returns an empty `Vec` on `RoutingError::Unroutable` (no NIP-65
+    /// cache hit, no AppRelay seed) — caller (the LNURL fetcher) decides
+    /// whether to surface an empty `relays` tag or fall back further.
+    pub(crate) fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
+        let synthetic = UnsignedEvent {
+            pubkey: recipient.to_string(),
+            kind,
+            tags: vec![],
+            content: String::new(),
+            created_at: 0,
+        };
+        let app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let blocked = BlockedRelaySet::new();
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
+        match self.outbox_router.route_publish(&synthetic, &ctx) {
+            Ok(routed) => {
+                let mut out: Vec<String> = routed.urls().cloned().collect();
+                sort_dedup(&mut out);
+                out
+            }
+            Err(_) => Vec::new(),
+        }
     }
 }
 

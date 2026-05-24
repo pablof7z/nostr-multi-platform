@@ -48,8 +48,10 @@ use crate::lnurl::FetchLnurlInvoiceCommand;
 /// }
 /// ```
 ///
-/// `relays` is optional (`[]` or omitted) — the actor injects from
-/// `kernel.author_write_relays(recipient_pubkey)` before signing (V-07).
+/// `relays` is optional (`[]` or omitted) — the actor injects via the
+/// substrate `RecipientRelayLookup` capability (kernel-side adapter
+/// routes through `outbox_router` with a synthetic kind:9735 publish to
+/// resolve the recipient's NIP-65 write set) before signing (V-07).
 ///
 /// `lnurl` carries the receiver's LNURL-pay endpoint in any of three
 /// shapes: a lightning address (`user@domain`), a bech32 LNURL
@@ -301,7 +303,7 @@ mod tests {
     /// NIP-65 write list before signing. The executor still emits
     /// `Protocol(FetchLnurlInvoiceCommand{...})`; the resulting kind:9734
     /// has no `relays` tag at this point (`FetchLnurlInvoiceCommand::run`
-    /// adds it via `ProtocolCommandContext::author_write_relays`).
+    /// adds it via `ProtocolCommandContext::recipient_publish_relays`).
     #[test]
     fn start_accepts_empty_relays_actor_injects() {
         let input = ZapInput {

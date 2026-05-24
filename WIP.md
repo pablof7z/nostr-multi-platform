@@ -23,21 +23,26 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
+| 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
+| 8 phases C/D/E (`BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
-| 10 (`nmp-app-template`, V-48) | 🟡 PR #467 open — `crates/nmp-app-template/` extracted; Chirp uses it; Chirp `src/` shrank 1003 → 456 LOC |
-| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged |
-| 11 final (`nmp-ffi` extraction; `fixture-todo-core` move deferred on codegen path hardcode) | 🟡 PR open — `crates/nmp-ffi` extracted via `git mv` from `crates/nmp-core/src/ffi/`; ~5,654 LOC moved; every `nmp_app_*` C-ABI symbol byte-stable; substrate slot aliases (`MlsLocalNsecSlot`, `Nip17LocalKeysSlot`, `StoragePathSlot`, `RoutingTraceSlot`, `RoutingSubstrateSlot`, etc.) relocated to `nmp-core/src/slots.rs`; new `nmp_core::__ffi_internal` doc-hidden re-export surface; every consumer (`nmp-app-template`, `nmp-app-chirp`, `nmp-android-ffi`, `nmp-nip02/17/29/57`, `nmp-router`, `nmp-signer-broker`, `nmp-marmot`, `nmp-app-longform/notes/fixture`, `fixture-todo-core`, `nmp-testing`, `chirp-tui`, `chirp-repl`) repointed; doctrine-lint D13 Part B scope updated for the relocated slot. |
+| 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
+| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode |
+| 11 final (`nmp-ffi` extraction) | ⏳ in flight (subagent) |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
 Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
+**Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C ✅ merged as PR #471. C follow-up (NIP-57 LNURL `inject_recipient_relays` no-op + 3 `#[ignore]`d tests) ⏳ in flight on `worktree-debt-c-followup-lnurl-relays` — adds substrate `RecipientRelayLookup` capability + kernel adapter routing through `outbox_router`.
+
 ## Active
 
-- 2026-05-24 — refactor(nmp-core/nmp-ffi): step 11 final — extract `nmp-ffi` from `nmp-core::ffi`. `git mv crates/nmp-core/src/ffi/ crates/nmp-ffi/src/` (~5,654 LOC), every `#[no_mangle] extern "C" fn nmp_app_*` symbol byte-stable, substrate slot aliases relocated to `crates/nmp-core/src/slots.rs`, a new `#[doc(hidden)] nmp_core::__ffi_internal` module exposes the substrate hooks the FFI shell needs (slot constructors, registration helpers, default constants), and every consumer of the C-ABI surface (`nmp-app-template`, `nmp-app-chirp`, `nmp-android-ffi`, `nmp-nip02/17/29/57`, `nmp-router`, `nmp-signer-broker`, `nmp-marmot`, `nmp-app-longform/notes/fixture`, `fixture-todo-core`, `nmp-testing`, `chirp-tui`, `chirp-repl`) repointed from `nmp_core::nmp_app_*` to `nmp_ffi::nmp_app_*`. Doctrine-lint D13 Part B scope updated for the relocated slot.
-- 2026-05-24 — feat(nmp-app-template/nmp-app-chirp): step 10 — `nmp-app-template` crate (V-48) — PR #467 open. One `register_defaults(&mut NmpApp)` call wires NIP-02/17/57/65 actions + kind:10050 ingest parser + `GenericOutboxRouter` + `InMemoryMailboxCache` routing substrate + D2 coverage hook + DM-inbox / zap-receipts runtimes. Chirp refactored to use it; Chirp `src/` shrank 1003 → 456 LOC (547 LOC reduction, 55% smaller). Branch `step-10-nmp-app-template`.
-- 2026-05-24 — refactor(nmp-core/nmp-router/nmp-app-chirp): "make substrate honest" — router becomes decision authority (not observe-only), delete `nmp-core::substrate::default_routing.rs`, eliminate `ProtocolCommandContext` 11-accessor balloon (capability traits), fix 14 `expect("RwLock poisoned")` panics. Branch `worktree-agent-ac01eccb4cdd13a99`.
-- 2026-05-24 — docs(plan): reconcile WIP.md / BACKLOG.md / plan.md / crate-boundaries.md after today's 16 merges — branch `worktree-docs-reconcile-plan-files` (this branch)
+- 2026-05-24 — refactor(nmp-core/nmp-nip57): Debt C follow-up — close the NIP-57 LNURL `inject_recipient_relays` TODO and un-ignore the 3 LNURL `#[ignore]`d tests. Adds the `RecipientRelayLookup` substrate capability trait (kernel-side adapter drives `outbox_router.route_publish` with a synthetic kind:9735 publish-direction event — recipient's NIP-65 write set falling back through the router's lane-7 AppRelay cold-start seed). Also deletes the now-dead `Kernel::author_write_relays` content-payload helper. Branch `worktree-debt-c-followup-lnurl-relays`.
+- 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468. **Needs follow-up before merge**: `kernel/requests/profile.rs:431` routes kind:10002 discovery through the cached write set, which can self-seal stale metadata (if the cached relay list is old, asking only the old write relays misses the author's newer kind:10002 elsewhere). Discovery kinds (0/3/10000–19999) must hit the Indexer lane (router §3.1 lane 6).
+- 2026-05-24 — refactor(nmp-core): Debt B — delete `default_routing.rs` (484 LOC algorithm duplicate); kernel defaults switched to `EmptyOutboxRouter` + `(test) TestInMemoryMailboxCache` — branch `worktree-agent-a635030638058cda7`.
+- 2026-05-24 — feat(nmp-network): step 8 phase B — push-model `Pool` API + generational `RelayHandle` + `PoolEvent` channel — subagent in flight.
+- 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
+- 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
