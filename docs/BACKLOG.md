@@ -185,27 +185,18 @@ one-shot channel. This is non-trivial broker work.
 
 **Deadline:** Stages 2-3 are post-v1.
 
-### V-08 · DM bunker (NIP-46) support [MEDIUM · inbox stages 1-2 + send DONE; inbox stage 3 post-v1]
+### V-08 · DM inbox silent failure for bunker accounts [MEDIUM · staged fix required]
 
-**Two-path issue:** (a) DM **inbox** silent failure for bunker accounts —
-`DmInboxProjection::snapshot()` returns empty when the active signer can't unseal
-kind:1059 gift-wraps; (b) DM **send** regression introduced by PR #458 (V-39
-NIP-17 stack migration) — `SendGiftWrappedDmCommand` only read the local-keys
-slot, so bunker users could not send DMs.
+**Verified:** `crates/nmp-nip17/src/inbox.rs:205` — `DmInboxProjection::snapshot()` returns
+`DmInboxSnapshot::empty()` when `local_keys` is `None` (i.e. the active account uses a
+remote NIP-46 signer). A host cannot distinguish "no signer yet" from "remote signer
+that cannot unseal gift-wraps."
 
-**Send path ✅ DONE (PR #TBD):** added `SignerForSealCapability` to
-`ProtocolCommandContext` as `signer_for_seal() -> Option<Arc<dyn SignerForSeal>>`.
-The dispatch arm wires the closure to `IdentityRuntime::active_signer_for_seal`,
-which transparently returns the right adapter for local nsec (blanket impl on
-`nostr::Keys`) AND remote signers (the `RemoteSignerForSeal` adapter built atop
-`RemoteSignerHandle`). `nmp_nip17::SendGiftWrappedDmCommand` now resolves the
-signer through that accessor instead of `ctx.nip17_local_keys()`, so bunker
-accounts seal kind:13 rumors through the NIP-46 RPC pipeline. Regression-pinned
-by `nmp_core::actor::commands::remote_signer_tests::\
-send_gift_wrapped_dm_routes_through_remote_signer_adapter` (previously
-`#[ignore]`d with a four-line follow-up note; now un-ignored and passing).
+**Impact:** bunker (NIP-46) users see an empty DM inbox with no explanation. The host
+must choose between "show loading indicator forever" or "show empty state as if no DMs
+exist" — both are wrong. Silent degradation with no user-visible signal.
 
-**Inbox staged fix plan (Stage 3 still outstanding):**
+**Staged fix plan:**
 - Stage 1 ✅ DONE: Added `remote_signer_unsupported: bool` (with `#[serde(default)]`) to
   `DmInboxSnapshot`. When `local_keys` is `None`, `snapshot()` sets it `true`. The flag is
   included in the snapshot JSON so Swift can read it. Backward compatible (old decoders
@@ -213,9 +204,8 @@ send_gift_wrapped_dm_routes_through_remote_signer_adapter` (previously
 - Stage 2 ✅ DONE: `DmListView` checks `store.remoteSignerUnsupported` and shows a
   `bunkerUnsupportedState` banner with "DMs unavailable – bunker accounts cannot decrypt
   messages yet." The compose button is disabled in this state.
-- Stage 3: ADR-0026 Phase 2 inbox follow-up: implement `unwrap_gift_wrap` via
-  remote signer RPC (`RemoteSignerHandle::nip44_decrypt` is the same seam the
-  send path uses; the inbox needs the symmetric piece), delete the flag.
+- Stage 3: ADR-0026 Phase 2 follow-up: implement `unwrap_gift_wrap` via remote signer RPC,
+  delete the flag.
 
 **Deadline:** Stage 3 is post-v1.
 
@@ -1075,7 +1065,13 @@ updated with `## Escape-hatch caveat` section listing all bypassed doctrines.
 
 ---
 
-### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [DONE — PR #467]
+### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [HIGH · v1 DX] — **DONE** (PR #467 merged 2026-05-24, commit a079d95f)
+
+**Closed by PR #467**: `crates/nmp-app-template/` ships `register_defaults(&mut NmpApp)` plus a `runtimes` module (DM-inbox + zap-receipts reconcilers). Chirp's `nmp-app-chirp/src/` shrank from 1003 → 456 LOC (−547, −55%) by deleting `dm_runtime.rs` and `zap_receipts_runtime.rs` and routing through the template. The integration test in `crates/nmp-app-template/tests/register_defaults.rs` constructs a real `NmpApp` and proves every canonical action namespace (`nmp.follow`, `nmp.unfollow`, `nmp.nip25.react`, `nmp.nip17.send`, `nmp.nip17.publish_relay_list`, `nmp.nip57.zap`, `nmp.nip65.publish_relay_list`) resolves through `dispatch_action`.
+
+#### Original requirement (kept for archaeology)
+
+
 
 **Evidence:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs` — 403 LOC.
 `docs/dispatch-actions.md` documents *what to call* but not *what to register first*.
@@ -1091,23 +1087,6 @@ registry, default projections for kind:1 + profiles, coverage hook); (2) wire
 `nmp init <appname>` in `nmp-cli` to scaffold the template + minimal iOS shell.
 This is the highest-leverage DX investment before shipping v1 if the framework's
 §1 claim ("one-shot a working Nostr application") is to hold.
-
-**Resolution (step 10 of `docs/architecture/crate-boundaries.md` §5):** new crate
-`crates/nmp-app-template/` ships a single `register_defaults(app: &mut NmpApp)`
-entry point that wires the canonical NMP composition — NIP-02 / NIP-17 / NIP-57 /
-NIP-65 action modules, the kind:10050 ingest parser, the production routing
-substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), the D2 coverage hook,
-and the DM-inbox + zap-receipts runtime controllers. Chirp's
-`nmp_app_chirp_register` calls `register_defaults` instead of duplicating
-~130 LOC of wiring; the dm/zap runtime modules that used to live in Chirp
-(`src/dm_runtime.rs`, `src/zap_receipts_runtime.rs` — 282 LOC combined)
-moved into the template's `runtimes` module. Chirp's `src/` shrank from
-1003 LOC to 456 LOC (a 547 LOC reduction; about 55% smaller). A minimal
-example (`examples/minimal_app.rs`) + integration test
-(`tests/register_defaults.rs`) prove a fresh `NmpApp` constructed via
-`nmp_app_new()` + `register_defaults` resolves every canonical action
-namespace through `dispatch_action`. Step (2) — `nmp init` scaffold in
-`nmp-cli` — is a follow-up and is tracked separately.
 
 ---
 
