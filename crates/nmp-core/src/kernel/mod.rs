@@ -141,6 +141,8 @@ mod timeline_order_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
 #[cfg(test)]
+mod test_router;
+#[cfg(test)]
 mod tests;
 mod types;
 mod update;

@@ -439,7 +439,7 @@ fn nip42_kernel_auth_without_signer_holds_in_challenge_received() {
 
 #[test]
 fn nip42_kernel_view_open_reqs_routed_through_auth_gate() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let (signer, _) = make_signer(AUTH_EVENT_ID);
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 

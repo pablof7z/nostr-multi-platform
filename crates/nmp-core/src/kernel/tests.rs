@@ -5,7 +5,7 @@ use crate::store::InsertOutcome;
 
 #[test]
 fn open_author_emits_profile_and_note_reqs() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
     let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
 
@@ -69,7 +69,7 @@ fn open_author_with_cached_nip65_routes_notes_to_resolved_write_relays() {
     // T105: when the selected author has a cached kind:10002, the kind:1/6
     // notes REQ MUST target their resolved write relays (NOT the bootstrap
     // constants). This is the D3 enforcement bullet at the per-author scope.
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.seed_mailbox_relay_list(
         FIATJAF_PUBKEY,
         vec![],
@@ -100,7 +100,7 @@ fn open_author_with_cached_nip65_routes_notes_to_resolved_write_relays() {
 
 #[test]
 fn open_thread_emits_context_and_reply_reqs() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let focused_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     let root_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     let previous_id = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
@@ -181,7 +181,7 @@ fn open_thread_emits_context_and_reply_reqs() {
 
 #[test]
 fn close_author_refcounts_and_closes_view_subscriptions() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let _ = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
     let _ = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
 
@@ -298,7 +298,7 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
 
 #[test]
 fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
     let first = kernel.claim_profile(
         FIATJAF_PUBKEY.to_string(),
