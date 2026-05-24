@@ -182,6 +182,14 @@ final class GroupChatStore: ObservableObject {
     /// projection. Ordering is owned by the Rust `GroupChatProjection`.
     @Published private(set) var messages: [GroupChatMessage] = []
 
+    /// Pre-formatted two-char uppercase avatar-tile label for `PublicGroupRow`
+    /// (V-29 thin-shell fix). Computed in Rust from `GroupId::local_id` by
+    /// `nmp_nip29::projection::group_chat::group_initials` on every snapshot
+    /// tick. The view binds this directly and never slices the local-id
+    /// string itself. Defaults to `"?"` until the first snapshot arrives, so
+    /// the avatar tile never renders blank.
+    @Published private(set) var groupInitials: String = "?"
+
     private unowned let kernel: KernelHandle
     /// Guards against a second `nmp_app_chirp_register_group_chat` call —
     /// the FFI has single-screen scope and a re-register leaks an observer.
@@ -207,11 +215,17 @@ final class GroupChatStore: ObservableObject {
 
     /// Mirror the latest kernel snapshot. Called from `KernelModel.apply`
     /// on every tick. `nil` (projection not yet wired / older kernel)
-    /// leaves `messages` untouched; an empty array clears it.
+    /// leaves `messages` / `groupInitials` untouched; an empty array clears
+    /// `messages`. Each field is diffed before assignment so SwiftUI only
+    /// rebuilds dependent views on an actual change (V-29: `groupInitials`
+    /// mirrors the same per-tick diffing as `messages`).
     func apply(snapshot: GroupChatSnapshot?) {
         guard let snapshot else { return }
         if snapshot.messages != messages {
             messages = snapshot.messages
+        }
+        if snapshot.groupInitials != groupInitials {
+            groupInitials = snapshot.groupInitials
         }
     }
 

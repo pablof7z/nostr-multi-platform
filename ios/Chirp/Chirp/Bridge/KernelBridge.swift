@@ -1045,10 +1045,18 @@ struct GroupChatMessage: Decodable, Identifiable, Equatable {
 /// The serialised read-model a group-chat screen consumes. `messages` is
 /// ordered newest-first (`created_at` descending, ties broken by id) by the
 /// Rust projection — Swift does not re-sort.
+///
+/// `groupInitials` is the V-29 thin-shell field: the two-char uppercase
+/// avatar-tile label for `PublicGroupRow`, computed in Rust from
+/// `GroupId::local_id` (`nmp_nip29::projection::group_chat::group_initials`)
+/// at every snapshot tick. The view binds it directly and never slices the
+/// local-id string itself. Decoded via `.convertFromSnakeCase` from the
+/// snake_case JSON key `group_initials`.
 struct GroupChatSnapshot: Decodable, Equatable {
     let messages: [GroupChatMessage]
+    let groupInitials: String
 
-    static let empty = GroupChatSnapshot(messages: [])
+    static let empty = GroupChatSnapshot(messages: [], groupInitials: "?")
 }
 
 // ─── NIP-29 group-discovery read model ────────────────────────────────────

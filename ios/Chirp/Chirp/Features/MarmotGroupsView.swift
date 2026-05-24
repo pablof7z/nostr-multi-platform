@@ -70,7 +70,9 @@ struct GroupsView: View {
                     NavigationLink {
                         GroupChatView(store: model.groupChat)
                     } label: {
-                        PublicGroupRow(groupId: model.groupChat.groupId)
+                        PublicGroupRow(
+                            groupId: model.groupChat.groupId,
+                            initials: model.groupChat.groupInitials)
                     }
                     .accessibilityIdentifier("nip29-group-row")
                     .accessibilityValue(model.groupChat.groupId.localId)
@@ -149,18 +151,18 @@ struct GroupsView: View {
 // ── Public group row (NIP-29) ─────────────────────────────────────────────
 //
 // Subtitle uses # prefix to signal public/unencrypted without protocol terms.
-// Initials are first-two of the local id — this is the NIP-29 sibling, NOT
-// the Marmot surface, so the avatar tile derivation lives here (the
-// Marmot rule covers Marmot rows).
+// `initials` is the avatar-tile label — V-29 (thin-shell): the derivation
+// lives in Rust (`nmp_nip29::projection::group_chat::group_initials`) and
+// surfaces on every snapshot tick as `GroupChatStore.groupInitials`. The
+// caller threads it in; this row binds it verbatim and never slices the
+// local-id string itself.
 
 private struct PublicGroupRow: View {
     let groupId: GroupId
-
-    private var initials: String {
-        let id = groupId.localId
-        guard !id.isEmpty else { return "?" }
-        return String(id.prefix(2)).uppercased()
-    }
+    /// Rust-computed two-char uppercase avatar-tile label (V-29). The Swift
+    /// derivation `String(groupId.localId.prefix(2)).uppercased()` is
+    /// deliberately deleted — display formatting is Rust-owned (aim.md §2).
+    let initials: String
 
     var body: some View {
         HStack(spacing: 8) {

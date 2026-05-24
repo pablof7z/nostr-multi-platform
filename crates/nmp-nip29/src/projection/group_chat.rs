@@ -225,6 +225,22 @@ fn pubkey_initials(pubkey_hex: &str) -> String {
     pubkey_hex[..take].to_ascii_uppercase()
 }
 
+/// First two characters of a NIP-29 `local_id`, uppercased — the
+/// deterministic avatar-tile label for `PublicGroupRow` (V-29 thin-shell
+/// fix). Mirrors the iOS `PublicGroupRow.initials` helper deleted in V-29.
+///
+/// For the empty string the label is `"?"` — the same fallback the deleted
+/// Swift `guard !id.isEmpty else { return "?" }` enforced — so the host
+/// always has a non-empty label to render. For 1-char inputs the available
+/// prefix is returned (uppercased). Panic-free for any input — D6.
+#[must_use]
+fn group_initials(local_id: &str) -> String {
+    if local_id.is_empty() {
+        return "?".to_string();
+    }
+    local_id.chars().take(2).collect::<String>().to_uppercase()
+}
+
 /// Deterministic 6-hex avatar background colour (uppercase, no `#` prefix).
 ///
 /// **Byte-identical to** `nmp_nip17::display::avatar_color_hex` and
@@ -252,18 +268,35 @@ fn avatar_color_hex(pubkey_hex: &str) -> String {
 /// `messages` is ordered **newest-first** (`created_at` descending). Ties on
 /// `created_at` are broken by event id descending so the order is total and
 /// deterministic across snapshot ticks.
+///
+/// `group_initials` is the two-char uppercase avatar-tile label for the
+/// PublicGroupRow header — the first two chars of `GroupId::local_id`,
+/// uppercased (V-29 thin-shell fix). The iOS `PublicGroupRow` used to derive
+/// it from `groupId.localId` in Swift; that derivation now lives in Rust so
+/// the host shell never slices the local-id string itself (aim.md §2:
+/// display formatting is Rust-owned). Mirrors `GroupChatMessage::author_initials`
+/// (V-25) — same algorithm class, applied to the group identifier instead
+/// of an author pubkey.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct GroupChatSnapshot {
     pub messages: Vec<GroupChatMessage>,
+    /// Pre-formatted two-char uppercase initials for the group avatar tile,
+    /// computed by [`group_initials`] from `GroupId::local_id` (V-29).
+    /// `"?"` when the `local_id` is empty so the host always has a label.
+    #[serde(default)]
+    pub group_initials: String,
 }
 
 impl GroupChatSnapshot {
     /// An empty snapshot — what a freshly-constructed projection (or a poisoned
-    /// internal mutex, D6) reports.
+    /// internal mutex, D6) reports. `group_initials` is `"?"` here because no
+    /// `local_id` is reachable on this path; mirrors the V-29 contract that
+    /// the avatar tile always has a label.
     #[must_use]
     pub fn empty() -> Self {
         Self {
             messages: Vec::new(),
+            group_initials: "?".to_string(),
         }
     }
 }
@@ -365,18 +398,29 @@ impl GroupChatProjection {
                 .cmp(&a.created_at)
                 .then_with(|| b.id.cmp(&a.id))
         });
-        GroupChatSnapshot { messages: ordered }
+        GroupChatSnapshot {
+            messages: ordered,
+            // V-29: avatar-tile label for `PublicGroupRow` is derived in Rust
+            // so the iOS shell never slices the local-id string itself. Cheap
+            // pure-string compute, included on every tick alongside the
+            // per-message label refresh.
+            group_initials: group_initials(&self.group_id.local_id),
+        }
     }
 
     /// Snapshot as a `serde_json::Value` — the exact shape a host
     /// `register_snapshot_projection` closure must return.
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
-    /// collapses to `json!({"messages": []})` rather than propagating.
+    /// collapses to `json!({"messages": [], "group_initials": "?"})` rather
+    /// than propagating — `group_initials` (V-29) carries `"?"` here for the
+    /// same reason `GroupChatSnapshot::empty()` does (no usable `local_id`
+    /// reachable on the failure path).
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.snapshot())
-            .unwrap_or_else(|_| serde_json::json!({ "messages": [] }))
+        serde_json::to_value(self.snapshot()).unwrap_or_else(|_| {
+            serde_json::json!({ "messages": [], "group_initials": "?" })
+        })
     }
 }
 
@@ -426,11 +470,22 @@ mod tests {
     }
 
     #[test]
-    fn fresh_projection_yields_empty_snapshot() {
+    fn fresh_projection_yields_empty_messages_with_group_initials() {
+        // V-29: a fresh projection has no messages but DOES carry the
+        // group-initials label derived from `local_id` ("rust-nostr" → "RU").
+        // `GroupChatSnapshot::empty()` is the D6 fallback for a poisoned lock
+        // (no `local_id` reachable there) and reports `"?"` instead — the
+        // two paths now diverge on `group_initials` by design, so we assert
+        // structure rather than full equality.
         let proj = GroupChatProjection::new(group());
-        assert_eq!(proj.snapshot(), GroupChatSnapshot::empty());
+        let snap = proj.snapshot();
+        assert!(snap.messages.is_empty());
+        assert_eq!(snap.group_initials, "RU");
         let json = proj.snapshot_json();
-        assert_eq!(json, serde_json::json!({ "messages": [] }));
+        assert_eq!(
+            json,
+            serde_json::json!({ "messages": [], "group_initials": "RU" })
+        );
     }
 
     #[test]
@@ -844,5 +899,93 @@ mod tests {
         assert_eq!(msg.author_display, "abcdef01…23456789");
         assert_eq!(msg.author_initials, "AB");
         assert_eq!(msg.author_color_hex, "08E60C");
+    }
+
+    // ── V-29: group_initials avatar-tile label ────────────────────────────
+    //
+    // The iOS `PublicGroupRow` used to derive `initials` from `groupId.localId`
+    // in Swift. That derivation lives in Rust now; the view binds the snapshot
+    // field directly. These tests pin the algorithm — a drift here changes
+    // what every NIP-29 group row renders for its avatar tile.
+
+    #[test]
+    fn group_initials_takes_first_two_uppercased() {
+        assert_eq!(group_initials("rust-nostr"), "RU");
+        assert_eq!(group_initials("ab"), "AB");
+        // Mixed case input is normalised to uppercase.
+        assert_eq!(group_initials("aBcDeF"), "AB");
+    }
+
+    #[test]
+    fn group_initials_empty_input_is_question_mark() {
+        // Matches the deleted Swift `guard !id.isEmpty else { return "?" }`
+        // fallback — the host always has a non-empty label to render.
+        assert_eq!(group_initials(""), "?");
+    }
+
+    #[test]
+    fn group_initials_single_char_input_is_uppercased() {
+        // D6: no panic on shorter-than-two inputs; the available prefix is
+        // returned uppercased.
+        assert_eq!(group_initials("a"), "A");
+    }
+
+    #[test]
+    fn snapshot_populates_group_initials_from_local_id() {
+        // The fixture group has `local_id = "rust-nostr"` → "RU".
+        let proj = GroupChatProjection::new(group());
+        assert_eq!(proj.snapshot().group_initials, "RU");
+    }
+
+    #[test]
+    fn snapshot_group_initials_is_refreshed_per_tick_against_local_id() {
+        // The group_initials field must reflect the projection's own group
+        // identity on every snapshot — not the empty-fallback `"?"`. Even
+        // after ingesting messages, the label stays bound to `local_id`.
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+
+        let snap = proj.snapshot_at(200);
+        assert_eq!(snap.group_initials, "RU");
+        assert_eq!(snap.messages.len(), 1);
+    }
+
+    #[test]
+    fn snapshot_json_includes_group_initials() {
+        // The Swift `GroupChatSnapshot` decoder uses `.convertFromSnakeCase`,
+        // so the snake_case key here is exactly what the host binds to
+        // `groupInitials`. This is the load-bearing assertion that V-29 lets
+        // the iOS `PublicGroupRow` delete its Swift `initials` derivation.
+        let proj = GroupChatProjection::new(group());
+        let json = proj.snapshot_json();
+        assert_eq!(
+            json["group_initials"].as_str(),
+            Some("RU"),
+            "snapshot_json must emit group_initials for the public-group avatar tile"
+        );
+    }
+
+    #[test]
+    fn empty_snapshot_constructor_uses_question_mark_label() {
+        // `GroupChatSnapshot::empty()` runs on the poisoned-lock D6 path where
+        // no `local_id` is reachable — it must still have a non-empty
+        // `group_initials` so the host avatar tile is never blank.
+        let empty = GroupChatSnapshot::empty();
+        assert!(empty.messages.is_empty());
+        assert_eq!(empty.group_initials, "?");
+    }
+
+    #[test]
+    fn snapshot_serde_round_trips_group_initials() {
+        // The `group_initials` field survives a serde round trip end to end
+        // (the iOS shell decodes the same JSON shape).
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+        let snap = proj.snapshot();
+        let encoded = serde_json::to_string(&snap).expect("snapshot serialises");
+        let decoded: GroupChatSnapshot =
+            serde_json::from_str(&encoded).expect("snapshot deserialises");
+        assert_eq!(decoded.group_initials, "RU");
+        assert_eq!(decoded.messages.len(), 1);
     }
 }
