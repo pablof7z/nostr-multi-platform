@@ -2,6 +2,18 @@
 
 This file intentionally defers to [`AGENTS.md`](AGENTS.md), which is the canonical contributor guide for this repository. Every rule that applies to agents applies to Claude (and vice versa). Keeping both files in sync would violate the repository's own planning-discipline rule (single source of truth per fact) — so `AGENTS.md` is authoritative and this file is a pointer.
 
+## ⚠ ARCHITECTURE FREEZE — DO NOT START NEW WORK
+
+A crate-boundary architecture synthesis is in progress (2026-05-24). The output will be
+`docs/architecture/crate-boundaries.md`. Until that document exists and the freeze is
+lifted, **no agent may start any new feature or refactor work**. Agents may only:
+- Fix a CI red that is blocking an open PR
+- Answer a direct user question without touching files
+
+The freeze exists because the synthesis will decide which crates own which responsibilities.
+Work started now may be in the wrong crate and will need to be redone. Check WIP.md for
+status.
+
 ## Cold-start reading order
 
 1. [`AGENTS.md`](AGENTS.md) — repository conventions, planning discipline (three canonical files), doctrine corollaries, agent workflow, file-size rules.
