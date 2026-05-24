@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{AppState, Mode, Pane};
+use crate::short_id;
 use crate::features::FeatureTab;
 use crate::timeline::TimelineRow;
 use crate::ui::feature_panels;
@@ -200,14 +201,6 @@ fn profile_lines(state: &AppState) -> Vec<Line<'static>> {
     ];
     lines.extend(relay_lines(state));
     lines
-}
-
-fn short_id(value: &str) -> String {
-    if value.len() <= 16 {
-        value.to_string()
-    } else {
-        format!("{}...{}", &value[..8], &value[value.len() - 6..])
-    }
 }
 
 fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {

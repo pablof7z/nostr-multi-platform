@@ -14,3 +14,13 @@ pub mod timeline;
 pub mod ui;
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// Abbreviated hex identifier: `<first8>...<last6>` for TUI status lines.
+/// Uses ASCII `"..."` not Unicode `"…"` — safer for terminal fonts.
+pub(crate) fn short_id(value: &str) -> String {
+    if value.len() <= 16 {
+        value.to_string()
+    } else {
+        format!("{}...{}", &value[..8], &value[value.len() - 6..])
+    }
+}

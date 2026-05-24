@@ -1,6 +1,7 @@
 use ratatui::text::Line;
 
 use crate::app::AppState;
+use crate::short_id;
 
 pub fn action_summary(state: &AppState) -> String {
     if let Some(result) = &state.last_action_result {
@@ -59,10 +60,3 @@ pub fn relay_lines(state: &AppState) -> Vec<Line<'static>> {
     lines
 }
 
-fn short_id(value: &str) -> String {
-    if value.len() <= 16 {
-        value.to_string()
-    } else {
-        format!("{}...{}", &value[..8], &value[value.len() - 6..])
-    }
-}

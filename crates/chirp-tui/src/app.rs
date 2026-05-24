@@ -288,13 +288,7 @@ impl AppState {
     }
 }
 
-fn short_id(value: &str) -> String {
-    if value.len() <= 16 {
-        value.to_string()
-    } else {
-        format!("{}...{}", &value[..8], &value[value.len() - 6..])
-    }
-}
+use crate::short_id;
 
 #[cfg(test)]
 mod tests {
