@@ -84,12 +84,21 @@ struct NoteRenderContext: Equatable {
         mentionProfiles[pubkey]?.display ?? shortEntity(pubkey)
     }
 
+    // V-31 — wrong-algorithm fallback removed. The previous code computed
+    // `colorHex: "#" + String(pubkey.prefix(6))` and `initials:
+    // pubkey.prefix(2)` in Swift, which never matched the canonical djb2
+    // avatar color or kind:0-derived initials the kernel emits in
+    // `mention_profiles` / `TimelineItem`. Now we surface a safe,
+    // predictable placeholder (`"?"` / neutral grey) for pubkeys that have
+    // no loaded profile — the only state in which the kernel-owned map
+    // would not carry an entry. Display is the kernel-owned `shortEntity`
+    // (npub… abbreviation), which stays stable across re-renders.
     func authorProfile(for pubkey: String) -> MentionProfile {
         mentionProfiles[pubkey] ?? MentionProfile(
             display: shortEntity(pubkey),
             pictureUrl: nil,
-            initials: String(pubkey.prefix(2)),
-            colorHex: "#" + String(pubkey.prefix(6))
+            initials: "?",
+            colorHex: "888888"
         )
     }
 }

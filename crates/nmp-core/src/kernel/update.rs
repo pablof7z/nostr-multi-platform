@@ -418,16 +418,31 @@ impl Kernel {
         );
         // `mention_profiles` — derived view (aim.md §4.2): pubkey ->
         // {display, picture_url, avatar_initials, avatar_color} for every
-        // author surfaced in the open author-view items. Built from
-        // `author_view().items` rather than the kernel `timeline` so the
-        // ProfileView's mention-resolution map is scoped to that screen's
-        // visible authors — matching the Swift Dictionary derivation it
-        // replaces (`ProfileView.swift:28-40`). Empty `{}` when no author
-        // view is open; never absent (D1).
-        let mention_profiles = self
+        // author surfaced in ANY currently-open view. Built from the union of
+        // the home `timeline` (the `items` parameter, already
+        // `visible_items()`), the open `author_view` items, and the open
+        // `thread_view` items so HomeFeedView / ThreadScreen / ProfileView
+        // all find their authors pre-mapped without reconstructing the dict
+        // in Swift (V-31 thin-shell; replaces the Swift Dictionary
+        // derivations at `HomeFeedView.swift:187-197` and
+        // `ThreadScreen.swift:23-35`). First writer wins on collision —
+        // matches `mention_profiles_from_items` semantics. Empty `{}` only
+        // when no events are visible and no view is open; never absent (D1).
+        let mut mention_profiles = Self::mention_profiles_from_items(items);
+        for (k, v) in self
             .author_view()
             .map(|av| Self::mention_profiles_from_items(&av.items))
-            .unwrap_or_default();
+            .unwrap_or_default()
+        {
+            mention_profiles.entry(k).or_insert(v);
+        }
+        for (k, v) in self
+            .thread_view()
+            .map(|tv| Self::mention_profiles_from_items(&tv.items))
+            .unwrap_or_default()
+        {
+            mention_profiles.entry(k).or_insert(v);
+        }
         projections.insert(
             "mention_profiles".to_string(),
             serde_json::to_value(&mention_profiles)

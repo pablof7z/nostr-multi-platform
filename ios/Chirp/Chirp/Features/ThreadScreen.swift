@@ -20,19 +20,10 @@ struct ThreadScreen: View {
     private var itemLookup: [String: TimelineItem] {
         Dictionary(uniqueKeysWithValues: (thread?.items ?? model.items).map { ($0.id, $0) })
     }
-    private var mentionProfiles: [String: MentionProfile] {
-        Dictionary(
-            (thread?.items ?? model.items).map {
-                ($0.authorPubkey, MentionProfile(
-                    display: $0.authorDisplay,
-                    pictureUrl: $0.authorPictureUrl,
-                    initials: $0.authorAvatarInitials,
-                    colorHex: $0.authorAvatarColor
-                ))
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-    }
+    // V-31 — `mention_profiles` snapshot projection now covers thread-view
+    // items (see `update.rs` `mention_profiles` block), so the Swift
+    // `Dictionary(items.map …)` derivation this view used to build is gone.
+    // Bind `model.mentionProfiles` directly at the call site.
 
     var body: some View {
         Group {
@@ -95,7 +86,7 @@ struct ThreadScreen: View {
                         item: item,
                         isFocused: isFocused,
                         contentTree: cardLookup[item.id]?.contentTree,
-                        mentionProfiles: mentionProfiles,
+                        mentionProfiles: model.mentionProfiles,
                         eventCards: cardLookup,
                         timelineItems: itemLookup,
                         onAvatarTap: {
