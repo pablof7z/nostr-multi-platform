@@ -239,6 +239,12 @@ pub(super) struct ActorContext<'a> {
     /// `Reset`-survival contract as the ingest dispatcher slot.
     pub(super) dm_inbox_relays_slot:
         &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    /// V-51 phase 4 — routing-trace projection slot. Read by the `Reset`
+    /// arm to re-publish the rebuilt kernel's `routing_trace()` clone so
+    /// `NmpApp::routing_trace` keeps returning a live projection across a
+    /// state wipe.
+    pub(super) routing_trace_slot:
+        &'a Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
 }
 
 pub(super) fn dispatch_command(
@@ -1017,6 +1023,14 @@ pub(super) fn dispatch_command(
                 .and_then(|g| g.clone())
             {
                 ctx.kernel.lifecycle_mut().set_coverage_hook(hook);
+            }
+            // V-51 phase 4 — re-publish the rebuilt kernel's routing-trace
+            // projection clone into the shared slot. The previous projection
+            // was attached to the now-discarded kernel; `Reset` is a "wipe
+            // state" command and the reader contract is "the most recent
+            // routing decisions of the live kernel".
+            if let Ok(mut guard) = ctx.routing_trace_slot.lock() {
+                *guard = Some(ctx.kernel.routing_trace());
             }
             *ctx.startup_sent = false;
             if *ctx.running {
