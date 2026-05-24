@@ -186,7 +186,7 @@ mod tests {
             "apps/chirp/chirp-tui/src/feature_snapshot.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/fixture/fixture-todo-core/src/lib.rs"
+            "crates/fixture-todo-core/src/lib.rs"
         )));
     }
 
