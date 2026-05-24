@@ -1044,6 +1044,51 @@ This is the highest-leverage DX investment before shipping v1 if the framework's
 
 ---
 
+### V-50 · Outbox/relay-selection algorithm hardwired in `nmp-core` — should be a pluggable `nmp-relay-pool` crate [HIGH · post-v1 · blocks competing outbox strategies]
+
+**Evidence:** `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) implements the NIP-65 relay
+selection algorithm directly inside the kernel. `crates/nmp-core/src/planner/compiler/mailbox.rs`
+defines a `MailboxCache` trait and notes *"Phase 2: replaced by nmp-nip65::InMemoryMailboxCache"*
+— the design intent exists but has not been executed. The read-side resolver (`KernelMailboxes`,
+`partition_authors_by_write_relays`) and publish-side resolver (`publish/nip65/`) both live in
+nmp-core hardwired to kind:10002.
+
+**Why this is wrong:** The outbox algorithm is a strategy, not substrate. A future gossip-model
+relay selection, a NIP-05-based discovery fallback, or a manually curated relay set should all
+be expressible without touching nmp-core. Today there is no seam — swapping the algorithm
+requires forking the kernel.
+
+**Correct design:**
+1. `crates/nmp-relay-pool/` — a new crate owning the relay selection and outbox routing
+   algorithm. Currently NIP-65 based (reads kind:10002 from the `MailboxCache`), but the crate
+   boundary makes alternative implementations possible. Analogous to applesauce's `relay`
+   package.
+2. `nmp-core` substrate exposes a `trait OutboxRouter` (publish direction) and the existing
+   `trait MailboxCache` (subscription direction). The kernel holds `Arc<dyn OutboxRouter>` and
+   `Arc<dyn MailboxCache>`, injected at construction.
+3. `nmp-relay-pool` provides the concrete `Nip65OutboxRouter` + `Nip65MailboxCache`
+   implementations.
+4. `crates/nmp-nip65/` as a standalone crate is too thin to justify — its only content is the
+   `publish_relay_list` ActionModule (≈ 80 LOC of event construction). That moves into
+   `nmp-relay-pool` alongside the algorithm it feeds.
+
+**Blast radius:** `kernel/outbox.rs`, `publish/nip65/`, `kernel/ingest/relay_list.rs`
+(populates the cache), `planner/compiler/mailbox.rs` (the trait), and every caller of
+`Kernel::partition_authors_by_write_relays` + `Nip65OutboxResolver`. Medium refactor
+— the trait boundary already exists (`MailboxCache`), Phase 2 just needs to execute.
+
+**Migration difficulty: MEDIUM.** The substrate seam (`MailboxCache` trait) already exists.
+Steps: (1) create `nmp-relay-pool`, (2) move `InMemoryMailboxCache` and the NIP-65 publish
+action there, (3) define `OutboxRouter` trait in nmp-core substrate, (4) implement in
+`nmp-relay-pool`, (5) inject via `NmpAppBuilder`, (6) delete `kernel/outbox.rs` production
+code (keep `#[cfg(test)]` spec test).
+
+**Phase: post-v1.** Pre-requisite for any competing outbox strategy. Pairs with V-38/V-39/V-41
+(open-ActorCommand seam) since `nmp-relay-pool` will be the natural home for relay-pool actor
+commands too.
+
+---
+
 ### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
 **Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
