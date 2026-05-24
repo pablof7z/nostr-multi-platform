@@ -478,6 +478,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // V-40 — test wiring; no NIP-17 cache here.
             Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
             Arc::new(std::sync::Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+            // V-51 phase 4 — test wiring; nothing reads the routing-trace slot here.
+            Arc::new(std::sync::Mutex::new(None)),
         );
     });
 

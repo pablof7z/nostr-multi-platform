@@ -18,6 +18,7 @@ landed on master. V-39+V-40 (NIP-17 DM stack) is in PR #458.
 ## Active
 
 - 2026-05-24 — refactor(nmp-core/nmp-nip17): V-39+V-40 — full NIP-17 DM stack migration → nmp-nip17 — PR #458 (rebased onto master)
+- 2026-05-24 — feat(nmp-core/chirp-repl/nmp-testing): V-51 phase 4 — routing-trace validation harness. Widens `Kernel::routing_trace()` to `pub`, threads an `Arc<RoutingTraceProjection>` slot through `NmpApp`, adds `chirp-repl routing-trace` subcommand + a `#[ignore]`'d real-relay integration test (`routing_trace_real_nostr`) that fetches pablof7z's live kind:10002 and asserts `Nip65/Read` lane attribution with no `AppRelay/Fallback` leak. Companion shell smoke `scripts/validate-routing.sh`. Branch `feat/v51-phase4-validation-harness`.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

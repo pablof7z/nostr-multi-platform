@@ -796,6 +796,10 @@ pub fn run_actor(
         // slots.
         Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // V-51 phase 4 — no `NmpApp` is wired through this entry, so the
+        // routing-trace slot is a private throwaway (the actor still
+        // publishes its kernel's projection into it, but nothing reads it).
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -849,6 +853,8 @@ pub fn run_actor_with_lifecycle_observer(
         // V-40 — same private-throwaway pattern as the other slots above.
         Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // V-51 phase 4 — same private-throwaway pattern.
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -944,6 +950,11 @@ pub fn run_actor_with_observers(
     // current handle and binds it onto the kernel at construction time
     // (and re-binds on `Reset`).
     dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    // V-51 phase 4 — routing-trace projection slot. The `NmpApp` owns the
+    // read side (`NmpApp::routing_trace`); this actor thread is the sole
+    // writer, publishing `kernel.routing_trace()` into the slot right after
+    // kernel construction (and re-publishing on `Reset`).
+    routing_trace_slot: Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -980,6 +991,16 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // V-51 phase 4 — publish the kernel's routing-trace projection clone
+    // into the shared slot so `NmpApp::routing_trace` can read it. The
+    // kernel auto-binds the projection onto its default
+    // `Nip65WriteSetRouter` at construction (see `Kernel::new`), so every
+    // routing decision is observed from this point onward. D6: a poisoned
+    // slot drops the publication rather than propagate the panic — readers
+    // will see `None`, which is the cold-start state.
+    if let Ok(mut guard) = routing_trace_slot.lock() {
+        *guard = Some(kernel.routing_trace());
+    }
     // V-40 — bind the shared `EventIngestDispatcher` slot + the
     // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
     // The `NmpApp` owns the writer sides; this binding ensures the
@@ -1172,6 +1193,7 @@ pub fn run_actor_with_observers(
                         host_op_handler: &host_op_handler,
                         ingest_dispatcher_slot: &ingest_dispatcher_slot,
                         dm_inbox_relays_slot: &dm_inbox_relays_slot,
+                        routing_trace_slot: &routing_trace_slot,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {

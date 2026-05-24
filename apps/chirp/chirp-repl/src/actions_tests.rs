@@ -70,3 +70,41 @@ fn load_key_accepts_nsec() {
 
     assert_eq!(session.pubkey_hex.as_deref(), Some(PUBKEY_HEX));
 }
+
+/// V-51 phase 4 — the `routing-trace` action MUST succeed regardless of
+/// kernel state (it's a read-only diagnostic; "kernel not started yet"
+/// renders as a `<no projection slot bound>` line rather than an error).
+/// This pins the contract: the user can run `routing-trace` at any point
+/// without surprises.
+#[test]
+fn routing_trace_action_never_errors() {
+    let mut session = Session::default();
+    // Cold-start: projection slot may still be empty (no actor command sent).
+    run(&mut session, Command::RoutingTrace).unwrap();
+    // After loading a key the actor has constructed the kernel; the slot is
+    // now populated and the projection rings render with their (likely empty)
+    // contents.
+    run(&mut session, Command::LoadKey(SECRET_HEX.into())).unwrap();
+    run(&mut session, Command::RoutingTrace).unwrap();
+}
+
+/// V-51 phase 4 — after the actor has built the kernel (any `ActorCommand`
+/// triggers this), `AppRuntime::routing_trace()` MUST return a non-`None`
+/// projection. Without this contract the chirp-repl `routing-trace`
+/// subcommand can never render real data.
+#[test]
+fn routing_trace_projection_is_published_after_actor_starts() {
+    let mut session = Session::default();
+    // Any command pushes through the actor and forces kernel construction.
+    run(&mut session, Command::LoadKey(SECRET_HEX.into())).unwrap();
+    // Give the actor thread a brief moment to publish the projection slot.
+    // The slot write happens synchronously right after `Kernel::with_storage_path`
+    // returns inside `run_actor_with_observers`, so a short wait suffices.
+    for _ in 0..20 {
+        if session.app.routing_trace().is_some() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    panic!("routing_trace projection slot never populated after actor command");
+}

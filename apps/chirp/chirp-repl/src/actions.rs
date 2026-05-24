@@ -37,6 +37,7 @@ pub fn run(session: &mut Session, command: Command) -> Result<bool> {
         Command::MlsSend(group_id, text) => mls_send(session, &group_id, &text)?,
         Command::MlsMessages(group_id) => mls_messages(session, &group_id)?,
         Command::RawReq(_) => unsupported("raw-req")?,
+        Command::RoutingTrace => routing_trace(session),
         Command::Quit => return Ok(true),
         Command::Noop => {}
     }
@@ -210,6 +211,15 @@ fn unsupported(command: &str) -> Result<()> {
     Err(format!(
         "{command} is not exposed by the Chirp app runtime yet; refusing to bypass NMP"
     ))
+}
+
+/// V-51 phase 4 — dump the kernel's routing-trace projection. Reads through
+/// `NmpApp::routing_trace`, which returns `None` until the actor has built
+/// the kernel; once `Some`, the projection is the live ring buffer the
+/// default `Nip65WriteSetRouter` writes into on every routing decision.
+fn routing_trace(session: &Session) {
+    let projection = session.app.routing_trace();
+    render::routing_trace(projection.as_ref());
 }
 
 fn render_snapshot(session: &mut Session, label: &str) {

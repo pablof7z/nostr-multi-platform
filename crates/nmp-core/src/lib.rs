@@ -61,6 +61,16 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 #[cfg(feature = "native")]
 pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+// V-51 phase 4 (validation harness) — the projection's three public types
+// reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
+// is the bounded ring-buffer the kernel auto-binds onto the default
+// `Nip65WriteSetRouter` at composition; `PublishTraceEntry` /
+// `SubscriptionTraceEntry` are the entry shapes the `snapshot_*` accessors
+// return. See `kernel::routing_trace` module doc.
+pub use kernel::routing_trace::{
+    PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
+    DEFAULT_ROUTING_TRACE_CAPACITY,
+};
 // V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
 // Promoted to the public surface so the wasm32 `BrowserRelayDriver` in
 // `nmp-wasm` can construct frames from `web_sys::MessageEvent` / `CloseEvent`.

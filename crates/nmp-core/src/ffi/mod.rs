@@ -157,6 +157,17 @@ pub(crate) type Nip17LocalKeysSlot = Arc<Mutex<Option<nostr::Keys>>>;
 /// reads it once at kernel construction. `None` keeps the in-memory store.
 pub(crate) type StoragePathSlot = Arc<Mutex<Option<String>>>;
 
+/// V-51 phase 4 — typed slot the actor publishes the kernel's
+/// `RoutingTraceProjection` clone into, right after kernel construction.
+///
+/// Per-app crates (chirp-repl, validation harness, an `nmp-repl`
+/// `routing-trace` subcommand) read it through [`NmpApp::routing_trace`].
+/// `None` until the actor has built the kernel; non-`None` for the rest of
+/// the app's lifetime. Re-bound by the `Reset` dispatch arm so the
+/// projection follows a kernel rebuild.
+pub(crate) type RoutingTraceSlot =
+    Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>;
+
 /// Construct a fresh, empty [`MlsLocalNsecSlot`].
 #[must_use]
 pub(crate) fn new_mls_local_nsec_slot() -> MlsLocalNsecSlot {
@@ -172,6 +183,12 @@ pub(crate) fn new_nip17_local_keys_slot() -> Nip17LocalKeysSlot {
 /// Construct a fresh, empty [`StoragePathSlot`].
 #[must_use]
 pub(crate) fn new_storage_path_slot() -> StoragePathSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`RoutingTraceSlot`].
+#[must_use]
+pub(crate) fn new_routing_trace_slot() -> RoutingTraceSlot {
     Arc::new(Mutex::new(None))
 }
 
@@ -315,6 +332,15 @@ pub struct NmpApp {
     /// in-memory store. The path is only honoured when the crate is built
     /// with `--features lmdb-backend`; otherwise it is inert.
     storage_path: StoragePathSlot,
+    /// V-51 phase 4 — slot the actor publishes the kernel's
+    /// `RoutingTraceProjection` clone into right after kernel construction.
+    /// Per-app crates (chirp-repl, the `nmp-testing` validation harness)
+    /// read it through [`NmpApp::routing_trace`] to inspect the most recent
+    /// routing decisions made by the kernel-side default router (or any
+    /// production router an app injects via `Kernel::set_routing`, since
+    /// production composition is expected to thread the same projection
+    /// through the injected router's `with_trace_observer` builder).
+    routing_trace: RoutingTraceSlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
@@ -583,6 +609,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // → in-memory store.
     let storage_path: StoragePathSlot = new_storage_path_slot();
     let actor_storage_path = Arc::clone(&storage_path);
+    // V-51 phase 4 — shared routing-trace projection slot. The actor
+    // populates this with `kernel.routing_trace()` right after kernel
+    // construction (and re-populates on `Reset`); per-app crates read it
+    // through `NmpApp::routing_trace`.
+    let routing_trace: RoutingTraceSlot = new_routing_trace_slot();
+    let actor_routing_trace = Arc::clone(&routing_trace);
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
@@ -702,6 +734,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the kernel at construction.
                 actor_ingest_dispatcher,
                 actor_dm_inbox_relays,
+                // V-51 phase 4 — the actor's clone of the routing-trace slot.
+                // Filled with `kernel.routing_trace()` right after kernel
+                // construction (and re-filled on `Reset`); per-app crates read
+                // it through `NmpApp::routing_trace`.
+                actor_routing_trace,
             );
         }));
         if let Err(e) = result {
@@ -749,6 +786,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         mls_local_nsec,
         nip17_local_keys,
         storage_path,
+        routing_trace,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
@@ -1329,6 +1367,32 @@ impl NmpApp {
     #[must_use]
     pub fn nip17_local_keys(&self) -> Nip17LocalKeysSlot {
         Arc::clone(&self.nip17_local_keys)
+    }
+
+    /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]
+    /// (`Arc`).
+    ///
+    /// Returns `None` until the actor has constructed the kernel
+    /// (the first command after `nmp_app_new` causes the actor to build
+    /// the kernel; the projection is published into the slot immediately
+    /// after — see `run_actor_with_observers`). Once `Some`, the same
+    /// projection survives until `Reset`, which rebuilds the kernel and
+    /// re-publishes a fresh projection clone into the slot.
+    ///
+    /// Per-app crates (chirp-repl `routing-trace` subcommand, the
+    /// `nmp-testing` validation harness) read recent routing decisions via
+    /// [`crate::RoutingTraceProjection::snapshot_publishes`] /
+    /// `snapshot_subscriptions` on the returned `Arc`. The projection is
+    /// the consumer side of the V-51 substrate `RoutingTraceObserver` seam;
+    /// the kernel auto-binds the projection onto its default
+    /// `Nip65WriteSetRouter` (and the production injection
+    /// `nmp_router::GenericOutboxRouter`, when threaded through with the
+    /// same projection via `with_trace_observer`).
+    #[must_use]
+    pub fn routing_trace(
+        &self,
+    ) -> Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>> {
+        self.routing_trace.lock().ok()?.clone()
     }
 
     /// Clone of the live relay-edit row slot.

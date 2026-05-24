@@ -84,7 +84,17 @@ mod relay_diagnostics;
 // allocation is shared with whichever `OutboxRouter` impl the kernel
 // installs (the router stores `Arc<dyn RoutingTraceObserver>` — the
 // projection is the only concrete impl).
-pub(crate) mod routing_trace;
+//
+// V-51 phase 4 (validation harness) needs the projection type reachable
+// from `nmp-testing` and the chirp-repl, so the module is `pub` and the
+// three projection types it owns (`RoutingTraceProjection`,
+// `PublishTraceEntry`, `SubscriptionTraceEntry`) are re-exported below.
+// This is not "widening the substrate" (substrate is `crate::substrate`,
+// which carries the producer-side trait `RoutingTraceObserver`); the
+// projection is the consumer-side observability primitive, naturally
+// belongs to the kernel, and is the Rust-level read door the FFI surface
+// (phase 2 proper) and the validation harness (phase 4) both consume.
+pub mod routing_trace;
 // Typed slot wrappers for relay-shaped actor-owned caches. The bare
 // `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
 // publish resolver and `NmpApp` move behind named types here so D14 can flag
@@ -869,8 +879,15 @@ impl Kernel {
     /// [`Self::set_routing`] can pass the same projection through the
     /// router's `with_trace_observer` builder, and so phase 2's FFI snapshot
     /// surface can read the rings without holding a `&Kernel` borrow.
-    #[allow(dead_code)]
-    pub(crate) fn routing_trace(&self) -> Arc<routing_trace::RoutingTraceProjection> {
+    ///
+    /// V-51 phase 4 widens this from `pub(crate)` to `pub`: the validation
+    /// harness (`nmp-testing`) and the chirp-repl `routing-trace`
+    /// subcommand need to read the projection through a held `&Kernel`
+    /// reference, and `NmpApp` publishes one clone into a shared slot at
+    /// actor startup so callers can read it without holding the kernel
+    /// directly.
+    #[must_use]
+    pub fn routing_trace(&self) -> Arc<routing_trace::RoutingTraceProjection> {
         Arc::clone(&self.routing_trace)
     }
 
