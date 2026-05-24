@@ -79,6 +79,13 @@ pub use keyring::{
 };
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+// V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
+// only on `nmp-core` can name the signer-capability trait that
+// `ProtocolCommandContext::signer_for_seal` returns. Gift-wrap is the one
+// NIP crate substrate is allowed to depend on per the spec (Layer 4
+// exception); re-exporting its capability trait keeps the dep wall
+// asymmetric the way the architecture wants it.
+pub use nmp_nip59::SignerForSeal;
 pub use default_routing::{
     InMemoryMailboxCache as DefaultInMemoryMailboxCache, Nip65WriteSetRouter,
 };
