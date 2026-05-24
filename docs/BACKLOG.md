@@ -135,8 +135,14 @@ to it; delete the hand-rolled path.
   `KernelReducer::handle_relay_connected` now calls `drain_lifecycle_outbound` after startup.
   1067 nmp-core tests pass. `Kernel::req` now has zero in-tree callers (kept under
   `#[allow(dead_code)]` — PD-033-C will retire it in Stage 4).
-- Stage 3 (NEXT): Migrate remaining M1 `req()` call sites in `profile.rs` / `thread.rs`.
-- Stage 4: Delete the M1 `req()` helper once all call sites are migrated.
+- Stage 3 ✅ SUBSUMED by Stage 2 (PR #422 — merged 2026-05-24): the audit before
+  Stage 4 confirmed `profile.rs` / `thread.rs` carry no `self.req(...)` callers;
+  the production helper migration is complete after Stage 2.
+- Stage 4 ✅ DONE: Deleted the M1 `req()` helper from `kernel/requests/mod.rs` and the
+  `ONESHOT_SUB_PREFIX` retirement-gate constant from `kernel/discovery.rs`. The lone
+  remaining test caller (`auth_tests.rs::nip42_kernel_auth_required_for_read`)
+  was migrated to `req_for_relay`; the discovery retirement-gate test inlines the
+  `"oneshot-disc-"` literal instead of referencing the deleted constant.
 
 ### V-05 · D2 enforcement gap — coverage_hook never installed [DONE]
 

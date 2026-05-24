@@ -50,10 +50,14 @@ fn nip42_kernel_auth_required_for_read() {
     assert!(auth_msgs[0].text.contains(AUTH_EVENT_ID));
 
     // While Authenticating, any REQ targeting Content is held — the prior
-    // call to req() succeeds (caller still gets the OutboundMessage) but the
-    // partition routine pulls it back into the deferred queue.
-    let _ = kernel.req(
+    // call to req_for_relay() succeeds (caller still gets the OutboundMessage)
+    // but the partition routine pulls it back into the deferred queue.
+    // V-04 Stage 4: migrated from the retired `Kernel::req` helper; the test
+    // exercises a single Content URL so a direct `req_for_relay` call is
+    // equivalent to the prior loop-over-bootstrap-URLs shape.
+    let _ = kernel.req_for_relay(
         RelayRole::Content,
+        RelayRole::Content.url().to_string(),
         "test-sub",
         "test-summary",
         serde_json::json!({"kinds":[1],"limit":1}),

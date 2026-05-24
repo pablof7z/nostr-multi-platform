@@ -52,22 +52,6 @@ pub(in crate::kernel) enum OneshotKind {
     Discovery,
 }
 
-/// Legacy wire sub-id prefix for discovery oneshots. Pre-PD-033-C Stage 1
-/// the kernel constructed sub-ids as `oneshot-disc-{token}` and emitted them
-/// via the M1 `self.req(...)` dual-write. Stage 1 retired that dual-write —
-/// the planner's `sub_id_for` (`sub-<hash>`) is now the only sub-id format
-/// that lands on the wire; routing is done via [`OneshotKind`], not via
-/// `starts_with` on this constant.
-///
-/// Retained under `#[cfg(test)]` as a retirement-gate constant: the
-/// `discovery_seam_emits_no_m1_oneshot_disc_outbound_req` test in
-/// `discovery_tests.rs` asserts that no outbound `OutboundMessage.text`
-/// carries this prefix (which would indicate a regression back to the M1
-/// helper). When the broader PD-033-C migration removes `Kernel::req`
-/// entirely, this constant can be deleted.
-#[cfg(test)]
-pub(in crate::kernel) const ONESHOT_SUB_PREFIX: &str = "oneshot-disc-";
-
 impl Kernel {
     /// Max ids/pubkeys per discovery REQ. Relays that reject large id-filters
     /// gracefully drop events; keeping this ≤50 is conservative but safe.
