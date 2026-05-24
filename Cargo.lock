@@ -4051,6 +4051,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-router"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+]
+
+[[package]]
 name = "nmp-signer-broker"
 version = "0.1.0"
 dependencies = [
