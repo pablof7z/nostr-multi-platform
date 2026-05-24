@@ -13,7 +13,7 @@ use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSe
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
 use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
-use crate::display::{avatar_color_hex, display_name_initials, short_hex as short_hex_canonical};
+use crate::display::{avatar_color_hex, display_name_initials, short_hex as short_hex_canonical, short_npub};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -58,7 +58,7 @@ pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
         .or(parsed.display_name_camel)
         .or(parsed.name)
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| short_pubkey_display(&event.pubkey));
+        .unwrap_or_else(|| short_npub(&event.pubkey));
     Profile {
         event_id: event.id.clone(),
         created_at: event.created_at,
@@ -238,13 +238,6 @@ pub(super) fn short_hex(value: &str) -> String {
     }
 }
 
-pub(super) fn short_pubkey_display(value: &str) -> String {
-    if value.len() < 16 {
-        value.to_string()
-    } else {
-        format!("npub {}..{}", &value[..8], &value[value.len() - 8..])
-    }
-}
 
 /// V-28 / V-33: `<first8>…<last8>` abbreviation for hex identifiers.
 ///

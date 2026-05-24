@@ -12,8 +12,8 @@
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, short_hex_display, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
-use crate::display::avatar_color_hex;
+use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_hex_display, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+use crate::display::{avatar_color_hex, short_npub};
 // `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
 // The single use site at `created_at_display` is already gated; import has
 // to match so `--no-default-features` (wasm32) compiles.
@@ -499,7 +499,7 @@ impl Kernel {
             author_display: profile
                 .map(|profile| profile.display.clone())
                 .filter(|display| !display.is_empty())
-                .unwrap_or_else(|| short_pubkey_display(&event.author)),
+                .unwrap_or_else(|| short_npub(&event.author)),
             author_picture_url,
             author_avatar_initials: profile
                 .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
@@ -574,7 +574,7 @@ impl Kernel {
             display: profile
                 .map(|profile| profile.display.clone())
                 .filter(|display| !display.is_empty())
-                .unwrap_or_else(|| short_pubkey_display(pubkey)),
+                .unwrap_or_else(|| short_npub(pubkey)),
             picture_url,
             nip05: profile
                 .map(|profile| profile.nip05.clone())
