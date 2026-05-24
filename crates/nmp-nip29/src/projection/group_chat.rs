@@ -55,6 +55,7 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use nmp_core::display::{avatar_color_hex, format_ago_secs};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
@@ -79,10 +80,11 @@ pub struct GroupChatMessage {
     pub created_at: u64,
     /// Pre-formatted abbreviated relative-time label for `created_at`
     /// (e.g. `"3s ago"`, `"12m ago"`, `"5h ago"`, `"2d ago"`). Computed in
-    /// Rust at snapshot time via [`format_ago_secs`] so the host shell never
-    /// reaches for `RelativeDateTimeFormatter` or any other date-formatting
-    /// API (V-22 thin-shell fix — aim.md §2: display formatting is
-    /// Rust-owned). Mirrors the V-20 fix on `DmMessage` in `nmp-nip17`.
+    /// Rust at snapshot time via [`nmp_core::display::format_ago_secs`] so
+    /// the host shell never reaches for `RelativeDateTimeFormatter` or any
+    /// other date-formatting API (V-22 thin-shell fix — aim.md §2: display
+    /// formatting is Rust-owned). Mirrors the V-20 fix on `DmMessage` in
+    /// `nmp-nip17`.
     ///
     /// Computed against the snapshot's wall-clock "now" (read once per
     /// `snapshot()` call); stored as the empty string in the ingest-time
@@ -106,11 +108,10 @@ pub struct GroupChatMessage {
     pub author_initials: String,
     /// Deterministic 6-hex avatar background colour from the author pubkey,
     /// uppercase, no `#` prefix. Computed at ingest time via
-    /// [`avatar_color_hex`] using the **same djb2 algorithm** as
-    /// `nmp_nip17::display::avatar_color_hex` and `nmp_marmot::projection::
-    /// display::avatar_color_hex` so avatar tints stay consistent across
-    /// every surface (DMs, NIP-29 group chat, Marmot) for the same author
-    /// (V-25 thin-shell fix).
+    /// [`nmp_core::display::avatar_color_hex`] — the canonical cross-surface
+    /// djb2 helper. The same author renders with the same tint across every
+    /// surface (DMs, NIP-29 group chat, the modular timeline, the Accounts
+    /// toolbar, Marmot rows) — V-25 thin-shell fix, V-33 consolidation.
     #[serde(default)]
     pub author_color_hex: String,
     /// Event kind — one of 9 (chat), 11 (thread).
@@ -144,48 +145,13 @@ impl GroupChatMessage {
     }
 }
 
-/// Abbreviated "X ago" relative-time label for a Unix-seconds timestamp.
-///
-/// Deliberate micro-duplication of `nmp_nip17::display::format_ago_secs` (and
-/// of the avatar-colour djb2 helper that lives in `nmp-nip17`, `nmp-marmot`,
-/// and — since V-25 — this crate's own [`avatar_color_hex`]) — the same
-/// pattern documented in those crates: a NIP crate should not pull another
-/// NIP crate in just to share a trivial bucketed-time formatter. Kept
-/// byte-identical so every surface (DMs, group chat, Marmot) speaks the same
-/// dialect.
-///
-/// `now_secs` is the wall-clock "now" in Unix seconds — injected so the
-/// snapshot path stays deterministic in tests and the helper itself does no
-/// I/O. The projection reads `SystemTime::now()` once per snapshot tick and
-/// threads it through; the helper never reaches for a clock.
-///
-/// When `then_secs == 0` or the message is "in the future" relative to `now`
-/// (clock skew, or a sender stamp slightly ahead of the receiver), the label
-/// is `"now"` — matching the relay-diagnostics convention.
-#[must_use]
-fn format_ago_secs(now_secs: u64, then_secs: u64) -> String {
-    if then_secs == 0 || now_secs <= then_secs {
-        return "now".to_string();
-    }
-    let diff = now_secs - then_secs;
-    if diff < 60 {
-        format!("{diff}s ago")
-    } else if diff < 3_600 {
-        format!("{}m ago", diff / 60)
-    } else if diff < 86_400 {
-        format!("{}h ago", diff / 3_600)
-    } else {
-        format!("{}d ago", diff / 86_400)
-    }
-}
-
 /// Wall-clock "now" in Unix seconds — the time source the production
 /// [`GroupChatProjection::snapshot`] path uses to fill `created_at_display`.
 ///
 /// D6: a clock that pre-dates the Unix epoch (impossible on any sane device)
-/// degrades to `0`, which [`format_ago_secs`] renders as `"now"`. Tests pin
-/// the clock via [`GroupChatProjection::snapshot_at`] instead of reaching for
-/// this helper.
+/// degrades to `0`, which [`nmp_core::display::format_ago_secs`] renders as
+/// `"now"`. Tests pin the clock via [`GroupChatProjection::snapshot_at`]
+/// instead of reaching for this helper.
 fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -239,28 +205,6 @@ fn group_initials(local_id: &str) -> String {
         return "?".to_string();
     }
     local_id.chars().take(2).collect::<String>().to_uppercase()
-}
-
-/// Deterministic 6-hex avatar background colour (uppercase, no `#` prefix).
-///
-/// **Byte-identical to** `nmp_nip17::display::avatar_color_hex` and
-/// `nmp_marmot::projection::display::avatar_color_hex`: djb2 over the **last
-/// 6 bytes** of the pubkey hex string. The duplication is deliberate (see
-/// the rationale on [`format_ago_secs`]) and load-bearing — the same author
-/// must produce the same avatar tint in DMs, in NIP-29 group chat, and in
-/// Marmot rows. Replaces the iOS `String(message.pubkey.prefix(6))` slice
-/// (V-25); that slice was a different algorithm and produced inconsistent
-/// tints across surfaces.
-#[must_use]
-fn avatar_color_hex(pubkey_hex: &str) -> String {
-    let bytes = pubkey_hex.as_bytes();
-    let start = bytes.len().saturating_sub(6);
-    let tail = &bytes[start..];
-    let mut hash: u32 = 5381;
-    for b in tail {
-        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
-    }
-    format!("{:06X}", hash & 0x00FF_FFFF)
 }
 
 /// The serialised read-model a group-chat screen consumes.
@@ -636,41 +580,11 @@ mod tests {
     }
 
     // ── V-22: created_at_display relative-time labels ────────────────────
-
-    #[test]
-    fn format_ago_secs_zero_then_is_now() {
-        assert_eq!(format_ago_secs(1_000_000_000, 0), "now");
-    }
-
-    #[test]
-    fn format_ago_secs_future_then_is_now() {
-        assert_eq!(format_ago_secs(100, 200), "now");
-        assert_eq!(format_ago_secs(100, 100), "now");
-    }
-
-    #[test]
-    fn format_ago_secs_seconds_bucket() {
-        assert_eq!(format_ago_secs(105, 100), "5s ago");
-        assert_eq!(format_ago_secs(159, 100), "59s ago");
-    }
-
-    #[test]
-    fn format_ago_secs_minutes_bucket() {
-        assert_eq!(format_ago_secs(160, 100), "1m ago");
-        assert_eq!(format_ago_secs(100 + 59 * 60, 100), "59m ago");
-    }
-
-    #[test]
-    fn format_ago_secs_hours_bucket() {
-        assert_eq!(format_ago_secs(100 + 3_600, 100), "1h ago");
-        assert_eq!(format_ago_secs(100 + 23 * 3_600, 100), "23h ago");
-    }
-
-    #[test]
-    fn format_ago_secs_days_bucket() {
-        assert_eq!(format_ago_secs(100 + 86_400, 100), "1d ago");
-        assert_eq!(format_ago_secs(100 + 7 * 86_400, 100), "7d ago");
-    }
+    //
+    // The exhaustive bucket tests live in `nmp_core::display::tests`. The
+    // projection-level tests below verify the snapshot path threads the
+    // pinned wall-clock through `nmp_core::display::format_ago_secs` correctly
+    // — that is the behaviour the host shell binds to.
 
     #[test]
     fn snapshot_at_populates_created_at_display() {
@@ -787,33 +701,11 @@ mod tests {
         assert_eq!(pubkey_initials(""), "");
     }
 
-    #[test]
-    fn avatar_color_hex_matches_pinned_djb2_vector() {
-        // Pinned algorithm vector — this is the byte-for-byte output of the
-        // djb2 helper shared with `nmp_nip17::display::avatar_color_hex` and
-        // `nmp_marmot::projection::display::avatar_color_hex` for a known
-        // 64-char hex input. If this assertion ever flips, the avatar tint
-        // for the same author has diverged across surfaces — that is a V-25
-        // regression, not a fix.
-        let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        assert_eq!(avatar_color_hex(hex), "08E60C");
-    }
-
-    #[test]
-    fn avatar_color_hex_is_six_uppercase_hex_chars() {
-        let out = avatar_color_hex("author-of-e1");
-        assert_eq!(out.len(), 6);
-        assert!(out.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_eq!(out, out.to_uppercase());
-    }
-
-    #[test]
-    fn avatar_color_hex_short_and_empty_inputs_do_not_panic() {
-        // D6 + matches the `nmp-nip17` helper's `_on_garbage_does_not_panic`
-        // test contract: the helper must accept any input.
-        let _ = avatar_color_hex("zz");
-        let _ = avatar_color_hex("");
-    }
+    // The pinned cross-surface djb2 vector lives in `nmp_core::display::tests`
+    // (`avatar_color_hex_matches_pinned_djb2_vector`); the
+    // `ingest_populates_author_display_strings` / `snapshot_preserves_author_display_strings`
+    // tests below anchor the call-site value (`"author-of-e1" → "E8844A"`)
+    // so a drift in the canonical helper is still caught at this layer.
 
     #[test]
     fn ingest_populates_author_display_strings() {

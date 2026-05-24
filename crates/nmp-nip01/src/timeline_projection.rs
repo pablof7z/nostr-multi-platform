@@ -7,6 +7,7 @@
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
+use nmp_core::display::{avatar_color_hex, format_ago_secs};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES, ViewContext};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
@@ -31,22 +32,18 @@ pub struct TimelineEventCard {
     pub relation_counts: NoteRelationCounts,
     /// V-27 thin-shell: relative "X ago" string for `created_at`. Computed in
     /// Rust at snapshot construction so the host shell never reaches for a
-    /// clock. Uses the same `Xs/Xm/Xh/Xd ago` dialect as
-    /// [`nmp_nip17::display::format_ago_secs`] and
-    /// `nmp_nip29::projection::group_chat::format_ago_secs` — the algorithm
-    /// is deliberately micro-duplicated (a NIP crate must not depend on
-    /// another NIP crate just to share a trivial helper).
+    /// clock. Delegates to [`nmp_core::display::format_ago_secs`] (V-33) —
+    /// the canonical `Xs/Xm/Xh/Xd ago` dialect every NMP surface speaks.
     pub created_at_display: String,
     /// V-27 thin-shell: two-char uppercase initials for the avatar tile,
     /// derived from `author_pubkey`. Mirrors the `pubkey_initials` helper
     /// deleted from `ModularBlockView.swift`.
     pub author_avatar_initials: String,
     /// V-27 thin-shell: deterministic 6-hex avatar background colour
-    /// (uppercase, no `#` prefix). djb2 over the last 6 bytes of the pubkey
-    /// hex — **byte-identical** to `nmp_nip17::display::avatar_color_hex`,
-    /// `nmp_nip29::projection::group_chat::avatar_color_hex`, and
-    /// `nmp_marmot::projection::display::avatar_color_hex` so the same
-    /// author renders with the same tint across every surface.
+    /// (uppercase, no `#` prefix). Delegates to the canonical
+    /// [`nmp_core::display::avatar_color_hex`] (V-33) so the same author
+    /// renders with the same tint across every NMP surface (DMs, NIP-29
+    /// group chat, the modular timeline, the Accounts toolbar, Marmot rows).
     pub author_avatar_color: String,
     /// V-27 thin-shell: abbreviated hex pubkey for the Twitter-style
     /// secondary-identifier slot (the "@handle" caption beneath the display
@@ -132,28 +129,13 @@ impl TimelineEventCard {
 
 // ── V-27 thin-shell display helpers ───────────────────────────────────────
 //
-// Deliberate micro-duplication of the same algorithms in
-// `nmp_nip17::display` and `nmp_nip29::projection::group_chat`. NIP crates
-// don't depend on each other just to share trivial display helpers (see
-// V-25 / V-22 rationale); the load-bearing property is that the **algorithm
-// stays identical** across surfaces so the same author renders the same
-// avatar tint and the same abbreviated pubkey everywhere.
-
-fn format_ago_secs(now_secs: u64, then_secs: u64) -> String {
-    if then_secs == 0 || now_secs <= then_secs {
-        return "now".to_string();
-    }
-    let diff = now_secs - then_secs;
-    if diff < 60 {
-        format!("{diff}s ago")
-    } else if diff < 3_600 {
-        format!("{}m ago", diff / 60)
-    } else if diff < 86_400 {
-        format!("{}h ago", diff / 3_600)
-    } else {
-        format!("{}d ago", diff / 86_400)
-    }
-}
+// `format_ago_secs` and `avatar_color_hex` are imported from
+// [`nmp_core::display`] — the canonical home for cross-surface formatting
+// primitives (V-33). The two helpers below — `pubkey_initials` and
+// `pubkey_display` — stay local because they use the timeline's own
+// algorithms (`pubkey_initials` is hex-prefix-based, not bech32-body-based
+// like `nmp_core::display::avatar_initials`; `pubkey_display` is `8…8`,
+// distinct from the bech32-aware `nmp_core::display::short_npub`).
 
 fn now_unix_secs() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -164,17 +146,6 @@ fn now_unix_secs() -> u64 {
 
 fn pubkey_initials(hex: &str) -> String {
     hex.chars().take(2).map(|c| c.to_ascii_uppercase()).collect()
-}
-
-fn avatar_color_hex(pubkey_hex: &str) -> String {
-    let bytes = pubkey_hex.as_bytes();
-    let start = bytes.len().saturating_sub(6);
-    let tail = &bytes[start..];
-    let mut hash: u32 = 5381;
-    for b in tail {
-        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
-    }
-    format!("{:06X}", hash & 0x00FF_FFFF)
 }
 
 fn pubkey_display(pubkey_hex: &str) -> String {
@@ -461,32 +432,11 @@ mod tests {
         assert!(!card.author_display_name.is_empty());
     }
 
-    #[test]
-    fn avatar_color_hex_byte_identical_to_nip17() {
-        // Pin a known input so the avatar tint stays consistent across surfaces.
-        // The same vector is asserted in nmp_nip17 / nmp_nip29 — drifting any
-        // of the three would mean the same author renders with a different
-        // tint in DMs vs. NIP-29 group chat vs. the modular timeline.
-        const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-        // djb2(b"fa459d") = 5381*33^6 + ... (uppercased, masked to 24 bits).
-        // Recompute inline against the helper to lock the algorithm.
-        let mut hash: u32 = 5381;
-        for b in b"fa459d" {
-            hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
-        }
-        let expected = format!("{:06X}", hash & 0x00FF_FFFF);
-        assert_eq!(avatar_color_hex(PK), expected);
-    }
-
-    #[test]
-    fn format_ago_secs_buckets_are_stable() {
-        assert_eq!(format_ago_secs(0, 0), "now");
-        assert_eq!(format_ago_secs(100, 200), "now");
-        assert_eq!(format_ago_secs(105, 100), "5s ago");
-        assert_eq!(format_ago_secs(160, 100), "1m ago");
-        assert_eq!(format_ago_secs(100 + 3_600, 100), "1h ago");
-        assert_eq!(format_ago_secs(100 + 86_400, 100), "1d ago");
-    }
+    // The canonical pinned djb2 vector and exhaustive `format_ago_secs`
+    // bucket coverage live in `nmp_core::display::tests` (V-33). The
+    // `card_carries_v27_display_fields_for_ingested_event` test above pins
+    // the call-site result (`PK = "3bf0…"` → `card.author_avatar_color`)
+    // so a drift in the canonical helper still surfaces at this layer.
 
     #[test]
     fn pubkey_initials_short_inputs_do_not_panic() {

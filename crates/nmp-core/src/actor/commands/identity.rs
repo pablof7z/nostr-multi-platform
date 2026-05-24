@@ -688,13 +688,13 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
             let display_name = display_name_from_hex(id);
             // V-26 — Rust owns the avatar fallback initials + tint so the
             // iOS toolbar / compose / row avatars bind `avatarInitials` and
-            // `avatarColorHex` verbatim instead of recomputing in-view. The
-            // colour helper is byte-identical to `nmp_nip17::display::
-            // avatar_color_hex`, so the same author renders with the same
-            // tint everywhere. The initials are recomputed in
-            // `Kernel::accounts_enriched` (kernel/update.rs) once a kind:0
-            // display name lands, so the placeholder initials don't stay
-            // stuck on the short-pubkey fallback after enrichment.
+            // `avatarColorHex` verbatim instead of recomputing in-view.
+            // `account_avatar_color_hex` delegates to the canonical
+            // `crate::display::avatar_color_hex` (V-33), so the same author
+            // renders with the same tint everywhere. The initials are
+            // recomputed in `Kernel::accounts_enriched` (kernel/update.rs)
+            // once a kind:0 display name lands, so the placeholder initials
+            // don't stay stuck on the short-pubkey fallback after enrichment.
             let avatar_initials = account_avatar_initials(&display_name, &npub);
             let avatar_color_hex = account_avatar_color_hex(id);
             Some(AccountSummary {
