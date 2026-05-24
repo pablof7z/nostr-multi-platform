@@ -256,6 +256,13 @@ impl MarmotProjection {
                     let display_name = display::group_display_name(&g.name);
                     let initials = display::initials(&display_name);
                     let member_count_display = display::member_count_display(members.len());
+                    // Pre-format hex pubkeys as abbreviated bech32 npubs so the
+                    // member-list sheet in the iOS shell never converts hex
+                    // (aim.md §6 anti-pattern #1; mirrors `inviter_short`).
+                    let members_display = members
+                        .iter()
+                        .map(|hex| display::short_npub(hex))
+                        .collect::<Vec<_>>();
                     let unread_display = display::unread_display(unread);
                     MarmotGroupRow {
                         id_hex,
@@ -263,6 +270,7 @@ impl MarmotProjection {
                         display_name,
                         initials,
                         members,
+                        members_display,
                         member_count_display,
                         unread,
                         unread_display,

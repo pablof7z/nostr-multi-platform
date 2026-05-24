@@ -48,6 +48,10 @@ pub struct MarmotGroupRow {
     pub initials: String,
     /// Member Nostr pubkeys (hex), sorted (BTreeSet order from MDK).
     pub members: Vec<String>,
+    /// Pre-formatted abbreviated bech32 npubs (`npub1abcd…wxyz`) paired
+    /// 1:1 with `members`. Lets the UI render the member list without a
+    /// hex→npub conversion in Swift (aim.md §6 anti-pattern #1).
+    pub members_display: Vec<String>,
     /// Pluralised member-count string ("3 members" / "1 member") — Rust
     /// owns formatting per aim.md §6.
     pub member_count_display: String,

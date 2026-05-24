@@ -74,6 +74,10 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
     /// 2-char ASCII initials for the avatar tile, Rust-derived.
     let initials: String
     let members: [String]
+    /// Pre-formatted abbreviated bech32 npubs (`npub1abcd…wxyz`) paired
+    /// 1:1 with `members`. Rust does the hex→npub conversion; the UI
+    /// renders these strings verbatim in the member-list sheet.
+    let membersDisplay: [String]
     /// Pluralised member-count string ("3 members" / "1 member"),
     /// Rust-derived; the UI prepends the lock visual.
     let memberCountDisplay: String
@@ -90,6 +94,7 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
         case displayName = "display_name"
         case initials
         case members
+        case membersDisplay = "members_display"
         case memberCountDisplay = "member_count_display"
         case unread
         case unreadDisplay = "unread_display"
