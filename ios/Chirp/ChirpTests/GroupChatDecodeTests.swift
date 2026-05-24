@@ -46,6 +46,10 @@ final class GroupChatDecodeTests: XCTestCase {
         // V-25 thin-shell fields — pure functions of the event author,
         // computed in `nmp_nip29::projection::group_chat` at ingest. The
         // view binds them directly and never slices the hex string itself.
+        //
+        // `group_initials` is the V-29 thin-shell field — derived in Rust
+        // from `GroupId::local_id` and bound to the `PublicGroupRow` avatar
+        // tile so Swift never slices the local-id string itself.
         let json = """
         {
           "nmp.nip29.group_chat": {
@@ -58,7 +62,8 @@ final class GroupChatDecodeTests: XCTestCase {
                 "created_at": 100, "created_at_display": "2m ago",
                 "author_display": "cd34", "author_initials": "CD",
                 "author_color_hex": "950933", "kind": 11 }
-            ]
+            ],
+            "group_initials": "RU"
           }
         }
         """
@@ -68,6 +73,9 @@ final class GroupChatDecodeTests: XCTestCase {
         let chat = try XCTUnwrap(projections.groupChat,
             "nmp.nip29.group_chat must decode onto SnapshotProjections.groupChat")
         XCTAssertEqual(chat.messages.count, 2)
+        // V-29: `group_initials` lands verbatim on the camelCase
+        // `groupInitials` property via `.convertFromSnakeCase`.
+        XCTAssertEqual(chat.groupInitials, "RU")
         // Order is preserved verbatim from the JSON — the Rust projection
         // already emits newest-first; Swift does not re-sort.
         XCTAssertEqual(chat.messages[0].id, "e1")
@@ -103,9 +111,14 @@ final class GroupChatDecodeTests: XCTestCase {
 
     /// A registered-but-empty projection decodes to an empty message list,
     /// not nil — the state a freshly-wired group reports before any event.
+    /// `group_initials` is `"?"` here because this fixture mirrors the
+    /// `GroupChatSnapshot::empty()` D6 fallback shape from Rust (poisoned
+    /// lock — no `local_id` reachable). A live projection's empty-messages
+    /// snapshot would carry the real per-group label; see the round-trip
+    /// integration test in `nmp-nip29/tests/group_chat_round_trip.rs`.
     func testEmptyGroupChatProjectionDecodes() throws {
         let json = """
-        { "nmp.nip29.group_chat": { "messages": [] } }
+        { "nmp.nip29.group_chat": { "messages": [], "group_initials": "?" } }
         """
         let projections = try snapshotDecoder().decode(
             SnapshotProjections.self, from: Data(json.utf8))
