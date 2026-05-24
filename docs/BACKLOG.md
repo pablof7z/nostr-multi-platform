@@ -667,7 +667,7 @@ must manually update the catalog. Tracked under F-05.
 
 ---
 
-### V-36 · `nmp-signer-broker` reimplements NIP-46 without an ADR [MEDIUM]
+### V-36 · `nmp-signer-broker` reimplements NIP-46 without an ADR [MEDIUM] — **DONE** (ADR-0031)
 
 **Verified (Opus direction review #16 — 2026-05-24):** `aim.md §3` names `nostr-connect`
 (the rust-nostr NIP-46 crate) as the dependency. NMP shipped `nmp-signer-broker` instead —

@@ -259,7 +259,7 @@ These rules are the framework's identity. They derive from the RMP bible and fro
 ## 8. References
 
 - **`rust-multiplatform/rmp`** on GitHub — the architectural anchor. `rmp-architecture-bible.md` is required reading. Quoted commandments in this document are paraphrases of that file's content.
-- **`rust-nostr`** workspace on GitHub — the protocol foundation. We depend on its `nostr`, `nostr-database`, `nostr-lmdb`, `nostr-ndb`, `nostr-sqlite`, `nostr-gossip`, `nostr-connect`, `nostr-keyring`, `nostr-blossom`, `nostr-relay-builder`, and `nwc` crates. We **do not** depend on `nostr-sdk`: NMP maintains its own relay transport instead of consuming the SDK's tokio-async relay pool — see **ADR-0022** (`docs/decisions/0022-relay-transport-reimplementation.md`).
+- **`rust-nostr`** workspace on GitHub — the protocol foundation. We depend on its `nostr`, `nostr-database`, `nostr-lmdb`, `nostr-ndb`, `nostr-sqlite`, `nostr-gossip`, `nostr-keyring`, `nostr-blossom`, `nostr-relay-builder`, and `nwc` crates. We **do not** depend on `nostr-sdk` (own relay transport — see **ADR-0022**) or `nostr-connect` (own NIP-46 broker — see **ADR-0031** `docs/decisions/0031-signer-broker-nip46-transport.md`).
 - Two pre-existing TypeScript Nostr libraries — intentionally unnamed here — supply the high-level application architecture (event store, models, actions, sessions, outbox routing, NIP-77 sync, wallet, messaging, web-of-trust, developer guardrails) being translated into Rust idiom under the RMP architectural skeleton.
 
 ---
