@@ -9,7 +9,7 @@
 
 ## Active
 
-- PR #??? — fix(nmp-core/ios): V-24 — AccountsView + JoinGroupView thin-shell violations — in progress
+- PR #435 — fix(core/nip29/ios): V-24 — AccountsView + JoinGroupView thin-shell violations — CI pending
 - PR #??? — fix(nmp-nip29/ios): V-25 — GroupChatView pubkey display / initials / colorHex to Rust — in progress
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
