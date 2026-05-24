@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
-use nmp_core::display::{avatar_color_hex, display_name_initials, format_ago_secs};
+use nmp_core::display::{avatar_color_hex, display_name_initials, format_ago_secs, short_hex};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES, ViewContext};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
@@ -50,11 +50,11 @@ pub struct TimelineEventCard {
     /// V-27 thin-shell: abbreviated hex pubkey for the Twitter-style
     /// secondary-identifier slot (the "@handle" caption beneath the display
     /// name). `<first 8>…<last 8>` — same algorithm as
-    /// `nmp_nip29::projection::group_chat::pubkey_display` so DMs, NIP-29
-    /// rows, and the modular timeline speak the same dialect. Replaces the
-    /// `displayPubkey` helper deleted from `ModularBlockView.swift` (the
-    /// old Swift helper used `<first 6>…<last 4>`; aligning to the
-    /// cross-surface algorithm shifts that abbreviation by two characters).
+    /// `nmp_core::display::short_hex` so DMs, NIP-29 rows, and the modular
+    /// timeline speak the same dialect. Replaces the `displayPubkey` helper
+    /// deleted from `ModularBlockView.swift` (the old Swift helper used
+    /// `<first 6>…<last 4>`; aligning to the cross-surface algorithm shifts
+    /// that abbreviation by two characters).
     pub author_pubkey_short: String,
     /// V-27 thin-shell: flat mirror of `author_display.name` so Swift can
     /// bind a single string without decoding the nested `AuthorDisplay`
@@ -65,8 +65,8 @@ pub struct TimelineEventCard {
     /// the synthetic `TimelineItem` builder in `ModularBlockView.swift` to
     /// populate `TimelineItem.short_id` (and by any host surface that wants a
     /// compact monospaced reference to this event). Mirrors the
-    /// `author_pubkey_short` field above — same `pubkey_display` algorithm
-    /// works on any hex string. Required because Swift must NEVER slice the
+    /// `author_pubkey_short` field above — same `nmp_core::display::short_hex`
+    /// algorithm works on any hex string. Required because Swift must NEVER slice the
     /// raw 64-char `id` to compute an abbreviation (V-28, aim.md §6.9).
     pub short_id: String,
     /// V-32 thin-shell: author's profile picture URL. Mirrors
@@ -122,12 +122,12 @@ impl TimelineEventCard {
             created_at_display: format_ago_secs(now_unix_secs(), event.created_at),
             author_avatar_initials,
             author_avatar_color: avatar_color_hex(&event.author),
-            author_pubkey_short: pubkey_display(&event.author),
+            author_pubkey_short: short_hex(&event.author),
             author_display_name,
             // V-28 thin-shell: same `<first 8>…<last 8>` abbreviation
             // algorithm `author_pubkey_short` uses — `pubkey_display` is
             // generic over any hex string, so we reuse it on `event.id`.
-            short_id: pubkey_display(&event.id),
+            short_id: short_hex(&event.id),
             author_picture_url,
             // V-32 thin-shell: scalar-based truncation matches the prior
             // Swift `String(card.content.prefix(180))` call-site verbatim.
@@ -138,28 +138,15 @@ impl TimelineEventCard {
 
 // ── V-27 thin-shell display helpers ───────────────────────────────────────
 //
-// `format_ago_secs`, `avatar_color_hex`, and `display_name_initials` are
-// imported from [`nmp_core::display`] — the canonical home for cross-surface
-// formatting primitives (V-33). One local helper remains:
-// - `pubkey_display(hex)` — `<first-8>…<last-8>` for raw hex IDs (event.id
-//   and event.author). Distinct from the bech32-aware `short_npub`.
+// All cross-surface display helpers are imported from [`nmp_core::display`]
+// (V-33): `format_ago_secs`, `avatar_color_hex`, `display_name_initials`,
+// and now `short_hex` (`<first-8>…<last-8>` for raw hex IDs).
 
 fn now_unix_secs() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
-}
-
-fn pubkey_display(pubkey_hex: &str) -> String {
-    if pubkey_hex.len() < 16 {
-        return pubkey_hex.to_string();
-    }
-    format!(
-        "{}…{}",
-        &pubkey_hex[..8],
-        &pubkey_hex[pubkey_hex.len() - 8..]
-    )
 }
 
 /// V-32 thin-shell: first `n` Unicode scalars of `content`, no ellipsis.
@@ -452,11 +439,11 @@ mod tests {
     }
 
     #[test]
-    fn pubkey_display_short_inputs_returned_unchanged() {
-        assert_eq!(pubkey_display(""), "");
-        assert_eq!(pubkey_display("abcd"), "abcd");
+    fn short_hex_short_inputs_returned_unchanged() {
+        assert_eq!(short_hex(""), "");
+        assert_eq!(short_hex("abcd"), "abcd");
         // boundary: exactly 16 chars triggers abbreviation
-        assert_eq!(pubkey_display("0123456789abcdef"), "01234567…89abcdef");
+        assert_eq!(short_hex("0123456789abcdef"), "01234567…89abcdef");
     }
 
     #[test]

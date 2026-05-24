@@ -22,6 +22,7 @@ use serde::Serialize;
 use serde_json::json;
 use zeroize::Zeroizing;
 
+use crate::display::short_npub;
 use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::substrate::{SignedEvent, UnsignedEvent};
@@ -103,20 +104,6 @@ pub(crate) struct WalletStatus {
     /// `status == "connecting" || status == "ready"`. Pre-computed for the
     /// shell (thin-shell V-23).
     pub(crate) is_connected: bool,
-}
-
-/// Abbreviate a bech32 npub to `first10…last6`. Kept inside `wallet.rs` (not
-/// imported from another crate — D0 prevents `nmp-core` depending on
-/// `nmp-nip17` / any NIP crate). Mirrors the Swift `shortNpub()` policy that
-/// this function replaces (thin-shell V-23).
-fn abbreviate_npub(npub: &str) -> String {
-    if npub.chars().count() <= 17 {
-        return npub.to_string();
-    }
-    let chars: Vec<char> = npub.chars().collect();
-    let head: String = chars.iter().take(10).collect();
-    let tail: String = chars.iter().skip(chars.len() - 6).collect();
-    format!("{head}…{tail}")
 }
 
 /// Format a satoshi count with `,` thousands separators (e.g. `12345` →
@@ -340,7 +327,7 @@ fn wallet_disconnect_inner(
             balance_msats: conn.balance_msats,
             balance_sats,
             balance_sats_display: balance_sats.map(format_sats_display),
-            wallet_npub_short: abbreviate_npub(&conn.wallet_npub),
+            wallet_npub_short: short_npub(&conn.wallet_npub),
             is_ready: false,
             is_connected: false,
         });
@@ -693,7 +680,7 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
             balance_msats: c.balance_msats,
             balance_sats,
             balance_sats_display: balance_sats.map(format_sats_display),
-            wallet_npub_short: abbreviate_npub(&c.wallet_npub),
+            wallet_npub_short: short_npub(&c.wallet_npub),
             is_ready: c.status == "ready",
             is_connected: c.status == "connecting" || c.status == "ready",
         }

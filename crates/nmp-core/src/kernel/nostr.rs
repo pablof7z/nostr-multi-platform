@@ -13,7 +13,7 @@ use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSe
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
 use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
-use crate::display::{avatar_color_hex, display_name_initials};
+use crate::display::{avatar_color_hex, display_name_initials, short_hex as short_hex_canonical};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -246,25 +246,14 @@ pub(super) fn short_pubkey_display(value: &str) -> String {
     }
 }
 
-/// V-28 thin-shell: `<first8>…<last8>` abbreviation used by `TimelineItem`'s
-/// `author_pubkey_short` and `short_id` fields. Deliberate micro-duplication of
-/// `nmp_nip01::timeline_projection::pubkey_display` /
-/// `nmp_nip17::display::pubkey_short` /
-/// `nmp_nip29::projection::group_chat::pubkey_display` so all surfaces speak
-/// the same dialect when abbreviating hex identifiers (the same author /
-/// event id renders identically in NIP-01 timeline, NIP-17 DMs, NIP-29 group
-/// rows, and Chirp's compose reply banner). NIP crates do not depend on each
-/// other just to share trivial display helpers — see V-22 / V-25 / V-27
-/// rationale. The load-bearing property is that the **algorithm stays
-/// identical** across surfaces. Distinct from `short_pubkey_display` above
-/// which carries the `npub ` prefix and `..` separator used by the kernel's
-/// own author display fallback.
+/// V-28 / V-33: `<first8>…<last8>` abbreviation for hex identifiers.
+///
+/// Delegates to [`crate::display::short_hex`], the canonical cross-surface
+/// algorithm. NIP crates (`nmp-nip01`, `nmp-nip29`) use the same canonical
+/// function, so all surfaces — NIP-01 timeline, DMs, NIP-29 group rows,
+/// and these kernel fields — are byte-identical.
 pub(super) fn short_hex_display(value: &str) -> String {
-    if value.len() < 16 {
-        value.to_string()
-    } else {
-        format!("{}…{}", &value[..8], &value[value.len() - 8..])
-    }
+    short_hex_canonical(value)
 }
 
 pub(super) fn truncate(value: &str, limit: usize) -> String {

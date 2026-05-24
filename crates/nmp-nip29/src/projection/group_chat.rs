@@ -55,7 +55,7 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, to_npub};
+use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, short_hex, to_npub};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
@@ -94,7 +94,7 @@ pub struct GroupChatMessage {
     pub created_at_display: String,
     /// Abbreviated hex pubkey for the chat row header (`"<first8>…<last8>"`).
     /// Computed at ingest time from [`KernelEvent::author`] via
-    /// [`pubkey_display`] so the host shell never slices the hex string
+    /// [`nmp_core::display::short_hex`] so the host shell never slices the hex string
     /// itself (V-25 thin-shell fix — aim.md §2: display formatting is
     /// Rust-owned). Mirrors the `relativeTime` → `created_at_display`
     /// migration of V-22.
@@ -137,7 +137,7 @@ impl GroupChatMessage {
             content: event.content.clone(),
             created_at: event.created_at,
             created_at_display: String::new(),
-            author_display: pubkey_display(&event.author),
+            author_display: short_hex(&event.author),
             author_initials: avatar_initials(&to_npub(&event.author)),
             author_color_hex: avatar_color_hex(&event.author),
             kind: event.kind,
@@ -157,26 +157,6 @@ fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-/// Abbreviated hex pubkey: `"<first8>…<last8>"` — what the chat row header
-/// and the reply banner render in place of the raw 64-char hex.
-///
-/// For inputs shorter than 16 chars (test fixtures, broken upstreams) the
-/// raw input is returned unchanged so the helper is panic-free regardless of
-/// what the host receives — D6 in a single line. Mirrors the iOS
-/// `shortPubkey(_:)` helper deleted in V-25 byte-for-byte; the move into
-/// Rust is the whole point of the thin-shell rule.
-#[must_use]
-fn pubkey_display(pubkey_hex: &str) -> String {
-    if pubkey_hex.len() < 16 {
-        return pubkey_hex.to_string();
-    }
-    format!(
-        "{}…{}",
-        &pubkey_hex[..8],
-        &pubkey_hex[pubkey_hex.len() - 8..]
-    )
 }
 
 /// First two characters of a NIP-29 `local_id`, uppercased — the
@@ -650,27 +630,20 @@ mod tests {
     // what every group-chat row renders.
 
     #[test]
-    fn pubkey_display_long_input_is_first_eight_ellipsis_last_eight() {
-        // A 64-char hex pubkey — the production shape.
+    fn short_hex_long_input_is_first_eight_ellipsis_last_eight() {
         let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        assert_eq!(pubkey_display(hex), "abcdef01…23456789");
+        assert_eq!(short_hex(hex), "abcdef01…23456789");
     }
 
     #[test]
-    fn pubkey_display_short_input_is_unchanged() {
-        // Anything under 16 chars (test fixtures, broken upstreams) returns
-        // verbatim — D6, no panic on the `&hex[..8]` slice.
-        assert_eq!(pubkey_display("ab12"), "ab12");
-        assert_eq!(pubkey_display(""), "");
+    fn short_hex_short_input_is_unchanged() {
+        assert_eq!(short_hex("ab12"), "ab12");
+        assert_eq!(short_hex(""), "");
     }
 
     #[test]
-    fn pubkey_display_boundary_sixteen_chars_is_abbreviated() {
-        // Exactly 16 chars triggers the abbreviation branch: first 8 + "…"
-        // + last 8 — at len == 16 the two halves are adjacent (not
-        // overlapping), so the rendered output covers every character of
-        // the input. Matches what the deleted Swift `shortPubkey` did.
-        assert_eq!(pubkey_display("0123456789abcdef"), "01234567…89abcdef");
+    fn short_hex_boundary_sixteen_chars_is_abbreviated() {
+        assert_eq!(short_hex("0123456789abcdef"), "01234567…89abcdef");
     }
 
     // The pinned cross-surface djb2 vector lives in `nmp_core::display::tests`

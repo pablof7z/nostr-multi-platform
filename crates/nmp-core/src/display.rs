@@ -49,6 +49,24 @@ pub fn short_npub(pubkey_hex: &str) -> String {
     abbreviate(&npub, 10, 6)
 }
 
+/// Abbreviated hex form: first 8 chars + `"…"` + last 8 chars.
+///
+/// For raw hex identifiers (pubkeys, event IDs). Strings shorter than 16
+/// characters are returned unchanged. Hex characters are single-byte ASCII,
+/// so byte slicing is safe.
+///
+/// This is the canonical cross-surface algorithm for hex abbreviation — any
+/// surface that shortens a hex pubkey or event ID must use this function so
+/// abbreviations are consistent across the timeline, DMs, group chat, and
+/// diagnostic labels.
+#[must_use]
+pub fn short_hex(value: &str) -> String {
+    if value.len() < 16 {
+        return value.to_string();
+    }
+    format!("{}…{}", &value[..8], &value[value.len() - 8..])
+}
+
 /// Two-char uppercase initials for an avatar tile.
 ///
 /// Takes the first 2 characters of the bech32 body — the part after the
@@ -220,6 +238,25 @@ mod tests {
     fn short_npub_falls_back_on_garbage_input() {
         let s = short_npub("zz");
         assert_eq!(s, "zz", "short string returned unchanged");
+    }
+
+    // ── short_hex ────────────────────────────────────────────────────────
+
+    #[test]
+    fn short_hex_long_input_first_eight_ellipsis_last_eight() {
+        let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        assert_eq!(short_hex(hex), "abcdef01…23456789");
+    }
+
+    #[test]
+    fn short_hex_short_input_returned_unchanged() {
+        assert_eq!(short_hex(""), "");
+        assert_eq!(short_hex("abcd"), "abcd");
+    }
+
+    #[test]
+    fn short_hex_boundary_sixteen_chars_is_abbreviated() {
+        assert_eq!(short_hex("0123456789abcdef"), "01234567…89abcdef");
     }
 
     // ── display_name_initials ────────────────────────────────────────────
