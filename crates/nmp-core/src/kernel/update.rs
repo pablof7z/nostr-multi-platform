@@ -12,7 +12,8 @@
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, short_hex_display, avatar_color, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, short_hex_display, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+use crate::display::avatar_color_hex;
 // `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
 // The single use site at `created_at_display` is already gated; import has
 // to match so `--no-default-features` (wasm32) compiles.
@@ -503,7 +504,7 @@ impl Kernel {
             author_avatar_initials: profile
                 .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
             author_avatar_color: profile
-                .map_or_else(|| avatar_color(&event.author), |profile| profile.avatar_color.clone()),
+                .map_or_else(|| avatar_color_hex(&event.author), |profile| profile.avatar_color.clone()),
             author_avatar_source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {
@@ -583,7 +584,7 @@ impl Kernel {
             avatar_initials: profile
                 .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
             avatar_color: profile
-                .map_or_else(|| avatar_color(pubkey), |profile| profile.avatar_color.clone()),
+                .map_or_else(|| avatar_color_hex(pubkey), |profile| profile.avatar_color.clone()),
             source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {

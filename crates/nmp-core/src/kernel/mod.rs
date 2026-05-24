@@ -170,7 +170,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // `KernelReducer::handle_relay_frame`. Substrate-grade (D0).
 pub use relay_frame::RelayFrame;
 
-use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, short_pubkey_display, short_hex_display, avatar_color, root_event_id, first_event_ref};
+use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, short_pubkey_display, short_hex_display, root_event_id, first_event_ref};
 // V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
 // `#[cfg(feature = "native")]` in `kernel/nostr.rs` (they read the OS
 // wall clock via `chrono::Local`). Importing them unconditionally breaks

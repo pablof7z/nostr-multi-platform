@@ -13,7 +13,7 @@ use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSe
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
 use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
-use crate::display::display_name_initials;
+use crate::display::{avatar_color_hex, display_name_initials};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -63,7 +63,7 @@ pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
         event_id: event.id.clone(),
         created_at: event.created_at,
         avatar_initials: display_name_initials(&display),
-        avatar_color: avatar_color(&event.pubkey),
+        avatar_color: avatar_color_hex(&event.pubkey),
         display,
         picture_url: parsed.picture.filter(|value| value.starts_with("http")),
         nip05: parsed.nip05.unwrap_or_default(),
@@ -276,21 +276,6 @@ pub(super) fn truncate(value: &str, limit: usize) -> String {
         out.push_str("...");
     }
     out
-}
-
-pub(super) fn avatar_color(pubkey: &str) -> String {
-    // djb2 over the last 6 bytes of the hex string — byte-identical to the
-    // canonical algorithm in nmp_nip17::display::avatar_color_hex, nmp_nip29,
-    // and nmp_nip01. All surfaces must produce the same colour for the same
-    // pubkey (same author in timeline vs DM vs group chat).
-    let bytes = pubkey.as_bytes();
-    let start = bytes.len().saturating_sub(6);
-    let tail = &bytes[start..];
-    let mut hash: u32 = 5381;
-    for b in tail {
-        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
-    }
-    format!("{:06X}", hash & 0x00FF_FFFF)
 }
 
 // `chrono::Local` is the local-timezone reader; it lives behind chrono's

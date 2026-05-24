@@ -1,4 +1,5 @@
 use super::*;
+use crate::display::avatar_color_hex;
 use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY, TEST_PUBKEY};
 use crate::store::InsertOutcome;
 
@@ -562,7 +563,7 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
         nip05: String::new(),
         about: String::new(),
         avatar_initials: "c1".to_string(),
-        avatar_color: avatar_color(C13_PK),
+        avatar_color: avatar_color_hex(C13_PK),
         lnurl: None,
     });
 
@@ -622,7 +623,7 @@ fn d1_avatar_source_reflects_picture_selection_not_profile_presence() {
             nip05: String::new(),
             about: String::new(),
             avatar_initials: "c1".to_string(),
-            avatar_color: avatar_color(C13_PK),
+            avatar_color: avatar_color_hex(C13_PK),
             lnurl: None,
         });
 
@@ -883,7 +884,7 @@ fn v26_accounts_enriched_recomputes_avatar_initials_when_kind0_lands() {
         nip05: String::new(),
         about: String::new(),
         avatar_initials: "AS".to_string(),
-        avatar_color: avatar_color(&pubkey_hex),
+        avatar_color: avatar_color_hex(&pubkey_hex),
         lnurl: None,
     });
 
@@ -907,8 +908,7 @@ fn v26_accounts_enriched_recomputes_avatar_initials_when_kind0_lands() {
 /// chars, no '#' prefix (all other surfaces expect bare hex).
 #[test]
 fn avatar_color_djb2_pinned_vector() {
-    use crate::kernel::nostr::avatar_color;
-    let color = avatar_color(C13_PK);
+    let color = avatar_color_hex(C13_PK);
     // djb2 over last-6-bytes "3ac13a" starting at 5381, masked to 24 bits → "E886A1"
     assert_eq!(color, "E886A1", "djb2 pinned vector for C13_PK");
     // Format contract: exactly 6 chars, no '#', all uppercase hex
