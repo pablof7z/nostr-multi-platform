@@ -788,7 +788,16 @@ Stage 4 (delete `feature = "wallet"` from `nmp-core/Cargo.toml`).
 
 ---
 
-### V-39 · NIP-17 DM send handler + `SendGiftWrappedDm` `ActorCommand` variant in `nmp-core` [HIGH · post-v1 · staged fix required]
+### V-39 · NIP-17 DM send handler + `SendGiftWrappedDm` `ActorCommand` variant in `nmp-core` [HIGH] — **DONE** (PR #458 merged 2026-05-24, commit 852750b2)
+
+**Closed by PR #458** (combined with V-40): `SendGiftWrappedDmCommand` moved
+into `crates/nmp-nip17/src/dm_send.rs` and dispatches through the
+`ProtocolCommand` substrate seam (PR #448). `actor/commands/dm.rs` and the
+`ActorCommand::SendGiftWrappedDm` enum variant are deleted. Bunker NIP-46
+signing regressed and is tracked under V-08 (Phase 2 follow-up: add
+`SignerForSealCapability` to `ProtocolCommandContext`).
+
+#### Original violation (kept for archaeology)
 
 **Verified:** the NIP-17 gift-wrap send orchestration lives entirely in
 `nmp-core`, even though a dedicated `nmp-nip17` crate exists and already
@@ -820,7 +829,17 @@ Stage 1) + a `SignerForSealCapability` trait on the actor context.
 
 ---
 
-### V-40 · NIP-17 kind:10050 ingest + `dm_relay_lists` cache wrongly in kernel [MEDIUM · post-v1 · staged fix required]
+### V-40 · NIP-17 kind:10050 ingest + `dm_relay_lists` cache wrongly in kernel [MEDIUM] — **DONE** (PR #458 merged 2026-05-24, commit 852750b2)
+
+**Closed by PR #458** (combined with V-39): kind:10050 parser and DM-inbox
+relay cache moved into `crates/nmp-nip17/`: `Kind10050Parser` implements
+the substrate `IngestParser` trait (PR #447), `DmRelayCache` is owned by
+`nmp-nip17` and exposed back to the kernel via the substrate
+`DmInboxRelayLookup` trait so the kernel never names NIP-17 nouns. The
+old `Kernel::dm_relay_lists` field and `kernel/ingest/dm_relay_list.rs`
+are deleted.
+
+#### Original violation (kept for archaeology)
 
 **Verified:** kernel state and ingest logic for NIP-17's DM-inbox relay
 mechanism live in `nmp-core`:
@@ -860,7 +879,26 @@ kind:10050 match arm) → Stage 3 (generalise or remove
 
 ---
 
-### V-41 · NIP-57 zap LNURL handler + `FetchLnurlInvoice` `ActorCommand` variant in `nmp-core` [HIGH · post-v1 · staged fix required]
+### V-41 · NIP-57 zap LNURL handler + `FetchLnurlInvoice` `ActorCommand` variant in `nmp-core` [HIGH] — **DONE** (PR #456 merged 2026-05-24, commit c9fc728f)
+
+**Closed by PR #456**: `FetchLnurlInvoiceCommand` moved into
+`crates/nmp-nip57/src/lnurl/` and dispatches through the `ProtocolCommand`
+substrate seam (PR #448). `actor/commands/zap.rs` (429 LOC) +
+`zap_lnurl.rs` (252 LOC) deleted; `ActorCommand::FetchLnurlInvoice` enum
+variant deleted; `ureq` dropped from `nmp-core`'s deps. The
+`ZapAction` action module in `nmp-nip57` now dispatches
+`ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand{...}))`.
+
+**Caveat (carried into "make substrate honest" follow-up):** this PR
+widened `ProtocolCommandContext` from 1 to 7 positional closure args
+(`now_secs`, `author_write_relays`, `bootstrap_discovery_relays`,
+`active_local_keys`, `record_action_stage_requested`,
+`command_sender_clone`). Direct cache accessors on the context
+(`author_write_relays`, `bootstrap_discovery_relays`) are arguably
+routing concerns that should go through the router. Scheduled to be
+revisited and bundled into capability traits.
+
+#### Original violation (kept for archaeology)
 
 **Verified:** the NIP-57 LNURL-pay round-trip orchestration lives in
 `nmp-core`, even though `crates/nmp-nip57/` exists and already owns the
@@ -1101,7 +1139,34 @@ to leave the kernel cleanly. Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
 
 ---
 
-### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH · v1 DX · pre-validation]
+### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phases 1, 4, 5 DONE; phases 2, 3 pending**
+
+**Phase 1 — substrate observer + bounded projection** ✅ PR #457 merged
+(efe72537). `RoutingTraceObserver` trait + `RoutingTraceProjection`
+bounded ring buffer (capacity 64 per stream) in `nmp-core`; both
+`nmp_router::GenericOutboxRouter` and `nmp-core`'s default router fan
+out to the observer.
+
+**Phase 4 — validation harness** ✅ PR #461 merged (b9e0fc15).
+`chirp-repl routing-trace` subcommand + `cargo test -p nmp-testing
+--test routing_trace_real_nostr -- --ignored` integration test that
+fetches pablof7z's real NIP-65 from `wss://relay.damus.io` and asserts
+`Nip65/Read` lane attribution. `scripts/validate-routing.sh` shell
+smoke.
+
+**Phase 5 — kernel-router observability cut-over** ✅ PR #462 merged
+(1dbff579). Kernel calls injected `OutboxRouter` on subscription
+dispatch sites + kind:10002 ingest; chirp wires `GenericOutboxRouter`
+via `set_routing_substrate`. **Caveat**: this is *observe-only* — the
+kernel still picks REQ relays via cache helpers. Make-substrate-honest
+follow-up promotes the router to the decision authority.
+
+**Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI)** — not
+started.
+
+#### Original requirement (kept for archaeology)
+
+
 
 **Evidence (architecture-grounded):** the substrate primitive already
 exists. `nmp_core::substrate::RoutedRelaySet` (PR #449) attributes every

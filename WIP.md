@@ -9,27 +9,52 @@
 
 ## Architecture migration ladder
 
-The crate-boundary spec is committed
-(`docs/architecture/crate-boundaries.md`, 2026-05-24); migration runs in the
-12-step order from §5. Steps 1 (substrate seams), 2 (`nmp-router`), 3
-(kernel cut-over), and 4 (LNURL onto `ProtocolCommand` — V-41) have all
-landed on master. V-39+V-40 (NIP-17 DM stack) is in PR #458.
+The crate-boundary spec lives at
+`docs/architecture/crate-boundaries.md` (2026-05-24); migration runs in the
+12-step order from §5. As of end-of-day 2026-05-24 master:
+
+| Step | State |
+|---|---|
+| 1 (substrate seams: IngestParser, ProtocolCommand, OutboxRouter, MailboxCache) | ✅ merged |
+| 2 (`nmp-router` crate) | ✅ merged |
+| 3 (kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65`) | ✅ merged |
+| 4 (V-41 LNURL → `nmp-nip57`) | ✅ merged |
+| 5 (V-39 DM send → `nmp-nip17`) | ✅ merged |
+| 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
+| 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
+| 8 phase A (`nmp-network` extraction) | ✅ merged |
+| 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
+| 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
+| 10 (`nmp-app-template`, V-48) | ❌ not started |
+| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode; `nmp-ffi` extraction not started |
+| 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
+
+Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core/nmp-store/nmp-planner): step 9 — extract `nmp-store` (EventStore + LMDB/Mem backends + DomainMigration value types) and `nmp-planner` (LogicalInterest + subscription compiler + stable_hash). `nmp-core` re-exports `store::*`, `planner::*`, `stable_hash::*`, and `substrate::{DomainMigration, MigrationTx}` so existing import sites compile unchanged. Router signature decision: `LogicalInterest` is re-exported through `nmp_core::planner::LogicalInterest` (which forwards to `nmp_planner`), so `OutboxRouter::route_subscription(&LogicalInterest, ...)` is byte-identical post-extraction — zero call site churn at the router boundary. Planner-internal `MailboxCache` and substrate `MailboxCache` continue to cohabit (V-40 follow-up). Branch `feat/step9-extract-store-and-planner`.
-- 2026-05-24 — refactor(nmp-core/nmp-nip17): V-39+V-40 — full NIP-17 DM stack migration → nmp-nip17 — PR #458 (rebased onto master)
-- 2026-05-24 — feat(nmp-core/chirp-repl/nmp-testing): V-51 phase 4 — routing-trace validation harness. Widens `Kernel::routing_trace()` to `pub`, threads an `Arc<RoutingTraceProjection>` slot through `NmpApp`, adds `chirp-repl routing-trace` subcommand + a `#[ignore]`'d real-relay integration test (`routing_trace_real_nostr`) that fetches pablof7z's live kind:10002 and asserts `Nip65/Read` lane attribution with no `AppRelay/Fallback` leak. Companion shell smoke `scripts/validate-routing.sh`. Branch `feat/v51-phase4-validation-harness`.
-- 2026-05-24 — feat(nmp-core/nmp-app-chirp): V-51 phase 5 — kernel-router wire-up. Widens `Kernel::set_routing` from `pub(crate)` to `pub`, adds an `observe_subscription_through_router` helper that fires the injected `OutboxRouter` for the per-author REQ-construction sites (`author_requests`, `firehose_requests`, `profile_claim_request`, `pending_profile_claim_requests`) AND on kind:10002 ingest so the trace projection populates with live decisions. Adds a `RoutingSubstrateFactory` slot on `NmpApp` (`set_routing_substrate`) the actor reads after kernel construction to install `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache` (the production swap is now live in `nmp_app_chirp_register`). The `validate-routing.sh` smoke now PASSes against pablof7z's real kind:10002 with `Nip65/Read` lane attribution. Branch `feat/v51-kernel-router-wireup`.
+- 2026-05-24 — refactor(nmp-core/nmp-router/nmp-app-chirp): "make substrate honest" — router becomes decision authority (not observe-only), delete `nmp-core::substrate::default_routing.rs`, eliminate `ProtocolCommandContext` 11-accessor balloon (capability traits), fix 14 `expect("RwLock poisoned")` panics. Branch `worktree-agent-ac01eccb4cdd13a99`.
+- 2026-05-24 — docs(plan): reconcile WIP.md / BACKLOG.md / plan.md / crate-boundaries.md after today's 16 merges — branch `worktree-docs-reconcile-plan-files` (this branch)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
-- 2026-05-24 — refactor(nmp-nip57): step 4 / V-41 — move LNURL fetcher onto `ProtocolCommand`; delete `ActorCommand::FetchLnurlInvoice` variant — PR #456 merged
-- 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 merged
-- 2026-05-24 — feat(nmp-router): step 2 — new crate with `InMemoryMailboxCache` + `Kind10002Parser` + `GenericOutboxRouter` — PR #450 merged
-- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — PR #449 merged
-- 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 merged
-- 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — PR #447 merged
+- 2026-05-24 — refactor(nmp-core/nmp-store/nmp-planner): step 9 — extract `nmp-store` and `nmp-planner` — PR #463 merged (8a3cd62b)
+- 2026-05-24 — feat(nmp-core/nmp-app-chirp): V-51 phase 5 — kernel calls injected `OutboxRouter`; chirp wires `GenericOutboxRouter` — PR #462 merged (1dbff579)
+- 2026-05-24 — feat(nmp-core/chirp-repl/nmp-testing): V-51 phase 4 — routing-trace validation harness (real-pubkey integration test PASSES against pablof7z's NIP-65) — PR #461 merged (b9e0fc15)
+- 2026-05-24 — feat(nmp-network): step 8 phase A — extract relay worker + protocol primitives to new `nmp-network` crate — PR #459 merged (1342912f)
+- 2026-05-24 — refactor(nmp-nip17/nmp-core): V-39 + V-40 — full NIP-17 DM stack migration → `nmp-nip17` — PR #458 merged (852750b2)
+- 2026-05-24 — feat(nmp-core/nmp-router): V-51 phase 1 — `RoutingTraceObserver` substrate seam + bounded ring-buffer projection — PR #457 merged (efe72537)
+- 2026-05-24 — refactor(nmp-nip57): step 4 / V-41 — move LNURL fetcher onto `ProtocolCommand`; delete `ActorCommand::FetchLnurlInvoice` variant — PR #456 merged (c9fc728f)
+- 2026-05-24 — docs(agents): scope cargo test to touched crates; supervisor runs --workspace at merge — PR #455 merged (8f74ab50)
+- 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 merged (c565f7c4)
+- 2026-05-24 — refactor(nip01/nip29/core): V-12 — extract group_chat / timeline_projection / identity_state tests — PR #453 merged (f4e6609c)
+- 2026-05-24 — docs(backlog): V-51 — routing-decision observability + Chirp peek-under-hood UI — PR #452 merged (64f3a297)
+- 2026-05-24 — refactor(workspace): step 11 — move app-specific crates out of crates/ — PR #451 merged (56e8a6bf)
+- 2026-05-24 — feat(nmp-router): step 2 — new crate with `InMemoryMailboxCache` + `Kind10002Parser` + `GenericOutboxRouter` — PR #450 merged (f441939f)
+- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — PR #449 merged (767c1152)
+- 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 merged (dd231e4d)
+- 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — PR #447 merged (b2867008)
+
 - 2026-05-24 — fix(nmp-nip01): V-34 — avatar initials from display name, not hex pubkey — PR #445 merged
 - 2026-05-24 — refactor(nmp-core): V-33 — canonical display helpers in nmp-core::display; delete 5 copies — PR #444 merged
 - 2026-05-24 — fix(nmp-core): unify avatar_color to djb2 — all surfaces consistent — committed 70ede645 to master

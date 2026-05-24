@@ -19,6 +19,48 @@
 
 ---
 
+## Migration progress (2026-05-24 EOD)
+
+| Step | Description | State |
+|---|---|---|
+| 1 | substrate seams in `nmp-core` (`IngestParser`, `ProtocolCommand`, `OutboxRouter`, `MailboxCache`) | ✅ merged (PRs #447, #448, #449) |
+| 2 | create `nmp-router` crate (`InMemoryMailboxCache`, `Kind10002Parser`, `GenericOutboxRouter`) | ✅ merged (PR #450) |
+| 3 | kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65` | ✅ merged (PR #454) |
+| 4 | V-41 LNURL fetcher → `nmp-nip57` | ✅ merged (PR #456) |
+| 5 | V-39 NIP-17 DM send → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-40) |
+| 6 | V-40 kind:10050 ingest + `DmRelayCache` → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-39) |
+| 7 | V-38 NWC → `nmp-nip47` | ⚠ PR #460 sitting, deprioritized |
+| 8 phase A | `nmp-network` crate (`relay_worker` + `relay_protocol` + `keepalive` + `RelayRole`) | ✅ merged (PR #459) |
+| 8 phases B/C/D/E | Pool API redesign · `BrowserRelayDriver` move · signer-broker dedupe (V-13 Stage 2) · NIP-42 wire/FSM split | ❌ not started |
+| 9 | `nmp-store` + `nmp-planner` extraction | ✅ merged (PR #463) |
+| 10 | `nmp-app-template` (V-48 DX) | ❌ not started |
+| 11 partial | move chirp-* + `nmp-chirp-config` to `apps/chirp/` | ✅ merged (PR #451) |
+| 11 final | extract `nmp-ffi` from `nmp-core::ffi`; move `fixture-todo-core` (blocked on `nmp-codegen` path-template fix) | ❌ not started |
+| 12 | return `nmp-marmot` from `apps/` to `crates/` (gated on Marmot FFI port to `nmp.marmot.*` action namespace) | ❌ not started |
+
+Adjacent observability work (V-51): phases 1 (substrate observer +
+projection), 4 (validation harness), 5 (kernel-router observability
+cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp
+inspector UI) not started.
+
+**Ghost crates this spec names that do not yet exist on master:**
+`nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-marmot` (lives at
+`apps/marmot/nmp-app-marmot/` pending FFI port), `nmp-proto`. The
+per-crate table below describes their target shape; the migration
+progress table above is the source of truth for what's currently real.
+
+**Honest substrate-debt note:** as of 2026-05-24 the new `OutboxRouter`
+is wired into the kernel as an *observer* (V-51 phase 5) but the kernel
+still picks live REQ relays via its own cache-read helpers
+(`Kernel::author_write_relays`, `bootstrap_discovery_relays`). The
+"make substrate honest" follow-up PR promotes the router to the actual
+decision authority and deletes `crates/nmp-core/src/substrate/default_routing.rs`
+(484 LOC of code byte-equivalent to `nmp-router`'s production impl).
+Until that lands, the substrate refactor is structurally complete but
+behaviorally still routes through the old code path.
+
+---
+
 ## 0. Why the current shape is wrong
 
 The current workspace has 30 crates. `nmp-core` is the kitchen sink: ~80k LOC of
