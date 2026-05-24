@@ -89,10 +89,12 @@ mod tests {
     fn init_with_real_app_is_idempotent() {
         // The marker is empty, so repeat calls must be safe. Allocates a
         // real `NmpApp` to make sure the call site type-checks against the
-        // re-exported `NmpApp` from `nmp_core`.
-        let app = nmp_app_new();
+        // re-exported `NmpApp` from `nmp_core`. Step 11 final moved the
+        // C-ABI symbols to `nmp-ffi`; this test reaches them through that
+        // crate's public Rust path.
+        let app = nmp_ffi::nmp_app_new();
         nmp_app_notes_init(app);
         nmp_app_notes_init(app);
-        nmp_app_free(app);
+        nmp_ffi::nmp_app_free(app);
     }
 }

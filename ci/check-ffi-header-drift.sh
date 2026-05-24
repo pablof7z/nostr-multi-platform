@@ -88,7 +88,11 @@ HEADER="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
 # FFI source roots. Directories are scanned recursively for `*.rs`; explicit
 # files are scanned as-is. Each entry is "<path>" — existence is required.
 FFI_DIR_ROOTS=(
-    "${REPO_ROOT}/crates/nmp-core/src/ffi"
+    # Step 11 final (PR #472): the C-ABI surface that used to live in
+    # `crates/nmp-core/src/ffi/` moved to its own crate, `nmp-ffi`. The
+    # symbols, names, signatures and ABI are byte-stable; only the source
+    # path moved.
+    "${REPO_ROOT}/crates/nmp-ffi/src"
 )
 FFI_FILE_ROOTS=(
     "${REPO_ROOT}/crates/nmp-signer-broker/src/ffi.rs"
