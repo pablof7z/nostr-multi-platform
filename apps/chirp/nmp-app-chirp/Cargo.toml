@@ -43,6 +43,17 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
+# Canonical NMP composition root (step 10 — V-48). One call wires the
+# default action modules (NIP-02 / NIP-17 / NIP-57 / NIP-65), the
+# kind:10050 ingest parser, the production routing substrate
+# (`GenericOutboxRouter` + `InMemoryMailboxCache`), the D2 coverage hook,
+# and the DM-inbox + zap-receipts runtime controllers. Chirp's
+# `nmp_app_chirp_register` calls `register_defaults` once at app init
+# instead of duplicating ~130 LOC of boilerplate; the dm/zap runtime
+# modules that used to live in this crate (`src/dm_runtime.rs`,
+# `src/zap_receipts_runtime.rs`) moved into the template's `runtimes`
+# module.
+nmp-app-template = { path = "../../../crates/nmp-app-template" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 # NIP-02 (follow list, kind:3) + NIP-25 (reactions, kind:7). Chirp registers
 # the crate's `FollowModule` / `UnfollowModule` / `ReactModule` against the
@@ -58,37 +69,12 @@ nmp-nip02 = { path = "../../../crates/nmp-nip02" }
 # proving the host-extensibility seam works for NIP-crate modules, not just
 # Chirp's own social verbs. D0-clean: `nmp-core` gains no group nouns.
 nmp-nip29 = { path = "../../../crates/nmp-nip29" }
-# NIP-17 private direct messages. Chirp wires the crate's `DmInboxProjection`
-# (kind:1059 raw-event observer + `nip17.dm_inbox` snapshot projection) and
-# registers its `SendDmAction` `ActionModule` for the `nmp.nip17.send` verb.
-# D0-clean: `nmp-core` gains no DM nouns.
-nmp-nip17 = { path = "../../../crates/nmp-nip17" }
-# NIP-65 relay-list publish. The `PublishRelayListAction` (namespace
-# `nmp.nip65.publish_relay_list`) lives in `nmp-router` — the crate that
-# owns routing also owns the kind:10002 publish path end-to-end (step 3
-# of the crate-boundary migration absorbed the former `nmp-nip65` crate
-# into `nmp-router`). The companion auto-trigger lives inside
-# `nmp-core::actor::dispatch` (AddRelay / RemoveRelay arms) and uses a
-# duplicate-of-the-builder helper in `nmp-core` itself to stay D0-clean.
-nmp-router = { path = "../../../crates/nmp-router" }
-# NIP-57 lightning zaps. Chirp registers the crate's `ZapAction`
-# `ActionModule` for the `nmp.nip57.zap` verb — the executor builds the
-# kind:9734 zap request and enqueues `ActorCommand::Protocol(Box::new(
-# FetchLnurlInvoiceCommand{...}))` (V-41). The protocol command signs the
-# request on the actor thread (D7) and spawns a worker for the LNURL-pay
-# HTTP round-trip (D8 — ADR-0024 minimum-viable path). D0-clean: `nmp-core`
-# carries no zap nouns — the entire NIP-57 surface (action module +
-# kind:9734 builder + kind:9735 decoder + LNURL fetcher) lives in this
-# crate.
+# NIP-57 lightning zaps — direct dep for the Chirp-specific
+# `ZapsAggregateProjection` event observer + `"nmp.nip57.zaps"` snapshot
+# projection (per-target zap-count aggregate read for the timeline). The
+# `nmp.nip57.zap` action module + kind:9734 builder + LNURL fetcher are
+# wired by `nmp-app-template::register_defaults` (transitively).
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
-# D2 coverage-gate policy. Chirp installs a `CoverageGate`-based hook via
-# `NmpApp::set_coverage_hook` in `nmp_app_chirp_register` so the
-# production kernel enforces D2 ("negentropy before REQ") for large
-# follow sets. Zero `nmp-core` dep — pure policy data; this assembly
-# crate is the only layer entitled to depend on both `nmp-core` and the
-# coverage-gate crate (D0 — the seam exists *because* coverage policy is
-# above `nmp-core` in the dep graph).
-nmp-coverage-gate = { path = "../../../crates/nmp-coverage-gate" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). The C-ABI shell now lives inside this crate
 # (`apps/marmot/nmp-app-marmot/src/ffi.rs`, gated by `nmp-marmot/ffi`); no
@@ -114,6 +100,11 @@ zeroize.workspace = true
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
 # the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+# `nmp-nip17` for the DM-inbox round-trip integration test
+# (`tests/dm_inbox_round_trip.rs`). The production
+# `DmInboxProjection` + `nmp.nip17.send` action module are wired in
+# Chirp via `nmp_app_template::register_defaults` (transitively).
+nmp-nip17 = { path = "../../../crates/nmp-nip17" }
 # (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
 # the Marmot FFI smoke tests to `nmp-marmot`'s `src/ffi/tests.rs`; Chirp no
 # longer references any MLS types directly.)

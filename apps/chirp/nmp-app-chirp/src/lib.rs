@@ -32,9 +32,7 @@
 //! * **D6** — every FFI symbol degrades silently on null pointers, lock
 //!   poisoning, or serialization failure.
 
-mod dm_runtime;
 pub mod ffi;
-mod zap_receipts_runtime;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,

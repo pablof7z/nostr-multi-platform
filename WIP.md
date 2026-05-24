@@ -25,7 +25,7 @@ The crate-boundary spec lives at
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
 | 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
-| 10 (`nmp-app-template`, V-48) | ❌ not started |
+| 10 (`nmp-app-template`, V-48) | 🟡 PR #467 open — `crates/nmp-app-template/` extracted; Chirp uses it; Chirp `src/` shrank 1003 → 456 LOC |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode; `nmp-ffi` extraction not started |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
@@ -33,7 +33,9 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 
 ## Active
 
-- 2026-05-24 — fix(nmp-router/nmp-core): substrate Debt D — eliminate RwLock-poisoned expects (router cache, default routing, dm-inbox lookup) — PR #465 (rebased onto master)
+- 2026-05-24 — feat(nmp-app-template/nmp-app-chirp): step 10 — `nmp-app-template` crate (V-48) — PR #467 open. One `register_defaults(&mut NmpApp)` call wires NIP-02/17/57/65 actions + kind:10050 ingest parser + `GenericOutboxRouter` + `InMemoryMailboxCache` routing substrate + D2 coverage hook + DM-inbox / zap-receipts runtimes. Chirp refactored to use it; Chirp `src/` shrank 1003 → 456 LOC (547 LOC reduction, 55% smaller). Branch `step-10-nmp-app-template`.
+- 2026-05-24 — refactor(nmp-core/nmp-router/nmp-app-chirp): "make substrate honest" — router becomes decision authority (not observe-only), delete `nmp-core::substrate::default_routing.rs`, eliminate `ProtocolCommandContext` 11-accessor balloon (capability traits), fix 14 `expect("RwLock poisoned")` panics. Branch `worktree-agent-ac01eccb4cdd13a99`.
+- 2026-05-24 — docs(plan): reconcile WIP.md / BACKLOG.md / plan.md / crate-boundaries.md after today's 16 merges — branch `worktree-docs-reconcile-plan-files` (this branch)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

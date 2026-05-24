@@ -1065,7 +1065,7 @@ updated with `## Escape-hatch caveat` section listing all bypassed doctrines.
 
 ---
 
-### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [HIGH · v1 DX]
+### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [DONE — PR #467]
 
 **Evidence:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs` — 403 LOC.
 `docs/dispatch-actions.md` documents *what to call* but not *what to register first*.
@@ -1081,6 +1081,23 @@ registry, default projections for kind:1 + profiles, coverage hook); (2) wire
 `nmp init <appname>` in `nmp-cli` to scaffold the template + minimal iOS shell.
 This is the highest-leverage DX investment before shipping v1 if the framework's
 §1 claim ("one-shot a working Nostr application") is to hold.
+
+**Resolution (step 10 of `docs/architecture/crate-boundaries.md` §5):** new crate
+`crates/nmp-app-template/` ships a single `register_defaults(app: &mut NmpApp)`
+entry point that wires the canonical NMP composition — NIP-02 / NIP-17 / NIP-57 /
+NIP-65 action modules, the kind:10050 ingest parser, the production routing
+substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), the D2 coverage hook,
+and the DM-inbox + zap-receipts runtime controllers. Chirp's
+`nmp_app_chirp_register` calls `register_defaults` instead of duplicating
+~130 LOC of wiring; the dm/zap runtime modules that used to live in Chirp
+(`src/dm_runtime.rs`, `src/zap_receipts_runtime.rs` — 282 LOC combined)
+moved into the template's `runtimes` module. Chirp's `src/` shrank from
+1003 LOC to 456 LOC (a 547 LOC reduction; about 55% smaller). A minimal
+example (`examples/minimal_app.rs`) + integration test
+(`tests/register_defaults.rs`) prove a fresh `NmpApp` constructed via
+`nmp_app_new()` + `register_defaults` resolves every canonical action
+namespace through `dispatch_action`. Step (2) — `nmp init` scaffold in
+`nmp-cli` — is a follow-up and is tracked separately.
 
 ---
 
