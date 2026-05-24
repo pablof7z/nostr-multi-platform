@@ -18,7 +18,7 @@ later steps remain.
 ## Active
 
 - 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 (rebased onto master)
-- 2026-05-24 — feat(nmp-core/nmp-router): V-51 phase 1 — `RoutingTraceObserver` substrate seam + bounded `RoutingTraceProjection` ring buffer — PR #457 (rebased onto master)
+- 2026-05-24 — feat(nmp-network): step 8 phase A — extract relay worker + protocol primitives to new `nmp-network` crate — PR #459 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

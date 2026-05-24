@@ -12,6 +12,7 @@
 //! production FFI surface.
 
 use super::*;
+use crate::relay::RelayRoleTestExt;
 
 impl Kernel {
     /// Deliver a replaceable event (kind:0, 3, or 10002) to the kernel,

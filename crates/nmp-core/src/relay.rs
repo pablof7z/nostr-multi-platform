@@ -78,60 +78,31 @@ pub(crate) const FIATJAF_PUBKEY: &str =
 pub(crate) const JB55_PUBKEY: &str =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
 
-/// Transport-lane + diagnostics discriminator.
-///
-/// **Not a routing source (T105).** The actual wire target is the resolved
-/// `OutboundMessage::relay_url`. `RelayRole` only buckets relay-health rows,
-/// NIP-42 driver state, and `wire_subs` for the diagnostic surface. The first
-/// connection of each lane bootstraps on [`BOOTSTRAP_DISCOVERY_RELAYS`] purely
-/// so the cold-start kind:10002 discovery fetch has a socket to leave on.
-///
-/// V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` in
-/// `nmp-wasm` can name the role when handing a frame to
-/// [`crate::KernelReducer::handle_relay_frame`]. Substrate-grade (D0): the
-/// type carries no app/protocol nouns.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RelayRole {
-    Content,
-    Indexer,
-    /// NIP-47 Nostr Wallet Connect relay. Spawned on demand when a wallet is
-    /// connected; NOT included in `all()` so it does not block the startup
-    /// bootstrap gate or appear in the standard relay-statuses projection.
-    //
-    // Constructed only under `#[cfg(feature = "wallet")]` (actor/commands/wallet.rs);
-    // suppress the dead_code lint in default (non-wallet) builds while keeping it
-    // active when the wallet feature is enabled.
-    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
-    Wallet,
+// Step 8 phase A — `RelayRole` moved to `nmp-network::role` (the transport
+// layer owns the lane discriminator). `nmp-core` re-exports it under its
+// prior path (`nmp_core::RelayRole`) via `lib.rs` so downstream callers
+// keep compiling unchanged. The test-only `bootstrap_url()` / `url()`
+// helpers live here as a private extension trait — they reference the
+// `BOOTSTRAP_DISCOVERY_RELAYS` constants which are nmp-core-only.
+pub use nmp_network::RelayRole;
+
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) trait RelayRoleTestExt {
+    fn bootstrap_url(self) -> &'static str;
+    fn url(self) -> &'static str;
 }
 
-impl RelayRole {
-    /// Bootstrap-only roles (spawned at start, gate for startup REQs).
-    /// `Wallet` is excluded: it spawns on demand, not at startup.
-    #[must_use]
-    pub(crate) fn all() -> [Self; 2] {
-        [Self::Content, Self::Indexer]
-    }
-
-    pub(crate) fn key(self) -> &'static str {
+#[cfg(any(test, feature = "test-support"))]
+impl RelayRoleTestExt for RelayRole {
+    fn bootstrap_url(self) -> &'static str {
         match self {
-            Self::Content => "content",
-            Self::Indexer => "indexer",
-            Self::Wallet => "wallet",
+            RelayRole::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
+            RelayRole::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
+            RelayRole::Wallet => "",
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn bootstrap_url(self) -> &'static str {
-        match self {
-            Self::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
-            Self::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
-            Self::Wallet => "",
-        }
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn url(self) -> &'static str {
+    fn url(self) -> &'static str {
         self.bootstrap_url()
     }
 }

@@ -1,6 +1,5 @@
 use crate::keepalive::{KeepaliveAction, KeepaliveState};
-use crate::kernel::RelayFrame;
-use crate::relay::RelayRole;
+use crate::role::RelayRole;
 use std::collections::VecDeque;
 use std::net::TcpStream;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -9,24 +8,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
-
-/// Convert a native [`tungstenite::Message`] into the wire-transport-agnostic
-/// [`RelayFrame`] consumed by `Kernel::handle_message`.
-///
-/// V-01 Phase 1c: the kernel no longer names `tungstenite`, so the conversion
-/// happens here (the only native-feature site that owns both vocabularies).
-/// `Message::Frame` (raw-frame) maps to [`RelayFrame::Binary`] — the kernel's
-/// only observable for non-text payloads is the bytes counter.
-pub(crate) fn tungstenite_message_to_relay_frame(message: Message) -> RelayFrame {
-    match message {
-        Message::Text(text) => RelayFrame::Text(text),
-        Message::Binary(bytes) => RelayFrame::Binary(bytes),
-        Message::Ping(_) => RelayFrame::Ping,
-        Message::Pong(_) => RelayFrame::Pong,
-        Message::Close(frame) => RelayFrame::Close(frame.map(|f| f.reason.to_string())),
-        Message::Frame(_) => RelayFrame::Binary(Vec::new()),
-    }
-}
 
 mod io_ready;
 #[cfg(test)]
@@ -43,7 +24,7 @@ use socket_io::{drain_relay_reads, flush_relay_writes, flush_socket_message, Flu
 /// belongs to — Content/Indexer) AND the actual `relay_url` the socket
 /// connects to. The url is what the URL-keyed `relay_controls` map indexes
 /// on; the role is what the kernel's per-lane diagnostics use.
-pub(crate) enum RelayEvent {
+pub enum RelayEvent {
     Connected {
         role: RelayRole,
         relay_url: String,
@@ -70,7 +51,7 @@ pub(crate) enum RelayEvent {
 
 impl RelayEvent {
     #[allow(dead_code)] // Used by ingest dispatch; kept for diagnostic helpers.
-    pub(crate) fn role(&self) -> RelayRole {
+    pub fn role(&self) -> RelayRole {
         match self {
             Self::Connected { role, .. }
             | Self::Failed { role, .. }
@@ -80,7 +61,7 @@ impl RelayEvent {
     }
 
     /// The URL of the relay this event originated on (T105 routing key).
-    pub(crate) fn relay_url(&self) -> &str {
+    pub fn relay_url(&self) -> &str {
         match self {
             Self::Connected { relay_url, .. }
             | Self::Failed { relay_url, .. }
@@ -89,7 +70,7 @@ impl RelayEvent {
         }
     }
 
-    pub(crate) fn generation(&self) -> u64 {
+    pub fn generation(&self) -> u64 {
         match self {
             Self::Connected { generation, .. }
             | Self::Failed { generation, .. }
@@ -99,7 +80,7 @@ impl RelayEvent {
     }
 }
 
-pub(crate) enum RelayCommand {
+pub enum RelayCommand {
     Send(String),
     Shutdown,
 }
@@ -132,7 +113,7 @@ use crate::relay_protocol::{
 /// T120b: production calls into [`spawn_relay_worker_with_keepalive`] with the
 /// 30s/30s production constants; tests pass shorter intervals for hermetic
 /// keepalive exercises.
-pub(crate) fn spawn_relay_worker(
+pub fn spawn_relay_worker(
     role: RelayRole,
     relay_url: String,
     generation: u64,
@@ -152,7 +133,7 @@ pub(crate) fn spawn_relay_worker(
 /// [`spawn_relay_worker`] is a thin wrapper passing the 30s/30s constants;
 /// tests use this directly to exercise the keepalive path on millisecond
 /// budgets without 30s sleeps.
-pub(crate) fn spawn_relay_worker_with_keepalive(
+pub fn spawn_relay_worker_with_keepalive(
     role: RelayRole,
     relay_url: String,
     generation: u64,

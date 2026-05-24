@@ -160,7 +160,7 @@ use crate::subs::PlanCoverageHook;
 #[cfg(feature = "native")]
 use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 #[cfg(feature = "native")]
-use crate::relay_worker::{RelayCommand, RelayEvent};
+use nmp_network::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;

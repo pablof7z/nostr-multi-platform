@@ -27,13 +27,23 @@ crate-type = ["staticlib", "rlib"]
 # gated.
 default = ["native"]
 # I/O layer — native platforms (Linux, macOS, iOS, Android).
-# Gates: tungstenite, mio, rustls, heed, nostr-database, nmp-nostr-lmdb,
-# and the chrono/clock feature (wall-clock reads via the OS). V-41 — `ureq`
-# moved out with the LNURL fetcher (`nmp-nip57::lnurl`).
+# Gates: tungstenite (still named by the actor's RelayEvent::Message arm —
+# the `tungstenite::Message` type is the inbound wire frame nmp-network's
+# `relay_worker` produces; the `tungstenite_message_to_relay_frame`
+# conversion runs in `actor::dispatch`), heed, nostr-database,
+# nmp-nostr-lmdb, and the chrono/clock feature.
+#
+# `nmp-network` itself is an unconditional dep (declared below) because
+# `relay.rs` re-exports `RelayRole` from there for downstream callers;
+# `nmp-network`'s wasm slice (default-features = false) compiles without
+# the tungstenite/mio/rustls graph, so the wasm32 build keeps working.
+#
+# V-41 — `ureq` moved out with the LNURL fetcher (`nmp-nip57::lnurl`).
+# Step 8 phase A — `mio`/`rustls` moved into `nmp-network` (gated by
+# `nmp-network/native`); not re-pulled here.
 native = [
     "dep:tungstenite",
-    "dep:mio",
-    "dep:rustls",
+    "nmp-network/native",
     "dep:heed",
     "dep:nostr-database",
     "dep:nmp-nostr-lmdb",
@@ -90,15 +100,25 @@ nostr = { workspace = true, features = ["nip44", "nip59"] }
 # kernel never owns app nouns, so `nmp-core` must compile without it.
 nmp-nwc = { path = "../nmp-nwc", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
-# native-only I/O deps — optional, gated behind the `native` feature.
-# mio: OS event loop (epoll/kqueue) used by relay_worker for non-blocking I/O.
-mio = { version = "1", features = ["os-ext", "os-poll"], optional = true }
-# rustls: TLS for relay WebSocket connections (native relay_worker only).
-rustls = { workspace = true, default-features = false, features = ["ring"], optional = true }
+# Step 8 (extraction phase A): the native WebSocket relay worker
+# (`relay_worker/`) + the wire-transport-agnostic `relay_protocol`
+# constants moved to `nmp-network`. The actor consumes
+# `nmp_network::relay_worker::{RelayEvent, RelayCommand, spawn_relay_worker}`
+# under the `native` gate; `nmp-core` itself unconditionally re-exports
+# `RelayRole` and uses `relay_protocol` constants, so the dep is
+# always-on (with `default-features = false` so wasm32 stays clean).
+# `mio` / `rustls` deps moved with the worker; they no longer appear in
+# this manifest.
+nmp-network = { path = "../nmp-network", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
-# tungstenite: native WebSocket over TCP (relay_worker and actor). optional=true
-# so wasm32 builds (which use web_sys::WebSocket) compile without it.
+# tungstenite: still named here because the kernel's outbound/inbound wire
+# frame type is `tungstenite::Message` (the actor's `RelayEvent::Message`
+# arm names it, and the conversion to `RelayFrame` runs in
+# `actor::dispatch`). The native transport that *produces* these messages
+# lives in `nmp-network`; the type lives here for the kernel→transport seam.
+# optional=true so wasm32 builds (which use web_sys::WebSocket) compile
+# without it.
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
 # Lightweight logging facade. Used by the NIP-17 DM send path to emit a
 # diagnostic `warn!` when the recipient's kind:10050 DM-relay list is not yet
@@ -124,6 +144,11 @@ nostr-database = { version = "0.44", default-features = false, features = ["flat
 
 [dev-dependencies]
 proptest = "1"
+# Step 8 phase A — the `outbox_perf` example installs the ring crypto
+# provider directly (it dials real relays so it needs to bootstrap rustls
+# the same way the production worker does). The runtime dep moved with
+# `relay_worker` to `nmp-network`; the example keeps a dev-only edge.
+rustls = { workspace = true, default-features = false, features = ["ring"] }
 tempfile = "3"
 
 # NIP golden-tag conformance suite. Drives the (crate-private) command handlers

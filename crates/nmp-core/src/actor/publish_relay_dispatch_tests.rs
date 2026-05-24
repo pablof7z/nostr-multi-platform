@@ -13,7 +13,7 @@ use super::RelayControl;
 use crate::kernel::Kernel;
 use crate::publish::PublishTarget;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
-use crate::relay_worker::RelayEvent;
+use nmp_network::relay_worker::RelayEvent;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;

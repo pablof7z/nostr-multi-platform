@@ -79,7 +79,7 @@ use serde_json::Value;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::Message;
 
-use nmp_core::relay_protocol::{
+use nmp_network::relay_protocol::{
     is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
     RELAY_RECONNECT_DELAY_MAX,
 };

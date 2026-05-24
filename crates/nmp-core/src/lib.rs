@@ -22,7 +22,9 @@ mod ffi;
 // compiled until Phase 1c decoupling). If actor is gated in a future PR,
 // ffi_guard can be folded into the native gate alongside it.
 mod ffi_guard;
-mod keepalive;
+// Step 8 phase A — the keepalive FSM moved with the relay worker to
+// `nmp-network::keepalive`. It's purely transport-internal; `nmp-core`
+// no longer re-exports it.
 mod kernel;
 mod kernel_action;
 mod kernel_reducer;
@@ -31,24 +33,17 @@ pub mod nip21;
 pub mod planner;
 pub mod publish;
 mod relay;
-// V-01 Stage 3: wire-transport-agnostic relay protocol primitives — backoff
-// constants, keepalive thresholds, jitter, and HTTP-denial classification.
-// Always-compiled so the wasm32 `BrowserRelayDriver` in `nmp-wasm` can reuse
-// the exact same constants the native `relay_worker` does without depending on
-// `tungstenite`/`mio`/`rustls`.
-pub mod relay_protocol;
+// Step 8 phase A — `relay_protocol` and `relay_worker` moved to
+// `nmp-network`. They are re-imported here only through the (gated) actor
+// runtime path; the public re-exports below preserve the prior
+// `nmp_core::relay_protocol::*` surface (no-op for downstream crates that
+// imported through the old path — they should migrate to `nmp_network`).
 // D0: NIP-47 NWC is an app noun — the `wallet` module is gated behind the
 // `wallet` Cargo feature. Hosts the `nmp.wallet.pay_invoice` `ActionModule`
 // that closes the V3 dispatch-action bypass (`ffi::wallet::nmp_app_wallet_pay_invoice`
 // used to send `ActorCommand::WalletPayInvoice` directly).
 #[cfg(feature = "wallet")]
 pub mod wallet;
-// V-01 Phase 1c: the WebSocket relay worker is the native I/O layer.
-// Gated behind `native` (matches the `tungstenite`/`mio`/`rustls` dep gate
-// in Cargo.toml). The kernel speaks [`crate::kernel::RelayFrame`] instead of
-// `tungstenite::Message` so it compiles without this module.
-#[cfg(feature = "native")]
-mod relay_worker;
 pub mod remote_signer;
 pub mod stable_hash;
 pub mod store;

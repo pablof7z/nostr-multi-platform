@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use tungstenite::{accept, Message};
 
 use super::{jittered_backoff, spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
-use crate::relay::RelayRole;
+use crate::role::RelayRole;
 
 /// What the server-side WebSocket observed. Kept narrow so test assertions
 /// don't have to match on `Message` variants the test doesn't care about.
