@@ -1065,7 +1065,7 @@ updated with `## Escape-hatch caveat` section listing all bypassed doctrines.
 
 ---
 
-### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [DONE — step 10]
+### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [DONE — PR #467]
 
 **Evidence:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs` — 403 LOC.
 `docs/dispatch-actions.md` documents *what to call* but not *what to register first*.
