@@ -260,10 +260,7 @@ struct ModularBlockView: View {
 
     private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
         if let item, !item.authorDisplay.isEmpty { return item.authorDisplay }
-        // No profile yet — use the truncated pubkey as a fallback (matches
-        // the `short_pubkey_display` behaviour of the Rust side).
-        let hex = card?.authorPubkey ?? item?.authorPubkey ?? ""
-        return hex.isEmpty ? "Unknown" : "\(hex.prefix(8))…"
+        return card?.authorDisplayName ?? "Unknown"
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
