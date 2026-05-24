@@ -693,6 +693,13 @@ pub enum ActorCommand {
     /// serialized and pushed on the update channel. `OpenUri` registers the
     /// resolved interest through the single-writer registry (D4).
     Kernel(KernelAction),
+    /// Open-seam command dispatched through the
+    /// [`crate::substrate::ProtocolCommand`] trait. NIP crates use this
+    /// instead of adding their own variant to `ActorCommand`
+    /// (`docs/architecture/crate-boundaries.md` §4.1, step 1.b). Step 1.b
+    /// adds the variant + dispatch arm but no NIP code uses it yet; step 4
+    /// (V-41 LNURL fetcher) is the first migration onto the seam.
+    Protocol(Box<dyn crate::substrate::ProtocolCommand>),
     /// Ingest pre-verified timeline events through the test-support kernel path.
     ///
     /// The caller is responsible for constructing `VerifiedEvent` values; this
