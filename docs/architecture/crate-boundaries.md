@@ -33,7 +33,7 @@
 | 8 phase A | `nmp-network` crate (`relay_worker` + `relay_protocol` + `keepalive` + `RelayRole`) | ✅ merged (PR #459) |
 | 8 phases B/C/D/E | Pool API redesign · `BrowserRelayDriver` move · signer-broker dedupe (V-13 Stage 2) · NIP-42 wire/FSM split | ❌ not started |
 | 9 | `nmp-store` + `nmp-planner` extraction | ✅ merged (PR #463) |
-| 10 | `nmp-app-template` (V-48 DX) | ❌ not started |
+| 10 | `nmp-app-template` (V-48 DX) | ✅ merged (PR #467; Chirp register surface −547 LOC) |
 | 11 partial | move chirp-* + `nmp-chirp-config` to `apps/chirp/` | ✅ merged (PR #451) |
 | 11 final | extract `nmp-ffi` from `nmp-core::ffi`; move `fixture-todo-core` (blocked on `nmp-codegen` path-template fix) | ❌ not started |
 | 12 | return `nmp-marmot` from `apps/` to `crates/` (gated on Marmot FFI port to `nmp.marmot.*` action namespace) | ❌ not started |
@@ -101,6 +101,21 @@ Dependencies flow strictly upward. A crate at layer N may depend on any crate at
 layer < N. It MUST NOT depend on any crate at layer ≥ N. Sibling siblings within
 the same layer never depend on each other unless explicitly noted (Layer 0 has the
 trivial `nmp-nip42-types` → nothing dependency).
+
+> **Dependency inversion exception (Layer 3 contracts).** `nmp-core` (Layer 3)
+> defines the substrate **contracts** — `OutboxRouter`, `MailboxCache`,
+> `IngestParser`, `ProtocolCommand`, `ActionModule`, etc. Layer-2 crates like
+> `nmp-router` **implement** those contracts and depend on `nmp-core` for the
+> trait definitions, even though `nmp-router` sits below `nmp-core` in the
+> conceptual layering. This is classic dependency inversion: the trait lives
+> in the layer that *owns the contract* (Layer 3 substrate); the impl lives
+> in the layer that *runs the algorithm* (Layer 2 routing). At runtime the
+> kernel actor (Layer 3) holds the impl as `Arc<dyn OutboxRouter>` — the
+> dependency the linker sees is `nmp-router → nmp-core`, but the
+> dependency the kernel sees at runtime is `nmp-core → nmp-router` (via dyn
+> dispatch). Both are correct; neither violates the "upward" rule because
+> upward refers to the conceptual stack, not the compile-time edge direction
+> for trait crates.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
