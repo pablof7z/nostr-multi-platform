@@ -55,7 +55,7 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, short_hex, to_npub};
+use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, short_hex, short_npub, to_npub};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
@@ -92,12 +92,11 @@ pub struct GroupChatMessage {
     /// always fresh on render — never stale across ticks.
     #[serde(default)]
     pub created_at_display: String,
-    /// Abbreviated hex pubkey for the chat row header (`"<first8>…<last8>"`).
+    /// Abbreviated bech32 pubkey for the chat row header (`"npub1<first10>…<last6>"`).
     /// Computed at ingest time from [`KernelEvent::author`] via
-    /// [`nmp_core::display::short_hex`] so the host shell never slices the hex string
-    /// itself (V-25 thin-shell fix — aim.md §2: display formatting is
-    /// Rust-owned). Mirrors the `relativeTime` → `created_at_display`
-    /// migration of V-22.
+    /// [`nmp_core::display::short_npub`] — the V-33 canonical cross-surface
+    /// helper — so the host shell never slices or encodes pubkeys itself
+    /// (V-25 thin-shell fix — aim.md §2: display formatting is Rust-owned).
     #[serde(default)]
     pub author_display: String,
     /// Two-char uppercase initials for the avatar tile — first two chars of
@@ -137,7 +136,7 @@ impl GroupChatMessage {
             content: event.content.clone(),
             created_at: event.created_at,
             created_at_display: String::new(),
-            author_display: short_hex(&event.author),
+            author_display: short_npub(&event.author),
             author_initials: avatar_initials(&to_npub(&event.author)),
             author_color_hex: avatar_color_hex(&event.author),
             kind: event.kind,
@@ -733,7 +732,8 @@ mod tests {
 
         let snap = proj.snapshot_at(200);
         let msg = &snap.messages[0];
-        assert_eq!(msg.author_display, "abcdef01…23456789");
+        // short_npub: first 10 chars of npub1… + "…" + last 6 chars (V-33).
+        assert_eq!(msg.author_display, "npub140x77…tddknj");
         // avatar_initials(to_npub(hex)) — first 2 chars of the bech32 body.
         // The pinned value "40" comes from the canonical npub encoding of
         // the test fixture; any drift here means the bech32 helper changed.
