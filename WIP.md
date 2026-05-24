@@ -7,23 +7,16 @@
 > - [`docs/BACKLOG.md`](docs/BACKLOG.md) — violations, pending user decisions, ordered v1 feature backlog
 > - [`docs/plan.md`](docs/plan.md) — overarching plan (milestones, doctrine, where we are)
 
-## ⚠ ARCHITECTURE FREEZE
+## Architecture migration ladder
 
-**Status:** Crate-boundary synthesis in progress — do not start new work.
-
-A synthesis Opus agent is writing `docs/architecture/crate-boundaries.md`, the canonical
-crate boundary specification. It will decide: which crate owns routing, how the per-kind
-relay dispatch table works, what stays in `nmp-core` forever, which crates to delete
-(`nmp-nip65` → `nmp-relay-pool`), and the ActorCommand open seam design.
-
-**Until `docs/architecture/crate-boundaries.md` exists:** no agent may start feature or
-refactor work. CI fixes on open PRs are the only exception.
-
-See freeze notice in `CLAUDE.md`.
+The crate-boundary spec is committed
+(`docs/architecture/crate-boundaries.md`, 2026-05-24); migration runs in the
+12-step order from §5 of that document. Step 1 (the four substrate seams in
+`nmp-core`) is non-breaking and underway.
 
 ## Active
 
-*(architecture synthesis in progress — see freeze above)*
+- 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — worktree `.claude/worktrees/step1-ingest-parser-seam`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
