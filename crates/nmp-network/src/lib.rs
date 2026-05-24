@@ -1,7 +1,7 @@
 //! `nmp-network` — Layer-1 native WebSocket transport
 //! (`docs/architecture/crate-boundaries.md` §3.8 / §5 step 8).
 //!
-//! ## This PR (step 8 phase A — extraction only)
+//! ## Step 8 phase A — extraction (shipped)
 //!
 //! Four modules, moved verbatim from `nmp-core` so the kernel crate no
 //! longer owns the `tungstenite`/`mio`/`rustls` graph:
@@ -9,8 +9,8 @@
 //! 1. [`relay_protocol`] — wire-transport-agnostic constants and helpers
 //!    (backoff bounds, keepalive thresholds, per-URL deterministic jitter,
 //!    HTTP-denial classifier). Compiles unconditionally so the wasm32
-//!    `BrowserRelayDriver` in `nmp-wasm` can keep reusing the exact same
-//!    values without depending on the native I/O stack.
+//!    browser driver (phase C, this crate) can reuse the exact same values
+//!    without depending on the native I/O stack.
 //! 2. [`relay_worker`] — the native WebSocket worker thread (one socket per
 //!    resolved relay URL, mid-session reconnect with jittered exponential
 //!    backoff, T120b keepalive FSM). Gated behind the `native` Cargo
@@ -31,9 +31,12 @@
 //! kernel-facing `RelayFrame` enum stays in `nmp-core`; the
 //! `tungstenite::Message → RelayFrame` adapter (which bridges this
 //! crate's wire type to the kernel's frame enum) lives in
-//! `nmp_core::actor::dispatch` at the actor seam.
+//! `nmp_core::actor::dispatch` at the actor seam. The phase-C browser
+//! driver preserves the same direction by taking its kernel touchpoints
+//! through a `Rc<dyn Fn>` callback bag (`BrowserKernelHandlers`)
+//! constructed in `nmp-wasm`.
 //!
-//! ## This PR (step 8 phase B — push-model [`pool::Pool`] API)
+//! ## Step 8 phase B — push-model [`pool::Pool`] API (shipped)
 //!
 //! Adds the [`pool`] module: `Pool` / `RelayHandle` / `PoolEvent` /
 //! `PoolConfig` / `PoolSnapshot` per spec §3.8. Implemented as a thin
@@ -53,11 +56,23 @@
 //! compiles unchanged. The actor migration to `Pool` is the next PR
 //! in this lane — see `WIP.md`.
 //!
-//! ## Deferred to follow-up PRs (step 8 phases C/D/E)
+//! ## Step 8 phase C — [`browser_driver`] move (this PR)
 //!
-//! - **Phase C** — move `nmp-wasm/src/relay_driver.rs` (the
-//!   `BrowserRelayDriver`) into `nmp-network` behind a wasm-only feature
-//!   gate so the two transports live side-by-side in the same crate.
+//! Adds the [`browser_driver`] module — the wasm32 equivalent of
+//! [`relay_worker`], moved verbatim from `nmp-wasm/src/relay_driver.rs`.
+//! Both transports now live in this crate, behind their respective target
+//! gates: `relay_worker` under `#[cfg(feature = "native")]`,
+//! `browser_driver` under `#[cfg(target_arch = "wasm32")]`. The driver's
+//! kernel touchpoints were converted from a `Rc<RefCell<KernelReducer>>`
+//! reference to a small [`browser_driver::BrowserKernelHandlers`] struct of
+//! `Rc<dyn Fn>` callbacks; `nmp-wasm::relay_pool` constructs the callbacks
+//! from its own `KernelReducer` handle. This preserves the layering
+//! invariant (`nmp-network` MUST NOT depend on `nmp-core`) while keeping
+//! the driver's behavior, event ordering, and borrow semantics identical
+//! to the pre-move version.
+//!
+//! ## Deferred to follow-up PRs (step 8 phases D/E)
+//!
 //! - **Phase D** — migrate `nmp-signer-broker` onto the new `Pool` primitive
 //!   (V-13 dedupe: today `relay_client.rs` mirrors `relay_worker`'s mio +
 //!   tungstenite + jitter dance line-for-line).
@@ -79,3 +94,11 @@ pub mod relay_worker;
 
 #[cfg(feature = "native")]
 pub mod pool;
+
+// Step 8 phase C — wasm32 browser driver. Gated to `wasm32` because it
+// depends on `web_sys`/`js-sys`/`wasm-bindgen`; the native build of
+// `nmp-network` does not see this module. `nmp-wasm` is the sole caller
+// today (it constructs `BrowserKernelHandlers` from its own kernel handle
+// and feeds them into `BrowserRelayDriver::new`).
+#[cfg(target_arch = "wasm32")]
+pub mod browser_driver;

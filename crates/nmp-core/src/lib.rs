@@ -137,16 +137,19 @@ pub use kernel::routing_trace::{
     DEFAULT_ROUTING_TRACE_CAPACITY,
 };
 // V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
-// Promoted to the public surface so the wasm32 `BrowserRelayDriver` in
-// `nmp-wasm` can construct frames from `web_sys::MessageEvent` / `CloseEvent`.
+// Promoted to the public surface so the wasm32 `BrowserRelayDriver` (lives
+// in `nmp-network::browser_driver` as of step 8 phase C) can be bridged from
+// `web_sys::MessageEvent` / `CloseEvent` through the
+// `nmp-wasm::relay_pool::build_handlers` callback bag.
 // Substrate-grade (D0): no app/protocol nouns.
 pub use kernel::RelayFrame;
 pub use kernel_reducer::KernelReducer;
 pub use relay::canonical_relay_url;
 // V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
 // kernel produces and any transport (native `relay_worker`, wasm
-// `BrowserRelayDriver`) consumes. Fields stay `pub(crate)` so the kernel
-// remains the single writer; external callers read via accessors.
+// `BrowserRelayDriver` — both in `nmp-network` as of step 8 phase C) consumes.
+// Fields stay `pub(crate)` so the kernel remains the single writer; external
+// callers read via accessors.
 pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
