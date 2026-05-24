@@ -200,7 +200,8 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
-use auth::{AuthSignerFn, Nip42DriverState};
+use auth::Nip42DriverState;
+pub use auth::AuthSignerFn;
 use clock::{Clock, SystemClock};
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
@@ -324,7 +325,7 @@ pub(crate) struct RelayAuthCredentials {
 /// The `EventStore` (`self.store`) is the single authoritative writer for all
 /// persisted events (D4).  The lightweight `events` read-cache is a derived
 /// projection populated only after the store confirms insertion or replacement.
-pub(crate) struct Kernel {
+pub struct Kernel {
     /// Pluggable event store. D4: the single writer for all Nostr events.
     ///
     /// `MemEventStore` by default; replace with `LmdbEventStore` in M3 phase 2.
@@ -1025,7 +1026,10 @@ impl Kernel {
     /// boundary route through the kernel-owned clock, never a bare
     /// `SystemTime::now()`. Actor command handlers stamp event `created_at`
     /// via this accessor so `FixedClock` makes those timestamps testable.
-    pub(crate) fn now_secs(&self) -> u64 {
+    ///
+    /// `pub` so NIP-crate runtimes (`nmp-nip47` post-V-38) running on the
+    /// actor thread can stamp `created_at` via the kernel-owned clock.
+    pub fn now_secs(&self) -> u64 {
         self.clock
             .now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1181,12 +1185,9 @@ impl Kernel {
     /// other lanes (e.g. NWC `Wallet`) bind their own per-protocol keypair.
     /// Replaces any previously-bound signer for that role.
     ///
-    /// Generic per-role NIP-42 primitive (D0). The only non-test caller today
-    /// is the `wallet` feature's NWC lane, so without that feature this is
-    /// dead code — `allow(dead_code)` keeps the D0-proof (`--no-default-features`)
-    /// build warning-clean without gating a kernel primitive on an app noun.
-    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
-    pub(crate) fn set_relay_auth_signer(
+    /// Generic per-role NIP-42 primitive (D0). `pub` so NIP-crate runtimes
+    /// (`nmp-nip47` post-V-38) can register their per-lane signer.
+    pub fn set_relay_auth_signer(
         &mut self,
         role: RelayRole,
         pubkey_hex: String,
@@ -1199,10 +1200,10 @@ impl Kernel {
     /// Drop the signer for `role`. Challenges from that role are then recorded
     /// but never answered until a signer is rebound.
     ///
-    /// Generic per-role NIP-42 primitive (D0); see `set_relay_auth_signer`
-    /// for the `allow(dead_code)` rationale.
-    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
-    pub(crate) fn clear_relay_auth_signer(&mut self, role: RelayRole) {
+    /// Generic per-role NIP-42 primitive (D0). `pub` so NIP-crate runtimes
+    /// (`nmp-nip47` post-V-38) running on the actor thread can clear the
+    /// wallet-lane signer on disconnect.
+    pub fn clear_relay_auth_signer(&mut self, role: RelayRole) {
         self.auth_signers.remove(&role);
     }
 
@@ -1294,7 +1295,7 @@ impl Kernel {
     /// satisfy `is_persistent_sub` and the kind:23195 listener would be
     /// wrongly auto-CLOSE'd on its first EOSE. Canonicalizing inside the
     /// primitive makes every caller correct without each having to remember.
-    pub(crate) fn register_persistent_sub(
+    pub fn register_persistent_sub(
         &mut self,
         relay_url: impl Into<String>,
         sub_id: impl Into<String>,
@@ -1312,7 +1313,7 @@ impl Kernel {
     /// T-relay-url-normalize: canonicalizes `relay_url` so the removal matches
     /// the canonical key written by [`register_persistent_sub`] regardless of
     /// the URL spelling the caller supplies.
-    pub(crate) fn unregister_persistent_sub(&mut self, relay_url: &str, sub_id: &str) {
+    pub fn unregister_persistent_sub(&mut self, relay_url: &str, sub_id: &str) {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.wire.persistent.remove(&(key, sub_id.to_string()));
     }
@@ -1417,7 +1418,7 @@ impl Kernel {
     /// (`projections["bunker_handshake"]`). A slot write does not flip
     /// `changed_since_emit` on its own, so each calls this to drive a timely
     /// projection refresh on the next due tick.
-    pub(crate) fn mark_changed_since_emit(&mut self) {
+    pub fn mark_changed_since_emit(&mut self) {
         self.changed_since_emit = true;
     }
 

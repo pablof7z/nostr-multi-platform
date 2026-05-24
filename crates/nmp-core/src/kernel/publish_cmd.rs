@@ -106,7 +106,7 @@ impl Kernel {
     /// Callers pass `Some(id)` only on a dispatched action that carried a
     /// `correlation_id`; a `react` / `follow` / conformance-harness publish
     /// carries `None` and is a no-op here (nothing is waiting on an id).
-    pub(crate) fn record_action_failure(&mut self, correlation_id: String, error: String) {
+    pub fn record_action_failure(&mut self, correlation_id: String, error: String) {
         // A sign-step failure also lifts into the `action_stages`
         // mirror so a host listening only on the stage seam (not the
         // per-tick action_results drain) still sees the `Failed`
@@ -163,7 +163,7 @@ impl Kernel {
     // LNURL-pay worker's success branch routes through it). The wallet-feature
     // caller (`handle_nwc_text`) is no longer the only live caller, so the
     // default-features build now sees a real consumer through `dispatch.rs`.
-    pub(crate) fn record_action_success(&mut self, correlation_id: String) {
+    pub fn record_action_success(&mut self, correlation_id: String) {
         // Mirror `record_action_failure`'s dual write: an `Accepted` stage in
         // the `action_stages` mirror so a host listening only on the stage
         // seam sees the terminal, and the per-tick `action_results` drain so

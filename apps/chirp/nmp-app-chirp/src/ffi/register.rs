@@ -96,6 +96,17 @@ pub extern "C" fn nmp_app_chirp_register(
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     register_nip65_actions(unsafe { &mut *app });
 
+    // V-38: register the NIP-47 wallet stack (action modules + runtime
+    // installation + status projection) when the `wallet` feature is on.
+    // The crate `nmp-nip47` owns the runtime, the three connect / disconnect
+    // / pay_invoice action modules, and the `"wallet"` projection wiring;
+    // Chirp drives the registration here so a single call covers the
+    // host-side glue.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    #[cfg(feature = "wallet")]
+    crate::wallet_runtime::register_nip47_wallet(unsafe { &mut *app });
+
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.

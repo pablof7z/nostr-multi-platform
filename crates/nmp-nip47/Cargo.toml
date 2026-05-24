@@ -1,0 +1,18 @@
+[package]
+name = "nmp-nip47"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "NIP-47 Nostr Wallet Connect — Layer-4 NIP crate. Owns the actor-side `WalletRuntime`, the `nmp.wallet.pay_invoice` `ActionModule`, and the three `ProtocolCommand` impls that replace the pre-V-38 `Wallet*` `ActorCommand` variants. After V-38 `nmp-core → nmp-nwc` is deleted — the dep direction inverts here."
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-nwc = { path = "../nmp-nwc" }
+nostr = { version = "0.44", features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = { version = "1", features = ["derive"] }
+tracing = "0.1"
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

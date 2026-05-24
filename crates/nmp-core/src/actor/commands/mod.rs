@@ -80,8 +80,8 @@ mod zap;
 // functions; no I/O, no mutable state.
 #[cfg(feature = "native")]
 mod zap_lnurl;
-// D0: NIP-47 NWC is an app noun — the wallet command runtime (and its
-// `nmp-nwc` dependency) is gated behind the `wallet` Cargo feature.
+// V-38: the wallet command runtime moved to `crates/nmp-nip47`. `nmp-core`
+// no longer depends on `nmp-nwc`.
 // V-01 Phase 1c: every test module below exercises the native actor
 // runtime (publish / dm / relays helpers, `run_actor`, etc.). They share
 // the `native` gate with the modules they drive.
@@ -93,8 +93,6 @@ mod remote_signer_tests;
 mod t168_identity_followfeed_reconcile_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
-#[cfg(feature = "wallet")]
-mod wallet;
 
 // V-01 Phase 1c: identity command handlers sit on the native actor runtime.
 #[cfg(feature = "native")]
@@ -176,17 +174,4 @@ pub use raw_event_observer::{
 pub use conformance_support::ConformanceHarness;
 #[cfg(feature = "native")]
 pub(super) use relays::{add_relay, build_relay_list_event_from_edit_rows, remove_relay};
-#[cfg(feature = "wallet")]
-pub(super) use wallet::{
-    handle_nwc_text, wallet_connect, wallet_disconnect, wallet_pay_invoice, WalletRuntime,
-};
-// D0: NIP-47 NWC is an app noun — the wallet-status slot + its constructor are
-// re-exported (crate-wide) so the `ffi` module can build the shared slot and
-// register the `"wallet"` snapshot projection.
-#[cfg(feature = "wallet")]
-pub(crate) use wallet::{new_wallet_status_slot, WalletStatusSlot};
-// `WalletStatus` is re-exported for the snapshot-projection test only, which
-// constructs a status value when driving the `"wallet"` projection through
-// `make_update`.
-#[cfg(all(test, feature = "wallet"))]
-pub(crate) use wallet::WalletStatus;
+// V-38: wallet runtime + status slot moved to `crates/nmp-nip47`.

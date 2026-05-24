@@ -26,6 +26,8 @@
 
 use std::fmt;
 
+use crate::kernel::Kernel;
+use crate::relay::OutboundMessage;
 use crate::ActorCommand;
 
 /// Error returned by a [`ProtocolCommand::run`]. Kernel surfaces it as the
@@ -63,13 +65,46 @@ impl std::error::Error for ProtocolCommandError {}
 /// lookup hooks, and projection writers as those needs land.
 pub struct ProtocolCommandContext<'a> {
     send: &'a dyn Fn(ActorCommand),
+    /// V-38: optional `&mut Kernel` for command bodies that need to mutate
+    /// kernel state synchronously on the actor thread — record action
+    /// terminals, set the last-error toast, register persistent subs, mark
+    /// the snapshot dirty. `None` only in the substrate's own unit tests
+    /// that construct a context without a kernel; production dispatch
+    /// always sets it.
+    kernel: Option<&'a mut Kernel>,
+    /// V-38: outbound-frame sink. The wallet runtime returns
+    /// `Vec<OutboundMessage>` per command; the command body pushes them
+    /// here so the actor's dispatch arm picks them up and routes through
+    /// the existing relay-worker plumbing without re-entering through
+    /// `send` (which would defer by at least one tick).
+    outbound: Option<&'a mut Vec<OutboundMessage>>,
 }
 
 impl<'a> ProtocolCommandContext<'a> {
     /// Constructed by the kernel dispatch arm. Test code constructs it with
     /// a closure that captures whatever recording state the test needs.
     pub fn new(send: &'a dyn Fn(ActorCommand)) -> Self {
-        Self { send }
+        Self {
+            send,
+            kernel: None,
+            outbound: None,
+        }
+    }
+
+    /// Builder: attach the actor's kernel handle. The dispatch arm calls
+    /// this before invoking [`ProtocolCommand::run`].
+    #[must_use]
+    pub fn with_kernel(mut self, kernel: &'a mut Kernel) -> Self {
+        self.kernel = Some(kernel);
+        self
+    }
+
+    /// Builder: attach an outbound-frame sink so the command body can
+    /// surface relay frames produced synchronously on the actor thread.
+    #[must_use]
+    pub fn with_outbound(mut self, outbound: &'a mut Vec<OutboundMessage>) -> Self {
+        self.outbound = Some(outbound);
+        self
     }
 
     /// Re-enter the actor loop with `cmd`. The actor processes it in a
@@ -83,6 +118,22 @@ impl<'a> ProtocolCommandContext<'a> {
     pub fn send(&self, cmd: ActorCommand) {
         let send = self.send;
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| send(cmd)));
+    }
+
+    /// Reborrow the actor's kernel handle. `None` only in unit tests that
+    /// constructed the context without one.
+    pub fn kernel_mut(&mut self) -> Option<&mut Kernel> {
+        self.kernel.as_deref_mut()
+    }
+
+    /// Push outbound relay frames produced synchronously by the command
+    /// body. The actor's dispatch arm drains them into the existing
+    /// `send_all_outbound` plumbing. No-op when no outbound sink is attached
+    /// (unit tests).
+    pub fn push_outbound<I: IntoIterator<Item = OutboundMessage>>(&mut self, frames: I) {
+        if let Some(out) = self.outbound.as_mut() {
+            out.extend(frames);
+        }
     }
 }
 

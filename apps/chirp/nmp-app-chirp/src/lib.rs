@@ -34,6 +34,8 @@
 
 mod dm_runtime;
 pub mod ffi;
+#[cfg(feature = "wallet")]
+mod wallet_runtime;
 mod zap_receipts_runtime;
 
 pub use ffi::{

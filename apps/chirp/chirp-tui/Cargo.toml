@@ -16,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
-nmp-core = { path = "../../../crates/nmp-core", features = ["test-support", "wallet"] }
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"

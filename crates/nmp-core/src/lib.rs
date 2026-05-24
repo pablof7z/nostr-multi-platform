@@ -37,12 +37,10 @@ mod relay;
 // the exact same constants the native `relay_worker` does without depending on
 // `tungstenite`/`mio`/`rustls`.
 pub mod relay_protocol;
-// D0: NIP-47 NWC is an app noun — the `wallet` module is gated behind the
-// `wallet` Cargo feature. Hosts the `nmp.wallet.pay_invoice` `ActionModule`
-// that closes the V3 dispatch-action bypass (`ffi::wallet::nmp_app_wallet_pay_invoice`
-// used to send `ActorCommand::WalletPayInvoice` directly).
-#[cfg(feature = "wallet")]
-pub mod wallet;
+// V-38 deleted `nmp-core::wallet`: the NIP-47 wallet runtime + the
+// `nmp.wallet.pay_invoice` `ActionModule` moved to `crates/nmp-nip47`. The
+// kernel no longer depends on `nmp-nwc`. See `docs/architecture/crate-boundaries.md`
+// §5 step 7 for the migration brief.
 // V-01 Phase 1c: the WebSocket relay worker is the native I/O layer.
 // Gated behind `native` (matches the `tungstenite`/`mio`/`rustls` dep gate
 // in Cargo.toml). The kernel speaks [`crate::kernel::RelayFrame`] instead of
@@ -65,7 +63,11 @@ pub use app::{
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 #[cfg(feature = "native")]
 pub use ffi::NmpApp;
-pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+pub use kernel::{read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+// V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
+// `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
+// Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
+pub use kernel::AuthSignerFn;
 // V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
 // Promoted to the public surface so the wasm32 `BrowserRelayDriver` in
 // `nmp-wasm` can construct frames from `web_sys::MessageEvent` / `CloseEvent`.
@@ -148,11 +150,11 @@ pub use ffi::{
 // android-ffi feature is retained for the wallet delta below but carries no
 // lifecycle symbols of its own.
 
-// D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
-// gated behind the `wallet` Cargo feature. Re-exported via Rust paths for
-// the Android JNI shim only when both features are on. `wallet` implies
-// `native` implies `android-ffi` already has the `ffi` module available.
-#[cfg(all(feature = "android-ffi", feature = "wallet"))]
+// V-38: the `nmp_app_wallet_*` FFI symbols stay in `nmp-core::ffi::wallet`
+// as thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`
+// (dispatch_action). The actual wallet runtime lives in `crates/nmp-nip47`;
+// the shims MUST NOT reach back into wallet state.
+#[cfg(feature = "native")]
 pub use ffi::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests

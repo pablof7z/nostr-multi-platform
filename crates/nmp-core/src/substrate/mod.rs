@@ -49,6 +49,7 @@ mod keyring;
 mod host_op_handler;
 pub mod placeholder;
 mod protocol;
+mod relay_intercept;
 mod routing;
 mod view;
 
@@ -67,6 +68,9 @@ pub use keyring::{
 };
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+pub use relay_intercept::{
+    new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
+};
 pub use default_routing::{
     InMemoryMailboxCache as DefaultInMemoryMailboxCache, Nip65WriteSetRouter,
 };

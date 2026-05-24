@@ -21,9 +21,6 @@ use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
 use crate::subs::PlanCoverageHook;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
-// D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
-#[cfg(feature = "wallet")]
-use super::commands::WalletRuntime;
 use crate::kernel_action::dispatch_kernel_action;
 use super::pending_sign::PendingSign;
 use super::relay_mgmt::{
@@ -154,9 +151,6 @@ fn maybe_publish_relay_list_after_edit(
 pub(super) struct ActorContext<'a> {
     pub(super) kernel: &'a mut Kernel,
     pub(super) identity: &'a mut IdentityRuntime,
-    // D0: NIP-47 NWC is an app noun — only present with the `wallet` feature.
-    #[cfg(feature = "wallet")]
-    pub(super) wallet: &'a mut WalletRuntime,
     pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
     pub(super) relay_tx: &'a Sender<RelayEvent>,
     pub(super) connected_relays: &'a mut HashSet<RelayRole>,
@@ -733,43 +727,11 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        #[cfg(feature = "wallet")]
-        ActorCommand::WalletConnect { uri } => {
-            let outbound = commands::wallet_connect(ctx.wallet, ctx.kernel, &uri);
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        #[cfg(feature = "wallet")]
-        ActorCommand::WalletDisconnect => {
-            let outbound = commands::wallet_disconnect(ctx.wallet, ctx.kernel);
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        #[cfg(feature = "wallet")]
-        ActorCommand::WalletPayInvoice {
-            bolt11,
-            amount_msats,
-            correlation_id,
-        } => {
-            // Terminal Accepted/Failed arrives later via handle_nwc_text
-            // when the wallet's kind:23195 response settles.
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            let outbound = commands::wallet_pay_invoice(
-                ctx.wallet,
-                ctx.kernel,
-                &bolt11,
-                amount_msats,
-                correlation_id,
-            );
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
+        // V-38: `ActorCommand::Wallet{Connect,Disconnect,PayInvoice}`
+        // variants were deleted. Wallet ops now route through
+        // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` — the
+        // `WalletConnectCommand` / `WalletDisconnectCommand` /
+        // `WalletPayInvoiceCommand` impls live in `crates/nmp-nip47`.
         ActorCommand::FetchLnurlInvoice {
             unsigned,
             lnurl_or_address,
@@ -1046,22 +1008,30 @@ pub(super) fn dispatch_command(
             None
         }
         ActorCommand::Protocol(cmd) => {
-            // Step 1.b — the open-seam dispatch arm. Hands the command a
+            // V-38: the open-seam dispatch arm. Hands the command a
             // `ProtocolCommandContext` wired to the actor's own command
-            // channel so the body can re-enter the loop with follow-ups
-            // (the LNURL fetcher pattern). Step 1.b ships the arm; the
-            // first migration onto it is step 4 (V-41).
+            // channel (`send`), the live kernel handle, and an outbound
+            // sink the command body pushes relay frames into. NIP-crate
+            // runtimes (today `nmp-nip47`) consume all three.
             let tx = ctx.command_tx_self.clone();
             let send = move |c: crate::actor::ActorCommand| {
                 // D6 — disconnected sender (post-Shutdown) is a benign
                 // send-failure on the worker side; swallow as a no-op.
                 let _ = tx.send(c);
             };
-            let mut pctx = crate::substrate::ProtocolCommandContext::new(&send);
-            if let Err(e) = cmd.run(&mut pctx) {
-                tracing::warn!(error = %e, "ProtocolCommand returned error");
+            let mut outbound: Vec<crate::relay::OutboundMessage> = Vec::new();
+            {
+                let mut pctx = crate::substrate::ProtocolCommandContext::new(&send)
+                    .with_kernel(ctx.kernel)
+                    .with_outbound(&mut outbound);
+                if let Err(e) = cmd.run(&mut pctx) {
+                    tracing::warn!(error = %e, "ProtocolCommand returned error");
+                    ctx.kernel
+                        .set_last_error_toast(Some(e.message().to_string()));
+                }
             }
-            Some(Vec::new())
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
         }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::IngestPreVerifiedEvents(events) => {
@@ -1091,7 +1061,10 @@ pub(super) fn dispatch_command(
 pub(super) fn handle_relay_event(
     event: RelayEvent,
     kernel: &mut Kernel,
-    #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
+    // V-38: substrate-generic interceptor slot — `nmp-nip47`'s wallet
+    // runtime installs itself here to peek at kind:23195 NWC responses
+    // before the kernel drops them as unknown kinds.
+    relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     next_relay_generation: &mut u64,
@@ -1189,32 +1162,31 @@ pub(super) fn handle_relay_event(
             message,
             ..
         } if running => {
-            // NWC relay intercept: peek at text frames from the wallet relay
-            // for kind:23195 responses before passing to kernel.handle_message.
-            // The kernel silently drops unknown kinds, so letting it see wallet
-            // events too is harmless; we just need to decrypt them first.
-            // D0: gated behind the `wallet` feature — NWC is an app noun.
-            #[cfg(feature = "wallet")]
-            let wallet_text = if wallet.is_nwc_relay(&relay_url) {
-                match &message {
-                    tungstenite::Message::Text(s) => Some(s.clone()),
-                    _ => None,
-                }
-            } else {
-                None
+            // V-38: peek at the text payload BEFORE conversion so an
+            // installed substrate-generic relay-text interceptor (today
+            // `nmp-nip47`'s NWC runtime) can decode kind:23195 responses
+            // the kernel itself drops as unknown kinds. The interceptor
+            // filters by relay URL internally; uninteresting frames are a
+            // single-lock no-op.
+            let raw_text = match &message {
+                tungstenite::Message::Text(s) => Some(s.clone()),
+                _ => None,
             };
             // V-01 Phase 1c: convert the native `tungstenite::Message` into the
             // wire-transport-agnostic [`RelayFrame`] before crossing the kernel
-            // boundary. The kernel no longer names `tungstenite`; the conversion
-            // lives here (the only native call site) and at the relay-worker
-            // socket-read seam.
+            // boundary.
             let frame = tungstenite_message_to_relay_frame(message);
             let mut outbound = kernel.handle_message(role, &relay_url, frame);
             outbound.extend(kernel.pending_view_requests());
-            #[cfg(feature = "wallet")]
-            if let Some(text) = wallet_text {
-                let wallet_out = commands::handle_nwc_text(wallet, &text, kernel);
-                outbound.extend(wallet_out);
+            if let Some(text) = raw_text {
+                let interceptor_handle = relay_text_interceptor
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.as_ref().cloned());
+                if let Some(interceptor) = interceptor_handle {
+                    let extra = interceptor.on_relay_text(kernel, &relay_url, &text);
+                    outbound.extend(extra);
+                }
             }
             send_all_outbound(
                 relay_controls,

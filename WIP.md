@@ -18,6 +18,7 @@ later steps remain.
 ## Active
 
 - 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 (rebased onto master)
+- 2026-05-24 — feat(nmp-nip47): V-38 step 7 — create `nmp-nip47`, move NWC wallet stack out of `nmp-core`, delete `nmp-core → nmp-nwc` edge — branch `refactor/v38-nmp-nip47`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

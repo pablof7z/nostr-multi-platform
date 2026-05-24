@@ -23,6 +23,10 @@ crate-type = ["staticlib", "rlib"]
 # The `justfile` iOS build targets pass `--features marmot` explicitly so the
 # Chirp iOS shell still links all `nmp_marmot_*` symbols.
 default = ["wallet", "lmdb-backend"]
+# V-38: the `wallet` feature now activates the `nmp-nip47` optional dep
+# (the kernel itself no longer carries NIP-47 nouns). Chirp re-exports
+# it under the same name so callers (chirp-tui, the iOS shell) keep their
+# existing `features = ["wallet"]` spelling.
 # Marmot (MLS-over-Nostr) projection. Activates the `nmp-marmot` dependency
 # AND its `ffi` feature, which compiles the relocated C-ABI shell
 # (`apps/marmot/nmp-app-marmot/src/ffi.rs` + siblings) and the
@@ -33,10 +37,9 @@ default = ["wallet", "lmdb-backend"]
 # `nmp-marmot`'s `ffi` feature (no need to duplicate them here).
 # Deferred post-v1; off in a no-default-features build.
 marmot = ["dep:nmp-marmot", "nmp-marmot/ffi"]
-# NIP-47 Nostr Wallet Connect. Forwards to `nmp-core/wallet` so the kernel
-# compiles the `nmp_app_wallet_*` FFI symbols the iOS shell links. Deferred
-# post-v1; off in a no-default-features build.
-wallet = ["nmp-core/wallet"]
+# NIP-47 Nostr Wallet Connect. V-38: forwards to the new `nmp-nip47` optional
+# dep (the kernel itself no longer carries NIP-47 nouns).
+wallet = ["dep:nmp-nip47"]
 # Persistent local cache / publish-intent ledger for offline-first Chirp.
 lmdb-backend = ["nmp-core/lmdb-backend"]
 
@@ -79,6 +82,9 @@ nmp-router = { path = "../../../crates/nmp-router" }
 # D0-clean: `nmp-core` gains no zap nouns — `nmp-nip57` types stay in the
 # protocol crate; only the generic `FetchLnurlInvoice` arm lives in core.
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
+# V-38: NIP-47 NWC wallet stack moved out of `nmp-core`. Optional + gated
+# behind the `wallet` feature so the default-off build excludes it.
+nmp-nip47 = { path = "../../../crates/nmp-nip47", optional = true }
 # D2 coverage-gate policy. Chirp installs a `CoverageGate`-based hook via
 # `NmpApp::set_coverage_hook` in `nmp_app_chirp_register` so the
 # production kernel enforces D2 ("negentropy before REQ") for large

@@ -323,28 +323,15 @@ fn new_action_id(now_ms: u64) -> ActionId {
 
 /// Build the registry the kernel ships with.
 ///
-/// Always registers [`crate::publish::PublishModule`]. When the `wallet`
-/// Cargo feature is on (NIP-47 NWC support enabled), also registers
-/// [`crate::wallet::WalletPayInvoiceModule`] — the action seam for the
-/// `nmp.wallet.pay_invoice` namespace that closed the V3 dispatch-action
-/// bypass (see `crates/nmp-core/src/wallet/action.rs` module docs).
-///
-/// NIP-29 group actions, the NIP-17 DM actions, and the NIP-59 welcome-wrap
-/// module are *app* nouns (D0 — `nmp-core` never names a protocol crate);
+/// Always registers [`crate::publish::PublishModule`]. NIP-specific action
+/// modules (NIP-17 DM, NIP-29 group, NIP-47 wallet `pay_invoice`, NIP-57
+/// zap, …) are *app* nouns (D0 — `nmp-core` never names a protocol crate);
 /// the app host registers those against its own registry instance via
-/// [`ActionRegistry::register`].
-///
-/// ADR-0027 collapsed the dual `register_action_module` + `register_action_executor`
-/// closure seam into a single typed `register::<M>()` call — every module's
-/// `start()` validator and `execute()` ActorCommand-builder live in its own
-/// trait impl. `PublishModule::execute` (see `publish/action.rs`) builds the
-/// `ActorCommand` for each `PublishAction` variant; `WalletPayInvoiceModule::execute`
-/// (see `wallet/action.rs`) does the same for `WalletAction`.
+/// [`ActionRegistry::register`]. Post-V-38 the `nmp.wallet.pay_invoice`
+/// module lives in `nmp-nip47` and the host crate registers it from there.
 pub fn default_registry() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
     registry.register::<crate::publish::PublishModule>();
-    #[cfg(feature = "wallet")]
-    registry.register::<crate::wallet::WalletPayInvoiceModule>();
     registry
 }
 

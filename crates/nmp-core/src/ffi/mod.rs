@@ -15,9 +15,10 @@ mod publish;
 mod raw_event_tap;
 mod snapshot;
 mod timeline;
-// D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
-// gated behind the `wallet` Cargo feature.
-#[cfg(feature = "wallet")]
+// V-38: the `nmp_app_wallet_*` FFI symbols stay here as thin shims that
+// route through `nmp_app_dispatch_action` for the `nmp.wallet.*` namespaces.
+// The wallet runtime + the action modules + the `nmp-nwc` dep all live in
+// `crates/nmp-nip47`; this module ships zero protocol code.
 mod wallet;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -109,7 +110,10 @@ pub use testing::{
 // were historically gated here; they are lifecycle essentials every native app
 // needs and are now included unconditionally in the `native` block above.
 // The android-ffi identity block is intentionally removed.
-#[cfg(all(feature = "android-ffi", feature = "wallet"))]
+// V-38: wallet FFI shims re-exported on native (default) so iOS/desktop
+// callers and the Android JNI shim both pick them up via the standard
+// `nmp_app_*` re-export pattern.
+#[cfg(feature = "native")]
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 use crate::actor::{
@@ -386,6 +390,13 @@ pub struct NmpApp {
     /// state for hosts that don't bind a stateful app) makes any such command
     /// record a `Failed` terminal stage — never a silent drop.
     host_op_handler: crate::substrate::HostOpHandlerSlot,
+    /// V-38: substrate-generic relay-text interceptor slot. A NIP-crate
+    /// runtime (today `nmp-nip47`) installs itself here so the actor can
+    /// peek at every inbound text frame and let the runtime decode
+    /// protocol-specific responses (kind:23195 NWC). Shared `Arc` with the
+    /// actor — the install side mutates through this clone, the actor reads
+    /// through the matching clone in `handle_relay_event`.
+    relay_text_interceptor: crate::substrate::RelayTextInterceptorSlot,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -406,8 +417,11 @@ pub struct NmpApp {
     /// shared with the actor — no `Arc`). The simpler primitive is correct
     /// here: nothing on the actor side reads or writes this slot, so the
     /// `Arc` clone would be dead shared ownership.
-    #[cfg(feature = "wallet")]
-    inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    ///
+    /// V-38: stays in `nmp-core::ffi` (a generic dedup guard, no protocol
+    /// content) so the wallet pay-invoice FFI shim can short-circuit a
+    /// same-bolt11 retap before it crosses into `nmp-nip47`.
+    pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
     /// Generic dispatch idempotency guard: dedup-keys for
     /// [`action::nmp_app_dispatch_action`] calls accepted by the registry but
     /// whose action-result has not yet cleared. Keyed by a stable 64-bit
@@ -517,19 +531,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `Mutex<SnapshotRegistry>` visible to both sides.
     let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
     let actor_snapshot_projections = Arc::clone(&snapshot_projections);
-    // D0: NIP-47 NWC is an app noun. The shared wallet-status slot — one `Arc`
-    // clone goes to the actor's `WalletRuntime` (the sole writer, D4), the
-    // other is captured below by the `"wallet"` snapshot-projection closure so
-    // wallet state reaches the host through `projections["wallet"]` instead of
-    // a baked-in `KernelSnapshot` field. The wallet projection is registered
-    // unconditionally (under the feature gate) right after the actor spawns:
-    // the projection contributes JSON `null` until a wallet connects, which
-    // preserves the "key present, value null when disconnected" semantic the
-    // social shells already decode.
-    #[cfg(feature = "wallet")]
-    let wallet_status = crate::actor::new_wallet_status_slot();
-    #[cfg(feature = "wallet")]
-    let actor_wallet_status = Arc::clone(&wallet_status);
+    // V-38: the shared `WalletStatusSlot` + the `"wallet"` snapshot
+    // projection moved to `crates/nmp-nip47`. The host (per-app crate)
+    // builds those itself and calls
+    // `nmp_app_register_snapshot_projection("wallet", …)` for the read side
+    // + `nmp_nip47::install_wallet_runtime(handle)` for the write side. The
+    // actor now only carries a substrate-generic relay-text interceptor
+    // slot.
+    let relay_text_interceptor = crate::substrate::new_relay_text_interceptor_slot();
+    let actor_relay_text_interceptor = Arc::clone(&relay_text_interceptor);
     // D0: NIP-46 remote signing is an app noun. The shared bunker-handshake
     // slot is handed to the actor: `run_actor_with_observers` both gives one
     // `Arc` clone to the actor's `IdentityRuntime` (the sole writer, D4) and
@@ -630,11 +640,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_event_observers,
                 actor_raw_event_observers,
                 actor_snapshot_projections,
-                // D0: NIP-47 NWC is an app noun — the wallet-status slot the
-                // actor's `WalletRuntime` writes; the `"wallet"` projection
-                // (registered below) reads the matching clone.
-                #[cfg(feature = "wallet")]
-                actor_wallet_status,
+                // V-38: substrate-generic relay-text interceptor slot. The
+                // host's `nmp-nip47` install registers its NWC runtime here;
+                // the actor calls `interceptor.on_relay_text(...)` for every
+                // inbound text frame.
+                actor_relay_text_interceptor,
                 // D0: NIP-46 remote signing is an app noun — the
                 // bunker-handshake slot the actor's `IdentityRuntime` writes;
                 // the `"bunker_handshake"` projection (registered below) reads
@@ -733,10 +743,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // reads through its matching clone when the `DispatchHostOp` arm
         // fires.
         host_op_handler,
-        // NIP-47 wallet `pay_invoice` double-tap guard. Empty at construction;
-        // populated by `ffi::wallet::nmp_app_wallet_pay_invoice` on each
-        // accepted invoice, swept on TTL expiry (no cross-thread coupling).
-        #[cfg(feature = "wallet")]
+        // V-38: the same Arc clone the actor holds — `nmp-nip47` installs
+        // its NWC runtime here.
+        relay_text_interceptor,
+        // V-38: NIP-47 wallet `pay_invoice` double-tap guard. The state is
+        // still in `NmpApp` (a generic UI dedup primitive, no protocol
+        // content); the wallet runtime that consumes the dispatched action
+        // moved to `crates/nmp-nip47`.
         inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
         // Generic dispatch idempotency guard. Empty at construction; populated
         // by `ffi::action::dispatch_action_json` on each accepted dispatch,
@@ -748,28 +761,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         creating_account_inflight: Mutex::new(None),
     };
 
-    // D0 — first internal consumer of the snapshot-projection seam: register
-    // the built-in `"wallet"` projection. NIP-47 NWC is an app noun, so wallet
-    // state is NOT a typed `KernelSnapshot` field — it is projected under
-    // `projections["wallet"]` exactly like a host-registered namespace. The
-    // closure captures the shared `wallet_status` slot the actor's
-    // `WalletRuntime` writes; it runs on every snapshot tick (D8: cheap,
-    // non-blocking — a single lock-and-clone). When no wallet is connected the
-    // slot holds `None` and the closure contributes JSON `null`, preserving the
-    // "key present, value null when disconnected" semantic.
-    #[cfg(feature = "wallet")]
-    app.register_snapshot_projection("wallet", move || {
-        match wallet_status.lock() {
-            Ok(slot) => slot
-                .as_ref()
-                .map(|status| serde_json::to_value(status).unwrap_or(serde_json::Value::Null))
-                .unwrap_or(serde_json::Value::Null),
-            // D6: a poisoned wallet-status mutex collapses to `null` rather
-            // than panicking inside the snapshot tick.
-            Err(_) => serde_json::Value::Null,
-        }
-    });
-
+    // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.
+    // The host (per-app crate) registers it themselves on the `NmpApp`
+    // via `register_snapshot_projection("wallet", …)` after constructing
+    // the `WalletStatusSlot` from `nmp_nip47`.
+    //
     // D0 — the built-in `"bunker_handshake"` projection is registered inside
     // `run_actor_with_observers` (at the actor wiring site), not here: it
     // reads the actor-owned bunker-handshake slot, so every actor consumer
@@ -929,6 +925,23 @@ impl NmpApp {
     pub fn set_host_op_handler(&self, handler: std::sync::Arc<dyn crate::substrate::HostOpHandler>) {
         if let Ok(mut slot) = self.host_op_handler.lock() {
             *slot = Some(handler);
+        }
+    }
+
+    /// V-38 — install a substrate-generic [`crate::substrate::RelayTextInterceptor`].
+    /// Today the only consumer is `nmp-nip47`'s NWC runtime, which peeks
+    /// at every inbound text frame from the wallet relay to decode
+    /// kind:23195 responses before the kernel drops them as unknown kinds.
+    ///
+    /// MUST be called before any `nmp_app_wallet_*` FFI symbol is invoked;
+    /// otherwise the wallet runtime is unreachable and the actions surface
+    /// a `Failed` terminal. A poisoned mutex is a silent no-op (D6).
+    pub fn set_relay_text_interceptor(
+        &self,
+        interceptor: std::sync::Arc<dyn crate::substrate::RelayTextInterceptor>,
+    ) {
+        if let Ok(mut slot) = self.relay_text_interceptor.lock() {
+            *slot = Some(interceptor);
         }
     }
 

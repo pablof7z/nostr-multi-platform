@@ -97,11 +97,11 @@ pub enum RelayRole {
     /// NIP-47 Nostr Wallet Connect relay. Spawned on demand when a wallet is
     /// connected; NOT included in `all()` so it does not block the startup
     /// bootstrap gate or appear in the standard relay-statuses projection.
-    //
-    // Constructed only under `#[cfg(feature = "wallet")]` (actor/commands/wallet.rs);
-    // suppress the dead_code lint in default (non-wallet) builds while keeping it
-    // active when the wallet feature is enabled.
-    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
+    ///
+    /// V-38: the variant stays substrate-grade in `nmp-core` so the kernel
+    /// can route per-lane NIP-42 signers without naming a protocol crate;
+    /// the only constructor today is `nmp-nip47`'s wallet runtime through
+    /// `Kernel::set_relay_auth_signer(RelayRole::Wallet, ...)`.
     Wallet,
 }
 
@@ -159,6 +159,18 @@ pub struct OutboundMessage {
 }
 
 impl OutboundMessage {
+    /// Construct an outbound message destined for `relay_url` over `role`.
+    ///
+    /// `pub` so NIP-crate runtimes (`nmp-nip47` post-V-38) running on the
+    /// actor thread can build outbound REQ / EVENT / CLOSE frames the
+    /// dispatch arm forwards to the relay worker. The transport is opaque to
+    /// this constructor — every frame must already be a valid NIP-01 wire
+    /// JSON string.
+    #[must_use]
+    pub fn new(role: RelayRole, relay_url: String, text: String) -> Self {
+        Self { role, relay_url, text }
+    }
+
     /// Diagnostics lane the frame belongs to. Forwarded by the WASM driver
     /// when reporting back through [`crate::KernelReducer::handle_relay_frame`]
     /// for any reply the kernel emits (e.g. AUTH responses).

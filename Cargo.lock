@@ -3774,6 +3774,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip29",
+ "nmp-nip47",
  "nmp-nip57",
  "nmp-nip59",
  "nmp-router",
@@ -3871,7 +3872,6 @@ dependencies = [
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",
- "nmp-nwc",
  "nmp-signer-iface",
  "nostr",
  "nostr-database",
@@ -3976,6 +3976,19 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip47"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nwc",
+ "nostr",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zeroize",
 ]
 
 [[package]]
