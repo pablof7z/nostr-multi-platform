@@ -333,24 +333,88 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
 }
 
 #[test]
-#[ignore = "V-39: bunker DM send is a follow-up — the new \
-            `SendGiftWrappedDmCommand` exposes only `nip17_local_keys()` \
-            today; restoring `SignerForSeal` access to the protocol-command \
-            context restores this path. The local-keys MVP is covered by \
-            `nmp_nip17::dm_send::tests::happy_path_publishes_two_envelopes_pinned_to_kind10050_relays`."]
 fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
-    // ADR-0026 Phase 2 end-to-end: with an active bunker, gift-wrap MUST
-    // sign the kind:13 seal through the remote signer. Pre-V-39 this was
-    // exercised against `commands::dm::send_gift_wrapped_dm`; that
-    // function moved to `nmp-nip17::SendGiftWrappedDmCommand`, which
-    // currently reads only the local-keys slot from the substrate
-    // context. Bunker support is restored by adding a `signer_for_seal`
-    // accessor to `ProtocolCommandContext` and threading the
-    // `IdentityRuntime::active_signer_for_seal` result through.
-    let (_id, _kernel) = fresh();
-    let _ = stub_signer();
-    // Body retained to document the regression contract; gated on
-    // `#[ignore]` until the follow-up lands.
+    // V-08 (bunker DM send) regression pin. End-to-end contract: with
+    // an active bunker (`StubRemoteSigner`), the `signer_for_seal`
+    // closure the dispatch arm installs on `ProtocolCommandContext`
+    // resolves to a `SignerForSeal` that drives the kind:13 seal step
+    // through the remote signer (NOT a phantom local-keys branch).
+    //
+    // The `nmp-nip17::SendGiftWrappedDmCommand` body itself reads the
+    // signer through `ctx.signer_for_seal()` and hands it to
+    // `nmp_nip59::gift_wrap_with_signer`; this test reproduces those
+    // two calls against the same accessor without crossing the D0
+    // crate boundary (nmp-core cannot import nmp-nip17). If the
+    // accessor returns the bunker-adapted signer here, the DM command
+    // body — already covered for the local-keys happy path in
+    // `nmp_nip17::dm_send::tests::happy_path_publishes_two_envelopes\
+    // _pinned_to_kind10050_relays` — automatically routes through the
+    // bunker too.
+    use crate::substrate::ProtocolCommandContext;
+    use nmp_nip59::{gift_wrap_with_signer, GIFT_WRAP_TOTAL_TIMEOUT};
+    use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
+    use nostr::{EventBuilder, Kind};
+
+    let (mut id, mut kernel) = fresh();
+    let (handle, sign_count) = stub_signer();
+    let sender_hex = handle.pubkey_hex();
+    add_remote_signer(&mut id, &mut kernel, handle, false);
+
+    // The dispatch arm installs `|| identity.active_signer_for_seal()`
+    // as the `signer_for_seal` closure. Reproduce it inline so the
+    // assertion checks the same wiring without spinning up the actor
+    // loop (the dispatch arm itself is exercised by the
+    // `publish_unsigned_event_with_active_remote_uses_stub_signer`
+    // test above; this test pins the new accessor's contract).
+    let identity_ref = &id;
+    let signer_fn = || identity_ref.active_signer_for_seal();
+    let send = |_: crate::actor::ActorCommand| {};
+    let ctx = ProtocolCommandContext::with_send_only(&send)
+        .with_signer_for_seal(&signer_fn);
+
+    let signer = ctx
+        .signer_for_seal()
+        .expect("ctx.signer_for_seal() resolves the active bunker signer");
+
+    // The signer's pubkey must equal the bunker's pubkey (NOT a local
+    // key) — proves the `RemoteSignerForSeal` adapter is the one
+    // wired through, not a phantom local-keys branch.
+    assert_eq!(
+        signer.pubkey().to_hex(),
+        sender_hex,
+        "signer pubkey must match the bunker's user pubkey"
+    );
+
+    // Drive a real gift-wrap through the resolved signer — same call
+    // pattern `SendGiftWrappedDmCommand` uses. The kind:13 seal step
+    // routes through `RemoteSignerHandle::sign` on the stub, bumping
+    // `sign_count`.
+    let recipient = nostr::Keys::generate().public_key();
+    let rumor = EventBuilder::new(Kind::from_u16(14), "hello from a bunker")
+        .tag(nostr::Tag::public_key(recipient))
+        .build(signer.pubkey());
+
+    let op = gift_wrap_with_signer(
+        &signer,
+        &recipient,
+        &rumor,
+        nostr::Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK),
+    );
+    let envelope = op
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("bunker gift-wrap completes within total budget");
+
+    assert_eq!(envelope.kind, Kind::GiftWrap, "kind:1059 envelope");
+    assert_ne!(
+        envelope.pubkey,
+        signer.pubkey(),
+        "NIP-59 unlinkability — outer pubkey must be ephemeral"
+    );
+    assert_eq!(
+        sign_count.load(Ordering::Relaxed),
+        1,
+        "the bunker signed the kind:13 seal exactly once"
+    );
 }
 
 #[test]

@@ -1165,6 +1165,15 @@ pub(super) fn dispatch_command(
                     k.record_action_failure(cid, err);
                 }
             };
+            // V-08 — `signer_for_seal()` resolves the active account's
+            // `SignerForSeal` (local or remote-signer adapter, handled
+            // uniformly by `IdentityRuntime::active_signer_for_seal`).
+            // The NIP-17 DM send path consumes this through
+            // `ProtocolCommandContext::signer_for_seal()` so both
+            // local-nsec AND NIP-46 bunker accounts can seal kind:13
+            // rumors. Closes the V-39 bunker DM regression.
+            let signer_for_seal =
+                || identity_cell.borrow().active_signer_for_seal();
             // A second sender clone for the worker-thread surface. Cloning
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
             // dispatch arm always populates this slot in production.
@@ -1181,6 +1190,7 @@ pub(super) fn dispatch_command(
                 &*dm_lookup,
                 &toast,
                 &record_failure,
+                &signer_for_seal,
             );
             if let Err(e) = cmd.run(&mut pctx) {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");

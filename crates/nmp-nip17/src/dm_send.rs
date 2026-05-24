@@ -18,19 +18,31 @@
 //! * Failure paths set `last_error_toast` AND record a `Failed` terminal
 //!   action stage so the host spinner clears.
 //!
-//! # Local-keys MVP
+//! # Signer resolution (V-08 — bunker DM send)
 //!
 //! `nmp_nip59::gift_wrap_with_signer` accepts an `Arc<dyn SignerForSeal>`.
-//! `nostr::Keys` implements the trait via the blanket impl (every
-//! `SignerOp::Ready`), so the local-keys path resolves synchronously on
-//! the actor thread. Remote-signer (NIP-46 / bunker) gift-wrap support is
-//! ADR-0026 Phase 2 — the legacy code routed through
-//! `IdentityRuntime::active_signer_for_seal`, which the protocol-command
-//! context does not yet expose. For now this command fails closed with a
-//! "no active local account" toast when `ctx.nip17_local_keys()` is
-//! `None`. The bunker DM path is restored in a follow-up by widening the
-//! context with a `signer_for_seal()` accessor; the wire semantics for
-//! the local-keys path are unchanged.
+//! The signer for the active account is resolved through
+//! `ProtocolCommandContext::signer_for_seal()`, which transparently
+//! handles BOTH:
+//!
+//! * **Local-nsec accounts** — the blanket impl on `nostr::Keys` makes
+//!   every chain step `Ready`, so the seal runs synchronously on the
+//!   actor thread.
+//! * **NIP-46 bunker accounts** — `RemoteSignerForSeal` adapts the
+//!   active `RemoteSignerHandle`; `gift_wrap_with_signer` spawns a
+//!   per-invocation driver thread so the actor itself never blocks on
+//!   bunker RPCs (the actor waits below via
+//!   `op.wait(GIFT_WRAP_TOTAL_TIMEOUT)`; the 12s budget covers both the
+//!   `nip44_encrypt` + `sign_seal` round-trips plus in-process wrap
+//!   assembly).
+//!
+//! `None` from `signer_for_seal()` means either no active account OR a
+//! remote signer that reported a malformed pubkey; both surface a D6
+//! toast and a `Failed` terminal stage so the host spinner clears.
+//!
+//! V-39 shipped a local-only MVP that read `ctx.nip17_local_keys()` and
+//! refused bunker accounts; V-08 closes that regression by routing
+//! through the substrate-generic `SignerForSeal` seam.
 //!
 //! # D doctrine
 //!
@@ -55,7 +67,6 @@ use nmp_core::ActorCommand;
 use nostr::{
     nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK, EventBuilder, Kind, PublicKey, Tag, Timestamp,
 };
-use std::sync::Arc;
 
 /// NIP-17 § 2 gift-wrap publish — the [`ProtocolCommand`] equivalent of
 /// the legacy `ActorCommand::SendGiftWrappedDm` variant.
@@ -98,24 +109,22 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
             correlation_id,
         } = *self;
 
-        // 1. Resolve a `SignerForSeal` for the active local account.
-        // ADR-0026: the `nostr::Keys` blanket impl on `SignerForSeal`
-        // satisfies the trait synchronously (every `SignerOp::Ready`).
-        // Remote-signer accounts return `None` here today; see the
-        // module rustdoc for the bunker-DM follow-up plan.
-        let Some(keys_ref) = ctx.nip17_local_keys() else {
-            let reason =
-                "cannot send DM: no active local account (NIP-46 bunker DM \
-                 send is a follow-up)"
-                    .to_string();
+        // 1. Resolve a `SignerForSeal` for the active account. V-08:
+        // `ProtocolCommandContext::signer_for_seal()` covers BOTH local
+        // (nsec → blanket impl on `nostr::Keys`, every `SignerOp::Ready`)
+        // AND remote-signer (NIP-46 bunker → `RemoteSignerForSeal`
+        // adapter, `nip44_encrypt` + `sign_seal` are `Pending` so
+        // `gift_wrap_with_signer` runs the chain on a per-invocation
+        // driver thread). `None` only when there is no active account
+        // OR a remote signer reported a malformed pubkey.
+        let Some(signer) = ctx.signer_for_seal() else {
+            let reason = "cannot send DM: no active account".to_string();
             ctx.set_last_error_toast(Some(reason.clone()));
             if let Some(id) = correlation_id.clone() {
                 ctx.record_action_failure(id, reason);
             }
             return Ok(());
         };
-        let keys = keys_ref.clone();
-        let signer: Arc<dyn nmp_nip59::SignerForSeal> = Arc::new(keys);
 
         // 2. D7: re-stamp the rumor timestamp from the kernel clock. The
         // host sends `created_at: 0` as the sentinel; the kernel owns

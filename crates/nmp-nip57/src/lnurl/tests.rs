@@ -53,6 +53,8 @@ fn ctx_with<'a>(
         nmp_core::substrate::EmptyDmInboxRelayLookup;
     static NOOP_TOAST: fn(Option<String>) = |_| {};
     static NOOP_FAIL: fn(String, String) = |_, _| {};
+    // V-08 trailing-arg stub — LNURL fetcher never reads signer_for_seal.
+    static NOOP_SIGNER_FOR_SEAL: fn() -> Option<std::sync::Arc<dyn nmp_core::substrate::SignerForSeal>> = || None;
     ProtocolCommandContext::new(
         send,
         tx,
@@ -65,6 +67,7 @@ fn ctx_with<'a>(
         &EMPTY_DM,
         &NOOP_TOAST,
         &NOOP_FAIL,
+        &NOOP_SIGNER_FOR_SEAL,
     )
 }
 
