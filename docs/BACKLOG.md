@@ -415,15 +415,27 @@ relay. **Fixed:** PR #426 adds the toast in `apply_engine_completions` when `sta
 "Developer" section accessible to every user — no debug build flag. **Fixed:** PR #425 wraps the
 Developer section in `#if DEBUG` and deletes the stale Roadmap DisclosureGroup.
 
-### V-20 · `dmRelativeTime` in Swift — thin-shell doctrine violation [MEDIUM]
+### V-20 · `dmRelativeTime` in Swift — thin-shell doctrine violation [DONE — PR #428]
 
-**Verified:** `ios/Chirp/Chirp/Features/DmListView.swift:284` defines
+**Verified:** `ios/Chirp/Chirp/Features/DmListView.swift:284` defined
 `func dmRelativeTime(_ unixSecs: UInt64) -> String`. `DmConversationView.swift:161` and
-`DmListView.swift:127` both call it. The thin-shell rule (aim.md §2) says relative-time
-formatting is Rust-owned; `DiagnosticsView.swift` itself cites this rule. DM messages bypass it.
+`DmListView.swift:127` both called it. The thin-shell rule (aim.md §2) says relative-time
+formatting is Rust-owned; `DiagnosticsView.swift` itself cites this rule. DM messages bypassed
+it. **Fixed:** PR #428 added `created_at_display: String` to `DmMessage` in
+`crates/nmp-nip17/src/inbox.rs` (computed at every snapshot tick via `display::format_ago_secs`)
+and deleted `dmRelativeTime` from Swift.
 
-**Correct fix:** add `createdAtDisplay: String` to `DmMessage` in
-`crates/nmp-nip17/src/inbox.rs` (Rust-side formatting), delete `dmRelativeTime` from Swift.
+### V-22 · `GroupChatView.relativeTime` in Swift — thin-shell doctrine violation [DONE]
+
+**Verified:** `ios/Chirp/Chirp/Features/GroupChatView.swift:257` defined
+`func relativeTime(_ unixSecs: UInt64) -> String` using `RelativeDateTimeFormatter`. The kind:9
+NIP-29 group-chat row at line 213 called it for every message timestamp — the same thin-shell
+violation V-20 fixed for DMs. **Fixed:** added `created_at_display: String` to
+`GroupChatMessage` in `crates/nmp-nip29/src/projection/group_chat.rs`, computed at every
+snapshot tick via a `format_ago_secs` helper that mirrors `nmp_nip17::display::format_ago_secs`
+byte-for-byte (deliberate micro-duplication — a NIP crate should not depend on another NIP
+crate just for a trivial bucketed-time formatter). Swift view binds the field directly and the
+`relativeTime` Swift helper is deleted.
 
 ---
 

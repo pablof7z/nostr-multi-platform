@@ -36,14 +36,19 @@ final class GroupChatDecodeTests: XCTestCase {
     /// kernel renames the key, update `CodingKeys.groupChat`'s raw value to
     /// the post-`.convertFromSnakeCase` form of the new key.
     func testGroupChatProjectionKeyDecodes() throws {
+        // `created_at_display` is the V-22 thin-shell field — the Rust
+        // projection (re)computes it on every snapshot tick via
+        // `nmp_nip29::projection::group_chat::format_ago_secs` so the host
+        // view binds it directly and never reaches for
+        // `RelativeDateTimeFormatter`.
         let json = """
         {
           "nmp.nip29.group_chat": {
             "messages": [
               { "id": "e1", "pubkey": "ab12", "content": "hello",
-                "created_at": 200, "kind": 9 },
+                "created_at": 200, "created_at_display": "5s ago", "kind": 9 },
               { "id": "e0", "pubkey": "cd34", "content": "earlier",
-                "created_at": 100, "kind": 11 }
+                "created_at": 100, "created_at_display": "2m ago", "kind": 11 }
             ]
           }
         }
@@ -60,7 +65,9 @@ final class GroupChatDecodeTests: XCTestCase {
         XCTAssertEqual(chat.messages[0].pubkey, "ab12")
         XCTAssertEqual(chat.messages[0].content, "hello")
         XCTAssertEqual(chat.messages[0].createdAt, 200)
+        XCTAssertEqual(chat.messages[0].createdAtDisplay, "5s ago")
         XCTAssertEqual(chat.messages[0].kind, 9)
+        XCTAssertEqual(chat.messages[1].createdAtDisplay, "2m ago")
         XCTAssertEqual(chat.messages[1].kind, 11)
     }
 
