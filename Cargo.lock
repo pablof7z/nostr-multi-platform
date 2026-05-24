@@ -4054,6 +4054,7 @@ dependencies = [
 name = "nmp-signer-broker"
 version = "0.1.0"
 dependencies = [
+ "mio",
  "nmp-core",
  "nmp-signer-iface",
  "nmp-signers",

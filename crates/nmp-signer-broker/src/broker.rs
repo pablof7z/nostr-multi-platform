@@ -221,9 +221,13 @@ impl BunkerBroker {
             return;
         };
 
-        // Subscribe (REQ).
+        // Subscribe (REQ). Use the dedicated `subscribe()` method so the
+        // relay client remembers the frame and replays it after every
+        // reconnect — V-14. A plain `send()` would be lost the moment the
+        // socket flaps, leaving the broker with a connected transport that
+        // delivers no events.
         let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
-        if let Err(e) = relay.send(req_frame) {
+        if let Err(e) = relay.subscribe(req_frame) {
             self.emit_progress("failed", Some(&format!("subscribe: {e}")));
             return;
         }

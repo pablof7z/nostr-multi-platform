@@ -24,6 +24,12 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# mio: OS event loop (epoll/kqueue) for non-blocking I/O. Used by
+# `relay_client::run_worker` so it can block on socket readiness OR control-
+# channel wakeups without polling (V-13 / D8: "no polling — ever").
+# Mirrors the dep posture of `nmp-core`'s `relay_worker`; V-13 Stage 1
+# (extracting a shared `nmp-relay-conn` crate) will eventually dedupe.
+mio = { version = "1", features = ["os-ext", "os-poll"] }
 
 [dev-dependencies]
 # Test-only: a synthetic relay accept loop on 127.0.0.1 for integration tests.
