@@ -819,3 +819,85 @@ fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
     assert_eq!(item.nav_target_id, REPOST_ID, "malformed JSON: id fallback");
     assert_eq!(item.repost_inner_content, "", "malformed JSON: empty content");
 }
+
+/// V-26 — `Kernel::accounts_enriched` must recompute `avatar_initials` whenever
+/// kind:0 metadata replaces the placeholder `display_name`. Otherwise the
+/// avatar tile keeps showing the npub-body fallback initials (e.g. `"AB"`
+/// from the bech32 body) while the surrounding row text reads `"Alice Smith"`.
+/// The Swift extension this V-26 work replaced computed initials at view time
+/// so it was implicitly reactive; the Rust-owned field must match that
+/// behaviour or the iOS toolbar avatar visibly drifts from the display name.
+#[test]
+fn v26_accounts_enriched_recomputes_avatar_initials_when_kind0_lands() {
+    use ::nostr::{PublicKey, ToBech32};
+
+    // Picks a hex pubkey whose npub bech32 body starts with two clearly
+    // different characters than the kind:0 display name's initials so a
+    // failure stands out.
+    let pubkey_hex = JB55_PUBKEY.to_string();
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Seed the accounts projection with a placeholder summary: empty display
+    // name forces `account_avatar_initials` to take the npub-body fallback,
+    // mirroring the cold-start state of `actor::commands::identity`'s
+    // `sync_accounts_from_identity` before kind:0 arrives.
+    let npub = PublicKey::from_hex(&pubkey_hex)
+        .expect("valid hex pubkey")
+        .to_bech32()
+        .expect("npub encode");
+    let placeholder_initials = identity_state::account_avatar_initials("", &npub);
+    let placeholder_color = identity_state::account_avatar_color_hex(&pubkey_hex);
+    let placeholder = identity_state::AccountSummary {
+        id: pubkey_hex.clone(),
+        npub: npub.clone(),
+        npub_short: identity_state::account_npub_short(&npub),
+        display_name: String::new(),
+        signer_kind: "local".to_string(),
+        status: "active".to_string(),
+        signer_label: "nsec".to_string(),
+        signer_is_remote: false,
+        is_active: true,
+        picture_url: None,
+        avatar_initials: placeholder_initials.clone(),
+        avatar_color_hex: placeholder_color.clone(),
+    };
+    kernel.set_accounts(vec![placeholder], Some(pubkey_hex.clone()));
+
+    // Pre-condition: with no kind:0 cached, `accounts_enriched` returns the
+    // placeholder verbatim — initials still derived from the npub body.
+    let before = kernel.accounts_enriched();
+    assert_eq!(before.len(), 1);
+    assert_eq!(
+        before[0].avatar_initials, placeholder_initials,
+        "no kind:0 → initials must stay on the npub-body fallback"
+    );
+
+    // Now land a kind:0 with a real display name. The enrichment branch in
+    // `accounts_enriched` overwrites `display_name`; V-26 contract: it must
+    // also recompute `avatar_initials` so the avatar tracks the new name.
+    kernel.profiles.insert(pubkey_hex.clone(), Profile {
+        event_id: "kind0-event".to_string(),
+        created_at: 2_000,
+        display: "Alice Smith".to_string(),
+        picture_url: Some("https://example.com/pic.png".to_string()),
+        nip05: String::new(),
+        about: String::new(),
+        avatar_initials: "AS".to_string(),
+        avatar_color: avatar_color(&pubkey_hex),
+        lnurl: None,
+    });
+
+    let after = kernel.accounts_enriched();
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].display_name, "Alice Smith");
+    assert_eq!(
+        after[0].avatar_initials, "AS",
+        "V-26: avatar_initials must follow display_name after kind:0 enrichment"
+    );
+    // `avatar_color_hex` is derived from the immutable hex pubkey — it must
+    // NOT change across enrichment (the same author keeps the same tint).
+    assert_eq!(
+        after[0].avatar_color_hex, placeholder_color,
+        "avatar_color_hex is pubkey-derived; kind:0 must not change the tint"
+    );
+}

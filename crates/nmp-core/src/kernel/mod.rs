@@ -206,8 +206,9 @@ use clock::{Clock, SystemClock};
 #[cfg(feature = "native")]
 pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    account_npub_short, new_active_account_slot, AccountSummary, ActiveAccountSlot,
-    PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
+    account_avatar_color_hex, account_avatar_initials, account_npub_short,
+    new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry,
+    RelayAckOutcome, SettingsHubSummary,
 };
 // V6 Stage 1 — Swift codegen pilot. The four projection types below are
 // `pub(crate) struct`s in `types` (widened from `pub(super)` so the

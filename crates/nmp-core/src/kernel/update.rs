@@ -658,6 +658,17 @@ impl Kernel {
                     acc.picture_url = real_picture.map(str::to_owned);
                     if !profile.display.is_empty() {
                         acc.display_name = profile.display.clone();
+                        // V-26 — `avatar_initials` is derived from
+                        // `display_name`; recompute here so the placeholder
+                        // initials (npub-body fallback computed in
+                        // `actor::commands::identity`) flip to the real-name
+                        // initials when kind:0 lands. Otherwise the avatar
+                        // shows e.g. `"AB"` from the bech32 body while the
+                        // row text reads `"Alice Smith"`. `avatar_color_hex`
+                        // is derived from the immutable hex pubkey (`id`)
+                        // and stays valid.
+                        acc.avatar_initials =
+                            super::account_avatar_initials(&acc.display_name, &acc.npub);
                     }
                 }
                 acc
