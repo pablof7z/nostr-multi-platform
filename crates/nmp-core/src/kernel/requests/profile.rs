@@ -245,7 +245,7 @@ impl Kernel {
             None => self.bootstrap_discovery_relays(),
         };
 
-        relays
+        let out: Vec<OutboundMessage> = relays
             .into_iter()
             .map(|relay_url| {
                 let tag_suffix = relay_tag(&relay_url);
@@ -257,7 +257,21 @@ impl Kernel {
                     json!({"kinds":[1],"#t":[tag],"limit":500}),
                 )
             })
-            .collect()
+            .collect();
+        // V-51 phase 5 — observability shadow for the hashtag firehose REQ.
+        // The router-attribution model for a wildcard-author hashtag fanout
+        // matches the active-account-as-recipient lane (T122 / codex R2): we
+        // pass the active account as the single author so the router resolves
+        // it to the user's own NIP-65 read set. Skips when no active account
+        // — the substrate router has no anchoring author to attribute against.
+        if let Some(active) = self.active_account.as_ref() {
+            self.observe_subscription_through_router(
+                stable_hash64(("diag-firehose", tag.as_str(), seq)),
+                &[active.as_str()],
+                &[1],
+            );
+        }
+        out
     }
 
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
@@ -310,6 +324,16 @@ impl Kernel {
                 json!({"kinds":[0],"authors": relay_authors,"limit": n}),
             ));
         }
+        // V-51 phase 5 — observability shadow for the batched profile-claim
+        // dispatch. One router call per batch (carrying every author in this
+        // tick's pending set) — the projection records one subscription row
+        // attributed to the union of resolved relays.
+        let author_refs: Vec<&str> = authors.iter().map(String::as_str).collect();
+        self.observe_subscription_through_router(
+            stable_hash64(("profile-batch", seq)),
+            &author_refs,
+            &[0],
+        );
         requests
     }
 
@@ -336,6 +360,15 @@ impl Kernel {
                 json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),
             ));
         }
+        // V-51 phase 5 — observability shadow (see `author_requests` for
+        // contract). The kind:0 discovery fetch above flowed through the
+        // indexer-lane cache helper; the router observation here records the
+        // generic-algorithm decision against the substrate.
+        self.observe_subscription_through_router(
+            stable_hash64(("profile-claim", pubkey.as_str(), seq)),
+            &[pubkey.as_str()],
+            &[0],
+        );
         requests
     }
 
@@ -392,6 +425,19 @@ impl Kernel {
                 json!({"kinds":[1,6],"authors":[pubkey.clone()],"limit":100}),
             ));
         }
+        // V-51 phase 5 — fire the injected `OutboxRouter` for observability.
+        // The author-notes dispatch above already emitted the REQs through
+        // the cache-read helper; this call lets the router's trace observer
+        // (the kernel-owned `RoutingTraceProjection`, or any production
+        // observer threaded through `with_trace_observer`) record the same
+        // routing decision against the substrate algorithm. Behaviour-neutral
+        // — see `mailboxes.rs::observe_subscription_through_router` for the
+        // contract.
+        self.observe_subscription_through_router(
+            stable_hash64(("author-notes", pubkey.as_str())),
+            &[pubkey.as_str()],
+            &[1, 6],
+        );
         requests.append(&mut self.maybe_open_thread_hydration());
         requests
     }

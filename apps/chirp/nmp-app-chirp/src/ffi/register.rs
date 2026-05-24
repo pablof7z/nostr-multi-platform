@@ -5,8 +5,10 @@
 use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
+use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
 use nmp_core::{KernelEventObserver, NmpApp};
 use nmp_coverage_gate::CoverageGate;
+use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache};
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_nip29::group_id::GroupId;
@@ -102,6 +104,34 @@ pub extern "C" fn nmp_app_chirp_register(
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.
     let app_ref = unsafe { &*app };
+
+    // V-51 phase 5 — install the production substrate-routing factory.
+    //
+    // Default `Kernel::new` uses the in-crate `Nip65WriteSetRouter` +
+    // `DefaultInMemoryMailboxCache` (functionally equivalent to the
+    // routing-crate impls for lanes 1+7 but architecturally wrong: routing
+    // is a Layer-2 concern, `nmp-core` is Layer 3). This swap proves the
+    // "competing-router single-line swap" property the V-50 spec calls out
+    // and is the live demonstration that the kernel actually consults the
+    // injected router — V-51 phase 4's chirp-repl validation smoke greps
+    // the resulting projection for `Nip65/Read` lane attribution.
+    //
+    // The closure is captured by the actor's kernel construction step (and
+    // re-invoked by the `Reset` dispatch arm against the rebuilt kernel's
+    // fresh projection) — see `Kernel::set_routing` and
+    // `NmpApp::set_routing_substrate` for the full contract. Threading the
+    // supplied observer through `GenericOutboxRouter::with_trace_observer`
+    // keeps the trace projection populated across the swap so the FFI
+    // snapshot surface (V-51 phase 2) and `chirp-repl routing-trace` (phase
+    // 4) keep working.
+    app_ref.set_routing_substrate(
+        |observer: Arc<dyn RoutingTraceObserver>| -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
+            let router: Arc<dyn OutboxRouter> =
+                Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
+            let cache: Arc<dyn MailboxCache> = Arc::new(InMemoryMailboxCache::new());
+            (router, cache)
+        },
+    );
 
     // D2 — install the coverage-gate hook on the kernel BEFORE any
     // subscription compile can run. The hook is a pure-policy closure that

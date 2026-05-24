@@ -245,6 +245,12 @@ pub(super) struct ActorContext<'a> {
     /// state wipe.
     pub(super) routing_trace_slot:
         &'a Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
+    /// V-51 phase 5 — per-app substrate-routing factory slot. Re-invoked by
+    /// the `Reset` arm against the rebuilt kernel's fresh projection clone
+    /// so a production router (e.g. `nmp_router::GenericOutboxRouter`)
+    /// survives a state wipe — same contract as the ingest dispatcher /
+    /// dm-inbox-lookup / routing-trace slots above.
+    pub(super) routing_substrate_slot: &'a crate::ffi::RoutingSubstrateSlot,
 }
 
 pub(super) fn dispatch_command(
@@ -1031,6 +1037,22 @@ pub(super) fn dispatch_command(
             // routing decisions of the live kernel".
             if let Ok(mut guard) = ctx.routing_trace_slot.lock() {
                 *guard = Some(ctx.kernel.routing_trace());
+            }
+            // V-51 phase 5 — re-apply the per-app substrate-routing factory
+            // against the rebuilt kernel. Same contract as the routing-trace
+            // re-publish above: the previous router/cache pair was discarded
+            // with the old kernel; the factory rebuilds against the fresh
+            // projection so production composition survives a state wipe.
+            if let Some(factory) = ctx
+                .routing_substrate_slot
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(Arc::clone))
+            {
+                let observer: Arc<dyn crate::substrate::RoutingTraceObserver> =
+                    ctx.kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
+                let (router, cache) = factory(observer);
+                ctx.kernel.set_routing(router, cache);
             }
             *ctx.startup_sent = false;
             if *ctx.running {

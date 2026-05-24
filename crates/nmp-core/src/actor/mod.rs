@@ -800,6 +800,10 @@ pub fn run_actor(
         // routing-trace slot is a private throwaway (the actor still
         // publishes its kernel's projection into it, but nothing reads it).
         Arc::new(Mutex::new(None)),
+        // V-51 phase 5 — no `NmpApp` here, so the routing-substrate factory
+        // slot is a private throwaway. The kernel keeps its in-crate
+        // `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults.
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -854,6 +858,8 @@ pub fn run_actor_with_lifecycle_observer(
         Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
         // V-51 phase 4 — same private-throwaway pattern.
+        Arc::new(Mutex::new(None)),
+        // V-51 phase 5 — same private-throwaway pattern (no factory installed).
         Arc::new(Mutex::new(None)),
     );
 }
@@ -955,6 +961,14 @@ pub fn run_actor_with_observers(
     // writer, publishing `kernel.routing_trace()` into the slot right after
     // kernel construction (and re-publishing on `Reset`).
     routing_trace_slot: Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
+    // V-51 phase 5 — per-app substrate-routing factory slot. The `NmpApp`
+    // owns the writer side (`NmpApp::set_routing_substrate`); this actor
+    // thread reads the current factory after kernel construction (and on
+    // `Reset`) and applies the produced `(router, cache)` via
+    // `Kernel::set_routing`, threading the kernel's fresh trace projection
+    // through as the `RoutingTraceObserver`. `None` (the default and the
+    // production test state) leaves the kernel's in-crate defaults.
+    routing_substrate_slot: crate::ffi::RoutingSubstrateSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1000,6 +1014,23 @@ pub fn run_actor_with_observers(
     // will see `None`, which is the cold-start state.
     if let Ok(mut guard) = routing_trace_slot.lock() {
         *guard = Some(kernel.routing_trace());
+    }
+    // V-51 phase 5 — apply the per-app routing-substrate factory (if any)
+    // BEFORE any kind:10002 is ingested. The factory receives the kernel's
+    // trace projection clone as the observer so the production router
+    // (e.g. `nmp_router::GenericOutboxRouter`) writes into the same
+    // projection the FFI snapshot surface and `chirp-repl routing-trace`
+    // read from. D6: a poisoned factory slot is a silent no-op (the
+    // kernel keeps its in-crate defaults).
+    if let Some(factory) = routing_substrate_slot
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(Arc::clone))
+    {
+        let observer: Arc<dyn crate::substrate::RoutingTraceObserver> =
+            kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
+        let (router, cache) = factory(observer);
+        kernel.set_routing(router, cache);
     }
     // V-40 — bind the shared `EventIngestDispatcher` slot + the
     // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
@@ -1194,6 +1225,7 @@ pub fn run_actor_with_observers(
                         ingest_dispatcher_slot: &ingest_dispatcher_slot,
                         dm_inbox_relays_slot: &dm_inbox_relays_slot,
                         routing_trace_slot: &routing_trace_slot,
+                        routing_substrate_slot: &routing_substrate_slot,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
