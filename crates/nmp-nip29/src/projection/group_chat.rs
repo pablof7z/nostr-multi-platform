@@ -55,7 +55,7 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, short_hex, short_npub, to_npub};
+use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, short_npub, to_npub};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
@@ -623,27 +623,9 @@ mod tests {
     // ── V-25: author display strings ──────────────────────────────────────
     //
     // Pubkey-derived display strings live in Rust now — the iOS view binds
-    // the three fields directly and the `shortPubkey` / `initials` helpers
-    // plus the `String(prefix(6))` slice are deleted. These tests pin the
-    // exact byte values so an algorithm drift here cannot silently change
-    // what every group-chat row renders.
-
-    #[test]
-    fn short_hex_long_input_is_first_eight_ellipsis_last_eight() {
-        let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        assert_eq!(short_hex(hex), "abcdef01…23456789");
-    }
-
-    #[test]
-    fn short_hex_short_input_is_unchanged() {
-        assert_eq!(short_hex("ab12"), "ab12");
-        assert_eq!(short_hex(""), "");
-    }
-
-    #[test]
-    fn short_hex_boundary_sixteen_chars_is_abbreviated() {
-        assert_eq!(short_hex("0123456789abcdef"), "01234567…89abcdef");
-    }
+    // the three fields directly and Swift-side helpers are deleted.
+    // `author_display` uses `short_npub` (V-33); the canonical algorithm
+    // coverage lives in `nmp_core::display::tests`.
 
     // The pinned cross-surface djb2 vector lives in `nmp_core::display::tests`
     // (`avatar_color_hex_matches_pinned_djb2_vector`); the
