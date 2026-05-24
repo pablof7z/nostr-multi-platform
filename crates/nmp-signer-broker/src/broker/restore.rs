@@ -125,8 +125,10 @@ impl BunkerBroker {
             return None;
         };
 
+        // V-14: use `subscribe()` so the REQ is replayed after any
+        // transparent reconnect; `send()` would be lost on the first flap.
         let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
-        if let Err(e) = relay.send(req_frame) {
+        if let Err(e) = relay.subscribe(req_frame) {
             self.emit_progress("failed", Some(&format!("subscribe: {e}")));
             return None;
         }

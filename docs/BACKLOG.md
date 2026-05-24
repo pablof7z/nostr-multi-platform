@@ -321,8 +321,20 @@ and the broker then depend on the same shared primitive.
 **Staged fix plan:**
 - Stage 1: Extract `nmp-relay-conn` crate (or `relay_protocol` extension) with a
   readiness-driven tungstenite socket loop — no polling, no `set_read_timeout`.
-- Stage 2: Rewrite `TungsteniteRelayClient::run_worker` to use it; delete the
-  polling loop.
+  Stage 1 MUST also bound the connect handshake (`tungstenite::connect` is
+  blocking with the OS-level TCP timeout, ~60 s; this leaks into both
+  `nmp-core::relay_worker` and `nmp-signer-broker::relay_client` as a
+  cancel-during-connect stall). Pattern: resolve URI host/port, call
+  `TcpStream::connect_timeout`, install non-blocking + readiness-driven TLS
+  handshake on the resulting socket.
+- Stage 2: Rewrite `TungsteniteRelayClient::run_worker` (PR #431 — DONE for
+  the readiness loop; still inlines its own boilerplate) to depend on the
+  shared crate; delete the duplicated mio/readiness code in `relay_client.rs`.
+  PR #431 already drains Shutdown between connect attempts as a partial
+  mitigation for the residual stall.
+- **Status (2026-05-24):** PR #431 closes the polling-loop half (V-13) and the
+  auto-reconnect half (V-14a) with a self-contained mio readiness loop;
+  Stage 1 dedupe and connect-timeout remain.
 - **Deadline:** before v1-A (any user sign-in via bunker hits this path).
 
 ### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
@@ -351,7 +363,12 @@ surface for "bunker connection lost" exists because the broker has no state for 
 - Stage 1: Add `BunkerConnectionState` enum (Connected / Connecting /
   TransportLost) to broker; expose it via the broker's status callback.
 - Stage 2: Implement the reconnect loop (can share V-13 Stage 1 primitive once
-  that lands).
+  that lands). **Status (2026-05-24):** PR #431 implements an autonomous
+  reconnect loop with jittered exponential backoff inside
+  `TungsteniteRelayClient` (V-14 step a) and adds subscription replay so the
+  REQ frame survives a flap. The UI-visible `BunkerConnectionState` projection
+  (step b) is NOT yet wired — the host shell still gets only `"ready"` /
+  `"failed"` from the handshake stage.
 - **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
   NIP-46 as a v1 sign-in method.
 
