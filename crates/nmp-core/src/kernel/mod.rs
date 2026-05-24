@@ -50,11 +50,12 @@ mod ingest;
 #[cfg(test)]
 mod ingest_tests;
 mod lifecycle;
+mod lifecycle_drain;
 mod local_publish_intent;
 #[cfg(test)]
 mod local_publish_intent_tests;
+mod mailboxes;
 mod nostr;
-mod outbox;
 #[cfg(test)]
 mod outbox_tests;
 #[cfg(test)]
@@ -276,7 +277,10 @@ pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
 // `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
-use types::{StoredEvent, Profile, TimelineItem, AuthorRelayList, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
+use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
+use crate::substrate::{
+    DefaultInMemoryMailboxCache, MailboxCache, Nip65WriteSetRouter, OutboxRouter, ParsedRelayList,
+};
 use crate::util::sort_dedup;
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
@@ -375,7 +379,39 @@ pub(crate) struct Kernel {
     diagnostic_firehose: DiagnosticFirehoseState,
     deferred_outbound: VecDeque<OutboundMessage>,
     seed_contacts: HashMap<String, Vec<String>>,
-    author_relay_lists: HashMap<String, AuthorRelayList>,
+    /// Substrate NIP-65 (kind:10002) cache — step 3 of
+    /// `docs/architecture/crate-boundaries.md` (V-50). Replaces the
+    /// pre-step-3 `HashMap<String, AuthorRelayList>` so the kernel and
+    /// the injected [`OutboxRouter`] read from one source of truth.
+    /// Default: `nmp_core::substrate::DefaultInMemoryMailboxCache`.
+    /// Production composition (apps that depend on `nmp-router`) is
+    /// expected to inject `nmp_router::InMemoryMailboxCache` via
+    /// [`Kernel::with_routing`].
+    ///
+    /// The kind:10002 ingest path (`ingest::relay_list::ingest_relay_list`)
+    /// is the single writer of this cache. Helpers
+    /// `author_write_relays`, `author_indexer_relays`,
+    /// `recipient_read_relays`, and the planner-side adapter
+    /// `KernelMailboxes` all read through this handle.
+    mailbox_cache: Arc<dyn MailboxCache>,
+    /// Substrate outbox router — step 3 of
+    /// `docs/architecture/crate-boundaries.md` §3.2. The kernel holds
+    /// this as `Arc<dyn OutboxRouter>` (per the spec) so a competing
+    /// routing algorithm is a single-line swap at composition time.
+    /// Default: `nmp_core::substrate::Nip65WriteSetRouter` (NIP-65
+    /// write set on publish, read set on subscribe, AppRelay fallback,
+    /// blocked-relay post-filter). Production composition is expected
+    /// to inject `nmp_router::GenericOutboxRouter` via
+    /// [`Kernel::with_routing`].
+    ///
+    /// Wired but not yet consulted from every code path — kernel
+    /// helpers `author_write_relays` / `recipient_read_relays` / etc.
+    /// are cache-read helpers with bootstrap-fallback policy (they
+    /// return `Vec<String>` with bootstrap seed on miss, not
+    /// `RoutedRelaySet`); they read through `mailbox_cache` directly.
+    /// Follow-on steps wire actual `route_publish` / `route_subscription`
+    /// call sites.
+    outbox_router: Arc<dyn OutboxRouter>,
     /// NIP-17 kind:10050 DM-relay lists, keyed by author pubkey (hex). Each
     /// value is the deduped, canonicalized set of DM-inbox relay URLs the
     /// author declared. Populated by `ingest_dm_relay_list`; read by
@@ -755,6 +791,35 @@ impl Kernel {
         Self::with_optional_publish_store_and_path(visible_limit, None, storage_path)
     }
 
+    /// Inject a production routing pair (substrate
+    /// [`OutboxRouter`] + [`MailboxCache`] impls).
+    ///
+    /// Step 3 of the crate-boundary migration
+    /// (`docs/architecture/crate-boundaries.md` §3) wires
+    /// `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>` onto the
+    /// kernel. Production composition (apps that depend on
+    /// `nmp-router`) calls this after `Kernel::new` /
+    /// `Kernel::with_storage_path` to swap the kernel-internal
+    /// `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults
+    /// for `nmp_router::GenericOutboxRouter` +
+    /// `nmp_router::InMemoryMailboxCache` (the architectural homes for
+    /// the production impls). The kernel itself cannot depend on
+    /// `nmp-router` (Layer 3 → Layer 2 would invert the dependency
+    /// arrow), so injection is mandatory for the production swap.
+    ///
+    /// MUST be called BEFORE any kind:10002 event is ingested — the
+    /// caches are independent stores, not a write-through pair, so a
+    /// swap after ingest would lose the cached entries.
+    #[allow(dead_code)]
+    pub(crate) fn set_routing(
+        &mut self,
+        router: Arc<dyn OutboxRouter>,
+        cache: Arc<dyn MailboxCache>,
+    ) {
+        self.outbox_router = router;
+        self.mailbox_cache = cache;
+    }
+
     /// Construct a Kernel with an externally-supplied publish store. Used by
     /// integration tests that need two kernel instances to share one store
     /// (proving `PublishEngine::resume_from_store` survives a "restart"). The
@@ -883,7 +948,8 @@ impl Kernel {
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             seed_contacts: HashMap::new(),
-            author_relay_lists: HashMap::new(),
+            mailbox_cache: Arc::new(DefaultInMemoryMailboxCache::new()),
+            outbox_router: Arc::new(Nip65WriteSetRouter::new()),
             dm_relay_lists: HashMap::new(),
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
@@ -1382,16 +1448,88 @@ impl Kernel {
         created_at: u64,
         tags: Vec<Vec<String>>,
     ) {
-        let relay_list = parse_relay_list(&event_id, created_at, &tags);
-        let empty = relay_list.read_relays.is_empty()
-            && relay_list.write_relays.is_empty()
-            && relay_list.both_relays.is_empty();
+        let parsed = parse_relay_list_to_substrate(&event_id, created_at, &tags);
+        let empty = parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
         if empty {
-            self.author_relay_lists.remove(&pubkey);
+            self.mailbox_cache.remove(&pubkey);
         } else {
-            self.author_relay_lists.insert(pubkey.clone(), relay_list);
+            self.mailbox_cache.upsert(pubkey.clone(), parsed);
         }
         self.lifecycle
             .enqueue_trigger(CompileTrigger::Nip65Arrived { pubkey, created_at });
+    }
+
+    /// Read-only access to the substrate NIP-65 [`MailboxCache`] the
+    /// kernel routes through. The kind:10002 ingest path is the single
+    /// writer; this getter is for kernel-internal helpers (status,
+    /// outbox, planner adapter) and for tests that need to assert
+    /// cache state without using the private field.
+    pub(crate) fn mailbox_cache(&self) -> &dyn MailboxCache {
+        &*self.mailbox_cache
+    }
+
+    /// Test-only seed helper — push a NIP-65 cache entry without going
+    /// through the kind:10002 ingest path. Replaces the pre-step-3
+    /// `kernel.author_relay_lists.insert(...)` pattern dozens of tests
+    /// used. Production code MUST NOT call this — the
+    /// `ingest::relay_list::ingest_relay_list` path is the single writer
+    /// in production (it also fans the `Nip65Arrived` recompile trigger
+    /// the M2 planner consumes; this helper does not, by design — tests
+    /// that need the trigger should ingest a real kind:10002 event).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn seed_mailbox_relay_list(
+        &self,
+        pubkey: &str,
+        read: Vec<String>,
+        write: Vec<String>,
+        both: Vec<String>,
+    ) {
+        self.mailbox_cache.upsert(
+            pubkey.to_string(),
+            ParsedRelayList { read, write, both },
+        );
+    }
+
+    /// Shared handle to the substrate [`MailboxCache`]. Used by the
+    /// planner-side adapter (`KernelMailboxes`) so the planner reads
+    /// the same NIP-65 entries the router does. Test-only because the
+    /// in-tree consumer (`drain_lifecycle_tick`) clones the field
+    /// directly to satisfy the borrow checker; external tests want a
+    /// stable accessor.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn mailbox_cache_arc(&self) -> Arc<dyn MailboxCache> {
+        Arc::clone(&self.mailbox_cache)
+    }
+
+    /// Read-only access to the injected [`OutboxRouter`].
+    #[allow(dead_code)] // Reserved for follow-on wiring of actual routing call sites.
+    pub(crate) fn outbox_router(&self) -> &dyn OutboxRouter {
+        &*self.outbox_router
+    }
+}
+
+/// Adapter — translate the kernel's existing `parse_relay_list`
+/// (which returns the legacy `AuthorRelayList` with `event_id` +
+/// `created_at` supersession metadata) into the substrate
+/// [`ParsedRelayList`] the [`MailboxCache`] trait operates on.
+///
+/// The supersession metadata is dropped here — the store enforces
+/// kind:10002 supersession before `ingest_relay_list` is called
+/// (see the doc comment on `ingest::relay_list::ingest_relay_list`).
+/// The pre-step-3 kernel kept a "belt-and-suspenders" mirror of
+/// the store's logic on the kernel-side cache; step 3 collapses to a
+/// single source of truth (the store) per the planning-discipline rule
+/// (`AGENTS.md`: "single source of truth per fact").
+fn parse_relay_list_to_substrate(
+    event_id: &str,
+    created_at: u64,
+    tags: &[Vec<String>],
+) -> ParsedRelayList {
+    // Reuse the existing parser, then translate fields.
+    let legacy = parse_relay_list(event_id, created_at, tags);
+    ParsedRelayList {
+        read: legacy.read_relays,
+        write: legacy.write_relays,
+        both: legacy.both_relays,
     }
 }

@@ -11,14 +11,13 @@ fn pk(label: &str) -> String {
     format!("{label:0>64}").chars().take(64).collect()
 }
 
-fn read_relay_list(read: &[&str]) -> types::AuthorRelayList {
-    types::AuthorRelayList {
-        event_id: "nip65".to_string(),
-        created_at: 1,
-        read_relays: read.iter().map(|s| s.to_string()).collect(),
-        write_relays: Vec::new(),
-        both_relays: Vec::new(),
-    }
+fn seed_read_relay_list(kernel: &Kernel, account: &str, read: &[&str]) {
+    kernel.seed_mailbox_relay_list(
+        account,
+        read.iter().map(|s| s.to_string()).collect(),
+        Vec::new(),
+        Vec::new(),
+    );
 }
 
 fn active_giftwrap_interest(pubkey: &str) -> LogicalInterest {
@@ -42,10 +41,7 @@ fn active_giftwrap_interest(pubkey: &str) -> LogicalInterest {
 fn active_giftwrap_inbox_uses_kind10050_relays_not_nip65_read_relays() {
     let account = pk("account");
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.author_relay_lists.insert(
-        account.clone(),
-        read_relay_list(&["wss://public-read.example"]),
-    );
+    seed_read_relay_list(&kernel, &account, &["wss://public-read.example"]);
     kernel.seed_kind10050_for_test(&account, &["wss://dm-only.example/"]);
 
     kernel

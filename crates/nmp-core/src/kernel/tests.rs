@@ -50,18 +50,14 @@ fn open_author_with_cached_nip65_routes_notes_to_resolved_write_relays() {
     // notes REQ MUST target their resolved write relays (NOT the bootstrap
     // constants). This is the D3 enforcement bullet at the per-author scope.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.author_relay_lists.insert(
-        FIATJAF_PUBKEY.to_string(),
-        crate::kernel::types::AuthorRelayList {
-            event_id: "x".to_string(),
-            created_at: 1,
-            read_relays: vec![],
-            write_relays: vec![
-                "wss://fiatjaf.write".to_string(),
-                "wss://fiatjaf.archive".to_string(),
-            ],
-            both_relays: vec![],
-        },
+    kernel.seed_mailbox_relay_list(
+        FIATJAF_PUBKEY,
+        vec![],
+        vec![
+            "wss://fiatjaf.write".to_string(),
+            "wss://fiatjaf.archive".to_string(),
+        ],
+        vec![],
     );
 
     let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
@@ -458,14 +454,15 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         "v2 must be freshly inserted, got {o2:?}"
     );
     let list_after_v2 = kernel
-        .author_relay_lists
-        .get(PK_A)
-        .cloned()
+        .mailbox_cache()
+        .snapshot(&PK_A.to_string())
         .expect("relay list must be populated after v2");
-    assert_eq!(
-        list_after_v2.created_at, 2000,
-        "cache should hold v2 timestamp"
-    );
+    // Cache holds v2's relay URLs (the store doesn't surface created_at
+    // through the substrate cache — the store itself enforces
+    // supersession; the cache is just the projection of the winning
+    // event's tags).
+    assert_eq!(list_after_v2.read, vec!["wss://v2-read.example/"]);
+    assert_eq!(list_after_v2.write, vec!["wss://v2-write.example/"]);
 
     // v1 — older event with one relay.
     let tags_v1: Vec<Vec<String>> =
@@ -478,16 +475,19 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         "stale v1 must be Superseded by the store, got {o1:?}"
     );
 
-    // Cache must still reflect v2's timestamp.
+    // Cache must still reflect v2's relays (the store rejected v1 so
+    // `ingest_relay_list` was never called for v1 — the cache was not
+    // touched).
     let list_after_v1 = kernel
-        .author_relay_lists
-        .get(PK_A)
-        .cloned()
+        .mailbox_cache()
+        .snapshot(&PK_A.to_string())
         .expect("relay list must still be populated");
     assert_eq!(
-        list_after_v1.created_at, 2000,
+        list_after_v1.read,
+        vec!["wss://v2-read.example/"],
         "D4 violation: stale v1 overwrote v2 relay list cache"
     );
+    assert_eq!(list_after_v1.write, vec!["wss://v2-write.example/"]);
 }
 
 // ─── C13 kernel companion: D1 placeholder contract + in-place refinement ─────
@@ -682,7 +682,7 @@ fn kind10002_empty_relay_list_clears_cache_entry() {
         "v1 must be freshly inserted, got {o1:?}"
     );
     assert!(
-        kernel.author_relay_lists.contains_key(PK_A),
+        kernel.mailbox_cache().known(&PK_A.to_string()),
         "cache must be populated after v1"
     );
 
@@ -700,7 +700,7 @@ fn kind10002_empty_relay_list_clears_cache_entry() {
 
     // Cache entry must be removed — empty list clears the stale relay metadata.
     assert!(
-        !kernel.author_relay_lists.contains_key(PK_A),
+        !kernel.mailbox_cache().known(&PK_A.to_string()),
         "empty kind:10002 must remove stale cache entry"
     );
 }

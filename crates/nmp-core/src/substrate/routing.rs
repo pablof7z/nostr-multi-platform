@@ -312,6 +312,25 @@ pub trait MailboxCache: Send + Sync {
         self.read_relays(author).is_some() || self.write_relays(author).is_some()
     }
 
+    /// Return the full `ParsedRelayList` for `author` (read/write/both
+    /// separate). The planner-side adapter (`kernel/mailboxes.rs`) needs
+    /// `both` as a distinct field — `read_relays` / `write_relays` would
+    /// each merge `both` in, losing the distinction. The router itself
+    /// uses `read_relays` / `write_relays` (merged sets are the right
+    /// thing for routing); the planner's per-relay author partition
+    /// needs the raw shape.
+    fn snapshot(&self, author: &Pubkey) -> Option<ParsedRelayList>;
+
+    /// Snapshot every known author for plan-id stability + diagnostics.
+    /// Order is implementation-defined. Callers that need a deterministic
+    /// order must sort.
+    fn snapshot_all(&self) -> Vec<(Pubkey, ParsedRelayList)>;
+
+    /// Remove the entry for `author`. Called by the kind:10002 ingest
+    /// path when an author publishes an empty kind:10002 (the canonical
+    /// "I cleared my NIP-65 metadata" signal — `ingest_relay_list`).
+    fn remove(&self, author: &Pubkey);
+
     /// Single writer — only called by `nmp-router`'s kind:10002 ingest path.
     /// The trait makes the contract structural rather than convention.
     fn upsert(&self, author: Pubkey, list: ParsedRelayList);
@@ -343,6 +362,20 @@ mod tests {
                 .unwrap()
                 .get(author)
                 .map(ParsedRelayList::write_set)
+        }
+        fn snapshot(&self, author: &Pubkey) -> Option<ParsedRelayList> {
+            self.inner.lock().unwrap().get(author).cloned()
+        }
+        fn snapshot_all(&self) -> Vec<(Pubkey, ParsedRelayList)> {
+            self.inner
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        }
+        fn remove(&self, author: &Pubkey) {
+            self.inner.lock().unwrap().remove(author);
         }
         fn upsert(&self, author: Pubkey, list: ParsedRelayList) {
             self.inner.lock().unwrap().insert(author, list);

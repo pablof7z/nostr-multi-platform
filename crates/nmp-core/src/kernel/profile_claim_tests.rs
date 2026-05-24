@@ -131,15 +131,11 @@ fn known_nip65_profile_claims_use_declared_write_relays() {
     let alice = hex64("alice");
     let alice_relay = "wss://alice-write.example/";
 
-    kernel.author_relay_lists.insert(
-        alice.clone(),
-        crate::kernel::types::AuthorRelayList {
-            event_id: "x".to_string(),
-            created_at: 1,
-            write_relays: vec![alice_relay.to_string()],
-            read_relays: vec![],
-            both_relays: vec![],
-        },
+    kernel.seed_mailbox_relay_list(
+        &alice,
+        vec![],
+        vec![alice_relay.to_string()],
+        vec![],
     );
 
     let msgs = kernel.claim_profile(alice.clone(), "view-0".to_string(), true);

@@ -27,23 +27,18 @@
 //! Integration tests against the public actor surface live in `nmp-testing`.
 
 use super::*;
-use crate::kernel::types::AuthorRelayList;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-fn install_relay_list(kernel: &mut Kernel, author: &str, write_relays: &[&str]) {
-    kernel.author_relay_lists.insert(
-        author.to_string(),
-        AuthorRelayList {
-            event_id: "test-event".to_string(),
-            created_at: 1_000,
-            read_relays: vec![],
-            write_relays: write_relays.iter().map(|s| s.to_string()).collect(),
-            both_relays: vec![],
-        },
+fn install_relay_list(kernel: &Kernel, author: &str, write_relays: &[&str]) {
+    kernel.seed_mailbox_relay_list(
+        author,
+        vec![],
+        write_relays.iter().map(|s| s.to_string()).collect(),
+        vec![],
     );
 }
 
@@ -82,7 +77,7 @@ fn t140_ingest_contacts_registers_interests_drain_emits_req() {
     kernel.active_account = Some(ALICE.to_string());
 
     // ALICE has a resolved NIP-65 write relay.
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
 
     // Inject kind:3 where ALICE follows herself (minimal follow set; enough to
     // register one interest).
@@ -130,8 +125,8 @@ fn t140_follow_list_change_rereg_interests_new_relay_appears() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ALICE.to_string());
 
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t140.relay/"]);
-    install_relay_list(&mut kernel, BOB, &["wss://bob-t140.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, BOB, &["wss://bob-t140.relay/"]);
 
     // First kind:3: ALICE follows herself only.
     kernel

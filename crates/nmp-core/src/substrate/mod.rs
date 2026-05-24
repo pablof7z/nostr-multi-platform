@@ -41,6 +41,7 @@
 mod action;
 mod bounded;
 mod capability;
+mod default_routing;
 mod domain;
 mod identity;
 mod ingest;
@@ -66,6 +67,9 @@ pub use keyring::{
 };
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+pub use default_routing::{
+    InMemoryMailboxCache as DefaultInMemoryMailboxCache, Nip65WriteSetRouter,
+};
 pub use routing::{
     AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,
     OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,

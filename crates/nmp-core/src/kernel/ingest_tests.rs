@@ -86,13 +86,16 @@ fn ingest_relay_list_stores_non_empty_list() {
     kernel.ingest_relay_list(event);
 
     let stored = kernel
-        .author_relay_lists
-        .get(AUTHOR)
+        .mailbox_cache()
+        .snapshot(&AUTHOR.to_string())
         .expect("a non-empty kind:10002 must store an entry under the author pubkey");
-    assert_eq!(stored.created_at, 1_000);
-    assert_eq!(stored.read_relays, vec!["wss://read.example/"]);
-    assert_eq!(stored.write_relays, vec!["wss://write.example/"]);
-    assert_eq!(stored.both_relays, vec!["wss://both.example/"]);
+    // The substrate cache does not carry `created_at` / `event_id`
+    // (the store enforces supersession; the cache is the projection of
+    // the winning event's tags only — step 3 collapsed the
+    // pre-step-3 belt-and-suspenders mirror).
+    assert_eq!(stored.read, vec!["wss://read.example/"]);
+    assert_eq!(stored.write, vec!["wss://write.example/"]);
+    assert_eq!(stored.both, vec!["wss://both.example/"]);
 
     // A1: storing a fresh mailbox fans a `Nip65Arrived` recompile trigger so
     // the M2 subscription compiler re-routes the author on the next tick.
@@ -121,7 +124,7 @@ fn ingest_relay_list_empty_for_unknown_author_is_noop() {
     kernel.ingest_relay_list(event);
 
     assert!(
-        !kernel.author_relay_lists.contains_key(AUTHOR),
+        !kernel.mailbox_cache().known(&AUTHOR.to_string()),
         "an empty NIP-65 list for an unknown author must NOT create a cache entry",
     );
     assert_eq!(
@@ -148,7 +151,7 @@ fn ingest_relay_list_empty_for_known_author_clears_entry_and_triggers_recompile(
     );
     kernel.ingest_relay_list(seed);
     assert!(
-        kernel.author_relay_lists.contains_key(AUTHOR),
+        kernel.mailbox_cache().known(&AUTHOR.to_string()),
         "precondition: the seed list must be cached",
     );
     // Drain the seed's trigger so the assertion below isolates the clear path.
@@ -170,7 +173,7 @@ fn ingest_relay_list_empty_for_known_author_clears_entry_and_triggers_recompile(
     kernel.ingest_relay_list(clear);
 
     assert!(
-        !kernel.author_relay_lists.contains_key(AUTHOR),
+        !kernel.mailbox_cache().known(&AUTHOR.to_string()),
         "an empty NIP-65 list for a known author must REMOVE the stale cache entry",
     );
     assert_eq!(
