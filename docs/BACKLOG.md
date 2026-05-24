@@ -1044,48 +1044,58 @@ This is the highest-leverage DX investment before shipping v1 if the framework's
 
 ---
 
-### V-50 · Outbox/relay-selection algorithm hardwired in `nmp-core` — should be a pluggable `nmp-relay-pool` crate [HIGH · post-v1 · blocks competing outbox strategies]
+### V-50 · Relay routing is a single hardwired NIP-65 algorithm in `nmp-core` — must become a per-kind dispatch table in `nmp-relay-pool` [HIGH · post-v1]
 
-**Evidence:** `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) implements the NIP-65 relay
-selection algorithm directly inside the kernel. `crates/nmp-core/src/planner/compiler/mailbox.rs`
-defines a `MailboxCache` trait and notes *"Phase 2: replaced by nmp-nip65::InMemoryMailboxCache"*
-— the design intent exists but has not been executed. The read-side resolver (`KernelMailboxes`,
-`partition_authors_by_write_relays`) and publish-side resolver (`publish/nip65/`) both live in
-nmp-core hardwired to kind:10002.
+**Evidence:** `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) implements one routing
+strategy — consult kind:10002 write relays for all event kinds. This is correct for kind:1
+public notes but wrong for everything else. The kernel has no per-kind routing dispatch at all.
 
-**Why this is wrong:** The outbox algorithm is a strategy, not substrate. A future gossip-model
-relay selection, a NIP-05-based discovery fallback, or a manually curated relay set should all
-be expressible without touching nmp-core. Today there is no seam — swapping the algorithm
-requires forking the kernel.
+**The full picture — routing is kind-specific:**
 
-**Correct design:**
-1. `crates/nmp-relay-pool/` — a new crate owning the relay selection and outbox routing
-   algorithm. Currently NIP-65 based (reads kind:10002 from the `MailboxCache`), but the crate
-   boundary makes alternative implementations possible. Analogous to applesauce's `relay`
-   package.
-2. `nmp-core` substrate exposes a `trait OutboxRouter` (publish direction) and the existing
-   `trait MailboxCache` (subscription direction). The kernel holds `Arc<dyn OutboxRouter>` and
-   `Arc<dyn MailboxCache>`, injected at construction.
-3. `nmp-relay-pool` provides the concrete `Nip65OutboxRouter` + `Nip65MailboxCache`
-   implementations.
-4. `crates/nmp-nip65/` as a standalone crate is too thin to justify — its only content is the
-   `publish_relay_list` ActionModule (≈ 80 LOC of event construction). That moves into
-   `nmp-relay-pool` alongside the algorithm it feeds.
+Different event shapes route to completely different relay sets, none of which are kind:10002:
 
-**Blast radius:** `kernel/outbox.rs`, `publish/nip65/`, `kernel/ingest/relay_list.rs`
-(populates the cache), `planner/compiler/mailbox.rs` (the trait), and every caller of
-`Kernel::partition_authors_by_write_relays` + `Nip65OutboxResolver`. Medium refactor
-— the trait boundary already exists (`MailboxCache`), Phase 2 just needs to execute.
+| Event shape | Relay source | Kind |
+|---|---|---|
+| Public notes (kind:1/6/7/…) | Author's NIP-65 write relays | kind:10002 |
+| DMs (kind:14/1059) | **Recipient's** DM inbox | kind:10050 |
+| NIP-29 group events | Group relay from `h` tag | (tag-derived) |
+| Marmot/MLS group events | MLS group relay | (group state) |
+| Drafts | Author's private storage relay | TBD |
+| Long-form (kind:30023) | Author's write relays | kind:10002 (default) |
+| NIP-51 sets | Author's write relays | kind:10002 (default) |
 
-**Migration difficulty: MEDIUM.** The substrate seam (`MailboxCache` trait) already exists.
-Steps: (1) create `nmp-relay-pool`, (2) move `InMemoryMailboxCache` and the NIP-65 publish
-action there, (3) define `OutboxRouter` trait in nmp-core substrate, (4) implement in
-`nmp-relay-pool`, (5) inject via `NmpAppBuilder`, (6) delete `kernel/outbox.rs` production
-code (keep `#[cfg(test)]` spec test).
+NIP-51 documents the full taxonomy of kind-specific relay lists: kind:10002 (general),
+kind:10050 (DM), kind:30002 (named relay sets), kind:10009 (group relay lists), etc. The
+routing algorithm must dispatch on event kind (and sometimes tags like `h`) to consult
+the right relay list kind for the right pubkey.
 
-**Phase: post-v1.** Pre-requisite for any competing outbox strategy. Pairs with V-38/V-39/V-41
-(open-ActorCommand seam) since `nmp-relay-pool` will be the natural home for relay-pool actor
-commands too.
+Today this dispatch does not exist — `kernel/outbox.rs` hardwires kind:10002 for every
+publish, and V-39/V-40 show that DM relay routing leaks into the kernel as a special case
+rather than being handled by the dispatch table that should own it.
+
+**Correct design — `crates/nmp-relay-pool/`:**
+
+A new crate (analogous to applesauce's `relay` package) owning:
+1. **Per-kind routing dispatch table:** given an unsigned event, select the right relay
+   list kind and target pubkey, then resolve to a concrete relay URL set.
+2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in nmp-core, marked
+   "Phase 2: replace with nmp-nip65 implementation" — that future destination is here).
+3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-nip65/` (that crate is
+   too thin to stand alone; absorb it here).
+4. **Relay pool lifecycle** — connect/disconnect/reconnect, not just routing math.
+
+`nmp-core` substrate defines `trait OutboxRouter` + `trait MailboxCache`; the kernel holds
+injected `Arc<dyn>` of each. `nmp-relay-pool` provides the concrete implementations.
+
+`crates/nmp-nip65/` is deleted after the ActionModule migrates.
+
+**Migration difficulty: MEDIUM-HARD.** The `MailboxCache` trait seam exists; `OutboxRouter`
+trait needs to be designed carefully to express the per-kind dispatch without leaking NIP
+knowledge into the substrate. The per-kind dispatch table itself is new design work, not just
+a refactor. Prerequisite for V-39 (DM routing) and V-40 (DM ingest) clean migrations.
+
+**Phase: post-v1.** Prerequisite for any competing outbox strategy and for NIP-17 DM routing
+to leave the kernel cleanly. Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
 
 ---
 
