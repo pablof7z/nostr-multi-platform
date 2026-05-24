@@ -48,7 +48,7 @@ pub(super) struct ProfileContent {
     /// NIP-57 LNURL-pay bech32 (`lnurl1…`). Legacy/alternate to `lud16`;
     /// surfaced when `lud16` is absent. Both feed the same `Profile::lnurl`
     /// optional field — the zap handler accepts either shape (see
-    /// `commands::zap_lnurl::lnurl_to_well_known_url`).
+    /// `nmp_nip57::lnurl::lnurl_to_well_known_url`).
     pub(super) lud06: Option<String>,
 }
 

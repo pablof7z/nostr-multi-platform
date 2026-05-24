@@ -18,6 +18,7 @@ later steps remain.
 ## Active
 
 - 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 (rebased onto master)
+- 2026-05-24 — refactor(nmp-nip57): step 4 / V-41 — move LNURL fetcher + `FetchLnurlInvoice` onto `ProtocolCommand`; delete `ActorCommand::FetchLnurlInvoice` variant — branch `feat-v41-nip57-lnurl-protocol-command`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

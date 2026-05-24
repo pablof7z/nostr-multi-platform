@@ -179,11 +179,13 @@ pub(super) struct ActorContext<'a> {
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
     /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
     /// from the perspective of code running on the actor thread.
-    /// `dispatch.rs` arms that spawn background workers (currently only the
-    /// `FetchLnurlInvoice` LNURL-pay HTTP round-trip) clone this and hand
-    /// the clone to the worker; the worker then sends a follow-up
-    /// `ActorCommand` (e.g. `ShowToast` with the bolt11 invoice) back into
-    /// the actor loop without needing access to the `NmpApp`.
+    /// `dispatch.rs` arms that spawn background workers (the LNURL-pay
+    /// HTTP round-trip dispatched via `ActorCommand::Protocol` carries an
+    /// owned clone through `ProtocolCommandContext::command_sender_clone`)
+    /// clone this and hand the clone to the worker; the worker then sends
+    /// a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11
+    /// invoice) back into the actor loop without needing access to the
+    /// `NmpApp`.
     ///
     /// D8 — the actor never `recv`s on this sender; it only hands clones
     /// out. The matching receiver is `command_rx` in `run_actor_with_observers`.
@@ -770,41 +772,14 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::FetchLnurlInvoice {
-            unsigned,
-            lnurl_or_address,
-            amount_msats,
-            correlation_id,
-        } => {
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            // The handler signs synchronously on this thread (D7) and
-            // spawns a worker for the HTTP round-trip (D8). It never
-            // returns relay outbound frames — kind:9734 goes to the
-            // LNURL callback over HTTP, not to relays (NIP-57 § Appendix C).
-            commands::handle_fetch_lnurl_invoice(
-                ctx.identity,
-                ctx.kernel,
-                ctx.command_tx_self.clone(),
-                unsigned,
-                lnurl_or_address,
-                amount_msats,
-                correlation_id,
-            );
-            // Emit promptly so a synchronous failure (no active local keys,
-            // sign failure) lands in the next snapshot tick — matches the
-            // `PublishUnsignedEventToRelays` post-dispatch emit. A success
-            // path's `ShowToast` follow-up arrives later from the worker
-            // thread and will trigger its own emit through the regular
-            // dispatch path.
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
-        }
+        // V-41 — the legacy `FetchLnurlInvoice` arm is deleted. The LNURL
+        // fetcher now lives in `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`
+        // and dispatches through `ActorCommand::Protocol` (below). The
+        // pre-existing `Requested` stage recording (gated on
+        // `correlation_id`) and the post-dispatch `emit_now` both move
+        // into the `Protocol(...)` arm — see
+        // `ProtocolCommandContext::record_action_stage_requested` and the
+        // emit at the bottom of that arm.
         ActorCommand::RecordActionFailure {
             correlation_id,
             reason,
@@ -869,7 +844,9 @@ pub(super) fn dispatch_command(
             //
             // Record `Requested` first so the host's spinner sees the action
             // entered the actor lane even if the handler is absent or panics
-            // (mirrors the `WalletPayInvoice` / `FetchLnurlInvoice` arms).
+            // (mirrors the `WalletPayInvoice` arm and the V-41 LNURL
+            // protocol command — see
+            // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`).
             ctx.kernel.record_action_stage(
                 &correlation_id,
                 crate::kernel::action_stages::ActionStage::Requested,
@@ -1046,21 +1023,82 @@ pub(super) fn dispatch_command(
             None
         }
         ActorCommand::Protocol(cmd) => {
-            // Step 1.b — the open-seam dispatch arm. Hands the command a
-            // `ProtocolCommandContext` wired to the actor's own command
-            // channel so the body can re-enter the loop with follow-ups
-            // (the LNURL fetcher pattern). Step 1.b ships the arm; the
-            // first migration onto it is step 4 (V-41).
+            // Step 1.b — the open-seam dispatch arm. Step 4 (V-41) widens the
+            // context with the kernel + identity accessors the LNURL fetcher
+            // needs. Each capability closure closes over the actor's mutable
+            // references to the kernel + identity runtime; the kernel and
+            // identity types stay crate-private (D0 — NIP crates name
+            // neither). Borrows are released the moment `cmd.run` returns —
+            // the worker thread the LNURL command spawns owns its own
+            // `Sender<ActorCommand>` clone and never re-enters the context.
             let tx = ctx.command_tx_self.clone();
             let send = move |c: crate::actor::ActorCommand| {
                 // D6 — disconnected sender (post-Shutdown) is a benign
                 // send-failure on the worker side; swallow as a no-op.
                 let _ = tx.send(c);
             };
-            let mut pctx = crate::substrate::ProtocolCommandContext::new(&send);
+            // The kernel + identity accessors borrow disjoint fields of
+            // `ctx`, so we hold the &mut Kernel for write methods
+            // (`record_action_stage_requested`) and immutable shared
+            // references to the read-only kernel + identity sources via
+            // `RefCell`-equivalent split. Rust's borrow checker permits
+            // multiple `&dyn Fn(...)` over the same `&mut Kernel` so long
+            // as no two are in flight simultaneously — `ProtocolCommand::run`
+            // is single-threaded sync, so the calls serialize naturally.
+            //
+            // To keep this readable we use immutable kernel + identity
+            // references for the four read accessors and a `RefCell` for
+            // the single write accessor (`record_action_stage_requested`).
+            // Splitting the kernel borrow is unavoidable: `record_action_stage`
+            // requires `&mut Kernel`, the read methods require `&Kernel`.
+            let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
+            let identity_cell = std::cell::RefCell::new(&*ctx.identity);
+            let now_secs = || kernel_cell.borrow().now_secs();
+            let author_write_relays =
+                |a: &str| kernel_cell.borrow().author_write_relays(a);
+            let bootstrap_discovery_relays =
+                || kernel_cell.borrow().bootstrap_discovery_relays();
+            let active_local_keys = || {
+                identity_cell
+                    .borrow()
+                    .active_local_keys()
+                    .cloned()
+            };
+            let record_action_stage_requested = |cid: &str| {
+                kernel_cell.borrow_mut().record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            };
+            // A second sender clone for the worker-thread surface. Cloning
+            // a `mpsc::Sender` is cheap (atomic ref-count bump); the
+            // dispatch arm always populates this slot in production.
+            let worker_tx = ctx.command_tx_self.clone();
+            let mut pctx = crate::substrate::ProtocolCommandContext::new(
+                &send,
+                worker_tx,
+                &now_secs,
+                &author_write_relays,
+                &bootstrap_discovery_relays,
+                &active_local_keys,
+                &record_action_stage_requested,
+            );
             if let Err(e) = cmd.run(&mut pctx) {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");
             }
+            // Drop the context (and the closures it borrows) before the
+            // emit so `emit_now` can re-borrow `ctx.kernel` mutably. The
+            // closures themselves are zero-sized `Fn` closures (no `drop`
+            // glue); only releasing the `RefCell` borrows the closures
+            // hold via the context object matters here.
+            drop(pctx);
+            // V-41 — a `ProtocolCommand` body may have mutated the kernel
+            // (the `Requested` stage write) or queued failure follow-ups
+            // (`ShowToast` / `RecordActionFailure`). Emit promptly so the
+            // next snapshot tick carries the visible effect, mirroring the
+            // legacy `FetchLnurlInvoice` arm's `emit_now` precedent.
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         #[cfg(any(test, feature = "test-support"))]

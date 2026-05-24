@@ -73,13 +73,13 @@ mod raw_event_observer;
 #[cfg(feature = "native")]
 mod relays;
 mod remote_signer_for_seal;
-#[cfg(feature = "native")]
-mod zap;
-// LNURL-pay decode + URL-encode helpers split out of `zap` so the
-// orchestrator file stays under the 500-LOC file-size gate. Pure
-// functions; no I/O, no mutable state.
-#[cfg(feature = "native")]
-mod zap_lnurl;
+// V-41 — `zap` + `zap_lnurl` moved to
+// `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` (a `ProtocolCommand`
+// dispatched via `ActorCommand::Protocol`). D0: `nmp-core` carries no
+// LNURL HTTP code or NIP-57 nouns. The original files lived at
+// `crates/nmp-core/src/actor/commands/zap.rs` + `zap_lnurl.rs`; their
+// `commands::zap::tests` module migrated to
+// `crates/nmp-nip57/src/lnurl/tests.rs`.
 // D0: NIP-47 NWC is an app noun — the wallet command runtime (and its
 // `nmp-nwc` dependency) is gated behind the `wallet` Cargo feature.
 // V-01 Phase 1c: every test module below exercises the native actor
@@ -152,11 +152,11 @@ pub(super) use publish::{
     follow, open_timeline, publish_note, publish_profile, publish_signed_event,
     publish_unsigned_event, publish_unsigned_event_to_relays, react,
 };
-// NIP-57 LNURL-pay handler. The dispatch arm in `actor/dispatch.rs` calls
-// this; the handler signs the kind:9734 on the actor thread and spawns a
-// worker for the HTTP round-trip (D8 — no blocking on the actor).
-#[cfg(feature = "native")]
-pub(super) use zap::handle_fetch_lnurl_invoice;
+// V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
+// LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`
+// variant. The replacement (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`)
+// is a `ProtocolCommand` dispatched through `ActorCommand::Protocol`;
+// `nmp-core` no longer carries the entry point.
 pub(crate) use raw_event_observer::{
     new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
     register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,

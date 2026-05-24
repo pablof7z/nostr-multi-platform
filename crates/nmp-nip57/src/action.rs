@@ -2,9 +2,14 @@
 //!
 //! Validates a zap request in [`ZapAction::start`], builds an unsigned
 //! kind:9734 via [`ZapRequest`] (`crate::build`), and dispatches
-//! [`ActorCommand::FetchLnurlInvoice`] (the ADR-0024 LNURL-pay round-trip).
-//! The actor signs the kind:9734, fetches the receiver's LNURL callback, and
-//! surfaces the resulting bolt11 invoice as a `ShowToast` follow-up.
+//! [`ActorCommand::Protocol`] carrying a
+//! [`crate::lnurl::FetchLnurlInvoiceCommand`] (V-41 — the LNURL-pay
+//! round-trip is now a `ProtocolCommand`; the legacy `FetchLnurlInvoice`
+//! `ActorCommand` variant has been deleted along with the
+//! `nmp-core::actor::commands::zap` module). The protocol command signs
+//! the kind:9734 on the actor thread, fetches the receiver's LNURL
+//! callback off-thread, and surfaces the resulting bolt11 invoice as a
+//! `ShowToast` follow-up.
 //!
 //! # Wire routing
 //!
@@ -15,16 +20,19 @@
 //!
 //! # Signing constraint (ADR-0026 Phase 1)
 //!
-//! The actor reads `IdentityRuntime::active_local_keys` to sign the
-//! kind:9734. Bunker (NIP-46) accounts return `None`; the actor fails closed
-//! with a toast and records `ActionFailure` against the `correlation_id`.
-//! Remote-signer signing is the ADR-0026 Phase 2 follow-up.
+//! The protocol command reads
+//! [`nmp_core::substrate::ProtocolCommandContext::active_local_keys`] to
+//! sign the kind:9734. Bunker (NIP-46) accounts return `None`; the command
+//! fails closed with a toast and records `ActionFailure` against the
+//! `correlation_id`. Remote-signer signing is the ADR-0026 Phase 2
+//! follow-up.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::build::ZapRequest;
+use crate::lnurl::FetchLnurlInvoiceCommand;
 
 /// Wire shape for `nmp.nip57.zap` — the JSON body a host passes to
 /// `nmp_app_dispatch_action`.
@@ -45,7 +53,7 @@ use crate::build::ZapRequest;
 ///
 /// `lnurl` carries the receiver's LNURL-pay endpoint in any of three
 /// shapes: a lightning address (`user@domain`), a bech32 LNURL
-/// (`lnurl1…`), or a bare `https://` URL — `nmp-core::actor::commands::zap`
+/// (`lnurl1…`), or a bare `https://` URL — `crate::lnurl::pay`
 /// decodes all three per LUD-01/06/16.
 ///
 /// `target_event_id` and `comment` are optional. A zap to a profile (no
@@ -81,9 +89,10 @@ pub struct ZapInput {
 ///
 /// `start` validates the zap input. `execute` builds the unsigned
 /// kind:9734 zap request via [`ZapRequestBuilder`] and enqueues
-/// [`ActorCommand::FetchLnurlInvoice`] — the actor handles signing
-/// (D7 — kernel owns key access) and the off-thread LNURL-pay HTTP
-/// round-trip (D8 — no blocking on the actor thread).
+/// [`ActorCommand::Protocol`] carrying a
+/// [`FetchLnurlInvoiceCommand`] (V-41) — the protocol command handles
+/// signing (D7 — kernel owns key access) and the off-thread LNURL-pay
+/// HTTP round-trip (D8 — no blocking on the actor thread).
 pub struct ZapAction;
 
 impl ActionModule for ZapAction {
@@ -120,27 +129,33 @@ impl ActionModule for ZapAction {
         Ok(())
     }
 
-    /// Settles asynchronously: `execute` enqueues `FetchLnurlInvoice` and
-    /// returns immediately; the actor's HTTP worker surfaces the bolt11 (or
-    /// failure) via `ShowToast`/`RecordActionFailure`. Recording sites:
-    /// `actor/dispatch.rs` (Requested), `actor/commands/zap.rs` (Failed).
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (actor/dispatch.rs FetchLnurlInvoice arm sets Requested; actor/commands/zap.rs sets Failed on pre-payment errors)
+    /// Settles asynchronously: `execute` enqueues
+    /// `Protocol(FetchLnurlInvoiceCommand{...})` and returns immediately;
+    /// the HTTP worker spawned in `FetchLnurlInvoiceCommand::run` surfaces
+    /// the bolt11 (or failure) via `ShowToast` + `RecordActionSuccess` /
+    /// `RecordActionFailure`. Recording sites: `lnurl::mod`
+    /// (`Requested` via `ctx.record_action_stage_requested`; `Failed` on
+    /// pre-payment errors).
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (crate::lnurl records Requested via ProtocolCommandContext and Failed on pre-payment errors)
         true
     }
 
-    /// Build the unsigned kind:9734 and enqueue
-    /// [`ActorCommand::FetchLnurlInvoice`].
+    /// Build the unsigned kind:9734 and enqueue an
+    /// [`ActorCommand::Protocol`] carrying a
+    /// [`FetchLnurlInvoiceCommand`] (V-41).
     ///
     /// # D7 — kernel owns the wall clock
     ///
-    /// `created_at` is passed as `0`; the actor re-stamps from
-    /// `kernel.now_secs()` before signing. Matches the
+    /// `created_at` is passed as `0`; the protocol command re-stamps from
+    /// `ProtocolCommandContext::now_secs` before signing. Matches the
     /// `PublishUnsignedEventToRelays` precedent.
     ///
     /// # D8 — no blocking
     ///
-    /// The closure neither HTTPs nor signs; the actor's
-    /// `FetchLnurlInvoice` arm does both off-thread.
+    /// The closure neither HTTPs nor signs; the LNURL command's `run`
+    /// does both: the kind:9734 signature on the actor thread (D7), the
+    /// LNURL-pay HTTP round-trip on a spawned `std::thread::spawn`
+    /// worker (D8).
     fn execute(
         action: Self::Action,
         correlation_id: &str,
@@ -165,20 +180,20 @@ impl ActionModule for ZapAction {
             builder = builder.comment(comment);
         }
         // `author` is the kernel-resolved active account at sign time —
-        // the actor overrides this when it builds the signed event. Pass an
-        // empty placeholder; the substrate `UnsignedEvent` carries it
-        // through unchanged but the actor's `sign_zap_request` resigns from
-        // the active `Keys` (its pubkey is what `EventBuilder` stamps).
-        // `created_at = 0` is the D7 sentinel — re-stamped on the actor.
+        // the protocol command overrides this when it builds the signed
+        // event. Pass an empty placeholder; the substrate `UnsignedEvent`
+        // carries it through unchanged but `sign_zap_request` re-signs
+        // from the active `Keys` (its pubkey is what `EventBuilder` stamps).
+        // `created_at = 0` is the D7 sentinel — re-stamped in `run()`.
         let unsigned = builder
             .build(String::new(), 0)
             .map_err(|e| format!("build kind:9734 zap request: {e}"))?;
-        send(ActorCommand::FetchLnurlInvoice {
+        send(ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand {
             unsigned,
             lnurl_or_address: action.lnurl,
             amount_msats: action.amount_msats,
             correlation_id: Some(correlation_id.to_string()),
-        });
+        })));
         Ok(())
     }
 }
@@ -284,8 +299,9 @@ mod tests {
 
     /// V-07: empty relays is VALID — the actor injects the recipient's
     /// NIP-65 write list before signing. The executor still emits
-    /// `FetchLnurlInvoice`; the resulting kind:9734 has no `relays` tag at
-    /// this point (the actor adds it in `handle_fetch_lnurl_invoice`).
+    /// `Protocol(FetchLnurlInvoiceCommand{...})`; the resulting kind:9734
+    /// has no `relays` tag at this point (`FetchLnurlInvoiceCommand::run`
+    /// adds it via `ProtocolCommandContext::author_write_relays`).
     #[test]
     fn start_accepts_empty_relays_actor_injects() {
         let input = ZapInput {
@@ -307,50 +323,46 @@ mod tests {
         assert!(ZapAction::start(&mut ctx(), input).is_ok());
     }
 
-    /// The executor must emit a `FetchLnurlInvoice` carrying the full
-    /// validated zap intent — NOT the previous `ShowToast` stub. This pins
-    /// the post-ADR-0024 contract: the LNURL fetch runs off-thread in the
-    /// actor's spawned worker, not as a fabricated "intent recorded" toast.
+    /// The executor must emit a `Protocol(FetchLnurlInvoiceCommand)`
+    /// carrying the full validated zap intent — NOT the previous
+    /// `FetchLnurlInvoice` closed-enum variant. V-41 contract: LNURL
+    /// fetch routes through the open `ProtocolCommand` seam; `nmp-core`
+    /// has no zap nouns.
+
     #[test]
-    fn execute_emits_fetch_lnurl_invoice_with_zap_request() {
+    fn execute_emits_protocol_lnurl_command_with_zap_request() {
         let cmds = run_execute(well_formed_input()).expect("execute must succeed for well-formed input");
         assert_eq!(cmds.len(), 1, "executor must emit exactly one command, got {cmds:?}");
-        match cmds.into_iter().next().unwrap() {
-            ActorCommand::FetchLnurlInvoice {
-                unsigned,
-                lnurl_or_address,
-                amount_msats,
-                correlation_id,
-            } => {
-                assert_eq!(lnurl_or_address, LNURL);
-                assert_eq!(amount_msats, 21_000);
-                assert_eq!(correlation_id.as_deref(), Some("cid-deadbeef"));
-                // kind:9734 zap-request — the builder must have produced
-                // a NIP-57-shaped unsigned event with `relays`, `amount`,
-                // and `p` tags.
-                assert_eq!(unsigned.kind, 9734);
-                let keys: Vec<&str> = unsigned
-                    .tags
-                    .iter()
-                    .filter_map(|t| t.first())
-                    .map(String::as_str)
-                    .collect();
-                assert!(keys.contains(&"relays"), "missing relays tag: {keys:?}");
-                assert!(keys.contains(&"amount"), "missing amount tag: {keys:?}");
-                assert!(keys.contains(&"p"), "missing p tag: {keys:?}");
-                // The kernel re-stamps `created_at` from `now_secs()` —
-                // the executor passes the D7 sentinel `0`.
-                assert_eq!(
-                    unsigned.created_at, 0,
-                    "executor must pass created_at=0 sentinel; actor re-stamps"
-                );
-            }
-            other => panic!("expected FetchLnurlInvoice, got {other:?}"),
-        }
+        let cmd = cmds.into_iter().next().unwrap();
+        let ActorCommand::Protocol(boxed) = cmd else {
+            panic!("expected ActorCommand::Protocol(...), got something else");
+        };
+        // Debug-format the boxed protocol command and assert the LNURL
+        // command type appears — the trait object hides the concrete
+        // type, but Debug derive on FetchLnurlInvoiceCommand surfaces
+        // the struct name + fields.
+        let dbg = format!("{boxed:?}");
+        assert!(
+            dbg.contains("FetchLnurlInvoiceCommand"),
+            "expected FetchLnurlInvoiceCommand, got: {dbg}"
+        );
+        assert!(dbg.contains(LNURL), "lnurl must surface in command Debug: {dbg}");
+        assert!(dbg.contains("21000"), "amount must surface: {dbg}");
+        assert!(dbg.contains("cid-deadbeef"), "correlation_id must surface: {dbg}");
+        // kind:9734 + builder tags surface through the embedded
+        // UnsignedEvent's Debug.
+        assert!(dbg.contains("kind: 9734"), "kind 9734 must surface: {dbg}");
+        assert!(dbg.contains("\"relays\""), "relays tag key must surface: {dbg}");
+        assert!(dbg.contains("\"amount\""), "amount tag key must surface: {dbg}");
+        assert!(dbg.contains("\"p\""), "p tag key must surface: {dbg}");
+        // The D7 sentinel: executor must pass created_at=0 (the protocol
+        // command re-stamps from `ctx.now_secs()` in its `run`).
+        assert!(dbg.contains("created_at: 0"), "created_at sentinel: {dbg}");
     }
 
     /// `e` tag must surface when `target_event_id` is set — a zap to a
     /// specific note vs. a zap to a profile.
+
     #[test]
     fn execute_includes_e_tag_when_target_event_id_set() {
         let input = ZapInput {
@@ -360,16 +372,17 @@ mod tests {
             ..well_formed_input()
         };
         let cmds = run_execute(input).unwrap();
-        let ActorCommand::FetchLnurlInvoice { unsigned, .. } =
+        let ActorCommand::Protocol(boxed) =
             cmds.into_iter().next().expect("executor must emit a command")
         else {
-            panic!("expected FetchLnurlInvoice");
+            panic!("expected ActorCommand::Protocol(...)");
         };
-        let has_e = unsigned.tags.iter().any(|t| t.first().map(String::as_str) == Some("e"));
-        assert!(has_e, "expected `e` tag for targeted zap: {:?}", unsigned.tags);
+        let dbg = format!("{boxed:?}");
+        assert!(dbg.contains("\"e\""), "expected `e` tag for targeted zap: {dbg}");
     }
 
     /// Comment lands in the kind:9734 `content` per NIP-57.
+
     #[test]
     fn execute_routes_comment_into_zap_request_content() {
         let input = ZapInput {
@@ -377,11 +390,12 @@ mod tests {
             ..well_formed_input()
         };
         let cmds = run_execute(input).unwrap();
-        let ActorCommand::FetchLnurlInvoice { unsigned, .. } =
+        let ActorCommand::Protocol(boxed) =
             cmds.into_iter().next().expect("executor must emit a command")
         else {
-            panic!("expected FetchLnurlInvoice");
+            panic!("expected ActorCommand::Protocol(...)");
         };
-        assert_eq!(unsigned.content, "nice post 🤙");
+        let dbg = format!("{boxed:?}");
+        assert!(dbg.contains("nice post"), "expected comment content in: {dbg}");
     }
 }

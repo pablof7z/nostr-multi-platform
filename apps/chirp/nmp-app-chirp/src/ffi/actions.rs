@@ -103,9 +103,10 @@ pub(super) fn register_nip17_actions(app: &mut NmpApp) {
 /// through the same host-extensibility seam the NIP-17 / NIP-29 actions
 /// use. The executor builds the unsigned kind:9734 zap request via
 /// [`nmp_nip57::ZapRequestBuilder`] and enqueues
-/// [`nmp_core::ActorCommand::FetchLnurlInvoice`] — the actor signs the
-/// kind:9734 on-thread (D7), then spawns a worker thread for the
-/// LNURL-pay HTTP round-trip (D8 — no blocking on the actor thread).
+/// [`nmp_core::ActorCommand::Protocol`] carrying a
+/// [`nmp_nip57::FetchLnurlInvoiceCommand`] (V-41) — the protocol command
+/// signs the kind:9734 on-thread (D7), then spawns a worker thread for
+/// the LNURL-pay HTTP round-trip (D8 — no blocking on the actor thread).
 ///
 /// JSON schema (the third arg the host passes to
 /// `nmp_app_dispatch_action`):
@@ -127,8 +128,8 @@ pub(super) fn register_nip17_actions(app: &mut NmpApp) {
 ///
 /// # Observable surface
 ///
-/// The actor's `FetchLnurlInvoice` handler surfaces results through
-/// two channels:
+/// The `FetchLnurlInvoiceCommand` protocol command surfaces results
+/// through two channels:
 ///
 /// 1. [`ActorCommand::ShowToast`] — the bolt11 invoice on success
 ///    (`Zap invoice: lnbc…`) or a human-readable reason on failure

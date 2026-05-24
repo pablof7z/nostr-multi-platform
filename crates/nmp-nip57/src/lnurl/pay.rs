@@ -1,9 +1,9 @@
-//! LNURL-pay decode + query-encode helpers used by the
-//! `FetchLnurlInvoice` handler in `commands::zap`.
+//! LNURL-pay decode + query-encode helpers used by
+//! [`super::FetchLnurlInvoiceCommand`].
 //!
-//! Split out of `commands::zap` so that file stays under the 500-LOC
-//! hard cap (file-size gate). All functions here are pure (no I/O, no
-//! mutable state) and unit-tested in isolation.
+//! Split out of `lnurl::mod` so the orchestrator file stays under the
+//! 500-LOC hard cap (file-size gate). All functions here are pure (no I/O,
+//! no mutable state) and unit-tested in isolation.
 
 /// Convert any of the three LNURL-pay input shapes into the well-known URL
 /// to GET.
@@ -15,7 +15,7 @@
 /// 3. **Bare URL** (`https://…`) — pass through.
 ///
 /// Any other shape is an `Err`.
-pub(crate) fn lnurl_to_well_known_url(input: &str) -> Result<String, String> {
+pub fn lnurl_to_well_known_url(input: &str) -> Result<String, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Err("LNURL input is empty".to_string());
@@ -73,7 +73,6 @@ pub(crate) fn lnurl_to_well_known_url(input: &str) -> Result<String, String> {
 /// LUD-01 bech32 LNURL decode — strip the HRP, ungroup the 5-bit data, and
 /// validate the result is a UTF-8 https URL.
 fn decode_bech32_lnurl(input: &str) -> Result<String, String> {
-    // `bech32 = "0.11"` is already a `nmp-core` dependency.
     let (hrp, data) =
         bech32::decode(input).map_err(|e| format!("invalid bech32 LNURL: {e}"))?;
     if hrp.as_str().to_lowercase() != "lnurl" {
@@ -97,7 +96,7 @@ fn decode_bech32_lnurl(input: &str) -> Result<String, String> {
 /// UTF-8 continuation bytes) becomes `%XX`. Sufficient for the LUD-06
 /// `nostr=<urlencoded-event>` parameter and the `amount=<msats>` parameter
 /// (which is decimal-digits-only so it round-trips unchanged).
-pub(crate) fn url_encode_query(value: &str) -> String {
+pub fn url_encode_query(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         // RFC 3986 unreserved set: ALPHA / DIGIT / "-" / "." / "_" / "~".
@@ -116,7 +115,7 @@ pub(crate) fn url_encode_query(value: &str) -> String {
 /// bolt11 parser lives in the `lightning-invoice` crate; for our purposes
 /// the prefix check is enough to detect a clearly-wrong response (e.g. an
 /// HTML error page leaking through a misconfigured status code).
-pub(crate) fn looks_like_bolt11(s: &str) -> bool {
+pub fn looks_like_bolt11(s: &str) -> bool {
     let lower = s.trim().to_lowercase();
     lower.starts_with("lnbc")
         || lower.starts_with("lntb")

@@ -604,9 +604,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let update_tx_panic = update_tx.clone();
     // Self-feedback sender for the actor — a clone of the command sender
     // that the host also keeps (`command_tx` above). Background workers
-    // spawned from dispatch arms (currently the LNURL-pay round-trip the
-    // `FetchLnurlInvoice` arm starts) use this clone to send follow-up
-    // `ActorCommand`s back into the loop without crossing FFI.
+    // spawned from dispatch arms (the LNURL-pay round-trip the NIP-57
+    // `Protocol(...)` arm carries through `ProtocolCommandContext::command_sender_clone`)
+    // use this clone to send follow-up `ActorCommand`s back into the loop
+    // without crossing FFI.
     //
     // G-S4 caveat: sends through this clone bypass the `queue_depth`
     // straddle counter (the only incrementing path is `NmpApp::send_cmd`).
