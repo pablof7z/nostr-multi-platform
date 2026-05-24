@@ -9,7 +9,7 @@
 
 ## Active
 
-_(scanning for next violation)_
+- 2026-05-24 — refactor(nmp-core): V-33 consolidate display helpers into `nmp-core::display`; delete 5 copies — branch `worktree-agent-a9e6318aea1e966fe` (worktree `.claude/worktrees/agent-a9e6318aea1e966fe`)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

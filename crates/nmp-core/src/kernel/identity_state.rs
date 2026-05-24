@@ -87,14 +87,13 @@ pub(crate) struct AccountSummary {
     /// initials track the real display name once it arrives.
     pub(crate) avatar_initials: String,
     /// Deterministic 6-hex avatar background colour (uppercase, no `#`
-    /// prefix). Derived from the hex pubkey (`id`) via the same djb2
-    /// algorithm shared by `nmp_nip17::display::avatar_color_hex`,
-    /// `nmp_marmot::projection::display::avatar_color_hex`, and
-    /// `nmp_nip29::projection::group_chat::avatar_color_hex` — so the same
-    /// author renders with the same tint across DMs, group chat, and the
-    /// Accounts surface. V-26 replaces a 6-colour Swift palette + unicode
-    /// hash with the canonical djb2 helper (one-time tint shift for every
-    /// existing account; that is the consistency fix, not a regression).
+    /// prefix). Derived from the hex pubkey (`id`) via the canonical
+    /// [`crate::display::avatar_color_hex`] (V-33) — the same author
+    /// renders with the same tint across every NMP surface (DMs, NIP-29
+    /// group chat, the modular timeline, the Accounts toolbar, Marmot rows).
+    /// V-26 replaces a 6-colour Swift palette + unicode hash with the
+    /// canonical djb2 helper (one-time tint shift for every existing
+    /// account; that is the consistency fix, not a regression).
     pub(crate) avatar_color_hex: String,
 }
 
@@ -406,10 +405,10 @@ impl super::Kernel {
 ///
 /// V-26 — mirrors the previous Swift `AccountSummary.avatarInitials` policy
 /// byte-for-byte so the iOS surface renders identically post-thin-shell.
-/// Kept in this module (not re-imported from `nmp-nip17::display`) for the
-/// same reason `account_npub_short` lives here: kernel modules stay
-/// independently testable and `identity_state.rs` does not gain an NIP-crate
-/// dependency just for a trivial display helper (V-22 / V-24 precedent).
+/// Distinct from [`crate::display::avatar_initials`] (which takes only an
+/// `npub` and has no display-name path); kept here because the kernel
+/// account fallback chain (display-name → npub body → `"??"`) is specific
+/// to the Accounts surface.
 pub(crate) fn account_avatar_initials(display_name: &str, npub: &str) -> String {
     let initials: String = display_name
         .split_whitespace()
@@ -429,12 +428,10 @@ pub(crate) fn account_avatar_initials(display_name: &str, npub: &str) -> String 
     }
 }
 
-/// Deterministic 6-hex avatar background colour for an `AccountSummary`.
-/// **Byte-identical to** `nmp_nip17::display::avatar_color_hex`,
-/// `nmp_marmot::projection::display::avatar_color_hex`, and
-/// `nmp_nip29::projection::group_chat::avatar_color_hex`: djb2 over the
-/// **last 6 bytes** of the hex pubkey string in natural order, masked to 24
-/// bits, formatted as 6 uppercase hex chars.
+/// Deterministic 6-hex avatar background colour for an `AccountSummary` —
+/// delegates to the canonical [`crate::display::avatar_color_hex`] (V-33)
+/// so the Accounts toolbar tint stays byte-identical to every other NMP
+/// surface (DMs, NIP-29 group chat, the modular timeline, Marmot rows).
 ///
 /// V-26 — replaces a 6-colour Swift palette + unicode-scalar hash that
 /// differed from every other surface (so the same author rendered with a
@@ -442,14 +439,7 @@ pub(crate) fn account_avatar_initials(display_name: &str, npub: &str) -> String 
 /// surface consistency is the fix; one-time tint shift for every existing
 /// account on first run is documented in `docs/BACKLOG.md` V-26.
 pub(crate) fn account_avatar_color_hex(pubkey_hex: &str) -> String {
-    let bytes = pubkey_hex.as_bytes();
-    let start = bytes.len().saturating_sub(6);
-    let tail = &bytes[start..];
-    let mut hash: u32 = 5381;
-    for b in tail {
-        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
-    }
-    format!("{:06X}", hash & 0x00FF_FFFF)
+    crate::display::avatar_color_hex(pubkey_hex)
 }
 
 /// Abbreviated npub: `<first10>…<last8>` for values longer than 20 chars;
@@ -566,33 +556,14 @@ mod tests {
         assert_eq!(account_avatar_initials("", ""), "??");
     }
 
+    // The canonical pinned djb2 vector + deterministic-hex-output + garbage-
+    // input coverage live in `nmp_core::display::tests` (V-33). The single
+    // smoke below confirms `account_avatar_color_hex` is wired through to the
+    // canonical helper, anchoring the Accounts-surface delegation explicitly.
+
     #[test]
-    fn account_avatar_color_hex_matches_pinned_djb2_vector() {
-        // Same pinned vector as `nmp_nip29::projection::group_chat::tests
-        // ::avatar_color_hex_matches_pinned_djb2_vector` and the equivalent
-        // checks in `nmp-nip17` / `nmp-marmot`. If this output ever drifts the
-        // Accounts surface tint has diverged from DMs / group chat — that is a
-        // V-26 regression, not a fix.
+    fn account_avatar_color_hex_delegates_to_canonical_helper() {
         let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        assert_eq!(account_avatar_color_hex(hex), "08E60C");
-    }
-
-    #[test]
-    fn account_avatar_color_hex_is_deterministic_and_six_uppercase_hex_chars() {
-        let hex = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-        let a = account_avatar_color_hex(hex);
-        let b = account_avatar_color_hex(hex);
-        assert_eq!(a, b, "must be deterministic for the same pubkey");
-        assert_eq!(a.len(), 6, "must be exactly 6 chars");
-        assert!(a.chars().all(|c| c.is_ascii_hexdigit()), "must be hex");
-        assert_eq!(a, a.to_uppercase(), "must be uppercased");
-    }
-
-    #[test]
-    fn account_avatar_color_hex_short_and_empty_inputs_do_not_panic() {
-        // D6: helper accepts any input. Mirrors the same defensive test in
-        // `nmp_nip17::display` and `nmp_nip29::projection::group_chat`.
-        let _ = account_avatar_color_hex("zz");
-        let _ = account_avatar_color_hex("");
+        assert_eq!(account_avatar_color_hex(hex), crate::display::avatar_color_hex(hex));
     }
 }

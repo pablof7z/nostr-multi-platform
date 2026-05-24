@@ -12,12 +12,21 @@
 
 use nostr::{nips::nip19::ToBech32, PublicKey};
 
+// V-33: the two canonical cross-surface helpers — bech32 `short_npub`
+// (`<first10>…<last6>`) and djb2 `avatar_color_hex` — re-export through
+// `nmp_core::display`, the single source of truth for every NMP UI. The
+// Marmot-specific helpers below (`initials` over a display name,
+// `short_npub_compact` 8+4 variant, `relative_time` short-suffix bucketing,
+// `member_count_display`, etc.) stay local — their semantics are unique to
+// the Marmot surface.
+pub use nmp_core::display::{avatar_color_hex, short_npub};
+
 /// First 2 ASCII letters of `name`, uppercased; falls back to `"?"` on
 /// empty input. Used for avatar tiles. The 2-char prefix is bytewise, not
 /// grapheme-wise — matches the Swift code we are replacing (one
 /// observable change is unicode handling, but the Swift `String.prefix`
 /// was also bytewise via `Character` truncation for ASCII labels).
-#[must_use] 
+#[must_use]
 pub fn initials(name: &str) -> String {
     let mut chars = name.chars().filter(|c| !c.is_whitespace());
     let a = chars.next();
@@ -82,25 +91,6 @@ pub fn welcome_display_name(name: &str) -> String {
     }
 }
 
-/// Compact bech32 form `npub1abcd…wxyz` — 10-char head + 6-char tail. If
-/// `pubkey_hex` is already an `npub1…` string, abbreviates that; if it is
-/// hex, converts via `nostr::PublicKey` first, falling back to the raw
-/// input when the hex cannot be parsed (D6 — render the raw string rather
-/// than crash).
-#[must_use] 
-pub fn short_npub(pubkey_hex: &str) -> String {
-    if pubkey_hex.starts_with("npub1") {
-        return abbreviate(pubkey_hex, 10, 6);
-    }
-    match PublicKey::parse(pubkey_hex) {
-        Ok(pk) => match pk.to_bech32() {
-            Ok(b) => abbreviate(&b, 10, 6),
-            Err(_) => abbreviate(pubkey_hex, 10, 6),
-        },
-        Err(_) => abbreviate(pubkey_hex, 10, 6),
-    }
-}
-
 /// `npub1abcd…wxyz` (8 + 4) — used for inline error strings where the
 /// shorter form fits better.
 #[must_use] 
@@ -125,23 +115,6 @@ fn abbreviate(s: &str, head: usize, tail: usize) -> String {
     let head_s: String = chars.iter().take(head).collect();
     let tail_s: String = chars.iter().skip(chars.len() - tail).collect();
     format!("{head_s}…{tail_s}")
-}
-
-/// Deterministic 6-hex avatar tint derived from `pubkey_hex` (uppercase,
-/// no `#` prefix). Bytewise-equivalent to the previous Swift derivation:
-/// djb2 over the **last 6 chars** of the hex string in NATURAL order
-/// (`hex.suffix(6).utf8` in Swift → `&hex[hex.len()-6..]` in Rust). The
-/// match means existing renders keep their tints across this migration.
-#[must_use] 
-pub fn avatar_color_hex(pubkey_hex: &str) -> String {
-    let bytes = pubkey_hex.as_bytes();
-    let start = bytes.len().saturating_sub(6);
-    let tail = &bytes[start..];
-    let mut hash: u32 = 5381;
-    for b in tail {
-        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
-    }
-    format!("{:06X}", hash & 0x00FF_FFFF)
 }
 
 /// Relative-time stamp ("now", "12s", "3m", "5h", "2d", "1w") computed
@@ -214,19 +187,14 @@ mod tests {
         assert_eq!(relative_time(now - 3 * 7 * 86_400, now), "3w");
     }
 
+    // V-33: `short_npub` and `avatar_color_hex` are now re-exported from
+    // `nmp_core::display`; their exhaustive coverage (round-trip, pinned
+    // djb2 vector, garbage-input D6 fallback) lives in
+    // `nmp_core::display::tests`. The smoke below confirms the re-exports
+    // resolve at this layer and behave at the Marmot call sites.
     #[test]
-    fn short_npub_falls_back_on_garbage() {
-        // Hex that does not decode → still abbreviated, not panicked.
-        let s = short_npub("zz");
-        assert_eq!(s, "zz");
-    }
-
-    #[test]
-    fn avatar_color_is_deterministic_and_six_hex() {
-        let a = avatar_color_hex("abcdef1234567890");
-        assert_eq!(a.len(), 6);
-        let b = avatar_color_hex("abcdef1234567890");
-        assert_eq!(a, b);
-        assert!(a.chars().all(|c| c.is_ascii_hexdigit() && c.is_ascii_uppercase() || c.is_ascii_digit()));
+    fn re_exported_helpers_resolve_and_behave() {
+        assert_eq!(short_npub("zz"), "zz");
+        assert_eq!(avatar_color_hex("abcdef1234567890").len(), 6);
     }
 }

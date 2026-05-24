@@ -8,6 +8,11 @@ pub mod bunker_hook;
 #[cfg(feature = "codegen-schema")]
 pub mod codegen_schema;
 mod capability_socket;
+// V-33: shared display-string helpers (bech32 abbreviation, avatar tint
+// djb2, relative-time bucketing) — canonical home for the cross-surface
+// formatting primitives every NIP crate / kernel module / host-app
+// projection previously duplicated.
+pub mod display;
 // ffi: C-ABI entry points for Swift/Kotlin native shells.
 // Gated on `native` — wasm32 uses wasm-bindgen, not C-ABI.
 #[cfg(feature = "native")]
