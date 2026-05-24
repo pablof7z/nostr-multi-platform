@@ -3776,7 +3776,7 @@ dependencies = [
  "nmp-nip29",
  "nmp-nip57",
  "nmp-nip59",
- "nmp-nip65",
+ "nmp-router",
  "nmp-signer-broker",
  "nmp-threading",
  "nmp-wasm",
@@ -3997,14 +3997,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip65"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "serde",
-]
-
-[[package]]
 name = "nmp-nostr-lmdb"
 version = "0.1.0"
 dependencies = [
@@ -4055,6 +4047,7 @@ name = "nmp-router"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "serde",
 ]
 
 [[package]]

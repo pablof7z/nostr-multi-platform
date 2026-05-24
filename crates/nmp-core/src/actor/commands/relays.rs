@@ -27,10 +27,11 @@ use crate::relay::canonical_relay_url;
 use crate::substrate::UnsignedEvent;
 
 /// NIP-65 kind: the relay list. Duplicated here (instead of imported from
-/// `nmp-nip65`) because `nmp-core` is the D0 floor — it does not depend on
-/// any protocol crate. Keeping the magic number local keeps the crate
+/// `nmp-router`) because `nmp-core` is the D0 floor — it does not depend on
+/// any higher-layer crate. Keeping the magic number local keeps the crate
 /// dependency arrow pointing in the right direction; the wire-shape contract
-/// with `nmp-nip65` is held by an `assert_eq!` in `crates/nmp-nip65/src/lib.rs`.
+/// with `nmp-router`'s `PublishRelayListAction` is held by `nmp-router`'s
+/// own round-trip tests.
 const KIND_RELAY_LIST: u32 = 10002;
 
 fn normalize_role(role: &str) -> Option<String> {

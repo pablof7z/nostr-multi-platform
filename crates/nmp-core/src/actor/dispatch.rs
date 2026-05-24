@@ -79,7 +79,7 @@ fn update_local_key_slots(
 /// never re-published the user's NIP-65 outbox. The asymmetric leak:
 /// removing a defunct relay never told other clients to stop fanning out
 /// to it; adding a new relay never told contacts to read/write there. The
-/// `nmp.nip65.publish_relay_list` action (`nmp-nip65` crate) closes the
+/// `nmp.nip65.publish_relay_list` action (`nmp-router` crate) closes the
 /// host-dispatched half of the loop; this helper closes the actor-internal
 /// half so the FFI `nmp_app_add_relay` / `nmp_app_remove_relay` paths and
 /// any non-action caller of those `ActorCommand`s also keep NIP-65 in

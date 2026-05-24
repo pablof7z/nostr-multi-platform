@@ -7,8 +7,11 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 
 [dependencies]
 # Substrate traits and value types — `OutboxRouter`, `MailboxCache`,
-# `IngestParser`, `RoutingContext`, `RoutedRelaySet`, etc.
+# `IngestParser`, `RoutingContext`, `RoutedRelaySet`, plus the
+# `UnsignedEvent` / `ActionModule` types the absorbed
+# `nmp.nip65.publish_relay_list` action module depends on.
 nmp-core = { path = "../nmp-core" }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

@@ -326,7 +326,7 @@ impl PartialEq<CanonicalRelayUrl> for &str {
 /// pools on the canonical *string* rather than adopting the newtype. Returns
 /// the inner `String` so those sites need no further conversion.
 ///
-/// Also used by out-of-crate NIP builder crates (`nmp-nip65`, `nmp-nip17`) so
+/// Also used by out-of-crate NIP builder crates (`nmp-router`, `nmp-nip17`) so
 /// they don't each need their own copy of the canonicalization rules.
 ///
 /// New kernel code should prefer [`CanonicalRelayUrl`] directly — the newtype
