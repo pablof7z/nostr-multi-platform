@@ -1,3 +1,4 @@
+use nmp_core::display::short_npub;
 use nmp_core::nip19::encode_npub;
 use nmp_core::substrate::{picture_placeholder, KernelEvent};
 use serde::{Deserialize, Serialize};
@@ -30,7 +31,7 @@ impl AuthorDisplay {
     pub fn fallback(pubkey: &str) -> Self {
         let npub = encode_npub(pubkey).unwrap_or_else(|_| short_key(pubkey));
         Self {
-            name: npub.clone(),
+            name: short_npub(pubkey),
             npub,
             picture_url: picture_placeholder(pubkey),
             source: AuthorDisplaySource::Npub,
