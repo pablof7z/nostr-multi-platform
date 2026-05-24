@@ -41,14 +41,23 @@ final class GroupChatDecodeTests: XCTestCase {
         // `nmp_nip29::projection::group_chat::format_ago_secs` so the host
         // view binds it directly and never reaches for
         // `RelativeDateTimeFormatter`.
+        //
+        // `author_display` / `author_initials` / `author_color_hex` are the
+        // V-25 thin-shell fields — pure functions of the event author,
+        // computed in `nmp_nip29::projection::group_chat` at ingest. The
+        // view binds them directly and never slices the hex string itself.
         let json = """
         {
           "nmp.nip29.group_chat": {
             "messages": [
               { "id": "e1", "pubkey": "ab12", "content": "hello",
-                "created_at": 200, "created_at_display": "5s ago", "kind": 9 },
+                "created_at": 200, "created_at_display": "5s ago",
+                "author_display": "ab12", "author_initials": "AB",
+                "author_color_hex": "93E7AB", "kind": 9 },
               { "id": "e0", "pubkey": "cd34", "content": "earlier",
-                "created_at": 100, "created_at_display": "2m ago", "kind": 11 }
+                "created_at": 100, "created_at_display": "2m ago",
+                "author_display": "cd34", "author_initials": "CD",
+                "author_color_hex": "950933", "kind": 11 }
             ]
           }
         }
@@ -67,8 +76,16 @@ final class GroupChatDecodeTests: XCTestCase {
         XCTAssertEqual(chat.messages[0].createdAt, 200)
         XCTAssertEqual(chat.messages[0].createdAtDisplay, "5s ago")
         XCTAssertEqual(chat.messages[0].kind, 9)
+        // V-25: the three author display fields land verbatim on the
+        // camelCase Swift properties via `.convertFromSnakeCase`.
+        XCTAssertEqual(chat.messages[0].authorDisplay, "ab12")
+        XCTAssertEqual(chat.messages[0].authorInitials, "AB")
+        XCTAssertEqual(chat.messages[0].authorColorHex, "93E7AB")
         XCTAssertEqual(chat.messages[1].createdAtDisplay, "2m ago")
         XCTAssertEqual(chat.messages[1].kind, 11)
+        XCTAssertEqual(chat.messages[1].authorDisplay, "cd34")
+        XCTAssertEqual(chat.messages[1].authorInitials, "CD")
+        XCTAssertEqual(chat.messages[1].authorColorHex, "950933")
     }
 
     /// A snapshot with no `nip29.group_chat` key leaves `groupChat` nil and

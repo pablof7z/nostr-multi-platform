@@ -90,6 +90,29 @@ pub struct GroupChatMessage {
     /// always fresh on render — never stale across ticks.
     #[serde(default)]
     pub created_at_display: String,
+    /// Abbreviated hex pubkey for the chat row header (`"<first8>…<last8>"`).
+    /// Computed at ingest time from [`KernelEvent::author`] via
+    /// [`pubkey_display`] so the host shell never slices the hex string
+    /// itself (V-25 thin-shell fix — aim.md §2: display formatting is
+    /// Rust-owned). Mirrors the `relativeTime` → `created_at_display`
+    /// migration of V-22.
+    #[serde(default)]
+    pub author_display: String,
+    /// Two-char uppercase initials for the avatar tile — the first two hex
+    /// chars of [`KernelEvent::author`], uppercased. Computed at ingest time
+    /// via [`pubkey_initials`] so the host shell never derives display
+    /// strings from raw pubkey hex (V-25 thin-shell fix).
+    #[serde(default)]
+    pub author_initials: String,
+    /// Deterministic 6-hex avatar background colour from the author pubkey,
+    /// uppercase, no `#` prefix. Computed at ingest time via
+    /// [`avatar_color_hex`] using the **same djb2 algorithm** as
+    /// `nmp_nip17::display::avatar_color_hex` and `nmp_marmot::projection::
+    /// display::avatar_color_hex` so avatar tints stay consistent across
+    /// every surface (DMs, NIP-29 group chat, Marmot) for the same author
+    /// (V-25 thin-shell fix).
+    #[serde(default)]
+    pub author_color_hex: String,
     /// Event kind — one of 9 (chat), 11 (thread).
     pub kind: u32,
 }
@@ -101,6 +124,11 @@ impl GroupChatMessage {
     /// `created_at_display` is left empty; the snapshot path (re)computes it
     /// against the snapshot's wall-clock "now" so the label is always fresh
     /// (V-22 — mirrors V-20's pattern on `DmMessage`).
+    ///
+    /// `author_display` / `author_initials` / `author_color_hex` are computed
+    /// once at ingest from the event author (V-25) — they're pure functions
+    /// of the pubkey hex and do not change across snapshot ticks, so unlike
+    /// `created_at_display` they need no per-tick refresh.
     fn from_event(event: &KernelEvent) -> Self {
         Self {
             id: event.id.clone(),
@@ -108,6 +136,9 @@ impl GroupChatMessage {
             content: event.content.clone(),
             created_at: event.created_at,
             created_at_display: String::new(),
+            author_display: pubkey_display(&event.author),
+            author_initials: pubkey_initials(&event.author),
+            author_color_hex: avatar_color_hex(&event.author),
             kind: event.kind,
         }
     }
@@ -116,11 +147,12 @@ impl GroupChatMessage {
 /// Abbreviated "X ago" relative-time label for a Unix-seconds timestamp.
 ///
 /// Deliberate micro-duplication of `nmp_nip17::display::format_ago_secs` (and
-/// of the avatar-colour djb2 helper that lives in both `nmp-nip17` and
-/// `nmp-marmot`) — the same pattern documented in those crates: a NIP crate
-/// should not pull another NIP crate in just to share a trivial bucketed-time
-/// formatter. Kept byte-identical so every surface (DMs, group chat) speaks
-/// the same dialect.
+/// of the avatar-colour djb2 helper that lives in `nmp-nip17`, `nmp-marmot`,
+/// and — since V-25 — this crate's own [`avatar_color_hex`]) — the same
+/// pattern documented in those crates: a NIP crate should not pull another
+/// NIP crate in just to share a trivial bucketed-time formatter. Kept
+/// byte-identical so every surface (DMs, group chat, Marmot) speaks the same
+/// dialect.
 ///
 /// `now_secs` is the wall-clock "now" in Unix seconds — injected so the
 /// snapshot path stays deterministic in tests and the helper itself does no
@@ -159,6 +191,60 @@ fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// Abbreviated hex pubkey: `"<first8>…<last8>"` — what the chat row header
+/// and the reply banner render in place of the raw 64-char hex.
+///
+/// For inputs shorter than 16 chars (test fixtures, broken upstreams) the
+/// raw input is returned unchanged so the helper is panic-free regardless of
+/// what the host receives — D6 in a single line. Mirrors the iOS
+/// `shortPubkey(_:)` helper deleted in V-25 byte-for-byte; the move into
+/// Rust is the whole point of the thin-shell rule.
+#[must_use]
+fn pubkey_display(pubkey_hex: &str) -> String {
+    if pubkey_hex.len() < 16 {
+        return pubkey_hex.to_string();
+    }
+    format!(
+        "{}…{}",
+        &pubkey_hex[..8],
+        &pubkey_hex[pubkey_hex.len() - 8..]
+    )
+}
+
+/// First two characters of the pubkey hex, uppercased — the deterministic
+/// avatar-tile label. Mirrors the iOS `initials` helper deleted in V-25.
+///
+/// For inputs shorter than 2 chars the available prefix is returned
+/// (uppercased); for the empty string the empty string is returned. Either
+/// way the helper is panic-free — D6.
+#[must_use]
+fn pubkey_initials(pubkey_hex: &str) -> String {
+    let take = pubkey_hex.len().min(2);
+    pubkey_hex[..take].to_ascii_uppercase()
+}
+
+/// Deterministic 6-hex avatar background colour (uppercase, no `#` prefix).
+///
+/// **Byte-identical to** `nmp_nip17::display::avatar_color_hex` and
+/// `nmp_marmot::projection::display::avatar_color_hex`: djb2 over the **last
+/// 6 bytes** of the pubkey hex string. The duplication is deliberate (see
+/// the rationale on [`format_ago_secs`]) and load-bearing — the same author
+/// must produce the same avatar tint in DMs, in NIP-29 group chat, and in
+/// Marmot rows. Replaces the iOS `String(message.pubkey.prefix(6))` slice
+/// (V-25); that slice was a different algorithm and produced inconsistent
+/// tints across surfaces.
+#[must_use]
+fn avatar_color_hex(pubkey_hex: &str) -> String {
+    let bytes = pubkey_hex.as_bytes();
+    let start = bytes.len().saturating_sub(6);
+    let tail = &bytes[start..];
+    let mut hash: u32 = 5381;
+    for b in tail {
+        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
+    }
+    format!("{:06X}", hash & 0x00FF_FFFF)
 }
 
 /// The serialised read-model a group-chat screen consumes.
@@ -596,5 +682,167 @@ mod tests {
             .as_str()
             .expect("created_at_display present");
         assert!(!display.is_empty(), "snapshot_json must populate the label");
+    }
+
+    // ── V-25: author display strings ──────────────────────────────────────
+    //
+    // Pubkey-derived display strings live in Rust now — the iOS view binds
+    // the three fields directly and the `shortPubkey` / `initials` helpers
+    // plus the `String(prefix(6))` slice are deleted. These tests pin the
+    // exact byte values so an algorithm drift here cannot silently change
+    // what every group-chat row renders.
+
+    #[test]
+    fn pubkey_display_long_input_is_first_eight_ellipsis_last_eight() {
+        // A 64-char hex pubkey — the production shape.
+        let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        assert_eq!(pubkey_display(hex), "abcdef01…23456789");
+    }
+
+    #[test]
+    fn pubkey_display_short_input_is_unchanged() {
+        // Anything under 16 chars (test fixtures, broken upstreams) returns
+        // verbatim — D6, no panic on the `&hex[..8]` slice.
+        assert_eq!(pubkey_display("ab12"), "ab12");
+        assert_eq!(pubkey_display(""), "");
+    }
+
+    #[test]
+    fn pubkey_display_boundary_sixteen_chars_is_abbreviated() {
+        // Exactly 16 chars triggers the abbreviation branch: first 8 + "…"
+        // + last 8 — at len == 16 the two halves are adjacent (not
+        // overlapping), so the rendered output covers every character of
+        // the input. Matches what the deleted Swift `shortPubkey` did.
+        assert_eq!(pubkey_display("0123456789abcdef"), "01234567…89abcdef");
+    }
+
+    #[test]
+    fn pubkey_initials_takes_first_two_uppercased() {
+        assert_eq!(pubkey_initials("ab12cd34"), "AB");
+        assert_eq!(pubkey_initials("CD34"), "CD");
+        // Mixed case input is normalised to uppercase.
+        assert_eq!(pubkey_initials("aBcDeF"), "AB");
+    }
+
+    #[test]
+    fn pubkey_initials_short_inputs_do_not_panic() {
+        // D6: no panic on the `&hex[..2]` slice when the input is shorter
+        // than 2 chars.
+        assert_eq!(pubkey_initials("a"), "A");
+        assert_eq!(pubkey_initials(""), "");
+    }
+
+    #[test]
+    fn avatar_color_hex_matches_pinned_djb2_vector() {
+        // Pinned algorithm vector — this is the byte-for-byte output of the
+        // djb2 helper shared with `nmp_nip17::display::avatar_color_hex` and
+        // `nmp_marmot::projection::display::avatar_color_hex` for a known
+        // 64-char hex input. If this assertion ever flips, the avatar tint
+        // for the same author has diverged across surfaces — that is a V-25
+        // regression, not a fix.
+        let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        assert_eq!(avatar_color_hex(hex), "08E60C");
+    }
+
+    #[test]
+    fn avatar_color_hex_is_six_uppercase_hex_chars() {
+        let out = avatar_color_hex("author-of-e1");
+        assert_eq!(out.len(), 6);
+        assert!(out.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(out, out.to_uppercase());
+    }
+
+    #[test]
+    fn avatar_color_hex_short_and_empty_inputs_do_not_panic() {
+        // D6 + matches the `nmp-nip17` helper's `_on_garbage_does_not_panic`
+        // test contract: the helper must accept any input.
+        let _ = avatar_color_hex("zz");
+        let _ = avatar_color_hex("");
+    }
+
+    #[test]
+    fn ingest_populates_author_display_strings() {
+        // The ingest path SHOULD pre-compute the author display strings —
+        // unlike `created_at_display`, these are pure functions of the
+        // pubkey hex and do not change across snapshot ticks, so recomputing
+        // them per tick would be wasted work. Reach into the internal store
+        // to assert the ingest-time shape.
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+
+        let messages = proj.messages.lock().expect("lock");
+        let stored = messages.values().next().expect("one message stored");
+        // `event("e1", …)` synthesises author = "author-of-e1" (len 12 < 16),
+        // so `author_display` is the raw author and `author_initials` is the
+        // first two chars uppercased.
+        assert_eq!(stored.pubkey, "author-of-e1");
+        assert_eq!(stored.author_display, "author-of-e1");
+        assert_eq!(stored.author_initials, "AU");
+        assert_eq!(stored.author_color_hex, "E8844A");
+    }
+
+    #[test]
+    fn snapshot_preserves_author_display_strings() {
+        // The snapshot path must surface the ingest-time author fields
+        // unchanged — only `created_at_display` is rewritten per tick.
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+
+        let snap = proj.snapshot_at(200);
+        let msg = &snap.messages[0];
+        assert_eq!(msg.author_display, "author-of-e1");
+        assert_eq!(msg.author_initials, "AU");
+        assert_eq!(msg.author_color_hex, "E8844A");
+    }
+
+    #[test]
+    fn snapshot_json_includes_author_display_strings() {
+        // The Swift `GroupChatMessage` decoder uses `.convertFromSnakeCase`,
+        // so the snake_case keys here are exactly what the host binds to
+        // `authorDisplay` / `authorInitials` / `authorColorHex`.
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+
+        let json = proj.snapshot_json();
+        let msg = &json["messages"][0];
+        assert_eq!(
+            msg["author_display"].as_str(),
+            Some("author-of-e1"),
+            "snapshot_json must emit author_display"
+        );
+        assert_eq!(
+            msg["author_initials"].as_str(),
+            Some("AU"),
+            "snapshot_json must emit author_initials"
+        );
+        assert_eq!(
+            msg["author_color_hex"].as_str(),
+            Some("E8844A"),
+            "snapshot_json must emit author_color_hex"
+        );
+    }
+
+    #[test]
+    fn snapshot_with_realistic_pubkey_abbreviates_correctly() {
+        // Drive `from_event` with a real 64-char hex author so the
+        // production-shape `author_display` branch is exercised end to end.
+        let realistic_author =
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let evt = KernelEvent {
+            id: "e-real".into(),
+            author: realistic_author.into(),
+            kind: KIND_CHAT_MESSAGE,
+            created_at: 100,
+            tags: h_tag("rust-nostr"),
+            content: "hello".into(),
+        };
+        let proj = GroupChatProjection::new(group());
+        proj.on_kernel_event(&evt);
+
+        let snap = proj.snapshot_at(200);
+        let msg = &snap.messages[0];
+        assert_eq!(msg.author_display, "abcdef01…23456789");
+        assert_eq!(msg.author_initials, "AB");
+        assert_eq!(msg.author_color_hex, "08E60C");
     }
 }

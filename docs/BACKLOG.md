@@ -487,6 +487,30 @@ mirrors `profile_npub_short` in `kernel/update.rs` byte-for-byte (deliberate mic
 `shortNpub` and the three `JoinGroupView` computed properties are deleted. Swift codegen
 (`KernelTypes.generated.swift`) regenerated to surface `npubShort`.
 
+### V-25 · `GroupChatView` pubkey-derived display strings in Swift — **DONE** (PR #436)
+
+**Verified:** `ios/Chirp/Chirp/Features/GroupChatView.swift` carried three pubkey-derived display
+computations the host had no business doing: `shortPubkey(_:)` at line 183 (`"\(hex.prefix(8))…\(hex.suffix(8))"`,
+called from the chat-row header at line 209 and the reply banner at line 102), `var initials`
+at line 253 (`String(message.pubkey.prefix(2)).uppercased()`), and the avatar colour slice
+`String(message.pubkey.prefix(6))` at line 203. The first two are the same class of
+abbreviated-identity formatting V-22 moved to Rust for timestamps; the third was worse — a
+different algorithm from `nmp_nip17::display::avatar_color_hex` / `nmp_marmot::projection::display::avatar_color_hex`,
+so the **same author** rendered with a **different avatar tint** in DMs vs. NIP-29 group chat.
+
+**Fixed:** added three fields to `GroupChatMessage` in `crates/nmp-nip29/src/projection/group_chat.rs`
+— `author_display`, `author_initials`, `author_color_hex` — populated at ingest from
+`KernelEvent::author` via three new helpers (`pubkey_display`, `pubkey_initials`, `avatar_color_hex`).
+The colour helper is **byte-identical** to `nmp_nip17::display::avatar_color_hex` (djb2 over the
+last 6 bytes), deliberate micro-duplication for the same reason `format_ago_secs` is duplicated
+(a NIP crate must not depend on another NIP crate just to share a trivial helper). Swift
+`GroupChatMessage` mirror in `KernelBridge.swift` gains the three matching camelCase properties;
+the view binds them directly; the three Swift display helpers are deleted. A pinned-vector test
+locks the djb2 output so an algorithm drift cannot silently change every group-chat avatar.
+
+**Behaviour change called out:** the avatar tint for every existing group-chat row will shift
+once on first run — that's the consistency fix, not a regression.
+
 ---
 
 ## Section 2 — In Flight

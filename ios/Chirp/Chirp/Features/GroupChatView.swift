@@ -99,7 +99,7 @@ struct GroupChatView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Replying to \(shortPubkey(replyTarget.pubkey))")
+                    Text("Replying to \(replyTarget.authorDisplay)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(replyTarget.content)
@@ -178,13 +178,6 @@ struct GroupChatView: View {
     }
 }
 
-/// Truncated hex pubkey: `abcdef01…23456789`. Shared by `GroupChatMessageRow`
-/// and the reply banner; no npub decoding (thin-shell: no protocol logic).
-private func shortPubkey(_ hex: String) -> String {
-    guard hex.count >= 16 else { return hex }
-    return "\(hex.prefix(8))…\(hex.suffix(8))"
-}
-
 // ── Message row ───────────────────────────────────────────────────────────
 
 private struct GroupChatMessageRow: View {
@@ -199,14 +192,14 @@ private struct GroupChatMessageRow: View {
         HStack(alignment: .top, spacing: 8) {
             ChirpAvatar(
                 url: nil,
-                initials: initials,
-                colorHex: String(message.pubkey.prefix(6)),
+                initials: message.authorInitials,
+                colorHex: message.authorColorHex,
                 size: 36
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(shortPubkey(message.pubkey))
+                    Text(message.authorDisplay)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -246,11 +239,5 @@ private struct GroupChatMessageRow: View {
             }
             .accessibilityIdentifier("group-chat-reply-button")
         }
-    }
-
-    /// First two hex chars of the author pubkey — a cheap deterministic
-    /// avatar label. No npub decoding (thin-shell: no protocol logic).
-    private var initials: String {
-        String(message.pubkey.prefix(2)).uppercased()
     }
 }
