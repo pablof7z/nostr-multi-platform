@@ -9,7 +9,8 @@
 use super::*;
 use crate::dm_relay_cache::DmRelayCache;
 use nmp_core::substrate::{
-    DmInboxRelayLookup, EmptyDmInboxRelayLookup, ProtocolCommand, ProtocolCommandContext,
+    DmInboxRelayLookup, EmptyDmInboxRelayLookup, ErrorSurface, KernelClock,
+    LocalSignerAccess, NoopActionStageTracker, ProtocolCommand, ProtocolCommandContext,
     UnsignedEvent,
 };
 use nmp_core::ActorCommand;
@@ -40,14 +41,59 @@ struct Recorder {
     failures: RefCell<Vec<(String, String)>>,
 }
 
+// ── Test-only capability adapters (Debt C) ──
+
+struct FixedClock(u64);
+impl KernelClock for FixedClock {
+    fn now_secs(&self) -> u64 {
+        self.0
+    }
+}
+
+struct StaticSigner {
+    keys: Option<nostr::Keys>,
+    signer: Option<Arc<dyn SignerForSeal>>,
+}
+impl LocalSignerAccess for StaticSigner {
+    fn active_local_keys(&self) -> Option<nostr::Keys> {
+        self.keys.clone()
+    }
+    fn signer_for_seal(&self) -> Option<Arc<dyn SignerForSeal>> {
+        self.signer.clone()
+    }
+}
+
+/// `ErrorSurface` adapter that records every toast + failure into
+/// shared `RefCell` slots so the test asserts can inspect the side
+/// effects. `RefCell` (not `Mutex`) is fine — the dispatch runs
+/// single-threaded inside `run_cmd`.
+struct RecordingErrors<'a> {
+    toasts: &'a RefCell<Vec<Option<String>>>,
+    failures: &'a RefCell<Vec<(String, String)>>,
+}
+// SAFETY: the adapter is constructed and dropped inside `run_cmd` on a
+// single thread; the `&RefCell` borrows never cross a thread boundary.
+// The `Send + Sync` impl is required because the substrate trait
+// carries the bound.
+unsafe impl<'a> Send for RecordingErrors<'a> {}
+unsafe impl<'a> Sync for RecordingErrors<'a> {}
+impl<'a> ErrorSurface for RecordingErrors<'a> {
+    fn set_last_error_toast(&self, message: Option<String>) {
+        self.toasts.borrow_mut().push(message);
+    }
+    fn record_action_failure(&self, correlation_id: String, reason: String) {
+        self.failures.borrow_mut().push((correlation_id, reason));
+    }
+}
+
 /// Drive a command body through a fully-wired
 /// [`ProtocolCommandContext`] and return the recorded side effects.
 ///
 /// V-08 — the DM send path now resolves the signer via
 /// [`ProtocolCommandContext::signer_for_seal`]. Tests with `Some(keys)`
-/// install a closure that returns the `nostr::Keys` blanket impl as the
-/// `SignerForSeal`; `None` mirrors the no-active-account path. End-to-
-/// end remote-signer (NIP-46 bunker) coverage lives in
+/// install a `StaticSigner` that returns the `nostr::Keys` blanket impl
+/// as the `SignerForSeal`; `None` mirrors the no-active-account path.
+/// End-to-end remote-signer (NIP-46 bunker) coverage lives in
 /// `nmp_core::actor::commands::remote_signer_tests`.
 fn run_cmd(
     cmd: SendGiftWrappedDmCommand,
@@ -58,21 +104,20 @@ fn run_cmd(
     let recorder = Recorder::default();
     {
         let sent_ref = &recorder.sent;
-        let toast_ref = &recorder.toasts;
-        let fail_ref = &recorder.failures;
         let send = |c: ActorCommand| sent_ref.borrow_mut().push(c);
-        let toast_fn = |t: Option<String>| toast_ref.borrow_mut().push(t);
-        let fail_fn = |cid: String, err: String| fail_ref.borrow_mut().push((cid, err));
         let signer_arc: Option<Arc<dyn SignerForSeal>> =
             keys.as_ref().map(|k| Arc::new(k.clone()) as Arc<dyn SignerForSeal>);
-        let signer_fn = move || signer_arc.clone();
-        let mut ctx = ProtocolCommandContext::with_send_only(&send)
-            .with_nip17_local_keys(keys)
-            .with_dm_inbox_relays(dm_lookup)
-            .with_now_secs(now_secs)
-            .with_set_last_error_toast(&toast_fn)
-            .with_record_action_failure(&fail_fn)
-            .with_signer_for_seal(&signer_fn);
+        let clock = FixedClock(now_secs);
+        let signers = StaticSigner { keys, signer: signer_arc };
+        let errors = RecordingErrors {
+            toasts: &recorder.toasts,
+            failures: &recorder.failures,
+        };
+        let stages = NoopActionStageTracker;
+        let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let mut ctx = ProtocolCommandContext::new(
+            &send, tx, &clock, &signers, dm_lookup, &errors, &stages,
+        );
         Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
     }
     recorder

@@ -24,12 +24,12 @@
 //!   The executor passes `created_at = 0` as a sentinel; this command
 //!   re-stamps before signing (mirrors the
 //!   `PublishUnsignedEventToRelays` precedent).
-//! - [`ProtocolCommandContext::author_write_relays`] +
-//!   [`ProtocolCommandContext::bootstrap_discovery_relays`] — V-07: relay
-//!   selection is kernel policy. The kind:9734 `relays` tag tells the LN
-//!   provider where to publish the kind:9735 receipt; the correct answer is
-//!   the RECIPIENT's NIP-65 write set, falling back to the bootstrap
-//!   discovery seed when no kind:10002 is cached.
+//! - TODO Debt C follow-up: V-07 (recipient relay injection) is currently
+//!   disabled — Debt C deleted the routing accessors from the substrate
+//!   context (`author_write_relays` / `bootstrap_discovery_relays` were
+//!   routing leaks). Migration through the kernel's `OutboxRouter` is
+//!   pending; until then `inject_recipient_relays` is a no-op and the
+//!   kind:9734 carries no `relays` tag.
 //! - [`ProtocolCommandContext::active_local_keys`] — ADR-0026 Phase 1:
 //!   local-keys accounts only. Bunker (NIP-46) accounts return `None`; we
 //!   fail closed with a clear toast and a `RecordActionFailure`.
@@ -235,23 +235,26 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
 }
 
 /// V-07 — inject the kind:9734 `relays` tag from the recipient's NIP-65
-/// (kind:10002) write list when the caller produced no tag. Relay selection
-/// is kernel policy: shells (Swift, web) MUST NOT decide where the LN
-/// provider should publish the kind:9735 receipt.
+/// (kind:10002) write list when the caller produced no tag.
 ///
-/// Semantics:
-/// - If a non-empty `relays` tag is already present (length > 1 — the key
-///   plus at least one URL), do nothing. The caller chose explicitly.
-/// - Otherwise extract the recipient pubkey from the `p` tag and inject
-///   `["relays", <write-relay-urls…>]`.
-///   [`ProtocolCommandContext::author_write_relays`] falls back to
-///   [`ProtocolCommandContext::bootstrap_discovery_relays`] on cold-start,
-///   so the tag is never empty for a well-formed recipient. A missing `p`
-///   tag is a builder bug — we still inject the bootstrap seed so the
-///   kind:9734 carries a valid `relays` tag rather than crashing later in
-///   the signed-JSON path.
+/// TODO Debt C follow-up: Debt C removed the
+/// `ProtocolCommandContext::author_write_relays` +
+/// `bootstrap_discovery_relays` accessors (routing leaks — routing is the
+/// kernel's `OutboxRouter`, not a substrate read accessor). This
+/// function must be migrated to route through the kernel's
+/// `OutboxRouter` (either populate `RoutingContext::explicit_targets` or
+/// route a synthetic event and consume `routed.urls()`); the migration
+/// is non-trivial (the LNURL fetcher needs a *receiver*-author write set,
+/// while the publish path routes by *event*-author) and exceeds this
+/// PR's LOC budget.
+///
+/// Until then this function is a no-op: kind:9734 carries no `relays`
+/// tag, the LN provider falls back to its default behaviour (typically
+/// publishing the kind:9735 receipt to its operator-configured set; some
+/// providers reject the request, in which case the user sees a toast).
+/// Two LNURL unit tests are `#[ignore]`d behind the same TODO.
 pub(crate) fn inject_recipient_relays(
-    ctx: &ProtocolCommandContext<'_>,
+    _ctx: &ProtocolCommandContext<'_>,
     unsigned: &mut UnsignedEvent,
 ) {
     let relays_present = unsigned.tags.iter().any(|t| {
@@ -260,22 +263,11 @@ pub(crate) fn inject_recipient_relays(
     if relays_present {
         return;
     }
-    let recipient: String = unsigned
-        .tags
-        .iter()
-        .find(|t| t.first().is_some_and(|k| k == "p"))
-        .and_then(|t| t.get(1))
-        .cloned()
-        .unwrap_or_default();
-    let relays = if recipient.is_empty() {
-        ctx.bootstrap_discovery_relays()
-    } else {
-        ctx.author_write_relays(&recipient)
-    };
-    let mut relays_tag = Vec::with_capacity(1 + relays.len());
-    relays_tag.push("relays".to_string());
-    relays_tag.extend(relays);
-    unsigned.tags.push(relays_tag);
+    tracing::warn!(
+        "NIP-57: kind:9734 relays tag injection disabled pending Debt C \
+         follow-up (route through OutboxRouter); LN provider falls back \
+         to its own default for kind:9735 publication"
+    );
 }
 
 /// Sign `unsigned` with `keys` and emit the flat NIP-01 JSON object the

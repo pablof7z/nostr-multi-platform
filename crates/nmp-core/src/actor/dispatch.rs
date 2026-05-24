@@ -253,6 +253,90 @@ pub(super) struct ActorContext<'a> {
     pub(super) routing_substrate_slot: &'a crate::ffi::RoutingSubstrateSlot,
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Debt C — capability adapters for `ProtocolCommandContext`.
+//
+// The `Protocol(cmd)` arm constructs these to bridge the actor's
+// kernel + identity references into the typed capability traits the
+// substrate `ProtocolCommandContext` consumes. Lifetimes are bound to
+// the dispatch arm's stack frame; the adapters never outlive their
+// `RefCell` borrow targets.
+// ────────────────────────────────────────────────────────────────────────
+
+struct KernelClockAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+// SAFETY: the dispatch arm constructs and drops the adapter on the
+// actor thread; the `&RefCell<&mut Kernel>` reference never crosses a
+// thread boundary. The `Send + Sync` claim is needed because the
+// substrate trait carries the bound (`dyn KernelClock` lives behind
+// `&dyn` in `ProtocolCommandContext`), but the adapter is held only
+// for the dispatch arm's stack frame.
+unsafe impl<'a> Send for KernelClockAdapter<'a> {}
+unsafe impl<'a> Sync for KernelClockAdapter<'a> {}
+
+impl<'a> crate::substrate::KernelClock for KernelClockAdapter<'a> {
+    fn now_secs(&self) -> u64 {
+        self.kernel.borrow().now_secs()
+    }
+}
+
+struct LocalSignerAccessAdapter<'a> {
+    identity: &'a std::cell::RefCell<&'a IdentityRuntime>,
+}
+
+unsafe impl<'a> Send for LocalSignerAccessAdapter<'a> {}
+unsafe impl<'a> Sync for LocalSignerAccessAdapter<'a> {}
+
+impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
+    fn active_local_keys(&self) -> Option<nostr::Keys> {
+        self.identity.borrow().active_local_keys().cloned()
+    }
+    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+        self.identity.borrow().active_signer_for_seal()
+    }
+}
+
+struct ErrorSurfaceAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for ErrorSurfaceAdapter<'a> {}
+unsafe impl<'a> Sync for ErrorSurfaceAdapter<'a> {}
+
+impl<'a> crate::substrate::ErrorSurface for ErrorSurfaceAdapter<'a> {
+    fn set_last_error_toast(&self, message: Option<String>) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.set_last_error_toast(message);
+        }
+    }
+    fn record_action_failure(&self, correlation_id: String, reason: String) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.record_action_failure(correlation_id, reason);
+        }
+    }
+}
+
+struct ActionStageTrackerAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for ActionStageTrackerAdapter<'a> {}
+unsafe impl<'a> Sync for ActionStageTrackerAdapter<'a> {}
+
+impl<'a> crate::substrate::ActionStageTracker for ActionStageTrackerAdapter<'a> {
+    fn record_requested(&self, correlation_id: &str) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.record_action_stage(
+                correlation_id,
+                crate::kernel::action_stages::ActionStage::Requested,
+                None,
+            );
+        }
+    }
+}
+
 pub(super) fn dispatch_command(
     command: ActorCommand,
     ctx: &mut ActorContext<'_>,
@@ -1093,87 +1177,39 @@ pub(super) fn dispatch_command(
             None
         }
         ActorCommand::Protocol(cmd) => {
-            // Step 1.b — the open-seam dispatch arm. Step 4 (V-41) widened
-            // the context with the kernel + identity accessors the LNURL
-            // fetcher needs (now_secs, author_write_relays, …); V-39+V-40
-            // widens it further with the NIP-17 DM-stack surface (the
-            // local-keys snapshot, DM-inbox relay lookup, last-error toast
-            // writer, action-failure recorder). Each capability closure
-            // closes over the actor's mutable references to the kernel +
-            // identity runtime; the kernel and identity types stay
-            // crate-private (D0 — NIP crates name neither). Borrows are
-            // released the moment `cmd.run` returns — the worker thread the
-            // LNURL command spawns owns its own `Sender<ActorCommand>`
-            // clone and never re-enters the context.
-            //
-            // D6: a poisoned `nip17_local_keys` slot degrades to `None`
-            // (same fail-closed behaviour the production DM inbox
-            // projection uses — see `nmp_nip17::DmInboxProjection`).
+            // Step 1.b — the open-seam dispatch arm. Debt C (this revision)
+            // replaced the prior 12-positional-closure bundle with five
+            // typed capability adapters
+            // (`KernelClock`/`LocalSignerAccess`/`DmInboxLookup`/
+            // `ErrorSurface`/`ActionStageTracker`). Each adapter borrows a
+            // `RefCell`-wrapped reference to the kernel or identity runtime;
+            // the kernel and identity types stay crate-private (D0 — NIP
+            // crates name neither). Borrows are released the moment
+            // `cmd.run` returns — the worker thread the LNURL command spawns
+            // owns its own `Sender<ActorCommand>` clone and never re-enters
+            // the context.
             let tx = ctx.command_tx_self.clone();
             let send = move |c: crate::actor::ActorCommand| {
                 // D6 — disconnected sender (post-Shutdown) is a benign
                 // send-failure on the worker side; swallow as a no-op.
                 let _ = tx.send(c);
             };
-            // V-39+V-40 — read the NIP-17 local-keys slot once and snapshot
-            // the DM-inbox lookup Arc. The lookup Arc lives for the
-            // duration of this dispatch arm; the borrow into the context
-            // is released before `emit_now`.
-            let local_keys = ctx
-                .nip17_local_keys
-                .lock()
-                .ok()
-                .and_then(|guard| guard.as_ref().cloned());
+            // Snapshot the DM-inbox lookup Arc for the duration of this
+            // dispatch arm. The `Arc<dyn DmInboxRelayLookup>` is the
+            // production kind:10050 cache (`nmp_nip17::DmRelayCache`).
             let dm_lookup = ctx.kernel.dm_inbox_relays_arc();
-            // The kernel + identity accessors borrow disjoint fields of
-            // `ctx`, so we hold the &mut Kernel for write methods
-            // (`record_action_stage_requested`, `set_last_error_toast`,
-            // `record_action_failure`) and immutable shared references to
-            // the read-only kernel + identity sources via a `RefCell`
-            // split. Rust's borrow checker permits multiple
-            // `&dyn Fn(...)` over the same `&mut Kernel` so long as no two
-            // are in flight simultaneously — `ProtocolCommand::run` is
-            // single-threaded sync, so the calls serialize naturally.
+            // The kernel + identity adapters share disjoint borrows of the
+            // actor context via `RefCell`. `ProtocolCommand::run` is
+            // single-threaded sync, so the inner `borrow`/`borrow_mut`
+            // calls serialize naturally.
             let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
             let identity_cell = std::cell::RefCell::new(&*ctx.identity);
-            let now_secs = || kernel_cell.borrow().now_secs();
-            let author_write_relays =
-                |a: &str| kernel_cell.borrow().author_write_relays(a);
-            let bootstrap_discovery_relays =
-                || kernel_cell.borrow().bootstrap_discovery_relays();
-            let active_local_keys = || {
-                identity_cell
-                    .borrow()
-                    .active_local_keys()
-                    .cloned()
-            };
-            let record_action_stage_requested = |cid: &str| {
-                kernel_cell.borrow_mut().record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            };
-            // V-39+V-40 — D6 error-surface closures.
-            let toast = |t: Option<String>| {
-                if let Ok(mut k) = kernel_cell.try_borrow_mut() {
-                    k.set_last_error_toast(t);
-                }
-            };
-            let record_failure = |cid: String, err: String| {
-                if let Ok(mut k) = kernel_cell.try_borrow_mut() {
-                    k.record_action_failure(cid, err);
-                }
-            };
-            // V-08 — `signer_for_seal()` resolves the active account's
-            // `SignerForSeal` (local or remote-signer adapter, handled
-            // uniformly by `IdentityRuntime::active_signer_for_seal`).
-            // The NIP-17 DM send path consumes this through
-            // `ProtocolCommandContext::signer_for_seal()` so both
-            // local-nsec AND NIP-46 bunker accounts can seal kind:13
-            // rumors. Closes the V-39 bunker DM regression.
-            let signer_for_seal =
-                || identity_cell.borrow().active_signer_for_seal();
+
+            let clock = KernelClockAdapter { kernel: &kernel_cell };
+            let signers = LocalSignerAccessAdapter { identity: &identity_cell };
+            let errors = ErrorSurfaceAdapter { kernel: &kernel_cell };
+            let stages = ActionStageTrackerAdapter { kernel: &kernel_cell };
+
             // A second sender clone for the worker-thread surface. Cloning
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
             // dispatch arm always populates this slot in production.
@@ -1181,28 +1217,26 @@ pub(super) fn dispatch_command(
             let mut pctx = crate::substrate::ProtocolCommandContext::new(
                 &send,
                 worker_tx,
-                &now_secs,
-                &author_write_relays,
-                &bootstrap_discovery_relays,
-                &active_local_keys,
-                &record_action_stage_requested,
-                local_keys,
+                &clock,
+                &signers,
                 &*dm_lookup,
-                &toast,
-                &record_failure,
-                &signer_for_seal,
+                &errors,
+                &stages,
             );
             if let Err(e) = cmd.run(&mut pctx) {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");
             }
-            // Drop the context (and the closures it borrows) before the
-            // emit so `emit_now` can re-borrow `ctx.kernel` mutably. The
-            // closures themselves are zero-sized `Fn` closures (no `drop`
-            // glue); only releasing the `RefCell` borrows the closures
-            // hold via the context object matters here.
+            // Drop the context (and the adapter borrows) before the emit so
+            // `emit_now` can re-borrow `ctx.kernel` mutably. The
+            // `kernel_cell` / `identity_cell` `RefCell` borrows are
+            // released when the adapters drop at end-of-block — explicitly
+            // drop the adapters here so the `emit_now` below sees a fully
+            // released `ctx.kernel`.
             drop(pctx);
-            drop(kernel_cell);
-            drop(identity_cell);
+            drop(stages);
+            drop(errors);
+            drop(signers);
+            drop(clock);
             // V-41 + V-39+V-40 — a `ProtocolCommand` body may have mutated
             // the kernel (the `Requested` stage write, a toast, a recorded
             // failure) or queued follow-up `ActorCommand`s
