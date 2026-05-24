@@ -23,7 +23,7 @@
 //! [`KernelReducer::handle_relay_failed`],
 //! [`KernelReducer::handle_relay_closed`], and [`KernelReducer::tick`] —
 //! that mirror the per-event arms the native `actor::dispatch::handle_relay_event`
-//! handles for each [`crate::relay_worker::RelayEvent`] variant. The wasm32
+//! handles for each `nmp_network::relay_worker::RelayEvent` variant. The wasm32
 //! `BrowserRelayDriver` in `nmp-wasm` is callback-driven (no thread, no
 //! blocking `read_frame`) so it cannot share the native `run_relay_worker`
 //! loop; instead it owns the WebSocket lifecycle directly and feeds each

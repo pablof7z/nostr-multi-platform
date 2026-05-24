@@ -5,8 +5,8 @@ use std::time::Instant;
 use tungstenite::Message;
 
 use crate::keepalive::KeepaliveState;
-use crate::relay::RelayRole;
 use crate::relay_protocol::is_permanent_error;
+use crate::role::RelayRole;
 
 use super::{RelayEvent, RelaySocket, RelayWorkerResult};
 

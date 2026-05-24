@@ -9,7 +9,7 @@ use super::relay_mgmt::{close_relays, ensure_relay_worker, shutdown_relay_worker
 use super::RelayControl;
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, RelayRole};
-use crate::relay_worker::RelayEvent;
+use nmp_network::relay_worker::RelayEvent;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 

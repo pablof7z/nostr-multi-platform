@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 
 /// Verdict returned by `KeepaliveState::step`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum KeepaliveAction {
+pub enum KeepaliveAction {
     /// Nothing to do — socket is healthy and not idle past the threshold.
     Idle,
     /// Emit a `Message::Ping(vec![])` on the wire and stamp `ping_sent_at`.
@@ -54,7 +54,7 @@ pub(crate) enum KeepaliveAction {
 /// Pure per-socket keepalive driver. Owned by `run_connected_relay`; reset on
 /// every reconnect (a fresh socket starts in `Quiet` with `last_inbound_at`
 /// pinned to the connect moment).
-pub(crate) struct KeepaliveState {
+pub struct KeepaliveState {
     idle_threshold: Duration,
     pong_timeout: Duration,
     last_inbound_at: Instant,
@@ -67,7 +67,7 @@ impl KeepaliveState {
     /// premature ping. Production passes the same `Instant` it just read for
     /// the `Connected` event.
     #[must_use]
-    pub(crate) fn new(now: Instant, idle_threshold: Duration, pong_timeout: Duration) -> Self {
+    pub fn new(now: Instant, idle_threshold: Duration, pong_timeout: Duration) -> Self {
         Self {
             idle_threshold,
             pong_timeout,
@@ -78,13 +78,13 @@ impl KeepaliveState {
 
     /// Any inbound frame — including a Pong reply to our Ping. Resets both
     /// the idle clock and any outstanding pong wait.
-    pub(crate) fn on_inbound(&mut self, now: Instant) {
+    pub fn on_inbound(&mut self, now: Instant) {
         self.last_inbound_at = now;
         self.ping_sent_at = None;
     }
 
     /// Step the FSM. Caller supplies `now`; we never read the wall clock.
-    pub(crate) fn step(&mut self, now: Instant) -> KeepaliveAction {
+    pub fn step(&mut self, now: Instant) -> KeepaliveAction {
         // Pong window first — if a ping is outstanding and the window has
         // elapsed without an inbound frame, the socket is dead.
         if let Some(sent_at) = self.ping_sent_at {
@@ -106,7 +106,7 @@ impl KeepaliveState {
 
     /// Next wall-clock instant at which [`step`] can change state without an
     /// inbound frame. Callers use this as a blocking deadline, not a poll rate.
-    pub(crate) fn next_deadline(&self) -> Instant {
+    pub fn next_deadline(&self) -> Instant {
         if let Some(sent_at) = self.ping_sent_at {
             sent_at + self.pong_timeout
         } else {

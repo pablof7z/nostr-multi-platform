@@ -16,6 +16,11 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Step 8 phase A: the `relay_protocol` constants (backoff, jitter, HTTP-denial
+# classifier) moved from `nmp-core::relay_protocol` to `nmp-network::relay_protocol`.
+# `relay_client.rs` consumes them directly (V-13 dedupe will eventually
+# replace this whole module with `nmp_network::Pool`).
+nmp-network = { path = "../nmp-network", default-features = false }
 nmp-signers = { path = "../nmp-signers" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }

@@ -3867,7 +3867,7 @@ dependencies = [
  "chrono",
  "heed",
  "indexmap",
- "mio",
+ "nmp-network",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",
@@ -3916,6 +3916,15 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-network"
+version = "0.1.0"
+dependencies = [
+ "mio",
+ "rustls",
+ "tungstenite",
 ]
 
 [[package]]
@@ -4059,6 +4068,7 @@ version = "0.1.0"
 dependencies = [
  "mio",
  "nmp-core",
+ "nmp-network",
  "nmp-signer-iface",
  "nmp-signers",
  "nostr",
@@ -4132,6 +4142,7 @@ dependencies = [
  "js-sys",
  "nmp-chirp-config",
  "nmp-core",
+ "nmp-network",
  "nmp-signer-iface",
  "nmp-signers",
  "nostr",

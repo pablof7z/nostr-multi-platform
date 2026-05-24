@@ -12,7 +12,7 @@
 
 use super::auth_test_helpers::*;
 use super::*;
-use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::relay::{RelayRoleTestExt, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::RelayAuthState;
 
 // ───────────────────────────────────────────────────────────────────────────

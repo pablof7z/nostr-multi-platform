@@ -1,0 +1,35 @@
+[package]
+name = "nmp-network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Layer-1 network transport: native WebSocket relay worker (tungstenite/mio/rustls), wire-transport-agnostic relay protocol primitives (backoff, keepalive, jitter, HTTP-denial classifier). Step 8 of docs/architecture/crate-boundaries.md — extraction phase 8a. The push-model `Pool` API redesign + `BrowserRelayDriver` move + `nmp-signer-broker` migration are deferred to follow-up PRs."
+
+[lib]
+name = "nmp_network"
+crate-type = ["rlib"]
+
+[features]
+# Native I/O layer — gates the relay_worker (tungstenite/mio/rustls).
+# The `relay_protocol` module compiles unconditionally so wasm32 callers
+# (today: `nmp-wasm::BrowserRelayDriver`) can share the same constants.
+default = ["native"]
+native = ["dep:tungstenite", "dep:mio", "dep:rustls"]
+
+[dependencies]
+# Step 8 phase A: `nmp-network` is the lowest layer of the migration ladder —
+# it MUST NOT depend on `nmp-core` (the cycle direction would be
+# `nmp-core → nmp-network → nmp-core`). The transport-layer value types
+# the worker uses live here directly: `RelayRole` (the lane discriminator),
+# `KeepaliveState` / `KeepaliveAction` (the keepalive FSM). `nmp-core`
+# re-exports `RelayRole` for downstream backward-compat
+# (`nmp_core::RelayRole` still resolves through the re-export). The
+# kernel's `RelayFrame` stays in `nmp-core`; the `tungstenite::Message →
+# RelayFrame` adapter lives there too (it bridges this crate's wire type
+# to the kernel's frame enum at the actor seam).
+#
+# Native-only I/O deps — gated behind `native`, mirroring the old
+# nmp-core posture exactly so the move is value-preserving.
+mio = { version = "1", features = ["os-ext", "os-poll"], optional = true }
+rustls = { workspace = true, default-features = false, features = ["ring"], optional = true }
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }

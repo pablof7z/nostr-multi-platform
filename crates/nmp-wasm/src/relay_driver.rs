@@ -43,12 +43,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use nmp_core::{
-    relay_protocol::{
-        is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-        RELAY_RECONNECT_DELAY_MAX,
-    },
-    KernelReducer, OutboundMessage, RelayFrame, RelayRole,
+use nmp_core::{KernelReducer, OutboundMessage, RelayFrame, RelayRole};
+use nmp_network::relay_protocol::{
+    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
+    RELAY_RECONNECT_DELAY_MAX,
 };
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket};

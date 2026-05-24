@@ -23,7 +23,7 @@
 
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
-use crate::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
+use nmp_network::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;

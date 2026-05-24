@@ -6,10 +6,11 @@
 //!
 //! # Direction of conversion
 //!
-//! The native [`crate::relay_worker`] reads `tungstenite::Message` off the
-//! WebSocket and converts each frame to a [`RelayFrame`] *before* handing it
-//! to [`crate::kernel::Kernel::handle_message`]. The kernel itself never
-//! names `tungstenite`. A non-native transport (wasm32 fetch / WebSocket) is
+//! The native `nmp_network::relay_worker` reads `tungstenite::Message` off
+//! the WebSocket and `actor::dispatch::tungstenite_message_to_relay_frame`
+//! converts each frame to a [`RelayFrame`] *before* handing it to
+//! [`crate::kernel::Kernel::handle_message`]. The kernel itself never names
+//! `tungstenite`. A non-native transport (wasm32 fetch / WebSocket) is
 //! responsible for its own equivalent conversion.
 //!
 //! # Variant set

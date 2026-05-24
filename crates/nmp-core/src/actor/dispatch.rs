@@ -17,7 +17,34 @@ use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
 use crate::kernel::Kernel;
 use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
-use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
+use nmp_network::relay_worker::RelayEvent;
+
+use crate::kernel::RelayFrame;
+use tungstenite::Message;
+
+/// Convert a native [`tungstenite::Message`] into the wire-transport-agnostic
+/// [`RelayFrame`] consumed by `Kernel::handle_message`.
+///
+/// Step 8 phase A: this conversion bridges `nmp-network`'s wire-message type
+/// to the kernel's frame enum. It lives in `nmp-core` (not `nmp-network`)
+/// because the `RelayFrame` enum is owned by the kernel layer — the
+/// transport crate must not name kernel value types (D0 / step-8 boundary).
+///
+/// V-01 Phase 1c original placement: the kernel no longer names `tungstenite`,
+/// so the conversion happens at the actor seam (the only native-feature
+/// site that owns both vocabularies).
+/// `Message::Frame` (raw-frame) maps to [`RelayFrame::Binary`] — the kernel's
+/// only observable for non-text payloads is the bytes counter.
+fn tungstenite_message_to_relay_frame(message: Message) -> RelayFrame {
+    match message {
+        Message::Text(text) => RelayFrame::Text(text),
+        Message::Binary(bytes) => RelayFrame::Binary(bytes),
+        Message::Ping(_) => RelayFrame::Ping,
+        Message::Pong(_) => RelayFrame::Pong,
+        Message::Close(frame) => RelayFrame::Close(frame.map(|f| f.reason.to_string())),
+        Message::Frame(_) => RelayFrame::Binary(Vec::new()),
+    }
+}
 use crate::subs::PlanCoverageHook;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};

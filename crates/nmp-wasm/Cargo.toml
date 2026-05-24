@@ -16,6 +16,10 @@ crate-type = ["cdylib", "rlib"]
 # wire NmpApp into WasmRuntime using a WASM-compatible transport
 # (web_sys::WebSocket + IndexedDB store).
 nmp-core = { path = "../nmp-core", default-features = false }
+# Step 8 phase A: the `relay_protocol` constants moved from
+# `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the
+# pure-Rust `native = false` slice of nmp-network (no tungstenite/mio/rustls).
+nmp-network = { path = "../nmp-network", default-features = false }
 nmp-chirp-config = { path = "../../apps/chirp/nmp-chirp-config" }
 # V-01 Stage 3b — `nmp-signers` for the NIP-07 browser-extension `Signer`.
 # Always-on dependency: `nmp-signers` itself compiles on every host (its native
