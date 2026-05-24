@@ -544,6 +544,42 @@ uppercase (matching every other surface), the handle abbreviation widens from `6
 (matching V-25), and the timestamp dialect changes from `"5s"` to `"5s ago"` (matching V-20/V-22).
 None are regressions; all are the consistency fix.
 
+### V-26 · `AccountAvatar` extension display logic in Swift — thin-shell doctrine violation
+
+**Verified:** `ios/Chirp/Chirp/Components/AccountAvatar.swift` defined
+`extension AccountSummary { var avatarInitials: String; var avatarColorHex: String }`,
+computing both display strings in-view. `ComposeView.swift:76-77`, `HomeFeedView.swift:125-126`,
+and `AccountsView.swift:60-61` all bound the extension properties. `avatarInitials` did
+first-char-of-each-word + bech32-body fallback; `avatarColorHex` used a hard-coded six-colour
+palette indexed by a unicode-scalar `&* 31 &+ value` hash. The colour case was the same class
+of violation V-25 fixed for `GroupChatMessage` — a different algorithm from
+`nmp_nip17::display::avatar_color_hex` / `nmp_marmot::projection::display::avatar_color_hex`
+/ `nmp_nip29::projection::group_chat::avatar_color_hex`, so the **same author** rendered with
+a **different avatar tint** in the Accounts toolbar / compose row / row avatars vs. DMs vs.
+NIP-29 group chat.
+
+**Fixed:** added two fields to `AccountSummary` in `crates/nmp-core/src/kernel/identity_state.rs`
+— `avatar_initials` and `avatar_color_hex` — populated at construction in
+`actor::commands::identity::sync_accounts_from_identity` via two new helpers
+(`account_avatar_initials`, `account_avatar_color_hex`). The colour helper is **byte-identical**
+to `nmp_nip17::display::avatar_color_hex` (djb2 over the last 6 bytes of the hex pubkey,
+`{:06X}` mask), deliberate micro-duplication for the same reason `account_npub_short` is
+duplicated in this module (V-22 / V-24 / V-25 precedent — `identity_state.rs` must not gain a
+cross-crate dependency on a NIP crate for a trivial helper). The `Kernel::accounts_enriched`
+path also re-runs `account_avatar_initials` whenever a kind:0 `display_name` lands so the
+placeholder initials don't stay stuck on the npub-body fallback after enrichment. Swift codegen
+(`KernelTypes.generated.swift`) regenerated to surface `avatarInitials` + `avatarColorHex` as
+`let` fields on `AccountSummary`; iOS views bind them verbatim; the
+`Components/AccountAvatar.swift` file (which only contained the extension) is deleted along
+with its four `project.pbxproj` entries (V-16 precedent). A pinned-vector test
+(`account_avatar_color_hex_matches_pinned_djb2_vector`, same `"08E60C"` output as the V-25 nip29
+vector) locks the djb2 output so an algorithm drift cannot silently change every account
+avatar tint.
+
+**Behaviour change called out:** the avatar tint for every existing account row will shift
+once on first run — that's the consistency fix (Accounts toolbar avatar now matches the same
+author's DM and group-chat tint), not a regression. Same disclosure pattern as V-25.
+
 ---
 
 ## Section 2 — In Flight

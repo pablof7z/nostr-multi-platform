@@ -122,6 +122,8 @@ public struct WireSubscriptionStatus: Decodable, Equatable, Identifiable, Sendab
 // MARK: - AccountSummary
 // Source: nmp_core::kernel::identity_state::AccountSummary
 public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
+    public let avatarColorHex: String
+    public let avatarInitials: String
     public let displayName: String
     public let id: String
     public let isActive: Bool
