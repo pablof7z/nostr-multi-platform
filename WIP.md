@@ -9,11 +9,13 @@
 
 ## Active
 
-- PR #431 — fix(signer-broker): V-13 + V-14 — mio readiness + auto-reconnect with backoff — CI re-running after rebase
-- PR #432 — fix(nip29/ios): move GroupChatMessage.relativeTime to Rust — V-22 — CI pending
+_(none — checking for next violation to fix)_
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — chore(marmot): delete dead MemberListView cluster — superseded by MarmotGroupRow.members (V-17) — PR #433 merged
+- 2026-05-24 — fix(signer-broker): V-13 + V-14 — mio readiness + auto-reconnect with backoff — PR #431 merged
+- 2026-05-24 — fix(nip29/ios): move GroupChatMessage.relativeTime to Rust — thin-shell V-22 — PR #432 merged
 - 2026-05-24 — refactor(nmp-core): delete dead Kernel::req + ONESHOT_SUB_PREFIX retirement gate (V-04 Stage 4) — PR #430 merged
 - 2026-05-24 — fix(marmot/ios): wire member list into group chat toolbar (V-17) — PR #429 merged
 - 2026-05-24 — fix(nip17/ios): move dmRelativeTime formatting to Rust — thin-shell V-20 — PR #428 merged
