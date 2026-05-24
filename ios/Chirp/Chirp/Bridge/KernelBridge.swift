@@ -1019,6 +1019,26 @@ struct GroupChatMessage: Decodable, Identifiable, Equatable {
     /// aim.md §2: display formatting is Rust-owned). The view binds this
     /// directly and never calls `RelativeDateTimeFormatter`.
     let createdAtDisplay: String
+    /// Pre-formatted abbreviated hex pubkey (`"<first8>…<last8>"`) — what
+    /// the chat row header and the reply banner render in place of the raw
+    /// hex (V-25 thin-shell fix). Computed in
+    /// `nmp_nip29::projection::group_chat::pubkey_display` at ingest; the
+    /// view binds it directly and never slices the hex string itself.
+    let authorDisplay: String
+    /// Two-char uppercase avatar-tile label — the first two hex chars of
+    /// `pubkey`, uppercased. Computed in
+    /// `nmp_nip29::projection::group_chat::pubkey_initials` at ingest
+    /// (V-25 thin-shell fix).
+    let authorInitials: String
+    /// Deterministic 6-hex avatar background colour (uppercase, no `#`).
+    /// Computed in `nmp_nip29::projection::group_chat::avatar_color_hex`
+    /// using the **same djb2 algorithm** as `nmp_nip17::display::
+    /// avatar_color_hex` and `nmp_marmot::projection::display::
+    /// avatar_color_hex`, so the same author renders with the same tint
+    /// in DMs, in NIP-29 group chat, and in Marmot rows (V-25 thin-shell
+    /// fix — Swift used to slice `String(pubkey.prefix(6))`, a different
+    /// algorithm that produced inconsistent tints across surfaces).
+    let authorColorHex: String
     let kind: UInt32
 }
 
