@@ -16,10 +16,12 @@ The crate-boundary spec is committed
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — worktree `.claude/worktrees/step1-ingest-parser-seam`
+- 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 (CI)
+- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — worktree `.claude/worktrees/step1-routing-seams`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — PR #447 merged
 - 2026-05-24 — fix(nmp-nip01): V-34 — avatar initials from display name, not hex pubkey — PR #445 merged
 - 2026-05-24 — refactor(nmp-core): V-33 — canonical display helpers in nmp-core::display; delete 5 copies — PR #444 merged
 - 2026-05-24 — fix(nmp-core): unify avatar_color to djb2 — all surfaces consistent — committed 70ede645 to master
