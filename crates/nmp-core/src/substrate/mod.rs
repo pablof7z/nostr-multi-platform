@@ -43,6 +43,7 @@ mod bounded;
 mod capability;
 mod domain;
 mod identity;
+mod ingest;
 mod keyring;
 mod host_op_handler;
 pub mod placeholder;
@@ -56,6 +57,7 @@ pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 pub use domain::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
+pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
     MALFORMED_RESULT,
