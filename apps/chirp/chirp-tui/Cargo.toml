@@ -14,9 +14,9 @@ name = "chirp-tui"
 path = "src/main.rs"
 
 [dependencies]
-nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
+nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
-nmp-core = { path = "../nmp-core", features = ["test-support", "wallet"] }
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support", "wallet"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"

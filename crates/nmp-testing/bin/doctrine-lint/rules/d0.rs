@@ -61,8 +61,7 @@ pub fn file_is_exempt(path: &Path) -> bool {
     }
     // D0's mandate is `nmp-core` specifically — every OTHER crate under
     // `crates/` legitimately uses the domain nouns it owns or imports
-    // (`nmp-nip29` defines `GroupId`; `chirp-repl`/`chirp-tui` are app-layer
-    // consumers; flagging either is nonsense). Exempt every `crates/*/src/...`
+    // (`nmp-nip29` defines `GroupId`, etc.). Exempt every `crates/*/src/...`
     // and `crates/*/tests/...` path that is NOT `crates/nmp-core/`. The `/src/`
     // or `/tests/` segment requirement keeps test-fixture paths like
     // `crates/nmp-testing/bin/doctrine-lint/fixtures/...` (intentional
@@ -167,8 +166,7 @@ mod tests {
     fn exempts_non_nmp_core_crates_src() {
         // D0's mandate is `nmp-core` only — every OTHER crate under `crates/`
         // legitimately uses its own domain nouns. This covers protocol crates
-        // (`nmp-nip29`, `nmp-nip17`), app-layer REPLs (`chirp-repl`,
-        // `chirp-tui`), and fixture crates (`fixture-todo-core`).
+        // (`nmp-nip29`, `nmp-nip17`) and other non-core kernel-adjacent crates.
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/nmp-nip29/src/action/content.rs"
         )));
@@ -178,13 +176,14 @@ mod tests {
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/nmp-marmot/src/projection/mod.rs"
         )));
-        // App-layer CLI crates in `crates/` — not `nmp-*` prefixed, but still
-        // not the kernel substrate. These had false D0 positives before this fix.
+        // App-layer CLI / fixture crates that live under `apps/<app>/` — the
+        // `/apps/` exemption clause covers them; these assertions pin the
+        // post-step-11 (`docs/architecture/crate-boundaries.md` §5) locations.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "crates/chirp-repl/src/actions.rs"
+            "apps/chirp/chirp-repl/src/actions.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "crates/chirp-tui/src/feature_snapshot.rs"
+            "apps/chirp/chirp-tui/src/feature_snapshot.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/fixture-todo-core/src/lib.rs"
@@ -207,7 +206,7 @@ mod tests {
             "crates/nmp-marmot/tests/round_trip.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "crates/chirp-repl/tests/actions_test.rs"
+            "apps/chirp/chirp-repl/tests/actions_test.rs"
         )));
     }
 

@@ -14,8 +14,8 @@ name = "chirp-repl"
 path = "src/main.rs"
 
 [dependencies]
-nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false, features = ["marmot"] }
+nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
-nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 nostr = { version = "0.44", default-features = false, features = ["std"] }
 serde_json = "1.0"

@@ -21,13 +21,13 @@ the NMP substrate works equally well as a terminal application as it does on iOS
 
 ### 2.1 Crate location
 
-`crates/chirp-tui/` — mirrors `crates/chirp-repl/`. Reuses `AppRuntime` pattern from
-chirp-repl (crates/chirp-repl/src/app.rs) as a starting point.
+`apps/chirp/chirp-tui/` — mirrors `apps/chirp/chirp-repl/`. Reuses `AppRuntime` pattern from
+chirp-repl (apps/chirp/chirp-repl/src/app.rs) as a starting point.
 
 ### 2.2 Module layout (≤300 LOC per file per AGENTS.md)
 
 ```
-crates/chirp-tui/src/
+apps/chirp/chirp-tui/src/
   main.rs           — clap args, raw-mode setup, event loop bootstrap
   app.rs            — AppState, Mode enum, root event handler
   bridge.rs         — NMP push callback → tokio mpsc::Sender<NmpEvent>
@@ -204,7 +204,7 @@ compose surface is `tui-input` plus a small custom multiline wrapper.
 Treat each milestone as an independent PR/agent lane; split M4 into DM and group PRs if either exceeds one reviewable diff.
 
 ### M1 — Skeleton + observer wiring
-**Scope**: `crates/chirp-tui` compiles, renders placeholder layout, NMP push callback fires.
+**Scope**: `apps/chirp/chirp-tui` compiles, renders placeholder layout, NMP push callback fires.
 
 - [ ] `cargo build -p chirp-tui` clean, zero warnings
 - [ ] `cargo run -p chirp-tui` opens ratatui window: title bar, 3 empty panes, status bar

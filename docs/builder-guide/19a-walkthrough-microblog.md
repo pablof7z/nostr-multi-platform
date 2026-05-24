@@ -16,7 +16,7 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 
 ## The structural model
 
-This example mirrors [`crates/fixture-todo-core/src/lib.rs:1-305`](../../crates/fixture-todo-core/src/lib.rs)
+This example mirrors [`apps/fixture/fixture-todo-core/src/lib.rs:1-305`](../../apps/fixture/fixture-todo-core/src/lib.rs)
 (the canonical 5-family example) structurally, and the per-app FFI crate
 mirrors [`apps/fixture/nmp-app-fixture/`](../../apps/fixture/nmp-app-fixture)
 exactly. The real "non-fixture" app crate to compare against is the future
