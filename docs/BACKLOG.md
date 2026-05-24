@@ -1100,6 +1100,86 @@ to leave the kernel cleanly. Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
 
 ---
 
+### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH · v1 DX · pre-validation]
+
+**Evidence (architecture-grounded):** the substrate primitive already
+exists. `nmp_core::substrate::RoutedRelaySet` (PR #449) attributes every
+URL to one or more `RoutingSource` lanes (`Nip65{direction}`, `Hint`,
+`Provenance`, `UserConfigured`, `ClassRouted`, `Indexer`,
+`AppRelay{mode}`) precisely so a later "why-this-relay" answer is
+reconstructable. But there is no observation seam that surfaces those
+attributions outside the router call site, no projection that aggregates
+them into a snapshot field, and no FFI surface that exposes them. Today
+an app can see *what* frames went out (via the `RawEventObserver` lane
+— see V-47 — or wire-frame tracing) but not *why* those relay choices
+were made.
+
+**What v1 needs:**
+
+- **Substrate seam.** A `RoutingTraceObserver` (or similar) on
+  `nmp-router` that fires per `route_publish` / `route_subscription`
+  call carrying `(EventOrInterest, RoutedRelaySet, RoutingContext-summary)`.
+  The kernel installs it once at composition time. Per-call cost must be
+  opt-in (debug builds + explicitly enabled in release) — D8 (no
+  per-event alloc) applies; the observer trait takes references the
+  router already has.
+- **Projection.** A bounded ring buffer projection in `nmp-core` (size
+  capped per D5) that records the last N routing decisions per
+  `(event_id | interest_id)` keyed by their correlation. Each entry: the
+  inputs the router saw (kind, pubkey, tag highlights,
+  `explicit_targets` was-set), the output set per URL with its
+  `RoutingSource` lane(s), and a timestamp. Snapshot-bound so the FFI /
+  wasm surface gets it for free.
+- **App-side API.** A `recent_routing_decisions(filter)` snapshot field
+  with stable shape. Optional `route_explain(event_or_interest)` action
+  for ad-hoc replay against current state.
+- **Chirp peek-under-hood UI.** A `RoutingInspectorView` (debug toolbar
+  + long-press on any timeline item / publish-status row) that
+  displays: the input (kind, author, tags), the output set (one row per
+  resolved URL), the lane attribution per URL (e.g., "Nip65/Write +
+  AppRelay/Fallback" with a tooltip explaining each lane), and the
+  blocked-relay drops. Same shell as `DiagnosticsView` (gated by
+  `#if DEBUG` + V-19 pattern) but the projection itself ships in release
+  so a user can opt into diagnostics without a debug build.
+- **Validation tie-in.** This is the substrate the validation programs
+  (route-trace subcommand, chirp-repl smokes, NIP-29 group / DM smokes
+  the user requested 2026-05-24) read from to assert "router routed to
+  the expected URLs and attributed them to the expected lanes." Without
+  the seam, validation tests have to wire ad-hoc dyn-router wrappers;
+  with it, validation reads the same projection the UI reads, ensuring
+  the UI's claims are testable.
+
+**Doctrine:** D5 (bounded snapshot — projection size cap mandatory), D7
+(kernel reports, host renders — the UI does not call the router itself),
+D8 (no per-event alloc — observer fires from data already on the
+stack), D11 (one door per write surface — observer is the read door for
+routing state, paired with the existing publish-engine status
+projection).
+
+**Recommended action:**
+
+1. **Phase 1 — substrate** (post-step-3 cut-over so the seam has a real
+   single producer): add `RoutingTraceObserver` trait to
+   `nmp_core::substrate`, an `Arc<dyn RoutingTraceObserver>` slot on
+   `Kernel`, and the kernel-side ring-buffer projection. New tests
+   exercising lane attribution + bounded retention.
+2. **Phase 2 — FFI/wasm surface:** snapshot-bound
+   `recent_routing_decisions` field. Swift codegen emits the DTO.
+3. **Phase 3 — Chirp inspector UI:** `RoutingInspectorView` long-press
+   target on `ChirpEventCard` / publish-status row. Debug toolbar
+   "show routing trace" toggle.
+4. **Phase 4 — validation harness:** route-trace CLI subcommand on
+   `nmp-repl` and the chirp-repl / chirp-tui smokes that consume the
+   same projection.
+
+**Phase: v1.** Without V-51 the architecture-migration validation goal
+("end-to-end verify the router routes correctly against real pubkeys")
+has no structural answer — every test has to roll its own observer.
+Chirp's "peek under the hood" UI is the durable user-facing payoff;
+the validation harness is the developer-facing one.
+
+---
+
 ### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
 **Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
