@@ -9,10 +9,12 @@
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core): V-33 consolidate display helpers into `nmp-core::display`; delete 5 copies — branch `worktree-agent-a9e6318aea1e966fe` (worktree `.claude/worktrees/agent-a9e6318aea1e966fe`)
+- V-34 — fix(nmp-nip01): avatar initials from display name, not hex chars — PR #445 in CI
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — refactor(nmp-core): V-33 — canonical display helpers in nmp-core::display; delete 5 copies — PR #444 merged
+- 2026-05-24 — fix(nmp-core): unify avatar_color to djb2 — all surfaces consistent — committed 70ede645 to master
 - 2026-05-24 — fix(nmp-nip01/ios): V-32 — add authorPictureUrl/contentPreview to TimelineEventCard; delete Swift computation — PR #443 merged
 - 2026-05-24 — fix(nmp-core/ios): V-31 — mention_profiles covers all visible views; delete Swift profile dict construction — PR #442 merged
 - 2026-05-24 — fix(nmp-nip29/ios): V-29 — GroupChatSnapshot.group_initials; delete Swift initials computed prop — PR #441 merged
