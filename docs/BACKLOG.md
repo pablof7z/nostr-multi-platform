@@ -728,6 +728,12 @@ V-37 is the *blocker* for PD-033-A, not a separate concern.
 These are new framework affordances — they require an ADR before implementation
 (ffi-surface-freeze gate). Tag: **needs ADR before work begins**.
 
+**V-37 is the actual PD-033-A blocker (review #18 finding 10):** the ADR for these
+three affordances has not been written. Until the ADR exists and the affordances are
+built, PD-033-A cannot close without re-using the Notes raw-event bypass. Either
+promote V-37 to a v1 blocker (F-08) or drop PD-033-A from the v1 exit criteria with
+a written rationale. V-45 splits sub-item (c) into its own tracked item.
+
 ---
 
 ### V-38 · NIP-47 NWC wallet stack wrongly in `nmp-core` [HIGH · post-v1 · staged fix required]
@@ -887,6 +893,169 @@ variant) → Stage 3 (confirm wallet auto-pay chain still works via
 `nmp.wallet.pay_invoice` dispatch).
 
 **Deadline:** post-v1. F-04 (zap E2E) ships on the current layout.
+
+---
+
+### V-42 · NIP-23 / NIP-51 / NIP-94 / NIP-96 absent from crates and untracked [HIGH · v1-A for mute · post-v1 for rest]
+
+**Evidence:** `ls crates/` shows `nmp-nip{01,02,17,29,42,57,59,65}` only.
+`crates/nmp-content-fixtures/src/dto.rs:186-213` defines a `Nip51List` DTO for tests
+but no production projection exists. kind:30023 appears in `crates/nmp-core/src/tags.rs`
+only as a constant — no decoder, no projection, no action module.
+
+- **NIP-51 mute lists** — v1-A safety-relevant. A user has no way to suppress
+  harassment from within an app built on NMP. The `BlockListView` in Chirp is absent
+  from the iOS shell (`grep -r "BlockListView" ios/Chirp/` returns nothing).
+  Prerequisite: only a `KernelEventObserver` projection + kind:10000/10001 decoder.
+  Effort: ~1 day.
+- **NIP-23 long-form articles** — post-v1. kind:30023 constant already in `tags.rs`.
+  Need: decoder + `KernelEventObserver` projection. Effort: ~2 days.
+- **NIP-94 / NIP-96 file metadata + media servers** — post-v1. Ships in every modern
+  client for HEIC vs JPEG, dimensions, MIME, SHA-256. Need: `imeta` tag parser + action
+  for upload. Effort: ~2 days per NIP.
+
+**Recommended action:** promote NIP-51 mute list to v1-A backlog (add to F-08 or separate);
+add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
+
+---
+
+### V-43 · Zap `dispatch_action` multi-step chain has no contract — `correlation_id: None` at wallet dispatch [MEDIUM · post-v1]
+
+**Evidence:** `crates/nmp-core/src/actor/commands/zap.rs:202`:
+
+```rust
+let _ = command_tx.send(ActorCommand::WalletPayInvoice {
+    bolt11: bolt11.clone(),
+    amount_msats: Some(amount_msats),
+    correlation_id: None,     // ← chain breaks here
+});
+// ...
+if let Some(cid) = correlation_id {
+    let _ = command_tx.send(ActorCommand::RecordActionSuccess { correlation_id: cid });
+}
+```
+
+The original zap correlation closes `RecordActionSuccess` the moment the LNURL provider
+returns a valid bolt11 — before the wallet pays or the kind:9735 receipt arrives. The
+wallet pay runs under a separate, anonymous correlation_id. A host that dispatches
+`nmp.nip57.zap` sees `Success` ~200 ms after LNURL responds, regardless of whether
+payment happens.
+
+`crates/nmp-core/src/kernel/publish_cmd.rs:233-236` — `action_lifecycle_projection`
+does not collapse two correlation_ids into one chain, so there is no framework-level
+way to observe the full zap outcome.
+
+**Recommended action:** document `nmp.nip57.zap` as a multi-step chain contract in
+`docs/dispatch-actions.md`; either (a) keep the original `correlation_id` open until
+kind:9735 receipt arrives, or (b) introduce `Stage::Bolt11Received` /
+`Stage::WalletPaid` / `Stage::ReceiptObserved` on the `action_stages` substrate.
+Option (b) generalises to every future multi-step dispatch. Prerequisite: V-41 Stage 1.
+
+---
+
+### V-44 · No decrypt-only crate for iOS Notification Service Extension [v1-A if DMs ship · post-v1 Android]
+
+**Evidence:** `aim.md` §7 open design question #5 (open since the start). No
+`UNNotification` imports anywhere in `ios/` — Chirp ships NIP-17 DMs but users do
+not receive push notifications when backgrounded.
+
+`crates/nmp-nip59/` has the gift-wrap codec but exposing it requires linking the full
+`nmp-core` static lib (actor, storage, relay code). Apple caps NSE binaries at 24 MB
+total; the full kernel link far exceeds that.
+
+**Recommended action:** add `crates/nmp-nip59-decrypt-only/` exposing a single function
+`unwrap_gift_wrap(envelope_json: &str, local_nsec: &str) -> Result<String, String>`.
+No actor, no storage, no relay code. Target: ~2 MB static lib.
+
+---
+
+### V-45 · No `LogicalInterest::SocialTimeline` substrate seam [MEDIUM · v1-B framework readiness]
+
+**Evidence (extracted from V-37c):** every "show me notes from people I follow" app
+needs this pattern. Today it requires reading 30+ lines of Chirp's
+`apps/chirp/nmp-app-chirp/src/ffi/register.rs:370-403` to assemble the follow-list
+wiring. The substrate offers no affordance for the most common Nostr-client read
+pattern. `aim.md` §1 says "one-shot a working Nostr application" — this is the
+one affordance a social read app needs.
+
+**Recommended action:** design `LogicalInterest::SocialTimeline { viewer: Pubkey, kinds: Vec<u16> }`
+that pulls in the follow-set automatically and routes through the outbox planner.
+Drop V-37(c) as a sub-item; track here separately.
+
+---
+
+### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [HIGH · pre-v1 doctrine fix]
+
+**Evidence:** `crates/nmp-core/src/kernel/update.rs:267-440` —
+`snapshot_projections_with_publish_cluster` unconditionally inserts on every tick:
+`publish_queue`, `publish_outbox`, `outbox_summary`, `relay_edit_rows`,
+`relay_role_options`, `settings_hub`, `accounts`, `active_account`, `profile`,
+`timeline`, `author_view`, `thread_view`, `inserted`, `updated`, `removed`,
+`relay_diagnostics`, `mention_profiles` — plus all host-registered projections.
+
+D5 (`plan.md:43`) reads "snapshots bounded by open views." The built-in cluster is
+not bounded. Even with zero open views, the cluster carries 17+ keys including
+`relay_diagnostics` (rolls every relay + every wire sub) and `mention_profiles`
+(walks every visible item).
+
+The perf gate (`perf_tests.rs:128`) runs against `Kernel::new()` with zero registered
+host projections — it does not exercise the full cluster.
+
+**Recommended action:** either (a) rewrite D5 to "bounded by a static cluster gated by
+`snapshot_perf_firehose_gate` + open-view-dependent payloads", or (b) move genuinely
+view-dependent keys (`author_view`, `thread_view`, `timeline`, `inserted`, `updated`,
+`removed`) into a "only-if-view-subscribed" branch. Option (b) is doctrine-honest.
+
+---
+
+### V-47 · `register_raw_event_observer` gives FFI callers a lane that defeats all D1/D3/D5/D8 guarantees [MEDIUM · pre-v1 doc fix]
+
+**Evidence:** `crates/nmp-core/src/ffi/raw_event_tap.rs` — `nmp_app_register_raw_event_observer`
+with no doc warning. `apps/notes/ios/Notes/Bridge/NotesBridge.swift:73-76` registers it
+without ceremony. The Notes spike proved 96 LOC Swift defeats D3 outbox routing,
+kernel-owned formatting, lifecycle gating, and codegen contracts without leaving the
+public ABI.
+
+Three other escape hatches exist: `inject_pre_verified_events`, `inject_signed_event_json`,
+and the host-supplied `NmpSnapshotProjector` callback.
+
+**Recommended action:** add `aim.md` §1 caveat ("the framework guards the kernel; FFI
+callers can bypass its guarantees by registering raw taps — see escape-hatch doc");
+write a contributor doc naming the four escape hatches and when each is appropriate.
+
+---
+
+### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [HIGH · v1 DX]
+
+**Evidence:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs` — 403 LOC.
+`docs/dispatch-actions.md` documents *what to call* but not *what to register first*.
+The ordering matters (action registration before `&NmpApp` borrow; observer
+registration before `nmp_app_start`); ordering violations fail silently. The smallest
+existing app (`apps/notes/`) opts out of the framework's seams — so the smallest
+example is also the wrong example.
+
+`aim.md` §4.14 names `nmp init`; `crates/nmp-cli` exists but starter recipes are absent.
+
+**Recommended action:** (1) `nmp-app-template` crate with canonical wiring (action
+registry, default projections for kind:1 + profiles, coverage hook); (2) wire
+`nmp init <appname>` in `nmp-cli` to scaffold the template + minimal iOS shell.
+This is the highest-leverage DX investment before shipping v1 if the framework's
+§1 claim ("one-shot a working Nostr application") is to hold.
+
+---
+
+### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
+
+**Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
+— 258 LOC, 8 generated structs. `ios/Chirp/Chirp/Bridge/KernelBridge.swift` — 1,895 LOC,
+~40 handwritten `Decodable` structs. Coverage: 8/48 ≈ 17%. The remaining 40 are exactly
+the types that change most often (snapshot payload, multi-state enums, projection clusters)
+and benefit most from codegen. They're all blocked on tagged-enum support + `legacy_default`
+override + per-field Swift-type overrides — each a separate architectural step.
+
+**Recommended action:** split F-05 into "F-05a: Stage 1+2+3-partial (DONE)" + "F-05b:
+tagged-enum emitter + full sweep (post-v1)"; drop "V1 QUALITY" framing on Stage 3.
+The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
@@ -1097,6 +1266,11 @@ call site in `ModularBlockView` was updated to feed the now-non-optional `author
 
 These are each their own architectural step and merit separate PRs.
 
+**Coverage note (V-49):** 8 generated structs / ~48 total Decodables = ~17% coverage.
+The "v1 QUALITY" label applies to Stage 1+2+3-partial; Stage 3 remainder (tagged enums,
+legacy_default, full sweep) is effectively post-v1. Consider renaming to "F-05a (DONE) /
+F-05b (post-v1)" so the v1 claim is scoped accurately.
+
 ### F-06 · ~~CI lint: freeze C-ABI surface~~ CLOSED — see Appendix
 
 ### F-07 · Fix V-02 — move nmp-marmot to apps/ [DONE]
@@ -1111,6 +1285,9 @@ Deliberately deferred. Do not start until Section 4 is complete.
 
 | Item | Why deferred |
 |------|-------------|
+| NIP-23 long-form articles (`nmp-nip23`) | kind:30023 constant exists in `tags.rs`; no decoder/projection. ~2 days when framework is stable. |
+| NIP-51 lists / bookmarks / mute (see V-42) | Mute list is v1-A safety item (promote there); bookmarks/pins/communities are post-v1. |
+| NIP-94 / NIP-96 file metadata + servers | `imeta` tag parser + upload action needed; ships in all modern clients. |
 | Blossom uploads/downloads (M10) | No `nmp-blossom` crate; no blocking user need |
 | Web-of-Trust (M13) | No architecture decision; not user-blocking |
 | UniFFI migration (M14) | Raw C-ABI works; multi-sprint, high churn |
