@@ -48,7 +48,7 @@ fn cargo_toml(manifest: &AppManifest) -> String {
     // under the default `native` feature since PR #356 — no explicit feature
     // flag is needed for the generated app crate's dependency.
     let mut out = format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\" }}\nnmp-ffi = {{ path = \"../../../crates/nmp-ffi\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
         app_crate_name(&manifest.name)
     );
     for module in manifest.ordered_modules() {
