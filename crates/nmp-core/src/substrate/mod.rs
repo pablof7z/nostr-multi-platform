@@ -42,6 +42,7 @@ mod action;
 mod bounded;
 mod capability;
 mod default_routing;
+mod dm_inbox_relays;
 mod domain;
 mod identity;
 mod ingest;
@@ -58,6 +59,11 @@ pub use action::{
 };
 pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
+pub use dm_inbox_relays::{
+    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 pub use domain::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};

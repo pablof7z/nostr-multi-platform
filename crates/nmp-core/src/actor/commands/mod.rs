@@ -62,8 +62,11 @@ mod conformance_support;
 // (`event_observer`, `raw_event_observer`, `lifecycle`) stay always-compiled
 // because the FFI surface and per-app crates name those types without
 // requiring the native runtime to be present.
-#[cfg(feature = "native")]
-mod dm;
+// V-39: NIP-17 DM send orchestration moved to `nmp-nip17` (see
+// `crates/nmp-nip17/src/dm_send.rs::SendGiftWrappedDmCommand`). The
+// `ActorCommand::SendGiftWrappedDm` variant + the `commands::dm` module are
+// deleted; the equivalent path now dispatches `ActorCommand::Protocol(
+// Box::new(SendGiftWrappedDmCommand { ... }))`.
 mod event_observer;
 mod identity;
 mod lifecycle;
@@ -145,8 +148,7 @@ pub use event_observer::{
 // kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
 // up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
 // registration path reach the same `Arc<Mutex<…>>` the kernel taps.
-#[cfg(feature = "native")]
-pub(super) use dm::send_gift_wrapped_dm;
+// V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
     follow, open_timeline, publish_note, publish_profile, publish_signed_event,

@@ -26,15 +26,18 @@ impl Kernel {
     ///
     /// Builds a [`KernelMailboxes`] adapter from the injected substrate
     /// [`crate::substrate::MailboxCache`] (post-step-3 source of truth
-    /// for NIP-65 data) + the bespoke `dm_relay_lists` HashMap (NIP-17
-    /// kind:10050, until V-40 moves it to `nmp-nip17`).
+    /// for NIP-65 data) + the injected substrate
+    /// [`crate::substrate::DmInboxRelayLookup`] (post-V-40 source of
+    /// truth for DM-inbox relays; concrete cache lives in `nmp-nip17`).
     ///
     /// Per D8: an empty trigger inbox is a zero-cost no-op (no
     /// allocation, no compile pass). This is the common case on a quiet
     /// idle tick.
     pub(crate) fn drain_lifecycle_tick(&mut self) -> Vec<crate::subs::WireFrame> {
-        let mailboxes =
-            KernelMailboxes::new(std::sync::Arc::clone(&self.mailbox_cache), &self.dm_relay_lists);
+        let mailboxes = KernelMailboxes::new(
+            std::sync::Arc::clone(&self.mailbox_cache),
+            self.dm_inbox_relays_arc(),
+        );
         self.lifecycle.drain_tick(&mailboxes)
     }
 

@@ -21,6 +21,10 @@ nmp-nip59 = { path = "../nmp-nip59" }
 nostr = { workspace = true, features = ["nip44", "nip59"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Logging the V-39/V-40 fail-closed paths (poisoned-lock degrade, gift-wrap
+# send blocked on missing kind:10050, etc.) — D6 surfaces these as toasts
+# but the structured warn also helps a host's diagnostics screen.
+tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

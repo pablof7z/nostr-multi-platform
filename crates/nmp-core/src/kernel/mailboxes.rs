@@ -16,9 +16,9 @@
 //!   with fallback to the kernel-owned bootstrap seed" because the
 //!   kernel owns the role-to-URL mapping (`RelayEditRow`); a Layer-2
 //!   router doesn't.
-//! - `recipient_dm_relays` — NIP-17 kind:10050 cache reader (still
-//!   uses the bespoke `dm_relay_lists` HashMap; V-40 will move this to
-//!   `nmp-nip17`).
+//! - `recipient_dm_relays` — DM-inbox relay cache reader. Reads through
+//!   the injected substrate [`DmInboxRelayLookup`] handle (V-40); the
+//!   kernel does not know the wire shape of a kind:10050 event.
 //! - `partition_ids_by_author_write_relays` — thread-hydration outbox
 //!   path. Wraps `author_write_relays`.
 //! - [`KernelMailboxes`] — the planner-side adapter that bridges the
@@ -27,13 +27,13 @@
 //!   fields plus `dm_inbox_relays`). Both traits coexist until step 9
 //!   extracts the planner.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::Kernel;
 use crate::planner::{MailboxCache as PlannerMailboxCache, MailboxSnapshot, Pubkey};
 use crate::relay::RelayRole;
-use crate::substrate::MailboxCache as SubstrateMailboxCache;
+use crate::substrate::{DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache};
 use crate::util::sort_dedup;
 
 impl Kernel {
@@ -93,47 +93,20 @@ impl Kernel {
         }
     }
 
-    /// Resolve a pubkey's NIP-17 **DM inbox** relays (the kind:10050 list).
+    /// Resolve a pubkey's DM-inbox relays through the substrate
+    /// [`DmInboxRelayLookup`] handle.
     ///
-    /// NIP-17 § 2: a kind:1059 gift-wrap MUST be published to the
-    /// recipient's kind:10050 DM-relay list — a relay set that is
-    /// *deliberately distinct* from the kind:10002 (NIP-65) generic
-    /// mailbox. kind:10050 carries `["relay", <url>]` tags (note:
-    /// `relay`, not the `r` marker NIP-65 uses), letting a user route
-    /// private messages to a privacy-focused relay that is not in their
-    /// public read set. Collapsing the two would silently leak DM
-    /// routing onto public relays.
+    /// The concrete cache (NIP-17 kind:10050) lives in `nmp-nip17` and is
+    /// injected at composition time via
+    /// [`Kernel::set_dm_inbox_relay_lookup`] (V-40); the kernel never names
+    /// the NIP-17 wire shape (D0).
     ///
-    /// This reads the **live** kind:10050 cache (`self.dm_relay_lists`),
-    /// populated by `ingest_dm_relay_list`. The DM send path
-    /// (`commands::send_gift_wrapped_dm`) consults this method to pin
-    /// each kind:1059 envelope to its receiver's DM-inbox relays.
-    ///
-    /// Returns `None` when no kind:10050 list is known for `pubkey` —
-    /// either the pubkey has never published a kind:10050, or it
-    /// published one carrying no `relay` tags (an empty list, which
-    /// `ingest_dm_relay_list` treats as the author clearing their DM
-    /// relays and so removes the cache entry). In both cases the send
-    /// path must fail closed: a kind:1059 envelope is only safe to
-    /// publish to a receiver's explicit kind:10050 DM-inbox relays,
-    /// never to generic Content relays.
-    ///
-    /// V-40 (step 6 of the crate-boundary migration) moves this cache
-    /// to `nmp-nip17`; the kernel field `dm_relay_lists` and this
-    /// method go with it.
+    /// Returns `None` when no list is known for `pubkey` — by trait
+    /// contract this collapses both the "never published" and "published
+    /// an empty list" branches, so the gift-wrap publish path fails
+    /// closed in both cases (the contract NIP-17 § 2 requires).
     pub(crate) fn recipient_dm_relays(&self, pubkey: &str) -> Option<Vec<String>> {
-        let relays = self.dm_relay_lists.get(pubkey)?;
-        // A cached entry is never stored empty — `ingest_dm_relay_list`
-        // removes the entry on an empty kind:10050 rather than caching a
-        // `Vec::new()`. The guard here is belt-and-suspenders so a
-        // future caller that seeds the map directly cannot return an
-        // empty `Some(Vec)` that callers would treat as "route to no
-        // relays".
-        if relays.is_empty() {
-            None
-        } else {
-            Some(relays.clone())
-        }
+        self.dm_inbox_relays_arc().dm_inbox_relays(pubkey)
     }
 
     /// Partition `ids` by their **original-event author's** NIP-65 write
@@ -183,8 +156,9 @@ impl Kernel {
 
 /// Adapter — present the substrate [`SubstrateMailboxCache`] (NIP-65
 /// kind:10002, owned by the kernel via `mailbox_cache`) plus the
-/// kernel's bespoke `dm_relay_lists` HashMap (NIP-17 kind:10050) as a
-/// planner-side [`PlannerMailboxCache`].
+/// substrate [`DmInboxRelayLookup`] handle (DM-inbox relays — NIP-17
+/// kind:10050 in practice, but unnamed at this seam) as a planner-side
+/// [`PlannerMailboxCache`].
 ///
 /// Two traits, one bridge. The planner trait pre-dates the substrate
 /// trait introduced in step 1.c / 1.d, and uses a different shape
@@ -193,27 +167,26 @@ impl Kernel {
 /// traits collapse into one then; until then this adapter is the
 /// translation layer.
 ///
-/// Lifetime: holds an `Arc` clone of the substrate cache (cheap — the
-/// cache is `Arc<dyn …>` already) plus a borrow of the kernel's
-/// `dm_relay_lists` HashMap. The adapter is built per
+/// Lifetime: holds an `Arc` clone of each substrate handle (cheap — both
+/// are already `Arc<dyn …>`). The adapter is built per
 /// `drain_lifecycle_tick` call and dropped at the end of that call.
-pub(crate) struct KernelMailboxes<'a> {
+pub(crate) struct KernelMailboxes {
     inner: Arc<dyn SubstrateMailboxCache>,
-    dm_relays: &'a HashMap<String, Vec<String>>,
+    dm_lookup: Arc<dyn DmInboxRelayLookup>,
 }
 
-impl<'a> KernelMailboxes<'a> {
+impl KernelMailboxes {
     /// Constructor is kernel-private — outside callers obtain a view
     /// through [`Kernel::drain_lifecycle_tick`].
     pub(super) fn new(
         inner: Arc<dyn SubstrateMailboxCache>,
-        dm_relays: &'a HashMap<String, Vec<String>>,
+        dm_lookup: Arc<dyn DmInboxRelayLookup>,
     ) -> Self {
-        Self { inner, dm_relays }
+        Self { inner, dm_lookup }
     }
 }
 
-impl PlannerMailboxCache for KernelMailboxes<'_> {
+impl PlannerMailboxCache for KernelMailboxes {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot> {
         self.inner.snapshot(pubkey).map(|p| MailboxSnapshot {
             write_relays: p.write,
@@ -223,10 +196,7 @@ impl PlannerMailboxCache for KernelMailboxes<'_> {
     }
 
     fn dm_inbox_relays(&self, pubkey: &Pubkey) -> Option<Vec<String>> {
-        self.dm_relays
-            .get(pubkey)
-            .filter(|relays| !relays.is_empty())
-            .cloned()
+        self.dm_lookup.dm_inbox_relays(pubkey)
     }
 
     fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)> {

@@ -11,17 +11,18 @@
 
 The crate-boundary spec is committed
 (`docs/architecture/crate-boundaries.md`, 2026-05-24); migration runs in the
-12-step order from §5. Step 1 (substrate seams in `nmp-core`) is fully landed
-or in PR. Step 2 (create `nmp-router`) is in PR. Step 3 (kernel cut-over) and
-later steps remain.
+12-step order from §5. Steps 1 (substrate seams), 2 (`nmp-router`), 3
+(kernel cut-over), and 4 (LNURL onto `ProtocolCommand` — V-41) have all
+landed on master. V-39+V-40 (NIP-17 DM stack) is in PR #458.
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 (rebased onto master)
-- 2026-05-24 — feat(nmp-network): step 8 phase A — extract relay worker + protocol primitives to new `nmp-network` crate — PR #459 (rebased onto master)
+- 2026-05-24 — refactor(nmp-core/nmp-nip17): V-39+V-40 — full NIP-17 DM stack migration → nmp-nip17 — PR #458 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — refactor(nmp-nip57): step 4 / V-41 — move LNURL fetcher onto `ProtocolCommand`; delete `ActorCommand::FetchLnurlInvoice` variant — PR #456 merged
+- 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 merged
 - 2026-05-24 — feat(nmp-router): step 2 — new crate with `InMemoryMailboxCache` + `Kind10002Parser` + `GenericOutboxRouter` — PR #450 merged
 - 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — PR #449 merged
 - 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 merged

@@ -70,7 +70,11 @@ impl Kernel {
                 0 => self.ingest_profile(event),
                 3 => self.ingest_contacts(event),
                 10002 => self.ingest_relay_list(event),
-                10050 => self.ingest_dm_relay_list(event),
+                // V-40: kind:10050 no longer has a kernel-side ingest arm —
+                // it routes through the substrate `EventIngestDispatcher`
+                // inside `verify_and_persist` above (which this helper
+                // already calls). A registered `Kind10050Parser` writes the
+                // DM-relay cache.
                 _ => {}
             }
         }
@@ -267,34 +271,59 @@ impl Kernel {
         );
     }
 
-    /// Seed a kind:10050 (NIP-17 DM-relay list) into the kernel's event store
-    /// and DM-relay-list cache for `author_pubkey` with `dm_relay_urls` as its
-    /// `relay`-tag DM-inbox relays.
+    /// Lazily install (and return) the test-only
+    /// [`crate::substrate::TestDmInboxRelayCache`] behind the kernel's
+    /// `dm_inbox_relays` slot. First call installs a fresh cache;
+    /// subsequent calls return the same `Arc` so seeds compose.
     ///
-    /// The structural analogue of `seed_kind10002_for_test`: tests that exercise
-    /// the NIP-17 DM send path's `recipient_dm_relays` resolution call this to
-    /// prime a recipient's kind:10050 list before dispatching a DM command.
-    /// The synthetic event id is the author pubkey (unique per author in a
-    /// fresh-kernel test); `created_at: u64::MAX` guarantees the seed wins the
-    /// replaceable-event supersession check in `store::insert`.
+    /// Test-support only — production composition installs
+    /// `nmp_nip17::DmRelayCache` via
+    /// [`Kernel::set_dm_inbox_relay_lookup`] instead.
+    #[allow(dead_code)]
+    pub(crate) fn test_dm_relay_cache(
+        &mut self,
+    ) -> std::sync::Arc<crate::substrate::TestDmInboxRelayCache> {
+        if let Some(cache) = self.test_dm_inbox_cache.as_ref() {
+            return std::sync::Arc::clone(cache);
+        }
+        let cache = std::sync::Arc::new(crate::substrate::TestDmInboxRelayCache::new());
+        self.test_dm_inbox_cache = Some(std::sync::Arc::clone(&cache));
+        self.set_dm_inbox_relay_lookup(std::sync::Arc::clone(&cache)
+            as std::sync::Arc<dyn crate::substrate::DmInboxRelayLookup>);
+        cache
+    }
+
+    /// Seed `author_pubkey`'s DM-inbox relay list (post-V-40, this writes
+    /// to the substrate [`crate::substrate::DmInboxRelayLookup`] handle
+    /// rather than to a kernel-owned HashMap — see V-40 in
+    /// `docs/architecture/crate-boundaries.md`).
+    ///
+    /// Production composition installs `nmp_nip17::DmRelayCache` via
+    /// [`Kernel::set_dm_inbox_relay_lookup`]; tests inside `nmp-core` use
+    /// the [`crate::substrate::TestDmInboxRelayCache`] stand-in (lazily
+    /// installed on first call via [`Kernel::test_dm_relay_cache`]).
+    /// Repeated calls re-use the same cache, so multi-pubkey seeds compose.
+    ///
+    /// Also enqueues an [`crate::subs::CompileTrigger::InvalidateCompile`]
+    /// on the kernel's `SubscriptionLifecycle` so the planner re-routes
+    /// `#p`-tagged DM-inbox interests on the next `drain_lifecycle_tick`
+    /// — mirroring the pre-V-40 behaviour where `ingest_dm_relay_list`
+    /// enqueued a `DmRelayListChanged` trigger inline.
     ///
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10050_for_test(&mut self, author_pubkey: &str, dm_relay_urls: &[&str]) {
-        let id = author_pubkey.to_string();
-        let tags: Vec<Vec<String>> = dm_relay_urls
-            .iter()
-            .map(|url| vec!["relay".to_string(), url.to_string()])
-            .collect();
-        self.inject_replaceable_event(
-            &id,
-            author_pubkey,
-            u64::MAX,
-            10050,
-            tags,
-            "wss://seed",
-            1_700_000_000_000,
-        );
+        self.test_dm_relay_cache().upsert(author_pubkey, dm_relay_urls);
+        // V-40 substitute for the removed `CompileTrigger::DmRelayListChanged`.
+        // Production composition (`Kind10050Parser` in `nmp-nip17`) will need
+        // its own seam to enqueue a trigger when the cache mutates; for tests
+        // we drive it directly here so the planner re-routes on the next tick.
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                reason: crate::subs::InvalidateReason::External(
+                    "test-support: seed_kind10050_for_test".to_string(),
+                ),
+            });
     }
 
     /// Sort the timeline once after a batch inject (deferred sort).

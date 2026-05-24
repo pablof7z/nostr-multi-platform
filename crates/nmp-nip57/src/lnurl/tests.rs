@@ -32,6 +32,12 @@ fn unsigned_for(tags: Vec<Vec<String>>) -> UnsignedEvent {
 
 /// Build a `ProtocolCommandContext` whose kernel accessors are wired to
 /// fixed stubs (the test never spawns a worker, so the sender is unused).
+///
+/// V-39+V-40 added four trailing positional args to
+/// [`ProtocolCommandContext::new`] (the NIP-17 DM stack surface). The LNURL
+/// tests don't exercise that surface — they pass `None` for the local-keys
+/// snapshot, the empty `DmInboxRelayLookup`, and no-op toast / failure
+/// closures.
 fn ctx_with<'a>(
     send: &'a dyn Fn(ActorCommand),
     author_relays: &'a dyn Fn(&str) -> Vec<String>,
@@ -41,6 +47,12 @@ fn ctx_with<'a>(
     stage_req: &'a dyn Fn(&str),
 ) -> ProtocolCommandContext<'a> {
     let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+    // V-39+V-40 trailing-arg stubs — the LNURL fetcher never reads any of
+    // these accessors.
+    static EMPTY_DM: nmp_core::substrate::EmptyDmInboxRelayLookup =
+        nmp_core::substrate::EmptyDmInboxRelayLookup;
+    static NOOP_TOAST: fn(Option<String>) = |_| {};
+    static NOOP_FAIL: fn(String, String) = |_, _| {};
     ProtocolCommandContext::new(
         send,
         tx,
@@ -49,6 +61,10 @@ fn ctx_with<'a>(
         bootstrap_relays,
         local_keys,
         stage_req,
+        None,
+        &EMPTY_DM,
+        &NOOP_TOAST,
+        &NOOP_FAIL,
     )
 }
 

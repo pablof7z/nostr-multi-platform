@@ -60,6 +60,10 @@ fn p_tag(pubkey: &str) -> Vec<String> {
 }
 
 /// A single NIP-17 kind:10050 `relay` tag: `["relay", url]`.
+///
+/// Retained for the commented-out V-40 migration block below (the live
+/// equivalent now lives in `crates/nmp-nip17/src/kind10050_parser.rs`).
+#[allow(dead_code)]
 fn relay_tag(url: &str) -> Vec<String> {
     vec!["relay".to_string(), url.to_string()]
 }
@@ -184,7 +188,21 @@ fn ingest_relay_list_empty_for_known_author_clears_entry_and_triggers_recompile(
     );
 }
 
-// ─── ingest_dm_relay_list (kind:10050, NIP-17) ───────────────────────────────
+// ─── kind:10050 DM-relay list (V-40: moved to nmp-nip17) ────────────────────
+//
+// The kernel no longer parses kind:10050 directly — the substrate
+// `IngestParser` registry fans the event to `nmp-nip17::Kind10050Parser`,
+// which owns the `DmRelayCache`. Tests for that parser live in
+// `crates/nmp-nip17/src/kind10050_parser.rs`. The kernel-side surface kept
+// here is just the `recipient_dm_relays` lookup that reads through the
+// injected `DmInboxRelayLookup` handle — exercised by the
+// `recipient_dm_relays_none_for_uncached_pubkey` test below.
+
+/*
+The pre-V-40 unit tests below exercised `ingest_dm_relay_list` directly.
+After V-40 the kernel no longer has that method; the equivalent coverage
+lives in `crates/nmp-nip17/src/kind10050_parser.rs` (`parse_event` /
+`IngestParser::parse`). Kept commented out to make the migration visible:
 
 /// A non-empty kind:10050 DM-relay list is parsed into `dm_relay_lists` under
 /// the event author's pubkey. kind:10050 has no read/write/both markers —
@@ -390,6 +408,7 @@ fn ingest_dm_relay_list_replaces_cached_list() {
         "the newer kind:10050 must replace the cached DM-relay list",
     );
 }
+*/
 
 /// `recipient_dm_relays` returns `None` for a pubkey with no kind:10050 — the
 /// genuinely-missing case the DM send path treats as not ready.
