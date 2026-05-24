@@ -9,10 +9,11 @@
 //!
 //! * [`SendDmAction`] — the `ActionModule` *validator*. `start` is a pure
 //!   shape check: non-empty content, non-empty recipient pubkey.
-//! * [`send_dm_command`] — the *executor* function. It maps a validated
-//!   [`SendDmInput`] to an [`ActorCommand::SendGiftWrappedDm`] carrying the
-//!   kind:14 rumor. The actor's `send_gift_wrapped_dm` handler (local-keys
-//!   MVP) does the seal + gift-wrap + publish.
+//! * The executor maps a validated [`SendDmInput`] to an
+//!   `ActorCommand::Protocol(Box::new(SendGiftWrappedDmCommand{...}))`
+//!   (V-39) carrying the kind:14 rumor. The protocol-command body —
+//!   [`crate::dm_send::SendGiftWrappedDmCommand`] in this crate — runs on
+//!   the actor thread and does the seal + gift-wrap + publish chain.
 //!
 //! # Why the rumor's `pubkey` is left empty
 //!
@@ -28,7 +29,7 @@ use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
-use crate::{build_dm_rumor, DmInput};
+use crate::{build_dm_rumor, DmInput, SendGiftWrappedDmCommand};
 
 /// Wire shape for `nmp.nip17.send` — the JSON a host passes to
 /// `nmp_app_dispatch_action`.
@@ -80,17 +81,20 @@ impl ActionModule for SendDmAction {
             reply_to: action.reply_to,
         };
         let rumor = build_dm_rumor(&dm_input, "");
-        // Thread the registry-minted `correlation_id` onto the actor command so
-        // the DM send participates in the action_results / action_stages round
-        // trip — the actor records `Requested` on receipt and the per-envelope
-        // `publish_signed_event` calls thread the id into the publish engine's
-        // `correlation_id_override`. Without this, the host's spinner keyed on
-        // the dispatched id would hang forever.
-        send(ActorCommand::SendGiftWrappedDm {
+        // V-39: dispatch via the substrate `ActorCommand::Protocol` arm
+        // wrapping a `SendGiftWrappedDmCommand`. The protocol-command
+        // body runs on the actor thread, resolves the active local
+        // signer + the recipient's kind:10050 list through the
+        // `ProtocolCommandContext`, gift-wraps the rumor twice, and
+        // dispatches each kind:1059 envelope back through
+        // `ctx.send(ActorCommand::PublishSignedEvent { ... })`. The
+        // `correlation_id` threads onto every follow-up so the publish
+        // engine's terminal verdict clears the host's spinner.
+        send(ActorCommand::Protocol(Box::new(SendGiftWrappedDmCommand {
             rumor,
             recipient_pubkey: action.recipient_pubkey,
             correlation_id: Some(correlation_id.to_string()),
-        });
+        })));
         Ok(())
     }
 }
@@ -148,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_emits_send_gift_wrapped_dm_with_correct_fields() {
+    fn execute_emits_protocol_send_gift_wrapped_dm_with_correct_fields() {
         use nmp_core::ActorCommand;
         use std::cell::RefCell;
 
@@ -165,16 +169,23 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::SendGiftWrappedDm {
-                rumor,
-                recipient_pubkey,
-                correlation_id,
-            } => {
-                assert_eq!(recipient_pubkey, RECIPIENT, "recipient must round-trip unchanged");
-                assert_eq!(rumor.content, "hello world", "DM content must land in the rumor");
-                assert_eq!(correlation_id.as_deref(), Some("cid-dm"), "correlation_id must thread through");
+            ActorCommand::Protocol(boxed) => {
+                // The boxed `ProtocolCommand`'s debug repr carries the
+                // recipient and content. We assert through `Debug` so the
+                // boxed-dyn shape is not coupled to a concrete downcast
+                // (the action lives in `nmp-nip17` and the command type
+                // is local — but the dispatch shape MUST be the
+                // substrate-generic `Protocol(Box<dyn ProtocolCommand>)`).
+                let s = format!("{boxed:?}");
+                assert!(
+                    s.contains("SendGiftWrappedDmCommand"),
+                    "Protocol-arm payload must be a SendGiftWrappedDmCommand; got: {s}"
+                );
+                assert!(s.contains(RECIPIENT), "recipient must round-trip");
+                assert!(s.contains("hello world"), "DM content must land in the rumor");
+                assert!(s.contains("cid-dm"), "correlation_id must thread through");
             }
-            other => panic!("expected SendGiftWrappedDm, got {other:?}"),
+            other => panic!("expected ActorCommand::Protocol, got {other:?}"),
         }
     }
 

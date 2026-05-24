@@ -4,15 +4,20 @@
 //! - kind:0  → `profile.rs` (`ingest_profile`)
 //! - kind:3  → `contacts.rs` (`ingest_contacts`)
 //! - kind:10002` → `relay_list.rs` (`ingest_relay_list`)
-//! - kind:10050 → `dm_relay_list.rs` (`ingest_dm_relay_list`)
 //! - kind:1|6 → `timeline.rs` (`ingest_timeline_event`)
+//!
+//! Other kinds (kind:10050 NIP-17 DM-relay list, future NIP-51 lists, …)
+//! route through the substrate [`crate::substrate::EventIngestDispatcher`] —
+//! the wildcard arm fans the [`crate::store::VerifiedEvent`] to every
+//! registered [`crate::substrate::IngestParser`] before the
+//! `KernelEventObserver`s fire. Per-NIP crates register their parsers at
+//! composition time; the kernel never names the NIP kind directly.
 //!
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
 
 mod auth_handlers;
 mod closed;
 mod contacts;
-mod dm_relay_list;
 mod profile;
 mod relay_list;
 mod timeline;
@@ -394,25 +399,12 @@ impl Kernel {
                 }
                 self.changed_since_emit = true;
             }
-            10050 => {
-                // NIP-17 DM-relay list. Same D4 gating as kind:10002: only an
-                // Inserted | Replaced outcome means this event is now the
-                // canonical kind:10050 for the author, so the cache mutation
-                // is gated on the store outcome.
-                use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(relay_url, &event);
-                if matches!(
-                    outcome,
-                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                ) {
-                    self.ingest_dm_relay_list(event);
-                }
-                self.changed_since_emit = true;
-            }
             _ => {
                 // Wildcard arm: every kind not handled by an explicit match
                 // arm above (zap receipts, NIP-29 chat kinds, NIP-29 group
-                // metadata, gift-wraps kind:1059, …) reaches
+                // metadata, gift-wraps kind:1059, NIP-17 DM-relay lists
+                // kind:10050 — fans through the IngestParser registry
+                // inside `verify_and_persist`, …) reaches
                 // `KernelEventObserver`s through this seam. Pre-fix the
                 // wildcard called only `verify_and_persist`, so projections
                 // like `GroupChatProjection`, `DiscoveredGroupsProjection`,
@@ -420,6 +412,12 @@ impl Kernel {
                 // observers were structurally deaf. Gate fan-out on the
                 // store outcome (`Inserted | Replaced` only — D4 dedup so
                 // duplicate sibling-relay deliveries do not double-notify).
+                //
+                // V-40 — the substrate `EventIngestDispatcher` runs inside
+                // `verify_and_persist` for every gated outcome, so per-NIP
+                // parsers (today: `nmp-nip17::Kind10050Parser`) fire on
+                // EVERY arm (not just wildcard); the kernel deliberately
+                // does not name any NIP kind for dispatch purposes (D0).
                 use crate::store::InsertOutcome;
                 let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
@@ -470,6 +468,13 @@ impl Kernel {
         } else {
             Some(verified.raw().clone())
         };
+        // V-40 — clone the verified event for the substrate
+        // [`EventIngestDispatcher`] fan-out. Cloning is cheap (the inner
+        // `RawEvent` is the same shape `raw_for_observer` already clones
+        // above), and lets us hand `store.insert` an owned `VerifiedEvent`
+        // while still feeding parsers (`Kind10050Parser`, future
+        // NIP-51 parsers, …) AFTER the store gates supersession (D4).
+        let verified_for_dispatch = verified.clone();
         // T105: store provenance is the *actual* URL the event came in on,
         // not the lane's bootstrap URL. The relay_count derived from store
         // sources is now correct across the URL-keyed transport pool.
@@ -485,6 +490,25 @@ impl Kernel {
                 {
                     if let Some(raw) = raw_for_observer.as_ref() {
                         self.notify_raw_event_observers(raw, &provenance);
+                    }
+                }
+                // V-40 — fan to substrate parsers only when the store
+                // accepted this event as canonical (`Inserted | Replaced`)
+                // OR when it was an ephemeral that bypassed the store. A
+                // duplicate sibling-relay delivery (`Duplicate`) does NOT
+                // re-fire the parser (D4 dedup).
+                if matches!(
+                    &outcome,
+                    crate::store::InsertOutcome::Inserted { .. }
+                        | crate::store::InsertOutcome::Replaced { .. }
+                        | crate::store::InsertOutcome::Ephemeral { .. }
+                ) {
+                    // D6 — a poisoned dispatcher lock degrades to "no
+                    // parser fired"; the store insert already succeeded
+                    // and observers fired above, so this is the safe
+                    // graceful-degrade.
+                    if let Ok(d) = self.ingest_dispatcher_slot().read() {
+                        d.dispatch(&verified_for_dispatch);
                     }
                 }
                 Some(outcome)

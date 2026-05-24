@@ -286,7 +286,8 @@ pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
 use crate::substrate::{
-    DefaultInMemoryMailboxCache, MailboxCache, Nip65WriteSetRouter, OutboxRouter, ParsedRelayList,
+    empty_dm_inbox_relay_lookup, DefaultInMemoryMailboxCache, DmInboxRelayLookup,
+    EventIngestDispatcher, MailboxCache, Nip65WriteSetRouter, OutboxRouter, ParsedRelayList,
 };
 use crate::util::sort_dedup;
 
@@ -427,14 +428,40 @@ pub(crate) struct Kernel {
     /// the observer by passing this same `Arc` through. Read by the FFI
     /// surface in phase 2 (`recent_routing_decisions` snapshot field).
     routing_trace: Arc<routing_trace::RoutingTraceProjection>,
-    /// NIP-17 kind:10050 DM-relay lists, keyed by author pubkey (hex). Each
-    /// value is the deduped, canonicalized set of DM-inbox relay URLs the
-    /// author declared. Populated by `ingest_dm_relay_list`; read by
-    /// `recipient_dm_relays` to pin kind:1059 gift-wrap envelopes to their
-    /// receiver's DM-inbox relays (NIP-17 § 2). Deliberately distinct from
-    /// `author_relay_lists` (kind:10002) — DM routing must not leak onto the
-    /// public NIP-65 mailbox.
-    dm_relay_lists: HashMap<String, Vec<String>>,
+    /// Substrate DM-inbox relay lookup — V-40 of
+    /// `docs/architecture/crate-boundaries.md`. The kernel reads this when
+    /// it needs a receiver's DM-inbox relay set; the concrete cache (NIP-17
+    /// kind:10050) lives in the `nmp-nip17` crate behind this trait so the
+    /// kernel never names the NIP-17 noun (D0). Default:
+    /// `EmptyDmInboxRelayLookup` (cold-start; every lookup returns `None`,
+    /// the fail-closed contract the gift-wrap publish path expects). Apps
+    /// that need DM routing inject `nmp_nip17::DmRelayCache` via
+    /// [`Kernel::set_dm_inbox_relay_lookup`] — the same `Arc` is
+    /// simultaneously the writer side fed by `nmp_nip17::Kind10050Parser`
+    /// (registered with `ingest_dispatcher`).
+    dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
+    /// Substrate `IngestParser` registry — V-40 of
+    /// `docs/architecture/crate-boundaries.md`. Per-NIP crates register a
+    /// parser for the kinds they own (NIP-17 kind:10050, future NIP-51
+    /// list kinds, …) so the kernel never pattern-matches NIP kind numbers
+    /// directly. The kernel's wildcard ingest arm fans every accepted
+    /// `Inserted | Replaced` event through this dispatcher before the
+    /// `KernelEventObserver`s fire. Empty by default — a kernel with no
+    /// registrations is a zero-cost no-op (the dispatcher's own contract).
+    ///
+    /// Held behind an `Arc<RwLock<…>>` slot so `NmpApp::register_ingest_parser`
+    /// can mutate the registry without crossing the actor boundary — the same
+    /// slot pattern `host_op_handler`, `event_observers`, and the snapshot
+    /// projection registry use.
+    ingest_dispatcher: Arc<std::sync::RwLock<EventIngestDispatcher>>,
+    /// Test-only handle to the [`crate::substrate::TestDmInboxRelayCache`]
+    /// installed by [`Kernel::test_dm_relay_cache`]. Production composition
+    /// never installs one of these — `nmp_nip17::DmRelayCache` is the
+    /// production impl behind `dm_inbox_relays`. Tests inside `nmp-core` use
+    /// this typed handle to seed entries without depending on `nmp-nip17`
+    /// (a downstream crate cycle the doctrine forbids).
+    #[cfg(any(test, feature = "test-support"))]
+    test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
     timeline_authors: BTreeSet<String>,
     /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
@@ -991,7 +1018,10 @@ impl Kernel {
             mailbox_cache: Arc::new(DefaultInMemoryMailboxCache::new()),
             outbox_router,
             routing_trace,
-            dm_relay_lists: HashMap::new(),
+            dm_inbox_relays: empty_dm_inbox_relay_lookup(),
+            ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
+            #[cfg(any(test, feature = "test-support"))]
+            test_dm_inbox_cache: None,
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
@@ -1546,6 +1576,73 @@ impl Kernel {
     #[allow(dead_code)] // Reserved for follow-on wiring of actual routing call sites.
     pub(crate) fn outbox_router(&self) -> &dyn OutboxRouter {
         &*self.outbox_router
+    }
+
+    /// Inject the DM-inbox relay lookup (V-40 composition seam). Production
+    /// composition (apps that depend on `nmp-nip17`) calls this after
+    /// `Kernel::new` to install the shared `Arc<DmRelayCache>` so the
+    /// kernel's `recipient_dm_relays` reader + the planner-side
+    /// `KernelMailboxes` adapter both see the same kind:10050 entries the
+    /// kind:10050 ingest parser writes. Default is
+    /// [`crate::substrate::EmptyDmInboxRelayLookup`] (every lookup returns
+    /// `None`, the fail-closed cold-start contract).
+    ///
+    /// MUST be called BEFORE the first kind:10050 event is ingested — the
+    /// caches are independent stores, not a write-through pair, so a swap
+    /// after ingest would lose cached entries.
+    pub(crate) fn set_dm_inbox_relay_lookup(&mut self, lookup: Arc<dyn DmInboxRelayLookup>) {
+        self.dm_inbox_relays = lookup;
+    }
+
+    /// Replace the kernel's [`EventIngestDispatcher`] slot with `slot`.
+    /// Composition-time wiring path — the actor calls this with the
+    /// `Arc<RwLock<EventIngestDispatcher>>` slot owned by `NmpApp` so
+    /// `NmpApp::register_ingest_parser` and the kernel share one
+    /// dispatcher.
+    ///
+    /// MUST be called BEFORE the first event is ingested.
+    pub(crate) fn set_ingest_dispatcher_slot(
+        &mut self,
+        slot: Arc<std::sync::RwLock<EventIngestDispatcher>>,
+    ) {
+        self.ingest_dispatcher = slot;
+    }
+
+    /// Shared handle to the injected `Arc<dyn DmInboxRelayLookup>`. Used by
+    /// the planner-side `KernelMailboxes` adapter so the planner reads the
+    /// same DM-inbox relay entries the gift-wrap publish path reads.
+    pub(crate) fn dm_inbox_relays_arc(&self) -> Arc<dyn DmInboxRelayLookup> {
+        Arc::clone(&self.dm_inbox_relays)
+    }
+
+    /// Register a [`crate::substrate::IngestParser`] for `kind` against the
+    /// kernel's shared [`EventIngestDispatcher`] slot. Composition-time
+    /// wiring path — `NmpApp::register_ingest_parser` calls this through
+    /// a kernel handle shared with the actor; the slot pattern matches
+    /// the rest of the substrate's host-extension seams.
+    ///
+    /// D6 — a poisoned dispatcher lock degrades to a no-op (the
+    /// registration is dropped; the kernel keeps its current set).
+    /// MUST be called before the first event is ingested.
+    #[allow(dead_code)] // Wired through `NmpApp` at composition time.
+    pub(crate) fn register_ingest_parser(
+        &self,
+        kind: u32,
+        parser: Arc<dyn crate::substrate::IngestParser>,
+    ) {
+        if let Ok(mut d) = self.ingest_dispatcher.write() {
+            d.register_kind(kind, parser);
+        }
+    }
+
+    /// Shared handle to the kernel's [`EventIngestDispatcher`] slot. Used
+    /// by the actor / kernel ingest path to dispatch a verified event to
+    /// every registered parser; used by the FFI composition seam to
+    /// install fresh parsers.
+    pub(crate) fn ingest_dispatcher_slot(
+        &self,
+    ) -> Arc<std::sync::RwLock<EventIngestDispatcher>> {
+        Arc::clone(&self.ingest_dispatcher)
     }
 }
 

@@ -425,51 +425,12 @@ pub enum ActorCommand {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
-    /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
-    /// envelope per recipient and one self-copy, using the active signer's
-    /// keys. Each envelope is published to *its receiver's* kind:10050 DM-inbox
-    /// relays (NIP-17 § 2) — the recipient envelope to the recipient's list,
-    /// the self-copy to the sender's own list. If either receiver's kind:10050
-    /// list is missing or empty, the handler fails closed with a toast and
-    /// emits no publish frames; kind:1059 must not fall back to generic Content
-    /// relays.
-    ///
-    /// `rumor` is the **unsigned** kind:14 chat-message event built by
-    /// `nmp_nip17::build_dm_rumor` — it is never signed or published as-is.
-    /// The actor seals + gift-wraps it (NIP-59 `gift_wrap`) into kind:1059
-    /// envelopes whose outer signatures use fresh per-envelope ephemeral keys
-    /// (the unlinkability guarantee). Two envelopes are produced: one wrapped
-    /// to `recipient_pubkey`, one wrapped to the sender's own pubkey (the
-    /// self-copy, so sent messages remain readable).
-    ///
-    /// The gift-wrap crypto runs on the actor thread (D7 — the kernel owns key
-    /// access and the wall clock). The `rumor.created_at` is re-stamped from
-    /// `kernel.now_secs()` before wrapping.
-    ///
-    /// # Phase 1 — local keys only
-    ///
-    /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` because it thin-wraps
-    /// `nostr::EventBuilder::gift_wrap(&Keys, ...)` — raw keys end-to-end. A
-    /// remote (NIP-46) signer exposes no local key, so bunker accounts cannot
-    /// use this path; the actor detects the missing key and surfaces a toast
-    /// (D6 — explicit failure, never silent, never a panic). Bunker support
-    /// requires a new `nmp_nip59::gift_wrap_with_signer` that calls
-    /// `nostr::nips::nip59::make_seal(signer, receiver, rumor)` for the
-    /// kind:13 seal step (NIP-44 via `RemoteSignerHandle::nip44_encrypt`,
-    /// ADR-0026) and mints an ephemeral key locally for the kind:1059 wrap.
-    SendGiftWrappedDm {
-        rumor: crate::substrate::UnsignedEvent,
-        recipient_pubkey: String,
-        /// Registry-minted action id when this send originates from
-        /// `nmp_app_dispatch_action` (`nmp.nip17.send`). The actor records
-        /// `ActionStage::Requested` against this id and the per-envelope
-        /// `publish_signed_event` calls thread it through to the publish
-        /// engine's `correlation_id_override`, so the kind:1059 terminal
-        /// verdict (or any pre-publish early-exit failure) lands in
-        /// `action_results` and the host spinner resolves. Non-dispatch
-        /// callers (conformance harnesses) pass `None`.
-        correlation_id: Option<String>,
-    },
+    // V-39: `SendGiftWrappedDm` variant deleted — the equivalent path now
+    // dispatches `ActorCommand::Protocol(Box::new(
+    // nmp_nip17::SendGiftWrappedDmCommand { ... }))`, which runs in
+    // `nmp-nip17` and reaches the publish engine through the substrate
+    // [`crate::substrate::ProtocolCommandContext::send`] follow-up channel
+    // (it emits a `PublishSignedEvent` follow-up per envelope).
     /// User intent from the outbox UI: retry a still-pending publish now.
     RetryPublish {
         handle: String,
@@ -827,6 +788,14 @@ pub fn run_actor(
         // would record a `Failed { reason: "no host op handler installed" }`
         // terminal — tests on this path do not enqueue such commands.
         crate::substrate::new_host_op_handler_slot(),
+        // V-40 — no `NmpApp` here, so the `IngestParser` registry + the
+        // `DmInboxRelayLookup` are both private throwaways (empty
+        // dispatcher + always-`None` lookup). Tests on this path don't
+        // exercise the gift-wrap publish gate or the kind:10050 parser
+        // — those use `run_actor_with_observers` directly with shared
+        // slots.
+        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
     );
 }
 
@@ -877,6 +846,9 @@ pub fn run_actor_with_lifecycle_observer(
         // `DispatchHostOp` reaching the actor on this path would record a
         // `Failed { reason: "no host op handler installed" }` terminal.
         crate::substrate::new_host_op_handler_slot(),
+        // V-40 — same private-throwaway pattern as the other slots above.
+        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
     );
 }
 
@@ -962,6 +934,16 @@ pub fn run_actor_with_observers(
     // `None` (the test / no-stateful-app default) makes any `DispatchHostOp`
     // arm record a `Failed` terminal stage; nothing else changes.
     host_op_handler: crate::substrate::HostOpHandlerSlot,
+    // V-40 — substrate `EventIngestDispatcher` slot. The `NmpApp` owns
+    // the writer side (`register_ingest_parser`); this actor thread
+    // binds the SAME `Arc` onto the kernel so the ingest path reads the
+    // entries the registration path wrote.
+    ingest_dispatcher_slot: Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
+    // V-40 — substrate `DmInboxRelayLookup` slot. The `NmpApp` owns the
+    // setter (`set_dm_inbox_relay_lookup`); this actor thread reads the
+    // current handle and binds it onto the kernel at construction time
+    // (and re-binds on `Reset`).
+    dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -998,6 +980,20 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // V-40 — bind the shared `EventIngestDispatcher` slot + the
+    // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
+    // The `NmpApp` owns the writer sides; this binding ensures the
+    // kernel's ingest + lookup paths see the same `Arc`s `nmp-nip17`
+    // (and any future NIP crate) installed via `register_actions`.
+    kernel.set_ingest_dispatcher_slot(Arc::clone(&ingest_dispatcher_slot));
+    {
+        let lookup = dm_inbox_relays_slot
+            .lock()
+            .ok()
+            .map(|g| Arc::clone(&*g))
+            .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
+        kernel.set_dm_inbox_relay_lookup(lookup);
+    }
     // G-S4 — bind the actor command-channel depth counter so it surfaces on
     // the diagnostic snapshot (`Metrics::actor_queue_depth`). `NmpApp::send_cmd`
     // increments it; this loop decrements per dequeued command (both recv
@@ -1174,6 +1170,8 @@ pub fn run_actor_with_observers(
                         command_tx_self: &command_tx_self,
                         coverage_hook_slot: &coverage_hook,
                         host_op_handler: &host_op_handler,
+                        ingest_dispatcher_slot: &ingest_dispatcher_slot,
+                        dm_inbox_relays_slot: &dm_inbox_relays_slot,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {

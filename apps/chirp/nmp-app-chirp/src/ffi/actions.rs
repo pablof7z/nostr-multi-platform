@@ -78,20 +78,22 @@ pub(super) fn register_nip29_actions(app: &mut NmpApp) {
 /// Wires the typed [`SendDmAction`] from the `nmp-nip17` protocol crate
 /// through the same host-extensibility seam the NIP-29 actions use. The
 /// executor delegates to `nmp_nip17::SendDmAction::execute`, which builds the
-/// kind:14 rumor and enqueues [`ActorCommand::SendGiftWrappedDm`] — the
-/// actor's local-keys-MVP handler does the NIP-59 seal + gift-wrap + publish.
+/// kind:14 rumor and enqueues
+/// `ActorCommand::Protocol(Box::new(nmp_nip17::SendGiftWrappedDmCommand{...}))`
+/// (V-39) — the protocol-command body resolves the active local signer,
+/// reads the recipient's kind:10050 list, gift-wraps the rumor twice, and
+/// dispatches each kind:1059 envelope back via the substrate
+/// `ProtocolCommandContext::send`.
+///
+/// `nmp_nip17::register_actions` (called below) also wires the V-40 substrate
+/// seams: it installs `nmp_nip17::DmRelayCache` as the kernel's
+/// `Arc<dyn DmInboxRelayLookup>` AND registers `nmp_nip17::Kind10050Parser`
+/// as a substrate `IngestParser` for kind:10050, so the gift-wrap publish
+/// path's `recipient_dm_relays` reader sees the cache the parser writes.
 ///
 /// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
 /// * `nmp.nip17.send` — `{"recipient_pubkey":"<hex>","content":"…","reply_to":"<hex>"?}`
 /// * `nmp.nip17.publish_relay_list` — `{"relays":["wss://relay.example", ...]}`
-///
-/// `nmp.nip17.publish_relay_list` closes the symmetric publish gap: the kernel
-/// ingests kind:10050 (NIP-17 DM-relay list) into `dm_relay_lists`, but
-/// without a publish path every NMP user is invisible to other clients
-/// trying to send them gift-wrapped DMs. The executor builds the kind:10050
-/// unsigned event with `["relay", <url>]` tags and enqueues
-/// `ActorCommand::PublishUnsignedEvent` — kind:10050 is a NIP-65 replaceable
-/// event and routes through the author's kind:10002 write relays.
 pub(super) fn register_nip17_actions(app: &mut NmpApp) {
     nmp_nip17::register_actions(app);
 }

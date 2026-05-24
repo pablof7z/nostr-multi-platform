@@ -386,6 +386,21 @@ pub struct NmpApp {
     /// state for hosts that don't bind a stateful app) makes any such command
     /// record a `Failed` terminal stage — never a silent drop.
     host_op_handler: crate::substrate::HostOpHandlerSlot,
+    /// V-40 — shared [`crate::substrate::EventIngestDispatcher`] slot.
+    /// Per-NIP crates register a parser through
+    /// [`Self::register_ingest_parser`] which mutates this slot under a
+    /// write lock; the actor's kernel construction binds the SAME `Arc`
+    /// onto the kernel so the ingest path reads through the same
+    /// dispatcher the registration path mutated.
+    ingest_dispatcher_slot: Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
+    /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. The
+    /// per-app crate (today `nmp-nip17::register_actions`) writes a
+    /// concrete `DmRelayCache` here via
+    /// [`Self::set_dm_inbox_relay_lookup`]; the actor reads the current
+    /// handle and binds it onto the kernel so the gift-wrap publish path
+    /// and the planner-side `KernelMailboxes` adapter both see the same
+    /// cache.
+    dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -596,6 +611,24 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let host_op_handler: crate::substrate::HostOpHandlerSlot =
         crate::substrate::new_host_op_handler_slot();
     let actor_host_op_handler = crate::substrate::HostOpHandlerSlot::clone(&host_op_handler);
+    // V-40 — substrate `EventIngestDispatcher` slot. Per-NIP crates
+    // (today: `nmp-nip17`) register their kind parsers through
+    // [`NmpApp::register_ingest_parser`] which mutates THIS slot; the
+    // actor's kernel construction step binds it onto the kernel so the
+    // ingest path and the registration path share one dispatcher.
+    let ingest_dispatcher_slot: Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>> =
+        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new()));
+    let actor_ingest_dispatcher = Arc::clone(&ingest_dispatcher_slot);
+    // V-40 — substrate `DmInboxRelayLookup` slot. The per-app crate
+    // (today: `nmp-nip17::register_actions`) installs the concrete
+    // `DmRelayCache` here via [`NmpApp::set_dm_inbox_relay_lookup`];
+    // the actor's kernel construction reads the current handle and binds
+    // it onto the kernel. Default is `EmptyDmInboxRelayLookup` (fail-
+    // closed cold-start).
+    let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>> = Arc::new(
+        Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup()),
+    );
+    let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -661,6 +694,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // makes any such command record a `Failed` terminal stage;
                 // never a silent drop.
                 actor_host_op_handler,
+                // V-40 — the actor's clones of the substrate
+                // `EventIngestDispatcher` slot and the
+                // `DmInboxRelayLookup` slot. Per-NIP crates mutate the
+                // shared `Arc`s via `NmpApp::register_ingest_parser` /
+                // `set_dm_inbox_relay_lookup`; the actor binds them onto
+                // the kernel at construction.
+                actor_ingest_dispatcher,
+                actor_dm_inbox_relays,
             );
         }));
         if let Err(e) = result {
@@ -734,6 +775,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // reads through its matching clone when the `DispatchHostOp` arm
         // fires.
         host_op_handler,
+        // V-40 — the `NmpApp`'s clones of the substrate `IngestParser`
+        // dispatcher slot and the DM-inbox relay-lookup slot. Per-NIP
+        // crates mutate these through
+        // [`NmpApp::register_ingest_parser`] / [`NmpApp::set_dm_inbox_relay_lookup`];
+        // the actor's matching clones bind onto the kernel at
+        // construction time so the registration and the read path
+        // share one `Arc`.
+        ingest_dispatcher_slot,
+        dm_inbox_relays_slot,
         // NIP-47 wallet `pay_invoice` double-tap guard. Empty at construction;
         // populated by `ffi::wallet::nmp_app_wallet_pay_invoice` on each
         // accepted invoice, swept on TTL expiry (no cross-thread coupling).
@@ -930,6 +980,47 @@ impl NmpApp {
     pub fn set_host_op_handler(&self, handler: std::sync::Arc<dyn crate::substrate::HostOpHandler>) {
         if let Ok(mut slot) = self.host_op_handler.lock() {
             *slot = Some(handler);
+        }
+    }
+
+    /// V-40 — register a [`crate::substrate::IngestParser`] for `kind`
+    /// against the shared `EventIngestDispatcher` slot. The same `Arc`
+    /// the actor binds onto the kernel, so a registration is visible to
+    /// the ingest path immediately (no actor round-trip needed).
+    ///
+    /// Per-NIP crates call this through their `register_actions` entry
+    /// point (today: `nmp_nip17::register_actions` registers the
+    /// `Kind10050Parser`). MUST be called before `nmp_app_start` so the
+    /// kernel sees the parser when the first event of `kind` arrives.
+    ///
+    /// D6 — a poisoned dispatcher lock is a silent no-op (the
+    /// registration is dropped; existing registrations are preserved).
+    pub fn register_ingest_parser(
+        &self,
+        kind: u32,
+        parser: std::sync::Arc<dyn crate::substrate::IngestParser>,
+    ) {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.register_kind(kind, parser);
+        }
+    }
+
+    /// V-40 — install the kernel's [`crate::substrate::DmInboxRelayLookup`]
+    /// handle. The per-app crate (today `nmp-nip17::register_actions`)
+    /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
+    /// side fed by the kind:10050 parser registered above + the reader
+    /// side the kernel exposes through `recipient_dm_relays` and the
+    /// planner-side `KernelMailboxes` adapter.
+    ///
+    /// MUST be called before `nmp_app_start` AND before any kind:10050
+    /// event is ingested (the caches are independent stores; a late swap
+    /// would lose entries written into the old cache).
+    pub fn set_dm_inbox_relay_lookup(
+        &self,
+        lookup: std::sync::Arc<dyn crate::substrate::DmInboxRelayLookup>,
+    ) {
+        if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
+            *slot = lookup;
         }
     }
 
@@ -1305,8 +1396,9 @@ impl NmpApp {
     /// guard in `commands::publish::publish_signed_event`: it refuses any
     /// kind:1059 envelope whose `relays` slice is empty, sets a D6 toast on
     /// the kernel, and drops the envelope — the same behaviour the
-    /// call-site guard in `commands::dm::send_gift_wrapped_dm` gives the
-    /// NIP-17 send path. The Marmot bridge's own runtime guard in
+    /// call-site guard in `nmp_nip17::SendGiftWrappedDmCommand` gives the
+    /// NIP-17 send path (V-39 moved the orchestration out of nmp-core).
+    /// The Marmot bridge's own runtime guard in
     /// `nmp-marmot::projection::publish::publish_to` is the matching guard
     /// for the C-ABI symbol path; together they make a kind:1059 Auto-route
     /// structurally impossible regardless of which entry point a caller

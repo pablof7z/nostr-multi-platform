@@ -229,6 +229,16 @@ pub(super) struct ActorContext<'a> {
     /// `None` means no handler was installed before the dispatch — the arm
     /// records a `Failed` terminal stage for the correlation id.
     pub(super) host_op_handler: &'a HostOpHandlerSlot,
+    /// V-40 — shared [`crate::substrate::EventIngestDispatcher`] slot.
+    /// Read by the `Reset` arm to re-bind the slot onto the rebuilt
+    /// kernel so per-NIP `register_actions` registrations survive a
+    /// state reset.
+    pub(super) ingest_dispatcher_slot:
+        &'a Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
+    /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. Same
+    /// `Reset`-survival contract as the ingest dispatcher slot.
+    pub(super) dm_inbox_relays_slot:
+        &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
 }
 
 pub(super) fn dispatch_command(
@@ -594,33 +604,12 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::SendGiftWrappedDm {
-            rumor,
-            recipient_pubkey,
-            correlation_id,
-        } => {
-            // NIP-17: seal + gift-wrap the kind:14 rumor into two kind:1059
-            // envelopes (recipient + self-copy) and publish them. The gift-wrap
-            // crypto runs here on the actor thread (D7). `created_at == 0` is
-            // re-stamped from the kernel clock inside the handler.
-            //
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            let outbound = commands::send_gift_wrapped_dm(
-                ctx.identity,
-                ctx.kernel,
-                rumor,
-                &recipient_pubkey,
-                correlation_id,
-            );
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
+        // V-39: `ActorCommand::SendGiftWrappedDm` arm deleted — the
+        // equivalent flow now dispatches `ActorCommand::Protocol(Box::new(
+        // nmp_nip17::SendGiftWrappedDmCommand { ... }))`. The protocol-
+        // command body runs in the `ActorCommand::Protocol` arm below; it
+        // reaches the active local keys, the DM-inbox cache, and the
+        // publish engine through the substrate `ProtocolCommandContext`.
         ActorCommand::RetryPublish { handle } => {
             let outbound = ctx.kernel.retry_publish_now(&handle);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -999,6 +988,24 @@ pub(super) fn dispatch_command(
             if let Some(handle) = relay_edit_rows_handle {
                 ctx.kernel.set_relay_edit_rows_handle(handle);
             }
+            // V-40 — re-bind the substrate `EventIngestDispatcher` slot
+            // and the `DmInboxRelayLookup` handle on the rebuilt kernel.
+            // The slots outlive the reset (shared `Arc`s with `NmpApp`);
+            // re-binding ensures the rebuilt kernel sees the same per-NIP
+            // parser registrations + DM-relay cache the registration path
+            // mutated. Mirrors the initial bind in
+            // `run_actor_with_observers`.
+            ctx.kernel
+                .set_ingest_dispatcher_slot(Arc::clone(ctx.ingest_dispatcher_slot));
+            {
+                let lookup = ctx
+                    .dm_inbox_relays_slot
+                    .lock()
+                    .ok()
+                    .map(|g| Arc::clone(&*g))
+                    .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
+                ctx.kernel.set_dm_inbox_relay_lookup(lookup);
+            }
             // D2 — re-install the coverage-gate hook on the rebuilt kernel.
             // The slot outlives the reset (shared `Arc` with `NmpApp`); reading
             // it here ensures the rebuilt lifecycle also enforces D2. Mirrors
@@ -1050,34 +1057,47 @@ pub(super) fn dispatch_command(
             None
         }
         ActorCommand::Protocol(cmd) => {
-            // Step 1.b — the open-seam dispatch arm. Step 4 (V-41) widens the
-            // context with the kernel + identity accessors the LNURL fetcher
-            // needs. Each capability closure closes over the actor's mutable
-            // references to the kernel + identity runtime; the kernel and
-            // identity types stay crate-private (D0 — NIP crates name
-            // neither). Borrows are released the moment `cmd.run` returns —
-            // the worker thread the LNURL command spawns owns its own
-            // `Sender<ActorCommand>` clone and never re-enters the context.
+            // Step 1.b — the open-seam dispatch arm. Step 4 (V-41) widened
+            // the context with the kernel + identity accessors the LNURL
+            // fetcher needs (now_secs, author_write_relays, …); V-39+V-40
+            // widens it further with the NIP-17 DM-stack surface (the
+            // local-keys snapshot, DM-inbox relay lookup, last-error toast
+            // writer, action-failure recorder). Each capability closure
+            // closes over the actor's mutable references to the kernel +
+            // identity runtime; the kernel and identity types stay
+            // crate-private (D0 — NIP crates name neither). Borrows are
+            // released the moment `cmd.run` returns — the worker thread the
+            // LNURL command spawns owns its own `Sender<ActorCommand>`
+            // clone and never re-enters the context.
+            //
+            // D6: a poisoned `nip17_local_keys` slot degrades to `None`
+            // (same fail-closed behaviour the production DM inbox
+            // projection uses — see `nmp_nip17::DmInboxProjection`).
             let tx = ctx.command_tx_self.clone();
             let send = move |c: crate::actor::ActorCommand| {
                 // D6 — disconnected sender (post-Shutdown) is a benign
                 // send-failure on the worker side; swallow as a no-op.
                 let _ = tx.send(c);
             };
+            // V-39+V-40 — read the NIP-17 local-keys slot once and snapshot
+            // the DM-inbox lookup Arc. The lookup Arc lives for the
+            // duration of this dispatch arm; the borrow into the context
+            // is released before `emit_now`.
+            let local_keys = ctx
+                .nip17_local_keys
+                .lock()
+                .ok()
+                .and_then(|guard| guard.as_ref().cloned());
+            let dm_lookup = ctx.kernel.dm_inbox_relays_arc();
             // The kernel + identity accessors borrow disjoint fields of
             // `ctx`, so we hold the &mut Kernel for write methods
-            // (`record_action_stage_requested`) and immutable shared
-            // references to the read-only kernel + identity sources via
-            // `RefCell`-equivalent split. Rust's borrow checker permits
-            // multiple `&dyn Fn(...)` over the same `&mut Kernel` so long
-            // as no two are in flight simultaneously — `ProtocolCommand::run`
-            // is single-threaded sync, so the calls serialize naturally.
-            //
-            // To keep this readable we use immutable kernel + identity
-            // references for the four read accessors and a `RefCell` for
-            // the single write accessor (`record_action_stage_requested`).
-            // Splitting the kernel borrow is unavoidable: `record_action_stage`
-            // requires `&mut Kernel`, the read methods require `&Kernel`.
+            // (`record_action_stage_requested`, `set_last_error_toast`,
+            // `record_action_failure`) and immutable shared references to
+            // the read-only kernel + identity sources via a `RefCell`
+            // split. Rust's borrow checker permits multiple
+            // `&dyn Fn(...)` over the same `&mut Kernel` so long as no two
+            // are in flight simultaneously — `ProtocolCommand::run` is
+            // single-threaded sync, so the calls serialize naturally.
             let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
             let identity_cell = std::cell::RefCell::new(&*ctx.identity);
             let now_secs = || kernel_cell.borrow().now_secs();
@@ -1098,6 +1118,17 @@ pub(super) fn dispatch_command(
                     None,
                 );
             };
+            // V-39+V-40 — D6 error-surface closures.
+            let toast = |t: Option<String>| {
+                if let Ok(mut k) = kernel_cell.try_borrow_mut() {
+                    k.set_last_error_toast(t);
+                }
+            };
+            let record_failure = |cid: String, err: String| {
+                if let Ok(mut k) = kernel_cell.try_borrow_mut() {
+                    k.record_action_failure(cid, err);
+                }
+            };
             // A second sender clone for the worker-thread surface. Cloning
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
             // dispatch arm always populates this slot in production.
@@ -1110,6 +1141,10 @@ pub(super) fn dispatch_command(
                 &bootstrap_discovery_relays,
                 &active_local_keys,
                 &record_action_stage_requested,
+                local_keys,
+                &*dm_lookup,
+                &toast,
+                &record_failure,
             );
             if let Err(e) = cmd.run(&mut pctx) {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");
@@ -1120,11 +1155,15 @@ pub(super) fn dispatch_command(
             // glue); only releasing the `RefCell` borrows the closures
             // hold via the context object matters here.
             drop(pctx);
-            // V-41 — a `ProtocolCommand` body may have mutated the kernel
-            // (the `Requested` stage write) or queued failure follow-ups
-            // (`ShowToast` / `RecordActionFailure`). Emit promptly so the
-            // next snapshot tick carries the visible effect, mirroring the
-            // legacy `FetchLnurlInvoice` arm's `emit_now` precedent.
+            drop(kernel_cell);
+            drop(identity_cell);
+            // V-41 + V-39+V-40 — a `ProtocolCommand` body may have mutated
+            // the kernel (the `Requested` stage write, a toast, a recorded
+            // failure) or queued follow-up `ActorCommand`s
+            // (`ShowToast` / `RecordActionFailure` / `PublishSignedEvent`).
+            // Emit promptly so the next snapshot tick carries the visible
+            // effect, mirroring the legacy `FetchLnurlInvoice` and
+            // `SendGiftWrappedDm` arms' `emit_now` precedents.
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }

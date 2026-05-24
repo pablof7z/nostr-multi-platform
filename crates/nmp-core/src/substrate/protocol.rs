@@ -4,13 +4,16 @@
 //! 12-step migration: pure addition + one new [`crate::ActorCommand`] variant
 //! (`Protocol(Box<dyn ProtocolCommand>)`). Step 4 (V-41) widens the context
 //! with the kernel + identity accessors the NIP-57 LNURL fetcher needs.
+//! V-39+V-40 (NIP-17 DM stack) widens it further with the local-keys snapshot,
+//! the DM-inbox relay lookup, and the D6 error-surface closures the gift-wrap
+//! send path uses.
 //!
 //! The seam exists so NIP crates (NIP-17 DM send, NIP-47 NWC pay, NIP-57
 //! LNURL fetch, …) stop adding bespoke variants to [`crate::ActorCommand`].
 //! They instead dispatch `ActorCommand::Protocol(Box::new(MyCommand{...}))`
-//! and the kernel calls `cmd.run(&mut ctx)`. Step 4 (V-41) is the first
-//! migration onto the seam (LNURL fetcher); steps 5–7 follow with
-//! `SendGiftWrappedDm` (V-39) and the `Wallet*` variants (V-38).
+//! and the kernel calls `cmd.run(&mut ctx)`. Step 4 (V-41) was the first
+//! migration onto the seam (LNURL fetcher); V-39+V-40 follows with
+//! `SendGiftWrappedDm`; V-38 NWC `Wallet*` variants come next.
 //!
 //! ## Why a wrapper context type (`ProtocolCommandContext`) and not `ActorContext`
 //!
@@ -78,6 +81,27 @@ impl std::error::Error for ProtocolCommandError {}
 /// via [`record_action_stage_requested`](Self::record_action_stage_requested)
 /// when a `correlation_id` is in flight.
 ///
+/// V-39+V-40 (NIP-17 DM stack) extends the surface with the affordances the
+/// gift-wrap DM send needs:
+///
+/// * `nip17_local_keys` — cloned `nostr::Keys` for the active local
+///   account, or `None` for a remote (NIP-46) signer / not signed in.
+///   The DM send path uses these as a `nmp_nip59::SignerForSeal` via the
+///   blanket impl on `nostr::Keys` (every `SignerOp::Ready`, so the seal
+///   chain runs synchronously on the actor thread). Stored as an owned
+///   `Option<nostr::Keys>` (Keys is `Clone` and zeroizes its secret on
+///   drop) rather than a closure — the dispatch arm reads it once from
+///   the slot.
+/// * `dm_inbox_relays` — DM-inbox relay lookup (substrate-generic; the
+///   concrete cache lives in `nmp-nip17`). Returns `None` when no list
+///   is known for `pubkey`; the gift-wrap publish path fails closed on
+///   `None` to keep kind:1059 envelopes off generic Content relays.
+/// * `set_last_error_toast` / `record_action_failure` — D6 observable
+///   error surfaces. The DM send path writes a toast on every early-exit
+///   branch (no active signer, malformed recipient, missing kind:10050,
+///   …) and records a `Failed` terminal action stage so the host's
+///   spinner clears.
+///
 /// NIP crates never name `Kernel` / `IdentityRuntime` (both crate-private).
 /// They only see this `Context` — the operations every protocol command may
 /// perform on the actor thread.
@@ -97,6 +121,18 @@ pub struct ProtocolCommandContext<'a> {
     bootstrap_discovery_relays: &'a dyn Fn() -> Vec<String>,
     active_local_keys: &'a dyn Fn() -> Option<nostr::Keys>,
     record_action_stage_requested: &'a dyn Fn(&str),
+    // V-39+V-40 — NIP-17 DM stack surface.
+    nip17_local_keys: Option<nostr::Keys>,
+    dm_inbox_relays: &'a dyn crate::substrate::DmInboxRelayLookup,
+    set_last_error_toast: &'a dyn Fn(Option<String>),
+    record_action_failure: &'a dyn Fn(String, String),
+    /// Snapshot override for [`Self::now_secs`]. When `Some`, the accessor
+    /// returns it verbatim and skips the `now_secs` closure. The V-39+V-40
+    /// `with_now_secs(u64)` builder writes this slot so tests can drive
+    /// the DM send path against a deterministic clock without rebuilding
+    /// the closure-shaped `now_secs` field. Default `None`; the dispatch
+    /// arm reads through the closure as before.
+    now_secs_snapshot: Option<u64>,
 }
 
 impl<'a> ProtocolCommandContext<'a> {
@@ -104,6 +140,12 @@ impl<'a> ProtocolCommandContext<'a> {
     /// Every closure closes over the actor thread's mutable references to
     /// the kernel + identity runtime; the resulting context's lifetime is
     /// the dispatch arm's stack frame.
+    ///
+    /// The trailing four arguments are V-39+V-40 additions for the NIP-17
+    /// DM stack: the active account's local keys (read once from
+    /// [`crate::ffi::Nip17LocalKeysSlot`] by the dispatch arm), the
+    /// kernel-owned DM-inbox relay lookup, and two D6 error-surface
+    /// closures.
     #[allow(clippy::too_many_arguments)] // forwarding constructor — adding a builder hides the closure-bundle shape
     pub fn new(
         send: &'a dyn Fn(ActorCommand),
@@ -113,6 +155,10 @@ impl<'a> ProtocolCommandContext<'a> {
         bootstrap_discovery_relays: &'a dyn Fn() -> Vec<String>,
         active_local_keys: &'a dyn Fn() -> Option<nostr::Keys>,
         record_action_stage_requested: &'a dyn Fn(&str),
+        nip17_local_keys: Option<nostr::Keys>,
+        dm_inbox_relays: &'a dyn crate::substrate::DmInboxRelayLookup,
+        set_last_error_toast: &'a dyn Fn(Option<String>),
+        record_action_failure: &'a dyn Fn(String, String),
     ) -> Self {
         Self {
             send,
@@ -122,18 +168,27 @@ impl<'a> ProtocolCommandContext<'a> {
             bootstrap_discovery_relays,
             active_local_keys,
             record_action_stage_requested,
+            nip17_local_keys,
+            dm_inbox_relays,
+            set_last_error_toast,
+            record_action_failure,
+            now_secs_snapshot: None,
         }
     }
 
     /// Test-only constructor that wires only the [`send`](Self::send)
-    /// closure. The kernel-access methods (`now_secs`, `author_write_relays`,
-    /// `bootstrap_discovery_relays`, `active_local_keys`,
-    /// `record_action_stage_requested`) return harmless defaults (0, empty
+    /// closure. All other accessors return harmless defaults (0, empty
     /// vec, None, no-op). The `command_sender_clone` returns a sender
     /// whose receiver is immediately dropped — sends become benign no-ops
     /// (matches the D6 "disconnected actor" pattern). Used by trait-level
     /// unit tests in this module and by sibling NIP crate tests that
     /// don't exercise the kernel surface.
+    ///
+    /// V-39+V-40 added builder methods (`with_nip17_local_keys`,
+    /// `with_dm_inbox_relays`, `with_now_secs`, `with_set_last_error_toast`,
+    /// `with_record_action_failure`) — NIP crate tests that need a
+    /// specific affordance start with `with_send_only(&send)` and chain
+    /// the relevant builders.
     #[cfg(any(test, feature = "test-support"))]
     pub fn with_send_only(send: &'a dyn Fn(ActorCommand)) -> Self {
         // Stable noop closures — refs to monomorphisations of the trivial
@@ -144,6 +199,10 @@ impl<'a> ProtocolCommandContext<'a> {
         const BOOTSTRAP: &dyn Fn() -> Vec<String> = &(|| Vec::new());
         const LOCAL_KEYS: &dyn Fn() -> Option<nostr::Keys> = &(|| None);
         const STAGE_REQ: &dyn Fn(&str) = &(|_: &str| ());
+        const TOAST: &dyn Fn(Option<String>) = &(|_: Option<String>| ());
+        const FAIL: &dyn Fn(String, String) = &(|_: String, _: String| ());
+        static EMPTY: crate::substrate::EmptyDmInboxRelayLookup =
+            crate::substrate::EmptyDmInboxRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<ActorCommand>();
         Self {
             send,
@@ -153,6 +212,11 @@ impl<'a> ProtocolCommandContext<'a> {
             bootstrap_discovery_relays: BOOTSTRAP,
             active_local_keys: LOCAL_KEYS,
             record_action_stage_requested: STAGE_REQ,
+            nip17_local_keys: None,
+            dm_inbox_relays: &EMPTY,
+            set_last_error_toast: TOAST,
+            record_action_failure: FAIL,
+            now_secs_snapshot: None,
         }
     }
 
@@ -170,6 +234,10 @@ impl<'a> ProtocolCommandContext<'a> {
         const BOOTSTRAP: &dyn Fn() -> Vec<String> = &(|| Vec::new());
         const LOCAL_KEYS: &dyn Fn() -> Option<nostr::Keys> = &(|| None);
         const STAGE_REQ: &dyn Fn(&str) = &(|_: &str| ());
+        const TOAST: &dyn Fn(Option<String>) = &(|_: Option<String>| ());
+        const FAIL: &dyn Fn(String, String) = &(|_: String, _: String| ());
+        static EMPTY: crate::substrate::EmptyDmInboxRelayLookup =
+            crate::substrate::EmptyDmInboxRelayLookup;
         Self {
             send,
             command_sender,
@@ -178,7 +246,74 @@ impl<'a> ProtocolCommandContext<'a> {
             bootstrap_discovery_relays: BOOTSTRAP,
             active_local_keys: LOCAL_KEYS,
             record_action_stage_requested: STAGE_REQ,
+            nip17_local_keys: None,
+            dm_inbox_relays: &EMPTY,
+            set_last_error_toast: TOAST,
+            record_action_failure: FAIL,
+            now_secs_snapshot: None,
         }
+    }
+
+    // V-39+V-40 builder-style setters. The production dispatch arm uses
+    // the positional `new()` constructor; tests and a handful of
+    // composition paths prefer the chained-builder shape.
+
+    /// Builder — install the active account's local `nostr::Keys` for
+    /// gift-wrap sealing. `None` keeps the default ("not signed in /
+    /// remote signer"). The actor's dispatch arm reads this out of
+    /// [`crate::ffi::Nip17LocalKeysSlot`] and passes it positionally to
+    /// [`Self::new`]; tests use this builder atop [`Self::with_send_only`].
+    #[must_use]
+    pub fn with_nip17_local_keys(mut self, keys: Option<nostr::Keys>) -> Self {
+        self.nip17_local_keys = keys;
+        self
+    }
+
+    /// Builder — install the kernel-owned [`crate::substrate::DmInboxRelayLookup`]
+    /// handle. Default is [`crate::substrate::EmptyDmInboxRelayLookup`] (every
+    /// query returns `None` — the cold-start fail-closed contract).
+    #[must_use]
+    pub fn with_dm_inbox_relays(
+        mut self,
+        lookup: &'a dyn crate::substrate::DmInboxRelayLookup,
+    ) -> Self {
+        self.dm_inbox_relays = lookup;
+        self
+    }
+
+    /// Builder — install a fixed wall-clock snapshot, overriding the
+    /// `now_secs` closure for this context. The DM send path uses this in
+    /// tests to drive `created_at` re-stamping against a deterministic
+    /// clock without rebuilding the closure-shaped field. Production
+    /// composition passes the kernel clock through the closure slot via
+    /// [`Self::new`]; the override slot is left `None`.
+    #[must_use]
+    pub fn with_now_secs(mut self, now_secs: u64) -> Self {
+        self.now_secs_snapshot = Some(now_secs);
+        self
+    }
+
+    /// Builder — install a toast writer (the actor's dispatch arm wires
+    /// this to `Kernel::set_last_error_toast`). D6 observable error.
+    #[must_use]
+    pub fn with_set_last_error_toast(
+        mut self,
+        f: &'a dyn Fn(Option<String>),
+    ) -> Self {
+        self.set_last_error_toast = f;
+        self
+    }
+
+    /// Builder — install the action-failure recorder (the dispatch arm
+    /// wires this to `Kernel::record_action_failure`). Used to close out
+    /// the host spinner on an early-exit failure branch.
+    #[must_use]
+    pub fn with_record_action_failure(
+        mut self,
+        f: &'a dyn Fn(String, String),
+    ) -> Self {
+        self.record_action_failure = f;
+        self
     }
 
     /// Return an owned [`Sender<ActorCommand>`] clone the command's `run`
@@ -214,10 +349,17 @@ impl<'a> ProtocolCommandContext<'a> {
 
     /// Wall-clock seconds since the Unix epoch, read from the kernel's
     /// authoritative clock (D7 — the kernel owns the wall clock; protocol
-    /// commands MUST NOT call `SystemTime::now` directly). Returns `0` on a
-    /// panicking accessor (defensive — matches the `created_at = 0` sentinel
-    /// the publish path already understands as "not stamped").
+    /// commands MUST NOT call `SystemTime::now` directly).
+    ///
+    /// If [`Self::with_now_secs`] installed a snapshot override, returns
+    /// it verbatim. Otherwise calls the closure installed by [`Self::new`]
+    /// (which reads through the kernel). Returns `0` on a panicking
+    /// closure (defensive — matches the `created_at = 0` sentinel the
+    /// publish path already understands as "not stamped").
     pub fn now_secs(&self) -> u64 {
+        if let Some(snap) = self.now_secs_snapshot {
+            return snap;
+        }
         let f = self.now_secs;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f())).unwrap_or(0)
     }
@@ -264,6 +406,52 @@ impl<'a> ProtocolCommandContext<'a> {
     pub fn record_action_stage_requested(&self, correlation_id: &str) {
         let f = self.record_action_stage_requested;
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(correlation_id)));
+    }
+
+    /// V-39 — active account's local `nostr::Keys`, or `None` for a
+    /// remote-signer account / not signed in. NIP-17 DM send uses these
+    /// as a `SignerForSeal`; future protocols may consume them differently.
+    /// Returns the stored value by reference — `nostr::Keys` is `Clone`
+    /// and zeroizes its secret on drop, so the borrow does not leak
+    /// across the command body.
+    ///
+    /// Distinct from [`Self::active_local_keys`]: the latter routes
+    /// through a closure (V-41 surface; the dispatch arm reads through
+    /// the identity runtime on every call), while this accessor returns
+    /// the snapshot installed at context-construction time (the V-39
+    /// surface — the dispatch arm reads the slot once and stores the
+    /// `Option<Keys>`). Both observe the same value in production;
+    /// commands choose whichever shape matches their needs.
+    #[must_use]
+    pub fn nip17_local_keys(&self) -> Option<&nostr::Keys> {
+        self.nip17_local_keys.as_ref()
+    }
+
+    /// V-40 — DM-inbox relays for `pubkey`. `None` when no list is known
+    /// (the gift-wrap publish path fails closed on `None` per NIP-17 §2;
+    /// see [`crate::substrate::DmInboxRelayLookup`]).
+    #[must_use]
+    pub fn dm_inbox_relays(&self, pubkey: &str) -> Option<Vec<String>> {
+        self.dm_inbox_relays.dm_inbox_relays(pubkey)
+    }
+
+    /// V-39 — set the kernel's last-error toast (D6 observable). `None`
+    /// clears the toast. Wrapped in `catch_unwind` for D15 — see
+    /// [`Self::send`] for the same reasoning.
+    pub fn set_last_error_toast(&self, toast: Option<String>) {
+        let f = self.set_last_error_toast;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(toast)));
+    }
+
+    /// V-39 — record a `Failed` terminal stage for `correlation_id` with
+    /// `error` as the failure message. Used by the DM send path's
+    /// early-exit branches to close the host spinner. Wrapped in
+    /// `catch_unwind` for D15.
+    pub fn record_action_failure(&self, correlation_id: String, error: String) {
+        let f = self.record_action_failure;
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            f(correlation_id, error);
+        }));
     }
 }
 
@@ -387,10 +575,17 @@ mod tests {
         assert!(ctx.active_local_keys().is_none());
         // Recording a stage on a no-op should not panic.
         ctx.record_action_stage_requested("cid-noop");
+        // V-39+V-40 surface defaults are also safe.
+        assert!(ctx.nip17_local_keys().is_none());
+        assert!(ctx.dm_inbox_relays("anything").is_none());
+        ctx.set_last_error_toast(Some("toast".to_string()));
+        ctx.record_action_failure("cid".to_string(), "err".to_string());
     }
 
     // The full constructor threads its closures through unchanged — the
-    // V-41 dispatch arm relies on this directly.
+    // V-41 dispatch arm relies on this directly. V-39+V-40 added four
+    // trailing positional args (nip17 keys, DM-inbox lookup, toast,
+    // record-failure); this test exercises those too.
     #[test]
     fn full_constructor_threads_closures() {
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -404,6 +599,13 @@ mod tests {
         let local_keys = || None::<nostr::Keys>;
         let stage_seen: Mutex<Vec<String>> = Mutex::new(Vec::new());
         let stage_req = |cid: &str| stage_seen.lock().unwrap().push(cid.to_string());
+        let toast_seen: Mutex<Vec<Option<String>>> = Mutex::new(Vec::new());
+        let toast = |t: Option<String>| toast_seen.lock().unwrap().push(t);
+        let fail_seen: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+        let fail = |cid: String, err: String| {
+            fail_seen.lock().unwrap().push((cid, err));
+        };
+        let dm_empty = crate::substrate::EmptyDmInboxRelayLookup;
         let (tx, rx) = mpsc::channel::<ActorCommand>();
 
         let ctx = ProtocolCommandContext::new(
@@ -414,6 +616,10 @@ mod tests {
             &stub_relays,
             &local_keys,
             &stage_req,
+            None,
+            &dm_empty,
+            &toast,
+            &fail,
         );
 
         assert_eq!(ctx.now_secs(), 123_456);
@@ -428,6 +634,16 @@ mod tests {
         assert!(ctx.active_local_keys().is_none());
         ctx.record_action_stage_requested("cid-abc");
         assert_eq!(*stage_seen.lock().unwrap(), vec!["cid-abc".to_string()]);
+        // V-39+V-40 — the new positional args reach their fields.
+        assert!(ctx.nip17_local_keys().is_none());
+        assert!(ctx.dm_inbox_relays("anyone").is_none());
+        ctx.set_last_error_toast(Some("hello".to_string()));
+        ctx.record_action_failure("cid-z".to_string(), "boom".to_string());
+        assert_eq!(*toast_seen.lock().unwrap(), vec![Some("hello".to_string())]);
+        assert_eq!(
+            *fail_seen.lock().unwrap(),
+            vec![("cid-z".to_string(), "boom".to_string())]
+        );
         // The worker-side sender clone reaches the matching receiver.
         let cloned = ctx.command_sender_clone();
         cloned.send(ActorCommand::Shutdown).expect("send");
@@ -450,5 +666,41 @@ mod tests {
         // caller to swallow it (D6). Verify it is in fact a send-error
         // shape, not a panic.
         assert!(cloned.send(ActorCommand::Shutdown).is_err());
+    }
+
+    // V-39+V-40 — builder methods overlay onto the with_send_only default
+    // and are honoured by the matching accessors.
+    #[test]
+    fn builder_methods_override_defaults() {
+        let send = |_: ActorCommand| {};
+        let toasts: Mutex<Vec<Option<String>>> = Mutex::new(Vec::new());
+        let fails: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+        let toast = |t: Option<String>| toasts.lock().unwrap().push(t);
+        let fail = |cid: String, err: String| fails.lock().unwrap().push((cid, err));
+        let dm = crate::substrate::TestDmInboxRelayCache::new();
+        dm.upsert(
+            "pk1",
+            &["wss://dm.example"],
+        );
+        let keys = nostr::Keys::generate();
+        let ctx = ProtocolCommandContext::with_send_only(&send)
+            .with_nip17_local_keys(Some(keys.clone()))
+            .with_dm_inbox_relays(&dm)
+            .with_now_secs(987_654)
+            .with_set_last_error_toast(&toast)
+            .with_record_action_failure(&fail);
+        assert_eq!(ctx.now_secs(), 987_654);
+        assert!(ctx.nip17_local_keys().is_some());
+        assert_eq!(
+            ctx.dm_inbox_relays("pk1").as_deref(),
+            Some(&["wss://dm.example".to_string()][..])
+        );
+        ctx.set_last_error_toast(Some("hi".to_string()));
+        ctx.record_action_failure("c".to_string(), "e".to_string());
+        assert_eq!(*toasts.lock().unwrap(), vec![Some("hi".to_string())]);
+        assert_eq!(
+            *fails.lock().unwrap(),
+            vec![("c".to_string(), "e".to_string())]
+        );
     }
 }
