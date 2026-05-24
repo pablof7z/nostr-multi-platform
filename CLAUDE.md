@@ -22,3 +22,12 @@ currently in-flight.
 ## Planning discipline — TL;DR
 
 Three canonical files: `docs/plan.md` (overview), `docs/BACKLOG.md` (queue), `WIP.md` (in-flight). No new top-level plan files, no scattered todo lists, no parallel roadmaps. Full rules in [`AGENTS.md`](AGENTS.md#planning-discipline--three-canonical-files-no-duplicates).
+
+## Test scope — TL;DR
+
+Run `cargo test` scoped to the crates you touched (`cargo test -p
+<crate>`), plus `cargo test -p nmp-testing --test doctrine_lint_smoke`
+always. Do **not** run `cargo test --workspace` — that's reserved for
+the supervisor at merge time. Workspace-wide runs serialize the cargo
+build queue across parallel worktrees and starve other agents. Full
+rules in [`AGENTS.md`](AGENTS.md#test-scope--local-vs-ci-vs-merge).
