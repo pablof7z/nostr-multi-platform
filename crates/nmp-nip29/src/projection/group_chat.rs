@@ -55,7 +55,7 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::display::{avatar_color_hex, format_ago_secs};
+use nmp_core::display::{avatar_color_hex, avatar_initials, format_ago_secs, to_npub};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
@@ -100,10 +100,10 @@ pub struct GroupChatMessage {
     /// migration of V-22.
     #[serde(default)]
     pub author_display: String,
-    /// Two-char uppercase initials for the avatar tile — the first two hex
-    /// chars of [`KernelEvent::author`], uppercased. Computed at ingest time
-    /// via [`pubkey_initials`] so the host shell never derives display
-    /// strings from raw pubkey hex (V-25 thin-shell fix).
+    /// Two-char uppercase initials for the avatar tile — first two chars of
+    /// the bech32 body of the author's `npub1…` form, uppercased. Computed
+    /// at ingest time via `avatar_initials(to_npub(pubkey_hex))` so the same
+    /// author renders the same initials across timeline, DMs, and group chat.
     #[serde(default)]
     pub author_initials: String,
     /// Deterministic 6-hex avatar background colour from the author pubkey,
@@ -138,7 +138,7 @@ impl GroupChatMessage {
             created_at: event.created_at,
             created_at_display: String::new(),
             author_display: pubkey_display(&event.author),
-            author_initials: pubkey_initials(&event.author),
+            author_initials: avatar_initials(&to_npub(&event.author)),
             author_color_hex: avatar_color_hex(&event.author),
             kind: event.kind,
         }
@@ -177,18 +177,6 @@ fn pubkey_display(pubkey_hex: &str) -> String {
         &pubkey_hex[..8],
         &pubkey_hex[pubkey_hex.len() - 8..]
     )
-}
-
-/// First two characters of the pubkey hex, uppercased — the deterministic
-/// avatar-tile label. Mirrors the iOS `initials` helper deleted in V-25.
-///
-/// For inputs shorter than 2 chars the available prefix is returned
-/// (uppercased); for the empty string the empty string is returned. Either
-/// way the helper is panic-free — D6.
-#[must_use]
-fn pubkey_initials(pubkey_hex: &str) -> String {
-    let take = pubkey_hex.len().min(2);
-    pubkey_hex[..take].to_ascii_uppercase()
 }
 
 /// First two characters of a NIP-29 `local_id`, uppercased — the
@@ -685,22 +673,6 @@ mod tests {
         assert_eq!(pubkey_display("0123456789abcdef"), "01234567…89abcdef");
     }
 
-    #[test]
-    fn pubkey_initials_takes_first_two_uppercased() {
-        assert_eq!(pubkey_initials("ab12cd34"), "AB");
-        assert_eq!(pubkey_initials("CD34"), "CD");
-        // Mixed case input is normalised to uppercase.
-        assert_eq!(pubkey_initials("aBcDeF"), "AB");
-    }
-
-    #[test]
-    fn pubkey_initials_short_inputs_do_not_panic() {
-        // D6: no panic on the `&hex[..2]` slice when the input is shorter
-        // than 2 chars.
-        assert_eq!(pubkey_initials("a"), "A");
-        assert_eq!(pubkey_initials(""), "");
-    }
-
     // The pinned cross-surface djb2 vector lives in `nmp_core::display::tests`
     // (`avatar_color_hex_matches_pinned_djb2_vector`); the
     // `ingest_populates_author_display_strings` / `snapshot_preserves_author_display_strings`
@@ -789,7 +761,10 @@ mod tests {
         let snap = proj.snapshot_at(200);
         let msg = &snap.messages[0];
         assert_eq!(msg.author_display, "abcdef01…23456789");
-        assert_eq!(msg.author_initials, "AB");
+        // avatar_initials(to_npub(hex)) — first 2 chars of the bech32 body.
+        // The pinned value "40" comes from the canonical npub encoding of
+        // the test fixture; any drift here means the bech32 helper changed.
+        assert_eq!(msg.author_initials, "40");
         assert_eq!(msg.author_color_hex, "08E60C");
     }
 
