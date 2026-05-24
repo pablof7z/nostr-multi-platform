@@ -165,18 +165,27 @@ impl Kernel {
 
     /// Build a [`RoutingContext`] from the kernel's substrate state and
     /// the supplied bookkeeping references. The lifetime of the returned
-    /// context is tied to the borrows in `app_relays` / `blocked` —
-    /// callers stack-allocate both then drop the context before the next
-    /// kernel-mutating call.
+    /// context is tied to the borrows in `app_relays` / `indexer_relays`
+    /// / `blocked` — callers stack-allocate all three then drop the
+    /// context before the next kernel-mutating call.
+    ///
+    /// `indexer_relays` is the operator-configured indexer URL set the
+    /// router consults for spec §3.1 lane 6 (discovery-kind always-on
+    /// stacking). It must be populated for kind:0 / kind:3 / kind:
+    /// 10000–19999 routing to defeat the kind:10002 self-sealing loop
+    /// (V-50); production wires it from
+    /// `Kernel::bootstrap_urls_for_role(RelayRole::Indexer)`.
     pub(crate) fn build_routing_context<'a>(
         &'a self,
         app_relays: &'a [String],
+        indexer_relays: &'a [String],
         blocked: &'a BlockedRelaySet,
     ) -> RoutingContext<'a> {
         RoutingContext {
             active_account: self.active_account.as_ref(),
             session_keys: SessionKeySet {
                 app_relays,
+                indexer_relays,
                 ..SessionKeySet::default()
             },
             mailbox_cache: &*self.mailbox_cache,
@@ -224,8 +233,12 @@ impl Kernel {
             lifecycle: InterestLifecycle::OneShot,
         };
         let app_relays = self.bootstrap_seed_urls(seed);
+        // V-50: indexer URLs feed router lane 6 (always-on for discovery
+        // kinds). Cheap to populate unconditionally — the router only
+        // consults the slice when `is_discovery_kind` matches.
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
         let blocked = BlockedRelaySet::new();
-        let ctx = self.build_routing_context(&app_relays, &blocked);
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_subscription(&interest, &ctx) {
             Ok(routed) => {
                 let mut out: Vec<String> = routed.urls().cloned().collect();
@@ -292,8 +305,13 @@ impl Kernel {
             created_at: interest_id,
         };
         let app_relays = self.bootstrap_seed_urls(seed);
+        // V-50: see `route_subscription_relays` comment — indexer URLs
+        // populate lane 6 for discovery kinds. Outbox-direction
+        // kind:10002 / kind:0 fetches need this too: the synthetic
+        // event's `kind` field drives the lane check.
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
         let blocked = BlockedRelaySet::new();
-        let ctx = self.build_routing_context(&app_relays, &blocked);
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_publish(&synthetic, &ctx) {
             Ok(routed) => {
                 let mut out: Vec<String> = routed.urls().cloned().collect();
@@ -335,6 +353,7 @@ impl Kernel {
     ) -> BTreeMap<String, Vec<String>> {
         let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let bootstrap_app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
         let blocked = BlockedRelaySet::new();
         for id in ids {
             let relays = match self.events.get(id) {
@@ -346,7 +365,11 @@ impl Kernel {
                         content: String::new(),
                         created_at: event.created_at,
                     };
-                    let ctx = self.build_routing_context(&bootstrap_app_relays, &blocked);
+                    let ctx = self.build_routing_context(
+                        &bootstrap_app_relays,
+                        &indexer_relays,
+                        &blocked,
+                    );
                     match self.outbox_router.route_publish(&synthetic, &ctx) {
                         Ok(routed) => {
                             let mut out: Vec<String> = routed.urls().cloned().collect();
