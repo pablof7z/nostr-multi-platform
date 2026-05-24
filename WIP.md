@@ -11,16 +11,18 @@
 
 The crate-boundary spec is committed
 (`docs/architecture/crate-boundaries.md`, 2026-05-24); migration runs in the
-12-step order from §5 of that document. Step 1 (the four substrate seams in
-`nmp-core`) is non-breaking and underway.
+12-step order from §5. Step 1 (substrate seams in `nmp-core`) is fully landed
+or in PR. Step 2 (create `nmp-router`) is in PR. Step 3 (kernel cut-over) and
+later steps remain.
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 (CI)
-- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — worktree `.claude/worktrees/step1-routing-seams`
+- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — PR #449 (CI)
+- 2026-05-24 — feat(nmp-router): step 2 — new crate with `InMemoryMailboxCache` + `Kind10002Parser` + `GenericOutboxRouter` (stacked on PR #449) — worktree `.claude/worktrees/step2-nmp-router`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 merged
 - 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — PR #447 merged
 - 2026-05-24 — fix(nmp-nip01): V-34 — avatar initials from display name, not hex pubkey — PR #445 merged
 - 2026-05-24 — refactor(nmp-core): V-33 — canonical display helpers in nmp-core::display; delete 5 copies — PR #444 merged
