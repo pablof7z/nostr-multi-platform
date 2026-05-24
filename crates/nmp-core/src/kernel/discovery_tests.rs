@@ -409,17 +409,20 @@ fn discovery_seam_emits_no_m1_oneshot_disc_outbound_req() {
         .chain(m1_from_pump.iter())
         .map(|m| m.text.as_str())
         .collect();
+    // V-04 Stage 4 / PD-033-C: `ONESHOT_SUB_PREFIX` was deleted alongside
+    // `Kernel::req`; the literal `"oneshot-disc-"` is inlined here as the
+    // retirement-gate marker. Any outbound text carrying that prefix would
+    // indicate a regression to the M1 `oneshot-disc-<token>` sub-id format.
     let leaked: Vec<&&str> = m1_outbound_texts
         .iter()
-        .filter(|t| t.contains(discovery::ONESHOT_SUB_PREFIX) || t.contains(QUOTED_ID) || t.contains(MENTIONED_PK))
+        .filter(|t| t.contains("oneshot-disc-") || t.contains(QUOTED_ID) || t.contains(MENTIONED_PK))
         .collect();
     assert!(
         leaked.is_empty(),
         "PD-033-C Stage 1 RETIREMENT: the discovery seam must emit ZERO M1 \
-         outbound REQs for the discovery oneshot arms (no `{}` prefix, no \
-         quoted-note id, no mentioned pubkey leaking through the legacy \
-         OutboundMessage path). Leaked: {leaked:?}",
-        discovery::ONESHOT_SUB_PREFIX
+         outbound REQs for the discovery oneshot arms (no `oneshot-disc-` \
+         prefix, no quoted-note id, no mentioned pubkey leaking through the \
+         legacy OutboundMessage path). Leaked: {leaked:?}"
     );
 
     // Positive parity: the planner must carry the discovery REQs instead.

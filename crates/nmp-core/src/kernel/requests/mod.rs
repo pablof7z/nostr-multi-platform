@@ -114,34 +114,6 @@ impl Kernel {
         closes
     }
 
-    /// Build REQ frames on every configured bootstrap socket for `role`.
-    ///
-    /// T105 transition shim: kept for diagnostic / one-off REQs (NIP-65
-    /// discovery, indexer-only fetches) that legitimately leave on the
-    /// bootstrap lanes.  Emits one frame per configured bootstrap URL. Per-author/recipient view emitters use
-    /// [`Self::req_for_relay`] to route to the planner-resolved URL instead.
-    ///
-    /// V-04 Stage 2: the last in-tree caller (`active_account_bootstrap_requests`)
-    /// migrated to `InterestRegistry::ensure_sub` + planner-driven wire-frame
-    /// emission. The helper is kept under `#[allow(dead_code)]` because the
-    /// PD-033-C plan retires `Kernel::req` entirely in a later stage; deleting
-    /// it now would touch the doc-comment / `ONESHOT_SUB_PREFIX` retirement
-    /// gates in `kernel/discovery.rs` that still reference the M1 helper name.
-    #[allow(dead_code)]
-    pub(crate) fn req(
-        &mut self,
-        role: RelayRole,
-        sub_id: &str,
-        summary: &str,
-        filter: Value,
-    ) -> Vec<OutboundMessage> {
-        let mut out = Vec::new();
-        for url in self.bootstrap_urls_for_role(role) {
-            out.push(self.req_for_relay(role, url, sub_id, summary, filter.clone()));
-        }
-        out
-    }
-
     /// Build a single REQ frame addressed to `relay_url` on transport lane `role`.
     ///
     /// T105: the resolved per-author write relay (content/profile/thread) or
