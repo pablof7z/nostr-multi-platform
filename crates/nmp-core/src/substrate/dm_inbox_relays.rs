@@ -98,7 +98,10 @@ impl TestDmInboxRelayCache {
     /// `Kind10050Parser` and tests that seed through this helper produce
     /// identical cache shapes.
     pub fn upsert(&self, pubkey: &str, relays: &[&str]) {
-        let mut guard = self.inner.write().expect("RwLock poisoned");
+        // D15 — degrade-gracefully on poisoned lock; silently drop the
+        // mutation rather than panic on the actor thread. Mirrors the
+        // policy documented in `nmp_router::cache`.
+        let Ok(mut guard) = self.inner.write() else { return };
         if relays.is_empty() {
             guard.remove(pubkey);
         } else {
@@ -132,12 +135,13 @@ fn canonicalize_test_relay(url: &str) -> String {
 #[cfg(any(test, feature = "test-support"))]
 impl DmInboxRelayLookup for TestDmInboxRelayCache {
     fn dm_inbox_relays(&self, pubkey: &str) -> Option<Vec<String>> {
+        // D15 — degrade-gracefully on poisoned lock; treat as "no list known"
+        // (which the gift-wrap publish path translates to fail-closed per
+        // NIP-17 § 2, matching the production cold-start contract).
         self.inner
             .read()
-            .expect("RwLock poisoned")
-            .get(pubkey)
-            .filter(|relays| !relays.is_empty())
-            .cloned()
+            .ok()
+            .and_then(|g| g.get(pubkey).filter(|r| !r.is_empty()).cloned())
     }
 }
 
