@@ -78,7 +78,11 @@ pub use keyring::{
     MALFORMED_RESULT,
 };
 pub use placeholder::{picture_placeholder, Placeholder};
-pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+pub use protocol::{
+    ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess,
+    NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
+};
 // V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
 // only on `nmp-core` can name the signer-capability trait that
 // `ProtocolCommandContext::signer_for_seal` returns. Gift-wrap is the one

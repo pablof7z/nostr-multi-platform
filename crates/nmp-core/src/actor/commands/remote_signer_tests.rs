@@ -350,7 +350,10 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     // `nmp_nip17::dm_send::tests::happy_path_publishes_two_envelopes\
     // _pinned_to_kind10050_relays` — automatically routes through the
     // bunker too.
-    use crate::substrate::ProtocolCommandContext;
+    use crate::substrate::{
+        EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker,
+        NoopErrorSurface, NoopKernelClock, ProtocolCommandContext,
+    };
     use nmp_nip59::{gift_wrap_with_signer, GIFT_WRAP_TOTAL_TIMEOUT};
     use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
     use nostr::{EventBuilder, Kind};
@@ -360,17 +363,34 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     let sender_hex = handle.pubkey_hex();
     add_remote_signer(&mut id, &mut kernel, handle, false);
 
-    // The dispatch arm installs `|| identity.active_signer_for_seal()`
-    // as the `signer_for_seal` closure. Reproduce it inline so the
-    // assertion checks the same wiring without spinning up the actor
-    // loop (the dispatch arm itself is exercised by the
-    // `publish_unsigned_event_with_active_remote_uses_stub_signer`
-    // test above; this test pins the new accessor's contract).
-    let identity_ref = &id;
-    let signer_fn = || identity_ref.active_signer_for_seal();
+    // Debt C — wrap the identity reference in a `LocalSignerAccess`
+    // adapter so the test exercises the same capability surface the
+    // dispatch arm wires. The dispatch arm uses an equivalent adapter
+    // backed by a `RefCell<&IdentityRuntime>`; here we use a direct
+    // borrow because the test holds the runtime exclusively.
+    struct IdentityLocalSignerAccess<'a>(&'a super::IdentityRuntime);
+    impl<'a> LocalSignerAccess for IdentityLocalSignerAccess<'a> {
+        fn active_local_keys(&self) -> Option<nostr::Keys> {
+            self.0.active_local_keys().cloned()
+        }
+        fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+            self.0.active_signer_for_seal()
+        }
+    }
+    // SAFETY: single-threaded test scope; the `&IdentityRuntime` borrow
+    // never crosses a thread boundary. The trait carries the bound.
+    unsafe impl<'a> Send for IdentityLocalSignerAccess<'a> {}
+    unsafe impl<'a> Sync for IdentityLocalSignerAccess<'a> {}
+    let signers = IdentityLocalSignerAccess(&id);
+    static CLOCK: NoopKernelClock = NoopKernelClock;
+    static DMS: EmptyDmInboxRelayLookup = EmptyDmInboxRelayLookup;
+    static ERRORS: NoopErrorSurface = NoopErrorSurface;
+    static STAGES: NoopActionStageTracker = NoopActionStageTracker;
     let send = |_: crate::actor::ActorCommand| {};
-    let ctx = ProtocolCommandContext::with_send_only(&send)
-        .with_signer_for_seal(&signer_fn);
+    let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorCommand>();
+    let ctx = ProtocolCommandContext::new(
+        &send, tx, &CLOCK, &signers, &DMS, &ERRORS, &STAGES,
+    );
 
     let signer = ctx
         .signer_for_seal()

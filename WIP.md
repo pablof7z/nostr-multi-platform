@@ -23,17 +23,25 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
+| 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
+| 8 phases C/D/E (`BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
-| 10 (`nmp-app-template`, V-48) | 🟡 PR #467 open — `crates/nmp-app-template/` extracted; Chirp uses it; Chirp `src/` shrank 1003 → 456 LOC |
-| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode; `nmp-ffi` extraction not started |
+| 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
+| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode |
+| 11 final (`nmp-ffi` extraction) | ⏳ in flight (subagent) |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
 Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
+**Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B (delete `default_routing.rs` algorithm duplicate) ❌ not started. C (`ProtocolCommandContext` capability-trait bundling) ⏳ in flight (subagent worktree, see Active below) — replaces 12 positional closure args with 5 typed capability traits + deletes routing-leak accessors.
+
 ## Active
 
-- 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468 (rebased onto master)
+- 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468. **Needs follow-up before merge**: `kernel/requests/profile.rs:431` routes kind:10002 discovery through the cached write set, which can self-seal stale metadata (if the cached relay list is old, asking only the old write relays misses the author's newer kind:10002 elsewhere). Discovery kinds (0/3/10000–19999) must hit the Indexer lane (router §3.1 lane 6).
+- 2026-05-24 — refactor(nmp-core): Debt C — `ProtocolCommandContext` capability-trait bundling — subagent in flight (branch `worktree-agent-a1959883378de594c`). Replaces the 12-positional-closure constructor (with `#[allow(clippy::too_many_arguments)]`) by five typed traits (`KernelClock`, `LocalSignerAccess`, `DmInboxLookup` = `DmInboxRelayLookup` re-export, `ErrorSurface`, `ActionStageTracker`); `new()` now takes 7 args; per-field `with_*` builders gone (`with_send_only` survives as the single test entry). Routing-leak accessors (`author_write_relays`, `bootstrap_discovery_relays`) **deleted** — NIP-57's `inject_recipient_relays` is now a no-op behind a `// TODO Debt C follow-up` (must migrate through `OutboxRouter`). Three LNURL injection tests `#[ignore]`d with the same TODO. Scoped tests green; live `routing_trace_real_nostr` green; doctrine smoke green.
+- 2026-05-24 — feat(nmp-network): step 8 phase B — push-model `Pool` API + generational `RelayHandle` + `PoolEvent` channel — subagent in flight.
+- 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
+- 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
