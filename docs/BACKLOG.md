@@ -600,7 +600,7 @@ fallback initials path and the mention label path; deletable once V-29 lands.
 group-level display fields (V-30). `DiagnosticsView.swift:440` `shortID` — diagnostics is
 already `#if DEBUG` gated by V-19; cleanup deferred.
 
-### V-26 · `AccountAvatar` extension display logic in Swift — thin-shell doctrine violation
+### V-26 · `AccountAvatar` extension display logic in Swift — thin-shell doctrine violation — **DONE** (PR #438)
 
 **Verified:** `ios/Chirp/Chirp/Components/AccountAvatar.swift` defined
 `extension AccountSummary { var avatarInitials: String; var avatarColorHex: String }`,
@@ -635,6 +635,52 @@ avatar tint.
 **Behaviour change called out:** the avatar tint for every existing account row will shift
 once on first run — that's the consistency fix (Accounts toolbar avatar now matches the same
 author's DM and group-chat tint), not a regression. Same disclosure pattern as V-25.
+
+---
+
+### V-35 · `dispatch_action` namespace catalog missing — framework is undiscoverable — **DONE** (docs/dispatch-actions.md)
+
+**Verified (Opus direction review #16 — 2026-05-24):** The C-ABI surface (48 symbols in
+`crates/nmp-core/src/ffi/`) is wire transport, not the developer-facing API. The real API is
+the `dispatch_action` namespace catalog. Known namespaces are scattered across action-module
+files: `nmp.publish` (`nmp-nip01/src/action.rs`), `nmp.nip17.*` (`nmp-nip17/src/action.rs`),
+`nmp.nip57.*` (`nmp-nip57/src/action.rs`), `nmp.nip65.*` (`nmp-nip65/src/action.rs`),
+`nmp.follow` / `nmp.unfollow` / `nmp.nip25.react` (`nmp-nip02/src/action.rs`),
+`nmp.wallet.pay_invoice` (`nmp-nip57` wallet module). No catalog file exists.
+
+**Impact:** A third developer cannot find what to call, what JSON shape each namespace
+expects, or which projections to subscribe to. PD-039 inventories the C-ABI *symbols*; nothing
+inventories the *contracts*. The Notes spike demonstrates the failure mode: `NotesBridge.swift`
+bypassed `dispatch_action` and wrote raw event handling in Swift because the correct entry point
+was undiscoverable.
+
+**Fix:** Create `docs/dispatch-actions.md` — a single catalog of every registered namespace,
+its JSON request shape, and the projection event it drives. Should be auto-verifiable: a CI
+script greps the action-module files and asserts the catalog is not stale. Companion to F-05
+codegen (typed Swift dispatch API is the end state; the markdown catalog is the immediate
+legibility fix).
+
+---
+
+### V-36 · `nmp-signer-broker` reimplements NIP-46 without an ADR [MEDIUM]
+
+**Verified (Opus direction review #16 — 2026-05-24):** `aim.md §3` names `nostr-connect`
+(the rust-nostr NIP-46 crate) as the dependency. NMP shipped `nmp-signer-broker` instead —
+a hand-rolled NIP-46 relay transport (`crates/nmp-signer-broker/`). No ADR was written to
+justify this divergence from the canonical dependency. Post-hoc fixes V-06 (NIP-42
+incompatibility), V-13 (polling relay client), V-14 (no reconnect), V-08 (DM gift-wrap) are
+all *fix* tickets on a *should-this-exist* question.
+
+**Impact:** The framework's own corollary "Use rust-nostr, not scratch crypto" was violated
+without writing down why. Every future NIP-46 bug is evaluated against a codebase whose
+existence is an undocumented divergence from doctrine.
+
+**Required:** Write `docs/adr/ADR-NNNN-signer-broker.md` documenting (a) why `nostr-connect`
+was insufficient for the bunker relay-multiplexing model, (b) what NIP-46 features
+`nmp-signer-broker` owns that `nostr-connect` does not (multi-relay broadcast, `mio`
+event-loop integration), and (c) the long-term exit: either upstream the missing features to
+`nostr-connect` and delete the crate, or declare it canonical and track it as maintained
+infrastructure.
 
 ---
 
