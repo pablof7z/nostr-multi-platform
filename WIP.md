@@ -9,12 +9,12 @@
 
 ## Active
 
-- PR #434 — fix(nmp-core/ios): V-23 — move WalletView balance/npub formatting to Rust — CI pending
 - PR #??? — fix(nmp-core/ios): V-24 — AccountsView + JoinGroupView thin-shell violations — in progress
 - PR #??? — fix(nmp-nip29/ios): V-25 — GroupChatView pubkey display / initials / colorHex to Rust — in progress
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — fix(wallet/ios): V-23 — move WalletView balance/npub formatting to Rust — PR #434 merged
 - 2026-05-24 — chore(marmot): delete dead MemberListView cluster — superseded by MarmotGroupRow.members (V-17) — PR #433 merged
 - 2026-05-24 — fix(signer-broker): V-13 + V-14 — mio readiness + auto-reconnect with backoff — PR #431 merged
 - 2026-05-24 — fix(nip29/ios): move GroupChatMessage.relativeTime to Rust — thin-shell V-22 — PR #432 merged
