@@ -43,7 +43,6 @@ mod bounded;
 mod capability;
 mod default_routing;
 mod dm_inbox_relays;
-mod domain;
 mod identity;
 mod ingest;
 mod keyring;
@@ -65,7 +64,13 @@ pub use dm_inbox_relays::{
 #[cfg(any(test, feature = "test-support"))]
 pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
-pub use domain::{DomainMigration, MigrationTx};
+// Step 9: the `DomainMigration` / `MigrationTx` value types passed to
+// `EventStore::run_migrations` moved with the store (they are consumed only by
+// that seam, and keeping them in `nmp-store` lets the store crate compile
+// without a back-edge into substrate). Re-exported here so the legacy
+// `nmp_core::substrate::{DomainMigration, MigrationTx}` import path is
+// unchanged.
+pub use nmp_store::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{

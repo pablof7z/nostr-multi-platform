@@ -30,7 +30,34 @@ mod kernel_action;
 mod kernel_reducer;
 pub mod nip19;
 pub mod nip21;
-pub mod planner;
+/// Subscription compiler.
+///
+/// Step 9 of the crate-boundary migration extracted the implementation into
+/// the standalone [`nmp_planner`] crate. This module re-exports the public
+/// surface so existing `use nmp_core::planner::*` import sites compile
+/// unchanged.
+pub mod planner {
+    pub use nmp_planner::compiler::{
+        CompileContext, EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot,
+        SubscriptionCompiler,
+    };
+    pub use nmp_planner::interest::{
+        HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+        NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
+    };
+    pub use nmp_planner::lattice::{merge, MergeOutcome};
+    pub use nmp_planner::plan::{
+        canonical_filter_hash, CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape,
+        UserConfiguredCategory,
+    };
+    pub use nmp_planner::selection::apply_selection;
+
+    // A small number of in-tree call sites reach into the submodule
+    // namespaces directly (`nmp_core::planner::compiler::*`,
+    // `nmp_core::planner::interest::*`, etc.). Re-expose those module
+    // paths so the migration is a pure compile-only no-op.
+    pub use nmp_planner::{compiler, interest, lattice, plan, selection};
+}
 pub mod publish;
 mod relay;
 // Step 8 phase A — `relay_protocol` and `relay_worker` moved to
@@ -45,8 +72,27 @@ mod relay;
 #[cfg(feature = "wallet")]
 pub mod wallet;
 pub mod remote_signer;
-pub mod stable_hash;
-pub mod store;
+/// Deterministic 64-bit hash helper — the seed for every plan-id,
+/// interest-id, and content-addressed projection key.
+///
+/// Moved into [`nmp_planner::stable_hash`] in step 9 of the crate-boundary
+/// migration (the planner is the only foundation crate that *cannot* depend
+/// on `nmp-core`). This module is a thin re-export so `use
+/// nmp_core::stable_hash::stable_hash64` import sites compile unchanged.
+pub mod stable_hash {
+    pub use nmp_planner::stable_hash::*;
+}
+/// Event-storage abstraction.
+///
+/// Step 9 of the crate-boundary migration extracted the implementation into
+/// the standalone [`nmp_store`] crate. This module is a thin re-export so
+/// existing `use nmp_core::store::*` import sites compile unchanged. The
+/// substrate-side `DomainMigration` / `MigrationTx` types moved with the
+/// store; they are re-exported through both `nmp_core::store::*` (via
+/// `nmp_store`'s root) and `nmp_core::substrate::*` (legacy path).
+pub mod store {
+    pub use nmp_store::*;
+}
 pub mod subs;
 pub mod substrate;
 pub mod tags;

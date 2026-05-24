@@ -44,9 +44,7 @@ default = ["native"]
 native = [
     "dep:tungstenite",
     "nmp-network/native",
-    "dep:heed",
-    "dep:nostr-database",
-    "dep:nmp-nostr-lmdb",
+    "nmp-store/lmdb-backend",
     "chrono/clock",
 ]
 # NIP-47 Nostr Wallet Connect support. Gates the `nmp-nwc` protocol dependency,
@@ -56,12 +54,15 @@ native = [
 # wallet requires native (NWC relay connection uses the actor thread).
 wallet = ["dep:nmp-nwc", "native"]
 # Expose actor internals for live-bench harnesses and integration test binaries.
-# Never enable in production builds.
-test-support = []
-# Enable the LMDB-backed EventStore. Pulls in the NMP-local nostr-lmdb fork
-# (with env-injection seam) + heed + nostr-database. ADR-0011, ADR-0012.
-# lmdb-backend implies native (LMDB requires OS file I/O).
-lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database", "native"]
+# Never enable in production builds. Forwards to `nmp-store/test-support` so
+# `VerifiedEvent::from_raw_unchecked` (used by every store harness + the kernel
+# replay tests) is reachable through the re-exported `nmp_core::store` path.
+test-support = ["nmp-store/test-support"]
+# Enable the LMDB-backed EventStore. Forwards to nmp-store's lmdb-backend
+# feature (which pulls in the NMP-local nostr-lmdb fork, heed, and
+# nostr-database). ADR-0011, ADR-0012. lmdb-backend implies native (LMDB
+# requires OS file I/O).
+lmdb-backend = ["nmp-store/lmdb-backend", "native"]
 # Re-export all FFI entry-points via Rust paths so nmp-android-ffi can call them
 # through the rlib dependency (extern "C" declarations are opaque to Rust CGU
 # compilation — the android-ffi feature is the portable fix).
@@ -135,12 +136,18 @@ zeroize = { workspace = true }
 # on each projection type the emitter reflects.
 schemars = { version = "0.8", optional = true }
 
-# LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
-# env-injection seam (ADR-0011); heed / nostr-database are the underlying
-# storage and event-encoding crates.
-nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true }
-heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }
-nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"], optional = true }
+# EventStore + DomainMigration types live in `nmp-store` (step 9 extraction).
+# nmp-core re-exports `store::*` and `substrate::{DomainMigration, MigrationTx}`
+# from this crate so existing import sites compile unchanged. The
+# `lmdb-backend` Cargo feature here forwards to `nmp-store/lmdb-backend`,
+# which is the one place the heed / nostr-database / nmp-nostr-lmdb graph
+# is pulled in.
+nmp-store = { path = "../nmp-store" }
+# LogicalInterest + subscription compiler live in `nmp-planner` (step 9
+# extraction). nmp-core re-exports `planner::*` and `stable_hash::*` from this
+# crate so existing import sites compile unchanged. nmp-planner is a Layer-2
+# foundation with NO back-edge into nmp-core — keeps the dep graph acyclic.
+nmp-planner = { path = "../nmp-planner" }
 
 [dev-dependencies]
 proptest = "1"
@@ -150,6 +157,12 @@ proptest = "1"
 # `relay_worker` to `nmp-network`; the example keeps a dev-only edge.
 rustls = { workspace = true, default-features = false, features = ["ring"] }
 tempfile = "3"
+# Re-pin nmp-store with the `test-support` feature so `cargo test -p nmp-core`
+# sees `VerifiedEvent::from_raw_unchecked` (used by the kernel replay tests
+# and the substrate ingest tests). Step 9 turned the formerly intra-crate
+# `cfg(test)` gate into a cross-crate dependency; dev-deps activate the
+# feature only for the test profile, so production builds never see it.
+nmp-store = { path = "../nmp-store", features = ["test-support"] }
 
 # NIP golden-tag conformance suite. Drives the (crate-private) command handlers
 # through the `test-support` facade (`nmp_core::testing::ConformanceHarness`),

@@ -3865,16 +3865,15 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "chrono",
- "heed",
  "indexmap",
  "nmp-network",
  "nmp-nip42-types",
  "nmp-nip59",
- "nmp-nostr-lmdb",
  "nmp-nwc",
+ "nmp-planner",
  "nmp-signer-iface",
+ "nmp-store",
  "nostr",
- "nostr-database",
  "proptest",
  "rustls",
  "schemars",
@@ -4038,6 +4037,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-planner"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-repl"
 version = "0.1.0"
 dependencies = [
@@ -4102,6 +4109,20 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "zeroize",
+]
+
+[[package]]
+name = "nmp-store"
+version = "0.1.0"
+dependencies = [
+ "heed",
+ "nmp-nostr-lmdb",
+ "nostr",
+ "nostr-database",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]
