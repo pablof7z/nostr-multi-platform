@@ -17,11 +17,11 @@ later steps remain.
 
 ## Active
 
-- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — PR #449 (CI)
-- 2026-05-24 — feat(nmp-router): step 2 — new crate with `InMemoryMailboxCache` + `Kind10002Parser` + `GenericOutboxRouter` (stacked on PR #449) — worktree `.claude/worktrees/step2-nmp-router`
+- 2026-05-24 — feat(nmp-router): step 2 — new crate with `InMemoryMailboxCache` + `Kind10002Parser` + `GenericOutboxRouter` — PR #450 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — refactor(nmp-core): step 1.c + 1.d — `OutboxRouter` + substrate `MailboxCache` traits — PR #449 merged
 - 2026-05-24 — refactor(nmp-core): step 1.b — `ProtocolCommand` + `ActorCommand::Protocol(...)` seam — PR #448 merged
 - 2026-05-24 — refactor(nmp-core): step 1.a — `IngestParser` + `EventIngestDispatcher` substrate seam — PR #447 merged
 - 2026-05-24 — fix(nmp-nip01): V-34 — avatar initials from display name, not hex pubkey — PR #445 merged
