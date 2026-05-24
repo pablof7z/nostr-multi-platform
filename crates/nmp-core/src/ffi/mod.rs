@@ -192,6 +192,43 @@ pub(crate) fn new_routing_trace_slot() -> RoutingTraceSlot {
     Arc::new(Mutex::new(None))
 }
 
+/// V-51 phase 5 — typed slot the per-app crate populates with a
+/// **substrate-routing factory**: a `Send + Sync` closure that, given the
+/// kernel's `RoutingTraceObserver` (the same `Arc<RoutingTraceProjection>`
+/// the kernel constructs internally), returns the
+/// `(Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)` pair the actor will
+/// install on the kernel via [`crate::kernel::Kernel::set_routing`].
+///
+/// Production composition (`nmp-app-chirp::ffi::register::nmp_app_chirp_register`)
+/// writes a closure that constructs `nmp_router::GenericOutboxRouter` (with
+/// the supplied observer threaded through its `with_trace_observer`
+/// builder) and `nmp_router::InMemoryMailboxCache`. `None` (the default,
+/// and the state every test build sits in) leaves the kernel's
+/// `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults in place
+/// — behaviour-neutral.
+///
+/// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke the
+/// factory against the rebuilt kernel's fresh projection clone, mirroring
+/// the re-publish step the `routing_trace_slot` already performs.
+pub(crate) type RoutingSubstrateFactory = dyn Fn(
+        Arc<dyn crate::substrate::RoutingTraceObserver>,
+    ) -> (
+        Arc<dyn crate::substrate::OutboxRouter>,
+        Arc<dyn crate::substrate::MailboxCache>,
+    ) + Send
+    + Sync;
+
+/// Slot wrapper for [`RoutingSubstrateFactory`]. `None` until the per-app
+/// crate calls [`NmpApp::set_routing_substrate`] (production composition
+/// does so during `nmp_app_chirp_register`, before `nmp_app_start`).
+pub(crate) type RoutingSubstrateSlot = Arc<Mutex<Option<Arc<RoutingSubstrateFactory>>>>;
+
+/// Construct a fresh, empty [`RoutingSubstrateSlot`].
+#[must_use]
+pub(crate) fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
+    Arc::new(Mutex::new(None))
+}
+
 /// Typed slot for the C-ABI update callback registration.
 ///
 /// Written by [`nmp_app_set_update_callback`]; read by the actor thread's
@@ -341,6 +378,15 @@ pub struct NmpApp {
     /// production composition is expected to thread the same projection
     /// through the injected router's `with_trace_observer` builder).
     routing_trace: RoutingTraceSlot,
+    /// V-51 phase 5 — per-app substrate-routing factory slot. The per-app
+    /// crate (today: `nmp_app_chirp::ffi::register::nmp_app_chirp_register`)
+    /// writes a closure here via [`Self::set_routing_substrate`]; the actor
+    /// reads it after kernel construction (and again after `Reset`) and
+    /// invokes [`crate::kernel::Kernel::set_routing`] with the produced
+    /// `(Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)` pair. `None` (the
+    /// default) leaves the kernel's `Nip65WriteSetRouter` +
+    /// `DefaultInMemoryMailboxCache` defaults in place.
+    routing_substrate: RoutingSubstrateSlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
@@ -615,6 +661,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // through `NmpApp::routing_trace`.
     let routing_trace: RoutingTraceSlot = new_routing_trace_slot();
     let actor_routing_trace = Arc::clone(&routing_trace);
+    // V-51 phase 5 — substrate-routing factory slot. Default `None`; the
+    // per-app crate installs a closure via `set_routing_substrate` before
+    // `nmp_app_start`. The actor reads the slot once after kernel construction
+    // (and once again per `Reset`) and applies the produced router/cache via
+    // `Kernel::set_routing`.
+    let routing_substrate: RoutingSubstrateSlot = new_routing_substrate_slot();
+    let actor_routing_substrate = Arc::clone(&routing_substrate);
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
@@ -739,6 +792,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // construction (and re-filled on `Reset`); per-app crates read
                 // it through `NmpApp::routing_trace`.
                 actor_routing_trace,
+                // V-51 phase 5 — the actor's clone of the substrate-routing
+                // factory slot. Read once after kernel construction (and on
+                // `Reset`); the factory builds the production router/cache
+                // pair the actor installs via `Kernel::set_routing`.
+                actor_routing_substrate,
             );
         }));
         if let Err(e) = result {
@@ -787,6 +845,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         nip17_local_keys,
         storage_path,
         routing_trace,
+        routing_substrate,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
@@ -1059,6 +1118,45 @@ impl NmpApp {
     ) {
         if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
             *slot = lookup;
+        }
+    }
+
+    /// V-51 phase 5 — install the per-app substrate-routing factory.
+    ///
+    /// `factory` is a `Send + Sync` closure that, given the kernel's
+    /// `RoutingTraceObserver` (the kernel-owned
+    /// `Arc<RoutingTraceProjection>` clone), returns the
+    /// `(Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)` pair the actor
+    /// installs via [`crate::kernel::Kernel::set_routing`]. Production
+    /// composition (`nmp-app-chirp`) writes a closure constructing
+    /// `nmp_router::GenericOutboxRouter` (with the observer threaded
+    /// through `with_trace_observer`) + `nmp_router::InMemoryMailboxCache`.
+    ///
+    /// MUST be called BEFORE `nmp_app_start` AND BEFORE any kind:10002
+    /// event is ingested. The substrate caches the kernel holds and the
+    /// production `nmp_router::InMemoryMailboxCache` are independent
+    /// stores, not a write-through pair — a swap after ingest would lose
+    /// the cached entries. `D6`: a poisoned slot is a silent no-op (the
+    /// kernel keeps its in-crate defaults; the production swap is a
+    /// no-op for that one process).
+    ///
+    /// The factory is re-invoked by the `Reset` dispatch arm against the
+    /// rebuilt kernel's fresh projection so the production router/cache
+    /// pair survives a state wipe (mirrors the `routing_trace_slot`
+    /// re-publish step).
+    pub fn set_routing_substrate<F>(&self, factory: F)
+    where
+        F: Fn(
+                std::sync::Arc<dyn crate::substrate::RoutingTraceObserver>,
+            ) -> (
+                std::sync::Arc<dyn crate::substrate::OutboxRouter>,
+                std::sync::Arc<dyn crate::substrate::MailboxCache>,
+            ) + Send
+            + Sync
+            + 'static,
+    {
+        if let Ok(mut slot) = self.routing_substrate.lock() {
+            *slot = Some(std::sync::Arc::new(factory));
         }
     }
 

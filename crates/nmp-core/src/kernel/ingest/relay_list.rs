@@ -1,6 +1,7 @@
 //! Kind:10002 (NIP-65 relay list) ingest.
 
 use super::super::{parse_relay_list_to_substrate, Kernel, NostrEvent, short_hex};
+use crate::stable_hash::stable_hash64;
 use crate::subs::CompileTrigger;
 
 impl Kernel {
@@ -62,7 +63,27 @@ impl Kernel {
             parsed.both.len()
         ));
         let created_at = event.created_at;
+        let pubkey = event.pubkey.clone();
         self.mailbox_cache.upsert(event.pubkey.clone(), parsed);
+        // V-51 phase 5 — fire the injected `OutboxRouter` for observability
+        // immediately after the cache update, BEFORE the recompile trigger.
+        // The router now sees pablo's freshly-landed NIP-65 read set and the
+        // trace observer records a routing decision attributed to lane 1
+        // (`Nip65/Read`) — exactly what the chirp-repl `routing-trace` smoke
+        // greps for. Without this call the projection would only carry the
+        // pre-cache-update lane-7 (`AppRelay/Fallback`) observations from
+        // `author_requests` / `profile_claim_request`, and the smoke would
+        // fail the lane-attribution assertion. The synthetic interest mirrors
+        // the per-author timeline subscription shape `author_requests`
+        // builds, so the projection row is semantically equivalent (same
+        // author, same kinds) and gets a fresh `interest_id` derived from
+        // `(event.id, created_at)` so a re-ingest of the same kind:10002
+        // doesn't accidentally collapse with an earlier observation.
+        self.observe_subscription_through_router(
+            stable_hash64(("nip65-arrived", event.id.as_str(), created_at)),
+            &[pubkey.as_str()],
+            &[1, 6],
+        );
         // A1: a kind:10002 replaced an author's mailbox. Fan a
         // Nip65Arrived trigger into the lifecycle inbox so the M2
         // subscription compiler recompiles on the next tick — the

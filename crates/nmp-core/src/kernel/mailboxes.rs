@@ -31,9 +31,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::Kernel;
-use crate::planner::{MailboxCache as PlannerMailboxCache, MailboxSnapshot, Pubkey};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+    MailboxCache as PlannerMailboxCache, MailboxSnapshot, Pubkey,
+};
 use crate::relay::RelayRole;
-use crate::substrate::{DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache};
+use crate::substrate::{
+    BlockedRelaySet, DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache, RoutingContext,
+    SessionKeySet,
+};
 use crate::util::sort_dedup;
 
 impl Kernel {
@@ -149,6 +155,127 @@ impl Kernel {
             sort_dedup(ids);
         }
         by_relay
+    }
+}
+
+// ─── Live router invocation (V-51 phase 5) ───────────────────────────────────
+//
+// The cache-read helpers above stay in place: their `Vec<String>` return type
+// carries a kernel-policy cold-start bootstrap-discovery fallback that the
+// substrate router's lane 1 + lane 7 algorithm does not express (the router
+// returns `Unroutable` rather than reaching for the bootstrap seed; the
+// kernel keeps the cold-start fallback because the alternative is silently
+// dropping discovery REQs on the first sign-in tick). They are intentionally
+// not deleted.
+//
+// What was missing pre-V-51 phase 5: the kernel never *called* the injected
+// `OutboxRouter`, so the routing-trace projection that the kernel auto-binds
+// onto the default `Nip65WriteSetRouter` (and that production composition
+// rebinds onto `nmp_router::GenericOutboxRouter` via `set_routing`) stayed
+// empty across the whole live session — `chirp-repl routing-trace` rendered
+// `<no recent subscriptions>` and the V-51 phase 4 smoke had to SKIP.
+//
+// The fix is the helper below: for each per-author subscription-dispatch
+// site (`requests/profile.rs::author_requests`, `firehose_requests`,
+// `profile_claim_request`, `pending_profile_claim_requests`,
+// `requests/thread.rs::partition_ids_by_author_write_relays`'s
+// per-id author lookup) the kernel constructs a synthetic
+// `LogicalInterest` for the targeted author(s) and calls
+// `self.outbox_router.route_subscription(...)` purely for observability —
+// the returned `RoutedRelaySet` (or `RoutingError::Unroutable`) is dropped on
+// the floor; the actual REQ-emission relays continue to flow through the
+// cache-read helpers above so the cold-start bootstrap policy survives.
+// The router observer (the kernel-owned `RoutingTraceProjection` clone, or
+// any production observer threaded through `with_trace_observer`) fires
+// inside the router call and the projection populates.
+
+impl Kernel {
+    /// Build a [`RoutingContext`] from the kernel's substrate state and
+    /// the supplied bookkeeping references. The lifetime of the returned
+    /// context is tied to the borrows in `app_relays` / `blocked` —
+    /// callers stack-allocate both then drop the context before the next
+    /// kernel-mutating call.
+    ///
+    /// `explicit_targets` is intentionally always `None` in the
+    /// observability path: the kernel-internal helpers below dispatch the
+    /// generic algorithm, not a NIP-crate override. NIP crates carrying
+    /// `explicit_targets` already call `route_subscription` /
+    /// `route_publish` directly through the substrate seam (`nmp-nip17`
+    /// gift-wrap, `nmp-nip29` group actions).
+    fn build_routing_context<'a>(
+        &'a self,
+        app_relays: &'a [String],
+        blocked: &'a BlockedRelaySet,
+    ) -> RoutingContext<'a> {
+        RoutingContext {
+            active_account: self.active_account.as_ref(),
+            session_keys: SessionKeySet {
+                app_relays,
+                ..SessionKeySet::default()
+            },
+            mailbox_cache: &*self.mailbox_cache,
+            blocked_relays: blocked,
+            explicit_targets: None,
+        }
+    }
+
+    /// V-51 phase 5 — fire the injected [`OutboxRouter`] for observability.
+    ///
+    /// Constructs a synthetic `LogicalInterest` carrying the supplied
+    /// authors + kinds and invokes `route_subscription` through the
+    /// kernel's `outbox_router` slot. The router's trace observer (the
+    /// kernel-owned `RoutingTraceProjection` by default, swapped to a
+    /// production observer if the host injected a router via
+    /// `set_routing` with its own `with_trace_observer`) fires on
+    /// success; the returned routed set is dropped on the floor.
+    ///
+    /// **Behaviour-neutral by design**: the caller's actual REQ emission
+    /// continues to flow through `author_write_relays` /
+    /// `recipient_read_relays` / `author_indexer_relays` because the
+    /// substrate router's lane 1 + lane 7 algorithm does not express the
+    /// kernel's cold-start bootstrap-discovery fallback (a NIP-65-miss
+    /// author returns `RoutingError::Unroutable`, not the indexer seed).
+    /// This helper only populates the trace projection so the V-51 phase 4
+    /// validation harness, `chirp-repl routing-trace`, and the iOS
+    /// inspector see live decisions.
+    ///
+    /// `Unroutable` errors are observed (and recorded as a kernel log
+    /// line on the diagnostic firehose) but never surface as an error —
+    /// the kernel's actual dispatch path is the source of truth for
+    /// "did the REQ go out?".
+    pub(crate) fn observe_subscription_through_router(
+        &self,
+        interest_id: u64,
+        authors: &[&str],
+        kinds: &[u32],
+    ) {
+        let shape = InterestShape {
+            authors: authors.iter().map(|s| (*s).to_string()).collect(),
+            kinds: kinds.iter().copied().collect(),
+            ..InterestShape::default()
+        };
+        let interest = LogicalInterest {
+            id: InterestId(interest_id),
+            scope: InterestScope::Global,
+            shape,
+            hints: vec![],
+            lifecycle: InterestLifecycle::OneShot,
+        };
+        // The kernel's live `app_relays` plumbing is the `bootstrap_discovery_relays()`
+        // seed today (T122 / codex R2 — until a separate AppRelay lane lands
+        // this is the closest analogue for the lane-7 fallback). Passing the
+        // bootstrap seed in lets the router's lane 7 fire as a last-resort
+        // attribution when an author has no NIP-65 yet, which is the same
+        // structural attribution the planner records via
+        // `UserConfiguredCategory::AppRelay`. Lane 1 (Nip65/Read) still wins
+        // for any author whose kind:10002 was cached.
+        let app_relays = self.bootstrap_discovery_relays();
+        let blocked = BlockedRelaySet::new();
+        let ctx = self.build_routing_context(&app_relays, &blocked);
+        // Drop the result on the floor — the observer fired inside, that is
+        // the whole point. The actual REQ emission is the cache-read helpers
+        // (see module-level note above).
+        let _ = self.outbox_router.route_subscription(&interest, &ctx);
     }
 }
 

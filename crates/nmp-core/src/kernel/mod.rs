@@ -862,8 +862,18 @@ impl Kernel {
     /// MUST be called BEFORE any kind:10002 event is ingested — the
     /// caches are independent stores, not a write-through pair, so a
     /// swap after ingest would lose the cached entries.
-    #[allow(dead_code)]
-    pub(crate) fn set_routing(
+    ///
+    /// Widened from `pub(crate)` to `pub` (V-51 phase 5): production
+    /// composition (`nmp-app-chirp`) now drives this through the
+    /// `NmpApp::set_routing_substrate` slot the actor's kernel
+    /// constructor reads. Apps that want a competing router
+    /// (`nmp_router::GenericOutboxRouter`, or a future Layer-2 impl)
+    /// inject through that slot; the actor calls this method after
+    /// `Kernel::with_storage_path` returns, threading the kernel's
+    /// `RoutingTraceProjection` through the supplied router's
+    /// `with_trace_observer` so the trace ring keeps populating across
+    /// the swap.
+    pub fn set_routing(
         &mut self,
         router: Arc<dyn OutboxRouter>,
         cache: Arc<dyn MailboxCache>,

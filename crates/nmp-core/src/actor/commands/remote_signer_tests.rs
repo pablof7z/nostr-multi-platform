@@ -480,6 +480,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(std::sync::Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
             // V-51 phase 4 — test wiring; nothing reads the routing-trace slot here.
             Arc::new(std::sync::Mutex::new(None)),
+            // V-51 phase 5 — test wiring; no per-app routing factory installed.
+            Arc::new(std::sync::Mutex::new(None)),
         );
     });
 
