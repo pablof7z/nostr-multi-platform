@@ -1,0 +1,38 @@
+[package]
+name = "nmp-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EventStore trait + MemEventStore / LmdbEventStore backends. Extracted from nmp-core in step 9 of the crate-boundary migration."
+
+[lib]
+name = "nmp_store"
+path = "src/lib.rs"
+
+[features]
+# The `MemEventStore` is always compiled; `LmdbEventStore` is always compiled
+# but only functional when this feature is on (it pulls in heed +
+# nostr-database + the NMP-local nostr-lmdb fork). Off-by-default keeps wasm32
+# builds (which never see LMDB) lean.
+default = []
+lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database"]
+# Exposes a small surface used by integration tests and live-bench binaries
+# (e.g. `VerifiedEvent::try_from_raw` is always public, but the `test-support`
+# cfg gates the `RawEvent::sample_*` constructors and similar harness helpers).
+test-support = []
+
+[dependencies]
+nostr = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+tracing = "0.1"
+
+# LMDB backend deps — feature-gated. The fork at crates/nmp-nostr-lmdb carries
+# the env-injection seam (ADR-0011); heed / nostr-database are the underlying
+# storage and event-encoding crates.
+nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true }
+heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }
+nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"], optional = true }
+
+[dev-dependencies]
+tempfile = "3"

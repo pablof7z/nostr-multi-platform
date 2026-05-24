@@ -7,18 +7,23 @@
 //! Step 2 creates `nmp-router` and ships the single generic `OutboxRouter`
 //! impl; step 3 cuts the kernel over to `Arc<dyn OutboxRouter>`.
 //!
-//! ## Naming collision with `planner::MailboxCache`
+//! ## Naming collision with `nmp_planner::MailboxCache`
 //!
-//! `crates/nmp-core/src/planner/compiler/mailbox.rs` already defines a trait
-//! also named `MailboxCache` with a *different* shape (`get`,
-//! `dm_inbox_relays`, `snapshot_all`, `generation`, `request_probe`). That
-//! trait is the planner-internal compiler seam — it mixes NIP-65 kind:10002
-//! lookups and NIP-17 kind:10050 lookups, which is exactly the V-40 mixing
-//! the spec calls out. The substrate trait defined here is the **NIP-65-only**
-//! seam the router consults. They cohabit because they live in different
-//! modules (`substrate::MailboxCache` vs `planner::MailboxCache`) and never
-//! `use` each other; V-40 + step 9 (planner extraction) eventually retire
-//! the planner one.
+//! `nmp-planner` (step 9 extraction) defines a trait also named `MailboxCache`
+//! with a *different* shape (`get`, `dm_inbox_relays`, `snapshot_all`,
+//! `generation`, `request_probe`). That trait is the planner-internal
+//! compiler seam — it mixes NIP-65 kind:10002 lookups and NIP-17 kind:10050
+//! lookups, which is exactly the V-40 mixing the spec calls out. The
+//! substrate trait defined here is the **NIP-65-only** seam the router
+//! consults.
+//!
+//! Step 9 left the divergence in place deliberately: a pure extraction is not
+//! the right moment to unify two traits that differ in their NIP coverage —
+//! they reach through fully-qualified module paths
+//! (`nmp_core::substrate::MailboxCache` vs `nmp_planner::MailboxCache` /
+//! `nmp_core::planner::MailboxCache` re-export) and never `use` each other.
+//! V-40 follow-up work is the planned moment to retire the planner-side
+//! mixed-purpose trait.
 
 use std::collections::{BTreeMap, BTreeSet};
 
