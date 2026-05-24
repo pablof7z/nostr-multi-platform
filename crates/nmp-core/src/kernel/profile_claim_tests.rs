@@ -92,7 +92,7 @@ fn cold_start_profile_claims_never_go_to_content_relay() {
 /// Cold-start profile claims go to the indexer relay with all authors in one filter.
 #[test]
 fn cold_start_profile_claims_go_to_indexer_relay_only() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
     let authors: Vec<String> = (0..5).map(|i| hex64(&format!("{i}"))).collect();
     for (i, pk) in authors.iter().enumerate() {
@@ -124,7 +124,7 @@ fn cold_start_profile_claims_go_to_indexer_relay_only() {
 /// Known-NIP-65 authors: profile claims use their declared write relays, NOT the indexer.
 #[test]
 fn known_nip65_profile_claims_use_declared_write_relays() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
     kernel.relay_connected(RelayRole::Indexer);
 

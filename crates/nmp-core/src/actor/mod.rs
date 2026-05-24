@@ -802,7 +802,8 @@ pub fn run_actor(
         Arc::new(Mutex::new(None)),
         // V-51 phase 5 — no `NmpApp` here, so the routing-substrate factory
         // slot is a private throwaway. The kernel keeps its in-crate
-        // `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults.
+        // `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`
+        // defaults (substrate-honest debt B).
         Arc::new(Mutex::new(None)),
     );
 }
@@ -1007,11 +1008,12 @@ pub fn run_actor_with_observers(
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
     // V-51 phase 4 — publish the kernel's routing-trace projection clone
     // into the shared slot so `NmpApp::routing_trace` can read it. The
-    // kernel auto-binds the projection onto its default
-    // `Nip65WriteSetRouter` at construction (see `Kernel::new`), so every
-    // routing decision is observed from this point onward. D6: a poisoned
-    // slot drops the publication rather than propagate the panic — readers
-    // will see `None`, which is the cold-start state.
+    // kernel default is `EmptyOutboxRouter` (substrate-honest debt B), so
+    // the projection stays empty until the `routing_substrate_slot`
+    // factory below installs a real router via `Kernel::set_routing` with
+    // the projection threaded in as a `RoutingTraceObserver`. D6: a
+    // poisoned slot drops the publication rather than propagate the panic
+    // — readers will see `None`, which is the cold-start state.
     if let Ok(mut guard) = routing_trace_slot.lock() {
         *guard = Some(kernel.routing_trace());
     }

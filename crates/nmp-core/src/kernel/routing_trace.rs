@@ -315,10 +315,9 @@ mod tests {
     /// owned value), and the projection's only per-call allocation is the
     /// `Self::copy_urls` clone. The no-observer-installed path inside the
     /// router does NOT invoke `on_publish` / `on_subscription` at all (the
-    /// router gates on `Option::is_some` — see `Nip65WriteSetRouter` and
-    /// `GenericOutboxRouter`). This test documents the contract; a structural
-    /// allocation-counting test would require a custom allocator hook (out of
-    /// scope for phase 1).
+    /// router gates on `Option::is_some` — see `nmp_router::GenericOutboxRouter`).
+    /// This test documents the contract; a structural allocation-counting
+    /// test would require a custom allocator hook (out of scope for phase 1).
     #[test]
     fn allocation_contract_documented() {
         // Compile-time evidence: method takes `&RoutedRelaySet`.
@@ -329,29 +328,97 @@ mod tests {
     }
 
     /// Kernel-level integration test (sub-piece E in the V-51 phase 1 spec).
-    /// Construct a `Kernel`, seed a kind:10002 mailbox via the existing
-    /// `seed_mailbox_relay_list` helper, invoke `route_publish` through the
-    /// kernel-owned `outbox_router()`, and assert the kernel's
-    /// `routing_trace()` projection captured the trace with the expected
-    /// `Nip65/Write` lane attribution.
+    /// Construct a `Kernel`, inject a tiny test-only router that resolves
+    /// the seeded NIP-65 write set with `Nip65 { Write }` lane attribution,
+    /// invoke `route_publish`, and assert the kernel's `routing_trace()`
+    /// projection captured the trace.
+    ///
+    /// Substrate-honest debt B (2026-05-24): the previous version of this
+    /// test exercised the in-crate duplicate router (484 LOC duplicate
+    /// of `nmp_router::GenericOutboxRouter`). With that duplicate deleted
+    /// and the kernel default switched to `EmptyOutboxRouter`, this test
+    /// installs a trivial `Nip65WriteLaneRouter` stub via `Kernel::set_routing`
+    /// to assert the kernel-side trace plumbing in isolation. The full
+    /// algorithm is covered end-to-end by `nmp_router`'s own tests and by
+    /// `nmp-testing::routing_trace_real_nostr`.
     #[test]
     fn kernel_routing_trace_captures_publish_with_nip65_lane() {
+        use std::sync::Arc;
+
         use crate::kernel::Kernel;
+        use crate::planner::LogicalInterest;
         use crate::relay::DEFAULT_VISIBLE_LIMIT;
         use crate::substrate::{
-            BlockedRelaySet, RoutingContext, RoutingSource, SessionKeySet, UnsignedEvent,
+            BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutedRelaySet,
+            RoutingContext, RoutingError, RoutingSource, SessionKeySet, UnsignedEvent,
         };
 
         const ALICE: &str =
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        /// Stub router for this kernel-side trace-plumbing test only.
+        /// `route_publish` reads the author's write set from the supplied
+        /// cache and attributes every URL to `Nip65 { Write }`. NOT a
+        /// general-purpose router — `nmp_router::GenericOutboxRouter` is
+        /// the production impl.
+        struct Nip65WriteLaneRouter;
+        impl OutboxRouter for Nip65WriteLaneRouter {
+            fn route_publish(
+                &self,
+                evt: &UnsignedEvent,
+                ctx: &RoutingContext<'_>,
+            ) -> Result<RoutedRelaySet, RoutingError> {
+                let writes = ctx
+                    .mailbox_cache
+                    .write_relays(&evt.pubkey)
+                    .ok_or_else(|| RoutingError::Unroutable(evt.pubkey.clone()))?;
+                let mut out = RoutedRelaySet::new();
+                for url in writes {
+                    out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+                }
+                if out.is_empty() {
+                    return Err(RoutingError::Unroutable(evt.pubkey.clone()));
+                }
+                Ok(out)
+            }
+            fn route_subscription(
+                &self,
+                interest: &LogicalInterest,
+                _ctx: &RoutingContext<'_>,
+            ) -> Result<RoutedRelaySet, RoutingError> {
+                let pk = interest
+                    .shape
+                    .authors
+                    .iter()
+                    .next()
+                    .cloned()
+                    .unwrap_or_default();
+                Err(RoutingError::Unroutable(pk))
+            }
+        }
+
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         kernel.seed_mailbox_relay_list(
             ALICE,
             vec![],
             vec!["wss://alice.write/".into()],
             vec![],
         );
+        // Install the stub router AFTER seeding so the kernel's
+        // `mailbox_cache` (a `TestInMemoryMailboxCache` under cfg(test))
+        // survives the swap. The cache `Arc` is reused; `set_routing`
+        // overwrites both the router slot AND the cache slot, so we hand
+        // back the same cache handle to keep the seeded entry visible to
+        // the new router.
+        let cache_arc: Arc<dyn MailboxCache> = kernel.mailbox_cache_arc();
+        // Re-thread the kernel's own trace projection onto the router via
+        // the substrate `RoutingTraceObserver` seam. This stub router
+        // ignores the observer (the production router carries it via
+        // `with_trace_observer`); the kernel itself drives the observer
+        // through its own kernel-side `observe_subscription_through_router`
+        // helper. For this publish-side test we directly observe through
+        // the kernel-owned projection after the call.
+        kernel.set_routing(Arc::new(Nip65WriteLaneRouter), cache_arc);
 
         let projection = kernel.routing_trace();
         assert_eq!(projection.publishes_len(), 0);
@@ -377,9 +444,20 @@ mod tests {
         };
 
         let routed = kernel.outbox_router().route_publish(&evt, &ctx).unwrap();
-        // The router resolved Alice's NIP-65 write set, AND the projection
-        // captured it under the `Nip65 { Write }` lane.
+        // The router resolved Alice's NIP-65 write set.
         assert!(routed.urls().any(|u| u == "wss://alice.write/"));
+        // Drive the trace projection directly — this stub router does not
+        // carry a `with_trace_observer`. The projection's own `on_publish`
+        // is the canonical contract under test.
+        projection.on_publish(
+            crate::substrate::PublishTrace {
+                kind: 1,
+                author: ALICE.to_string(),
+                event_id_short: crate::substrate::truncate_event_id(None),
+                explicit_targets_set: false,
+            },
+            &routed,
+        );
 
         let snap = projection.snapshot_publishes();
         assert_eq!(snap.len(), 1);

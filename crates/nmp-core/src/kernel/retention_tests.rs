@@ -344,7 +344,7 @@ fn claim_flood_does_not_grow_unbounded() {
 /// zero after each cycle, so 100 cycles leave it empty.
 #[test]
 fn view_close_evicts_wire_subs_to_zero() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
     assert_eq!(
         kernel.wire_subs_len_for_test(),

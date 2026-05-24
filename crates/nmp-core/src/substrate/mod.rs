@@ -41,8 +41,8 @@
 mod action;
 mod bounded;
 mod capability;
-mod default_routing;
 mod dm_inbox_relays;
+mod empty_routing;
 mod identity;
 mod ingest;
 mod keyring;
@@ -90,9 +90,9 @@ pub use protocol::{
 // exception); re-exporting its capability trait keeps the dep wall
 // asymmetric the way the architecture wants it.
 pub use nmp_nip59::SignerForSeal;
-pub use default_routing::{
-    InMemoryMailboxCache as DefaultInMemoryMailboxCache, Nip65WriteSetRouter,
-};
+pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
+#[cfg(any(test, feature = "test-support"))]
+pub use empty_routing::TestInMemoryMailboxCache;
 pub use routing::{
     AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,
     OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,

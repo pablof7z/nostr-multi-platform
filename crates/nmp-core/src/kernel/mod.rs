@@ -141,6 +141,8 @@ mod timeline_order_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
 #[cfg(test)]
+mod test_router;
+#[cfg(test)]
 mod tests;
 mod types;
 mod update;
@@ -296,9 +298,13 @@ pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
 use crate::substrate::{
-    empty_dm_inbox_relay_lookup, DefaultInMemoryMailboxCache, DmInboxRelayLookup,
-    EventIngestDispatcher, MailboxCache, Nip65WriteSetRouter, OutboxRouter, ParsedRelayList,
+    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher,
+    MailboxCache, OutboxRouter, ParsedRelayList,
 };
+#[cfg(any(test, feature = "test-support"))]
+use crate::substrate::TestInMemoryMailboxCache;
+#[cfg(not(any(test, feature = "test-support")))]
+use crate::substrate::EmptyMailboxCache;
 use crate::util::sort_dedup;
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
@@ -401,10 +407,13 @@ pub(crate) struct Kernel {
     /// `docs/architecture/crate-boundaries.md` (V-50). Replaces the
     /// pre-step-3 `HashMap<String, AuthorRelayList>` so the kernel and
     /// the injected [`OutboxRouter`] read from one source of truth.
-    /// Default: `nmp_core::substrate::DefaultInMemoryMailboxCache`.
-    /// Production composition (apps that depend on `nmp-router`) is
-    /// expected to inject `nmp_router::InMemoryMailboxCache` via
-    /// [`Kernel::with_routing`].
+    /// Default: `EmptyMailboxCache` in production (substrate-honest debt
+    /// B, 2026-05-24); `TestInMemoryMailboxCache` under
+    /// `cfg(any(test, feature = "test-support"))`. Production composition
+    /// (apps that depend on `nmp-router`) injects
+    /// `nmp_router::InMemoryMailboxCache` via [`Kernel::set_routing`]
+    /// (driven by [`crate::NmpApp::set_routing_substrate`]) before any
+    /// kind:10002 is ingested.
     ///
     /// The kind:10002 ingest path (`ingest::relay_list::ingest_relay_list`)
     /// is the single writer of this cache. The `mailbox_cache` is read
@@ -419,11 +428,12 @@ pub(crate) struct Kernel {
     /// `docs/architecture/crate-boundaries.md` §3.2. The kernel holds
     /// this as `Arc<dyn OutboxRouter>` (per the spec) so a competing
     /// routing algorithm is a single-line swap at composition time.
-    /// Default: `nmp_core::substrate::Nip65WriteSetRouter` (NIP-65
-    /// write set on publish, read set on subscribe, AppRelay fallback,
-    /// blocked-relay post-filter). Production composition is expected
-    /// to inject `nmp_router::GenericOutboxRouter` via
-    /// [`Kernel::with_routing`].
+    /// Default: [`crate::substrate::EmptyOutboxRouter`] (every call
+    /// returns `Unroutable` — substrate-honest debt B, 2026-05-24).
+    /// Production composition injects `nmp_router::GenericOutboxRouter`
+    /// via [`Kernel::set_routing`] (driven by
+    /// [`crate::NmpApp::set_routing_substrate`]) before any routing
+    /// decision is requested.
     ///
     /// **Debt A**: the router is the live decision authority for every
     /// kernel-driven REQ. `kernel/requests/profile.rs` (`author_requests`,
@@ -436,11 +446,12 @@ pub(crate) struct Kernel {
     outbox_router: Arc<dyn OutboxRouter>,
     /// V-51 phase 1 — bounded ring-buffer projection of recent routing
     /// decisions. Constructed once in `Kernel::with_optional_publish_store_and_path`
-    /// and wired into the default `Nip65WriteSetRouter` via
-    /// `with_trace_observer`. Production composition that swaps in
-    /// `nmp_router::GenericOutboxRouter` via [`Kernel::set_routing`] re-wires
-    /// the observer by passing this same `Arc` through. Read by the FFI
-    /// surface in phase 2 (`recent_routing_decisions` snapshot field).
+    /// and threaded into production composition via the
+    /// `RoutingSubstrateSlot` factory (`with_trace_observer`). The default
+    /// [`crate::substrate::EmptyOutboxRouter`] never produces a decision
+    /// so the ring stays empty until a real router is installed.
+    /// Read by the FFI surface in phase 2 (`recent_routing_decisions`
+    /// snapshot field).
     routing_trace: Arc<routing_trace::RoutingTraceProjection>,
     /// Substrate DM-inbox relay lookup — V-40 of
     /// `docs/architecture/crate-boundaries.md`. The kernel reads this when
@@ -855,13 +866,14 @@ impl Kernel {
     /// `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>` onto the
     /// kernel. Production composition (apps that depend on
     /// `nmp-router`) calls this after `Kernel::new` /
-    /// `Kernel::with_storage_path` to swap the kernel-internal
-    /// `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults
-    /// for `nmp_router::GenericOutboxRouter` +
-    /// `nmp_router::InMemoryMailboxCache` (the architectural homes for
-    /// the production impls). The kernel itself cannot depend on
-    /// `nmp-router` (Layer 3 → Layer 2 would invert the dependency
-    /// arrow), so injection is mandatory for the production swap.
+    /// `Kernel::with_storage_path` to swap the
+    /// [`crate::substrate::EmptyOutboxRouter`] +
+    /// [`crate::substrate::EmptyMailboxCache`] defaults (substrate-honest
+    /// debt B, 2026-05-24) for `nmp_router::GenericOutboxRouter` +
+    /// `nmp_router::InMemoryMailboxCache`. The kernel itself cannot
+    /// depend on `nmp-router` (Layer 3 → Layer 2 would invert the
+    /// dependency arrow), so injection is mandatory for the production
+    /// swap.
     ///
     /// MUST be called BEFORE any kind:10002 event is ingested — the
     /// caches are independent stores, not a write-through pair, so a
@@ -1011,18 +1023,31 @@ impl Kernel {
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
 
-        // V-51 phase 1 — construct the routing-trace projection and wire it
-        // into the default router. `Arc<RoutingTraceProjection>` clones to
-        // both the kernel field (read by phase 2's FFI surface) and the
-        // router's `Arc<dyn RoutingTraceObserver>` slot (write end).
-        // Production composition that swaps in `nmp_router::GenericOutboxRouter`
-        // via `set_routing` is expected to thread the same projection
-        // through via its own `with_trace_observer` builder.
+        // V-51 phase 1 — construct the routing-trace projection. The kernel
+        // hands this to production composition (via `routing_trace()` →
+        // `RoutingSubstrateSlot` factory → `GenericOutboxRouter::with_trace_observer`)
+        // so every routing decision the production router makes populates
+        // the ring buffer the FFI snapshot surface + `chirp-repl routing-trace`
+        // read from.
+        //
+        // Substrate-honest debt B (2026-05-24): the kernel's default
+        // `outbox_router` slot used to hold an in-crate router that
+        // duplicated `nmp_router::GenericOutboxRouter`'s algorithm
+        // byte-for-byte (`nmp-core` could not depend on `nmp-router` so the
+        // only way to keep a routing default was to copy the algorithm). The
+        // duplicate is deleted: the default is now `EmptyOutboxRouter`
+        // (always returns `Unroutable`). Every production composition
+        // installs a real router via `NmpApp::set_routing_substrate` before
+        // the kernel issues any routing decision; tests that exercise real
+        // routing call `Kernel::set_routing` directly. The default `mailbox_cache`
+        // is similarly `EmptyMailboxCache` in production and a
+        // `TestInMemoryMailboxCache` under `cfg(any(test, feature = "test-support"))`
+        // so the dozens of in-tree kind:10002 ingest tests keep working
+        // without each one having to inject `nmp_router::InMemoryMailboxCache`
+        // from a downstream crate (which `nmp-core` cannot depend on —
+        // layering).
         let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::new());
-        let trace_obs: Arc<dyn crate::substrate::RoutingTraceObserver> =
-            Arc::clone(&routing_trace) as Arc<dyn crate::substrate::RoutingTraceObserver>;
-        let outbox_router: Arc<dyn OutboxRouter> =
-            Arc::new(Nip65WriteSetRouter::new().with_trace_observer(trace_obs));
+        let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
 
         Self {
             store,
@@ -1046,7 +1071,10 @@ impl Kernel {
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             seed_contacts: HashMap::new(),
-            mailbox_cache: Arc::new(DefaultInMemoryMailboxCache::new()),
+            #[cfg(any(test, feature = "test-support"))]
+            mailbox_cache: Arc::new(TestInMemoryMailboxCache::new()),
+            #[cfg(not(any(test, feature = "test-support")))]
+            mailbox_cache: Arc::new(EmptyMailboxCache::new()),
             outbox_router,
             routing_trace,
             dm_inbox_relays: empty_dm_inbox_relay_lookup(),

@@ -704,7 +704,7 @@ fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
 
 #[test]
 fn ingest_timeline_event_queues_missing_author_profile_request() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let keys = ::nostr::Keys::generate();
     let note = signed_note(&keys, "profile me", 1_700_000_000);
     let author = note.pubkey.clone();
