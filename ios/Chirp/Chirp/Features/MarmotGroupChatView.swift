@@ -26,6 +26,7 @@ struct MarmotGroupChatView: View {
     @State private var messages: [MarmotMessage] = []
     @State private var draft = ""
     @State private var showInvite = false
+    @State private var showMembers = false
     @State private var sending = false
     @FocusState private var composerFocused: Bool
 
@@ -53,6 +54,12 @@ struct MarmotGroupChatView: View {
         .sheet(isPresented: $showInvite) {
             MarmotInviteSheet(group: liveGroup)
                 .environmentObject(model)
+        }
+        .sheet(isPresented: $showMembers) {
+            MarmotMembersSheet(
+                members: liveGroup.membersDisplay,
+                onDone: { showMembers = false }
+            )
         }
         .task(id: model.rev) { reloadMessages() }
         .onAppear { reloadMessages() }
@@ -171,9 +178,16 @@ struct MarmotGroupChatView: View {
                 Text(liveGroup.displayName)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                Text(liveGroup.memberCountDisplay)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    showMembers = true
+                } label: {
+                    Text(liveGroup.memberCountDisplay)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show members")
+                .accessibilityIdentifier("marmot-show-members")
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
@@ -242,5 +256,34 @@ private struct MarmotMessageRow: View {
                 .padding(.leading, 44)
         }
         .accessibilityIdentifier("marmot-message-\(message.id)")
+    }
+}
+
+// ── Members sheet (V-17) ──────────────────────────────────────────────────
+//
+// Thin-shell render of `liveGroup.membersDisplay`. The Rust projection has
+// already converted each hex pubkey to an abbreviated bech32 npub — Swift
+// only renders the strings (no hex→npub conversion, no business logic).
+
+private struct MarmotMembersSheet: View {
+    let members: [String]
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationView {
+            List(members, id: \.self) { npub in
+                Text(npub)
+                    .font(.body.monospaced())
+                    .accessibilityIdentifier("marmot-member-\(npub)")
+            }
+            .navigationTitle("Members")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done", action: onDone)
+                        .accessibilityIdentifier("marmot-members-done")
+                }
+            }
+        }
     }
 }
