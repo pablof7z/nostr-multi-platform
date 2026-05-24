@@ -9,7 +9,7 @@ showing how a real Nostr protocol crate uses them, and how modules compose.
 
 ## Annotated walkthrough: `fixture-todo-core`
 
-`crates/fixture-todo-core/src/lib.rs:13-265` is ADR-0009 acceptance criterion
+`apps/fixture/fixture-todo-core/src/lib.rs:13-265` is ADR-0009 acceptance criterion
 1 made real: a module exercising **all five trait families with zero Nostr
 concepts**. It is the canonical template — read it before writing any module.
 

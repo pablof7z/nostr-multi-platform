@@ -142,7 +142,7 @@ Files, verified against the code at commit `a1dcc568`:
   `UnfollowModule;` wrapping the already-existing `ReactAction`
   (`ffi.rs:585`) and `PubkeyAction` (`:597`) input types. Drop the inline
   registration; call `register_action_module::<ReactModule>()` etc.
-- **`crates/fixture-todo-core/src/lib.rs:199`** — `TodoActionModule`. The
+- **`apps/fixture/fixture-todo-core/src/lib.rs:199`** — `TodoActionModule`. The
   fixture's executor lives in the codegen-driven app shell; the trait's
   `execute` body is a non-trivial migration target (it constructs the
   fixture's action update enum). Implement `execute` with the existing logic;

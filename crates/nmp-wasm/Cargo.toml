@@ -16,7 +16,7 @@ crate-type = ["cdylib", "rlib"]
 # wire NmpApp into WasmRuntime using a WASM-compatible transport
 # (web_sys::WebSocket + IndexedDB store).
 nmp-core = { path = "../nmp-core", default-features = false }
-nmp-chirp-config = { path = "../nmp-chirp-config" }
+nmp-chirp-config = { path = "../../apps/chirp/nmp-chirp-config" }
 # V-01 Stage 3b — `nmp-signers` for the NIP-07 browser-extension `Signer`.
 # Always-on dependency: `nmp-signers` itself compiles on every host (its native
 # code is the non-wasm fallback that returns `SignerError::Unsupported`). The
