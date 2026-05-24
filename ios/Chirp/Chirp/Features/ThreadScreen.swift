@@ -54,7 +54,7 @@ struct ThreadScreen: View {
             model.closeThread(eventID: eventID)
         }
         .sheet(item: $replyTargetID) { target in
-            ComposeView(replyToID: target.eventID)
+            ComposeView(replyToID: target.eventID, replyToShortID: target.shortID)
         }
     }
 
@@ -105,7 +105,11 @@ struct ThreadScreen: View {
                             model.react(targetEventID: item.id, reaction: "❤")
                         },
                         onReply: {
-                            replyTargetID = ReplyTarget(eventID: item.id)
+                            // V-28 thin-shell: carry the kernel-pre-formatted
+                            // `<first 8>…<last 8>` abbreviation through to
+                            // `ComposeView`'s reply banner so the view layer
+                            // never slices the raw 64-char id.
+                            replyTargetID = ReplyTarget(eventID: item.id, shortID: item.shortId)
                         }
                     )
                     .id(item.id)
@@ -198,5 +202,9 @@ struct ThreadScreen: View {
 
 private struct ReplyTarget: Identifiable {
     let eventID: String
+    /// Kernel-pre-formatted abbreviation (`TimelineItem.shortId`). Forwarded
+    /// to `ComposeView.replyToShortID` so the reply banner caption is bound
+    /// verbatim — never sliced by Swift (V-28, aim.md §6.9).
+    let shortID: String
     var id: String { eventID }
 }

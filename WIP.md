@@ -9,7 +9,7 @@
 
 ## Active
 
-_(none — scanning for next violation)_
+- 2026-05-24 — fix(nmp-core/nmp-nip01/ios): V-28 — shortPubkey/shortID/relativeTime display strings to Rust — worktree `worktree-agent-adf54da30ecbabad4`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

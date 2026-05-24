@@ -168,6 +168,7 @@ public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendab
     public let authorLnurl: String?
     public let authorPictureUrl: String
     public let authorPubkey: String
+    public let authorPubkeyShort: String
     public let content: String
     public let contentPreview: String
     public let createdAtDisplay: String
@@ -177,6 +178,7 @@ public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendab
     public let navTargetId: String
     public let relayCount: UInt32
     public let repostInnerContent: String
+    public let shortId: String
 }
 
 // MARK: - SnapshotProjections

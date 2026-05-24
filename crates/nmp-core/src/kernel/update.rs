@@ -12,7 +12,7 @@
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, avatar_color, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_pubkey_display, short_hex_display, avatar_color, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
 // `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
 // The single use site at `created_at_display` is already gated; import has
 // to match so `--no-default-features` (wasm32) compiles.
@@ -515,6 +515,11 @@ impl Kernel {
             created_at_display: format_timestamp(event.created_at),
             #[cfg(not(feature = "native"))]
             created_at_display: event.created_at.to_string(),
+            // V-28 thin-shell: pre-formatted `<first 8>…<last 8>` so the
+            // Swift view layer can render the secondary author identifier
+            // and reply-banner caption without any string slicing.
+            author_pubkey_short: short_hex_display(&event.author),
+            short_id: short_hex_display(&event.id),
             relay_count: event.relay_count,
             is_repost,
             nav_target_id,
