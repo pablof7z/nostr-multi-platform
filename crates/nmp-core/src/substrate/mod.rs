@@ -48,6 +48,7 @@ mod keyring;
 mod host_op_handler;
 pub mod placeholder;
 mod protocol;
+mod routing;
 mod view;
 
 pub use action::{
@@ -65,6 +66,12 @@ pub use keyring::{
 };
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+pub use routing::{
+    AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,
+    OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,
+    RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, SessionKeySet,
+    UserConfiguredCategory,
+};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
