@@ -10,17 +10,18 @@
 //! Per aim.md §2 (display formatting is Rust-owned) every UI string a
 //! native shell renders must be computed in Rust before it crosses the FFI.
 //! NIP crates, the kernel, and host-app projection layers all need the
-//! same five primitives — bech32 encoding, abbreviation, initials, avatar
-//! tint, relative-time bucketing — and they must agree byte-for-byte so
-//! the same author renders with the same tint across every surface
-//! (DMs, NIP-29 group chat, the modular timeline, the Accounts toolbar,
-//! Marmot rows). The kernel is the only place every consumer already
-//! depends on; consolidating here is the single source of truth that
-//! avoids the cross-NIP-crate dep edge a per-crate helper would force.
+//! same six primitives — bech32 encoding, npub abbreviation, hex
+//! abbreviation, initials, avatar tint, relative-time bucketing — and they
+//! must agree byte-for-byte so the same author renders with the same tint
+//! across every surface (DMs, NIP-29 group chat, the modular timeline, the
+//! Accounts toolbar, Marmot rows). The kernel is the only place every
+//! consumer already depends on; consolidating here is the single source of
+//! truth that avoids the cross-NIP-crate dep edge a per-crate helper would
+//! force.
 //!
-//! V-33 — replaces five byte-identical copies of these helpers that
-//! previously lived in `nmp-nip17`, `nmp-nip02`, `nmp-nip29`, `nmp-nip01`,
-//! and `nmp-app-marmot`. The cross-surface djb2 vector pinned in
+//! V-33 — replaced duplicate helpers previously scattered across
+//! `nmp-nip17`, `nmp-nip02`, `nmp-nip29`, `nmp-nip01`, `nmp-app-marmot`,
+//! and `nmp-core/kernel/nostr.rs`. The cross-surface djb2 vector pinned in
 //! [`tests`] (`"abcdef…0123456789" → "08E60C"`) anchors the canonical
 //! algorithm; per-crate redundant copies of that pin were removed.
 
