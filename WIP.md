@@ -17,7 +17,7 @@ later steps remain.
 
 ## Active
 
-- 2026-05-24 — refactor(workspace): step 11 — move app-specific crates (`nmp-chirp-config`, `chirp-repl`, `chirp-tui`, `fixture-todo-core`) out of `crates/` into `apps/<app>/` — PR #451 (rebased onto master)
+- 2026-05-24 — refactor(nip01/nip29/core): V-12 — extract group_chat / timeline_projection / identity_state tests — PR #453 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
