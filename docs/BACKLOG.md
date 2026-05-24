@@ -511,6 +511,39 @@ locks the djb2 output so an algorithm drift cannot silently change every group-c
 **Behaviour change called out:** the avatar tint for every existing group-chat row will shift
 once on first run — that's the consistency fix, not a regression.
 
+### V-27 · `ModularBlockView` pubkey-derived display strings in Swift — **DONE**
+
+**Verified:** `ios/Chirp/Chirp/Components/ModularBlockView.swift` carried four pubkey/timestamp-derived
+display computations the host had no business doing: `defaultInitials(pubkey:)` at line 319
+(`String(pubkey.prefix(2))` — first-two-chars initials), `defaultColor(pubkey:)` at line 323
+(`"#" + String(pubkey.prefix(6))` — a **different** algorithm from `nmp_nip17::display::avatar_color_hex`
+and the V-25 nmp-nip29 helper, so the same author rendered with a different tint in the modular
+timeline vs. DMs vs. NIP-29 group chat), `displayPubkey(item:card:)` at line 250 (`"\(hex.prefix(6))…\(hex.suffix(4))"`
+— abbreviated hex for the Twitter-style secondary-identifier slot), and `relativeTime(card:)` at line 264
+(`"\(Int(delta))s/m/h/d"` from `card.createdAt` — relative time in Swift, with a different dialect
+from `nmp_nip17::display::format_ago_secs` and the V-22/V-25 helpers).
+
+**Fixed:** added five fields to `TimelineEventCard` in `crates/nmp-nip01/src/timeline_projection.rs`
+— `created_at_display`, `author_avatar_initials`, `author_avatar_color`, `author_pubkey_short`,
+`author_display_name` — populated at `from_event` via four file-local helpers
+(`format_ago_secs`, `pubkey_initials`, `avatar_color_hex`, `pubkey_display`). The colour helper is
+**byte-identical** to `nmp_nip17::display::avatar_color_hex` (djb2 over the last 6 bytes), and the
+short-pubkey helper uses the V-25 `8…8` algorithm so the same author renders with the same tint and
+the same abbreviated handle in every surface. Deliberate micro-duplication for the same reason
+`format_ago_secs` is duplicated (a NIP crate must not depend on another NIP crate just to share a
+trivial helper). `Inner::refresh_author_cards` was extended to keep the flat `author_display_name`
+mirror in sync when a kind:0 arrives after a note is ingested. Swift `ChirpEventCard` in
+`TimelineBlock.swift` gains the five matching camelCase properties; `ModularBlockView` binds them
+directly; the four Swift display helpers are deleted; the test-only `ChirpEventCard(...)`
+constructor in `NoteContentRenderingTests.swift` supplies fixture values for the new fields.
+
+**Behaviour change called out:** every modular-timeline row's avatar tint, avatar initials,
+secondary-identifier caption, and relative-time string will shift once on first run — the tint
+becomes consistent with DMs/NIP-29/Marmot (V-25 fix), initials change from raw-hex-prefix to
+uppercase (matching every other surface), the handle abbreviation widens from `6…4` to `8…8`
+(matching V-25), and the timestamp dialect changes from `"5s"` to `"5s ago"` (matching V-20/V-22).
+None are regressions; all are the consistency fix.
+
 ---
 
 ## Section 2 — In Flight

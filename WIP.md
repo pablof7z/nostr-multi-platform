@@ -9,8 +9,7 @@
 
 ## Active
 
-- PR #??? — fix(nmp-core/ios): V-26 — AccountSummary avatarInitials/avatarColorHex to Rust — in progress
-- PR #??? — fix(nmp-nip01/ios): V-27 — ChirpEventCard display fields to Rust — in progress
+- PR #438 — fix(nmp-core/ios): V-26 — AccountSummary avatarInitials/avatarColorHex to Rust — in progress
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
