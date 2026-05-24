@@ -9,7 +9,7 @@
 //!
 //! Every op that produces relay-bound events now publishes them
 //! INTERNALLY via [`crate::projection::publish`] (the workspace-internal
-//! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
+//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
 //! the retained `&NmpApp`) — there is no Swift relay path. Per-kind
 //! routing:
 //!

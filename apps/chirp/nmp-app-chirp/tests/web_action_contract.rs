@@ -1,7 +1,7 @@
 use std::ffi::{CStr, CString};
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister};
-use nmp_core::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp};
 use nmp_wasm::{AppAction, AppActionDispatch};
 
 fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {

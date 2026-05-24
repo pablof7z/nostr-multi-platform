@@ -919,6 +919,7 @@ dependencies = [
  "nmp-app-chirp",
  "nmp-chirp-config",
  "nmp-core",
+ "nmp-ffi",
  "nostr",
  "serde_json",
 ]
@@ -934,6 +935,7 @@ dependencies = [
  "nmp-app-chirp",
  "nmp-chirp-config",
  "nmp-core",
+ "nmp-ffi",
  "ratatui",
  "rexpect",
  "serde_json",
@@ -1997,6 +1999,7 @@ name = "fixture-todo-core"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "serde",
  "serde_json",
 ]
@@ -3769,6 +3772,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-app-template",
  "nmp-core",
+ "nmp-ffi",
  "nmp-marmot",
  "nmp-nip01",
  "nmp-nip02",
@@ -3791,6 +3795,7 @@ version = "0.1.0"
 dependencies = [
  "fixture-todo-core",
  "nmp-core",
+ "nmp-ffi",
  "serde",
  "serde_json",
 ]
@@ -3800,6 +3805,7 @@ name = "nmp-app-longform"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "serde",
  "serde_json",
 ]
@@ -3809,6 +3815,7 @@ name = "nmp-app-notes"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "nmp-signer-broker",
 ]
 
@@ -3818,6 +3825,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "nmp-coverage-gate",
+ "nmp-ffi",
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip57",
@@ -3917,6 +3925,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-ffi"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nostr",
+ "serde",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "nmp-marmot"
 version = "0.1.0"
 dependencies = [
@@ -3925,6 +3944,7 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",
+ "nmp-ffi",
  "nmp-nip59",
  "nostr",
  "serde",
@@ -3956,6 +3976,7 @@ name = "nmp-nip02"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "nostr",
  "serde",
  "serde_json",
@@ -3966,6 +3987,7 @@ name = "nmp-nip17"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "nmp-nip59",
  "nostr",
  "serde",
@@ -3978,6 +4000,7 @@ name = "nmp-nip29"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "serde",
  "serde_json",
 ]
@@ -4006,6 +4029,7 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "nmp-core",
+ "nmp-ffi",
  "nostr",
  "serde",
  "serde_json",
@@ -4081,6 +4105,7 @@ name = "nmp-router"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-ffi",
  "serde",
 ]
 
@@ -4090,6 +4115,7 @@ version = "0.1.0"
 dependencies = [
  "mio",
  "nmp-core",
+ "nmp-ffi",
  "nmp-network",
  "nmp-signer-iface",
  "nmp-signers",
@@ -4146,6 +4172,7 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",
+ "nmp-ffi",
  "nmp-marmot",
  "nmp-nip01",
  "nmp-nip42",

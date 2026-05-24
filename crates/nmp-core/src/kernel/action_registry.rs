@@ -223,7 +223,7 @@ impl ActionRegistry {
     /// `extern "C"` function) and may include user-supplied (module-author)
     /// code. A caught panic returns `Err(String)` rather than unwinding across
     /// the FFI boundary.
-    pub(crate) fn execute(
+    pub fn execute(
         &self,
         namespace: &str,
         action_json: &str,

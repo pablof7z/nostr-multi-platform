@@ -5,7 +5,8 @@
 use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::{KernelEventObserver, NmpApp};
+use nmp_core::KernelEventObserver;
+use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_nip29::group_id::GroupId;

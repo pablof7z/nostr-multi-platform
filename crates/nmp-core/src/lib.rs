@@ -7,21 +7,35 @@ pub mod bunker_hook;
 // to consume. Off by default — shipped artifacts never link `schemars`.
 #[cfg(feature = "codegen-schema")]
 pub mod codegen_schema;
-mod capability_socket;
+// Promoted from `mod capability_socket` so `nmp-ffi` can reach
+// `dispatch_capability` / `new_capability_callback_slot` /
+// `CapabilityCallbackSlot` through `nmp_core::__ffi_internal::*`. The
+// socket is the substrate of the capability-callback seam; nothing in it
+// names an app or protocol noun.
+#[doc(hidden)]
+pub mod capability_socket;
 // V-33: shared display-string helpers (bech32 abbreviation, avatar tint
 // djb2, relative-time bucketing) — canonical home for the cross-surface
 // formatting primitives every NIP crate / kernel module / host-app
 // projection previously duplicated.
 pub mod display;
-// ffi: C-ABI entry points for Swift/Kotlin native shells.
-// Gated on `native` — wasm32 uses wasm-bindgen, not C-ABI.
-#[cfg(feature = "native")]
-mod ffi;
+// Step 11 final — the C-ABI surface that used to live in `mod ffi;` now lives
+// in the standalone `nmp-ffi` crate (`docs/architecture/crate-boundaries.md`
+// §5 step 11-final). The substrate types the FFI marshals are re-exported
+// through the public surface below + the `__ffi_internal` module so the
+// extracted crate can name them through normal Rust paths.
+//
+// `mod ffi;` is gone — `pub use ffi::*` at the bottom of this file is gone
+// too — consumers reach the symbols through `nmp_ffi::*` directly.
 // ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
 // because actor/commands/* use it on the native side (also actor is always
-// compiled until Phase 1c decoupling). If actor is gated in a future PR,
-// ffi_guard can be folded into the native gate alongside it.
-mod ffi_guard;
+// compiled until Phase 1c decoupling). Promoted from `mod ffi_guard` to
+// `pub mod ffi_guard` so the extracted `nmp-ffi` crate can reach
+// `guard_ffi_callback` through a normal Rust path. The guard is substrate-
+// grade (no app or protocol nouns); making it public is a layer-shape
+// concession, not a noun leak.
+#[doc(hidden)]
+pub mod ffi_guard;
 // Step 8 phase A — the keepalive FSM moved with the relay worker to
 // `nmp-network::keepalive`. It's purely transport-internal; `nmp-core`
 // no longer re-exports it.
@@ -93,6 +107,12 @@ pub mod stable_hash {
 pub mod store {
     pub use nmp_store::*;
 }
+// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`)
+// and the actor runtime (`crate::actor`) both reach into. Used to live in
+// `crate::ffi::mod.rs` (private); promoted here so the actor module (a
+// crate-private module) can still name them after the FFI extraction.
+// `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
+pub mod slots;
 pub mod subs;
 pub mod substrate;
 pub mod tags;
@@ -104,8 +124,6 @@ pub use app::{
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
-#[cfg(feature = "native")]
-pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 // V-51 phase 4 (validation harness) — the projection's three public types
 // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
@@ -144,68 +162,11 @@ pub use update_envelope::{
 pub use actor::ActorCommand;
 pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 
-// Re-export the FFI entry-points so any native (non-WASM) Rust-side crate
-// — including third-party app crates such as `nmp-app-fixture` and any
-// future `nmp-app-*` — can call them directly via the Rust rlib dependency,
-// without an `extern "C"` block. The symbols remain `#[no_mangle]` on the
-// ffi:: side and are still reachable from Swift/C unchanged.
-//
-// One door per capability: `nmp_app_publish_signed_event`,
-// `nmp_app_publish_signed_event_to`, and `nmp_app_publish_unsigned_event`
-// were deleted — every user/app-authored event-producing publish now goes
-// through `nmp_app_dispatch_action` under the `nmp.publish` namespace.
-// `nmp_app_retry_publish` / `nmp_app_cancel_publish` survive as the
-// publish-lifecycle control plane (no event production; the D11 lint
-// whitelists them).
-//
-// Gated on `native` (the default feature) so wasm32 (`--no-default-features`)
-// continues to compile without these symbols. The `android-ffi` and
-// `test-support` features both already imply `native`, so they inherit this
-// surface; the deltas they add are the small blocks below.
-#[cfg(feature = "native")]
-pub use ffi::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile, nmp_app_close_author,
-    nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account, nmp_app_dispatch_action,
-    nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string, nmp_app_lifecycle_background,
-    nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
-    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_open_uri, nmp_app_register_event_observer,
-    nmp_app_register_raw_event_observer, nmp_app_release_profile, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_set_capability_callback,
-    nmp_app_set_lifecycle_callback, nmp_app_set_storage_path, nmp_app_set_update_callback,
-    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
-    nmp_app_switch_active, nmp_app_unregister_event_observer, nmp_app_unregister_raw_event_observer,
-};
-
-// test-support delta: live-bench harnesses and integration test binaries need
-// a few extra entry points that production app crates do not — pre-verified
-// event injection (used by the S3/S4/S5 throughput harnesses), per-action
-// stage acks (used by action-FSM tests), and read-side projection JSON dumps
-// (used to assert reducer output without going through the snapshot
-// callback). Kept gated on test-support so they don't pollute the
-// production-app re-export surface.
-//
-// `test-support` implies the `native` superset above (it requires `native`
-// in practice — every symbol below lives in `ffi::`, and `ffi::` is gated on
-// `native`). The 32 overlap symbols are exposed through the `native` block.
-#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
-pub use ffi::{
-    nmp_app_ack_action_stage, nmp_app_inject_pre_verified_events,
-    nmp_app_inject_signed_event_json, nmp_app_inject_signed_events, nmp_app_read_projection_json,
-};
-
-// android-ffi delta: `nmp_app_remove_account`, `nmp_app_signin_bunker`,
-// `nmp_app_stop`, and `nmp_app_switch_active` were historically gated here.
-// They are lifecycle essentials every native app needs (iOS included) and
-// are now included unconditionally in the `native` block above. The
-// android-ffi feature is retained for the wallet delta below but carries no
-// lifecycle symbols of its own.
-
-// D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
-// gated behind the `wallet` Cargo feature. Re-exported via Rust paths for
-// the Android JNI shim only when both features are on. `wallet` implies
-// `native` implies `android-ffi` already has the `ffi` module available.
-#[cfg(all(feature = "android-ffi", feature = "wallet"))]
-pub use ffi::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
+// Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
+// re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
+// Consumers that previously named the symbols through `nmp_core::` should
+// migrate to `nmp_ffi::*`. The `NmpApp` opaque handle moved with the
+// symbols. See `docs/architecture/crate-boundaries.md` §5 step 11-final.
 
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests
 // (the `LifecycleObserverFn` is a plain `extern "C" fn` shape) and the
@@ -234,6 +195,52 @@ pub use actor::{
 pub use actor::{
     KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
 };
+
+// ── Step 11 final — `nmp-ffi` re-export surface ────────────────────────────
+//
+// The standalone `nmp-ffi` crate (extracted from `nmp-core::ffi`) reaches
+// these symbols through `nmp_core::__ffi_internal::*`. The module is
+// `#[doc(hidden)]` — no app crate or library consumer should import it; the
+// only legitimate consumer is `nmp-ffi`. Adding a new item here is a layer-
+// shape concession (the substrate item was previously crate-private), not a
+// public API addition.
+//
+// Why the special module rather than promoting each item to `pub` at the
+// crate root: keeps the public surface area visibly identical to before the
+// extraction, and gives `cargo doc` users a single place to spot "this is
+// an extraction seam, not a real API".
+// Gated on `feature = "native"` because the re-exports below pull in
+// `run_actor_with_observers` and friends from `crate::actor`, which are
+// themselves `#[cfg(feature = "native")]`. The wasm32 build
+// (`--no-default-features`) has no actor thread and no FFI shell consuming
+// this module.
+#[cfg(feature = "native")]
+#[doc(hidden)]
+pub mod __ffi_internal {
+    pub use crate::actor::{
+        has_role, new_bunker_handshake_slot, new_event_observer_slot,
+        new_lifecycle_observer_slot, new_raw_event_observer_slot, nostrconnect_relay_url,
+        register_c_observer, register_c_raw_observer, register_rust_observer,
+        register_rust_raw_observer, run_actor_with_observers, unregister_observer,
+        unregister_raw_observer, KernelEventObserverRegistration, KernelEventObserverSlot,
+        LifecycleObserverFn, LifecycleObserverRegistration, LifecycleObserverSlot,
+        RawEventObserverRegistration, RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
+        LIFECYCLE_PHASE_FOREGROUND,
+    };
+    #[cfg(feature = "wallet")]
+    pub use crate::actor::{new_wallet_status_slot, WalletStatusSlot};
+    pub use crate::app::KernelAction;
+    pub use crate::capability_socket::{
+        capability_error_envelope, dispatch_capability, new_capability_callback_slot,
+        CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
+    };
+    pub use crate::kernel::{
+        default_registry, is_hex_id, is_hex_pubkey, new_relay_edit_rows_slot,
+        new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
+        SnapshotProjectionSlot,
+    };
+    pub use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+}
 
 /// Test-support facade: gives live-bench binaries access to the actor
 /// internals without exposing domain nouns in the stable `nmp-core` API.

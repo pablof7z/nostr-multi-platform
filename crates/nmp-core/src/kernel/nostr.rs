@@ -143,11 +143,11 @@ pub(super) fn ratio(numerator: usize, denominator: usize) -> f64 {
     }
 }
 
-pub(crate) fn is_hex_pubkey(value: &str) -> bool {
+pub fn is_hex_pubkey(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-pub(crate) fn is_hex_id(value: &str) -> bool {
+pub fn is_hex_id(value: &str) -> bool {
     is_hex_pubkey(value)
 }
 

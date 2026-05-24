@@ -11,7 +11,12 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 # `UnsignedEvent` / `ActionModule` types the absorbed
 # `nmp.nip65.publish_relay_list` action module depends on.
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `register_actions` takes
+# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

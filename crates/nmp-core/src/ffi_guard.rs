@@ -48,7 +48,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 /// observed again — the caller either returns `None` or moves to the next
 /// registration with a fresh snapshot.
 #[must_use]
-pub(crate) fn guard_ffi_callback<R>(site: &str, body: impl FnOnce() -> R) -> Option<R> {
+pub fn guard_ffi_callback<R>(site: &str, body: impl FnOnce() -> R) -> Option<R> {
     // `site` is retained as a documented call-site label even though the
     // panic arm no longer logs: it keeps the call sites self-describing and
     // leaves a single edit point should a host-observable diagnostic seam

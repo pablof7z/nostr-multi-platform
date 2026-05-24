@@ -7,6 +7,10 @@ description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptReco
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `register_actions` takes
+# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # LNURL-pay fetcher dependencies (V-41). The fetcher runs on
@@ -24,3 +28,4 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

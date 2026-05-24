@@ -4,17 +4,17 @@
 //! for the `substrate::ActionModule` family. Instead of one bespoke C symbol
 //! per verb (`nmp_app_publish_note`, `nmp_app_react`, `nmp_app_follow`, …),
 //! a caller names the action namespace and passes the action as JSON; the
-//! [`crate::kernel::ActionRegistry`] looks up the module and validates it.
+//! [`nmp_core::__ffi_internal::ActionRegistry`] looks up the module and validates it.
 //!
 //! # Scope (M6 — execution wiring)
 //!
 //! This entry point performs **action validation, correlation-id assignment,
-//! AND execution**. After [`crate::kernel::ActionRegistry::start`] validates
+//! AND execution**. After [`nmp_core::__ffi_internal::ActionRegistry::start`] validates
 //! the action and mints a correlation id, the dispatch path drives the
 //! action through the actor:
 //!
 //! * For `nmp.publish` / [`PublishAction::Publish`], the validated signed
-//!   event is converted to a [`crate::store::RawEvent`] and handed to the
+//!   event is converted to a [`nmp_core::store::RawEvent`] and handed to the
 //!   actor via [`ActorCommand::PublishSignedEvent`] — the same actor command
 //!   the (now-deleted) bespoke `nmp_app_publish_signed_event*` FFI symbols
 //!   used to use, plus the workspace-internal
@@ -56,8 +56,8 @@ use std::ffi::{c_char, CString};
 use std::time::{Duration, Instant};
 
 use super::{app_ref, c_string_argument, NmpApp};
-use crate::stable_hash::stable_hash64;
-use crate::substrate::{ActionContext, ActionRejection, ActionResult};
+use nmp_core::stable_hash::stable_hash64;
+use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 
 /// Time-to-live for an `inflight_dispatches` entry — the wall-clock window
 /// during which a same-`(namespace, action_json)` retap collapses to the
@@ -127,7 +127,7 @@ pub extern "C" fn nmp_app_dispatch_action(
 /// an unknown `correlation_id` is a silent no-op (D6 — never a crash).
 ///
 /// THREADING: dispatch is non-blocking — this only enqueues
-/// [`crate::actor::ActorCommand::AckActionStage`] on the actor channel
+/// [`nmp_core::ActorCommand::AckActionStage`] on the actor channel
 /// (D8 — no actor round-trip on the FFI thread). The kernel drops the entry
 /// when the actor dequeues the command and the next snapshot tick emits
 /// without it.
@@ -150,7 +150,7 @@ pub extern "C" fn nmp_app_ack_action_stage(
     if cid.is_empty() {
         return;
     }
-    app.send_cmd(crate::actor::ActorCommand::AckActionStage(cid));
+    app.send_cmd(nmp_core::ActorCommand::AckActionStage(cid));
 }
 
 /// Host-supplied action result observer callback.
@@ -228,7 +228,7 @@ pub extern "C" fn nmp_app_register_action_result_observer(
         // is already contained; this guard closes the foreign-throw half
         // of the gap.
         let _: Option<()> =
-            crate::ffi_guard::guard_ffi_callback("action result observer", || unsafe {
+            nmp_core::ffi_guard::guard_ffi_callback("action result observer", || unsafe {
                 observer(cstr.as_ptr());
             });
     });
@@ -346,7 +346,7 @@ pub(super) fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action
                     // action-stage lifecycle. This is fire-and-forget — the
                     // send is non-blocking (D8) and a disconnected actor
                     // channel is a benign no-op (D6).
-                    app.send_cmd(crate::actor::ActorCommand::RecordActionFailure {
+                    app.send_cmd(nmp_core::ActorCommand::RecordActionFailure {
                         correlation_id: correlation_id.clone(),
                         reason: msg.clone(),
                     });
@@ -367,7 +367,7 @@ pub(super) fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action
 
 /// Drive the validated action toward execution via the registry's executor
 /// map. Each module registers its own executor in
-/// [`crate::kernel::default_registry`]; this function delegates without
+/// [`nmp_core::__ffi_internal::default_registry`]; this function delegates without
 /// naming any module directly (D0).
 ///
 /// `correlation_id` is the registry-minted action id the caller will return

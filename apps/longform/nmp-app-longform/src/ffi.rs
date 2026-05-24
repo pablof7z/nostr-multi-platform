@@ -27,7 +27,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use nmp_core::{nmp_app_new, ActorCommand, KernelEventObserver, NmpApp};
+use nmp_core::{ActorCommand, KernelEventObserver};
+use nmp_ffi::{nmp_app_new, NmpApp};
 
 use crate::projection::{
     ArticleStore, LongformProjection, ARTICLES_SNAPSHOT_KEY, KIND_LONGFORM,
@@ -169,7 +170,7 @@ fn build_and_wire(store: ArticleStore) -> *mut NmpApp {
     // Start the actor. Pass 0 for every clamp so the kernel uses its defaults
     // — `nmp_app_start` treats 0 as "use default" (see `clamp_visible` and
     // `clamp_emit_hz` in `crates/nmp-core/src/ffi/mod.rs`).
-    nmp_core::nmp_app_start(app_ptr, 0, 0, 0);
+    nmp_ffi::nmp_app_start(app_ptr, 0, 0, 0);
 
     // Push the kind:30023 tailing interest. Stable id so a repeat `init`
     // de-dupes in the kernel's interest registry. Global scope: long-form

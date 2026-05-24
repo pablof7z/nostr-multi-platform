@@ -7,7 +7,7 @@
 
 use std::ffi::{c_char, CStr};
 
-use nmp_core::NmpApp;
+use nmp_ffi::NmpApp;
 use nostr::Keys;
 
 use crate::ffi::{register_with_keys, MarmotHandle};

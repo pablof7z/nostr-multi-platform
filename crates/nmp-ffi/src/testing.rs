@@ -12,7 +12,7 @@
 #![cfg(any(test, feature = "test-support"))]
 
 use super::{app_ref, NmpApp};
-use crate::actor::ActorCommand;
+use nmp_core::ActorCommand;
 use std::ffi::{c_char, CStr, CString};
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via
@@ -63,7 +63,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
         "0000000000000000000000000000000000000000000000000000000000000008",
     ];
 
-    let events: Vec<crate::store::VerifiedEvent> = (0..count as u64)
+    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
         .map(|i| {
             // 64-hex event ID derived from prefix + index.
             let raw_id = format!("{prefix}{i:0>16x}");
@@ -72,7 +72,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
             let pubkey = POOL[(i as usize) % POOL.len()].to_string();
             let created_at = base_created_at.saturating_add(i);
             let content = format!("harness event {i}");
-            let raw = crate::store::RawEvent {
+            let raw = nmp_core::store::RawEvent {
                 id,
                 pubkey,
                 created_at,
@@ -84,7 +84,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
                 // FFI ABI.  Use inject_signed_events for full Schnorr verify path.
                 sig: "0".repeat(128),
             };
-            crate::store::VerifiedEvent::from_raw_unchecked(raw)
+            nmp_core::store::VerifiedEvent::from_raw_unchecked(raw)
         })
         .collect();
 
@@ -115,14 +115,14 @@ pub extern "C" fn nmp_app_inject_signed_events(
 
     // Single fixture key: generate once, sign all events.
     let keys = Keys::generate();
-    let events: Vec<crate::store::VerifiedEvent> = (0..count as u64)
+    let events: Vec<nmp_core::store::VerifiedEvent> = (0..count as u64)
         .filter_map(|i| {
             let ts = Timestamp::from(base_created_at.saturating_add(i));
             let nostr_event = EventBuilder::text_note(format!("signed harness event {i}"))
                 .custom_created_at(ts)
                 .sign_with_keys(&keys)
                 .ok()?;
-            let raw = crate::store::RawEvent {
+            let raw = nmp_core::store::RawEvent {
                 id: nostr_event.id.to_hex(),
                 pubkey: nostr_event.pubkey.to_hex(),
                 created_at: nostr_event.created_at.as_secs(),
@@ -132,7 +132,7 @@ pub extern "C" fn nmp_app_inject_signed_events(
                 sig: nostr_event.sig.to_string(),
             };
             // try_from_raw: full Schnorr + id-hash verification.
-            crate::store::VerifiedEvent::try_from_raw(raw).ok()
+            nmp_core::store::VerifiedEvent::try_from_raw(raw).ok()
         })
         .collect();
 
@@ -180,7 +180,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         Ok(e) => e,
         Err(_) => return false,
     };
-    let raw = crate::store::RawEvent {
+    let raw = nmp_core::store::RawEvent {
         id: nostr_event.id.to_hex(),
         pubkey: nostr_event.pubkey.to_hex(),
         created_at: nostr_event.created_at.as_secs(),
@@ -190,7 +190,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         sig: nostr_event.sig.to_string(),
     };
     // Full Schnorr + id-hash verification — real events only.
-    let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+    let verified = match nmp_core::store::VerifiedEvent::try_from_raw(raw) {
         Ok(v) => v,
         Err(_) => return false,
     };

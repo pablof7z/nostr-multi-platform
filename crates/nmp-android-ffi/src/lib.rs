@@ -30,7 +30,7 @@ use nmp_app_chirp::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
     nmp_app_chirp_unregister, ChirpHandle,
 };
-use nmp_core::{
+use nmp_ffi::{
     nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 

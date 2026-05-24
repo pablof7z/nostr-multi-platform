@@ -59,7 +59,7 @@
 //! `accept_welcome`'s post-join kind:445 self-update), this crate performs
 //! the `MarmotService` op and then publishes the signed events INTERNALLY
 //! via [`crate::projection::publish`] (the workspace-internal
-//! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
+//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
 //! the retained `&NmpApp`). There is NO Swift relay path — that hook never
 //! existed (see `MarmotBridge.swift`). The result still carries the signed
 //! event JSON (`event` / `events` / `evolution_event` / `welcome_rumors`)
@@ -90,7 +90,8 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::{KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId};
+use nmp_core::{KernelEventObserverId, RawEventObserver, RawEventObserverId};
+use nmp_ffi::NmpApp;
 use nostr::Keys;
 use serde_json::{json, Value};
 

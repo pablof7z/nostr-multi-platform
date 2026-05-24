@@ -151,7 +151,7 @@ pub fn build_dm_rumor(input: &DmInput, sender_pubkey: &str) -> UnsignedEvent {
 /// swapped each call, so callers that need a stable handle should
 /// store the cache themselves and pass it explicitly. The default
 /// path (one composition, one cache) is the common case.
-pub fn register_actions(app: &mut nmp_core::NmpApp) {
+pub fn register_actions(app: &mut nmp_ffi::NmpApp) {
     app.register_action::<SendDmAction>();
     app.register_action::<PublishDmRelayListAction>();
 

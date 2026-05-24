@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use zeroize::Zeroizing;
 
-use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
+use crate::slots::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
 use crate::kernel::Kernel;
 use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
@@ -250,7 +250,7 @@ pub(super) struct ActorContext<'a> {
     /// so a production router (e.g. `nmp_router::GenericOutboxRouter`)
     /// survives a state wipe — same contract as the ingest dispatcher /
     /// dm-inbox-lookup / routing-trace slots above.
-    pub(super) routing_substrate_slot: &'a crate::ffi::RoutingSubstrateSlot,
+    pub(super) routing_substrate_slot: &'a crate::slots::RoutingSubstrateSlot,
 }
 
 // ────────────────────────────────────────────────────────────────────────

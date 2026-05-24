@@ -214,7 +214,7 @@ impl ActionModule for MarmotActionModule {
     /// Re-serialize the typed action and hand it to the actor's
     /// `DispatchHostOp` arm. The matching handler
     /// ([`crate::projection::handler::MarmotMlsOpHandler`]) installed via
-    /// [`nmp_core::NmpApp::set_host_op_handler`] parses the JSON back out
+    /// [`nmp_ffi::NmpApp::set_host_op_handler`] parses the JSON back out
     /// and runs the op against the live `MarmotProjection`.
     ///
     /// `serde_json::to_string` cannot fail for a value the registry

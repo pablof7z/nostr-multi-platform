@@ -58,8 +58,17 @@ use commands::WalletRuntime;
 // D0: NIP-47 NWC is an app noun — the wallet-status slot is re-exported so the
 // `ffi` module can build it, hand one clone to the actor, and capture the
 // other in the `"wallet"` snapshot-projection closure.
+// `new_wallet_status_slot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::new_wallet_status_slot` (the slot construction
+// happens in `nmp_app_new`, before the actor thread spawns).
 #[cfg(feature = "wallet")]
-pub(crate) use commands::{new_wallet_status_slot, WalletStatusSlot};
+pub use commands::new_wallet_status_slot;
+// `WalletStatusSlot` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::WalletStatusSlot` — the FFI shell's
+// `nmp_app_new` constructs the slot and the `"wallet"` snapshot
+// projection captures one clone. `#[doc(hidden)] pub` posture.
+#[cfg(feature = "wallet")]
+pub use commands::WalletStatusSlot;
 // `WalletStatus` itself only crosses the module boundary for the
 // snapshot-projection test, which constructs a status value to drive the
 // `"wallet"` projection through `make_update`.
@@ -68,21 +77,35 @@ pub(crate) use commands::WalletStatus;
 // `KernelEventObserverSlot` and `notify_observers` are consumed by `kernel/event_observer.rs`
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
-pub(crate) use commands::{notify_observers, KernelEventObserverSlot};
+pub(crate) use commands::notify_observers;
+// `KernelEventObserverSlot`, the slot constructors, registration helpers,
+// and lifecycle observer types are reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` — promoted to `pub` for the extracted
+// crate; `register_c_observer` stays `pub(crate)` because the C-ABI bridge
+// is in `nmp-ffi` and goes through `register_rust_observer` for the typed
+// path.
+pub use commands::KernelEventObserverSlot;
 #[cfg(feature = "native")]
-pub(crate) use commands::{
-    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, register_c_observer,
-    register_rust_observer, unregister_observer, LifecycleObserverRegistration, LifecycleObserverSlot,
+pub use commands::{
+    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot,
+    register_rust_observer, unregister_observer, LifecycleObserverSlot,
 };
+// `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
+// through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
+// `nmp-ffi/src/event_observer.rs` + `lifecycle.rs` can drive the slot.
+#[cfg(feature = "native")]
+pub use commands::{register_c_observer, LifecycleObserverRegistration};
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
 // `"bunker_handshake"` snapshot-projection closure.
 // V-01 Phase 1c: bunker types are native actor / FFI only.
 #[cfg(feature = "native")]
-pub(crate) use commands::{
-    build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
-};
+pub(crate) use commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
+// `nmp-ffi`'s `nmp_app_new` constructs the bunker-handshake slot before
+// handing it to the actor; promoted to `pub` for the extracted crate.
+#[cfg(feature = "native")]
+pub use commands::new_bunker_handshake_slot;
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
@@ -108,9 +131,18 @@ pub use commands::{
 // and the public wire shapes so per-app Rust crates + Swift / Kotlin
 // bindings can register a verbatim signed-event observer.
 #[allow(unused_imports)]
-pub(crate) use commands::{
-    new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
-    register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
+pub(crate) use commands::{notify_raw_observers, raw_observers_idle_for_kind};
+// `register_c_raw_observer` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::register_c_raw_observer` (the C-ABI bridge
+// in `nmp-ffi/src/raw_event_tap.rs`).
+#[allow(unused_imports)]
+pub use commands::register_c_raw_observer;
+// Slot constructors / registration helpers / the slot type itself reach
+// `nmp-ffi` through `nmp_core::__ffi_internal::*`; promoted to `pub` for
+// the extracted crate.
+#[allow(unused_imports)]
+pub use commands::{
+    new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
     RawEventObserverSlot,
 };
 #[allow(unused_imports)]
@@ -175,13 +207,18 @@ use std::sync::mpsc::{self, TryRecvError};
 #[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
-use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot};
+use crate::slots::{MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot};
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
+// `has_role` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::has_role` (the FFI surface filters relay-edit
+// rows by role when computing the write-relay slice for the per-app crate's
+// MLS / NIP-17 publish path).
+pub use relay_roles::has_role;
 pub(crate) use relay_roles::{
-    canonical_relay_role, has_role, relay_role_label, relay_role_options, relay_role_tint,
+    canonical_relay_role, relay_role_label, relay_role_options, relay_role_tint,
 };
 // V6 Stage 1 — Swift codegen pilot. `RelayRoleOption` is `pub(crate)` in
 // `relay_roles`; re-exported here so `crate::codegen_schema` can hand it
@@ -191,9 +228,10 @@ pub(crate) use relay_roles::{
 // trip the unused-import lint (no in-crate consumer outside codegen_schema).
 #[cfg(feature = "codegen-schema")]
 pub(crate) use relay_roles::RelayRoleOption;
-// `nostrconnect_relay_url` is consumed by `ffi/mod.rs` (native only).
+// `nostrconnect_relay_url` is consumed by `nmp-ffi` (native only) through
+// `nmp_core::__ffi_internal::nostrconnect_relay_url`.
 #[cfg(feature = "native")]
-pub(crate) use relay_roles::nostrconnect_relay_url;
+pub use relay_roles::nostrconnect_relay_url;
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
@@ -969,7 +1007,7 @@ pub fn run_actor_with_observers(
     // `Kernel::set_routing`, threading the kernel's fresh trace projection
     // through as the `RoutingTraceObserver`. `None` (the default and the
     // production test state) leaves the kernel's in-crate defaults.
-    routing_substrate_slot: crate::ffi::RoutingSubstrateSlot,
+    routing_substrate_slot: crate::slots::RoutingSubstrateSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.

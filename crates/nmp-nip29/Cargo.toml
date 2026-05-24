@@ -7,8 +7,13 @@ description = "NIP-29 relay-based groups as an NMP protocol crate. Owns every h-
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `register_actions` takes
+# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

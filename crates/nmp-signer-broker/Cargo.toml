@@ -16,6 +16,11 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `nmp_signer_broker_init` /
+# `nmp_app_cancel_bunker_handshake` take `*mut NmpApp`, so this crate
+# names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 # Step 8 phase A: the `relay_protocol` constants (backoff, jitter, HTTP-denial
 # classifier) moved from `nmp-core::relay_protocol` to `nmp-network::relay_protocol`.
 # `relay_client.rs` consumes them directly (V-13 dedupe will eventually

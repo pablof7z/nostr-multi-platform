@@ -8,7 +8,7 @@
 //! get the standard NMP wiring. If this example outgrows ten lines of
 //! actual work, the template is regressing.
 
-use nmp_core::{nmp_app_free, nmp_app_new};
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 fn main() {
     // 1. Construct the app. (No callbacks set — this example only proves

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use nmp_core::substrate::*;
-use nmp_core::NmpApp;
+use nmp_ffi::NmpApp;
 use serde::{Deserialize, Serialize};
 
 pub const APP_MODULE: &str = "fixture.todo";
@@ -263,7 +263,7 @@ mod tests {
     use super::*;
     use std::ffi::{CStr, CString};
 
-    use nmp_core::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
+    use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
 
     #[test]
     fn action_rejects_empty_todo_title() {

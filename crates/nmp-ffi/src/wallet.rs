@@ -2,9 +2,9 @@
 //!
 //! Connection lifecycle (`nmp_app_wallet_connect` / `nmp_app_wallet_disconnect`)
 //! is fire-and-forget bespoke FFI per the Theme A discriminator
-//! ([`crate::substrate::action`] module docs): these are connection-oriented
+//! ([`nmp_core::substrate::action`] module docs): these are connection-oriented
 //! protocol glue, not user-authored content actions. They send
-//! [`crate::actor::ActorCommand::WalletConnect`] / `WalletDisconnect` directly
+//! [`nmp_core::ActorCommand::WalletConnect`] / `WalletDisconnect` directly
 //! because they address an in-process connection lifecycle, not a dispatchable
 //! intent.
 //!
@@ -12,9 +12,9 @@
 //! routes through the [`crate::ffi::action::nmp_app_dispatch_action`] seam
 //! (closes the V3 bypass — see `wallet/action.rs` module docs). The
 //! `WalletPayInvoiceModule` registered in
-//! [`crate::kernel::action_registry::default_registry`] under namespace
+//! [`nmp_core::__ffi_internal::action_registry::default_registry`] under namespace
 //! `nmp.wallet.pay_invoice` is the sole entry point that constructs
-//! [`crate::actor::ActorCommand::WalletPayInvoice`].
+//! [`nmp_core::ActorCommand::WalletPayInvoice`].
 //!
 //! Outcomes surface via subsequent snapshots: the wallet state under
 //! `projections["wallet"]` (D0: NIP-47 NWC is an app noun, surfaced through
@@ -25,7 +25,7 @@
 
 use super::action::dispatch_action_json;
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use crate::actor::ActorCommand;
+use nmp_core::ActorCommand;
 use std::ffi::c_char;
 use std::time::{Duration, Instant};
 
@@ -77,12 +77,12 @@ pub extern "C" fn nmp_app_wallet_disconnect(app: *mut NmpApp) {
 /// # V3 — `dispatch_action` is the sole user-write seam
 ///
 /// This symbol is the thin C-ABI wrapper that translates its arguments into
-/// a [`crate::wallet::WalletAction::PayInvoice`] payload and routes the call
+/// a [`nmp_core::wallet::WalletAction::PayInvoice`] payload and routes the call
 /// through the [`crate::ffi::action::nmp_app_dispatch_action`] seam (the
 /// `nmp.wallet.pay_invoice` namespace registered in
-/// [`crate::kernel::action_registry::default_registry`]). The
+/// [`nmp_core::__ffi_internal::action_registry::default_registry`]). The
 /// `ActionRegistry` executor is the sole constructor of
-/// [`crate::actor::ActorCommand::WalletPayInvoice`] from FFI — this body
+/// [`nmp_core::ActorCommand::WalletPayInvoice`] from FFI — this body
 /// never sends an `ActorCommand` directly (D4: every user-initiated write
 /// enters through `dispatch_action`).
 ///
@@ -161,7 +161,7 @@ pub extern "C" fn nmp_app_wallet_pay_invoice(
     // but D6 mandates "failures are data, never panics": a hypothetical
     // serialisation failure collapses to a silent drop, exactly the same
     // observable shape as a poisoned-mutex degradation above.
-    let action = crate::wallet::WalletAction::PayInvoice { bolt11, amount_msats };
+    let action = nmp_core::wallet::WalletAction::PayInvoice { bolt11, amount_msats };
     let Ok(action_json) = serde_json::to_string(&action) else {
         return;
     };

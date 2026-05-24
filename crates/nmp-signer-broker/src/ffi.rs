@@ -10,7 +10,8 @@
 
 use std::sync::{Arc, OnceLock};
 
-use nmp_core::{register_bunker_hook, BunkerHookRequest, NmpApp, NOSTRCONNECT_DEFAULT_RELAY_URL};
+use nmp_core::{register_bunker_hook, BunkerHookRequest, NOSTRCONNECT_DEFAULT_RELAY_URL};
+use nmp_ffi::NmpApp;
 
 use crate::broker::BunkerBroker;
 
@@ -19,7 +20,7 @@ use crate::broker::BunkerBroker;
 // The crate-level `#![deny(unsafe_code)]` still applies everywhere else.
 #[allow(unsafe_code)]
 mod unsafe_app_ref {
-    use nmp_core::NmpApp;
+    use nmp_ffi::NmpApp;
     /// Convert a raw `*mut NmpApp` (from the Swift bridge) into a `&NmpApp`
     /// if non-null. SAFETY: the caller guarantees the pointer was produced
     /// by `nmp_app_new()` and has not been freed.

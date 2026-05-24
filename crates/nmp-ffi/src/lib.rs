@@ -112,16 +112,33 @@ pub use testing::{
 #[cfg(all(feature = "android-ffi", feature = "wallet"))]
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
-use crate::actor::{
-    new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
-    register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
-    unregister_observer, unregister_raw_observer, ActorCommand, KernelEventObserver,
-    KernelEventObserverId, KernelEventObserverSlot, KindFilter, LifecycleObserverSlot,
-    RawEventObserver, RawEventObserverId, RawEventObserverSlot,
+// Step 11 final — the FFI shell was extracted from `nmp-core::ffi` into
+// this crate (`nmp-ffi`). nmp-core re-exports the items the shell reaches
+// for through `nmp_core::__ffi_internal::*` (substrate-grade slot
+// constructors, registration helpers, default constants); everything
+// already on the public surface comes through `nmp_core::*` directly.
+use nmp_core::__ffi_internal::{
+    default_registry, dispatch_capability, has_role, new_bunker_handshake_slot,
+    new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+    new_raw_event_observer_slot, new_relay_edit_rows_slot, new_snapshot_projection_slot,
+    nostrconnect_relay_url, register_rust_observer, register_rust_raw_observer,
+    run_actor_with_observers, unregister_observer, unregister_raw_observer, ActionRegistry,
+    CapabilityCallbackSlot, KernelEventObserverSlot, LifecycleObserverSlot, RawEventObserverSlot,
+    SnapshotProjectionSlot, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
 };
-use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
-use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
-use crate::subs::PlanCoverageHook;
+#[cfg(feature = "wallet")]
+use nmp_core::__ffi_internal::new_wallet_status_slot;
+use nmp_core::slots::{
+    new_dm_inbox_observer_id_slot, new_mls_local_nsec_slot, new_nip17_local_keys_slot,
+    new_routing_substrate_slot, new_routing_trace_slot, new_singleton_event_observer_id_slot,
+    new_storage_path_slot, DmInboxObserverIdSlot, MlsLocalNsecSlot, Nip17LocalKeysSlot,
+    RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
+};
+use nmp_core::subs::PlanCoverageHook;
+use nmp_core::{
+    ActorCommand, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
+    RawEventObserverId,
+};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -138,131 +155,26 @@ struct UpdateCallbackRegistration {
     callback: UpdateCallback,
 }
 
-/// Typed slot for the active account's MLS nsec (bech32, zeroized on overwrite).
-///
-/// The actor is the sole writer (D4); per-app crates read via
-/// [`NmpApp::mls_local_nsec`]. Follows the same slot-alias pattern as
-/// [`crate::kernel::IndexerRelaysSlot`] so D14 catches shape regressions.
-pub(crate) type MlsLocalNsecSlot = Arc<Mutex<Option<Zeroizing<String>>>>;
-
-/// Typed slot for the active account's parsed `nostr::Keys` (for NIP-17 DM gift-wrap).
-///
-/// Parallel to [`MlsLocalNsecSlot`] but scoped to NIP-17 consumers per ADR-0025.
-/// The actor is the sole writer; per-app crates read via [`NmpApp::nip17_local_keys`].
-pub(crate) type Nip17LocalKeysSlot = Arc<Mutex<Option<nostr::Keys>>>;
-
-/// Typed slot for the FFI-supplied LMDB storage directory path.
-///
-/// Written by [`nmp_app_set_storage_path`] before [`nmp_app_start`]; the actor
-/// reads it once at kernel construction. `None` keeps the in-memory store.
-pub(crate) type StoragePathSlot = Arc<Mutex<Option<String>>>;
-
-/// V-51 phase 4 — typed slot the actor publishes the kernel's
-/// `RoutingTraceProjection` clone into, right after kernel construction.
-///
-/// Per-app crates (chirp-repl, validation harness, an `nmp-repl`
-/// `routing-trace` subcommand) read it through [`NmpApp::routing_trace`].
-/// `None` until the actor has built the kernel; non-`None` for the rest of
-/// the app's lifetime. Re-bound by the `Reset` dispatch arm so the
-/// projection follows a kernel rebuild.
-pub(crate) type RoutingTraceSlot =
-    Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>;
-
-/// Construct a fresh, empty [`MlsLocalNsecSlot`].
-#[must_use]
-pub(crate) fn new_mls_local_nsec_slot() -> MlsLocalNsecSlot {
-    Arc::new(Mutex::new(None))
-}
-
-/// Construct a fresh, empty [`Nip17LocalKeysSlot`].
-#[must_use]
-pub(crate) fn new_nip17_local_keys_slot() -> Nip17LocalKeysSlot {
-    Arc::new(Mutex::new(None))
-}
-
-/// Construct a fresh, empty [`StoragePathSlot`].
-#[must_use]
-pub(crate) fn new_storage_path_slot() -> StoragePathSlot {
-    Arc::new(Mutex::new(None))
-}
-
-/// Construct a fresh, empty [`RoutingTraceSlot`].
-#[must_use]
-pub(crate) fn new_routing_trace_slot() -> RoutingTraceSlot {
-    Arc::new(Mutex::new(None))
-}
-
-/// V-51 phase 5 — typed slot the per-app crate populates with a
-/// **substrate-routing factory**: a `Send + Sync` closure that, given the
-/// kernel's `RoutingTraceObserver` (the same `Arc<RoutingTraceProjection>`
-/// the kernel constructs internally), returns the
-/// `(Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)` pair the actor will
-/// install on the kernel via [`crate::kernel::Kernel::set_routing`].
-///
-/// Production composition (`nmp-app-chirp::ffi::register::nmp_app_chirp_register`)
-/// writes a closure that constructs `nmp_router::GenericOutboxRouter` (with
-/// the supplied observer threaded through its `with_trace_observer`
-/// builder) and `nmp_router::InMemoryMailboxCache`. `None` (the default,
-/// and the state every test build sits in) leaves the kernel's
-/// `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache` defaults
-/// in place (substrate-honest debt B, 2026-05-24). A production session
-/// that fails to install a routing factory will never route — the kernel
-/// surfaces this as `RoutingError::Unroutable` from every router call.
-///
-/// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke the
-/// factory against the rebuilt kernel's fresh projection clone, mirroring
-/// the re-publish step the `routing_trace_slot` already performs.
-pub(crate) type RoutingSubstrateFactory = dyn Fn(
-        Arc<dyn crate::substrate::RoutingTraceObserver>,
-    ) -> (
-        Arc<dyn crate::substrate::OutboxRouter>,
-        Arc<dyn crate::substrate::MailboxCache>,
-    ) + Send
-    + Sync;
-
-/// Slot wrapper for [`RoutingSubstrateFactory`]. `None` until the per-app
-/// crate calls [`NmpApp::set_routing_substrate`] (production composition
-/// does so during `nmp_app_chirp_register`, before `nmp_app_start`).
-pub(crate) type RoutingSubstrateSlot = Arc<Mutex<Option<Arc<RoutingSubstrateFactory>>>>;
-
-/// Construct a fresh, empty [`RoutingSubstrateSlot`].
-#[must_use]
-pub(crate) fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
-    Arc::new(Mutex::new(None))
-}
+// Step 11 final — the slot type aliases + constructors that used to live
+// here (MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot,
+// RoutingTraceSlot, RoutingSubstrateSlot, DmInboxObserverIdSlot,
+// SingletonEventObserverIdSlot, and their `new_*_slot` constructors) moved
+// to `nmp-core::slots` so the actor (a crate-private module inside
+// `nmp-core`) can still name them after the FFI extraction. The aliases
+// are imported through the `use nmp_core::slots::*` block at the top of
+// this file.
 
 /// Typed slot for the C-ABI update callback registration.
 ///
 /// Written by [`nmp_app_set_update_callback`]; read by the actor thread's
 /// update-listener closure. Module-private: `UpdateCallbackRegistration` is
-/// also module-private so the alias cannot be wider.
+/// also module-private so the alias cannot be wider. Lives in this crate
+/// (not `nmp-core::slots`) because the `UpdateCallback` C-ABI function
+/// pointer type is a structurally-FFI shape; the actor reads through this
+/// slot but the type itself is a C-ABI surface concern.
 type UpdateCallbackSlot = Arc<Mutex<Option<UpdateCallbackRegistration>>>;
 
-/// Typed slot for the previously-installed NIP-17 DM-inbox raw-event observer id.
-///
-/// Used by the idempotent [`NmpApp::swap_nip17_dm_inbox_observer`] seam so
-/// per-app crates can re-register on account-switch without stacking observers.
-pub(crate) type DmInboxObserverIdSlot = Arc<Mutex<Option<RawEventObserverId>>>;
-
-/// Typed slot for the singleton kernel-event observer id.
-///
-/// Used by the idempotent [`NmpApp::swap_singleton_event_observer`] seam so
-/// per-app crates can re-register on account-switch without stacking observers.
-pub(crate) type SingletonEventObserverIdSlot = Arc<Mutex<Option<KernelEventObserverId>>>;
-
 fn new_update_callback_slot() -> UpdateCallbackSlot {
-    Arc::new(Mutex::new(None))
-}
-
-/// Construct a fresh, empty [`DmInboxObserverIdSlot`].
-#[must_use]
-pub(crate) fn new_dm_inbox_observer_id_slot() -> DmInboxObserverIdSlot {
-    Arc::new(Mutex::new(None))
-}
-
-/// Construct a fresh, empty [`SingletonEventObserverIdSlot`].
-#[must_use]
-pub(crate) fn new_singleton_event_observer_id_slot() -> SingletonEventObserverIdSlot {
     Arc::new(Mutex::new(None))
 }
 
@@ -325,11 +237,11 @@ pub struct NmpApp {
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
     ///
-    /// The slot is a typed [`crate::kernel::RelayEditRowsSlot`]
+    /// The slot is a typed [`nmp_core::RelayEditRowsSlot`]
     /// (`Arc<Mutex<RelayEditRowList>>`) — D14 forbids new bare
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp` and the typed wrapper makes
     /// the slot's purpose visible at the declaration site.
-    relay_edit_rows: crate::kernel::RelayEditRowsSlot,
+    relay_edit_rows: nmp_core::RelayEditRowsSlot,
     /// Raw bech32 nsec (`nsec1…`) for app crates that need local key material
     /// for MLS (ADR-0025 exception; only the nmp-marmot crate holds the D13
     /// doctrine-allow). The actor thread writes this after every identity
@@ -411,7 +323,7 @@ pub struct NmpApp {
     /// pure validators. The `Kernel`-side wiring (execution + the durable
     /// action ledger) is the M6 follow-up; see
     /// [`crate::kernel::action_registry`].
-    action_registry: crate::kernel::ActionRegistry,
+    action_registry: ActionRegistry,
     /// Host-extensible snapshot output registry — the output-side counterpart
     /// to `action_registry`. Shared `Arc<Mutex<…>>` with the actor thread
     /// (bound onto the kernel via `set_snapshot_projection_handle`): a host
@@ -422,7 +334,7 @@ pub struct NmpApp {
     /// `KernelSnapshot::projections`. Unlike `action_registry`, this is NOT
     /// queried on the FFI thread — it fires from inside the actor tick, hence
     /// the shared-`Arc` slot rather than a plain owned field.
-    snapshot_projections: crate::kernel::SnapshotProjectionSlot,
+    snapshot_projections: SnapshotProjectionSlot,
     /// G-S4 — straddle counter for the actor command channel depth. The
     /// command channel is an unbounded `std::sync::mpsc::channel()` whose
     /// `Receiver` has no `len()`, so depth is observed indirectly: `send_cmd`
@@ -449,7 +361,7 @@ pub struct NmpApp {
     /// Host-installed host-op handler slot — the substrate-generic seam app
     /// crates use to expose stateful, host-owned operations through the
     /// generic `dispatch_action` path without `nmp-core` ever naming the
-    /// app's nouns (D0). See [`crate::substrate::HostOpHandler`] for the full
+    /// app's nouns (D0). See [`nmp_core::substrate::HostOpHandler`] for the full
     /// contract.
     ///
     /// Shared `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` with the actor
@@ -460,22 +372,22 @@ pub struct NmpApp {
     /// `ActorCommand::DispatchHostOp`. `None` (the default, and the only
     /// state for hosts that don't bind a stateful app) makes any such command
     /// record a `Failed` terminal stage — never a silent drop.
-    host_op_handler: crate::substrate::HostOpHandlerSlot,
-    /// V-40 — shared [`crate::substrate::EventIngestDispatcher`] slot.
+    host_op_handler: nmp_core::substrate::HostOpHandlerSlot,
+    /// V-40 — shared [`nmp_core::substrate::EventIngestDispatcher`] slot.
     /// Per-NIP crates register a parser through
     /// [`Self::register_ingest_parser`] which mutates this slot under a
     /// write lock; the actor's kernel construction binds the SAME `Arc`
     /// onto the kernel so the ingest path reads through the same
     /// dispatcher the registration path mutated.
-    ingest_dispatcher_slot: Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
-    /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. The
+    ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>>,
+    /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot. The
     /// per-app crate (today `nmp-nip17::register_actions`) writes a
     /// concrete `DmRelayCache` here via
     /// [`Self::set_dm_inbox_relay_lookup`]; the actor reads the current
     /// handle and binds it onto the kernel so the gift-wrap publish path
     /// and the planner-side `KernelMailboxes` adapter both see the same
     /// cache.
-    dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -502,7 +414,7 @@ pub struct NmpApp {
     /// [`action::nmp_app_dispatch_action`] calls accepted by the registry but
     /// whose action-result has not yet cleared. Keyed by a stable 64-bit
     /// FNV-1a hash of `(namespace, action_json)` (see
-    /// [`crate::stable_hash::stable_hash64`]) — a same-action retap inside
+    /// [`nmp_core::stable_hash::stable_hash64`]) — a same-action retap inside
     /// the TTL window maps to the same key, and the FFI short-circuits before
     /// the second `start()` + executor pass enqueues a duplicate
     /// `ActorCommand`. The stored value is `(when_first_seen,
@@ -605,7 +517,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // actor thread carries another and binds it onto the kernel
     // (`set_snapshot_projection_handle`). Registrations mutate the inner
     // `Mutex<SnapshotRegistry>` visible to both sides.
-    let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
+    let snapshot_projections = new_snapshot_projection_slot();
     let actor_snapshot_projections = Arc::clone(&snapshot_projections);
     // D0: NIP-47 NWC is an app noun. The shared wallet-status slot — one `Arc`
     // clone goes to the actor's `WalletRuntime` (the sole writer, D4), the
@@ -617,7 +529,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // preserves the "key present, value null when disconnected" semantic the
     // social shells already decode.
     #[cfg(feature = "wallet")]
-    let wallet_status = crate::actor::new_wallet_status_slot();
+    let wallet_status = new_wallet_status_slot();
     #[cfg(feature = "wallet")]
     let actor_wallet_status = Arc::clone(&wallet_status);
     // D0: NIP-46 remote signing is an app noun. The shared bunker-handshake
@@ -628,14 +540,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // through `projections["bunker_handshake"]` instead of a baked-in
     // `KernelSnapshot` field — and every actor consumer (FFI or test) gets the
     // projection without a separate FFI registration step.
-    let actor_bunker_handshake = crate::actor::new_bunker_handshake_slot();
+    let actor_bunker_handshake = new_bunker_handshake_slot();
     // Shared relay-edit rows handle. Cloned to the actor thread and bound
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
     //
     // Typed slot constructor — see `kernel/relay_projection.rs`.
-    let relay_edit_rows: crate::kernel::RelayEditRowsSlot =
-        crate::kernel::new_relay_edit_rows_slot();
+    let relay_edit_rows: nmp_core::RelayEditRowsSlot =
+        new_relay_edit_rows_slot();
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
@@ -696,16 +608,16 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `nmp-app-marmot`) writes through `NmpApp::set_host_op_handler` before
     // `nmp_app_start`. `None` is the default and the production state for
     // every host that does not bind a stateful app crate.
-    let host_op_handler: crate::substrate::HostOpHandlerSlot =
-        crate::substrate::new_host_op_handler_slot();
-    let actor_host_op_handler = crate::substrate::HostOpHandlerSlot::clone(&host_op_handler);
+    let host_op_handler: nmp_core::substrate::HostOpHandlerSlot =
+        nmp_core::substrate::new_host_op_handler_slot();
+    let actor_host_op_handler = nmp_core::substrate::HostOpHandlerSlot::clone(&host_op_handler);
     // V-40 — substrate `EventIngestDispatcher` slot. Per-NIP crates
     // (today: `nmp-nip17`) register their kind parsers through
     // [`NmpApp::register_ingest_parser`] which mutates THIS slot; the
     // actor's kernel construction step binds it onto the kernel so the
     // ingest path and the registration path share one dispatcher.
-    let ingest_dispatcher_slot: Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>> =
-        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new()));
+    let ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>> =
+        Arc::new(std::sync::RwLock::new(nmp_core::substrate::EventIngestDispatcher::new()));
     let actor_ingest_dispatcher = Arc::clone(&ingest_dispatcher_slot);
     // V-40 — substrate `DmInboxRelayLookup` slot. The per-app crate
     // (today: `nmp-nip17::register_actions`) installs the concrete
@@ -713,8 +625,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // the actor's kernel construction reads the current handle and binds
     // it onto the kernel. Default is `EmptyDmInboxRelayLookup` (fail-
     // closed cold-start).
-    let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>> = Arc::new(
-        Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup()),
+    let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>> = Arc::new(
+        Mutex::new(nmp_core::substrate::empty_dm_inbox_relay_lookup()),
     );
     let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
     // Clone so we can report actor death through the same listener pipe.
@@ -811,8 +723,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             // into `UpdateEnvelope::Panic` — unlike the previous ad-hoc
             // `{"t":"panic","m":…}` string, which did not match the
             // envelope's tag/content schema and failed host decode.
-            let msg = crate::update_envelope::panic_message(&*e);
-            let frame = crate::update_envelope::wrap_panic(format!("actor thread died: {msg}"));
+            let msg = nmp_core::panic_message(&*e);
+            let frame = nmp_core::wrap_panic(format!("actor thread died: {msg}"));
             let _ = update_tx_panic.send(frame);
         }
     });
@@ -827,7 +739,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // This listener thread has no outer `catch_unwind` (unlike
                 // the actor thread above), so an unguarded unwind here is
                 // undefined behaviour across the C ABI boundary.
-                let _ = crate::ffi_guard::guard_ffi_callback("update listener", || {
+                let _ = nmp_core::ffi_guard::guard_ffi_callback("update listener", || {
                     (registration.callback)(registration.context as *mut c_void, payload.as_ptr());
                 });
             }
@@ -855,7 +767,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // M6 — the action registry the kernel ships with: `PublishModule`
         // only. NIP-29 / NIP-59 modules are app nouns (D0) and are
         // registered by the app host against its own registry instance.
-        action_registry: crate::kernel::default_registry(),
+        action_registry: default_registry(),
         // Host-extensible snapshot output: ships with the built-in `"wallet"`
         // projection (registered below when `feature = "wallet"`). A non-social
         // host registers its own projections via
@@ -955,7 +867,7 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
-    /// Register a typed [`crate::substrate::ActionModule`] `M` against the
+    /// Register a typed [`nmp_core::substrate::ActionModule`] `M` against the
     /// app's action registry — ADR-0027's single-call typed seam, and the
     /// sole host action-registration path on master.
     ///
@@ -967,7 +879,7 @@ impl NmpApp {
     /// Registration MUST happen during host init — before `nmp_app_start`
     /// and before any [`action::nmp_app_dispatch_action`] call — because it
     /// requires `&mut self`.
-    pub fn register_action<M: crate::substrate::ActionModule + 'static>(&mut self) {
+    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
         self.action_registry.register::<M>();
     }
 
@@ -1004,7 +916,7 @@ impl NmpApp {
     ///
     /// After [`action::nmp_app_dispatch_action`] accepts an action and its
     /// executor returns `Ok`, the observer is handed a
-    /// [`crate::substrate::ActionResult`] carrying the action's
+    /// [`nmp_core::substrate::ActionResult`] carrying the action's
     /// `correlation_id`. This is an "action accepted and enqueued" signal,
     /// not a completion carrier — for `nmp.publish` the actor still has to
     /// verify+publish after this fires; that outcome reaches the host via
@@ -1016,14 +928,14 @@ impl NmpApp {
     /// `nmp_app_start`. A second registration replaces the first.
     pub fn register_action_result_observer(
         &self,
-        f: impl Fn(crate::substrate::ActionResult) + Send + Sync + 'static,
+        f: impl Fn(nmp_core::substrate::ActionResult) + Send + Sync + 'static,
     ) {
         self.action_registry.set_result_observer(f);
     }
 
     /// Install the D2 coverage-gate hook. MUST be called before
     /// [`nmp_app_start`]. The hook is a closure that receives a
-    /// [`crate::planner::CompiledPlan`] after M2 compile and may mutate it
+    /// [`nmp_core::planner::CompiledPlan`] after M2 compile and may mutate it
     /// (e.g. prune relays or mark sub-shapes for negentropy). See
     /// [`crate::subs::PlanCoverageHook`].
     ///
@@ -1046,10 +958,10 @@ impl NmpApp {
         }
     }
 
-    /// Install the substrate-generic [`crate::substrate::HostOpHandler`].
+    /// Install the substrate-generic [`nmp_core::substrate::HostOpHandler`].
     ///
-    /// The handler is the bridge between an [`crate::substrate::ActionModule`]
-    /// whose `execute()` body emits [`crate::actor::ActorCommand::DispatchHostOp`]
+    /// The handler is the bridge between an [`nmp_core::substrate::ActionModule`]
+    /// whose `execute()` body emits [`ActorCommand::DispatchHostOp`]
     /// and the app-owned state the op mutates (today: `nmp-app-marmot`'s
     /// `MarmotService`). The actor's `DispatchHostOp` arm pulls the handler
     /// from this slot and calls `handle(action_json, correlation_id)`.
@@ -1077,13 +989,13 @@ impl NmpApp {
     /// namespace whose `ActionModule::execute` emits `DispatchHostOp` —
     /// installing the handler late produces a stream of `Failed` terminals
     /// for the gap, not a panic.
-    pub fn set_host_op_handler(&self, handler: std::sync::Arc<dyn crate::substrate::HostOpHandler>) {
+    pub fn set_host_op_handler(&self, handler: std::sync::Arc<dyn nmp_core::substrate::HostOpHandler>) {
         if let Ok(mut slot) = self.host_op_handler.lock() {
             *slot = Some(handler);
         }
     }
 
-    /// V-40 — register a [`crate::substrate::IngestParser`] for `kind`
+    /// V-40 — register a [`nmp_core::substrate::IngestParser`] for `kind`
     /// against the shared `EventIngestDispatcher` slot. The same `Arc`
     /// the actor binds onto the kernel, so a registration is visible to
     /// the ingest path immediately (no actor round-trip needed).
@@ -1098,14 +1010,14 @@ impl NmpApp {
     pub fn register_ingest_parser(
         &self,
         kind: u32,
-        parser: std::sync::Arc<dyn crate::substrate::IngestParser>,
+        parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
     ) {
         if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
             d.register_kind(kind, parser);
         }
     }
 
-    /// V-40 — install the kernel's [`crate::substrate::DmInboxRelayLookup`]
+    /// V-40 — install the kernel's [`nmp_core::substrate::DmInboxRelayLookup`]
     /// handle. The per-app crate (today `nmp-nip17::register_actions`)
     /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
     /// side fed by the kind:10050 parser registered above + the reader
@@ -1117,7 +1029,7 @@ impl NmpApp {
     /// would lose entries written into the old cache).
     pub fn set_dm_inbox_relay_lookup(
         &self,
-        lookup: std::sync::Arc<dyn crate::substrate::DmInboxRelayLookup>,
+        lookup: std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
     ) {
         if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
             *slot = lookup;
@@ -1150,10 +1062,10 @@ impl NmpApp {
     pub fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(
-                std::sync::Arc<dyn crate::substrate::RoutingTraceObserver>,
+                std::sync::Arc<dyn nmp_core::substrate::RoutingTraceObserver>,
             ) -> (
-                std::sync::Arc<dyn crate::substrate::OutboxRouter>,
-                std::sync::Arc<dyn crate::substrate::MailboxCache>,
+                std::sync::Arc<dyn nmp_core::substrate::OutboxRouter>,
+                std::sync::Arc<dyn nmp_core::substrate::MailboxCache>,
             ) + Send
             + Sync
             + 'static,
@@ -1180,7 +1092,7 @@ impl NmpApp {
 
     /// Test-only direct execution path into the action registry.
     ///
-    /// Bypasses [`crate::kernel::ActionRegistry::start`] (which needs a
+    /// Bypasses [`ActionRegistry::start`] (which needs a
     /// registered *module* to validate the JSON shape) so a unit test can
     /// exercise a host-registered *executor* on its own — the v1 seam only
     /// exposes executor registration, not module registration. A fixed
@@ -1252,7 +1164,7 @@ impl NmpApp {
     /// then sign it in through the identity reducer.
     #[must_use]
     pub fn sign_in_local_nsec_with_keyring(&self, account_id: &str, secret: String) -> String {
-        let req = crate::substrate::KeyringIdentityWiring::persist_secret(
+        let req = nmp_core::substrate::KeyringIdentityWiring::persist_secret(
             "nmp.identity.persist",
             account_id,
             &secret,
@@ -1270,7 +1182,7 @@ impl NmpApp {
     /// Forget the app-scoped local secret and remove the identity through the
     /// actor-owned reducer.
     pub fn remove_account_forgetting_keyring(&self, account_id: &str, identity_id: String) {
-        let req = crate::substrate::KeyringIdentityWiring::forget_secret(
+        let req = nmp_core::substrate::KeyringIdentityWiring::forget_secret(
             "nmp.identity.forget",
             account_id,
         );
@@ -1279,15 +1191,15 @@ impl NmpApp {
     }
 
     fn recall_local_nsec(&self, account_id: &str) -> Option<String> {
-        let req = crate::substrate::KeyringIdentityWiring::recall_secret(
+        let req = nmp_core::substrate::KeyringIdentityWiring::recall_secret(
             "nmp.identity.recall",
             account_id,
         );
         let envelope = self.dispatch_capability(&req);
-        let result = crate::substrate::KeyringIdentityWiring::decode_result(&envelope);
+        let result = nmp_core::substrate::KeyringIdentityWiring::decode_result(&envelope);
         match result.status {
-            crate::substrate::KeyringStatus::Ok => result.secret,
-            crate::substrate::KeyringStatus::NotFound | crate::substrate::KeyringStatus::Error => {
+            nmp_core::substrate::KeyringStatus::Ok => result.secret,
+            nmp_core::substrate::KeyringStatus::NotFound | nmp_core::substrate::KeyringStatus::Error => {
                 None
             }
         }
@@ -1419,8 +1331,8 @@ impl NmpApp {
     /// delivery, per-group kind:445 feeds, etc. The kernel emits REQ frames
     /// on the next compile pass; matching inbound events then flow through the
     /// raw-event tap automatically, with no Swift polling needed.
-    pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        self.send_cmd(crate::actor::ActorCommand::PushInterest(interest));
+    pub fn push_interest(&self, interest: nmp_core::planner::LogicalInterest) {
+        self.send_cmd(ActorCommand::PushInterest(interest));
     }
 
     /// Route a typed capability request through the registered native
@@ -1429,12 +1341,12 @@ impl NmpApp {
     #[must_use]
     pub fn dispatch_capability(
         &self,
-        request: &crate::substrate::CapabilityRequest,
-    ) -> crate::substrate::CapabilityEnvelope {
+        request: &nmp_core::substrate::CapabilityRequest,
+    ) -> nmp_core::substrate::CapabilityEnvelope {
         let json = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
         let payload =
-            crate::capability_socket::dispatch_capability(&self.capability_callback, &json);
-        serde_json::from_str(&payload).unwrap_or_else(|_| crate::substrate::CapabilityEnvelope {
+            dispatch_capability(&self.capability_callback, &json);
+        serde_json::from_str(&payload).unwrap_or_else(|_| nmp_core::substrate::CapabilityEnvelope {
             namespace: request.namespace.clone(),
             correlation_id: request.correlation_id.clone(),
             result_json: r#"{"status":"error","os_status":-50}"#.to_string(),
@@ -1494,7 +1406,7 @@ impl NmpApp {
     #[must_use]
     pub fn routing_trace(
         &self,
-    ) -> Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>> {
+    ) -> Option<Arc<nmp_core::RoutingTraceProjection>> {
         self.routing_trace.lock().ok()?.clone()
     }
 
@@ -1504,14 +1416,14 @@ impl NmpApp {
     /// projections without asking platform shells to parse `RelayEditRow.role`.
     /// The actor is the sole writer; callers should take quick snapshots only.
     ///
-    /// The slot type is [`crate::kernel::RelayEditRowsSlot`] — a
+    /// The slot type is [`nmp_core::RelayEditRowsSlot`] — a
     /// newtype `Arc<Mutex<RelayEditRowList>>`. Readers iterate via
     /// `guard.as_slice()` so they never touch the inner `Vec` directly. D14
     /// (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) forbids new bare
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp`; the typed alias makes the
     /// slot's purpose visible at every call site.
     #[must_use]
-    pub fn relay_edit_rows_handle(&self) -> crate::kernel::RelayEditRowsSlot {
+    pub fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {
         Arc::clone(&self.relay_edit_rows)
     }
 
@@ -1530,8 +1442,8 @@ impl NmpApp {
         guard
             .as_slice()
             .iter()
-            .filter(|r| crate::actor::has_role(&r.role, "write"))
-            .map(|r| r.url.clone())
+            .filter(|r| has_role(r.role(), "write"))
+            .map(|r| r.url().to_string())
             .collect()
     }
 
@@ -1591,7 +1503,7 @@ impl NmpApp {
         // crypto bar as a wire-arrived event. The `tags` clone mirrors
         // every other RawEvent construction site in the crate
         // (`commands::publish` action_registry.rs:420).
-        let raw = crate::store::RawEvent {
+        let raw = nmp_core::store::RawEvent {
             id: event.id.to_hex(),
             pubkey: event.pubkey.to_hex(),
             created_at: event.created_at.as_secs(),
@@ -1600,10 +1512,10 @@ impl NmpApp {
             content: event.content.clone(),
             sig: event.sig.to_string(),
         };
-        let relays: Vec<crate::publish::RelayUrl> = relays.iter().map(std::string::ToString::to_string).collect();
+        let relays: Vec<nmp_core::publish::RelayUrl> = relays.iter().map(std::string::ToString::to_string).collect();
         self.send_cmd(ActorCommand::PublishSignedEvent {
             raw,
-            target: crate::publish::PublishTarget::Explicit { relays },
+            target: nmp_core::publish::PublishTarget::Explicit { relays },
             correlation_id: None,
         });
     }
@@ -1615,15 +1527,15 @@ impl NmpApp {
     #[must_use]
     pub fn nostrconnect_relay_url(&self) -> String {
         let Ok(guard) = self.relay_edit_rows.lock() else {
-            return crate::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
+            return nmp_core::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
         };
         // Typed slot — iterate via `as_slice()` so the inner `Vec`
         // never leaks through this consumer.
-        crate::actor::nostrconnect_relay_url(
+        nostrconnect_relay_url(
             guard
                 .as_slice()
                 .iter()
-                .map(|row| (row.url.as_str(), row.role.as_str())),
+                .map(|row| (row.url(), row.role())),
         )
     }
 }

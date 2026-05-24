@@ -18,7 +18,8 @@ use nmp_app_chirp::{
     nmp_app_chirp_unregister, ChirpTimelineSnapshot,
 };
 use nmp_core::store::{RawEvent, VerifiedEvent};
-use nmp_core::{nmp_app_free, nmp_app_new, nmp_app_start, ActorCommand};
+use nmp_core::ActorCommand;
+use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start};
 use nmp_threading::TimelineBlock;
 
 // Serialize tests because `NmpApp` initialisation spawns process-global
@@ -49,7 +50,7 @@ fn snapshot_for(handle: *mut nmp_app_chirp::ChirpHandle) -> ChirpTimelineSnapsho
     serde_json::from_str(&json).expect("snapshot deserializes")
 }
 
-fn inject(app: *mut nmp_core::NmpApp, events: Vec<VerifiedEvent>) {
+fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
     // SAFETY: `app` is a valid `*mut NmpApp` for the duration of this call
     // — caller passes the same handle they got from `nmp_app_new`.
     let app_ref = unsafe { &*app };

@@ -52,7 +52,8 @@
 //! engine, NIP-17, NIP-57, NIP-65, and NIP-29 use.
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::{ActorCommand, NmpApp};
+use nmp_core::ActorCommand;
+use nmp_ffi::NmpApp;
 use serde::{Deserialize, Serialize};
 
 pub mod projection;

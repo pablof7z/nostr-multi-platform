@@ -17,7 +17,7 @@
 //! ## Linkage
 //!
 //! Registered through the in-process Rust-trait API
-//! ([`nmp_core::NmpApp::register_raw_event_observer`]) — the same shape as
+//! ([`nmp_ffi::NmpApp::register_raw_event_observer`]) — the same shape as
 //! the existing `KernelEventObserver` registration in the Chirp FFI shell,
 //! no C-ABI hop. The kernel owns the
 //! `Arc<dyn RawEventObserver>`; the tap holds an `Arc<MarmotProjection>`.

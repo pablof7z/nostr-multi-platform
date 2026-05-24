@@ -16,6 +16,10 @@ crate-type = ["rlib"]
 # `KernelEventObserver` ingest seam the `FollowListProjection` plugs into,
 # and the `NmpApp::register_action` seam `register_actions` calls.
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `register_actions` takes
+# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 # `nostr` supplies `PublicKey::parse` + `ToBech32` for the npub display
 # helpers the `FollowListProjection` uses to pre-format follow rows for the
 # host shell. Only `std` is needed — no crypto features (NIP-44 / NIP-59) are
@@ -29,3 +33,4 @@ serde_json = { workspace = true }
 # exercise `register_actions` end-to-end against a real `NmpApp` — same
 # pattern the other `nmp-nip*` crates use.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

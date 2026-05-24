@@ -79,7 +79,8 @@ struct WalletConnection {
 /// host-registered snapshot projection serializes it into the snapshot's
 /// `projections` map every tick.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(crate) struct WalletStatus {
+#[doc(hidden)]
+pub struct WalletStatus {
     /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
     pub(crate) status: String,
     /// The NWC relay URL (from the connection URI).
@@ -132,11 +133,16 @@ fn format_sats_display(sats: u64) -> String {
 /// projection then contributes JSON `null` under the `"wallet"` key,
 /// preserving the "key present, value null when disconnected" semantic the
 /// social shells already decode.
-pub(crate) type WalletStatusSlot = Arc<Mutex<Option<WalletStatus>>>;
+#[doc(hidden)]
+pub type WalletStatusSlot = Arc<Mutex<Option<WalletStatus>>>;
 
 /// Construct a fresh, empty [`WalletStatusSlot`].
+///
+/// `pub` so `nmp-ffi`'s `nmp_app_new` can build the slot before handing it
+/// to the actor; the slot type is `pub(crate)` because only the wallet
+/// runtime owns the writer side.
 #[must_use]
-pub(crate) fn new_wallet_status_slot() -> WalletStatusSlot {
+pub fn new_wallet_status_slot() -> WalletStatusSlot {
     Arc::new(Mutex::new(None))
 }
 

@@ -67,10 +67,10 @@
 //!   silent no-ops; nothing crosses the FFI as an exception.
 
 use super::{app_ref, NmpApp};
-use crate::actor::{
-    register_c_raw_observer, unregister_raw_observer, KindFilter, RawEventObserverFn,
-    RawEventObserverId, RawEventObserverRegistration,
+use nmp_core::__ffi_internal::{
+    register_c_raw_observer, unregister_raw_observer, RawEventObserverRegistration,
 };
+use nmp_core::{KindFilter, RawEventObserverFn, RawEventObserverId};
 use std::ffi::{c_char, c_void, CStr};
 
 /// Parse a borrowed `kinds_json` C pointer into a [`KindFilter`].
@@ -152,7 +152,7 @@ mod tests {
     //! valid `sig`, and that a non-matching kind is filtered out.
 
     use super::*;
-    use crate::ffi::{nmp_app_free, nmp_app_new};
+    use crate::{nmp_app_free, nmp_app_new};
     use std::ffi::CString;
     use std::sync::mpsc::{channel, Sender};
     use std::sync::{Mutex, OnceLock};

@@ -80,7 +80,7 @@ pub(crate) fn relay_role_tint(role: &str) -> String {
 /// `both` means read+write only; it does not imply indexer. Composite role
 /// strings such as `both,indexer` are tokenized on commas, plus signs, and
 /// whitespace.
-pub(crate) fn has_role(role: &str, needle: &str) -> bool {
+pub fn has_role(role: &str, needle: &str) -> bool {
     let n = needle.trim().to_ascii_lowercase();
     role_tokens(role)
         .any(|token| token == n || (token == "both" && matches!(n.as_str(), "read" | "write")))
@@ -133,7 +133,7 @@ fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
 }
 
 /// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow.
-pub(crate) fn nostrconnect_relay_url<'a, I>(rows: I) -> String
+pub fn nostrconnect_relay_url<'a, I>(rows: I) -> String
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {

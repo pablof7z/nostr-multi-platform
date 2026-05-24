@@ -24,6 +24,10 @@ ffi = ["dep:keyring-core", "dep:apple-native-keyring-store"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). The Marmot projection +
+# bridge name the handle through this dep.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
 # nmp-nip59 supplies the NIP-59 gift-wrap free functions used to deliver MLS
 # Welcome (kind:444) rumors. nmp-marmot is the SOLE importer of mdk-core /
 # openmls; nip59 is a sibling protocol crate carrying no MLS types.
@@ -47,6 +51,7 @@ apple-native-keyring-store = { version = "1.0", features = ["protected"], option
 
 [dev-dependencies]
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 # test-utils gates MdkSqliteStorage::new_in_memory / new_unencrypted.
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 # `mdk-core` provides `NostrGroupConfigData` for the relocated FFI

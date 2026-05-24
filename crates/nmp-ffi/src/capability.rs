@@ -15,7 +15,7 @@
 //!   are the issuing module's concern (see `substrate::KeyringIdentityWiring`).
 
 use super::{app_ref, NmpApp};
-use crate::capability_socket::{
+use nmp_core::__ffi_internal::{
     capability_error_envelope, dispatch_capability, CapabilityCallback,
     CapabilityCallbackRegistration,
 };
@@ -88,7 +88,7 @@ mod tests {
     //! store -> retrieve -> delete -> not_found and the D6 error paths.
 
     use super::*;
-    use crate::substrate::{
+    use nmp_core::substrate::{
         CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringIdentityWiring,
         KeyringRequest, KeyringResult, KeyringStatus,
     };
@@ -171,7 +171,7 @@ mod tests {
 
     fn run(
         slot: &Arc<Mutex<Option<CapabilityCallbackRegistration>>>,
-        req: &crate::substrate::CapabilityRequest,
+        req: &nmp_core::substrate::CapabilityRequest,
     ) -> KeyringResult {
         let json = serde_json::to_string(req).unwrap();
         let envelope: CapabilityEnvelope =

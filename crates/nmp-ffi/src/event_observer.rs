@@ -24,10 +24,10 @@
 //!   need. Same contract as the existing update callback in `ffi/mod.rs`.
 
 use super::{app_ref, NmpApp};
-use crate::actor::{
-    register_c_observer, unregister_observer, KernelEventObserverFn, KernelEventObserverId,
-    KernelEventObserverRegistration,
+use nmp_core::__ffi_internal::{
+    register_c_observer, unregister_observer, KernelEventObserverRegistration,
 };
+use nmp_core::{KernelEventObserverFn, KernelEventObserverId};
 use std::ffi::c_void;
 
 /// Register a C-ABI kernel event observer.
@@ -80,7 +80,7 @@ mod tests {
     //! decodable payload.
 
     use super::*;
-    use crate::ffi::{nmp_app_free, nmp_app_new};
+    use crate::{nmp_app_free, nmp_app_new};
     use std::ffi::CStr;
     use std::sync::mpsc::{channel, Sender};
     use std::sync::{Mutex, OnceLock};
