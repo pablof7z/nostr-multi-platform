@@ -189,7 +189,9 @@ impl ActionModule for ReactModule {
 /// Register all three social-graph `ActionModule`s against `app`'s action
 /// registry. This is the single call a host wires from its init path
 /// (mirrors `nmp_nip17::register_actions`, `nmp_nip57::register_actions`,
-/// `nmp_nip65::register_actions`).
+/// `nmp_router::register_actions` — the NIP-65 publish action, absorbed
+/// from the former `nmp-nip65` crate at step 3 of the crate-boundary
+/// migration).
 ///
 /// Registration MUST happen before `nmp_app_start` because
 /// `NmpApp::register_action` requires `&mut self`.

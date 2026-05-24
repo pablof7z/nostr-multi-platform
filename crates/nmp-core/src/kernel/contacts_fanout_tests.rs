@@ -12,7 +12,6 @@
 //! - Call `drain_lifecycle_tick()` and assert REQs land on `R_A`, `R_B`, `R_C`.
 
 use super::*;
-use crate::kernel::types::AuthorRelayList;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
 
@@ -20,16 +19,12 @@ const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const CAROL: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
-fn install_relay_list(kernel: &mut Kernel, author: &str, write: &[&str]) {
-    kernel.author_relay_lists.insert(
-        author.to_string(),
-        AuthorRelayList {
-            event_id: "x".to_string(),
-            created_at: 1,
-            read_relays: vec![],
-            write_relays: write.iter().map(|s| s.to_string()).collect(),
-            both_relays: vec![],
-        },
+fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str]) {
+    kernel.seed_mailbox_relay_list(
+        author,
+        vec![],
+        write.iter().map(|s| s.to_string()).collect(),
+        vec![],
     );
 }
 
@@ -48,9 +43,9 @@ fn kind3_arrival_fans_out_timeline_onto_new_follows_write_relays() {
     kernel.active_account = Some(ALICE.to_string());
 
     // Cache NIP-65 write relays for all three authors.
-    install_relay_list(&mut kernel, ALICE, &["wss://alice.write/"]);
-    install_relay_list(&mut kernel, BOB, &["wss://bob.write/"]);
-    install_relay_list(&mut kernel, CAROL, &["wss://carol.write/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice.write/"]);
+    install_relay_list(&kernel, BOB, &["wss://bob.write/"]);
+    install_relay_list(&kernel, CAROL, &["wss://carol.write/"]);
 
     // Set generous lifecycle budget so the compiler routes freely.
     kernel

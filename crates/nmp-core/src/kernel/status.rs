@@ -332,12 +332,12 @@ impl Kernel {
     }
 
     pub(super) fn relay_list_coverage(&self, pubkey: &str) -> String {
-        match self.author_relay_lists.get(pubkey) {
-            Some(list) => format!(
+        match self.mailbox_cache().snapshot(&pubkey.to_string()) {
+            Some(parsed) => format!(
                 "nip65 r{} w{} b{}",
-                list.read_relays.len(),
-                list.write_relays.len(),
-                list.both_relays.len()
+                parsed.read.len(),
+                parsed.write.len(),
+                parsed.both.len()
             ),
             None => "nip65 unknown".to_string(),
         }
@@ -345,12 +345,12 @@ impl Kernel {
 
     pub(super) fn author_interest_relays(&self, pubkey: &str) -> Vec<String> {
         let mut relays = self.bootstrap_discovery_relays();
-        if let Some(list) = self.author_relay_lists.get(pubkey) {
-            for relay in list
-                .write_relays
+        if let Some(parsed) = self.mailbox_cache().snapshot(&pubkey.to_string()) {
+            for relay in parsed
+                .write
                 .iter()
-                .chain(list.both_relays.iter())
-                .chain(list.read_relays.iter())
+                .chain(parsed.both.iter())
+                .chain(parsed.read.iter())
             {
                 if !relays.contains(relay) {
                     relays.push(relay.clone());

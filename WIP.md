@@ -17,7 +17,7 @@ later steps remain.
 
 ## Active
 
-- 2026-05-24 — refactor(nip01/nip29/core): V-12 — extract group_chat / timeline_projection / identity_state tests — PR #453 (rebased onto master)
+- 2026-05-24 — refactor(nmp-core/nmp-router): step 3 — kernel cutover to `Arc<dyn OutboxRouter>` + absorb nmp-nip65 — PR #454 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

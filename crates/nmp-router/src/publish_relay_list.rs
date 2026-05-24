@@ -1,16 +1,22 @@
-//! `nmp-nip65` — NIP-65 relay-list (kind:10002) publish path.
+//! `nmp.nip65.publish_relay_list` — NIP-65 relay-list (kind:10002) publish path.
+//!
+//! Absorbed from the (now-deleted) `nmp-nip65` crate at step 3 of the
+//! crate-boundary migration (`docs/architecture/crate-boundaries.md` §5).
+//! `nmp-router` is the single home for both the kind:10002 ingest parser
+//! ([`crate::Kind10002Parser`]) + cache ([`crate::InMemoryMailboxCache`])
+//! **and** the kind:10002 publish action: routing owns the kind end-to-end.
 //!
 //! # Why this exists
 //!
-//! The kernel already INGESTS kind:10002 events (see
-//! `nmp-core::kernel::ingest::relay_list`) to populate the
-//! `author_relay_lists` cache that drives the NIP-65 outbox resolver. That
-//! cache is what every publish + REQ fan-out consults for "where does this
-//! author read/write?".
+//! The kernel already INGESTS kind:10002 events (via
+//! `Kind10002Parser`/`InMemoryMailboxCache`) to populate the live NIP-65
+//! cache the [`crate::GenericOutboxRouter`] consults. That cache is what
+//! every publish + REQ fan-out reads for "where does this author
+//! read/write?".
 //!
 //! But the actor's local `AddRelay` / `RemoveRelay` arms only mutate the
-//! `RelayEditRow` projection and dial / drop sockets — they never publish a
-//! new kind:10002 that reflects the change. The result is asymmetric:
+//! `RelayEditRow` projection and dial / drop sockets — they never publish
+//! a new kind:10002 that reflects the change. The result is asymmetric:
 //!
 //! * a user removes a defunct relay → no kind:10002 update → other clients
 //!   still fan REQs and publishes out to a dead host;
@@ -21,8 +27,8 @@
 //! own AddRelay/RemoveRelay arms, via a sibling in-tree helper) publishes
 //! a kind:10002 reflecting the user's intended relay set. The kernel then
 //! ingests its own publish exactly as any other client's, keeping the
-//! `author_relay_lists` cache for the active account in sync with the
-//! `RelayEditRow` projection without a special case.
+//! NIP-65 cache for the active account in sync with the `RelayEditRow`
+//! projection without a special case.
 //!
 //! # Tag shape — NIP-65
 //!
@@ -33,10 +39,10 @@
 //! * `["r", <url>, "read"]`   → read-only
 //! * `["r", <url>, "write"]`  → write-only
 //!
-//! Any third-element value other than `"read"` / `"write"` is parsed by the
-//! kernel as "both" (see `nmp-core::kernel::nostr::parse_relay_list` at line
-//! 158: `let marker = tag.get(2).map(String::as_str).unwrap_or("both")`).
-//! The builder here MUST agree with that parser so a publish → ingest round
+//! Any third-element value other than `"read"` / `"write"` is parsed by
+//! the kernel as "both" (see `nmp-core::kernel::nostr::parse_relay_list`:
+//! `let marker = tag.get(2).map(String::as_str).unwrap_or("both")`). The
+//! builder here MUST agree with that parser so a publish → ingest round
 //! trip is lossless.
 //!
 //! # Routing
@@ -51,14 +57,13 @@
 //!
 //! The unsigned event is built with `created_at: 0`. The actor re-stamps
 //! it from `kernel.now_secs()` before signing (see the
-//! `PublishUnsignedEvent` arm in `nmp-core::actor::dispatch`); this crate
+//! `PublishUnsignedEvent` arm in `nmp-core::actor::dispatch`); this module
 //! never reads the system clock.
 //!
 //! # D0 — namespace
 //!
-//! The action namespace is `nmp.nip65.publish_relay_list` — mirroring
-//! `nmp.nip17.publish_relay_list` (kind:10050). The kernel sees only the
-//! namespace string; it carries no NIP-65 nouns.
+//! The action namespace is `nmp.nip65.publish_relay_list` — byte-stable
+//! across the move from `nmp-nip65` so callers do not need to change.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
 use nmp_core::{canonical_relay_url, ActorCommand};
@@ -135,7 +140,7 @@ pub struct RelayListEntry {
 /// * has an empty `pubkey` — the actor derives it from the signing keys at
 ///   sign time (this mirrors `nmp_nip17::build_dm_relay_list_event` and the
 ///   NIP-29 builders; the build half is pubkey-agnostic).
-#[must_use] 
+#[must_use]
 pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(entries.len());
     let mut seen = std::collections::HashSet::new();
@@ -255,11 +260,11 @@ impl ActionModule for PublishRelayListAction {
     }
 }
 
+/// Register the `nmp.nip65.publish_relay_list` action module on the app.
 pub fn register_actions(app: &mut nmp_core::NmpApp) {
     app.register_action::<PublishRelayListAction>();
 }
 
 #[cfg(test)]
-#[path = "lib_tests.rs"]
+#[path = "publish_relay_list_tests.rs"]
 mod tests;
-

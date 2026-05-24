@@ -157,9 +157,10 @@ pub(super) fn register_nip57_actions(app: &mut NmpApp) {
 /// Register the NIP-65 relay-list `ActionModule` (`nmp.nip65.publish_relay_list`)
 /// against `app`'s action registry.
 ///
-/// Wires the typed [`PublishRelayListAction`] from the `nmp-nip65` protocol
-/// crate through the same host-extensibility seam the NIP-17 / NIP-29 / NIP-57
-/// actions use. The executor builds the kind:10002 unsigned event with
+/// Wires the typed `PublishRelayListAction` from the `nmp-router` crate
+/// (absorbed from the former `nmp-nip65` crate at step 3 of the
+/// crate-boundary migration) through the same host-extensibility seam the
+/// NIP-17 / NIP-29 / NIP-57 actions use. The executor builds the kind:10002 unsigned event with
 /// `["r", <url>]` / `["r", <url>, "read"]` / `["r", <url>, "write"]` tags and
 /// enqueues [`ActorCommand::PublishUnsignedEvent`] — kind:10002 is a NIP-65
 /// replaceable event and routes through the kernel's Auto path so the very
@@ -191,5 +192,5 @@ pub(super) fn register_nip57_actions(app: &mut NmpApp) {
 /// paths converge on the same on-wire kind:10002 — the auto-trigger reads
 /// `RelayEditRow`, the action takes explicit input.
 pub(super) fn register_nip65_actions(app: &mut NmpApp) {
-    nmp_nip65::register_actions(app);
+    nmp_router::register_actions(app);
 }

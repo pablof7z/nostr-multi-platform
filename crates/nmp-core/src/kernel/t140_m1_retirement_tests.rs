@@ -31,23 +31,18 @@
 //!   must still fan a `Nip65Arrived` trigger so M2 re-routes off stale relays.
 
 use super::*;
-use crate::kernel::types::AuthorRelayList;
 use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY, TEST_PUBKEY};
 use crate::subs::WireFrame;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-fn install_relay_list(kernel: &mut Kernel, author: &str, write_relays: &[&str]) {
-    kernel.author_relay_lists.insert(
-        author.to_string(),
-        AuthorRelayList {
-            event_id: format!("relay-list-{author}"),
-            created_at: 1_000,
-            read_relays: vec![],
-            write_relays: write_relays.iter().map(|s| s.to_string()).collect(),
-            both_relays: vec![],
-        },
+fn install_relay_list(kernel: &Kernel, author: &str, write_relays: &[&str]) {
+    kernel.seed_mailbox_relay_list(
+        author,
+        vec![],
+        write_relays.iter().map(|s| s.to_string()).collect(),
+        vec![],
     );
 }
 
@@ -79,8 +74,8 @@ fn req_sub_ids_from_outbound(out: &[crate::relay::OutboundMessage]) -> Vec<Strin
 fn live_follow_feed_path_emits_no_seed_timeline_req() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ALICE.to_string());
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t140.relay/"]);
-    install_relay_list(&mut kernel, BOB, &["wss://bob-t140.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, BOB, &["wss://bob-t140.relay/"]);
 
     // Force `should_open_timeline()` to be satisfied by tripping the
     // contacts deadline (the M1 gate the prior agent left active) — this is
@@ -156,7 +151,7 @@ fn live_follow_feed_path_emits_no_seed_timeline_req() {
 fn m2_follow_feed_sub_survives_eose() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ALICE.to_string());
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
 
     // Register M2 follow-feed interests and emit the REQ via the actor path.
     kernel
@@ -210,7 +205,7 @@ fn m2_follow_feed_sub_survives_eose() {
 fn m2_follow_feed_interest_carries_limit() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ALICE.to_string());
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
     kernel
         .inject_replaceable_event(
             "0000000000000000000000000000000000000000000000000000000000000003",
@@ -247,7 +242,7 @@ fn m2_follow_feed_interest_carries_limit() {
 fn empty_follows_clears_timeline_authors_and_interests() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ALICE.to_string());
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t140.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);
 
     // Establish a non-empty follow set first.
     kernel
@@ -309,7 +304,7 @@ fn empty_kind_10002_emits_nip65_arrived() {
 
     // Prime a cached relay list and register ALICE's follow-feed interest so a
     // plan exists routed to wss://stale.relay/.
-    install_relay_list(&mut kernel, ALICE, &["wss://stale.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://stale.relay/"]);
     kernel
         .inject_replaceable_event(
             "0000000000000000000000000000000000000000000000000000000000000050",

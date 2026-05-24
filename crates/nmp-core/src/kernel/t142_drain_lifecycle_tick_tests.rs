@@ -15,7 +15,6 @@
 //! wiring that glues the actor to the lifecycle.
 
 use super::*;
-use crate::kernel::types::AuthorRelayList;
 use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::{CompileTrigger, InvalidateReason, WireFrame};
@@ -23,16 +22,12 @@ use std::collections::BTreeSet;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-fn install_relay_list(kernel: &mut Kernel, author: &str, write: &[&str]) {
-    kernel.author_relay_lists.insert(
-        author.to_string(),
-        AuthorRelayList {
-            event_id: "test-event".to_string(),
-            created_at: 1_000,
-            read_relays: vec![],
-            write_relays: write.iter().map(|s| s.to_string()).collect(),
-            both_relays: vec![],
-        },
+fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str]) {
+    kernel.seed_mailbox_relay_list(
+        author,
+        vec![],
+        write.iter().map(|s| s.to_string()).collect(),
+        vec![],
     );
 }
 
@@ -97,7 +92,7 @@ fn t142_drain_lifecycle_tick_with_trigger_emits_frames() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Register alice's kind:10002 write relay in the kernel cache.
-    install_relay_list(&mut kernel, ALICE, &["wss://alice-t142.relay/"]);
+    install_relay_list(&kernel, ALICE, &["wss://alice-t142.relay/"]);
 
     // Register a follow interest for alice.
     kernel

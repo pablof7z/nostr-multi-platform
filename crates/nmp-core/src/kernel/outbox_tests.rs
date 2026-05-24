@@ -14,28 +14,23 @@
 //!    the relay list arrives (recompilation trigger).
 
 use super::*;
-use crate::kernel::types::AuthorRelayList;
 use crate::relay::{BOOTSTRAP_DISCOVERY_RELAYS, DEFAULT_VISIBLE_LIMIT};
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn install_relay_list(
-    kernel: &mut Kernel,
+    kernel: &Kernel,
     author: &str,
     write: &[&str],
     read: &[&str],
     both: &[&str],
 ) {
-    kernel.author_relay_lists.insert(
-        author.to_string(),
-        AuthorRelayList {
-            event_id: "x".to_string(),
-            created_at: 1,
-            read_relays: read.iter().map(|s| s.to_string()).collect(),
-            write_relays: write.iter().map(|s| s.to_string()).collect(),
-            both_relays: both.iter().map(|s| s.to_string()).collect(),
-        },
+    kernel.seed_mailbox_relay_list(
+        author,
+        read.iter().map(|s| s.to_string()).collect(),
+        write.iter().map(|s| s.to_string()).collect(),
+        both.iter().map(|s| s.to_string()).collect(),
     );
 }
 
@@ -53,9 +48,9 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
     kernel
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
-    install_relay_list(&mut kernel, ALICE, &["wss://alice.relay/"], &[], &[]);
+    install_relay_list(&kernel, ALICE, &["wss://alice.relay/"], &[], &[]);
     install_relay_list(
-        &mut kernel,
+        &kernel,
         BOB,
         &["wss://bob.write/"],
         &[],
@@ -358,8 +353,8 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
     // No REQ leaves on a relay that does not own the id it carries.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    install_relay_list(&mut kernel, ALICE, &["wss://relay1/"], &[], &[]);
-    install_relay_list(&mut kernel, BOB, &["wss://relay2/"], &[], &[]);
+    install_relay_list(&kernel, ALICE, &["wss://relay1/"], &[], &[]);
+    install_relay_list(&kernel, BOB, &["wss://relay2/"], &[], &[]);
     // CHARLIE intentionally has no kind:10002 cached → cold-start path.
 
     let id_a = id_for('a');
@@ -507,7 +502,7 @@ fn hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap() {
     // (one pure read marker, one shared "both" marker) and a write relay
     // that MUST NOT appear in the hashtag firehose fan-out.
     install_relay_list(
-        &mut kernel,
+        &kernel,
         ALICE,
         &["wss://alice.write/"],
         &["wss://alice.inbox1/"],

@@ -23,7 +23,6 @@ members = [
     "crates/nmp-nip42-types",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
-    "crates/nmp-nip65",
     "crates/nmp-nostr-lmdb",
     "crates/nmp-router",
     "crates/nmp-nwc",

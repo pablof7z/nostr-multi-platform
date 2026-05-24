@@ -47,6 +47,27 @@ impl MailboxCache for InMemoryMailboxCache {
             .map(ParsedRelayList::write_set)
     }
 
+    fn snapshot(&self, author: &RoutingPubkey) -> Option<ParsedRelayList> {
+        self.inner
+            .read()
+            .expect("RwLock poisoned")
+            .get(author)
+            .cloned()
+    }
+
+    fn snapshot_all(&self) -> Vec<(RoutingPubkey, ParsedRelayList)> {
+        self.inner
+            .read()
+            .expect("RwLock poisoned")
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
+    fn remove(&self, author: &RoutingPubkey) {
+        self.inner.write().expect("RwLock poisoned").remove(author);
+    }
+
     fn upsert(&self, author: RoutingPubkey, list: ParsedRelayList) {
         self.inner.write().expect("RwLock poisoned").insert(author, list);
     }
