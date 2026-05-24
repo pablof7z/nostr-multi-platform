@@ -99,7 +99,7 @@ path references updated (nmp-repl, nmp-app-chirp, nmp-testing). All `cargo check
 
 ### V-03 · ~~wallet_status app noun in nmp-core~~ CLOSED — see Appendix
 
-### V-04 · Two subscription systems coexist — D4 single-writer violation [MEDIUM · staged fix in progress]
+### V-04 · Two subscription systems coexist — D4 single-writer violation [DONE — PR #430]
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:361` documents that the M1 hand-rolled
 `req()` path is still authoritative. The `InterestRegistry`/`LogicalInterest` infrastructure
