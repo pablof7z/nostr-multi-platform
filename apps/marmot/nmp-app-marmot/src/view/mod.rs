@@ -1,6 +1,6 @@
-//! 3 reactive views per `docs/plan/marmot-mls.md` §Step 1.
+//! Reactive views per `docs/plan/marmot-mls.md` §Step 1.
 //!
-//! `GroupList`, `GroupMessages`, `MemberList`. All group-scoped views are
+//! `GroupList`, `GroupMessages`. All group-scoped views are
 //! relay-pinned to the group relay via `InterestShape::relay_pin` (ADR-0012);
 //! the interest helpers in [`crate::interest`] carry the pin.
 //!
@@ -21,5 +21,4 @@ pub use views::{
     GroupListEntry, GroupListPayload, GroupListSpec, GroupListView, GroupMessageEntry,
     GroupMessagesPayload, GroupMessagesSpec, GroupMessagesView,
     KeyPackageLookupPayload, KeyPackageLookupSpec, KeyPackageLookupView,
-    MemberEntry, MemberListPayload, MemberListSpec, MemberListView,
 };

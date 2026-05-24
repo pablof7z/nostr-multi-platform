@@ -1,10 +1,10 @@
-//! `GroupList`, `GroupMessages`, `MemberList` reactive views per
+//! `GroupList`, `GroupMessages` reactive views per
 //! `docs/plan/marmot-mls.md` §Step 1 + mdk-api.md §6.
 //!
 //! `GroupMessages` is relay-pinned to the group relay (kind:445) via
-//! `InterestShape::relay_pin` (ADR-0012). `GroupList` / `MemberList` project
+//! `InterestShape::relay_pin` (ADR-0012). `GroupList` projects
 //! off service-materialised state (the actual member set + decrypted history
-//! come from MDK, not the raw wire), so their dependency surface is the
+//! come from MDK, not the raw wire), so its dependency surface is the
 //! relay-pinned kind:445 stream that triggers re-projection ticks; the
 //! decrypted payload is filled by the service/actor layer (same scope-cut
 //! as nmp-nip29's Step 0 views).
@@ -185,93 +185,6 @@ impl GroupMessagesView {
         // the structural accumulator only drives re-projection ticks.
         GroupMessagesPayload {
             messages: Vec::new(),
-        }
-    }
-}
-
-// ─── MemberList ──────────────────────────────────────────────────────────────
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct MemberListSpec {
-    pub group_id_hex: String,
-    pub group_relay_url: String,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct MemberEntry {
-    pub pubkey: String,
-    /// MLS leaf index within the ratchet tree.
-    pub leaf_index: u32,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct MemberListPayload {
-    pub members: Vec<MemberEntry>,
-}
-
-/// Current group member list with MLS leaf indices. Authoritative set comes
-/// from `MDK::get_members()` + `MDK::group_leaf_map()` via [`crate::service`].
-pub struct MemberListView;
-impl MemberListView {
-    pub const NAMESPACE: &'static str = "nmp.marmot.member_list";
-
-    #[must_use] 
-    pub fn key(spec: &MemberListSpec) -> String {
-        spec.group_id_hex.clone()
-    }
-    #[must_use] 
-    pub fn dependencies(spec: &MemberListSpec) -> ViewDependencies {
-        // Member changes arrive as kind:445 commits pinned to the group relay
-        // (ADR-0012). `relay_pin` declares that host affinity in the data model.
-        ViewDependencies {
-            kinds: vec![KIND_GROUP_MESSAGE],
-            relay_pin: Some(spec.group_relay_url.clone()),
-            ..Default::default()
-        }
-    }
-    #[must_use] 
-    pub fn open(
-        _c: &ViewContext,
-        _spec: MemberListSpec,
-    ) -> (EventAccumulator, MemberListPayload) {
-        (
-            EventAccumulator::default(),
-            MemberListPayload {
-                members: Vec::new(),
-            },
-        )
-    }
-    #[must_use]
-    pub fn on_event_inserted(
-        _c: &ViewContext,
-        s: &mut EventAccumulator,
-        e: &KernelEvent,
-    ) -> Option<EventAccumulatorDelta> {
-        s.insert(e)
-    }
-    #[must_use]
-    pub fn on_event_removed(
-        _c: &ViewContext,
-        s: &mut EventAccumulator,
-        id: &EventId,
-    ) -> Option<EventAccumulatorDelta> {
-        s.remove(id)
-    }
-    #[must_use]
-    pub fn on_event_replaced(
-        _c: &ViewContext,
-        s: &mut EventAccumulator,
-        old: &EventId,
-        e: &KernelEvent,
-    ) -> Option<EventAccumulatorDelta> {
-        s.replace(old, e)
-    }
-    #[must_use]
-    pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> MemberListPayload {
-        // Authoritative member set is MDK-side; the service/actor layer fills
-        // this snapshot. The structural accumulator only drives ticks.
-        MemberListPayload {
-            members: Vec::new(),
         }
     }
 }
