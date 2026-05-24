@@ -119,6 +119,17 @@ impl MailboxCache for InMemoryMailboxCache {
     }
 }
 
+// ─── Discovery-kind helper ───────────────────────────────────────────────────
+
+/// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
+/// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002
+/// relay-list). Mirrors `nmp_router::router::is_discovery_kind` until
+/// Debt B deletes this duplicate.
+#[inline]
+fn is_discovery_kind(kind: u32) -> bool {
+    kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
+}
+
 // ─── Nip65WriteSetRouter (default) ───────────────────────────────────────────
 
 /// Default `OutboxRouter` impl used by `Kernel::new`. Mirrors
@@ -178,6 +189,17 @@ impl OutboxRouter for Nip65WriteSetRouter {
                             direction: Direction::Write,
                         },
                     );
+                }
+            }
+
+            // Lane 6 — Indexer (ALWAYS-ON for discovery kinds, R+W
+            // symmetric per spec §3.1). Stacks on top of lane 1.
+            if is_discovery_kind(evt.kind) {
+                for url in ctx.session_keys.indexer_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(url.clone(), RoutingSource::Indexer);
                 }
             }
 
@@ -242,6 +264,21 @@ impl OutboxRouter for Nip65WriteSetRouter {
                             },
                         );
                     }
+                }
+            }
+
+            // Lane 6 — Indexer (ALWAYS-ON for any discovery kind in the
+            // interest shape; per spec §3.1). Stacks on top of lane 1.
+            // This is the kind:10002 self-seal fix: a stale cached
+            // kind:10002 routes a kind:10002 refresh only to the stale
+            // relays via lane 1; the indexer union lets a newer
+            // kind:10002 on a different relay still arrive.
+            if interest.shape.kinds.iter().any(|k| is_discovery_kind(*k)) {
+                for url in ctx.session_keys.indexer_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(url.clone(), RoutingSource::Indexer);
                 }
             }
 
@@ -481,5 +518,47 @@ mod tests {
         assert!(cache.known(&alice));
         cache.remove(&alice);
         assert!(!cache.known(&alice));
+    }
+
+    // ─── V-50: lane 6 (Indexer always-on for discovery kinds) ────────────────
+
+    #[test]
+    fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
+        // V-50 self-seal regression: seed { alice -> ["wss://stale.example"] }
+        // and issue a kind:10002 subscription for alice. Resolved set must
+        // include BOTH the stale cached relay (Nip65/Read) AND the
+        // configured indexer URL (RoutingSource::Indexer) — so a newer
+        // kind:10002 on a different relay can still arrive.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        cache.upsert(
+            "alice".into(),
+            ParsedRelayList {
+                read: vec!["wss://stale.example".into()],
+                ..ParsedRelayList::default()
+            },
+        );
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let indexers = vec!["wss://indexer.example".to_string()];
+        let ctx = RoutingContext {
+            active_account: None,
+            session_keys: crate::substrate::SessionKeySet {
+                app_relays: &app,
+                indexer_relays: &indexers,
+                ..crate::substrate::SessionKeySet::default()
+            },
+            mailbox_cache: &*cache,
+            blocked_relays: &blocked,
+            explicit_targets: None,
+        };
+        let interest = interest_for(99, &["alice"], &[10_002]);
+        let router = Nip65WriteSetRouter::new();
+        let routed = router.route_subscription(&interest, &ctx).unwrap();
+        let urls: std::collections::BTreeSet<&String> = routed.urls().collect();
+        let stale = "wss://stale.example".to_string();
+        let indexer = "wss://indexer.example".to_string();
+        assert!(urls.contains(&stale), "lane 1 (stale NIP-65) missing");
+        assert!(urls.contains(&indexer), "lane 6 (indexer) must STACK");
+        assert!(routed.relays[&indexer].contains(&RoutingSource::Indexer));
     }
 }

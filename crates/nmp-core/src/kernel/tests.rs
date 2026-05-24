@@ -9,12 +9,20 @@ fn open_author_emits_profile_and_note_reqs() {
 
     let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
 
-    // T105: cold-start (no cached kind:10002 for FIATJAF) → all three
-    // request kinds fan out to the BOOTSTRAP_DISCOVERY_RELAYS seeds. With
-    // two seeds: 2 author-relays + 2 author-profile (indexer lane) +
-    // 2 author-notes (content lane) = 6 frames.
-    let n_seeds = crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.len();
-    assert_eq!(requests.len(), 3 * n_seeds);
+    // T105 + V-50: cold-start (no cached kind:10002 for FIATJAF). With the
+    // router's lane 6 (Indexer always-on for discovery kinds) wired,
+    // discovery probes (kind:10002, kind:0) resolve via the indexer URL
+    // only — lane 7 (AppRelay fallback) is shortcut because lane 6 already
+    // produced a resolution. Content kind:1/6 probes are NOT discovery
+    // kinds, so they still fall through to lane 7 with the full
+    // BOOTSTRAP_DISCOVERY_RELAYS seed. Net frames:
+    //   * author-relays (kind:10002) → 1 seed (indexer) × 1 = 1
+    //   * author-profile (kind:0)    → 1 seed (indexer) × 1 = 1
+    //   * author-notes (kind:1,6)    → 2 seeds × 1 = 2
+    // = 4 total (was 6 pre-V-50; the kind:0/kind:10002 leak onto the
+    // content seed was already a known concern — see BootstrapSeed::
+    // IndexerOnly module docs in mailboxes.rs).
+    assert_eq!(requests.len(), 4);
     let joined = requests
         .iter()
         .map(|request| request.text.as_str())
@@ -41,6 +49,18 @@ fn open_author_emits_profile_and_note_reqs() {
             "cold-start author REQ targets bootstrap seed, got {}",
             r.relay_url
         );
+    }
+    // V-50: discovery kinds (kind:10002, kind:0) MUST resolve to the
+    // indexer URL only (lane 6 always-on); they MUST NOT fan out to the
+    // content URL.
+    for r in &requests {
+        if r.text.contains("\"kinds\":[10002]") || r.text.contains("\"kinds\":[0]") {
+            assert_eq!(
+                r.relay_url.as_str(),
+                crate::relay::INDEXER_RELAY_URL,
+                "discovery kinds must route via the indexer lane only"
+            );
+        }
     }
 }
 

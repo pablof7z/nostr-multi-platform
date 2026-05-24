@@ -407,10 +407,13 @@ pub(crate) struct Kernel {
     /// [`Kernel::with_routing`].
     ///
     /// The kind:10002 ingest path (`ingest::relay_list::ingest_relay_list`)
-    /// is the single writer of this cache. Helpers
-    /// `author_write_relays`, `author_indexer_relays`,
-    /// `recipient_read_relays`, and the planner-side adapter
-    /// `KernelMailboxes` all read through this handle.
+    /// is the single writer of this cache. The `mailbox_cache` is read
+    /// by the `outbox_router` slot (per-route lane 1 lookup) and by the
+    /// `KernelMailboxes` planner-side adapter; the kernel's REQ-construction
+    /// sites never read it directly — they call the router
+    /// (`Kernel::route_subscription_relays` /
+    /// `route_outbox_subscription_relays` /
+    /// `partition_ids_via_router` in `kernel/mailboxes.rs`).
     mailbox_cache: Arc<dyn MailboxCache>,
     /// Substrate outbox router — step 3 of
     /// `docs/architecture/crate-boundaries.md` §3.2. The kernel holds
@@ -422,13 +425,14 @@ pub(crate) struct Kernel {
     /// to inject `nmp_router::GenericOutboxRouter` via
     /// [`Kernel::with_routing`].
     ///
-    /// Wired but not yet consulted from every code path — kernel
-    /// helpers `author_write_relays` / `recipient_read_relays` / etc.
-    /// are cache-read helpers with bootstrap-fallback policy (they
-    /// return `Vec<String>` with bootstrap seed on miss, not
-    /// `RoutedRelaySet`); they read through `mailbox_cache` directly.
-    /// Follow-on steps wire actual `route_publish` / `route_subscription`
-    /// call sites.
+    /// **Debt A**: the router is the live decision authority for every
+    /// kernel-driven REQ. `kernel/requests/profile.rs` (`author_requests`,
+    /// `profile_claim_request`, `pending_profile_claim_requests`,
+    /// `firehose_requests`) and `kernel/requests/thread.rs`
+    /// (`maybe_open_thread_hydration`) call through the router helpers
+    /// in `kernel/mailboxes.rs`; the bootstrap discovery seed flows
+    /// through the substrate seam at
+    /// `RoutingContext::session_keys::app_relays` (lane 7 fallback).
     outbox_router: Arc<dyn OutboxRouter>,
     /// V-51 phase 1 — bounded ring-buffer projection of recent routing
     /// decisions. Constructed once in `Kernel::with_optional_publish_store_and_path`

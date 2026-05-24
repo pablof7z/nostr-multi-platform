@@ -28,6 +28,18 @@ use nmp_core::substrate::{
     UnsignedEvent,
 };
 
+/// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
+/// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002
+/// relay-list). The indexer lane is ALWAYS-ON for these kinds — it
+/// stacks on top of the per-author NIP-65 set so that newer versions of
+/// these replaceable events published to relays NOT in the cached set
+/// can still be discovered (defeating the kind:10002 self-sealing
+/// loop).
+#[inline]
+fn is_discovery_kind(kind: u32) -> bool {
+    kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
+}
+
 #[derive(Default)]
 pub struct GenericOutboxRouter {
     /// V-51 phase 1 — optional trace observer fired after every successful
@@ -77,7 +89,28 @@ impl OutboxRouter for GenericOutboxRouter {
                 }
             }
 
-            // Lane 7 — AppRelay fallback when lane 1 returned nothing.
+            // Lane 6 — Indexer (ALWAYS-ON for discovery kinds): kind:0
+            // profile, kind:3 contacts, kind:10000–19999 NIP-51 lists
+            // (INCLUDING kind:10002 relay-list itself). R+W symmetric per
+            // router spec §3.1: discovery kinds publish to indexers, not
+            // just consume from them. This lane STACKS on top of lane 1;
+            // it is precisely what defeats the "self-sealing loop" where
+            // a cached stale kind:10002 keeps routing kind:10002 refreshes
+            // only to the stale relays — by always also asking the
+            // operator's indexers we let a newer kind:10002 published on
+            // a different relay still arrive.
+            if is_discovery_kind(evt.kind) {
+                for url in ctx.session_keys.indexer_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(url.clone(), RoutingSource::Indexer);
+                }
+            }
+
+            // Lane 7 — AppRelay fallback when no earlier lane resolved
+            // anything (lane 1 empty AND lane 6 didn't fire / had no
+            // indexer URLs configured).
             if out.is_empty() {
                 for url in ctx.session_keys.app_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
@@ -93,7 +126,6 @@ impl OutboxRouter for GenericOutboxRouter {
             // TODO §3.1 lane 3 — provenance (kind/event-id seen at relay X).
             // TODO §3.1 lane 4 — UserConfigured (active-account write).
             // TODO §3.1 lane 5 — NIP-51 ClassRouted (search/draft/wiki).
-            // TODO §3.1 lane 6 — Indexer eligibility for kind:0 / kind:3 / 10000–19999.
 
             if out.is_empty() {
                 return Err(RoutingError::Unroutable(evt.pubkey.clone()));
@@ -140,7 +172,26 @@ impl OutboxRouter for GenericOutboxRouter {
                 }
             }
 
-            // Lane 7 — AppRelay fallback when lane 1 returned nothing.
+            // Lane 6 — Indexer (ALWAYS-ON for any discovery kind in the
+            // interest shape): kind:0 profile, kind:3 contacts, kind:
+            // 10000–19999 NIP-51 lists, INCLUDING kind:10002 relay-list
+            // itself. Per router spec §3.1 lane 6 the indexer set STACKS
+            // on top of lane 1 — it is the structural defeat of the
+            // kind:10002 self-sealing loop (a cached stale kind:10002
+            // would otherwise keep refreshing only against the stale
+            // relays; asking the operator's indexers in parallel lets a
+            // newer kind:10002 published elsewhere still arrive).
+            if interest.shape.kinds.iter().any(|k| is_discovery_kind(*k)) {
+                for url in ctx.session_keys.indexer_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(url.clone(), RoutingSource::Indexer);
+                }
+            }
+
+            // Lane 7 — AppRelay fallback when no earlier lane resolved
+            // anything.
             if out.is_empty() {
                 for url in ctx.session_keys.app_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
@@ -151,9 +202,6 @@ impl OutboxRouter for GenericOutboxRouter {
                     });
                 }
             }
-
-            // TODO §3.1 lane 6 — Indexer eligibility for discovery kinds in
-            // `interest.shape.kinds` (kind:0 / kind:3 / 10000–19999).
 
             if out.is_empty() {
                 // No author resolved and no AppRelay configured — surface as
@@ -245,6 +293,39 @@ mod tests {
             mailbox_cache: cache,
             blocked_relays: blocked,
             explicit_targets: explicit,
+        }
+    }
+
+    fn ctx_with_indexers<'a>(
+        cache: &'a dyn MailboxCache,
+        blocked: &'a BlockedRelaySet,
+        app_relays: &'a [String],
+        indexer_relays: &'a [String],
+    ) -> RoutingContext<'a> {
+        RoutingContext {
+            active_account: None,
+            session_keys: SessionKeySet {
+                app_relays,
+                indexer_relays,
+                ..SessionKeySet::default()
+            },
+            mailbox_cache: cache,
+            blocked_relays: blocked,
+            explicit_targets: None,
+        }
+    }
+
+    fn interest_for_kinds(authors: &[&str], kinds: &[u32]) -> LogicalInterest {
+        LogicalInterest {
+            id: InterestId(0),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: authors.iter().map(|s| (*s).into()).collect(),
+                kinds: kinds.iter().copied().collect(),
+                ..InterestShape::default()
+            },
+            hints: vec![],
+            lifecycle: InterestLifecycle::OneShot,
         }
     }
 
@@ -484,5 +565,139 @@ mod tests {
         assert_eq!(subs[0].interest_id, 42);
         assert_eq!(subs[0].authors_count, 1);
         assert!(!subs[0].explicit_targets_set);
+    }
+
+    // ─── V-50: lane 6 (Indexer always-on for discovery kinds) ────────────────
+
+    #[test]
+    fn route_subscription_includes_indexer_lane_for_kind_10002_kind_0_kind_3() {
+        // For each of kind:10002 / kind:0 / kind:3 (and a kind:10000 NIP-51
+        // bookmark for good measure), routing a subscription with an empty
+        // cache and a configured indexer URL must:
+        //   1. Resolve to the indexer URL,
+        //   2. Attribute that URL to RoutingSource::Indexer.
+        // Lane 1 (per-author NIP-65) is empty here so the only resolution
+        // pathway is lane 6.
+        let cache = InMemoryMailboxCache::new();
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let indexers = vec!["wss://indexer.example".to_string()];
+
+        let router = GenericOutboxRouter::new();
+        for kind in [0u32, 3, 10_000, 10_002, 19_999] {
+            let interest = interest_for_kinds(&["alice"], &[kind]);
+            let c = ctx_with_indexers(&cache, &blocked, &app, &indexers);
+            let r = router
+                .route_subscription(&interest, &c)
+                .unwrap_or_else(|e| panic!("kind {kind} must resolve via indexer lane: {e:?}"));
+            let urls: Vec<&String> = r.urls().collect();
+            assert_eq!(
+                urls,
+                vec![&"wss://indexer.example".to_string()],
+                "kind {kind} subscription must include the indexer URL"
+            );
+            let sources = r.relays.get(&"wss://indexer.example".to_string()).unwrap();
+            assert!(
+                sources.contains(&RoutingSource::Indexer),
+                "kind {kind} indexer URL must carry RoutingSource::Indexer attribution; got {sources:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn route_subscription_skips_indexer_lane_for_content_kinds() {
+        // kind:1 / kind:6 are content kinds — lane 6 must NOT fire. With
+        // empty NIP-65 cache and a configured indexer URL the router must
+        // surface Unroutable rather than silently routing content to the
+        // operator's indexer (which would defeat T105 outbox discipline).
+        let cache = InMemoryMailboxCache::new();
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let indexers = vec!["wss://indexer.example".to_string()];
+        let interest = interest_for_kinds(&["alice"], &[1, 6]);
+        let c = ctx_with_indexers(&cache, &blocked, &app, &indexers);
+        let router = GenericOutboxRouter::new();
+        let err = router.route_subscription(&interest, &c).unwrap_err();
+        assert_eq!(err, RoutingError::Unroutable("alice".into()));
+    }
+
+    #[test]
+    fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
+        // V-50 self-seal regression: seed the mailbox cache with
+        // { alice -> ["wss://stale.example"] } and issue a kind:10002
+        // refresh for alice. The resolved set must include BOTH the cached
+        // (stale) URL via Nip65/Read AND the configured indexer URL via
+        // RoutingSource::Indexer — so a newer kind:10002 published on a
+        // different relay is structurally reachable.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        cache.upsert("alice".into(), ParsedRelayList {
+            read: vec!["wss://stale.example".into()],
+            ..ParsedRelayList::default()
+        });
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let indexers = vec!["wss://indexer.example".to_string()];
+        let interest = interest_for_kinds(&["alice"], &[10_002]);
+        let c = ctx_with_indexers(&*cache, &blocked, &app, &indexers);
+
+        let router = GenericOutboxRouter::new();
+        let r = router.route_subscription(&interest, &c).unwrap();
+        let urls: std::collections::BTreeSet<&String> = r.urls().collect();
+        let stale = "wss://stale.example".to_string();
+        let indexer = "wss://indexer.example".to_string();
+        assert!(
+            urls.contains(&stale),
+            "lane 1 (stale NIP-65 read) must still resolve — got {urls:?}"
+        );
+        assert!(
+            urls.contains(&indexer),
+            "lane 6 (indexer) must STACK on top of lane 1 to defeat the kind:10002 self-seal — got {urls:?}"
+        );
+        // Lane attribution sanity.
+        let stale_sources = r.relays.get(&stale).unwrap();
+        assert!(stale_sources.iter().any(|s| matches!(
+            s,
+            RoutingSource::Nip65 { direction: Direction::Read }
+        )));
+        let indexer_sources = r.relays.get(&indexer).unwrap();
+        assert!(indexer_sources.contains(&RoutingSource::Indexer));
+    }
+
+    #[test]
+    fn route_publish_includes_indexer_lane_for_discovery_kinds() {
+        // R+W symmetric per spec §3.1: publishing a kind:10002 (or kind:0,
+        // kind:3, etc.) hits the indexer in addition to the author's
+        // NIP-65 write set.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        cache.upsert(pubkey(), ParsedRelayList {
+            write: vec!["wss://w.example".into()],
+            ..ParsedRelayList::default()
+        });
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let indexers = vec!["wss://indexer.example".to_string()];
+
+        let router = GenericOutboxRouter::new();
+        for kind in [0u32, 3, 10_002, 10_000, 19_999] {
+            let evt = UnsignedEvent { kind, ..unsigned() };
+            let c = ctx_with_indexers(&*cache, &blocked, &app, &indexers);
+            let r = router.route_publish(&evt, &c).unwrap();
+            let urls: std::collections::BTreeSet<&String> = r.urls().collect();
+            let w = "wss://w.example".to_string();
+            let i = "wss://indexer.example".to_string();
+            assert!(urls.contains(&w), "kind {kind} lane 1 missing");
+            assert!(urls.contains(&i), "kind {kind} lane 6 missing");
+            assert!(r.relays[&i].contains(&RoutingSource::Indexer));
+        }
+        // Non-discovery kind:1 — lane 6 must NOT fire.
+        let evt = UnsignedEvent { kind: 1, ..unsigned() };
+        let c = ctx_with_indexers(&*cache, &blocked, &app, &indexers);
+        let r = router.route_publish(&evt, &c).unwrap();
+        let urls: std::collections::BTreeSet<&String> = r.urls().collect();
+        assert!(urls.contains(&"wss://w.example".to_string()));
+        assert!(
+            !urls.contains(&"wss://indexer.example".to_string()),
+            "kind:1 publish must NOT route to indexer"
+        );
     }
 }
