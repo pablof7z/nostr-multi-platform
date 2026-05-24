@@ -65,7 +65,9 @@ private struct AccountRowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.displayName.isEmpty ? "Identity" : account.displayName)
                         .lineLimit(1)
-                    Text(shortNpub(account.npub))
+                    // V-24 thin-shell — `npubShort` is pre-formatted in Rust
+                    // (`AccountSummary.npub_short`); no Swift-side abbreviation.
+                    Text(account.npubShort)
                         .font(.footnote.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -85,11 +87,6 @@ private struct AccountRowView: View {
         }
         .accessibilityIdentifier(account.isActive ? "account-row-active" : "account-row-\(account.id)")
         .accessibilityValue(account.npub)
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(6))"
     }
 }
 

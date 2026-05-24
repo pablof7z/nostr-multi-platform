@@ -288,6 +288,119 @@ fn host_relay_url_accessor_returns_construction_value() {
 }
 
 #[test]
+fn display_name_falls_back_to_group_id_when_name_missing() {
+    // V-24 — `display_name` is owned by Rust. With no kind:39000 (only a
+    // 39002 member list) the row has no `name`, so the field must fall
+    // back to `group_id` instead of an empty string the shell would
+    // need to coalesce in-view.
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "members-only",
+        KIND_GROUP_MEMBERS,
+        100,
+        vec![d_tag("orphan-room"), p_tag("a")],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert!(g.name.is_none(), "precondition: no name on this row");
+    assert_eq!(g.display_name, "orphan-room");
+}
+
+#[test]
+fn display_name_uses_name_when_present() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "named",
+        KIND_GROUP_METADATA,
+        100,
+        vec![d_tag("rust-nostr"), vec!["name".into(), "Rust Nostr".into()]],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert_eq!(g.display_name, "Rust Nostr");
+}
+
+#[test]
+fn initials_are_first_two_uppercase_chars_of_display_source() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "named",
+        KIND_GROUP_METADATA,
+        100,
+        vec![d_tag("room"), vec!["name".into(), "rust nostr".into()]],
+    ));
+    assert_eq!(proj.snapshot().groups[0].initials, "RU");
+}
+
+#[test]
+fn initials_fall_back_to_group_id_when_name_missing() {
+    // V-24 — same fallback as `display_name`: no `name` means the avatar
+    // tile keys off `group_id`'s first two chars.
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "members",
+        KIND_GROUP_MEMBERS,
+        100,
+        vec![d_tag("zoo-room"), p_tag("a")],
+    ));
+    assert_eq!(proj.snapshot().groups[0].initials, "ZO");
+}
+
+#[test]
+fn subtitle_public_open_pluralized_member_count() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![d_tag("room"), vec!["name".into(), "Room".into()]],
+    ));
+    proj.on_kernel_event(&event(
+        "members",
+        KIND_GROUP_MEMBERS,
+        100,
+        vec![d_tag("room"), p_tag("a"), p_tag("b"), p_tag("c")],
+    ));
+    assert_eq!(
+        proj.snapshot().groups[0].subtitle,
+        "# Public · Open · 3 members"
+    );
+}
+
+#[test]
+fn subtitle_uses_singular_when_one_member() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "members",
+        KIND_GROUP_MEMBERS,
+        100,
+        vec![d_tag("room"), p_tag("solo")],
+    ));
+    assert_eq!(
+        proj.snapshot().groups[0].subtitle,
+        "# Public · Open · 1 member"
+    );
+}
+
+#[test]
+fn subtitle_uses_private_closed_glyphs_when_markers_set() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("secret"),
+            vec!["name".into(), "Hidden".into()],
+            vec!["private".into()],
+            vec!["closed".into()],
+        ],
+    ));
+    assert_eq!(
+        proj.snapshot().groups[0].subtitle,
+        "🔒 Private · Closed · 0 members"
+    );
+}
+
+#[test]
 fn outer_map_is_bounded_against_adversarial_d_tag_spam() {
     // V7 — without an outer bound, a relay spamming distinct `d` tags grows
     // the projection's internal map for the lifetime of the session. The
