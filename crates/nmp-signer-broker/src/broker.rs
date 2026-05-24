@@ -132,9 +132,22 @@ impl BunkerBroker {
                 .store(true, std::sync::atomic::Ordering::Relaxed);
             session.relay.shutdown();
             if let Some(handle) = session.handshake_thread {
-                // Best-effort join — operationally bounded because the
-                // tungstenite read loop uses a 100ms timeout, so the thread
-                // exits promptly once the cancel flag is set.
+                // Best-effort join. Two distinct threads need to exit:
+                //   - The handshake thread observes `cancel` via the
+                //     `await_response` recv_timeout loop in handshake.rs;
+                //     wakes within ~200ms.
+                //   - The relay worker thread observes the
+                //     `WorkerCmd::Shutdown` we just sent via
+                //     `session.relay.shutdown()`. It exits promptly when
+                //     idle or mid-backoff (the readiness poll wakes via the
+                //     control-channel mio::Waker; the backoff wait blocks on
+                //     a control recv_timeout that drops out on Shutdown).
+                // Residual stall window: if the worker is currently inside
+                // `tungstenite::connect()` (TCP+TLS+WS handshake), Shutdown
+                // sits in the channel until the OS-level connect timeout
+                // returns. Shared with `nmp-core::relay_worker`; tracked
+                // for resolution by V-13 Stage 1 (shared connection
+                // primitive with explicit connect_timeout) in `docs/BACKLOG.md`.
                 let _ = handle.join();
             }
         }

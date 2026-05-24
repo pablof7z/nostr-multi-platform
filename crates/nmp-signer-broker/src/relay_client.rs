@@ -262,34 +262,46 @@ fn run_worker(
 
     loop {
         // Step 1 — open (or reuse) a connected socket. The first iteration
-        // reuses `initial_socket`; subsequent ones dial fresh.
+        // reuses `initial_socket`; subsequent ones dial fresh. Before each
+        // fresh dial we drain queued commands so a Shutdown that arrived
+        // during the previous backoff aborts us immediately, instead of
+        // sitting in the channel until the OS-level connect timeout
+        // returns. (The residual stall window — Shutdown arriving while
+        // `tungstenite::connect()` is blocked mid-handshake — is shared
+        // with `nmp-core::relay_worker` and is V-13 Stage 1 territory.)
         let mut connected = match socket.take() {
             Some(s) => s,
-            None => match open_socket(&url) {
-                Ok(s) => {
-                    backoff = RELAY_RECONNECT_DELAY_INITIAL;
-                    s
+            None => {
+                if drain_for_shutdown(&control, &mut pending, &mut subscriptions) {
+                    return;
                 }
-                Err(err) => {
-                    if is_permanent_error(&err) {
-                        return;
+                match open_socket(&url) {
+                    Ok(s) => {
+                        backoff = RELAY_RECONNECT_DELAY_INITIAL;
+                        s
                     }
-                    // Wait with backoff before retrying. `wait_before_reconnect`
-                    // blocks on the control channel so a Shutdown command
-                    // wakes us promptly; transient sends arriving during the
-                    // wait are queued via `pending`/`subscriptions`.
-                    if !wait_before_reconnect(
-                        &control,
-                        &mut pending,
-                        &mut subscriptions,
-                        jittered_backoff(backoff, &url),
-                    ) {
-                        return;
+                    Err(err) => {
+                        if is_permanent_error(&err) {
+                            return;
+                        }
+                        // Wait with backoff before retrying.
+                        // `wait_before_reconnect` blocks on the control
+                        // channel so a Shutdown command wakes us promptly;
+                        // transient sends arriving during the wait are
+                        // queued via `pending`/`subscriptions`.
+                        if !wait_before_reconnect(
+                            &control,
+                            &mut pending,
+                            &mut subscriptions,
+                            jittered_backoff(backoff, &url),
+                        ) {
+                            return;
+                        }
+                        backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
+                        continue;
                     }
-                    backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
-                    continue;
                 }
-            },
+            }
         };
 
         // Step 2 — replay every installed subscription on the fresh socket
@@ -539,6 +551,31 @@ impl Drop for ControlWakeGuard {
     fn drop(&mut self) {
         if let Ok(mut slot) = self.wake.lock() {
             *slot = None;
+        }
+    }
+}
+
+/// Non-blocking peek: drain every queued command. Send/Subscribe frames
+/// are buffered for the next connected session; a Shutdown short-circuits
+/// the supervisor. Returns `true` iff Shutdown was observed (caller must
+/// exit). Used between reconnect attempts so a cancel that arrived during
+/// the prior backoff aborts before we burn another TCP/TLS handshake.
+///
+/// `try_recv` is permitted here as the readiness-helper carve-out: this
+/// drains a queue, it does not poll for events. See AGENTS.md "No polling
+/// — ever" and the doctrine guard at the bottom of this file.
+fn drain_for_shutdown(
+    control: &ControlInbox,
+    pending: &mut VecDeque<String>,
+    subscriptions: &mut Vec<String>,
+) -> bool {
+    loop {
+        match control.rx.try_recv() {
+            Ok(WorkerCmd::Send(frame)) => pending.push_back(frame),
+            Ok(WorkerCmd::Subscribe(frame)) => subscriptions.push(frame),
+            Ok(WorkerCmd::Shutdown) => return true,
+            Err(TryRecvError::Empty) => return false,
+            Err(TryRecvError::Disconnected) => return true,
         }
     }
 }
