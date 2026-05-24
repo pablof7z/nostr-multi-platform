@@ -460,6 +460,13 @@ byte-for-byte (deliberate micro-duplication — a NIP crate should not depend on
 crate just for a trivial bucketed-time formatter). Swift view binds the field directly and the
 `relativeTime` Swift helper is deleted.
 
+### V-23 · `WalletView` thin-shell doctrine violations — **DONE** (this PR)
+
+`WalletView.swift` computed `balanceSats` (msats÷1000), formatted it with
+`.formatted()`, and abbreviated `walletNpub` using a private `shortNpub()` function.
+All three moved to Rust: `WalletStatus` now carries `balance_sats`, `balance_sats_display`,
+`wallet_npub_short`, `is_ready`, and `is_connected`.
+
 ---
 
 ## Section 2 — In Flight

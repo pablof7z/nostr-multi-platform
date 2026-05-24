@@ -1709,19 +1709,35 @@ struct OutboxSummary: Decodable, Equatable {
 // memberwise init is unused.
 
 /// NIP-47 wallet connection status, projected from the kernel snapshot.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// maps Rust snake_case (`balance_sats`, `wallet_npub_short`, …) onto these
+/// camelCase properties automatically.
+///
+/// V-23 thin-shell: `balanceSats`, `balanceSatsDisplay`, `walletNpubShort`,
+/// `isReady`, and `isConnected` are now Rust-computed and decoded — the shell
+/// no longer derives any of them.
 struct WalletStatusData: Decodable, Equatable {
     /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
     let status: String
     let relayUrl: String
     let walletNpub: String
     let balanceMsats: UInt64?
-
-    var isReady: Bool { status == "ready" }
-    var isConnected: Bool { status == "connecting" || status == "ready" }
-
-    var balanceSats: UInt64? {
-        balanceMsats.map { $0 / 1000 }
-    }
+    /// Pre-computed satoshi balance (= `balance_msats / 1000`). `nil` until the
+    /// wallet responds to `get_balance`. Replaces the Swift-computed `balanceSats`
+    /// property (thin-shell V-23).
+    let balanceSats: UInt64?
+    /// Pre-formatted balance string with thousands separators (`"12,345"`). Binds
+    /// directly in `WalletView` — no Swift `formatted()` call needed (thin-shell V-23).
+    let balanceSatsDisplay: String?
+    /// Abbreviated wallet npub (`npub1abcd…wxyz`). Replaces `WalletView.shortNpub()`
+    /// (thin-shell V-23).
+    let walletNpubShort: String
+    /// `status == "ready"` pre-computed in Rust (thin-shell V-23).
+    let isReady: Bool
+    /// `status == "connecting" || status == "ready"` pre-computed in Rust
+    /// (thin-shell V-23).
+    let isConnected: Bool
 }
 
 struct ProfileCard: Decodable, Equatable {

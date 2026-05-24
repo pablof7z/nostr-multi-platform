@@ -298,6 +298,15 @@ fn wallet_projection_appears_and_clears_through_make_update() {
         relay_url: "wss://wallet.example/".to_string(),
         wallet_npub: "npub1walletexample".to_string(),
         balance_msats: Some(21_000),
+        balance_sats: Some(21),
+        balance_sats_display: Some("21".to_string()),
+        // Fixture npub is 18 chars (> 17 guard) so `abbreviate_npub` would
+        // yield `npub1walle…xample`. We embed the abbreviated form directly
+        // — the projection always carries a pre-computed `_short` so the
+        // shell never has to derive one (thin-shell V-23).
+        wallet_npub_short: "npub1walle…xample".to_string(),
+        is_ready: true,
+        is_connected: true,
     });
     let connected: serde_json::Value =
         serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
@@ -319,6 +328,34 @@ fn wallet_projection_appears_and_clears_through_make_update() {
         wallet.get("balance_msats").and_then(serde_json::Value::as_u64),
         Some(21_000),
         "the wallet balance must be projected when known",
+    );
+    // V-23 thin-shell: the projection carries pre-computed sats, the formatted
+    // display string, the abbreviated npub, and the boolean status helpers so
+    // the iOS shell never derives any of these in Swift.
+    assert_eq!(
+        wallet.get("balance_sats").and_then(serde_json::Value::as_u64),
+        Some(21),
+        "balance_sats must be projected alongside balance_msats (V-23)",
+    );
+    assert_eq!(
+        wallet.get("balance_sats_display").and_then(serde_json::Value::as_str),
+        Some("21"),
+        "balance_sats_display must be projected for the shell (V-23)",
+    );
+    assert_eq!(
+        wallet.get("wallet_npub_short").and_then(serde_json::Value::as_str),
+        Some("npub1walle…xample"),
+        "wallet_npub_short must replace Swift shortNpub() (V-23)",
+    );
+    assert_eq!(
+        wallet.get("is_ready").and_then(serde_json::Value::as_bool),
+        Some(true),
+        "is_ready must be projected to replace Swift derivation (V-23)",
+    );
+    assert_eq!(
+        wallet.get("is_connected").and_then(serde_json::Value::as_bool),
+        Some(true),
+        "is_connected must be projected to replace Swift derivation (V-23)",
     );
 
     // Disconnect → the projection clears back to null, not a stale `ready`.

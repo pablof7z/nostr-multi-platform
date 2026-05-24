@@ -86,8 +86,8 @@ struct WalletView: View {
                     .foregroundStyle(ChirpColor.zap)
                     .symbolRenderingMode(.hierarchical)
 
-                if let sats = status.balanceSats {
-                    Text("\(sats.formatted()) sats")
+                if let display = status.balanceSatsDisplay {
+                    Text("\(display) sats")
                         .font(.largeTitle.weight(.bold))
                 } else {
                     Text(status.status == "connecting" ? "Fetching balance…" : "— sats")
@@ -95,7 +95,7 @@ struct WalletView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text(shortNpub(status.walletNpub))
+                Text(status.walletNpubShort)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -143,12 +143,11 @@ struct WalletView: View {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count > 16 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(6))"
-    }
+    // V-23 thin-shell: `shortNpub` formerly lived here. The kernel now
+    // projects `wallet_npub_short` (see `WalletStatus` in
+    // `crates/nmp-core/src/actor/commands/wallet.rs`), and the connected
+    // section binds `status.walletNpubShort` verbatim. No Swift-side display
+    // formatting remains in this view.
 }
 
 // ── Connect Wallet Sheet ───────────────────────────────────────────────────

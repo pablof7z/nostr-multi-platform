@@ -87,6 +87,51 @@ pub(crate) struct WalletStatus {
     pub(crate) wallet_npub: String,
     /// Balance in millisatoshis, if the wallet has responded to `get_balance`.
     pub(crate) balance_msats: Option<u64>,
+    /// Satoshi balance (= `balance_msats / 1000`). `None` until the wallet
+    /// responds to `get_balance`.
+    pub(crate) balance_sats: Option<u64>,
+    /// Human-readable balance with thousands separators (`"12,345"`). `None`
+    /// when `balance_sats` is `None`. Lets the shell bind without Swift
+    /// `formatted()` (thin-shell V-23).
+    pub(crate) balance_sats_display: Option<String>,
+    /// Abbreviated npub: first 10 chars + `"…"` + last 6 chars. Replaces
+    /// the Swift `shortNpub()` helper (thin-shell V-23).
+    pub(crate) wallet_npub_short: String,
+    /// `status == "ready"`. Pre-computed so the shell can bind a `Bool`
+    /// without re-deriving from the status string (thin-shell V-23).
+    pub(crate) is_ready: bool,
+    /// `status == "connecting" || status == "ready"`. Pre-computed for the
+    /// shell (thin-shell V-23).
+    pub(crate) is_connected: bool,
+}
+
+/// Abbreviate a bech32 npub to `first10…last6`. Kept inside `wallet.rs` (not
+/// imported from another crate — D0 prevents `nmp-core` depending on
+/// `nmp-nip17` / any NIP crate). Mirrors the Swift `shortNpub()` policy that
+/// this function replaces (thin-shell V-23).
+fn abbreviate_npub(npub: &str) -> String {
+    if npub.chars().count() <= 17 {
+        return npub.to_string();
+    }
+    let chars: Vec<char> = npub.chars().collect();
+    let head: String = chars.iter().take(10).collect();
+    let tail: String = chars.iter().skip(chars.len() - 6).collect();
+    format!("{head}…{tail}")
+}
+
+/// Format a satoshi count with `,` thousands separators (e.g. `12345` →
+/// `"12,345"`). Replaces the Swift `sats.formatted()` call site
+/// (thin-shell V-23).
+fn format_sats_display(sats: u64) -> String {
+    let s = sats.to_string();
+    let mut result = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
 }
 
 /// Shared wallet-status slot — the output side of the wallet projection.
@@ -287,11 +332,17 @@ fn wallet_disconnect_inner(
     // D4: actor is sole writer of the wallet status slot. Project a final
     // `disconnected` status (the snapshot's `"wallet"` projection reads this).
     if let Ok(mut slot) = wallet.status_slot.lock() {
+        let balance_sats = conn.balance_msats.map(|m| m / 1000);
         *slot = Some(WalletStatus {
             status: "disconnected".to_string(),
             relay_url: conn.relay_url.clone(),
             wallet_npub: conn.wallet_npub.clone(),
             balance_msats: conn.balance_msats,
+            balance_sats,
+            balance_sats_display: balance_sats.map(format_sats_display),
+            wallet_npub_short: abbreviate_npub(&conn.wallet_npub),
+            is_ready: false,
+            is_connected: false,
         });
     }
     vec![OutboundMessage {
@@ -633,11 +684,19 @@ fn build_event_json(signed: &SignedEvent) -> serde_json::Value {
 /// balance response — which the kernel drops as an unknown kind — could sit
 /// unprojected until some unrelated kernel mutation triggers an emit.
 fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
-    let status = wallet.connection.as_ref().map(|c| WalletStatus {
-        status: c.status.clone(),
-        relay_url: c.relay_url.clone(),
-        wallet_npub: c.wallet_npub.clone(),
-        balance_msats: c.balance_msats,
+    let status = wallet.connection.as_ref().map(|c| {
+        let balance_sats = c.balance_msats.map(|m| m / 1000);
+        WalletStatus {
+            status: c.status.clone(),
+            relay_url: c.relay_url.clone(),
+            wallet_npub: c.wallet_npub.clone(),
+            balance_msats: c.balance_msats,
+            balance_sats,
+            balance_sats_display: balance_sats.map(format_sats_display),
+            wallet_npub_short: abbreviate_npub(&c.wallet_npub),
+            is_ready: c.status == "ready",
+            is_connected: c.status == "connecting" || c.status == "ready",
+        }
     });
     if let Ok(mut slot) = wallet.status_slot.lock() {
         *slot = status;
