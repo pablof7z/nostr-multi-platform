@@ -901,3 +901,19 @@ fn v26_accounts_enriched_recomputes_avatar_initials_when_kind0_lands() {
         "avatar_color_hex is pubkey-derived; kind:0 must not change the tint"
     );
 }
+
+/// Pins the djb2 avatar_color output for C13_PK so any algorithm drift is
+/// caught immediately. Also verifies the format contract: 6 uppercase hex
+/// chars, no '#' prefix (all other surfaces expect bare hex).
+#[test]
+fn avatar_color_djb2_pinned_vector() {
+    use crate::kernel::nostr::avatar_color;
+    let color = avatar_color(C13_PK);
+    // djb2 over last-6-bytes "3ac13a" starting at 5381, masked to 24 bits → "E886A1"
+    assert_eq!(color, "E886A1", "djb2 pinned vector for C13_PK");
+    // Format contract: exactly 6 chars, no '#', all uppercase hex
+    assert_eq!(color.len(), 6, "avatar_color must be exactly 6 chars");
+    assert!(color.chars().all(|c| c.is_ascii_hexdigit()), "must be hex");
+    assert!(!color.starts_with('#'), "must NOT carry a '#' prefix");
+    assert_eq!(color, color.to_uppercase(), "must be uppercase");
+}

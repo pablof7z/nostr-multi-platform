@@ -285,11 +285,18 @@ pub(super) fn initials(display: &str) -> String {
 }
 
 pub(super) fn avatar_color(pubkey: &str) -> String {
+    // djb2 over the last 6 bytes of the hex string — byte-identical to the
+    // canonical algorithm in nmp_nip17::display::avatar_color_hex, nmp_nip29,
+    // and nmp_nip01. All surfaces must produce the same colour for the same
+    // pubkey (same author in timeline vs DM vs group chat).
     let bytes = pubkey.as_bytes();
-    let r = bytes.first().copied().unwrap_or(0x55);
-    let g = bytes.get(7).copied().unwrap_or(0x88);
-    let b = bytes.get(15).copied().unwrap_or(0xaa);
-    format!("#{r:02x}{g:02x}{b:02x}")
+    let start = bytes.len().saturating_sub(6);
+    let tail = &bytes[start..];
+    let mut hash: u32 = 5381;
+    for b in tail {
+        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*b));
+    }
+    format!("{:06X}", hash & 0x00FF_FFFF)
 }
 
 // `chrono::Local` is the local-timezone reader; it lives behind chrono's
