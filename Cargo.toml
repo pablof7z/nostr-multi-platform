@@ -23,6 +23,7 @@ members = [
     "crates/nmp-nip42-types",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
+    "crates/nmp-app-template",
     "crates/nmp-network",
     "crates/nmp-nostr-lmdb",
     "crates/nmp-planner",

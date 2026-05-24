@@ -25,7 +25,7 @@ The crate-boundary spec lives at
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
 | 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
-| 10 (`nmp-app-template`, V-48) | ❌ not started |
+| 10 (`nmp-app-template`, V-48) | 🟡 PR open — `crates/nmp-app-template/` extracted; Chirp uses it; Chirp `src/` shrank 1003 → 456 LOC |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode; `nmp-ffi` extraction not started |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
@@ -33,7 +33,7 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 
 ## Active
 
-- 2026-05-24 — fix(nmp-router/nmp-core): substrate Debt D — eliminate RwLock-poisoned expects (router cache, default routing, dm-inbox lookup) — PR #465 (rebased onto master)
+- 2026-05-24 — feat(nmp-app-template): step 10 — canonical composition root (V-48) — PR #467 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

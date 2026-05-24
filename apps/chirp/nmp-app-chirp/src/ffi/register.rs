@@ -5,10 +5,7 @@
 use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
 use nmp_core::{KernelEventObserver, NmpApp};
-use nmp_coverage_gate::CoverageGate;
-use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache};
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_nip29::group_id::GroupId;
@@ -17,13 +14,7 @@ use nmp_threading::ModulePolicy;
 
 use nmp_nip02::FollowListProjection;
 
-use crate::dm_runtime::register_dm_runtime;
-use crate::zap_receipts_runtime::register_zap_receipts_runtime;
-
-use super::actions::{
-    register_chirp_actions, register_nip17_actions, register_nip29_actions,
-    register_nip57_actions, register_nip65_actions,
-};
+use super::actions::register_nip29_actions;
 use super::handle::ChirpHandle;
 use super::helpers::c_string_opt;
 
@@ -46,140 +37,36 @@ pub extern "C" fn nmp_app_chirp_register(
     if app.is_null() {
         return std::ptr::null_mut();
     }
-    // Register Chirp's social-verb action namespaces (`chirp.react`,
-    // `nmp.follow`, `nmp.unfollow`) against the kernel's action registry
-    // BEFORE taking the shared `&NmpApp` borrow below. This needs `&mut
-    // NmpApp` and must run during host init — before `nmp_app_start` and
-    // before any `nmp_app_dispatch_action` (D0 — social verbs live in this
-    // app crate, never in `nmp-core`).
-    //
-    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`.
-    // No other reference aliases it at this point — the `&*app` borrow below
-    // is taken only after this exclusive borrow is dropped.
-    register_chirp_actions(unsafe { &mut *app });
 
-    // Register the NIP-29 group-chat `ActionModule`s against the kernel.
-    // Unlike `register_chirp_actions` (Chirp's own social verbs), this wires
-    // `ActionModule` impls that live in the `nmp-nip29` protocol crate —
-    // proving the host-extensibility seam works for NIP-crate modules too,
-    // not just app-local verbs. Same `&mut NmpApp` / pre-`nmp_app_start`
-    // ordering rule as `register_chirp_actions` above.
+    // Inherit the canonical NMP composition through one call — NIP-02 /
+    // NIP-17 / NIP-57 / NIP-65 action modules, the kind:10050 ingest
+    // parser, the production routing substrate
+    // (`GenericOutboxRouter` + `InMemoryMailboxCache`), the D2 coverage
+    // hook, and the DM-inbox + zap-receipts runtime controllers. This
+    // is the closure of V-48: a new Nostr app calls
+    // `nmp_app_template::register_defaults` instead of re-deriving the
+    // 130 LOC of wiring this used to live as.
     //
-    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions` —
-    // no other reference aliases `app` at this point.
+    // SAFETY: caller guarantees `app` is a valid pointer from
+    // `nmp_app_new`. No other reference aliases it here — the `&*app`
+    // borrow further down is taken only after this exclusive borrow is
+    // dropped.
+    nmp_app_template::register_defaults(unsafe { &mut *app });
+
+    // Chirp-specific: register the NIP-29 group-chat `ActionModule`s
+    // against the kernel. Lives in this crate (not the template) because
+    // NIP-29 is not part of the canonical NMP composition every Nostr
+    // app inherits — a notes-only app would not register it.
+    //
+    // SAFETY: same exclusive-borrow rationale as the
+    // `register_defaults` call above — no other reference aliases `app`
+    // at this point.
     register_nip29_actions(unsafe { &mut *app });
-
-    // Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`).
-    // Same `&mut NmpApp` / pre-`nmp_app_start` ordering rule as the NIP-29
-    // registration above — a third NIP-crate `ActionModule` reached through
-    // the generic `dispatch_action` seam (D0 — no DM nouns in `nmp-core`).
-    //
-    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
-    register_nip17_actions(unsafe { &mut *app });
-
-    // Register the NIP-57 lightning-zap `ActionModule` (`nmp.nip57.zap`).
-    // The executor builds the unsigned kind:9734 via `ZapRequestBuilder`
-    // and enqueues `ActorCommand::Protocol(FetchLnurlInvoiceCommand{...})`
-    // (V-41 — `nmp-core` carries no LNURL HTTP code or `FetchLnurlInvoice`
-    // closed-enum variant). The protocol command signs the request on the
-    // actor thread (D7) and spawns a worker for the LNURL-pay HTTP
-    // round-trip (D8). The resulting bolt11 invoice surfaces as a
-    // `ShowToast` follow-up (ADR-0024 minimum-viable observable surface).
-    //
-    // NWC payment (`ActorCommand::WalletPayInvoice`) is the next milestone —
-    // until then the host substring-matches `lnbc…` from the toast.
-    //
-    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
-    register_nip57_actions(unsafe { &mut *app });
-
-    // Register the NIP-65 relay-list `ActionModule`
-    // (`nmp.nip65.publish_relay_list`). Companion to the AddRelay/RemoveRelay
-    // auto-trigger inside the actor — the dispatched action is the host-facing
-    // door, the auto-trigger keeps the actor-internal mutation path symmetric.
-    //
-    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
-    register_nip65_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.
     let app_ref = unsafe { &*app };
-
-    // V-51 phase 5 — install the production substrate-routing factory.
-    //
-    // Default `Kernel::new` uses the in-crate `Nip65WriteSetRouter` +
-    // `DefaultInMemoryMailboxCache` (functionally equivalent to the
-    // routing-crate impls for lanes 1+7 but architecturally wrong: routing
-    // is a Layer-2 concern, `nmp-core` is Layer 3). This swap proves the
-    // "competing-router single-line swap" property the V-50 spec calls out
-    // and is the live demonstration that the kernel actually consults the
-    // injected router — V-51 phase 4's chirp-repl validation smoke greps
-    // the resulting projection for `Nip65/Read` lane attribution.
-    //
-    // The closure is captured by the actor's kernel construction step (and
-    // re-invoked by the `Reset` dispatch arm against the rebuilt kernel's
-    // fresh projection) — see `Kernel::set_routing` and
-    // `NmpApp::set_routing_substrate` for the full contract. Threading the
-    // supplied observer through `GenericOutboxRouter::with_trace_observer`
-    // keeps the trace projection populated across the swap so the FFI
-    // snapshot surface (V-51 phase 2) and `chirp-repl routing-trace` (phase
-    // 4) keep working.
-    app_ref.set_routing_substrate(
-        |observer: Arc<dyn RoutingTraceObserver>| -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
-            let router: Arc<dyn OutboxRouter> =
-                Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
-            let cache: Arc<dyn MailboxCache> = Arc::new(InMemoryMailboxCache::new());
-            (router, cache)
-        },
-    );
-
-    // D2 — install the coverage-gate hook on the kernel BEFORE any
-    // subscription compile can run. The hook is a pure-policy closure that
-    // consults `CoverageGate` thresholds (from `nmp-coverage-gate`, zero
-    // `nmp-core` dep) and rewrites the `CompiledPlan` between the M2 compile
-    // step and `plan_diff`. This assembly crate is the only layer entitled to
-    // depend on both `nmp-core` and `nmp-coverage-gate` (D0 — the seam exists
-    // *because* coverage policy is above `nmp-core` in the dep graph).
-    //
-    // Stage 2: connection-count safety net. After `apply_selection` has run
-    // (inside the M2 compiler), enforce `gate.max_relay_connections` as a
-    // backstop trim. `per_relay` is a `BTreeMap` so the "keep first N" trim
-    // is deterministic across runs.
-    //
-    // Stage 3 will extend this with negentropy steering — once the
-    // negentropy infrastructure is available the closure body will check
-    // `gate.should_use_negentropy(author_count)` and mark sub-shapes for a
-    // reconciliation handshake instead of a raw REQ.
-    let gate = CoverageGate::default();
-    app_ref.set_coverage_hook(Arc::new(move |plan| {
-        let cap = gate.max_relay_connections;
-        if plan.per_relay.len() > cap {
-            // `BTreeMap` iteration is deterministic (sorted by key), so the
-            // surviving relays are stable across runs — important for
-            // reproducible test runs and for human-readable diagnostics.
-            let keep: Vec<_> = plan.per_relay.keys().take(cap).cloned().collect();
-            plan.per_relay.retain(|k, _| keep.contains(k));
-        }
-    }));
-
-    register_dm_runtime(app_ref);
-
-    // Wire the NIP-57 self-zap-receipts subscription runtime. The kernel
-    // ships zero zap nouns (D0); the active-account kind:9735 `#p`
-    // subscription that feeds `ZapsAggregateProjection` below is pushed
-    // from a host-side runtime controller as a generic `LogicalInterest`
-    // (`nmp_nip57::self_zap_receipts_interest`). Same shape and
-    // wire-discipline as `register_dm_runtime` immediately above — the
-    // controller is captured by a snapshot-projection closure and
-    // reconciles on every tick. Pre-this-wiring the equivalent REQ was
-    // emitted by `nmp-core`'s `kernel::requests::startup` (deleted in
-    // the same change), which forced `nmp-core` to know about kind:9735.
-    //
-    // SAFETY context: `app_ref` is the shared borrow taken just above; the
-    // controller captures `app_ref.actor_sender()` + `app_ref.nip17_local_keys()`
-    // by value (an `mpsc::Sender` clone and an `Arc<Mutex<…>>` clone),
-    // so it does not outlive the borrow itself.
-    register_zap_receipts_runtime(app_ref);
 
     // Wire the NIP-57 `ZapsAggregateProjection` — a `KernelEventObserver`
     // that indexes incoming kind:9735 zap receipts by their `["e", target]`
@@ -368,7 +255,7 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
     // live for the duration of this call. The borrow is not held past return.
     let app_ref = unsafe { &*app };
-    register_dm_runtime(app_ref);
+    nmp_app_template::runtimes::register_dm_runtime(app_ref);
 }
 
 /// Wire a [`FollowListProjection`] for the active account into `app`.

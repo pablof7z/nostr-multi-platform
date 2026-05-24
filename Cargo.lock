@@ -3767,8 +3767,8 @@ dependencies = [
 name = "nmp-app-chirp"
 version = "0.1.0"
 dependencies = [
+ "nmp-app-template",
  "nmp-core",
- "nmp-coverage-gate",
  "nmp-marmot",
  "nmp-nip01",
  "nmp-nip02",
@@ -3776,7 +3776,6 @@ dependencies = [
  "nmp-nip29",
  "nmp-nip57",
  "nmp-nip59",
- "nmp-router",
  "nmp-signer-broker",
  "nmp-threading",
  "nmp-wasm",
@@ -3811,6 +3810,21 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "nmp-signer-broker",
+]
+
+[[package]]
+name = "nmp-app-template"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-coverage-gate",
+ "nmp-nip02",
+ "nmp-nip17",
+ "nmp-nip57",
+ "nmp-router",
+ "nostr",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
