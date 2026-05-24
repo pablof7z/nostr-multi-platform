@@ -9,7 +9,9 @@
 
 ## Active
 
-_(none — checking for next violation to fix)_
+- PR #434 — fix(nmp-core/ios): V-23 — move WalletView balance/npub formatting to Rust — CI pending
+- PR #??? — fix(nmp-core/ios): V-24 — AccountsView + JoinGroupView thin-shell violations — in progress
+- PR #??? — fix(nmp-nip29/ios): V-25 — GroupChatView pubkey display / initials / colorHex to Rust — in progress
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
