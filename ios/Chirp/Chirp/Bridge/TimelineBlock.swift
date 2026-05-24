@@ -184,6 +184,10 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable {
     /// bind a single string without decoding the nested `AuthorDisplay`
     /// struct. Used by `syntheticItem` as the display-name fallback.
     let authorDisplayName: String
+    /// V-28 thin-shell: abbreviated event id (`<first 8>…<last 8>`) computed
+    /// in Rust. Used by `syntheticItem` to populate `TimelineItem.shortId`
+    /// without slicing the raw 64-char `id` in Swift (aim.md §6.9).
+    let shortId: String
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -197,6 +201,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable {
         case authorAvatarColor = "author_avatar_color"
         case authorPubkeyShort = "author_pubkey_short"
         case authorDisplayName = "author_display_name"
+        case shortId = "short_id"
     }
 }
 

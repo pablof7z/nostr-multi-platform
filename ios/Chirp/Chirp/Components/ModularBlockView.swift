@@ -304,6 +304,10 @@ struct ModularBlockView: View {
             authorPictureUrl: item?.authorPictureUrl
                 ?? "identicon:\(card.authorPubkey.prefix(8))",
             authorPubkey: card.authorPubkey,
+            // V-28 thin-shell: bind the Rust-pre-formatted abbreviation
+            // verbatim from the backing item when present, else from the
+            // card's V-28 field. Never slice the raw pubkey in Swift.
+            authorPubkeyShort: item?.authorPubkeyShort ?? card.authorPubkeyShort,
             content: card.content,
             contentPreview: String(card.content.prefix(180)),
             createdAtDisplay: card.createdAtDisplay,
@@ -312,7 +316,10 @@ struct ModularBlockView: View {
             kind: card.kind,
             navTargetId: card.id,
             relayCount: 0,
-            repostInnerContent: ""
+            repostInnerContent: "",
+            // V-28 thin-shell: same precedence — backing item's `shortId`
+            // wins, falling back to the card's Rust-pre-formatted field.
+            shortId: item?.shortId ?? card.shortId
         )
     }
 
