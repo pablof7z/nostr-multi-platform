@@ -9,10 +9,11 @@
 
 ## Active
 
-_(scanning — V-29 PR pending CI, V-30 PR pending CI)_
+_(scanning — V-29 + V-31 PRs pending)_
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — fix(ios): V-30 — remove Swift pubkey truncation from ModularBlockView.displayName — PR #440 merged
 - 2026-05-24 — fix(nmp-core/nmp-nip01/ios): V-28 — shortPubkey/shortID/relativeTime display strings to Rust — PR #439 merged
 - 2026-05-24 — fix(nmp-nip01/ios): V-27 — ChirpEventCard display fields to Rust — PR #437 merged
 - 2026-05-24 — fix(nmp-core/ios): V-26 — AccountSummary avatarInitials/avatarColorHex to Rust — PR #438 merged
