@@ -17,7 +17,9 @@ use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
 use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
-use crate::profile_display::{profile_from_event, should_replace, AuthorDisplay, ProfileDisplay};
+use crate::profile_display::{
+    profile_from_event, should_replace, AuthorDisplay, AuthorDisplaySource, ProfileDisplay,
+};
 use crate::try_from_kernel_event;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -101,6 +103,13 @@ impl TimelineEventCard {
         // fallback). One source of truth for avatar resolution; do NOT
         // recompute the identicon prefix here.
         let author_picture_url = author_display.picture_url.clone();
+        // V-34 thin-shell: initials from the display name, not raw hex chars.
+        // Extracted before the struct literal moves `author_display`. Matches
+        // `TimelineItem.author_avatar_initials`: ".." until Kind0 lands.
+        let author_avatar_initials = match author_display.source {
+            AuthorDisplaySource::Kind0 => display_initials(&author_display.name),
+            AuthorDisplaySource::Npub => "..".to_string(),
+        };
         Self {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
@@ -111,7 +120,7 @@ impl TimelineEventCard {
             content_tree,
             relation_counts,
             created_at_display: format_ago_secs(now_unix_secs(), event.created_at),
-            author_avatar_initials: pubkey_initials(&event.author),
+            author_avatar_initials,
             author_avatar_color: avatar_color_hex(&event.author),
             author_pubkey_short: pubkey_display(&event.author),
             author_display_name,
@@ -144,8 +153,11 @@ fn now_unix_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-fn pubkey_initials(hex: &str) -> String {
-    hex.chars().take(2).map(|c| c.to_ascii_uppercase()).collect()
+fn display_initials(name: &str) -> String {
+    let mut chars = name.chars().filter(|ch| ch.is_alphanumeric());
+    let first = chars.next().unwrap_or('.');
+    let second = chars.next().unwrap_or('.');
+    format!("{first}{second}").to_uppercase()
 }
 
 fn pubkey_display(pubkey_hex: &str) -> String {
@@ -410,8 +422,8 @@ mod tests {
             .find(|c| c.id == "E")
             .expect("card exists");
 
-        // initials: first two hex chars uppercased
-        assert_eq!(card.author_avatar_initials, "3B");
+        // initials: ".." placeholder until Kind0 lands (V-34)
+        assert_eq!(card.author_avatar_initials, "..");
         // colour: deterministic djb2 hex, 6 uppercase hex chars, no `#`
         assert_eq!(card.author_avatar_color.len(), 6);
         assert!(card
@@ -439,11 +451,11 @@ mod tests {
     // so a drift in the canonical helper still surfaces at this layer.
 
     #[test]
-    fn pubkey_initials_short_inputs_do_not_panic() {
-        assert_eq!(pubkey_initials(""), "");
-        assert_eq!(pubkey_initials("a"), "A");
-        assert_eq!(pubkey_initials("ab"), "AB");
-        assert_eq!(pubkey_initials("abcd"), "AB");
+    fn display_initials_derives_from_display_name() {
+        assert_eq!(display_initials("Alice Smith"), "AL");
+        assert_eq!(display_initials("bob"), "BO");
+        assert_eq!(display_initials("a"), "A.");
+        assert_eq!(display_initials(""), "..");
     }
 
     #[test]
