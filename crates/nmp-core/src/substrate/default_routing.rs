@@ -29,6 +29,13 @@
 //!   impl is allowed to grow lanes 2/3/4/5/6 (hints, provenance,
 //!   user-configured, class-routed, indexer); the default impl here
 //!   stays minimal.
+//!
+//! # Lock-poisoning policy (D15)
+//!
+//! The cache below mirrors `nmp_router::cache`'s policy: every
+//! `RwLock::read`/`write` `Err` (poisoned lock) degrades to "no data" /
+//! silent no-op rather than panicking on the actor thread. See the module
+//! docs of `nmp_router::cache` for the rationale.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -60,10 +67,11 @@ impl InMemoryMailboxCache {
         Self::default()
     }
 
-    /// Diagnostic: number of authors currently cached.
+    /// Diagnostic: number of authors currently cached. Returns `0` on a
+    /// poisoned lock (degrade-gracefully policy — see module docs).
     #[must_use]
     pub fn len(&self) -> usize {
-        self.inner.read().expect("RwLock poisoned").len()
+        self.inner.read().map(|g| g.len()).unwrap_or(0)
     }
 
     #[must_use]
@@ -76,45 +84,38 @@ impl MailboxCache for InMemoryMailboxCache {
     fn read_relays(&self, author: &Pubkey) -> Option<Vec<RelayUrl>> {
         self.inner
             .read()
-            .expect("RwLock poisoned")
-            .get(author)
-            .map(ParsedRelayList::read_set)
+            .ok()
+            .and_then(|g| g.get(author).map(ParsedRelayList::read_set))
     }
 
     fn write_relays(&self, author: &Pubkey) -> Option<Vec<RelayUrl>> {
         self.inner
             .read()
-            .expect("RwLock poisoned")
-            .get(author)
-            .map(ParsedRelayList::write_set)
+            .ok()
+            .and_then(|g| g.get(author).map(ParsedRelayList::write_set))
     }
 
     fn snapshot(&self, author: &Pubkey) -> Option<ParsedRelayList> {
-        self.inner
-            .read()
-            .expect("RwLock poisoned")
-            .get(author)
-            .cloned()
+        self.inner.read().ok().and_then(|g| g.get(author).cloned())
     }
 
     fn snapshot_all(&self) -> Vec<(Pubkey, ParsedRelayList)> {
         self.inner
             .read()
-            .expect("RwLock poisoned")
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+            .map(|g| g.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default()
     }
 
     fn remove(&self, author: &Pubkey) {
-        self.inner.write().expect("RwLock poisoned").remove(author);
+        if let Ok(mut g) = self.inner.write() {
+            g.remove(author);
+        }
     }
 
     fn upsert(&self, author: Pubkey, list: ParsedRelayList) {
-        self.inner
-            .write()
-            .expect("RwLock poisoned")
-            .insert(author, list);
+        if let Ok(mut g) = self.inner.write() {
+            g.insert(author, list);
+        }
     }
 }
 
