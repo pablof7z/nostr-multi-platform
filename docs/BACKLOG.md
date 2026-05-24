@@ -1008,7 +1008,7 @@ view-dependent keys (`author_view`, `thread_view`, `timeline`, `inserted`, `upda
 
 ---
 
-### V-47 · `register_raw_event_observer` gives FFI callers a lane that defeats all D1/D3/D5/D8 guarantees [MEDIUM · pre-v1 doc fix]
+### V-47 · `register_raw_event_observer` gives FFI callers a lane that defeats all D1/D3/D5/D8 guarantees [MEDIUM · pre-v1 doc fix] — **DONE**
 
 **Evidence:** `crates/nmp-core/src/ffi/raw_event_tap.rs` — `nmp_app_register_raw_event_observer`
 with no doc warning. `apps/notes/ios/Notes/Bridge/NotesBridge.swift:73-76` registers it
@@ -1019,9 +1019,10 @@ public ABI.
 Three other escape hatches exist: `inject_pre_verified_events`, `inject_signed_event_json`,
 and the host-supplied `NmpSnapshotProjector` callback.
 
-**Recommended action:** add `aim.md` §1 caveat ("the framework guards the kernel; FFI
-callers can bypass its guarantees by registering raw taps — see escape-hatch doc");
-write a contributor doc naming the four escape hatches and when each is appropriate.
+**Resolution:** `aim.md` §1 updated with escape-hatch caveat; `docs/escape-hatches.md`
+created cataloguing all four escape hatches (raw event tap, snapshot projector, action
+module seam, test-only injectors) with decision tree. `raw_event_tap.rs` module doc
+updated with `## Escape-hatch caveat` section listing all bypassed doctrines.
 
 ---
 

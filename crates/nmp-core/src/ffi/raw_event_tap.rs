@@ -35,6 +35,30 @@
 //!   duration of the callback only; consumers MUST copy any bytes they
 //!   need. Same contract as `ffi/event_observer.rs` / `ffi/mod.rs`.
 //!
+//! ## Escape-hatch caveat
+//!
+//! Registering a raw-event tap **bypasses every guarantee the framework
+//! normally provides**:
+//!
+//! * **D1** — the kernel's subscription/planner routing is invisible to your
+//!   tap; you receive events regardless of whether any subscription asked for
+//!   them, and after the kernel has already decided how to route and store them.
+//! * **D3** — projection rules do not apply to tap payloads; you receive the
+//!   raw wire event, not a projection-ready view object.
+//! * **D5** — the tap runs outside the bounded snapshot cluster; high-volume
+//!   kinds (e.g. kind:1 with a `null` filter) will fire the callback on every
+//!   accepted inbound event with no back-pressure.
+//! * **D8** — the tap callback is invoked on the raw-observer drain thread;
+//!   any blocking operation in the callback stalls that drain, queuing events
+//!   indefinitely.
+//!
+//! Use a raw tap only when you genuinely need the verbatim signed event
+//! (`sig` field included) and kernel projections cannot supply it. The kernel
+//! projection system (`NmpSnapshotProjector`) and action module seam
+//! (`register_action::<M>`) are the doctrine-clean alternatives for the
+//! overwhelming majority of use cases. See `docs/escape-hatches.md` for a
+//! full catalogue of the four escape hatches and when each is appropriate.
+//!
 //! ## Doctrine
 //!
 //! * **D0** — generic capability. No protocol / NIP nouns in the symbol
