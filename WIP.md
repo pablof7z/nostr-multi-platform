@@ -23,24 +23,17 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
-| 8 phases C/D/E (`BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
+| 8 phases B/C/D/E (Pool API redesign, `BrowserRelayDriver` move, broker dedupe, NIP-42 split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
-| 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
-| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode |
-| 11 final (`nmp-ffi` extraction) | ⏳ in flight (subagent) |
+| 10 (`nmp-app-template`, V-48) | 🟡 PR #467 open — `crates/nmp-app-template/` extracted; Chirp uses it; Chirp `src/` shrank 1003 → 456 LOC |
+| 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode; `nmp-ffi` extraction not started |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
 Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
-**Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B (delete `default_routing.rs` algorithm duplicate) and C (`ProtocolCommandContext` capability-trait bundling, currently 12 accessors with `#[allow(clippy::too_many_arguments)]`) ❌ not started, gated on A landing.
-
 ## Active
 
-- 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468. **Needs follow-up before merge**: `kernel/requests/profile.rs:431` routes kind:10002 discovery through the cached write set, which can self-seal stale metadata (if the cached relay list is old, asking only the old write relays misses the author's newer kind:10002 elsewhere). Discovery kinds (0/3/10000–19999) must hit the Indexer lane (router §3.1 lane 6).
-- 2026-05-24 — feat(nmp-network): step 8 phase B — push-model `Pool` API + generational `RelayHandle` + `PoolEvent` channel — subagent in flight.
-- 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
-- 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
+- 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468 (rebased onto master)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

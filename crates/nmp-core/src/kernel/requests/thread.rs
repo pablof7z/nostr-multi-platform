@@ -166,12 +166,12 @@ impl Kernel {
             self.thread_view.seq = self.thread_view.seq.saturating_add(1);
             self.thread_view.ids_inflight = true;
             // T121 / codex R1: partition the id set by each id's
-            // original-event author's NIP-65 write relays. Ids whose authors
-            // aren't yet in the local store fall through to the cold-start
-            // bootstrap discovery seed. Mirrors T105's outbox partition
-            // pattern (see `partition_authors_by_write_relays` for the
-            // author-set analogue).
-            let partition = self.partition_ids_by_author_write_relays(&ids);
+            // original-event author's NIP-65 write relays via the kernel's
+            // `outbox_router`. Ids whose authors aren't yet in the local
+            // store fall through to the cold-start bootstrap discovery
+            // seed (the router's lane 7 / AppRelay fallback). Mirrors
+            // T105's outbox partition pattern.
+            let partition = self.partition_ids_via_router(&ids);
             let seq = self.thread_view.seq;
             for (relay_url, served_ids) in partition {
                 let sub_id = format!("thread-ids-{}-{}", seq, relay_short(&relay_url));
@@ -201,13 +201,14 @@ impl Kernel {
             self.thread_view.seq = self.thread_view.seq.saturating_add(1);
             self.thread_view.replies_inflight = true;
             // T121 / codex R1: route the `#e` recursive-replies REQ to the
-            // root event author's resolved write relays (per-id partition).
-            // Reply authors write to their own relays of course; routing to
-            // the root author's relays is the deliberate compromise — the
-            // root's relays usually carry the thread context rather than
-            // fanning to every participant. Unknown-author ids fall back to
-            // bootstrap (cold-start discovery).
-            let partition = self.partition_ids_by_author_write_relays(&ids);
+            // root event author's resolved write relays (per-id partition)
+            // via the kernel's `outbox_router`. Reply authors write to
+            // their own relays of course; routing to the root author's
+            // relays is the deliberate compromise — the root's relays
+            // usually carry the thread context rather than fanning to
+            // every participant. Unknown-author ids fall back to the
+            // bootstrap discovery seed via the router's lane 7.
+            let partition = self.partition_ids_via_router(&ids);
             let seq = self.thread_view.seq;
             for (relay_url, served_ids) in partition {
                 let sub_id = format!("thread-replies-{}-{}", seq, relay_short(&relay_url));

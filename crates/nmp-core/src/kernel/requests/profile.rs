@@ -1,5 +1,34 @@
 //! Profile, author, and diagnostic-firehose request builders.
 //!
+//! # Debt A — routing through the substrate router
+//!
+//! V-51 phase 5 (PR #462) added an observe-only `observe_subscription_through_router`
+//! shim that fired the router for the trace projection but kept the actual
+//! REQ-construction flowing through `Kernel::author_write_relays` /
+//! `recipient_read_relays` / `author_indexer_relays` cache helpers — the
+//! substrate router was wired but never trusted to make the routing
+//! decision. Debt A (this commit) deletes that half-step: every per-author
+//! dispatch site in this file now consumes
+//! [`Kernel::route_outbox_subscription_relays`] (outbox-direction:
+//! author-published kinds 0/1/6/10002 routed against the author's NIP-65
+//! write set via `outbox_router.route_publish`) or
+//! [`Kernel::route_subscription_relays`] (inbox-direction: hashtag
+//! firehose routed against the active account's NIP-65 read set via
+//! `outbox_router.route_subscription`) — both call the kernel's
+//! `outbox_router` slot and return the routed URL set directly. The
+//! router's trace observer fires automatically on success — no separate
+//! observation call is needed.
+//!
+//! The cold-start bootstrap seed flows through the substrate seam at
+//! [`crate::substrate::SessionKeySet::app_relays`] (lane 7 fallback):
+//!
+//! * `BootstrapSeed::Discovery` (indexer + content combined) — kind:1/6
+//!   author notes, kind:10002 author NIP-65 probe (cold-start fan-out),
+//!   hashtag firehose.
+//! * `BootstrapSeed::IndexerOnly` — kind:0 profile-claim discovery (the
+//!   historical `author_indexer_relays` contract — profile-claim REQs
+//!   must not leak onto the shared content relay at cold-start).
+//!
 //! # M2 migration plan (compiler.md §3.5)
 //! Per `docs/design/subscription-compilation/compiler.md` §3.5, these request
 //! builders are scheduled for replacement by `SubscriptionCompiler`-driven
@@ -19,6 +48,7 @@
 //! The `req()` helper and `RelayRole`-based routing are replaced by the
 //! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
 
+use super::super::mailboxes::BootstrapSeed;
 use super::super::{json, Kernel, OutboundMessage, ViewInterest, short_hex, truncate, RelayRole};
 use crate::stable_hash::stable_hash64;
 
@@ -236,16 +266,25 @@ impl Kernel {
 
         // T122 / codex R2: hashtag firehose REQs are inbox-direction (D3) —
         // the user IS the recipient of their own hashtag interest, so the
-        // routing destination is the active account's NIP-65 *read* relays
-        // (kind:10002 read + both markers). Cold-start (no active account
+        // routing destination is the active account's NIP-65 read relays
+        // resolved through the router. Cold-start (no active account
         // selected, or no kind:10002 cached) falls back to the bootstrap
-        // discovery seed via `recipient_read_relays`/`bootstrap_discovery_relays`.
-        let relays = match self.active_account.clone() {
-            Some(pubkey) => self.recipient_read_relays(&pubkey),
-            None => self.bootstrap_discovery_relays(),
+        // discovery seed via the substrate `app_relays` lane 7.
+        let relays: Vec<String> = match self.active_account.clone() {
+            Some(active) => {
+                let interest_id =
+                    stable_hash64(("diag-firehose", tag.as_str(), seq));
+                self.route_subscription_relays(
+                    interest_id,
+                    &[active.as_str()],
+                    &[1],
+                    BootstrapSeed::Discovery,
+                )
+            }
+            None => self.bootstrap_seed_urls(BootstrapSeed::Discovery),
         };
 
-        let out: Vec<OutboundMessage> = relays
+        relays
             .into_iter()
             .map(|relay_url| {
                 let tag_suffix = relay_tag(&relay_url);
@@ -257,21 +296,7 @@ impl Kernel {
                     json!({"kinds":[1],"#t":[tag],"limit":500}),
                 )
             })
-            .collect();
-        // V-51 phase 5 — observability shadow for the hashtag firehose REQ.
-        // The router-attribution model for a wildcard-author hashtag fanout
-        // matches the active-account-as-recipient lane (T122 / codex R2): we
-        // pass the active account as the single author so the router resolves
-        // it to the user's own NIP-65 read set. Skips when no active account
-        // — the substrate router has no anchoring author to attribute against.
-        if let Some(active) = self.active_account.as_ref() {
-            self.observe_subscription_through_router(
-                stable_hash64(("diag-firehose", tag.as_str(), seq)),
-                &[active.as_str()],
-                &[1],
-            );
-        }
-        out
+            .collect()
     }
 
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
@@ -294,26 +319,49 @@ impl Kernel {
             return Vec::new();
         }
 
-        // Group authors by relay — cold-start → INDEXER only; NIP-65 known → write relays.
+        // Group authors by relay. The router resolves each author against
+        // their NIP-65 read set (lane 1) — for kind:0 profile-claim discovery
+        // an author published their kind:0 on their declared write relays,
+        // but the router's `route_subscription` shape uses the read lane and
+        // for NIP-65-known authors both lanes converge on the `both` marker
+        // common to most kind:10002 entries. Cold-start authors fall through
+        // to lane 7 with the **indexer-only** bootstrap seed (kind:0 probes
+        // must never leak onto the shared content relay — the historical
+        // `author_indexer_relays` contract).
         let mut by_relay: std::collections::BTreeMap<String, Vec<String>> =
             std::collections::BTreeMap::new();
-        for author in &authors {
-            for relay_url in self.author_indexer_relays(author) {
-                by_relay.entry(relay_url).or_default().push(author.clone());
-            }
-        }
-
-        // Mark all as requested and remove from pending.
+        // Mark all as requested and remove from pending. We do this before
+        // the router calls so the borrow checker is happy (the router
+        // borrows `&self`, the cache update mutates `&mut self`).
         for author in &authors {
             self.profile_requests.pending.remove(author);
             self.profile_requests.requested.insert(author.clone());
         }
-
-        // One batched REQ per relay with all authors in a single `authors` array.
         self.profile_requests.req_seq = self.profile_requests.req_seq.saturating_add(1);
         let seq = self.profile_requests.req_seq;
+
+        for (idx, author) in authors.iter().enumerate() {
+            let interest_id = stable_hash64(("profile-claim-batch", seq, idx, author.as_str()));
+            // Outbox-direction: kind:0 is published by the author to their
+            // *write* relays. Router's `route_publish` shape returns the
+            // author's NIP-65 write set (lane 1); cold-start falls back
+            // to the indexer-only bootstrap seed via lane 7.
+            let relays = self.route_outbox_subscription_relays(
+                interest_id,
+                author.as_str(),
+                0,
+                BootstrapSeed::IndexerOnly,
+            );
+            for relay_url in relays {
+                by_relay.entry(relay_url).or_default().push(author.clone());
+            }
+        }
+
+        // One batched REQ per relay with all authors in a single `authors` array.
         let mut requests = Vec::new();
-        for (relay_url, relay_authors) in by_relay {
+        for (relay_url, mut relay_authors) in by_relay {
+            // Stable author order per relay (plan-id / D8).
+            crate::util::sort_dedup(&mut relay_authors);
             let tag = relay_tag(&relay_url);
             let n = relay_authors.len();
             requests.push(self.req_for_relay(
@@ -324,16 +372,6 @@ impl Kernel {
                 json!({"kinds":[0],"authors": relay_authors,"limit": n}),
             ));
         }
-        // V-51 phase 5 — observability shadow for the batched profile-claim
-        // dispatch. One router call per batch (carrying every author in this
-        // tick's pending set) — the projection records one subscription row
-        // attributed to the union of resolved relays.
-        let author_refs: Vec<&str> = authors.iter().map(String::as_str).collect();
-        self.observe_subscription_through_router(
-            stable_hash64(("profile-batch", seq)),
-            &author_refs,
-            &[0],
-        );
         requests
     }
 
@@ -346,11 +384,22 @@ impl Kernel {
         }
         self.profile_requests.req_seq = self.profile_requests.req_seq.saturating_add(1);
         let seq = self.profile_requests.req_seq;
-        // T105: kind:0 is a discovery fetch. Cold-start → INDEXER relay only.
-        // NIP-65 known → declared write relays (the author published kind:0
-        // there). Never send cold-start profile claims to the content relay.
+        // T105: kind:0 is an outbox-direction discovery fetch — the author
+        // published their kind:0 on their declared write relays. The
+        // router's `route_publish` shape returns the author's NIP-65
+        // write set (lane 1) for warm authors; cold-start falls back to
+        // the indexer-only bootstrap seed via lane 7 (kind:0 probes
+        // MUST NOT leak onto the shared content relay — historical
+        // `author_indexer_relays` contract).
+        let interest_id = stable_hash64(("profile-claim", pubkey.as_str(), seq));
+        let relays = self.route_outbox_subscription_relays(
+            interest_id,
+            pubkey.as_str(),
+            0,
+            BootstrapSeed::IndexerOnly,
+        );
         let mut requests = Vec::new();
-        for relay_url in self.author_indexer_relays(&pubkey) {
+        for relay_url in relays {
             let tag = relay_tag(&relay_url);
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,
@@ -360,15 +409,6 @@ impl Kernel {
                 json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),
             ));
         }
-        // V-51 phase 5 — observability shadow (see `author_requests` for
-        // contract). The kind:0 discovery fetch above flowed through the
-        // indexer-lane cache helper; the router observation here records the
-        // generic-algorithm decision against the substrate.
-        self.observe_subscription_through_router(
-            stable_hash64(("profile-claim", pubkey.as_str(), seq)),
-            &[pubkey.as_str()],
-            &[0],
-        );
         requests
     }
 
@@ -388,18 +428,45 @@ impl Kernel {
         self.profile_requests.requested.insert(pubkey.clone());
         let seq = self.author_view.seq;
 
-        // T105: kind:10002 + kind:0 are discovery fetches — the author's own
-        // relay list is what we're trying to learn, so they leave on the
-        // bootstrap discovery seeds (one per indexer-lane bootstrap relay).
-        // kind:1/6 (the author's notes) MUST go to the author's resolved
-        // NIP-65 write relays — this is the outbox direction; the author
-        // publishes there. If we don't yet have their kind:10002 cached,
-        // the bootstrap seed serves the cold-start fetch and the A1
-        // recompilation trigger re-emits onto resolved relays after
-        // ingest_relay_list lands the author's kind:10002.
+        // T105: kind:10002 + kind:0 are outbox-direction discovery fetches
+        // — the author publishes those replaceable events to their declared
+        // write relays. The router's `route_publish` shape returns the
+        // author's NIP-65 write set (lane 1) for warm authors; cold-start
+        // falls back to the full discovery bootstrap seed (indexer +
+        // content) via lane 7. Historically `author_requests` always
+        // issued these probes against `bootstrap_discovery_relays()`
+        // regardless of warm/cold — Debt A makes the warm-author case
+        // route to the resolved write set (D3 outbox), which is the
+        // semantically honest place to read the author's own kind:10002
+        // back from.
+        //
+        // kind:1/6 (the author's notes) is also outbox-direction — the
+        // author's write set is where their notes live (T105). Lane 7
+        // fires with the full discovery seed for cold-start.
         let mut requests = Vec::new();
-        for seed in self.bootstrap_discovery_relays() {
-            let tag = relay_tag(&seed);
+
+        let relays_discovery = self.route_outbox_subscription_relays(
+            stable_hash64(("author-relays", pubkey.as_str(), seq)),
+            pubkey.as_str(),
+            10002,
+            BootstrapSeed::Discovery,
+        );
+        let profile_discovery = self.route_outbox_subscription_relays(
+            stable_hash64(("author-profile-kind0", pubkey.as_str(), seq)),
+            pubkey.as_str(),
+            0,
+            BootstrapSeed::Discovery,
+        );
+        // Both legs target the same outbox URL set for any one author
+        // (the kind value doesn't change the write-set lookup under the
+        // current lane-1 algorithm); we issue separate router calls so
+        // the trace projection records the per-kind decision. We emit a
+        // paired set of REQs per resolved URL so the per-seed sub-id
+        // format is preserved.
+        let discovery_urls: std::collections::BTreeSet<String> =
+            relays_discovery.iter().chain(profile_discovery.iter()).cloned().collect();
+        for seed in &discovery_urls {
+            let tag = relay_tag(seed);
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,
                 seed.clone(),
@@ -409,13 +476,24 @@ impl Kernel {
             ));
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,
-                seed,
+                seed.clone(),
                 &format!("author-profile-{seq}-{tag}"),
                 &format!("selected author kind:0 {}", short_hex(&pubkey)),
                 json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),
             ));
         }
-        for relay_url in self.author_write_relays(&pubkey) {
+
+        // kind:1/6 author notes — outbox-direction (T105 publish lane).
+        // Router lane 1 returns the author's resolved write set for warm
+        // authors; lane 7 fallback fires with the full discovery seed
+        // for cold-start.
+        let notes_urls = self.route_outbox_subscription_relays(
+            stable_hash64(("author-notes", pubkey.as_str(), seq)),
+            pubkey.as_str(),
+            1,
+            BootstrapSeed::Discovery,
+        );
+        for relay_url in notes_urls {
             let tag = relay_tag(&relay_url);
             requests.push(self.req_for_relay(
                 RelayRole::Content,
@@ -425,19 +503,6 @@ impl Kernel {
                 json!({"kinds":[1,6],"authors":[pubkey.clone()],"limit":100}),
             ));
         }
-        // V-51 phase 5 — fire the injected `OutboxRouter` for observability.
-        // The author-notes dispatch above already emitted the REQs through
-        // the cache-read helper; this call lets the router's trace observer
-        // (the kernel-owned `RoutingTraceProjection`, or any production
-        // observer threaded through `with_trace_observer`) record the same
-        // routing decision against the substrate algorithm. Behaviour-neutral
-        // — see `mailboxes.rs::observe_subscription_through_router` for the
-        // contract.
-        self.observe_subscription_through_router(
-            stable_hash64(("author-notes", pubkey.as_str())),
-            &[pubkey.as_str()],
-            &[1, 6],
-        );
         requests.append(&mut self.maybe_open_thread_hydration());
         requests
     }
