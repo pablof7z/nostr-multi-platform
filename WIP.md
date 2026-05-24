@@ -9,11 +9,11 @@
 
 ## Active
 
-- PR #442 — fix(nmp-core/ios): V-31 — mention_profiles covers all visible views (CI: cargo test pending)
 - PR #443 — fix(nmp-nip01/ios): V-32 — add authorPictureUrl/contentPreview to TimelineEventCard (CI: running)
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — fix(nmp-core/ios): V-31 — mention_profiles covers all visible views; delete Swift profile dict construction — PR #442 merged
 - 2026-05-24 — fix(nmp-nip29/ios): V-29 — GroupChatSnapshot.group_initials; delete Swift initials computed prop — PR #441 merged
 - 2026-05-24 — fix(ios): V-30 — remove Swift pubkey truncation from ModularBlockView.displayName — PR #440 merged
 - 2026-05-24 — fix(nmp-core/nmp-nip01/ios): V-28 — shortPubkey/shortID/relativeTime display strings to Rust — PR #439 merged
