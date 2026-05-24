@@ -73,12 +73,11 @@ pub fn group_id_bytes(hex: &str) -> Result<Vec<u8>> {
         .collect()
 }
 
-/// Short npub form for compact display: `npub1abcd…wxyz`.
+/// Short npub form for compact display (`"npub1<first10>…<last6>"`).
+///
+/// Delegates to the V-33 canonical helper so MLS status lines and every
+/// other NMP surface speak the same abbreviated-pubkey dialect.
 pub fn short_npub(pk: &PublicKey) -> String {
-    match pk.to_bech32() {
-        Ok(b) if b.len() > 16 => format!("{}…{}", &b[..10], &b[b.len() - 4..]),
-        Ok(b) => b,
-        Err(_) => pk.to_hex(),
-    }
+    nmp_core::display::short_npub(&pk.to_hex())
 }
 
