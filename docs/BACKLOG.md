@@ -293,6 +293,7 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - swift.rs, ingest/mod.rs, case_a_authors.rs, event_observer.rs, compiler/mod.rs, nip19.rs (PRs #402-#406, #409 — 2026-05-24)
 - relay_diagnostics.rs, markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10 (PRs #407-#412 — 2026-05-24)
 - doctrine-lint d11/d12/d15 (PRs #413-#415 — 2026-05-24)
+- nmp-nip29/projection/group_chat.rs (813 → 358 LOC), nmp-nip01/timeline_projection.rs (590 → 275 LOC), nmp-core/kernel/identity_state.rs (569 → 471 LOC) — third batch — 2026-05-24
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
