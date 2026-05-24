@@ -9,10 +9,12 @@
 
 ## Active
 
-- PR #438 — fix(nmp-core/ios): V-26 — AccountSummary avatarInitials/avatarColorHex to Rust — in progress
+_(none — scanning for next violation)_
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-24 — fix(nmp-nip01/ios): V-27 — ChirpEventCard display fields to Rust — PR #437 merged
+- 2026-05-24 — fix(nmp-core/ios): V-26 — AccountSummary avatarInitials/avatarColorHex to Rust — PR #438 merged
 - 2026-05-24 — fix(nmp-nip29/ios): V-25 — GroupChatView pubkey display to Rust — PR #436 merged
 - 2026-05-24 — fix(core/nip29/ios): V-24 — AccountsView + JoinGroupView thin-shell — PR #435 merged
 - 2026-05-24 — fix(wallet/ios): V-23 — move WalletView balance/npub formatting to Rust — PR #434 merged
