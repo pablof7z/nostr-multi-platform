@@ -544,6 +544,62 @@ uppercase (matching every other surface), the handle abbreviation widens from `6
 (matching V-25), and the timestamp dialect changes from `"5s"` to `"5s ago"` (matching V-20/V-22).
 None are regressions; all are the consistency fix.
 
+### V-28 · `shortPubkey` / `shortID` / `relativeTime` Swift helpers — thin-shell doctrine violation — **DONE**
+
+**Verified:** three remaining display-string helpers survived the V-22–V-27 sweep in the
+same family of thin-shell violations.
+
+- `ios/Chirp/Chirp/Components/NoteEntityViews.swift:124` called `relativeTime(createdAt: card.createdAt)`
+  inside `embeddedCard` even though V-27 had already added `createdAtDisplay: String` to
+  `ChirpEventCard`. The Swift helper at lines 241-247 carried its own `"Xs/m/h/d"` dialect
+  distinct from the kernel's `"X ago"` dialect.
+- `ios/Chirp/Chirp/Components/NoteRowView.swift:112` called a private `shortPubkey(_ hex:)`
+  returning `"\(hex.prefix(6))…\(hex.suffix(4))"` — the same Twitter-style secondary identifier
+  V-27 had already solved on `ChirpEventCard.author_pubkey_short` (and V-25 on
+  `nmp-nip29`), but `TimelineItem` itself had no equivalent field.
+- `ios/Chirp/Chirp/Features/ComposeView.swift:151` defined `shortID(_:)` and called it from
+  the reply banner (`replyBanner(for: replyToID)` line 133) on a raw 64-char event id, with
+  the same `prefix(6)…suffix(4)` algorithm.
+
+**Fixed:** added two fields to `TimelineItem` in `crates/nmp-core/src/kernel/types.rs` —
+`author_pubkey_short` and `short_id` — populated at `Kernel::timeline_item` construction in
+`crates/nmp-core/src/kernel/update.rs` via a new `kernel::nostr::short_hex_display(value)`
+helper that produces the cross-surface `<first 8>…<last 8>` abbreviation. The new helper is
+distinct from `short_pubkey_display` above (which carries the `npub ` prefix and `..`
+separator used by the kernel's own author display fallback) and matches the algorithm
+already in `nmp_nip01::timeline_projection::pubkey_display`,
+`nmp_nip17::display::pubkey_short`, and `nmp_nip29::projection::group_chat::pubkey_display`
+so the same author / event id renders the same abbreviation across every surface.
+
+Also extended `TimelineEventCard` in `crates/nmp-nip01/src/timeline_projection.rs` with a
+new `short_id: String` field populated via the existing `pubkey_display` helper (works on any
+hex string) so the synthetic `TimelineItem` builder in
+`ios/Chirp/Chirp/Components/ModularBlockView.swift:288` could bind the abbreviation through
+without slicing the raw id — same precedent as V-27's `author_pubkey_short` addition.
+
+Swift codegen (`KernelTypes.generated.swift`) regenerated to surface `authorPubkeyShort` and
+`shortId` on `TimelineItem`. `ChirpEventCard` in `TimelineBlock.swift` gains `shortId` +
+matching `CodingKey`. `ComposeView` gains a parallel `replyToShortID: String? = nil`
+parameter the reply banner binds verbatim — the publish path still receives the raw
+`replyToID` (the Rust kernel needs the full 64-char id to publish the NIP-10 `e` tag).
+`NoteRowView.swift:70` and `ThreadScreen.swift:57/108/200` pass `item.shortId` through
+(via `ReplyTarget.shortID`). All three Swift helpers (`relativeTime`, `shortPubkey`,
+`shortID`) are deleted.
+
+**Behaviour change called out:** the secondary-identifier abbreviation in the home feed
+row and the reply-banner caption widen from `<first 6>…<last 4>` to `<first 8>…<last 8>` —
+deliberate consistency fix, same disclosure pattern V-27 / V-25 already used. The embedded
+event card's timestamp dialect changes from `"5s"` to `"5s ago"` (matches V-20/V-22/V-27).
+
+**Out of scope (V-29 follow-up):** `NoteEntityViews.swift:88-93` `authorProfile(for:)`
+fallback (`initials: String(pubkey.prefix(2))`, `colorHex: "#" + String(pubkey.prefix(6))`)
+— requires Rust to emit fallback `MentionProfile` entries for all referenced pubkeys, not
+just known authors. `NoteEntityViews.swift:263-266` `shortEntity` — used by both the
+fallback initials path and the mention label path; deletable once V-29 lands.
+`MarmotGroupsView.swift:159` `PublicGroupRow.initials` — needs `GroupChatSnapshot`
+group-level display fields (V-30). `DiagnosticsView.swift:440` `shortID` — diagnostics is
+already `#if DEBUG` gated by V-19; cleanup deferred.
+
 ### V-26 · `AccountAvatar` extension display logic in Swift — thin-shell doctrine violation
 
 **Verified:** `ios/Chirp/Chirp/Components/AccountAvatar.swift` defined

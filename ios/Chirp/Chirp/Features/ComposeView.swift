@@ -2,13 +2,21 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent C (Compose sheet). Presented as a sheet from
 // HomeFeedView / NoteRowView. Supports ComposeView() and
-// ComposeView(replyToID: "abc").
+// ComposeView(replyToID: "abc", replyToShortID: "abcdef12…34567890").
+//
+// V-28 thin-shell: `replyToShortID` is the pre-formatted `<first 8>…<last 8>`
+// abbreviation Rust emits as `TimelineItem.shortId`. The publish path still
+// receives the raw 64-char hex `replyToID` — only the banner caption uses
+// the short form. The view layer MUST NOT slice the raw id (aim.md §6.9).
 
 struct ComposeView: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
 
     var replyToID: String? = nil
+    /// Pre-formatted abbreviation rendered in the reply banner. Sourced from
+    /// `TimelineItem.shortId` at the call site; never derived in Swift.
+    var replyToShortID: String? = nil
 
     @State private var text = ""
     @FocusState private var editorFocused: Bool
@@ -28,8 +36,8 @@ struct ComposeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if let replyToID {
-                    replyBanner(for: replyToID)
+                if replyToID != nil {
+                    replyBanner(shortID: replyToShortID ?? "")
                 }
 
                 composeRow
@@ -118,7 +126,7 @@ struct ComposeView: View {
     }
 
     @ViewBuilder
-    private func replyBanner(for id: String) -> some View {
+    private func replyBanner(shortID: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left.fill")
                 .font(.system(size: 13, weight: .medium))
@@ -130,7 +138,12 @@ struct ComposeView: View {
 
             Spacer()
 
-            Text(shortID(id))
+            // V-28 thin-shell: Rust pre-formats this string as
+            // `TimelineItem.shortId` (`<first 8>…<last 8>`). The view binds
+            // it verbatim — no slicing in Swift. Empty string when the
+            // caller did not pass `replyToShortID` (older call sites or a
+            // raw-id reply path that has not been migrated yet).
+            Text(shortID)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
         }
@@ -146,10 +159,5 @@ struct ComposeView: View {
         model.publishNote(trimmed, replyToID: replyToID)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
-    }
-
-    private func shortID(_ id: String) -> String {
-        guard id.count >= 12 else { return id }
-        return "\(id.prefix(6))…\(id.suffix(4))"
     }
 }

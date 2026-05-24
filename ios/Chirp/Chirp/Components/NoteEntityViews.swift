@@ -121,7 +121,7 @@ struct EmbeddedNostrEventCard: View {
                     eventID: card.id,
                     pubkey: card.authorPubkey,
                     kind: card.kind,
-                    createdAt: relativeTime(createdAt: card.createdAt)
+                    createdAt: card.createdAtDisplay
                 )
                 NoteContentView(
                     content: card.content,
@@ -238,13 +238,6 @@ struct EmbeddedNostrEventCard: View {
         .embeddedCardStyle()
     }
 
-    private func relativeTime(createdAt: UInt64) -> String {
-        let delta = max(0, Date().timeIntervalSince1970 - TimeInterval(createdAt))
-        if delta < 60 { return "\(Int(delta))s" }
-        if delta < 3600 { return "\(Int(delta / 60))m" }
-        if delta < 86_400 { return "\(Int(delta / 3600))h" }
-        return "\(Int(delta / 86_400))d"
-    }
 }
 
 private extension View {

@@ -123,6 +123,25 @@ pub(crate) struct TimelineItem {
     pub(super) content: String,
     pub(super) content_preview: String,
     pub(super) created_at_display: String,
+    /// V-28 thin-shell: abbreviated hex pubkey (`<first 8>…<last 8>`) for the
+    /// Twitter-style secondary identifier slot beneath the display name in the
+    /// timeline row. Replaces the `shortPubkey` helper deleted from
+    /// `ios/Chirp/Chirp/Components/NoteRowView.swift`. Same algorithm as
+    /// `nmp_nip01::timeline_projection::pubkey_display` so the same author
+    /// renders the same abbreviation across modular timeline, NIP-29 group
+    /// rows, NIP-17 DMs, and Chirp's home feed (the old Swift helper used
+    /// `<first 6>…<last 4>` — aligning to the cross-surface algorithm shifts
+    /// the abbreviation by two characters on each side).
+    pub(super) author_pubkey_short: String,
+    /// V-28 thin-shell: abbreviated event id (`<first 8>…<last 8>`) for
+    /// surfaces that want a compact monospaced reference to this event — most
+    /// notably Chirp's reply-banner caption in `ComposeView`. Replaces the
+    /// `shortID` helper deleted from
+    /// `ios/Chirp/Chirp/Features/ComposeView.swift`. The Swift helper used
+    /// `<first 6>…<last 4>`; aligning to the cross-surface `<first 8>…
+    /// <last 8>` algorithm shifts the abbreviation by two characters on each
+    /// side (deliberate — see `author_pubkey_short` above).
+    pub(super) short_id: String,
     pub(super) relay_count: u32,
     /// `true` when `kind == 6` (NIP-18 repost). Thin-shell: the view layer
     /// flips the "Repost" badge and re-routes thread navigation on this bool;

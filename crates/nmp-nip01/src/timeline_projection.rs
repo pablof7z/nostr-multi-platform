@@ -62,6 +62,14 @@ pub struct TimelineEventCard {
     /// struct. Synthetic-from-card rows in `ModularBlockView.swift` use
     /// this as the display-name fallback when no `TimelineItem` is loaded.
     pub author_display_name: String,
+    /// V-28 thin-shell: abbreviated event id (`<first 8>…<last 8>`) used by
+    /// the synthetic `TimelineItem` builder in `ModularBlockView.swift` to
+    /// populate `TimelineItem.short_id` (and by any host surface that wants a
+    /// compact monospaced reference to this event). Mirrors the
+    /// `author_pubkey_short` field above — same `pubkey_display` algorithm
+    /// works on any hex string. Required because Swift must NEVER slice the
+    /// raw 64-char `id` to compute an abbreviation (V-28, aim.md §6.9).
+    pub short_id: String,
 }
 
 impl TimelineEventCard {
@@ -88,6 +96,10 @@ impl TimelineEventCard {
             author_avatar_color: avatar_color_hex(&event.author),
             author_pubkey_short: pubkey_display(&event.author),
             author_display_name,
+            // V-28 thin-shell: same `<first 8>…<last 8>` abbreviation
+            // algorithm `author_pubkey_short` uses — `pubkey_display` is
+            // generic over any hex string, so we reuse it on `event.id`.
+            short_id: pubkey_display(&event.id),
         }
     }
 }

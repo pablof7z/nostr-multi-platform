@@ -67,7 +67,7 @@ struct NoteRowView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showReply) {
-            ComposeView(replyToID: item.id)
+            ComposeView(replyToID: item.id, replyToShortID: item.shortId)
         }
     }
 
@@ -109,7 +109,7 @@ struct NoteRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
-            Text(shortPubkey(item.authorPubkey))
+            Text(item.authorPubkeyShort)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -177,13 +177,6 @@ struct NoteRowView: View {
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    /// "npub1abc…ef12" style truncation from hex pubkey.
-    private func shortPubkey(_ hex: String) -> String {
-        guard hex.count >= 12 else { return hex }
-        return "\(hex.prefix(6))…\(hex.suffix(4))"
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
