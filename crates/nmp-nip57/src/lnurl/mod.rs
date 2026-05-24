@@ -24,12 +24,13 @@
 //!   The executor passes `created_at = 0` as a sentinel; this command
 //!   re-stamps before signing (mirrors the
 //!   `PublishUnsignedEventToRelays` precedent).
-//! - TODO Debt C follow-up: V-07 (recipient relay injection) is currently
-//!   disabled — Debt C deleted the routing accessors from the substrate
-//!   context (`author_write_relays` / `bootstrap_discovery_relays` were
-//!   routing leaks). Migration through the kernel's `OutboxRouter` is
-//!   pending; until then `inject_recipient_relays` is a no-op and the
-//!   kind:9734 carries no `relays` tag.
+//! - [`ProtocolCommandContext::recipient_publish_relays`] — V-07: the
+//!   substrate seam (Debt-C-follow-up) the kernel-side adapter wires
+//!   through its injected `outbox_router` slot to resolve the recipient's
+//!   NIP-65 write set (with router lane-7 / lane-6 cold-start fallback).
+//!   `inject_recipient_relays` consumes this to populate the kind:9734
+//!   `relays` tag so the LN provider knows where to publish the kind:9735
+//!   zap receipt (NIP-57 § "Appendix F").
 //! - [`ProtocolCommandContext::active_local_keys`] — ADR-0026 Phase 1:
 //!   local-keys accounts only. Bunker (NIP-46) accounts return `None`; we
 //!   fail closed with a clear toast and a `RecordActionFailure`.
@@ -235,39 +236,61 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
 }
 
 /// V-07 — inject the kind:9734 `relays` tag from the recipient's NIP-65
-/// (kind:10002) write list when the caller produced no tag.
+/// (kind:10002) write list (or the router's cold-start fallback) when the
+/// caller produced no filled `relays` row.
 ///
-/// TODO Debt C follow-up: Debt C removed the
-/// `ProtocolCommandContext::author_write_relays` +
-/// `bootstrap_discovery_relays` accessors (routing leaks — routing is the
-/// kernel's `OutboxRouter`, not a substrate read accessor). This
-/// function must be migrated to route through the kernel's
-/// `OutboxRouter` (either populate `RoutingContext::explicit_targets` or
-/// route a synthetic event and consume `routed.urls()`); the migration
-/// is non-trivial (the LNURL fetcher needs a *receiver*-author write set,
-/// while the publish path routes by *event*-author) and exceeds this
-/// PR's LOC budget.
+/// Routes through [`ProtocolCommandContext::recipient_publish_relays`] —
+/// the substrate seam the kernel-side adapter wires through its injected
+/// `outbox_router` slot (lane 1 = recipient's NIP-65 write set, lane 7 =
+/// AppRelay cold-start fallback). NIP-57 § "Appendix F" — the LN provider
+/// publishes the kind:9735 zap receipt to the URLs in this tag.
 ///
-/// Until then this function is a no-op: kind:9734 carries no `relays`
-/// tag, the LN provider falls back to its default behaviour (typically
-/// publishing the kind:9735 receipt to its operator-configured set; some
-/// providers reject the request, in which case the user sees a toast).
-/// Two LNURL unit tests are `#[ignore]`d behind the same TODO.
+/// Algorithm:
+/// 1. If a non-empty `relays` row is already present, leave it. A caller
+///    that explicitly picked relays overrides this injection.
+/// 2. Find the first `p` tag (the zap recipient — NIP-57 § "Appendix A").
+///    With no `p` tag we cannot ask the router for anything recipient-
+///    specific; the router's lane-7 cold-start seed is the safe fallback
+///    (a synthetic publish of kind:9735 from an empty pubkey resolves
+///    via the AppRelay seed). With a `p` tag, route via the kind:9735
+///    publish-direction (the kind the LN provider will mint).
+/// 3. Replace any malformed bare `["relays"]` row (no URLs) with the
+///    resolved row.
 pub(crate) fn inject_recipient_relays(
-    _ctx: &ProtocolCommandContext<'_>,
+    ctx: &ProtocolCommandContext<'_>,
     unsigned: &mut UnsignedEvent,
 ) {
-    let relays_present = unsigned.tags.iter().any(|t| {
-        t.first().is_some_and(|k| k == "relays") && t.len() > 1
-    });
-    if relays_present {
+    if has_filled_relays_row(&unsigned.tags) {
         return;
     }
-    tracing::warn!(
-        "NIP-57: kind:9734 relays tag injection disabled pending Debt C \
-         follow-up (route through OutboxRouter); LN provider falls back \
-         to its own default for kind:9735 publication"
-    );
+    let recipient = first_p_tag(&unsigned.tags).unwrap_or_default();
+    let urls = ctx.recipient_publish_relays(&recipient, KIND_ZAP_RECEIPT);
+    // Drop any pre-existing bare `["relays"]` row (no URLs) — it is
+    // malformed per NIP-57 § "Appendix A" and would otherwise survive
+    // alongside the injected row.
+    unsigned
+        .tags
+        .retain(|t| !(t.first().is_some_and(|k| k == "relays") && t.len() <= 1));
+    let mut row = vec!["relays".to_string()];
+    row.extend(urls);
+    unsigned.tags.push(row);
+}
+
+/// NIP-57 kind:9735 zap receipt — the kind the LN provider mints after
+/// the invoice settles. We use it as the synthetic publish-direction
+/// kind when asking the router "where would the recipient publish a
+/// receipt under their own authorship?" (== their NIP-65 write set).
+const KIND_ZAP_RECEIPT: u32 = 9735;
+
+fn has_filled_relays_row(tags: &[Vec<String>]) -> bool {
+    tags.iter()
+        .any(|t| t.first().is_some_and(|k| k == "relays") && t.len() > 1)
+}
+
+fn first_p_tag(tags: &[Vec<String>]) -> Option<String> {
+    tags.iter()
+        .find(|t| t.first().is_some_and(|k| k == "p"))
+        .and_then(|t| t.get(1).cloned())
 }
 
 /// Sign `unsigned` with `keys` and emit the flat NIP-01 JSON object the

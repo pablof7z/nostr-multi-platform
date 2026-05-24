@@ -10,8 +10,8 @@ use super::*;
 use crate::dm_relay_cache::DmRelayCache;
 use nmp_core::substrate::{
     DmInboxRelayLookup, EmptyDmInboxRelayLookup, ErrorSurface, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, ProtocolCommand, ProtocolCommandContext,
-    UnsignedEvent,
+    LocalSignerAccess, NoopActionStageTracker, NoopRecipientRelayLookup,
+    ProtocolCommand, ProtocolCommandContext, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
 use nmp_nip59::SignerForSeal;
@@ -114,9 +114,10 @@ fn run_cmd(
             failures: &recorder.failures,
         };
         let stages = NoopActionStageTracker;
+        let recipients = NoopRecipientRelayLookup;
         let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
         let mut ctx = ProtocolCommandContext::new(
-            &send, tx, &clock, &signers, dm_lookup, &errors, &stages,
+            &send, tx, &clock, &signers, dm_lookup, &errors, &stages, &recipients,
         );
         Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
     }
