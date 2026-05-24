@@ -66,6 +66,31 @@ pub fn avatar_initials(npub: &str) -> String {
     }
 }
 
+/// Two-char uppercase initials from a display name.
+///
+/// Takes the first character of each of the first two whitespace-split words.
+/// Pads with `"."` for single-word or empty names so the result is always
+/// exactly two characters. Examples: `"Alice Smith"` → `"AS"`, `"alice"` →
+/// `"A."`, `""` → `".."`.
+///
+/// This is the canonical cross-surface algorithm for name-based avatars — any
+/// surface that shows a display name in an avatar tile must use this function
+/// so initials are consistent.
+#[must_use]
+pub fn display_name_initials(name: &str) -> String {
+    let chars: Vec<char> = name
+        .split_whitespace()
+        .take(2)
+        .filter_map(|word| word.chars().next())
+        .map(|c| c.to_uppercase().next().unwrap_or(c))
+        .collect();
+    match chars.as_slice() {
+        [a, b] => format!("{a}{b}"),
+        [a] => format!("{a}."),
+        _ => "..".to_string(),
+    }
+}
+
 /// Deterministic 6-hex avatar background colour from a hex pubkey
 /// (uppercase, no `#` prefix).
 ///
@@ -195,6 +220,31 @@ mod tests {
     fn short_npub_falls_back_on_garbage_input() {
         let s = short_npub("zz");
         assert_eq!(s, "zz", "short string returned unchanged");
+    }
+
+    // ── display_name_initials ────────────────────────────────────────────
+
+    #[test]
+    fn display_name_initials_word_based_two_words() {
+        assert_eq!(display_name_initials("Alice Smith"), "AS");
+        assert_eq!(display_name_initials("alice bob"), "AB");
+    }
+
+    #[test]
+    fn display_name_initials_single_word_pads_with_dot() {
+        assert_eq!(display_name_initials("alice"), "A.");
+        assert_eq!(display_name_initials("Bob"), "B.");
+    }
+
+    #[test]
+    fn display_name_initials_empty_returns_two_dots() {
+        assert_eq!(display_name_initials(""), "..");
+        assert_eq!(display_name_initials("   "), "..");
+    }
+
+    #[test]
+    fn display_name_initials_only_first_two_words_count() {
+        assert_eq!(display_name_initials("alice bob carol"), "AB");
     }
 
     // ── avatar_initials ──────────────────────────────────────────────────

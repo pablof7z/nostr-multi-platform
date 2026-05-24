@@ -13,6 +13,7 @@ use super::{Deserialize, Profile, TimelineItem, HashMap, AuthorRelayList, HashSe
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
 use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
+use crate::display::display_name_initials;
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -61,7 +62,7 @@ pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
     Profile {
         event_id: event.id.clone(),
         created_at: event.created_at,
-        avatar_initials: initials(&display),
+        avatar_initials: display_name_initials(&display),
         avatar_color: avatar_color(&event.pubkey),
         display,
         picture_url: parsed.picture.filter(|value| value.starts_with("http")),
@@ -275,13 +276,6 @@ pub(super) fn truncate(value: &str, limit: usize) -> String {
         out.push_str("...");
     }
     out
-}
-
-pub(super) fn initials(display: &str) -> String {
-    let mut chars = display.chars().filter(|ch| ch.is_alphanumeric());
-    let first = chars.next().unwrap_or('.');
-    let second = chars.next().unwrap_or('.');
-    format!("{first}{second}").to_uppercase()
 }
 
 pub(super) fn avatar_color(pubkey: &str) -> String {

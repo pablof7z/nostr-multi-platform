@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
-use nmp_core::display::{avatar_color_hex, format_ago_secs};
+use nmp_core::display::{avatar_color_hex, display_name_initials, format_ago_secs};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES, ViewContext};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
@@ -107,7 +107,7 @@ impl TimelineEventCard {
         // Extracted before the struct literal moves `author_display`. Matches
         // `TimelineItem.author_avatar_initials`: ".." until Kind0 lands.
         let author_avatar_initials = match author_display.source {
-            AuthorDisplaySource::Kind0 => display_initials(&author_display.name),
+            AuthorDisplaySource::Kind0 => display_name_initials(&author_display.name),
             AuthorDisplaySource::Npub => "..".to_string(),
         };
         Self {
@@ -138,26 +138,17 @@ impl TimelineEventCard {
 
 // ── V-27 thin-shell display helpers ───────────────────────────────────────
 //
-// `format_ago_secs` and `avatar_color_hex` are imported from
-// [`nmp_core::display`] — the canonical home for cross-surface formatting
-// primitives (V-33). The two helpers below — `pubkey_initials` and
-// `pubkey_display` — stay local because they use the timeline's own
-// algorithms (`pubkey_initials` is hex-prefix-based, not bech32-body-based
-// like `nmp_core::display::avatar_initials`; `pubkey_display` is `8…8`,
-// distinct from the bech32-aware `nmp_core::display::short_npub`).
+// `format_ago_secs`, `avatar_color_hex`, and `display_name_initials` are
+// imported from [`nmp_core::display`] — the canonical home for cross-surface
+// formatting primitives (V-33). One local helper remains:
+// - `pubkey_display(hex)` — `<first-8>…<last-8>` for raw hex IDs (event.id
+//   and event.author). Distinct from the bech32-aware `short_npub`.
 
 fn now_unix_secs() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
-}
-
-fn display_initials(name: &str) -> String {
-    let mut chars = name.chars().filter(|ch| ch.is_alphanumeric());
-    let first = chars.next().unwrap_or('.');
-    let second = chars.next().unwrap_or('.');
-    format!("{first}{second}").to_uppercase()
 }
 
 fn pubkey_display(pubkey_hex: &str) -> String {
@@ -451,11 +442,13 @@ mod tests {
     // so a drift in the canonical helper still surfaces at this layer.
 
     #[test]
-    fn display_initials_derives_from_display_name() {
-        assert_eq!(display_initials("Alice Smith"), "AL");
-        assert_eq!(display_initials("bob"), "BO");
-        assert_eq!(display_initials("a"), "A.");
-        assert_eq!(display_initials(""), "..");
+    fn display_name_initials_word_based() {
+        // word-based: first char of each word, uppercase (canonical algorithm)
+        assert_eq!(display_name_initials("Alice Smith"), "AS");
+        assert_eq!(display_name_initials("alice bob"), "AB");
+        assert_eq!(display_name_initials("bob"), "B.");
+        assert_eq!(display_name_initials("a"), "A.");
+        assert_eq!(display_name_initials(""), "..");
     }
 
     #[test]
