@@ -333,7 +333,9 @@ between them.
 > source — `docs/research/SYNTHESIS-app-relays.md` §5 — enumerates **7**. This
 > document tracks the synthesis doc.
 
-The substrate enum every routing rule produces a slice of:
+The substrate enum the router attributes each relay URL to (either from the
+generic algorithm or from the `explicit_targets` override, which always
+attributes to `ClassRouted`):
 
 ```rust
 pub enum RoutingSource {
@@ -1014,8 +1016,8 @@ crate's existence).
 - **2026-05-24** — `nmp-nip65` deleted; relay routing centralized in
   `nmp-router`. Routing is one generic algorithm; NIP-65 ingest + cache +
   `publish_relay_list` action absorbed.
-- **2026-05-24** — `RoutingRule` registry deleted; NIP crates do not register
-  routing rules. Explicit relay targeting uses
+- **2026-05-24** — Per-NIP routing-rule registry rejected; NIP crates do not
+  register routing rules. Explicit relay targeting uses
   `RoutingContext::explicit_targets: Option<&[RelayUrl]>`. Routing is one
   generic algorithm. Three independent design agents converged on this shape
   in preference to a per-NIP rule registry.
