@@ -25,6 +25,7 @@ members = [
     "crates/nmp-nip59",
     "crates/nmp-nip65",
     "crates/nmp-nostr-lmdb",
+    "crates/nmp-router",
     "crates/nmp-nwc",
     "crates/nmp-repl",
     "crates/nmp-signer-broker",
