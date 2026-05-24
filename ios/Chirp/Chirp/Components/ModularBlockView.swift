@@ -296,17 +296,24 @@ struct ModularBlockView: View {
             // `nil` for cards without a backing item is correct — the row
             // hides the zap button (no lnurl known yet).
             authorLnurl: item?.authorLnurl,
-            // `identicon:<prefix>` mirrors the Rust D1 placeholder URI
-            // contract: the field is non-optional and always renderable.
-            authorPictureUrl: item?.authorPictureUrl
-                ?? "identicon:\(card.authorPubkey.prefix(8))",
+            // V-32 thin-shell: Rust ships `author_picture_url` on the card —
+            // it is either the kind:0 `picture` URL or the cross-surface
+            // `identicon:<first 16>` placeholder from
+            // `nmp_core::substrate::picture_placeholder`. The old Swift
+            // fallback constructed `identicon:<first 8>`; the move to the
+            // 16-char `picture_placeholder` prefix is a deliberate alignment
+            // (same precedent as V-27's avatar-colour algorithm fix).
+            authorPictureUrl: item?.authorPictureUrl ?? card.authorPictureUrl,
             authorPubkey: card.authorPubkey,
             // V-28 thin-shell: bind the Rust-pre-formatted abbreviation
             // verbatim from the backing item when present, else from the
             // card's V-28 field. Never slice the raw pubkey in Swift.
             authorPubkeyShort: item?.authorPubkeyShort ?? card.authorPubkeyShort,
             content: card.content,
-            contentPreview: String(card.content.prefix(180)),
+            // V-32 thin-shell: Rust ships the first 180 chars of content as
+            // `content_preview` on the card so this synthetic builder no
+            // longer slices the raw `content` string in Swift.
+            contentPreview: card.contentPreview,
             createdAtDisplay: card.createdAtDisplay,
             id: card.id,
             isRepost: false,

@@ -188,6 +188,18 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable {
     /// in Rust. Used by `syntheticItem` to populate `TimelineItem.shortId`
     /// without slicing the raw 64-char `id` in Swift (aim.md §6.9).
     let shortId: String
+    /// V-32 thin-shell: author's profile picture URL — either the parsed
+    /// kind:0 `picture` field or the `identicon:<first 16-hex>` placeholder
+    /// from `nmp_core::substrate::picture_placeholder`. Replaces the
+    /// `identicon:\(card.authorPubkey.prefix(8))` string interpolation in
+    /// `ModularBlockView.swift`'s `syntheticItem` builder (the prefix shifts
+    /// from 8→16 hex chars — deliberate alignment with the cross-surface
+    /// `picture_placeholder` algorithm, NOT a regression).
+    let authorPictureUrl: String
+    /// V-32 thin-shell: first 180 Unicode scalars of `content`, no ellipsis.
+    /// Replaces the `String(card.content.prefix(180))` call-site in
+    /// `ModularBlockView.swift`'s `syntheticItem` builder.
+    let contentPreview: String
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -202,6 +214,8 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable {
         case authorPubkeyShort = "author_pubkey_short"
         case authorDisplayName = "author_display_name"
         case shortId = "short_id"
+        case authorPictureUrl = "author_picture_url"
+        case contentPreview = "content_preview"
     }
 }
 

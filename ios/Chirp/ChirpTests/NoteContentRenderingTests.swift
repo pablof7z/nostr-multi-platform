@@ -63,14 +63,18 @@ final class NoteContentRenderingTests: XCTestCase {
                         roots: [0],
                         mode: nil
                     ),
-                    // V-27 thin-shell: display fields computed in Rust on the
-                    // real snapshot path; this fixture supplies fixed values
-                    // since the test exercises content-tree rendering only.
+                    // V-27 / V-28 / V-32 thin-shell: display fields computed
+                    // in Rust on the real snapshot path; this fixture supplies
+                    // fixed values since the test exercises content-tree
+                    // rendering only.
                     createdAtDisplay: "now",
                     authorAvatarInitials: "PF",
                     authorAvatarColor: "4B7BEC",
                     authorPubkeyShort: "\(pubkey.prefix(8))…\(pubkey.suffix(8))",
-                    authorDisplayName: "pablof7z"
+                    authorDisplayName: "pablof7z",
+                    shortId: "\(eventID.prefix(8))…\(eventID.suffix(8))",
+                    authorPictureUrl: "identicon:\(pubkey.prefix(16))",
+                    contentPreview: "embedded note body"
                 ),
             ],
             timelineItems: [:],

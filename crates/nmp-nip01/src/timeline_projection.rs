@@ -70,6 +70,23 @@ pub struct TimelineEventCard {
     /// works on any hex string. Required because Swift must NEVER slice the
     /// raw 64-char `id` to compute an abbreviation (V-28, aim.md §6.9).
     pub short_id: String,
+    /// V-32 thin-shell: author's profile picture URL. Mirrors
+    /// `AuthorDisplay.picture_url` — when a kind:0 profile is loaded this is
+    /// the parsed `picture` URL; otherwise it is the
+    /// `identicon:<first16-hex>` placeholder produced by
+    /// `nmp_core::substrate::picture_placeholder`. The synthetic
+    /// `TimelineItem` builder in `ModularBlockView.swift` binds this directly
+    /// instead of recomputing the placeholder in Swift (which used a shorter
+    /// `<first 8>` prefix — deliberate alignment to the cross-surface
+    /// `picture_placeholder` algorithm, NOT a regression).
+    pub author_picture_url: String,
+    /// V-32 thin-shell: first 180 Unicode scalars of `content`, used by the
+    /// synthetic `TimelineItem` builder in `ModularBlockView.swift` so Swift
+    /// never calls `String(card.content.prefix(180))`. No ellipsis appended —
+    /// matches the prior Swift call-site exactly. Scalar-based (`chars()`)
+    /// rather than grapheme-cluster-based; for Nostr text this is
+    /// indistinguishable in practice.
+    pub content_preview: String,
 }
 
 impl TimelineEventCard {
@@ -82,6 +99,11 @@ impl TimelineEventCard {
             tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
         let author_display = AuthorDisplay::from_profile(&event.author, profile);
         let author_display_name = author_display.name.clone();
+        // V-32 thin-shell: reuse the picture URL `AuthorDisplay::from_profile`
+        // already resolved (kind:0 `picture` field or `picture_placeholder`
+        // fallback). One source of truth for avatar resolution; do NOT
+        // recompute the identicon prefix here.
+        let author_picture_url = author_display.picture_url.clone();
         Self {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
@@ -100,6 +122,10 @@ impl TimelineEventCard {
             // algorithm `author_pubkey_short` uses — `pubkey_display` is
             // generic over any hex string, so we reuse it on `event.id`.
             short_id: pubkey_display(&event.id),
+            author_picture_url,
+            // V-32 thin-shell: scalar-based truncation matches the prior
+            // Swift `String(card.content.prefix(180))` call-site verbatim.
+            content_preview: content_preview(&event.content, 180),
         }
     }
 }
@@ -160,6 +186,15 @@ fn pubkey_display(pubkey_hex: &str) -> String {
         &pubkey_hex[..8],
         &pubkey_hex[pubkey_hex.len() - 8..]
     )
+}
+
+/// V-32 thin-shell: first `n` Unicode scalars of `content`, no ellipsis.
+/// Replaces the Swift `String(card.content.prefix(180))` call-site in
+/// `ModularBlockView.swift`'s synthetic-item builder. Scalar-based (`chars()`)
+/// rather than grapheme-cluster-based — for the short Nostr-text inputs this
+/// preview targets the two are indistinguishable in practice.
+fn content_preview(content: &str, n: usize) -> String {
+    content.chars().take(n).collect()
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -257,6 +292,11 @@ impl Inner {
                 // V-27 thin-shell: keep the flat mirror in sync so Swift
                 // sees the profile-loaded display name on the next snapshot.
                 card.author_display_name = card.author_display.name.clone();
+                // V-32 thin-shell: same rationale for the picture URL —
+                // when a kind:0 arrives after the note, the card's
+                // identicon placeholder must be replaced by the parsed
+                // profile picture on the next snapshot.
+                card.author_picture_url = card.author_display.picture_url.clone();
             }
         }
     }
@@ -504,5 +544,105 @@ mod tests {
             .expect("card");
         assert_eq!(post.author_display_name, "Alice");
         assert_eq!(post.author_display.name, "Alice");
+    }
+
+    // ── V-32 thin-shell tests ───────────────────────────────────────────
+
+    #[test]
+    fn card_carries_v32_picture_url_and_content_preview() {
+        const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let event = KernelEvent {
+            id: "E".into(),
+            author: PK.into(),
+            kind: 1,
+            created_at: 1,
+            tags: vec![],
+            content: "hello world".into(),
+        };
+        let proj = ModularTimelineProjection::new(&spec());
+        proj.on_kernel_event(&event);
+        let snap = proj.snapshot();
+        let card = snap
+            .cards
+            .iter()
+            .find(|c| c.id == "E")
+            .expect("card exists");
+
+        // No profile loaded yet → identicon placeholder from nmp-core
+        // (`picture_placeholder` uses the first 16 hex chars, NOT 8 —
+        // deliberate alignment with the cross-surface placeholder).
+        assert_eq!(card.author_picture_url, "identicon:3bf0c63fcb934634");
+        // Field must equal the nested `AuthorDisplay.picture_url` —
+        // single source of truth.
+        assert_eq!(card.author_picture_url, card.author_display.picture_url);
+
+        // content_preview: short content passes through unchanged, no ellipsis.
+        assert_eq!(card.content_preview, "hello world");
+    }
+
+    #[test]
+    fn content_preview_truncates_at_180_scalars_without_ellipsis() {
+        // 200-char ASCII body → preview is the first 180 chars, no `…`.
+        let body = "a".repeat(200);
+        let expected = "a".repeat(180);
+        let event = KernelEvent {
+            id: "L".into(),
+            author: "a".repeat(64),
+            kind: 1,
+            created_at: 1,
+            tags: vec![],
+            content: body,
+        };
+        let proj = ModularTimelineProjection::new(&spec());
+        proj.on_kernel_event(&event);
+        let card = proj
+            .snapshot()
+            .cards
+            .into_iter()
+            .find(|c| c.id == "L")
+            .expect("card");
+        assert_eq!(card.content_preview.len(), 180);
+        assert_eq!(card.content_preview, expected);
+        assert!(!card.content_preview.ends_with('…'));
+    }
+
+    #[test]
+    fn refresh_author_cards_updates_v32_picture_url_when_kind0_arrives_later() {
+        const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let proj = ModularTimelineProjection::new(&spec());
+        // Note arrives first → identicon placeholder.
+        proj.on_kernel_event(&KernelEvent {
+            id: "E".into(),
+            author: PK.into(),
+            kind: 1,
+            created_at: 1,
+            tags: vec![],
+            content: "hi".into(),
+        });
+        let pre = proj
+            .snapshot()
+            .cards
+            .into_iter()
+            .find(|c| c.id == "E")
+            .expect("card");
+        assert!(pre.author_picture_url.starts_with("identicon:"));
+
+        // Kind:0 with a real picture URL arrives — the flat mirror must update.
+        proj.on_kernel_event(&KernelEvent {
+            id: "P".into(),
+            author: PK.into(),
+            kind: 0,
+            created_at: 2,
+            tags: vec![],
+            content: r#"{"display_name":"Alice","picture":"https://example.com/a.png"}"#.into(),
+        });
+        let post = proj
+            .snapshot()
+            .cards
+            .into_iter()
+            .find(|c| c.id == "E")
+            .expect("card");
+        assert_eq!(post.author_picture_url, "https://example.com/a.png");
+        assert_eq!(post.author_picture_url, post.author_display.picture_url);
     }
 }
