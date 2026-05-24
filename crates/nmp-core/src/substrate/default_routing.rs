@@ -31,12 +31,15 @@
 //!   stays minimal.
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use super::identity::UnsignedEvent;
 use super::routing::{
     AppRelayMode, Direction, MailboxCache, OutboxRouter, ParsedRelayList, Pubkey, RelayUrl,
     RoutedRelaySet, RoutingContext, RoutingError, RoutingSource,
+};
+use super::routing_trace::{
+    truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace,
 };
 use crate::planner::LogicalInterest;
 
@@ -124,18 +127,30 @@ impl MailboxCache for InMemoryMailboxCache {
 /// production composition is expected to inject
 /// `nmp_router::GenericOutboxRouter` (the architectural home for the
 /// generic router) which is allowed to grow those lanes.
-pub struct Nip65WriteSetRouter;
+#[derive(Default)]
+pub struct Nip65WriteSetRouter {
+    /// V-51 phase 1 — optional observer fired after every successful
+    /// `route_publish` / `route_subscription` call. `None` by default; the
+    /// kernel binds an `Arc<RoutingTraceProjection>` clone via
+    /// [`Self::with_trace_observer`] at composition time. D8: the
+    /// `Option::is_some` gate keeps the no-observer path zero-alloc.
+    trace_observer: Option<Arc<dyn RoutingTraceObserver>>,
+}
 
 impl Nip65WriteSetRouter {
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
-}
 
-impl Default for Nip65WriteSetRouter {
-    fn default() -> Self {
-        Self::new()
+    /// Install a [`RoutingTraceObserver`] (V-51 phase 1). The router fires
+    /// `on_publish` / `on_subscription` after every successful resolution;
+    /// `Err(RoutingError::*)` returns are NOT observed (the unroutable case
+    /// is already surfaced via `CompiledPlan::unroutable_authors`).
+    #[must_use]
+    pub fn with_trace_observer(mut self, obs: Arc<dyn RoutingTraceObserver>) -> Self {
+        self.trace_observer = Some(obs);
+        self
     }
 }
 
@@ -145,43 +160,60 @@ impl OutboxRouter for Nip65WriteSetRouter {
         evt: &UnsignedEvent,
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
-        if let Some(explicit) = ctx.explicit_targets {
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
-        }
+        let explicit_targets_set = ctx.explicit_targets.is_some();
+        let out = if let Some(explicit) = ctx.explicit_targets {
+            RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays)
+        } else {
+            let mut out = RoutedRelaySet::new();
 
-        let mut out = RoutedRelaySet::new();
-
-        if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
-            for url in writes {
-                if ctx.blocked_relays.contains(&url) {
-                    continue;
+            if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
+                for url in writes {
+                    if ctx.blocked_relays.contains(&url) {
+                        continue;
+                    }
+                    out.add(
+                        url,
+                        RoutingSource::Nip65 {
+                            direction: Direction::Write,
+                        },
+                    );
                 }
-                out.add(
-                    url,
-                    RoutingSource::Nip65 {
-                        direction: Direction::Write,
-                    },
-                );
             }
-        }
 
-        if out.is_empty() {
-            for url in ctx.session_keys.app_relays.iter() {
-                if ctx.blocked_relays.contains(url) {
-                    continue;
+            if out.is_empty() {
+                for url in ctx.session_keys.app_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(
+                        url.clone(),
+                        RoutingSource::AppRelay {
+                            mode: AppRelayMode::Fallback,
+                        },
+                    );
                 }
-                out.add(
-                    url.clone(),
-                    RoutingSource::AppRelay {
-                        mode: AppRelayMode::Fallback,
-                    },
-                );
             }
+
+            if out.is_empty() {
+                return Err(RoutingError::Unroutable(evt.pubkey.clone()));
+            }
+            out
+        };
+
+        // V-51 — fire trace observer if installed. `Option::is_some` gate is
+        // the D8 zero-alloc no-observer path.
+        if let Some(obs) = self.trace_observer.as_ref() {
+            obs.on_publish(
+                PublishTrace {
+                    kind: evt.kind,
+                    author: evt.pubkey.clone(),
+                    event_id_short: truncate_event_id(None),
+                    explicit_targets_set,
+                },
+                &out,
+            );
         }
 
-        if out.is_empty() {
-            return Err(RoutingError::Unroutable(evt.pubkey.clone()));
-        }
         Ok(out)
     }
 
@@ -190,52 +222,67 @@ impl OutboxRouter for Nip65WriteSetRouter {
         interest: &LogicalInterest,
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
-        if let Some(explicit) = ctx.explicit_targets {
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
-        }
+        let explicit_targets_set = ctx.explicit_targets.is_some();
+        let out = if let Some(explicit) = ctx.explicit_targets {
+            RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays)
+        } else {
+            let mut out = RoutedRelaySet::new();
 
-        let mut out = RoutedRelaySet::new();
+            for author in &interest.shape.authors {
+                if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
+                    for url in reads {
+                        if ctx.blocked_relays.contains(&url) {
+                            continue;
+                        }
+                        out.add(
+                            url,
+                            RoutingSource::Nip65 {
+                                direction: Direction::Read,
+                            },
+                        );
+                    }
+                }
+            }
 
-        for author in &interest.shape.authors {
-            if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
-                for url in reads {
-                    if ctx.blocked_relays.contains(&url) {
+            if out.is_empty() {
+                for url in ctx.session_keys.app_relays.iter() {
+                    if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(
-                        url,
-                        RoutingSource::Nip65 {
-                            direction: Direction::Read,
+                        url.clone(),
+                        RoutingSource::AppRelay {
+                            mode: AppRelayMode::Fallback,
                         },
                     );
                 }
             }
-        }
 
-        if out.is_empty() {
-            for url in ctx.session_keys.app_relays.iter() {
-                if ctx.blocked_relays.contains(url) {
-                    continue;
-                }
-                out.add(
-                    url.clone(),
-                    RoutingSource::AppRelay {
-                        mode: AppRelayMode::Fallback,
-                    },
-                );
+            if out.is_empty() {
+                let pk = interest
+                    .shape
+                    .authors
+                    .iter()
+                    .next()
+                    .cloned()
+                    .unwrap_or_default();
+                return Err(RoutingError::Unroutable(pk));
             }
+            out
+        };
+
+        if let Some(obs) = self.trace_observer.as_ref() {
+            obs.on_subscription(
+                SubscriptionTrace {
+                    interest_id: interest.id.0,
+                    kinds: interest.shape.kinds.iter().copied().collect(),
+                    authors_count: interest.shape.authors.len(),
+                    explicit_targets_set,
+                },
+                &out,
+            );
         }
 
-        if out.is_empty() {
-            let pk = interest
-                .shape
-                .authors
-                .iter()
-                .next()
-                .cloned()
-                .unwrap_or_default();
-            return Err(RoutingError::Unroutable(pk));
-        }
         Ok(out)
     }
 }
@@ -243,6 +290,12 @@ impl OutboxRouter for Nip65WriteSetRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    use crate::planner::interest::{
+        InterestId, InterestLifecycle, InterestScope, InterestShape,
+    };
+    use crate::substrate::BlockedRelaySet;
 
     #[test]
     fn cache_round_trips_via_substrate_trait() {
@@ -262,6 +315,155 @@ mod tests {
         assert_eq!(snap.read, vec!["wss://r.example"]);
         assert_eq!(snap.write, vec!["wss://w.example"]);
         assert_eq!(snap.both, vec!["wss://b.example"]);
+    }
+
+    #[derive(Default)]
+    struct CountingObserver {
+        publishes: Mutex<Vec<(PublishTrace, RoutedRelaySet)>>,
+        subscriptions: Mutex<Vec<(SubscriptionTrace, RoutedRelaySet)>>,
+    }
+
+    impl RoutingTraceObserver for CountingObserver {
+        fn on_publish(&self, summary: PublishTrace, routed: &RoutedRelaySet) {
+            self.publishes
+                .lock()
+                .unwrap()
+                .push((summary, routed.clone()));
+        }
+        fn on_subscription(&self, summary: SubscriptionTrace, routed: &RoutedRelaySet) {
+            self.subscriptions
+                .lock()
+                .unwrap()
+                .push((summary, routed.clone()));
+        }
+    }
+
+    fn unsigned(pubkey: &str, kind: u32) -> UnsignedEvent {
+        UnsignedEvent {
+            pubkey: pubkey.into(),
+            kind,
+            tags: vec![],
+            content: String::new(),
+            created_at: 0,
+        }
+    }
+
+    fn interest_for(id: u64, authors: &[&str], kinds: &[u32]) -> LogicalInterest {
+        LogicalInterest {
+            id: InterestId(id),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: authors.iter().map(|s| (*s).into()).collect(),
+                kinds: kinds.iter().copied().collect(),
+                ..InterestShape::default()
+            },
+            hints: vec![],
+            lifecycle: InterestLifecycle::OneShot,
+        }
+    }
+
+    #[test]
+    fn trace_observer_fires_on_publish_with_lane_attribution() {
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        cache.upsert(
+            "alice".into(),
+            ParsedRelayList {
+                write: vec!["wss://w.example".into()],
+                ..ParsedRelayList::default()
+            },
+        );
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let ctx = RoutingContext {
+            active_account: None,
+            session_keys: crate::substrate::SessionKeySet {
+                app_relays: &app,
+                ..crate::substrate::SessionKeySet::default()
+            },
+            mailbox_cache: &*cache,
+            blocked_relays: &blocked,
+            explicit_targets: None,
+        };
+
+        let obs = Arc::new(CountingObserver::default());
+        let router =
+            Nip65WriteSetRouter::new().with_trace_observer(obs.clone() as Arc<dyn RoutingTraceObserver>);
+        let _ = router.route_publish(&unsigned("alice", 1), &ctx).unwrap();
+
+        let pubs = obs.publishes.lock().unwrap();
+        assert_eq!(pubs.len(), 1);
+        let (summary, routed) = &pubs[0];
+        assert_eq!(summary.kind, 1);
+        assert_eq!(summary.author, "alice");
+        assert!(!summary.explicit_targets_set);
+        // Lane attribution survives observation.
+        let sources = &routed.relays[&"wss://w.example".to_string()];
+        assert!(sources.contains(&RoutingSource::Nip65 {
+            direction: Direction::Write
+        }));
+    }
+
+    #[test]
+    fn trace_observer_fires_on_subscription_with_interest_id() {
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        cache.upsert(
+            "alice".into(),
+            ParsedRelayList {
+                read: vec!["wss://r.example".into()],
+                ..ParsedRelayList::default()
+            },
+        );
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let ctx = RoutingContext {
+            active_account: None,
+            session_keys: crate::substrate::SessionKeySet {
+                app_relays: &app,
+                ..crate::substrate::SessionKeySet::default()
+            },
+            mailbox_cache: &*cache,
+            blocked_relays: &blocked,
+            explicit_targets: None,
+        };
+
+        let obs = Arc::new(CountingObserver::default());
+        let router =
+            Nip65WriteSetRouter::new().with_trace_observer(obs.clone() as Arc<dyn RoutingTraceObserver>);
+        let interest = interest_for(7, &["alice"], &[1, 6]);
+        let _ = router.route_subscription(&interest, &ctx).unwrap();
+
+        let subs = obs.subscriptions.lock().unwrap();
+        assert_eq!(subs.len(), 1);
+        let (summary, _) = &subs[0];
+        assert_eq!(summary.interest_id, 7);
+        assert_eq!(summary.authors_count, 1);
+        assert!(summary.kinds.contains(&1));
+        assert!(summary.kinds.contains(&6));
+        assert!(!summary.explicit_targets_set);
+    }
+
+    #[test]
+    fn trace_observer_not_fired_on_unroutable_error() {
+        let cache = InMemoryMailboxCache::new();
+        let blocked = BlockedRelaySet::new();
+        let app: Vec<String> = vec![];
+        let ctx = RoutingContext {
+            active_account: None,
+            session_keys: crate::substrate::SessionKeySet {
+                app_relays: &app,
+                ..crate::substrate::SessionKeySet::default()
+            },
+            mailbox_cache: &cache,
+            blocked_relays: &blocked,
+            explicit_targets: None,
+        };
+
+        let obs = Arc::new(CountingObserver::default());
+        let router =
+            Nip65WriteSetRouter::new().with_trace_observer(obs.clone() as Arc<dyn RoutingTraceObserver>);
+        let _ = router.route_publish(&unsigned("ghost", 1), &ctx).unwrap_err();
+
+        assert!(obs.publishes.lock().unwrap().is_empty());
     }
 
     #[test]
