@@ -185,8 +185,11 @@ mod tests {
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "apps/chirp/chirp-tui/src/feature_snapshot.rs"
         )));
+        // `fixture-todo-core` moved from `crates/` to `apps/fixture/` once
+        // the codegen path-template hardcode was lifted (the PR following
+        // #472). Same exemption clause (`/apps/`) covers it now.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "crates/fixture-todo-core/src/lib.rs"
+            "apps/fixture/fixture-todo-core/src/lib.rs"
         )));
     }
 

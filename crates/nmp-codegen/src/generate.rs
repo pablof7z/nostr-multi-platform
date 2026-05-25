@@ -1,3 +1,4 @@
+use crate::workspace::WorkspaceLayout;
 use crate::{app_crate_name, rust_crate_name, variant_name, AppManifest};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,8 +18,21 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
     }
     fs::create_dir_all(out_dir.join("src")).map_err(|error| error.to_string())?;
 
+    // Discover the workspace so per-module `path = "..."` strings reflect
+    // where each crate actually lives — instead of the legacy hardcoded
+    // `../../../crates/<name>` template, which assumed every module sits
+    // under `crates/`. See `docs/architecture/crate-boundaries.md` §11
+    // final: `fixture-todo-core` was blocked from moving to `apps/fixture/`
+    // by exactly this hardcode. We try the manifest's parent first (the
+    // production caller path: `apps/<app>/nmp.toml`), then the output dir
+    // (covers the `nmp init`-scaffolded standalone workspace). `None` from
+    // both is the temp-dir test case — `cargo_toml` falls back to the
+    // legacy template, which remains string-test-stable.
+    let layout = WorkspaceLayout::discover(manifest_path)
+        .or_else(|| WorkspaceLayout::discover(out_dir));
+
     let files = vec![
-        ("Cargo.toml", cargo_toml(&manifest)),
+        ("Cargo.toml", cargo_toml(&manifest, layout.as_ref(), out_dir)),
         ("src/lib.rs", lib_rs()),
         ("src/action.rs", action_rs(&manifest)),
         ("src/update.rs", update_rs(&manifest)),
@@ -43,20 +57,37 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
     })
 }
 
-fn cargo_toml(manifest: &AppManifest) -> String {
+fn cargo_toml(
+    manifest: &AppManifest,
+    layout: Option<&WorkspaceLayout>,
+    out_dir: &Path,
+) -> String {
     // `nmp_app_new`, `nmp_app_free`, `nmp_app_dispatch_action` are re-exported
     // under the default `native` feature since PR #356 — no explicit feature
     // flag is needed for the generated app crate's dependency.
+    //
+    // Per-dep path resolution: ask the workspace layout where each crate
+    // lives; if no workspace was discovered (temp-dir test) or the crate
+    // is not a workspace member (would only happen for ghost crates listed
+    // in `nmp.toml`), fall back to the legacy hardcoded template so old
+    // string-only tests stay green.
+    let resolve = |package: &str| -> String {
+        layout
+            .and_then(|l| l.relative_from(out_dir, package))
+            .unwrap_or_else(|| format!("../../../crates/{package}"))
+    };
     let mut out = format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\" }}\nnmp-ffi = {{ path = \"../../../crates/nmp-ffi\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
-        app_crate_name(&manifest.name)
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"{}\" }}\nnmp-ffi = {{ path = \"{}\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
+        app_crate_name(&manifest.name),
+        resolve("nmp-core"),
+        resolve("nmp-ffi"),
     );
     for module in manifest.ordered_modules() {
         out.push_str(&format!(
-            "{} = {{ package = \"{}\", path = \"../../../crates/{}\" }}\n",
+            "{} = {{ package = \"{}\", path = \"{}\" }}\n",
             rust_crate_name(&module),
             module,
-            module
+            resolve(&module),
         ));
     }
     out
@@ -350,7 +381,16 @@ mod tests {
         // The generated Cargo.toml must declare one `[dependencies]` entry per
         // module, each using the `package = "<dash-name>"` + relative path
         // form, keyed by the underscored crate identifier.
-        let out = cargo_toml(&manifest(&["nmp-nip22"], &["fixture-todo-core"]));
+        //
+        // Pure-string form: no workspace context → fall back to the
+        // hardcoded `../../../crates/<name>` template. The path-correctness
+        // proof for the live tree lives in `tests/fixture_zero_diff.rs`;
+        // this test only checks that every module produces an entry.
+        let out = cargo_toml(
+            &manifest(&["nmp-nip22"], &["fixture-todo-core"]),
+            None,
+            Path::new("/tmp/codegen-test"),
+        );
         assert!(out.contains("name = \"nmp-app-fixture\""));
         assert!(out.contains(
             "nmp_nip22 = { package = \"nmp-nip22\", path = \"../../../crates/nmp-nip22\" }"
@@ -364,7 +404,11 @@ mod tests {
     fn cargo_toml_nmp_core_dep_has_no_extra_features() {
         // After PR #356, `nmp_app_new` / `nmp_app_free` / `nmp_app_dispatch_action`
         // are under the default `native` feature — no explicit feature flag needed.
-        let out = cargo_toml(&manifest(&[], &["fixture-todo-core"]));
+        let out = cargo_toml(
+            &manifest(&[], &["fixture-todo-core"]),
+            None,
+            Path::new("/tmp/codegen-test"),
+        );
         assert!(
             out.contains("nmp-core = { path = \"../../../crates/nmp-core\" }"),
             "generated nmp-core dep must use plain path dep (no feature flags):\n{out}"

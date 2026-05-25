@@ -39,7 +39,7 @@
 | 9 | `nmp-store` + `nmp-planner` extraction | ✅ merged (PR #463) |
 | 10 | `nmp-app-template` (V-48 DX) | ✅ merged (PR #467; Chirp register surface −547 LOC) |
 | 11 partial | move chirp-* + `nmp-chirp-config` to `apps/chirp/` | ✅ merged (PR #451) |
-| 11 final | extract `nmp-ffi` from `nmp-core::ffi` (5,654 LOC moved) | ✅ merged (PR #472). **`fixture-todo-core` still in `crates/`** — codegen path-template hardcode in `nmp-codegen/src/{manifest,generate}.rs` not yet fixed |
+| 11 final | extract `nmp-ffi` from `nmp-core::ffi` (5,654 LOC moved) | ✅ merged (PR #472). Follow-up: codegen path-template hardcode lifted and `fixture-todo-core` relocated to `apps/fixture/fixture-todo-core/`; per-module `path = "…"` strings are now computed from the workspace's `[workspace] members` (`nmp-codegen/src/workspace.rs`), with the legacy `../../../crates/<name>` template as a temp-dir fallback for the codegen's own pure-string unit tests. |
 | 12 | return `nmp-marmot` from `apps/` to `crates/` (gated on Marmot FFI port to `nmp.marmot.*` action namespace) | ❌ not started |
 
 **Adjacent observability work (V-51)**:
@@ -330,7 +330,7 @@ all live together. A NIP crate cannot leak into Layer 3.
 | `nmp-desktop` | Native desktop shell (iced/Tauri) running the kernel in-process. | ✅ |
 | `nmp-chirp-config` | Shared Chirp app configuration object. | ⚠️ — belongs in `apps/chirp/` (Chirp-specific), not in `crates/`. Move alongside V-02's nmp-marmot precedent. |
 | `chirp-repl`, `chirp-tui` | Chirp diagnostic shells. | ⚠️ — same — move to `apps/chirp/` per AGENTS.md §What belongs in NMP crates. |
-| `fixture-todo-core` | Per-app fixture state. | ⚠️ — same — move to `apps/fixture/`. |
+| `fixture-todo-core` | Per-app fixture state. | ✅ — lives at `apps/fixture/fixture-todo-core/`. |
 
 ---
 
