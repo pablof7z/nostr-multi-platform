@@ -16,6 +16,7 @@ pub fn execute(input: &str, state: &mut AppState, runtime: &AppRuntime) {
         ("relay", rest) => relay(rest, runtime),
         ("dm-relays", rest) => dm_relays(rest, runtime),
         ("wallet", rest) => wallet(rest, runtime),
+        ("zap", rest) => zap(rest, state, runtime),
         ("dm", rest) => dm(rest, runtime),
         ("group", rest) => group(rest, runtime),
         ("mls", rest) => mls(rest, runtime),
@@ -45,7 +46,7 @@ enum CommandResult {
 
 fn help_text() -> Result<CommandResult, String> {
     Ok(CommandResult::Status(
-        "commands: account profile relay dm-relays wallet dm group mls search outbox tab"
+        "commands: account profile relay dm-relays wallet zap dm group mls search outbox tab"
             .to_string(),
     ))
 }
@@ -163,6 +164,77 @@ fn wallet(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
         }
         _ => Err("usage: wallet connect|disconnect|pay".to_string()),
     }
+}
+
+/// `:zap <lightning-address> <sats> [comment]` — dispatches
+/// `nmp.nip57.zap` with the resolved Nostr pubkey and sats→msats
+/// conversion. The kernel completes the action asynchronously: when the
+/// LNURL fetcher surfaces the bolt11 via `ShowToast`, `apply_nmp_event`
+/// auto-pays through the connected NWC. Requires both a local-keys
+/// account and a connected wallet — bunker signers cannot sign
+/// kind:9734 yet (ADR-0026 Phase 2 follow-up).
+fn zap(rest: &str, state: &mut AppState, runtime: &AppRuntime) -> Result<CommandResult, String> {
+    let (address, rest) = first_word(rest);
+    require(address, "zap <lightning-address> <sats> [comment]")?;
+    let (sats_str, comment_rest) = first_word(rest);
+    require(sats_str, "zap <lightning-address> <sats> [comment]")?;
+    let sats: u64 = sats_str
+        .parse()
+        .map_err(|_| "sats must be a positive integer".to_string())?;
+    if sats == 0 {
+        return Err("zap amount must be at least 1 sat".to_string());
+    }
+    let comment = nonempty(comment_rest).map(str::to_string);
+
+    if !address.contains('@') {
+        return Err("zap requires a lightning address (user@domain)".to_string());
+    }
+    let pubkey = resolve_nip05_pubkey(address)?;
+
+    let mut body = serde_json::json!({
+        "recipient_pubkey": pubkey,
+        "amount_msats": sats * 1000,
+        "lnurl": address,
+    });
+    if let Some(c) = comment {
+        body["comment"] = Value::String(c);
+    }
+
+    let cid = runtime.zap(&body)?;
+    state.pending_zap_pay = true;
+    Ok(action(cid, &format!("zap {sats} sat → {address}")))
+}
+
+/// Resolve a NIP-05 lightning address (`user@domain`) to a hex Nostr
+/// pubkey. Performs the canonical NIP-05 lookup:
+/// `GET https://{domain}/.well-known/nostr.json?name={user}` and reads
+/// `names[user]`. 8s timeout — the actor thread is not blocked because
+/// `:zap` runs on the TUI event loop, but a slow well-known endpoint
+/// must not freeze the UI either.
+fn resolve_nip05_pubkey(lud16: &str) -> Result<String, String> {
+    let (user, domain) = lud16
+        .split_once('@')
+        .ok_or_else(|| format!("invalid lightning address: {lud16}"))?;
+    if user.is_empty() || domain.is_empty() {
+        return Err(format!("invalid lightning address: {lud16}"));
+    }
+    let url = format!("https://{domain}/.well-known/nostr.json?name={user}");
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(8))
+        .build();
+    let resp = agent
+        .get(&url)
+        .call()
+        .map_err(|e| format!("NIP-05 fetch failed: {e}"))?;
+    let json: Value = resp
+        .into_json()
+        .map_err(|e| format!("NIP-05 JSON parse error: {e}"))?;
+    json.get("names")
+        .and_then(|n| n.get(user))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("NIP-05 did not return a pubkey for {user}@{domain}"))
 }
 
 fn dm(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {

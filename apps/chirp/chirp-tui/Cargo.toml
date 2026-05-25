@@ -27,6 +27,11 @@ color-eyre = "0.6"
 crossterm = "0.29"
 ratatui = { version = "0.30", features = ["crossterm"] }
 serde_json = "1.0"
+# NIP-05 pubkey resolution for `:zap <lightning-address>` — fetches
+# `https://{domain}/.well-known/nostr.json?name={user}` to obtain the
+# recipient's hex pubkey for the kind:9734 zap request. Matches the
+# `nmp-nip57` LNURL HTTP dep so the tls/json feature set stays aligned.
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }

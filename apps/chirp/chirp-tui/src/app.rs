@@ -95,6 +95,14 @@ pub struct AppState {
     /// Settings section cursor (0=Account, 1=Relays, 2=Outbox, 3=Keys,
     /// 4=Appearance, 5=About).
     pub settings_cursor: usize,
+
+    /// Set by `:zap` while waiting for `nmp.nip57.zap` to surface the
+    /// bolt11 via `ShowToast`. When the next snapshot carries a
+    /// `last_error_toast` starting with `"Zap invoice: "`, the host
+    /// extracts the bolt11 and auto-pays through NWC, then clears this
+    /// flag. Mirrors the iOS/Swift host pattern documented in
+    /// `nmp-nip57/src/lnurl/mod.rs` (V-43 future fix: kernel auto-pay).
+    pub pending_zap_pay: bool,
 }
 
 impl Default for AppState {
@@ -142,6 +150,7 @@ impl Default for AppState {
             group_composing: false,
             group_compose_buf: String::new(),
             settings_cursor: 0,
+            pending_zap_pay: false,
         }
     }
 }
@@ -155,6 +164,34 @@ impl AppState {
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
         self.features = FeatureSnapshot::from_payload(&event.payload);
+
+        // `nmp.nip57.zap` is async-completing: the LNURL fetcher surfaces
+        // the bolt11 via `ShowToast { "Zap invoice: <bolt11>" }`, which
+        // lands in the kernel snapshot as `last_error_toast`. While a
+        // zap is pending, watch for that toast and auto-pay over NWC.
+        // (V-43 will move auto-pay into the kernel; until then the host
+        // bridges the two-leg flow.)
+        if self.pending_zap_pay {
+            if let Some(toast) = parse_last_error_toast(&event.payload) {
+                if let Some(bolt11) = toast.strip_prefix("Zap invoice: ") {
+                    let bolt11 = bolt11.trim().to_string();
+                    match runtime.wallet_pay_invoice(&bolt11, None) {
+                        Ok(()) => {
+                            let preview = &bolt11[..bolt11.len().min(20)];
+                            self.status = format!("Zap payment sent: {preview}\u{2026}");
+                        }
+                        Err(e) => {
+                            self.status = format!("Zap pay failed: {e}");
+                        }
+                    }
+                    self.pending_zap_pay = false;
+                } else if toast.starts_with("Zap failed:") {
+                    self.status = toast;
+                    self.pending_zap_pay = false;
+                }
+            }
+        }
+
         // Clamp tab-specific selection indices to avoid out-of-bounds access.
         let conv_len = self.features.dm_conversations.len();
         if conv_len == 0 {
@@ -566,6 +603,19 @@ impl AppState {
 }
 
 use crate::short_id;
+
+/// Pull `last_error_toast` out of a snapshot payload. Snapshots arrive
+/// wrapped as `{"t":"snapshot","v":<snapshot>}` — the toast lives inside
+/// `v`. Falls back to the bare snapshot shape for parity with test
+/// fixtures (mirrors `SharedSnapshot::from_payload`).
+fn parse_last_error_toast(payload: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    let root = value.get("v").unwrap_or(&value);
+    root.get("last_error_toast")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
 
 #[cfg(test)]
 mod tests {
