@@ -100,50 +100,26 @@ public struct NostrMediaGrid: View {
         Button {
             (tapHandler ?? renderer.callbacks.onImageTap)(url)
         } label: {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    placeholder
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
-                    errorTile
-                @unknown default:
-                    placeholder
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
-            .overlay {
-                if let overlay {
-                    ZStack {
-                        Color.black.opacity(0.45)
-                        Text(overlay)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
+            // Loading + failure handling lives in the renderer-installed
+            // `imageLoader` (see swiftui/content-core). Apps wiring Kingfisher
+            // or Nuke get all grid cells routed through their loader without
+            // changing the grid layout.
+            NostrImageView(url: url)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .overlay {
+                    if let overlay {
+                        ZStack {
+                            Color.black.opacity(0.45)
+                            Text(overlay)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Image")
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            renderer.codeBackgroundColor
-            ProgressView()
-        }
-    }
-
-    private var errorTile: some View {
-        ZStack {
-            renderer.codeBackgroundColor
-            Image(systemName: "photo")
-                .foregroundStyle(renderer.placeholderColor)
-        }
     }
 }

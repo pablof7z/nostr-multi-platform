@@ -40,7 +40,8 @@ struct PendingInviteRow: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
             }
-            Text("From \(welcome.inviterShort)")
+            // ADR-0032: shell-side abbreviation of the inviter's hex pubkey.
+            Text("From \(welcome.inviterNpub.shortHex)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

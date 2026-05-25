@@ -147,10 +147,10 @@ fn observer_trait_object_drives_grouper() {
     proj.on_kernel_event(&note("X", 1, vec![]));
 }
 
-// ── V-27 thin-shell display-field tests ──────────────────────────────
+// ── Raw-data display-field tests (aim.md §2) ─────────────────────────
 
 #[test]
-fn card_carries_v27_display_fields_for_ingested_event() {
+fn card_with_no_profile_yields_optional_fields_as_none() {
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let event = KernelEvent {
         id: "E".into(),
@@ -169,57 +169,21 @@ fn card_carries_v27_display_fields_for_ingested_event() {
         .find(|c| c.id == "E")
         .expect("card exists");
 
-    // initials: ".." placeholder until Kind0 lands (V-34)
-    assert_eq!(card.author_avatar_initials, "..");
-    // colour: deterministic djb2 hex, 6 uppercase hex chars, no `#`
-    assert_eq!(card.author_avatar_color.len(), 6);
-    assert!(card
-        .author_avatar_color
-        .chars()
-        .all(|c| c.is_ascii_hexdigit() && (c.is_ascii_digit() || c.is_ascii_uppercase())));
-    // pubkey short: 8…8 with ellipsis when hex is long
-    assert_eq!(card.author_pubkey_short, "3bf0c63f…aefa459d");
-    // created_at_display: a pinned old timestamp resolves to "Xd ago"
-    // (test runs well after 1970 so the bucket is `d`).
-    assert!(
-        card.created_at_display.ends_with(" ago"),
-        "expected `Xd ago`, got {}",
-        card.created_at_display
-    );
-    // flat display-name mirror equals nested AuthorDisplay.name.
-    assert_eq!(card.author_display_name, card.author_display.name);
-    assert!(!card.author_display_name.is_empty());
-}
-
-// The canonical pinned djb2 vector and exhaustive `format_ago_secs`
-// bucket coverage live in `nmp_core::display::tests` (V-33). The
-// `card_carries_v27_display_fields_for_ingested_event` test above pins
-// the call-site result (`PK = "3bf0…"` → `card.author_avatar_color`)
-// so a drift in the canonical helper still surfaces at this layer.
-
-#[test]
-fn display_name_initials_word_based() {
-    // word-based: first char of each word, uppercase (canonical algorithm)
-    assert_eq!(display_name_initials("Alice Smith"), "AS");
-    assert_eq!(display_name_initials("alice bob"), "AB");
-    assert_eq!(display_name_initials("bob"), "B.");
-    assert_eq!(display_name_initials("a"), "A.");
-    assert_eq!(display_name_initials(""), "..");
+    // Raw hex pubkey passes through verbatim.
+    assert_eq!(card.author_pubkey, PK);
+    // No kind:0 has arrived yet → display_name / picture_url are None.
+    assert_eq!(card.author_display_name, None);
+    assert_eq!(card.author_picture_url, None);
+    assert_eq!(card.author_display.name, None);
+    assert_eq!(card.author_display.picture_url, None);
+    // npub is pubkey-deterministic, always present.
+    assert!(card.author_display.npub.as_deref().unwrap().starts_with("npub1"));
 }
 
 #[test]
-fn short_hex_short_inputs_returned_unchanged() {
-    assert_eq!(short_hex(""), "");
-    assert_eq!(short_hex("abcd"), "abcd");
-    // boundary: exactly 16 chars triggers abbreviation
-    assert_eq!(short_hex("0123456789abcdef"), "01234567…89abcdef");
-}
-
-#[test]
-fn refresh_author_cards_updates_v27_display_name_when_kind0_arrives_later() {
+fn refresh_author_cards_populates_display_name_when_kind0_arrives_later() {
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let proj = ModularTimelineProjection::new(&spec());
-    // First the note arrives with no profile loaded — display_name is the npub fallback.
     let note_event = KernelEvent {
         id: "E".into(),
         author: PK.into(),
@@ -235,9 +199,8 @@ fn refresh_author_cards_updates_v27_display_name_when_kind0_arrives_later() {
         .into_iter()
         .find(|c| c.id == "E")
         .expect("card");
-    assert!(pre.author_display_name.starts_with("npub1"));
+    assert_eq!(pre.author_display_name, None);
 
-    // Then a kind:0 arrives — the flat mirror must update.
     let profile_event = KernelEvent {
         id: "P".into(),
         author: PK.into(),
@@ -253,42 +216,46 @@ fn refresh_author_cards_updates_v27_display_name_when_kind0_arrives_later() {
         .into_iter()
         .find(|c| c.id == "E")
         .expect("card");
-    assert_eq!(post.author_display_name, "Alice");
-    assert_eq!(post.author_display.name, "Alice");
+    assert_eq!(post.author_display_name.as_deref(), Some("Alice"));
+    assert_eq!(post.author_display.name.as_deref(), Some("Alice"));
 }
 
-// ── V-32 thin-shell tests ───────────────────────────────────────────
-
 #[test]
-fn card_carries_v32_picture_url_and_content_preview() {
+fn refresh_author_cards_populates_picture_url_when_kind0_arrives_later() {
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    let event = KernelEvent {
+    let proj = ModularTimelineProjection::new(&spec());
+    proj.on_kernel_event(&KernelEvent {
         id: "E".into(),
         author: PK.into(),
         kind: 1,
         created_at: 1,
         tags: vec![],
-        content: "hello world".into(),
-    };
-    let proj = ModularTimelineProjection::new(&spec());
-    proj.on_kernel_event(&event);
-    let snap = proj.snapshot();
-    let card = snap
+        content: "hi".into(),
+    });
+    let pre = proj
+        .snapshot()
         .cards
-        .iter()
+        .into_iter()
         .find(|c| c.id == "E")
-        .expect("card exists");
+        .expect("card");
+    assert_eq!(pre.author_picture_url, None);
 
-    // No profile loaded yet → identicon placeholder from nmp-core
-    // (`picture_placeholder` uses the first 16 hex chars, NOT 8 —
-    // deliberate alignment with the cross-surface placeholder).
-    assert_eq!(card.author_picture_url, "identicon:3bf0c63fcb934634");
-    // Field must equal the nested `AuthorDisplay.picture_url` —
-    // single source of truth.
-    assert_eq!(card.author_picture_url, card.author_display.picture_url);
-
-    // content_preview: short content passes through unchanged, no ellipsis.
-    assert_eq!(card.content_preview, "hello world");
+    proj.on_kernel_event(&KernelEvent {
+        id: "P".into(),
+        author: PK.into(),
+        kind: 0,
+        created_at: 2,
+        tags: vec![],
+        content: r#"{"display_name":"Alice","picture":"https://example.com/a.png"}"#.into(),
+    });
+    let post = proj
+        .snapshot()
+        .cards
+        .into_iter()
+        .find(|c| c.id == "E")
+        .expect("card");
+    assert_eq!(post.author_picture_url.as_deref(), Some("https://example.com/a.png"));
+    assert_eq!(post.author_display.picture_url, post.author_picture_url);
 }
 
 #[test]
@@ -315,44 +282,4 @@ fn content_preview_truncates_at_180_scalars_without_ellipsis() {
     assert_eq!(card.content_preview.len(), 180);
     assert_eq!(card.content_preview, expected);
     assert!(!card.content_preview.ends_with('…'));
-}
-
-#[test]
-fn refresh_author_cards_updates_v32_picture_url_when_kind0_arrives_later() {
-    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    let proj = ModularTimelineProjection::new(&spec());
-    // Note arrives first → identicon placeholder.
-    proj.on_kernel_event(&KernelEvent {
-        id: "E".into(),
-        author: PK.into(),
-        kind: 1,
-        created_at: 1,
-        tags: vec![],
-        content: "hi".into(),
-    });
-    let pre = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "E")
-        .expect("card");
-    assert!(pre.author_picture_url.starts_with("identicon:"));
-
-    // Kind:0 with a real picture URL arrives — the flat mirror must update.
-    proj.on_kernel_event(&KernelEvent {
-        id: "P".into(),
-        author: PK.into(),
-        kind: 0,
-        created_at: 2,
-        tags: vec![],
-        content: r#"{"display_name":"Alice","picture":"https://example.com/a.png"}"#.into(),
-    });
-    let post = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "E")
-        .expect("card");
-    assert_eq!(post.author_picture_url, "https://example.com/a.png");
-    assert_eq!(post.author_picture_url, post.author_display.picture_url);
 }

@@ -90,7 +90,7 @@ struct NoteContentView: View {
                 authorDisplayName: card.authorDisplayName,
                 authorAvatarUrl: httpImageURL(card.authorPictureUrl),
                 content: card.contentPreview.isEmpty ? card.content : card.contentPreview,
-                createdAtDisplay: card.createdAtDisplay
+                createdAtDisplay: card.createdAt.relativeTimeFromUnixSeconds
             )
         }
 
@@ -99,18 +99,19 @@ struct NoteContentView: View {
                 id: item.id,
                 unresolvedUri: uri.uri,
                 authorPubkey: item.authorPubkey,
-                authorDisplayName: item.authorDisplay,
+                authorDisplayName: renderContext.mentionLabel(for: item.authorPubkey),
                 authorAvatarUrl: httpImageURL(item.authorPictureUrl),
                 content: item.contentPreview.isEmpty ? item.renderedContent : item.contentPreview,
-                createdAtDisplay: item.createdAtDisplay
+                createdAtDisplay: item.createdAt.relativeTimeFromUnixSeconds
             )
         }
 
         return nil
     }
 
-    private func httpImageURL(_ value: String) -> URL? {
+    private func httpImageURL(_ value: String?) -> URL? {
         guard
+            let value,
             let url = URL(string: value),
             let scheme = url.scheme?.lowercased(),
             ["http", "https"].contains(scheme)

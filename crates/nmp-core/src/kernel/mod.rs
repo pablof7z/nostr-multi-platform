@@ -197,7 +197,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // `KernelReducer::handle_relay_frame`. Substrate-grade (D0).
 pub use relay_frame::RelayFrame;
 
-use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, short_hex_display, root_event_id, first_event_ref};
+use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, root_event_id, first_event_ref};
 // V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
 // `#[cfg(feature = "native")]` in `kernel/nostr.rs` (they read the OS
 // wall clock via `chrono::Local`). Importing them unconditionally breaks
@@ -240,8 +240,7 @@ use clock::{Clock, SystemClock};
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    account_avatar_color_hex, account_avatar_initials, account_npub_short, AccountSummary,
-    PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
+    AccountSummary, PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
 };
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`
@@ -400,6 +399,20 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
+    /// Indexer-republish master switch. When `true` (the default), the
+    /// indexer-republish pipeline (`actor::indexer_republish`) forwards
+    /// inbound NIP-01 replaceable events (kinds 0, 3, 10000–19999)
+    /// received from non-indexer relays to every connected indexer relay.
+    /// When `false`, the pipeline is a zero-allocation no-op.
+    ///
+    /// This is a kernel field rather than a free-floating slot so the
+    /// actor wiring site reads it via [`Self::indexer_republish_enabled`]
+    /// at the same point it reads every other kernel handle (after
+    /// `Kernel::with_storage_path` returns). A future runtime toggle
+    /// (`dispatch_action("nmp.republish.set_enabled", { bool })`) would
+    /// flip this field; the pipeline reads its own captured copy on each
+    /// fire and so will be re-keyed on the next `Kernel::Reset` cycle.
+    indexer_republish_enabled: bool,
     /// FFI diagnostic timing milestones (D0 app-domain state). See
     /// [`TimingMilestones`].
     timing: TimingMilestones,
@@ -972,6 +985,17 @@ impl Kernel {
         Arc::clone(&self.store)
     }
 
+    /// Read the kernel's `indexer_republish_enabled` flag.
+    ///
+    /// Read once at actor wiring time when constructing the
+    /// `IndexerRepublishPipeline`; the pipeline holds its own captured
+    /// copy of the flag so the per-event observer path stays lock-free.
+    /// Defaults to `true`.
+    #[must_use]
+    pub fn indexer_republish_enabled(&self) -> bool {
+        self.indexer_republish_enabled
+    }
+
     /// Borrow the kernel's indexer-relays slot.
     ///
     /// The actor pushes the configured indexer URL list into this slot on
@@ -1188,6 +1212,7 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
+            indexer_republish_enabled: true,
             timing: TimingMilestones::default(),
             relays: RelayRole::all()
                 .into_iter()

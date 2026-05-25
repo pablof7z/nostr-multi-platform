@@ -47,7 +47,7 @@ struct ProfileView: View {
         }
         .accessibilityIdentifier("profile-detail-list")
         .chirpScreenBackground()
-        .navigationTitle(profile?.display ?? "Profile")
+        .navigationTitle(profile?.displayLabel ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             model.openAuthor(pubkey: pubkey)
@@ -74,7 +74,7 @@ struct ProfileView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            ChirpColor.avatarBase(from: profile?.avatarColor).opacity(0.28),
+                            ChirpColor.avatarBase(from: profile?.pubkey.pubkeyColorHex).opacity(0.28),
                             ChirpColor.surface
                         ],
                         startPoint: .topLeading,
@@ -90,8 +90,8 @@ struct ProfileView: View {
                 HStack(alignment: .bottom) {
                     ChirpAvatar(
                         url: profile?.pictureUrl,
-                        initials: profile?.avatarInitials ?? "?",
-                        colorHex: profile?.avatarColor ?? "",
+                        initials: (profile?.displayLabel ?? "?").displayInitials,
+                        colorHex: profile?.pubkey.pubkeyColorHex ?? "",
                         size: 82
                     )
                     .padding(.top, -41)
@@ -132,7 +132,7 @@ struct ProfileView: View {
 
     private var profileMetadata: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(profile?.display ?? "Loading…")
+            Text(profile?.displayLabel ?? "Loading…")
                 .font(.title)
                 .foregroundStyle(.primary)
 
@@ -150,8 +150,8 @@ struct ProfileView: View {
             if let profile, !profile.npub.isEmpty {
                 Button(action: copyNpub) {
                     HStack(spacing: 4) {
-                        // Rust-truncated; no Swift formatter.
-                        Text(profile.npubShort)
+                        // ADR-0032: shell-side abbreviation of the bech32 npub.
+                        Text(profile.npub.shortHex)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                         Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
@@ -271,7 +271,10 @@ private struct ProfileEditSheet: View {
     init(profile: ProfileCard?, onSave: @escaping (String, String, String) -> Void) {
         self.profile = profile
         self.onSave = onSave
-        _name = State(initialValue: profile?.display ?? "")
+        // ADR-0032: edit sheet seeds the name with the kind:0 display name
+        // (raw, may be `nil`) — NOT the abbreviated-hex fallback, which
+        // would corrupt the published profile on save.
+        _name = State(initialValue: profile?.displayName ?? "")
         _about = State(initialValue: profile?.about ?? "")
         let pictureUrl = profile?.pictureUrl ?? ""
         _picture = State(initialValue: pictureUrl.hasPrefix("http") ? pictureUrl : "")

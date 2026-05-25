@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{
-    account_avatar_color_hex, account_avatar_initials, account_npub_short, AccountSummary,
+    AccountSummary,
     Kernel, RelayEditRow,
 };
 use crate::relay::{canonical_relay_url, default_relay_bootstrap, OutboundMessage};
@@ -664,14 +664,6 @@ fn signer_label_for_kind(kind: &str) -> String {
     }
 }
 
-fn display_name_from_hex(id: &str) -> String {
-    format!(
-        "{}…{}",
-        &id[..6.min(id.len())],
-        &id[id.len().saturating_sub(4)..]
-    )
-}
-
 /// Push the account projection + rebind the kernel's NIP-42 signer to the
 /// active key (D4 single-writer: this is the only path that mutates either).
 ///
@@ -693,35 +685,20 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
                     return None;
                 };
             let is_active = active.as_deref() == Some(id);
-            // V-24 — Rust owns the abbreviated bech32 form so the iOS
-            // `AccountsView` can render `account.npubShort` verbatim
-            // instead of slicing the `npub` string in-view.
-            let npub_short = account_npub_short(&npub);
-            let display_name = display_name_from_hex(id);
-            // V-26 — Rust owns the avatar fallback initials + tint so the
-            // iOS toolbar / compose / row avatars bind `avatarInitials` and
-            // `avatarColorHex` verbatim instead of recomputing in-view.
-            // `account_avatar_color_hex` delegates to the canonical
-            // `crate::display::avatar_color_hex` (V-33), so the same author
-            // renders with the same tint everywhere. The initials are
-            // recomputed in `Kernel::accounts_enriched` (kernel/update.rs)
-            // once a kind:0 display name lands, so the placeholder initials
-            // don't stay stuck on the short-pubkey fallback after enrichment.
-            let avatar_initials = account_avatar_initials(&display_name, &npub);
-            let avatar_color_hex = account_avatar_color_hex(id);
             Some(AccountSummary {
                 id: id.clone(),
                 npub,
-                npub_short,
-                display_name,
+                // aim.md §2 — no `short_pubkey` placeholder; `None` until
+                // kind:0 lands, presentation layer renders its own
+                // fallback. `Kernel::accounts_enriched` populates this
+                // once kind:0 arrives.
+                display_name: None,
                 signer_label: signer_label_for_kind(&signer_kind),
                 signer_kind,
                 signer_is_remote,
                 status: if is_active { "active" } else { "idle" }.to_string(),
                 is_active,
                 picture_url: None,
-                avatar_initials,
-                avatar_color_hex,
             })
         })
         .collect::<Vec<_>>();

@@ -41,6 +41,7 @@ members = [
     "crates/nmp-threading",
     "crates/nmp-desktop",
     "crates/nmp-wasm",
+    "tools/zap-smoke",
 ]
 resolver = "2"
 

@@ -196,21 +196,22 @@ private struct EncryptedGroupRow: View {
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text("🔒 \(group.memberCountDisplay)")
+                // ADR-0032: pluralisation lives in the presentation layer.
+                Text("🔒 \(group.memberCount) \(group.memberCount == 1 ? "member" : "members")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            if let unreadLabel = group.unreadDisplay {
-                Text(unreadLabel)
+            if let unread = group.unreadCount, unread > 0 {
+                Text("\(unread)")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
-                    .accessibilityLabel("\(unreadLabel) unread")
+                    .accessibilityLabel("\(unread) unread")
             }
         }
         .padding(.vertical, 4)

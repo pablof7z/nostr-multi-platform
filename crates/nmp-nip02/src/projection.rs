@@ -30,9 +30,9 @@
 //!   relay frames. Work is bounded: one kind filter check, two short mutex
 //!   locks (active-pubkey gate + follows map), one `p`-tag scan, one
 //!   `HashMap` insert. No I/O, no blocking.
-//! * **Thin-shell** — all display strings (npub, abbreviated form, initials,
-//!   colour) are computed here via [`nmp_core::display`]. The host shell
-//!   renders only what it receives.
+//! * **Raw data** — entries carry only the hex pubkey. Presentation layers
+//!   format for display (bech32, abbreviation, avatar initials/tint) per
+//!   aim.md §2 (NMP is a data framework; backend sends raw protocol data).
 //!
 //! # Provenance
 //!
@@ -44,7 +44,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::display;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use serde::Serialize;
@@ -52,34 +51,20 @@ use serde::Serialize;
 /// NIP-02 contact list kind.
 const KIND_CONTACT_LIST: u32 = 3;
 
-/// One entry in the active account's follow list — pre-formatted for display.
+/// One entry in the active account's follow list — raw hex pubkey only.
 ///
-/// All display strings are computed in Rust at snapshot time (thin-shell rule).
+/// Presentation layers format for display (bech32 encoding, abbreviation,
+/// avatar initials, avatar tint) — aim.md §2.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct FollowEntry {
     /// Hex-encoded public key (64 chars).
     pub pubkey: String,
-    /// Bech32 `npub1…` encoding. Falls back to raw hex on parse error (D6).
-    pub npub: String,
-    /// Abbreviated bech32: 10 head chars + `"…"` + 6 tail chars.
-    pub short_npub: String,
-    /// Two-char uppercase initials for the avatar tile.
-    pub avatar_initials: String,
-    /// Six-hex deterministic avatar background colour (uppercase, no `#`).
-    pub avatar_color: String,
 }
 
 impl FollowEntry {
-    /// Build a `FollowEntry` from a hex pubkey, computing all display fields.
+    /// Build a `FollowEntry` from a hex pubkey.
     fn from_hex(pubkey: String) -> Self {
-        let npub = display::to_npub(&pubkey);
-        Self {
-            short_npub: display::short_npub(&pubkey),
-            avatar_initials: display::avatar_initials(&npub),
-            avatar_color: display::avatar_color_hex(&pubkey),
-            npub,
-            pubkey,
-        }
+        Self { pubkey }
     }
 }
 
@@ -286,16 +271,9 @@ mod tests {
         let follows = snap["follows"].as_array().expect("follows array");
         assert_eq!(follows.len(), 1);
         assert_eq!(follows[0]["pubkey"].as_str().unwrap(), followed);
-        // npub must start with npub1
-        assert!(
-            follows[0]["npub"].as_str().unwrap().starts_with("npub1"),
-            "npub must be bech32 encoded"
-        );
-        // short_npub must contain ellipsis
-        assert!(
-            follows[0]["short_npub"].as_str().unwrap().contains('…'),
-            "short_npub must be abbreviated"
-        );
+        // FollowEntry now carries only the raw hex pubkey — aim.md §2.
+        assert!(follows[0].get("npub").is_none());
+        assert!(follows[0].get("short_npub").is_none());
     }
 
     #[test]

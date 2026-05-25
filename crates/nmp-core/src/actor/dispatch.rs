@@ -271,6 +271,19 @@ pub(super) struct ActorContext<'a> {
     /// the rebuilt kernel's fresh handles so the production
     /// `nmp_router::Nip65OutboxResolver` survives a state wipe.
     pub(super) publish_resolver_slot: &'a crate::slots::PublishResolverSlot,
+    /// Indexer-republish observer id slot. The pipeline holds an
+    /// `IndexerRelaysSlot` + `EventStore` handle pinned to a specific
+    /// kernel; on `Reset` the kernel is rebuilt with fresh handles, so
+    /// the prior pipeline registration goes stale. The `Reset` arm
+    /// unregisters the stale id (stored in this slot) and re-registers
+    /// a fresh pipeline against the rebuilt kernel.
+    pub(super) indexer_republish_observer_id:
+        &'a crate::actor::indexer_republish::IndexerRepublishObserverIdSlot,
+    /// Shared raw-event tap slot — held in the actor scope and threaded
+    /// through here so the `Reset` arm can re-register the pipeline
+    /// observer against the same `RawEventObserverSlot` (which itself
+    /// survives Reset via `take_raw_event_observers_handle_for_reset`).
+    pub(super) raw_event_observers_handle: &'a crate::actor::RawEventObserverSlot,
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -1174,6 +1187,21 @@ pub(super) fn dispatch_command(
                 );
                 ctx.kernel.set_publish_resolver(resolver);
             }
+            // Re-register the indexer-republish pipeline against the rebuilt
+            // kernel. The old pipeline (held in `raw_event_observers_handle`
+            // by id) captured the previous kernel's `IndexerRelaysSlot` +
+            // `EventStore` `Arc`s; without re-registration those slots
+            // would orphan and the pipeline would silently stop seeing
+            // configured indexers / fresh provenance. The helper
+            // unregisters the stale id and installs a fresh observer in
+            // one pass. Mirrors the routing/publish-resolver re-apply
+            // pattern above.
+            crate::actor::indexer_republish::register_indexer_republish_pipeline(
+                ctx.kernel,
+                ctx.raw_event_observers_handle,
+                ctx.pool,
+                ctx.indexer_republish_observer_id,
+            );
             *ctx.startup_sent = false;
             if *ctx.running {
                 ctx.kernel.start();

@@ -40,7 +40,7 @@ struct DmConversationView: View {
             composer
         }
         .chirpScreenBackground()
-        .navigationTitle(conversation?.peerShortNpub ?? peerPubkey)
+        .navigationTitle(conversation?.peerPubkey.shortHex ?? peerPubkey.shortHex)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -159,7 +159,7 @@ private struct DmMessageBubble: View {
                     .background(
                         outgoing ? ChirpColor.messageOutgoingBackground : ChirpColor.messageIncomingBackground,
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                Text(message.createdAtDisplay)
+                Text(message.createdAt.relativeTimeFromUnixSeconds)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

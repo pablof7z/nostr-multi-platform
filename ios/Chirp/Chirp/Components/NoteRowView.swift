@@ -34,6 +34,20 @@ struct NoteRowView: View {
     /// Transient like-animation state.
     @State private var likeTapped = false
 
+    /// ADR-0032 presentation-layer derivations of the raw `authorPubkey`
+    /// hex. Kept as computed properties so the view body stays readable.
+    private var authorDisplayLabel: String {
+        item.authorPubkey.shortHex
+    }
+
+    private var authorAvatarInitials: String {
+        item.authorPubkey.displayInitials
+    }
+
+    private var authorAvatarColorHex: String {
+        item.authorPubkey.pubkeyColorHex
+    }
+
     var body: some View {
         Button {
             // For kind:6 reposts, the row represents the *inner* note (its
@@ -67,7 +81,7 @@ struct NoteRowView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showReply) {
-            ComposeView(replyToID: item.id, replyToShortID: item.shortId)
+            ComposeView(replyToID: item.id, replyToShortID: item.id.shortHex)
         }
     }
 
@@ -91,8 +105,8 @@ struct NoteRowView: View {
         } label: {
             ChirpAvatar(
                 url: item.authorPictureUrl,
-                initials: item.authorAvatarInitials,
-                colorHex: item.authorAvatarColor,
+                initials: authorAvatarInitials,
+                colorHex: authorAvatarColorHex,
                 size: 44
             )
         }
@@ -104,19 +118,14 @@ struct NoteRowView: View {
 
     private var authorHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(item.authorDisplay)
+            Text(authorDisplayLabel)
                 .font(.headline)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
-            Text(item.authorPubkeyShort)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
             Spacer(minLength: 0)
 
-            Text(item.createdAtDisplay)
+            Text(item.createdAt.relativeTimeFromUnixSeconds)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

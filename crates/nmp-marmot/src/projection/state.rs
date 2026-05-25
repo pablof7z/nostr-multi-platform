@@ -252,29 +252,20 @@ impl MarmotProjection {
                     let unread = inner
                         .service
                         .get_messages(&g.mls_group_id)
-                        .map(|m| m.len() as u64)
+                        .map(|m| m.len() as u32)
                         .unwrap_or(0);
+                    let unread_count = if unread == 0 { None } else { Some(unread) };
                     let display_name = display::group_display_name(&g.name);
                     let initials = display::initials(&display_name);
-                    let member_count_display = display::member_count_display(members.len());
-                    // Pre-format hex pubkeys as abbreviated bech32 npubs so the
-                    // member-list sheet in the iOS shell never converts hex
-                    // (aim.md §6 anti-pattern #1; mirrors `inviter_short`).
-                    let members_display = members
-                        .iter()
-                        .map(|hex| display::short_npub(hex))
-                        .collect::<Vec<_>>();
-                    let unread_display = display::unread_display(unread);
+                    let member_count = u32::try_from(members.len()).unwrap_or(u32::MAX);
                     MarmotGroupRow {
                         id_hex,
                         name: g.name.clone(),
                         display_name,
                         initials,
                         members,
-                        members_display,
-                        member_count_display,
-                        unread,
-                        unread_display,
+                        member_count,
+                        unread_count,
                         last_msg_at: g.last_message_at.map(|t| t.as_secs()),
                     }
                 })
@@ -290,7 +281,6 @@ impl MarmotProjection {
                 group_name: c.group_name.clone(),
                 display_name: display::welcome_display_name(&c.group_name),
                 inviter_npub: c.inviter_npub.clone(),
-                inviter_short: display::short_npub(&c.inviter_npub),
             })
             .collect();
         let invites_chip_label = display::invites_chip_label(pending_welcomes.len());

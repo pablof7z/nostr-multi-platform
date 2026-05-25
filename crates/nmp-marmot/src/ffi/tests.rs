@@ -211,7 +211,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
     assert_eq!(g.members.len(), 2);
     assert!(g.members.contains(&alice_keys.public_key().to_hex()));
     assert!(g.members.contains(&bob_keys.public_key().to_hex()));
-    assert_eq!(g.unread, 0);
+    assert_eq!(g.unread_count, None);
 
     // 4. send dispatch.
     let r = proj
@@ -230,15 +230,15 @@ fn round_trip_publish_create_snapshot_send_messages() {
 
     // 5. group_messages returns the sent message.
     let rows = proj
-        .with_inner(|h| ops::group_messages(h, &group_id_hex, 200, 1_004))
+        .with_inner(|h| ops::group_messages(h, &group_id_hex, 200))
         .unwrap();
     assert_eq!(rows.len(), 1, "group_messages: {rows:?}");
     assert_eq!(rows[0].content, "hello marmot");
-    assert_eq!(rows[0].sender_npub, alice_keys.public_key().to_hex());
+    assert_eq!(rows[0].sender_pubkey_hex, alice_keys.public_key().to_hex());
 
     // Snapshot now counts the message.
     let snap = proj.snapshot(1_004);
-    assert_eq!(snap.groups[0].unread, 1);
+    assert_eq!(snap.groups[0].unread_count, Some(1));
 }
 
 #[test]

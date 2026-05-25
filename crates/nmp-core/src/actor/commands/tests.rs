@@ -246,7 +246,7 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     // D0: the profile card is no longer a typed `KernelSnapshot.profile` field
     // — it is a built-in entry in the `projections` map under `"profile"`.
     assert_eq!(
-        snap["projections"]["profile"]["display"].as_str(),
+        snap["projections"]["profile"]["display_name"].as_str(),
         Some("Signup User"),
         "own profile must render from the local kind:0 publish intent before relay echo"
     );

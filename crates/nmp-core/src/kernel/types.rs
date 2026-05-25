@@ -59,16 +59,22 @@ pub(super) struct StoredEvent {
 pub(super) struct Profile {
     pub(super) event_id: String,
     pub(super) created_at: u64,
+    /// The verbatim display-name value from kind:0
+    /// (`display_name` / `displayName` / `name`, first non-empty wins).
+    /// Empty string when the parsed metadata carries none of those fields
+    /// — NO `short_npub` fallback is substituted (aim.md §2 — projection
+    /// builders convert the empty string to `Option::None` at the
+    /// projection boundary).
     pub(super) display: String,
-    /// Raw picture URL from kind:0. `None` while no kind:0 has arrived.
-    /// At the `TimelineItem` / `ProfileCard` boundary this becomes a non-Option
-    /// field backed by [`crate::substrate::placeholder::picture_placeholder`]
-    /// (D1: display fields are always renderable).
+    /// Raw picture URL from kind:0. `None` when no kind:0 has arrived OR
+    /// the parsed metadata carries no `picture` field (or the value does
+    /// not begin with `http`). Surfaced as `Option<String>` to projection
+    /// builders verbatim — no identicon placeholder is substituted in the
+    /// cache (aim.md §2 — presentation layer chooses the missing-picture
+    /// strategy).
     pub(super) picture_url: Option<String>,
     pub(super) nip05: String,
     pub(super) about: String,
-    pub(super) avatar_initials: String,
-    pub(super) avatar_color: String,
     /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`) from this
     /// pubkey's kind:0 metadata. `None` when no kind:0 has arrived or the
     /// metadata had no lnurl. Pre-extracted at parse time (see
@@ -81,12 +87,13 @@ pub(super) struct Profile {
 
 /// A single item in a timeline or thread view.
 ///
-/// All display fields are non-`Option` (D1: best-effort rendering — placeholders
-/// are part of the type contract).  `author_picture_url` carries either the
-/// kind:0 picture URL or a deterministic `identicon:<pubkey-prefix>` URI when
-/// no kind:0 has arrived.  The `author_avatar_source` field (`"kind0"` |
-/// `"placeholder"`) lets the UI decide how to render without branching on
-/// `Option`.
+/// Carries raw protocol data only (aim.md §2 — NMP is a data framework;
+/// projection and snapshot code sends raw pubkeys as hex, timestamps as
+/// Unix seconds, and surfaces kind:0-derived fields as `Option<String>`
+/// — `None` when no kind:0 has arrived). Presentation layers own all
+/// formatting decisions (bech32 encoding, abbreviation, avatar
+/// initials/tint, relative-time labels, placeholder/identicon strategy
+/// for the missing-picture case).
 // V6 Stage 3 — Swift `TimelineItem` Decodable codegen. Widened from
 // `pub(super)` to `pub(crate)` so the feature-gated
 // `pub(crate) use ... as TimelineItemForCodegen` re-export in
@@ -100,14 +107,13 @@ pub(super) struct Profile {
 #[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct TimelineItem {
     pub(super) id: String,
+    /// Author Nostr pubkey, hex (64 chars). Presentation layer formats
+    /// for display.
     pub(super) author_pubkey: String,
-    pub(super) author_display: String,
-    /// Always non-empty (D1).  Either the kind:0 picture URL or an
-    /// `identicon:<pubkey-prefix>` placeholder URI.
-    pub(super) author_picture_url: String,
-    pub(super) author_avatar_initials: String,
-    pub(super) author_avatar_color: String,
-    pub(super) author_avatar_source: String,
+    /// Author picture URL from kind:0. `None` when no kind:0 has arrived
+    /// or the metadata carries no `picture` field — presentation layer
+    /// chooses a placeholder/identicon strategy.
+    pub(super) author_picture_url: Option<String>,
     /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`) from the
     /// author's kind:0 metadata. `None` when the author has no lightning
     /// address or their kind:0 hasn't arrived yet. Pre-extracted so the
@@ -122,26 +128,9 @@ pub(crate) struct TimelineItem {
     pub(super) kind: u32,
     pub(super) content: String,
     pub(super) content_preview: String,
-    pub(super) created_at_display: String,
-    /// V-28 thin-shell: abbreviated hex pubkey (`<first 8>…<last 8>`) for the
-    /// Twitter-style secondary identifier slot beneath the display name in the
-    /// timeline row. Replaces the `shortPubkey` helper deleted from
-    /// `ios/Chirp/Chirp/Components/NoteRowView.swift`. Same algorithm as
-    /// `nmp_nip01::timeline_projection::pubkey_display` so the same author
-    /// renders the same abbreviation across modular timeline, NIP-29 group
-    /// rows, NIP-17 DMs, and Chirp's home feed (the old Swift helper used
-    /// `<first 6>…<last 4>` — aligning to the cross-surface algorithm shifts
-    /// the abbreviation by two characters on each side).
-    pub(super) author_pubkey_short: String,
-    /// V-28 thin-shell: abbreviated event id (`<first 8>…<last 8>`) for
-    /// surfaces that want a compact monospaced reference to this event — most
-    /// notably Chirp's reply-banner caption in `ComposeView`. Replaces the
-    /// `shortID` helper deleted from
-    /// `ios/Chirp/Chirp/Features/ComposeView.swift`. The Swift helper used
-    /// `<first 6>…<last 4>`; aligning to the cross-surface `<first 8>…
-    /// <last 8>` algorithm shifts the abbreviation by two characters on each
-    /// side (deliberate — see `author_pubkey_short` above).
-    pub(super) short_id: String,
+    /// Event `created_at` (Unix seconds). Presentation layer formats for
+    /// display (aim.md §2).
+    pub(super) created_at: u64,
     pub(super) relay_count: u32,
     /// `true` when `kind == 6` (NIP-18 repost). Thin-shell: the view layer
     /// flips the "Repost" badge and re-routes thread navigation on this bool;
@@ -164,36 +153,40 @@ pub(crate) struct TimelineItem {
 
 /// Profile summary card.
 ///
-/// All display fields are non-`Option` (D1).  `picture_url` carries either the
-/// kind:0 picture URL or an `identicon:<pubkey-prefix>` placeholder URI.
+/// Carries the raw kind:0 fields with `Option<String>` semantics — `None`
+/// signals "no kind:0 has arrived yet for this field" so presentation
+/// layers can choose their own fallback (typically formatting the raw
+/// pubkey). aim.md §2 — NMP is a data framework; backend ships raw
+/// protocol data, presentation layers own formatting.
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct ProfileCard {
     pub(super) pubkey: String,
+    /// Bech32 `npub1…` encoding. Pubkey-deterministic; retained for
+    /// shells that lack a bech32 encoder. Presentation layer chooses how
+    /// to abbreviate.
     pub(super) npub: String,
-    /// Pre-formatted, copy-button-ready short form of `npub` (or hex when
-    /// `npub` was not encoded). Rust owns the truncation policy
-    /// (`<first10>…<last8>`) so a Swift `truncatedNpub` helper would be
-    /// pure render duplication (aim.md §6.9 — no business logic in native).
-    /// Always non-empty when `npub` is non-empty.
-    pub(super) npub_short: String,
-    pub(super) display: String,
-    /// Always non-empty (D1).  Either the kind:0 picture URL or an
-    /// `identicon:<pubkey-prefix>` placeholder URI.
-    pub(super) picture_url: String,
+    /// Display name from kind:0 (`display_name` / `displayName` / `name`,
+    /// first non-empty wins). `None` when no kind:0 has arrived yet —
+    /// presentation layer renders its own fallback.
+    pub(super) display_name: Option<String>,
+    /// Picture URL from kind:0. `None` when no kind:0 has arrived yet
+    /// or the metadata carries no `picture` field — presentation layer
+    /// chooses a placeholder/identicon strategy.
+    pub(super) picture_url: Option<String>,
     pub(super) nip05: String,
     pub(super) about: String,
-    pub(super) avatar_initials: String,
-    pub(super) avatar_color: String,
-    /// Avatar image provenance for ADR-0017.
-    pub(super) source: String,
-    /// True when a kind:0 metadata event has been received for this pubkey.
-    /// False means the profile card is a placeholder pending relay response.
+    /// True when a kind:0 metadata event has been received for this
+    /// pubkey. False means the profile card is a placeholder pending
+    /// relay response. Note: derivable from
+    /// `display_name.is_some() || picture_url.is_some() || !nip05.is_empty()`;
+    /// retained as an explicit signal for shells that want the single
+    /// boolean.
     pub(super) has_profile: bool,
-    /// Pre-extracted lightning address (`lud16`) / LNURL (`lud06`) from this
-    /// pubkey's kind:0 metadata. `None` when no kind:0 has arrived or the
-    /// user has no lightning address. The zap button in the shell is
-    /// enabled/disabled based on this field — Rust decides zapability,
-    /// Swift renders it (thin-shell rule, aim.md §6.9).
+    /// Pre-extracted lightning address (`lud16`) / LNURL (`lud06`) from
+    /// this pubkey's kind:0 metadata. `None` when no kind:0 has arrived
+    /// or the user has no lightning address. The zap button in the shell
+    /// is enabled/disabled based on this field — Rust decides
+    /// zapability, the shell renders it.
     pub(super) lnurl: Option<String>,
 }
 
@@ -258,17 +251,23 @@ pub(super) struct AuthorViewPayload {
 
 /// Per-author payload bundled into the `mention_profiles` projection.
 ///
-/// This is the same shape Chirp's `MentionProfile` consumes; emitting it from
-/// Rust kills the `Dictionary(uniqueKeysWithValues:)` derivation Swift was
-/// doing at `ProfileView.swift:28-40` (aim.md §4.2: derived views are pure
-/// functions of the event store and are emitted from the kernel, not
-/// reconstructed by the shell).
+/// Carries raw protocol identifiers + raw kind:0 fields only (aim.md §2 —
+/// NMP is a data framework; presentation layers own bech32 encoding,
+/// abbreviation, avatar initials/tint, and any "no kind:0 yet" fallback).
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct MentionProfilePayload {
-    pub(super) display: String,
-    pub(super) picture_url: String,
-    pub(super) avatar_initials: String,
-    pub(super) avatar_color: String,
+    /// Hex pubkey (64 chars) for the mentioned author. Carried in the
+    /// struct body so shells consuming a flat array of payloads do not
+    /// lose provenance (the map key alone is not enough when the payload
+    /// flows through a JSON-serialised projection).
+    pub(super) pubkey: String,
+    /// Display name from kind:0 (`display_name` / `displayName` / `name`,
+    /// first non-empty wins). `None` when no kind:0 has arrived yet for
+    /// this author — presentation layer renders its own fallback.
+    pub(super) display_name: Option<String>,
+    /// Picture URL from kind:0. `None` when no kind:0 has arrived yet
+    /// or the metadata carries no `picture` field.
+    pub(super) picture_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
