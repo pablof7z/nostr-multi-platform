@@ -7,7 +7,8 @@ package org.nmp.android
  *
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross FFI
  * (D6) — natives return only a handle / string / void; outcomes arrive in the
- * next JSON snapshot. See `android/JNI-CONTRACT.md`.
+ * next JSON snapshot. The Rust side lives in `crates/nmp-android-ffi` and calls
+ * into `nmp-ffi`/`nmp-app-chirp` through Rust paths.
  */
 class KernelBridge {
     private var handle: Long = 0
@@ -32,11 +33,9 @@ class KernelBridge {
     fun chirpSnapshot(): String? = if (handle != 0L) nativeChirpSnapshot(handle) else null
 
     /**
-     * Expose the raw kernel Session pointer (jlong) so per-app bridges
-     * (e.g. `PodcastKernelBridge`) can call `nmp_app_podcast_register(app)`
-     * by passing the session handle into Rust, which extracts `session.app`.
-     * Returns 0 if the bridge was freed. Callers must not store this value
-     * beyond the lifetime of this bridge.
+     * Expose the raw Android JNI Session pointer (`jlong`) to same-process
+     * Android bridge extensions. Returns 0 if the bridge was freed. Callers
+     * must not store this value beyond the lifetime of this bridge.
      */
     fun rawHandle(): Long = handle
 

@@ -1,7 +1,7 @@
 # Standalone workspace root (empty [workspace] table) so the parent workspace
 # at ../../Cargo.toml does NOT pull this crate in. The parent `members` list is
 # explicit (no glob); this detachment keeps Android territory file-disjoint and
-# avoids editing the shared root manifest. See android/JNI-CONTRACT.md.
+# avoids editing the shared root manifest.
 [workspace]
 
 [package]

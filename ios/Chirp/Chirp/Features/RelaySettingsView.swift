@@ -159,9 +159,9 @@ struct RelaySettingsView: View {
             let result = model.publishDmRelayList(relays: model.relayEditRows.map(\.url))
             // Also publish NIP-65 kind:10002 (general relay list) so other
             // Nostr clients can discover this user's read/write relays via
-            // NIP-65 relay discovery. `nmp.nip65.publish_relay_list` is
-            // registered by `nmp-app-chirp::register_nip65_actions`; "indexer"
-            // relays are dropped Swift-side (NIP-65 has no indexer marker).
+            // NIP-65 relay discovery. Rust registers and owns
+            // `nmp.nip65.publish_relay_list`, including the indexer-role
+            // policy for rows that cannot be represented in kind:10002.
             model.publishRelayList(relays: model.relayEditRows)
             // PR-A: only stash a correlation id on accept — a synchronous
             // dispatch rejection has already routed through `track()` into

@@ -15,7 +15,7 @@
 //! rlib is consumed at compile time into CGU object files, but only code
 //! reachable through RUST paths enters those files. Symbols declared only via
 //! `extern "C"` stay `U` (undefined) in the final cdylib. Calling through
-//! `nmp_core::nmp_app_new()` (enabled by the `android-ffi` feature) is the
+//! `nmp_ffi::nmp_app_new()` (enabled by the `android-ffi` feature) is the
 //! portable fix that makes rustc include the bodies.
 
 use std::ffi::{c_char, c_void, CStr};
