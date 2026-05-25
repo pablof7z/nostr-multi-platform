@@ -47,6 +47,7 @@ impl ZapRequest {
             zapped_event_id: None,
             zapped_address: None,
             comment: String::new(),
+            lnurl: None,
         }
     }
 }
@@ -59,6 +60,7 @@ pub struct ZapRequestBuilder {
     zapped_event_id: Option<String>,
     zapped_address: Option<String>,
     comment: String,
+    lnurl: Option<String>,
 }
 
 impl ZapRequestBuilder {
@@ -98,6 +100,16 @@ impl ZapRequestBuilder {
         self
     }
 
+    /// Set the `lnurl` tag — the original lightning address or bech32-encoded
+    /// LNURL used to initiate the zap. NIP-57 SHOULD — Primal (and most
+    /// LNURL servers) use this to associate the payment with the right account
+    /// and publish the kind:9735 receipt.
+    #[must_use]
+    pub fn lnurl(mut self, lnurl: impl Into<String>) -> Self {
+        self.lnurl = Some(lnurl.into());
+        self
+    }
+
     /// # Errors
     ///
     /// Returns [`ZapRequestBuildError`] if recipient or target is missing.
@@ -127,6 +139,9 @@ impl ZapRequestBuilder {
             tags.push(vec!["amount".into(), amt.to_string()]);
         }
         tags.push(p_tag(&self.recipient, None));
+        if let Some(lnurl) = self.lnurl {
+            tags.push(vec!["lnurl".to_string(), lnurl]);
+        }
         if let Some(eid) = self.zapped_event_id {
             tags.push(e_tag(&eid, None, None));
         }

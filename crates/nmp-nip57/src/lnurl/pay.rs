@@ -70,6 +70,26 @@ pub fn lnurl_to_well_known_url(input: &str) -> Result<String, String> {
     ))
 }
 
+/// LUD-01 bech32 LNURL encode — inverse of [`decode_bech32_lnurl`].
+///
+/// The `url` bytes are encoded per bech32 with the `lnurl` HRP and the
+/// result is lowercase. Only `https://` URLs are accepted per LUD-01 §1
+/// (plaintext would leak the zap amount and the signed kind:9734 content).
+///
+/// Used to populate the NIP-57 `lnurl` tag value in kind:9734 and the
+/// `lnurl=` callback query parameter per NIP-57 Appendix B.
+pub fn url_to_bech32_lnurl(url: &str) -> Result<String, String> {
+    use bech32::{Bech32, Hrp};
+    if !url.starts_with("https://") {
+        return Err(format!(
+            "LNURL encoding requires an https:// URL, got: {url}"
+        ));
+    }
+    let hrp = Hrp::parse("lnurl").map_err(|e| format!("parse lnurl HRP: {e}"))?;
+    bech32::encode::<Bech32>(hrp, url.as_bytes())
+        .map_err(|e| format!("bech32 encode LNURL: {e}"))
+}
+
 /// LUD-01 bech32 LNURL decode — strip the HRP, ungroup the 5-bit data, and
 /// validate the result is a UTF-8 https URL.
 fn decode_bech32_lnurl(input: &str) -> Result<String, String> {
@@ -184,6 +204,23 @@ mod tests {
         assert!(encoded.to_lowercase().starts_with("lnurl1"));
         let decoded = lnurl_to_well_known_url(&encoded).unwrap();
         assert_eq!(decoded, original);
+    }
+
+    // url_to_bech32_lnurl — encode + decode round-trip.
+    #[test]
+    fn url_to_bech32_lnurl_round_trips() {
+        let original = "https://primal.net/.well-known/lnurlp/pablof7z";
+        let encoded = url_to_bech32_lnurl(original).unwrap();
+        assert!(encoded.starts_with("lnurl1"), "encoded: {encoded}");
+        let decoded = lnurl_to_well_known_url(&encoded).unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn url_to_bech32_lnurl_rejects_non_https() {
+        assert!(url_to_bech32_lnurl("http://example.com/lnurlp").is_err());
+        assert!(url_to_bech32_lnurl("pablof7z@primal.net").is_err());
+        assert!(url_to_bech32_lnurl("").is_err());
     }
 
     #[test]

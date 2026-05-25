@@ -63,14 +63,17 @@ fn run(nwc_uri: &str, address: &str, sats: u64, comment: &str) -> Result<(), Str
     let client_pubkey_hex = client_keys.public_key().to_hex();
     println!("wallet {}… | {} relays", &nwc.wallet_pubkey_hex[..16], nwc.relay_urls.len());
 
-    // 3. Fetch bolt11 via LNURL-pay (NIP-57)
-    print!("[3/5] Fetching bolt11 via LNURL-pay ... ");
+    // 3. Fetch bolt11 via LNURL-pay (NIP-57) — verbose path so we can inspect
+    //    the kind:9734 and callback response.
+    println!("[3/5] Fetching bolt11 via LNURL-pay (verbose) ...");
     let zapper_keys = Keys::generate();
+    let zapper_pubkey = zapper_keys.public_key().to_hex();
+    println!("  zapper pubkey : {zapper_pubkey}");
     let relays = vec![
         "wss://relay.damus.io".to_string(),
         "wss://relay.primal.net".to_string(),
     ];
-    let bolt11 = nmp_nip57::fetch_bolt11_for_zap(
+    let (bolt11, _zap_request_json) = fetch_bolt11_verbose(
         &zapper_keys,
         address,
         amount_msats,
@@ -78,7 +81,6 @@ fn run(nwc_uri: &str, address: &str, sats: u64, comment: &str) -> Result<(), Str
         &relays,
         Some(comment),
     )?;
-    println!("{}…", &bolt11[..bolt11.len().min(40)]);
 
     // 4. Build + sign NWC pay_invoice request (kind:23194)
     print!("[4/5] Building NWC pay_invoice request ... ");
@@ -168,6 +170,14 @@ fn run(nwc_uri: &str, address: &str, sats: u64, comment: &str) -> Result<(), Str
                 println!();
                 println!("=== ZAP SENT ✓ ===");
                 println!("  preimage: {preimage}");
+                // Now wait and look for the kind:9735 receipt on the relays.
+                println!();
+                println!("[+] Checking for kind:9735 zap receipt ...");
+                let recipient_pk = recipient_pubkey.clone();
+                match wait_for_zap_receipt("wss://relay.primal.net", &recipient_pk, &bolt11, Duration::from_secs(90)) {
+                    Ok(receipt_id) => println!("  kind:9735 receipt found! id={}", &receipt_id[..receipt_id.len().min(16)]),
+                    Err(e) => println!("  WARNING: kind:9735 not seen on relay.primal.net within 90s: {e}"),
+                }
                 return Ok(());
             }
             Ok(Err(e)) => {
@@ -234,6 +244,186 @@ fn nwc_roundtrip(
                 }
             }
             Ok(Message::Close(_)) => return Err("relay closed the connection".to_string()),
+            Ok(_) => {}
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("timed out") || msg.contains("WouldBlock") {
+                    continue;
+                }
+                return Err(format!("WebSocket read error: {msg}"));
+            }
+        }
+    }
+}
+
+/// Like `nmp_nip57::fetch_bolt11_for_zap` but prints the kind:9734 and full
+/// callback response for debugging. Returns (bolt11, kind9734_json).
+fn fetch_bolt11_verbose(
+    keys: &nostr::Keys,
+    lnurl_or_address: &str,
+    amount_msats: u64,
+    recipient_pubkey: &str,
+    relays: &[String],
+    comment: Option<&str>,
+) -> Result<(String, String), String> {
+    use nmp_nip57::build::ZapRequest;
+    use nmp_nip57::{sign_zap_request, lnurl::{lnurl_to_well_known_url, url_encode_query, url_to_bech32_lnurl}};
+    use std::io::Read as _;
+
+    // NIP-57: the `lnurl` tag must be bech32-encoded per LUD-01, NOT the raw
+    // lightning address. Resolve to well-known URL first, then bech32-encode.
+    let well_known_url = lnurl_to_well_known_url(lnurl_or_address)?;
+    let bech32_lnurl = url_to_bech32_lnurl(&well_known_url)?;
+
+    let mut builder = ZapRequest::to_pubkey(recipient_pubkey)
+        .amount_msats(amount_msats)
+        .relays(relays.to_vec())
+        .lnurl(&bech32_lnurl);
+    if let Some(c) = comment {
+        builder = builder.comment(c);
+    }
+    let pubkey_hex = keys.public_key().to_hex();
+    let created_at = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let unsigned = builder.build(pubkey_hex, created_at)
+        .map_err(|e| format!("build kind:9734: {e}"))?;
+    let signed_json = sign_zap_request(keys, &unsigned)?;
+
+    println!("  kind:9734 event:");
+    if let Ok(v) = serde_json::from_str::<Value>(&signed_json) {
+        let pk = v["pubkey"].as_str().unwrap_or("");
+        println!("    kind   : {}", v["kind"]);
+        println!("    pubkey : {}…", &pk[..pk.len().min(16)]);
+        println!("    tags   : {}", serde_json::to_string(&v["tags"]).unwrap_or_default());
+        println!("    content: {:?}", v["content"]);
+    }
+
+    // Leg 1
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(10)).build();
+    let wk_resp: Value = agent.get(&well_known_url).call()
+        .map_err(|e| format!("LNURL leg1 {well_known_url}: {e}"))?
+        .into_json().map_err(|e| format!("LNURL leg1 parse: {e}"))?;
+    println!("  LNURL metadata:");
+    println!("    allowsNostr : {}", wk_resp["allowsNostr"]);
+    println!("    nostrPubkey : {}", wk_resp["nostrPubkey"]);
+    println!("    minSendable : {}", wk_resp["minSendable"]);
+    println!("    maxSendable : {}", wk_resp["maxSendable"]);
+
+    // Leg 2 — NIP-57 Appendix B: include `lnurl=<bech32>` so the server can
+    // associate the payment with the right Nostr profile and mint kind:9735.
+    let callback = wk_resp["callback"].as_str()
+        .ok_or("LNURL missing callback")?;
+    let sep = if callback.contains('?') { '&' } else { '?' };
+    let callback_url = format!(
+        "{callback}{sep}amount={amount_msats}&nostr={}&lnurl={}",
+        url_encode_query(&signed_json),
+        url_encode_query(&bech32_lnurl),
+    );
+    println!("  callback url (first 160): {}…", &callback_url[..callback_url.len().min(160)]);
+
+    let mut body = Vec::new();
+    agent.get(&callback_url).call()
+        .map_err(|e| format!("LNURL leg2: {e}"))?
+        .into_reader()
+        .take(65536)
+        .read_to_end(&mut body)
+        .map_err(|e| format!("LNURL leg2 read: {e}"))?;
+    let callback_resp: Value = serde_json::from_slice(&body)
+        .map_err(|e| format!("LNURL leg2 parse: {e}"))?;
+    println!("  callback response: {}", serde_json::to_string(&callback_resp).unwrap_or_default());
+
+    if let Some(status) = callback_resp["status"].as_str() {
+        if status.eq_ignore_ascii_case("ERROR") {
+            let reason = callback_resp["reason"].as_str().unwrap_or("unknown");
+            return Err(format!("LNURL error: {reason}"));
+        }
+    }
+    let bolt11 = callback_resp["pr"].as_str()
+        .ok_or("LNURL callback missing pr (bolt11)")?.to_string();
+
+    Ok((bolt11, signed_json))
+}
+
+/// Subscribe to kind:9735 zap receipts on `relay_url` for the given
+/// recipient and bolt11. Returns the event id when a receipt whose `bolt11`
+/// tag matches `expected_bolt11` is found; errors after `timeout`.
+///
+/// Correlates on the `bolt11` tag so we catch OUR receipt and not an
+/// unrelated zap to the same recipient (who may receive many zaps).
+///
+/// Looks back 30 seconds (clock-skew buffer) in case the server minted the
+/// receipt before we connected.
+fn wait_for_zap_receipt(
+    relay_url: &str,
+    recipient_pubkey_hex: &str,
+    expected_bolt11: &str,
+    timeout: Duration,
+) -> Result<String, String> {
+    let (mut ws, _) = tungstenite::connect(relay_url)
+        .map_err(|e| format!("connect to {relay_url}: {e}"))?;
+
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .saturating_sub(30);
+    let req = serde_json::to_string(&json!([
+        "REQ",
+        "zap-receipt-watch",
+        {
+            "kinds": [9735u32],
+            "#p": [recipient_pubkey_hex],
+            "since": since,
+        }
+    ]))
+    .map_err(|e| format!("serialize REQ: {e}"))?;
+    ws.send(Message::Text(req)).map_err(|e| format!("send REQ: {e}"))?;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(format!("no matching kind:9735 seen within {}s", timeout.as_secs()));
+        }
+        match ws.read() {
+            Ok(Message::Text(text)) => {
+                let v: Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                if v.get(0).and_then(Value::as_str) == Some("EVENT") {
+                    if let Some(event) = v.get(2) {
+                        let kind = event.get("kind").and_then(Value::as_u64).unwrap_or(0);
+                        if kind != 9735 {
+                            continue;
+                        }
+                        // Correlate on the `bolt11` tag — must match the
+                        // invoice we paid, not any receipt for this recipient.
+                        let tags = event.get("tags").and_then(Value::as_array);
+                        let receipt_bolt11 = tags
+                            .and_then(|ts| {
+                                ts.iter().find(|t| {
+                                    t.get(0).and_then(Value::as_str) == Some("bolt11")
+                                })
+                            })
+                            .and_then(|t| t.get(1))
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        if receipt_bolt11 != expected_bolt11 {
+                            println!("  (kind:9735 for recipient but different bolt11 — skipping)");
+                            continue;
+                        }
+                        let id = event
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        println!("  full receipt: {}",
+                            serde_json::to_string(event).unwrap_or_default());
+                        return Ok(id);
+                    }
+                }
+            }
+            Ok(Message::Close(_)) => return Err("relay closed connection".to_string()),
             Ok(_) => {}
             Err(e) => {
                 let msg = e.to_string();
