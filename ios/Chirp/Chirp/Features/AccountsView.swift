@@ -99,6 +99,7 @@ private struct AddAccountSheet: View {
     @State private var selectedTab = 0
     @State private var bunkerSubmitted = false
     @State private var initialRemoteSignerIds: Set<String> = []
+    @State private var detectedSignerApp: Nip46Onboarding.SignerApp? = nil
 
     var body: some View {
         NavigationStack {
@@ -132,6 +133,10 @@ private struct AddAccountSheet: View {
                         .filter(\.signerIsRemote)
                         .map(\.id)
                 )
+                detectSignerApps()
+            }
+            .onChange(of: model.nip46Onboarding?.signerApps) { _, _ in
+                detectSignerApps()
             }
             .onChange(of: model.accounts) { _, newValue in
                 guard bunkerSubmitted else { return }
@@ -167,6 +172,15 @@ private struct AddAccountSheet: View {
 
     private var bunkerSection: some View {
         Section {
+            if let signer = detectedSignerApp {
+                Button {
+                    loginWithDetectedSigner()
+                } label: {
+                    Label("Login with \(signer.displayLabel)", systemImage: "arrow.up.forward.app")
+                }
+                .disabled(isHandshakeInFlight)
+            }
+
             HStack {
                 Image(systemName: "network")
                     .foregroundStyle(.secondary)
@@ -202,8 +216,26 @@ private struct AddAccountSheet: View {
             }
             .disabled(isConnectDisabled)
         } header: {
-            Text("Bunker URI")
+            Text("Remote signer")
         }
+    }
+
+    private func detectSignerApps() {
+        guard let signerApps = model.nip46Onboarding?.signerApps else {
+            detectedSignerApp = nil
+            return
+        }
+        detectedSignerApp = signerApps.first { app in
+            URL(string: app.scheme).map { UIApplication.shared.canOpenURL($0) } ?? false
+        }
+    }
+
+    private func loginWithDetectedSigner() {
+        guard let uri = model.nostrConnectURI(), let url = URL(string: uri) else {
+            return
+        }
+        bunkerSubmitted = true
+        UIApplication.shared.open(url)
     }
 
     private var trimmedBunkerURI: String {
