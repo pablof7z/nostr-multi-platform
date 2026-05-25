@@ -1,0 +1,101 @@
+package org.nmp.gallery.bridge
+
+/**
+ * Thin JNI wrapper around `libnmp_app_gallery.so` — the gallery-specific
+ * Rust shim that links the SAME `nmp-core` kernel that Chirp / iOS consume.
+ *
+ * Doctrine: no business logic or cached state (D5/D8). Errors never cross
+ * FFI (D6) — natives return only a handle / string / void; outcomes arrive
+ * in the next JSON snapshot. The Rust side is in
+ * `crates/nmp-app-gallery` (created in a parallel agent); it MUST export
+ * JNI symbols named `Java_org_nmp_gallery_bridge_KernelBridge_<methodName>`
+ * to match this Kotlin class.
+ *
+ * This bridge intentionally has NO OkHttp / Ktor / WebSocket code. Every
+ * relay connection lives inside the Rust kernel; Kotlin only owns the
+ * UI thread and drains the snapshot channel.
+ */
+class KernelBridge {
+    private var handle: Long = 0
+
+    init {
+        System.loadLibrary("nmp_app_gallery")
+        handle = nativeNew()
+    }
+
+    /**
+     * Boot the kernel + gallery projection.
+     *
+     * @param eventsPerSec Synthetic ingest cap for the demo (0 disables).
+     * @param visibleLimit Per-projection ring buffer size.
+     * @param emitHz       Snapshot emission frequency (Hz). Chirp uses 4 Hz.
+     */
+    fun start(eventsPerSec: Int = 0, visibleLimit: Int = 80, emitHz: Int = 4) {
+        if (handle != 0L) nativeStart(handle, eventsPerSec, visibleLimit, emitHz)
+    }
+
+    fun stop() {
+        if (handle != 0L) nativeStop(handle)
+    }
+
+    /** Register the gallery-specific projection on the kernel actor. */
+    fun galleryRegister() {
+        if (handle != 0L) nativeGalleryRegister(handle)
+    }
+
+    /**
+     * Demand-driven kind:0 fetch claim — see KernelBridge.swift /
+     * `nmp_app_claim_profile`. Idempotent per (pubkey, consumerId);
+     * matching [releaseProfile] required when the view disappears.
+     */
+    fun claimProfile(pubkey: String, consumerId: String) {
+        if (handle != 0L) nativeClaimProfile(handle, pubkey, consumerId)
+    }
+
+    fun releaseProfile(pubkey: String, consumerId: String) {
+        if (handle != 0L) nativeReleaseProfile(handle, pubkey, consumerId)
+    }
+
+    /**
+     * Blocking drain of the snapshot channel. `timeoutMs` caps the wait so
+     * the Kotlin reader coroutine can react to cancellation. Returns `null`
+     * on timeout / closed channel.
+     */
+    fun nextUpdate(timeoutMs: Long = 250L): String? =
+        if (handle != 0L) nativeNextUpdate(handle, timeoutMs) else null
+
+    /**
+     * Minimal status envelope from the gallery projection
+     * (`{schema, alive, projections:{}}`). Live profile data is NOT in this
+     * envelope — it arrives via [nextUpdate] from the push callback. Used
+     * only for diagnostic / readiness checks.
+     */
+    fun gallerySnapshot(): String? =
+        if (handle != 0L) nativeGallerySnapshot(handle) else null
+
+    /**
+     * Dispatch a typed action through the kernel's action seam. Payload is
+     * an action-specific JSON object; return value is the JSON envelope the
+     * action handler produced (or null on transport failure).
+     */
+    fun dispatchAction(action: String, payload: String): String? =
+        if (handle != 0L) nativeDispatchAction(handle, action, payload) else null
+
+    fun free() {
+        if (handle != 0L) {
+            nativeFree(handle)
+            handle = 0
+        }
+    }
+
+    private external fun nativeNew(): Long
+    private external fun nativeFree(handle: Long)
+    private external fun nativeGalleryRegister(handle: Long)
+    private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
+    private external fun nativeStop(handle: Long)
+    private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
+    private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
+    private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): String?
+    private external fun nativeGallerySnapshot(handle: Long): String?
+    private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
+}
