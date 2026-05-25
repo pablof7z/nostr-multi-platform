@@ -140,6 +140,19 @@ data class NostrContentRenderer(
 Use `CompositionLocal` for subtree defaults and explicit parameters for
 per-view overrides.
 
+## Status (2026-05-25)
+
+| Milestone | State | Notes |
+|---|---|---|
+| M16-C0 Registry contracts | ✅ Done | `registry.toml`, `nmp.components.lock` schema, offline-first CLI |
+| M16-C1 Wire contract freeze | ✅ Done | 38 golden fixtures in `nmp-content-fixtures`, decoder tests, PR #507 |
+| M16-C2 `nmp add component` | ✅ Done | Role filtering, dep resolution, lock write, e2e tests, PR #503 + #509 |
+| M16-C3 iOS SwiftUI content kits | ✅ Done | 6 components: content-core/view/minimal/mention-chip/quote-card/media-grid, PR #510 |
+| M16-C4 Android Compose content kits | 🔄 PR #516 | 5 Compose components mirroring SwiftUI; CI pending |
+| M16-C5 `nmp update component` | ✅ Done | Conflict detection, baseline hash, lock update, PR #506 |
+| M16-C6 jsrepo-compatible export | ⏳ Not started | Nice-to-have; NMP CLI is the canonical path |
+| M16-C7 Recipes and real-app adoption | 🔄 In progress | Recipe docs PR #517; website PR #511 merged; Chirp migration pending |
+
 ## Milestones
 
 ### M16-C0 - Registry Decision And Contracts
