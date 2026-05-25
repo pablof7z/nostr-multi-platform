@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/chirp/nmp-app-chirp",
+    "apps/podcast/nmp-app-podcast",
     "apps/fixture/nmp-app-fixture",
     "apps/longform/nmp-app-longform",
     "apps/notes/nmp-app-notes",

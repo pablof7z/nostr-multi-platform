@@ -3821,6 +3821,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-app-podcast"
+version = "0.1.0"
+dependencies = [
+ "nmp-app-template",
+ "nmp-core",
+ "nmp-ffi",
+ "nmp-signer-broker",
+ "nostr",
+ "serde",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "nmp-app-template"
 version = "0.1.0"
 dependencies = [

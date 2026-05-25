@@ -1,0 +1,45 @@
+[package]
+name = "nmp-app-podcast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Per-app Podcast glue. Skeleton that wires the canonical NMP composition (nmp-app-template) and exposes a stub FFI surface for the iOS shell. Podcast-specific modules land here as later milestones ship."
+
+[lib]
+name = "nmp_app_podcast"
+# Static lib so the iOS shell can link `-lnmp_app_podcast` alongside
+# `-lnmp_core`. The crate's `#[no_mangle] extern "C"` symbols
+# (`nmp_app_podcast_register`, `nmp_app_podcast_snapshot`,
+# `nmp_app_podcast_snapshot_free`, `nmp_app_podcast_unregister`) land in their
+# own archive (doctrine D0 forbids `nmp-core -> app-specific crates`).
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["lmdb-backend"]
+# Persistent local cache / publish-intent ledger for offline-first Podcast.
+lmdb-backend = ["nmp-core/lmdb-backend"]
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle. Podcast's `nmp_app_podcast_register`
+# takes `*mut NmpApp`; the per-app crate names the handle + the FFI symbols
+# (`nmp_app_dispatch_action`, etc.) through this dep.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
+nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
+# Canonical NMP composition root. One call wires the default action modules
+# (NIP-02 / NIP-17 / NIP-57 / NIP-65), the kind:10050 ingest parser, the
+# production routing substrate, the D2 coverage hook, and the DM-inbox +
+# zap-receipts runtime controllers.
+nmp-app-template = { path = "../../../crates/nmp-app-template" }
+# `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
+# values from the C-ABI JSON. Pinned to the workspace `0.44` graph.
+nostr = { version = "0.44", default-features = false, features = ["std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zeroize.workspace = true
+
+[dev-dependencies]
+# Test-support gates expose `nmp_app_new` / `nmp_app_free` so FFI smoke tests
+# can spin up a real `NmpApp` rather than mocking the slot.
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
