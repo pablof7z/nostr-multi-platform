@@ -10,7 +10,7 @@ pub struct SharedSnapshot {
 }
 
 impl SharedSnapshot {
-    #[must_use] 
+    #[must_use]
     pub fn from_payload(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
@@ -19,9 +19,12 @@ impl SharedSnapshot {
     }
 
     fn from_value(value: &Value) -> Self {
-        let projections = value.get("projections");
+        // Wire format is {"t":"snapshot","v":<KernelSnapshot>}; fall back to
+        // the flat shape so tests that pass an unwrapped fixture still work.
+        let inner = value.get("v").unwrap_or(value);
+        let projections = inner.get("projections");
         Self {
-            metrics: RuntimeMetrics::from_value(value.get("metrics")),
+            metrics: RuntimeMetrics::from_value(inner.get("metrics")),
             relays: relays_from(projections),
             interests: interests_from(projections),
             action_results: action_results_from(projections),
@@ -184,40 +187,43 @@ mod tests {
     #[test]
     fn parses_shared_diagnostics_and_action_projections() {
         let payload = serde_json::json!({
-            "metrics": {
-                "events_rx": 5,
-                "visible_items": 2,
-                "actor_queue_depth": 1,
-                "update_sequence": 9
-            },
-            "projections": {
-                "relay_diagnostics": {
-                    "relays": [{
-                        "short_url": "relay.example",
-                        "role_label": "Read/Write",
-                        "connection_label": "Open",
-                        "active_sub_count": 3,
-                        "total_events_display": "42",
-                        "last_event_display": "now",
-                        "last_error": null
-                    }],
-                    "interests": [{
-                        "key": "home",
-                        "state": "active",
-                        "refcount": 1,
-                        "cache_coverage": "live"
-                    }]
+            "t": "snapshot",
+            "v": {
+                "metrics": {
+                    "events_rx": 5,
+                    "visible_items": 2,
+                    "actor_queue_depth": 1,
+                    "update_sequence": 9
                 },
-                "action_results": [{
-                    "correlation_id": "corr-1",
-                    "status": "published",
-                    "error": null
-                }],
-                "action_stages": {
-                    "corr-2": [
-                        {"stage": "requested", "at_ms": 1},
-                        {"stage": "publishing", "at_ms": 2}
-                    ]
+                "projections": {
+                    "relay_diagnostics": {
+                        "relays": [{
+                            "short_url": "relay.example",
+                            "role_label": "Read/Write",
+                            "connection_label": "Open",
+                            "active_sub_count": 3,
+                            "total_events_display": "42",
+                            "last_event_display": "now",
+                            "last_error": null
+                        }],
+                        "interests": [{
+                            "key": "home",
+                            "state": "active",
+                            "refcount": 1,
+                            "cache_coverage": "live"
+                        }]
+                    },
+                    "action_results": [{
+                        "correlation_id": "corr-1",
+                        "status": "published",
+                        "error": null
+                    }],
+                    "action_stages": {
+                        "corr-2": [
+                            {"stage": "requested", "at_ms": 1},
+                            {"stage": "publishing", "at_ms": 2}
+                        ]
+                    }
                 }
             }
         })

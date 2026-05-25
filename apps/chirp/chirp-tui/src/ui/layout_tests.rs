@@ -33,7 +33,7 @@ fn help_overlay_renders_keybindings() {
 
     assert!(rendered.contains("Help"));
     assert!(rendered.contains("Ctrl+Enter"));
-    assert!(rendered.contains("open selected thread"));
+    assert!(rendered.contains("open author profile"));
 }
 
 #[test]
