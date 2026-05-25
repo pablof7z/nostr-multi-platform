@@ -125,7 +125,7 @@ const contentComponents: Component[] = [
           { source: "swiftui/content-core/NostrContentRenderer.swift", target: "Components/NostrContent/NostrContentRenderer.swift", role: "source", content: contentCoreSwift },
           { source: "swiftui/content-core/ContentTreeWire.swift", target: "Components/NostrContent/ContentTreeWire.swift", role: "source", content: contentCoreWireSwift },
         ],
-        screenshots: ["content-core-preview.png"],
+        screenshots: ["content-core-preview.png", "content-core-swift-preview.png"],
         customization: [
           "Edit `NostrContentRenderer.swift` to change the default text, mention, hashtag, and link colors — or to swap the callback signatures for your own routing model.",
           "Inject a per-screen renderer with `.nostrContentRenderer(...)` on any SwiftUI view; child components pick it up via `@Environment(\\.nostrContentRenderer)`.",
@@ -143,7 +143,7 @@ const contentComponents: Component[] = [
           { source: "compose/content-core/NostrContentRenderer.kt", target: "Components/NostrContent/NostrContentRenderer.kt", role: "source", content: composeContentRendererKotlin },
           { source: "compose/content-core/ContentTreeWire.kt", target: "Components/NostrContent/ContentTreeWire.kt", role: "source", content: composeContentTreeWireKotlin },
         ],
-        screenshots: ["compose-content-core-preview.png"],
+        screenshots: ["compose-content-core-preview.png", "content-core-kotlin-preview.png"],
         customization: [
           "Edit `NostrContentRenderer.kt` to change the default text, mention, hashtag, and link colors — or to swap the callback signatures for your own routing model.",
           "Inject a per-screen renderer with `CompositionLocalProvider(LocalNostrContentRenderer provides ...)`; child components pick it up via `LocalNostrContentRenderer.current`.",
@@ -169,7 +169,7 @@ const contentComponents: Component[] = [
           { source: "swiftui/content-minimal/NostrMinimalContentView.swift", target: "Components/NostrContent/NostrMinimalContentView.swift", role: "source", content: contentMinimalSwift },
           { source: "swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift", target: "Components/NostrContent/Examples/NostrMinimalContentPreview.swift", role: "example", content: contentMinimalPreviewSwift },
         ],
-        screenshots: ["content-minimal-preview.png"],
+        screenshots: ["content-minimal-preview.png", "content-minimal-swift-preview.png"],
         customization: [
           "Pure SwiftUI — no UIKit, no third-party packages. Swap `FlowLayout` for `HStack` if you want different wrapping behaviour.",
           "The view reads `@Environment(\\.nostrContentRenderer)` for colors and callbacks, so customizing the look usually means tweaking the parent's renderer modifier rather than editing this file.",
@@ -198,7 +198,7 @@ const contentComponents: Component[] = [
           { source: "swiftui/content-view/NostrContentGrouping.swift", target: "Components/NostrContent/NostrContentGrouping.swift", role: "source", content: contentGroupingSwift },
           { source: "swiftui/content-view/Examples/NostrContentViewPreview.swift", target: "Components/NostrContent/Examples/NostrContentViewPreview.swift", role: "example", content: contentViewPreviewSwift },
         ],
-        screenshots: ["content-view-preview.png"],
+        screenshots: ["content-view-preview.png", "content-view-swift-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content`. Each tree node maps to a sub-component you installed alongside it.",
           "Pin the tree's media layout, quote card style, and mention chip palette by overriding the `NostrContentRenderer` environment value on the parent view.",
@@ -213,7 +213,7 @@ const contentComponents: Component[] = [
           { source: "compose/content-view/NostrContentView.kt", target: "Components/NostrContent/NostrContentView.kt", role: "source", content: composeContentViewKotlin },
           { source: "compose/content-view/NostrContentGrouping.kt", target: "Components/NostrContent/NostrContentGrouping.kt", role: "source", content: composeContentGroupingKotlin },
         ],
-        screenshots: ["compose-content-view-preview.png"],
+        screenshots: ["compose-content-view-preview.png", "content-view-kotlin-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` and dispatches each block-level group to the matching sub-component. Customizing usually means editing the sub-component rather than this dispatcher.",
           "Inline runs are concatenated into a single `AnnotatedString` and rendered through `ClickableText` for tap-offset routing.",
@@ -235,7 +235,7 @@ const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-mention-chip/NostrMentionChip.swift", target: "Components/NostrContent/NostrMentionChip.swift", role: "source", content: mentionChipSwift },
         ],
-        screenshots: ["content-mention-chip-preview.png"],
+        screenshots: ["content-mention-chip-preview.png", "content-mention-chip-swift-preview.png"],
         customization: [
           "Includes a tiny avatar loader fallback. Replace `AsyncImage` with your own image cache (Kingfisher, Nuke) if you already have one.",
           "Tap routes through `NostrContentCallbacks.onMentionTap`; override at the screen level to push your own profile view.",
@@ -249,7 +249,7 @@ const contentComponents: Component[] = [
         files: [
           { source: "compose/content-mention-chip/NostrMentionChip.kt", target: "Components/NostrContent/NostrMentionChip.kt", role: "source", content: composeMentionChipKotlin },
         ],
-        screenshots: ["compose-content-mention-chip-preview.png"],
+        screenshots: ["compose-content-mention-chip-preview.png", "content-mention-chip-kotlin-preview.png"],
         customization: [
           "Uses Coil's `SubcomposeAsyncImage` for the avatar. Swap to Glide or a custom Painter by replacing the loader call in `MentionAvatar`.",
           "Tap routes through `NostrContentCallbacks.onMentionTap`; override at the screen level to push into your own navigator.",
@@ -272,7 +272,7 @@ const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-quote-card/NostrQuoteCard.swift", target: "Components/NostrContent/NostrQuoteCard.swift", role: "source", content: quoteCardSwift },
         ],
-        screenshots: ["content-quote-card-preview.png"],
+        screenshots: ["content-quote-card-preview.png", "content-quote-card-swift-preview.png"],
         customization: [
           "Renders a hydrated `NostrQuoteCardModel`; apps resolve quoted events from their own state and pass preview text, author display data, and optional media thumbnails.",
           "Adjust the border, corner radius, and padding directly in the source file — they're literals, not configuration knobs, so they merge cleanly on `nmp update`.",
@@ -286,7 +286,7 @@ const contentComponents: Component[] = [
         files: [
           { source: "compose/content-quote-card/NostrQuoteCard.kt", target: "Components/NostrContent/NostrQuoteCard.kt", role: "source", content: composeQuoteCardKotlin },
         ],
-        screenshots: ["compose-content-quote-card-preview.png"],
+        screenshots: ["compose-content-quote-card-preview.png", "content-quote-card-kotlin-preview.png"],
         customization: [
           "Pick the variant per call-site — `Rich` for inline quote cards, `Collapsed` for a `View quote` affordance, `Missing` for an unresolved reference, `Compact` for dense feeds.",
           "Border, corner radius, and padding are literals so they merge cleanly on `nmp update component`.",
@@ -308,7 +308,7 @@ const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-media-grid/NostrMediaGrid.swift", target: "Components/NostrContent/NostrMediaGrid.swift", role: "source", content: mediaGridSwift },
         ],
-        screenshots: ["content-media-grid-preview.png"],
+        screenshots: ["content-media-grid-preview.png", "content-media-grid-swift-preview.png"],
         customization: [
           "Grid layout is computed from the count: 1 = full-width 16:9, 2 = side-by-side, 3 = one-large + two-stacked, 4 = 2×2.",
           "Replace the `AsyncImage` calls with your own loader; the file exposes a `MediaThumbnailLoader` typealias for that swap.",
@@ -322,7 +322,7 @@ const contentComponents: Component[] = [
         files: [
           { source: "compose/content-media-grid/NostrMediaGrid.kt", target: "Components/NostrContent/NostrMediaGrid.kt", role: "source", content: composeMediaGridKotlin },
         ],
-        screenshots: ["compose-content-media-grid-preview.png"],
+        screenshots: ["compose-content-media-grid-preview.png", "content-media-grid-kotlin-preview.png"],
         customization: [
           "Layout is count-driven: 1 = full-width 16:9, 2 = side-by-side, 3 = one large + two stacked, 4+ = 2×2 with `+N more` overlay — identical to the SwiftUI variant.",
           "Replace `SubcomposeAsyncImage` with your own loader if you already use Glide/Picasso. The cell composable is intentionally small to make the swap painless.",
@@ -382,7 +382,7 @@ const userComponents: Component[] = [
           { source: "swiftui/user-avatar/ProfileWire.swift", target: "Components/NostrUser/ProfileWire.swift", role: "source", content: profileWireSwift },
           { source: "swiftui/user-avatar/NostrAvatar.swift", target: "Components/NostrUser/NostrAvatar.swift", role: "source", content: nostrAvatarSwift },
         ],
-        screenshots: [],
+        screenshots: ["user-avatar-swift-preview.png"],
         customization: [
           "Edit the `palette` array in `NostrIdenticon` to match your app's brand colors. The color is deterministic from the pubkey so the same user always gets the same color.",
           "Replace `AsyncImage` with your own image cache (Kingfisher, Nuke) by swapping the URL loading block — the identicon fallback is self-contained.",
@@ -421,7 +421,7 @@ const userComponents: Component[] = [
         files: [
           { source: "swiftui/user-name/NostrProfileName.swift", target: "Components/NostrUser/NostrProfileName.swift", role: "source", content: nostrProfileNameSwift },
         ],
-        screenshots: [],
+        screenshots: ["user-name-swift-preview.png"],
         customization: [
           "Pass any `Font` and `Color` — the component has no hardcoded styling. Use `.headline` for headers and `.subheadline` with a muted color for secondary rows.",
         ],
@@ -455,7 +455,7 @@ const userComponents: Component[] = [
         files: [
           { source: "swiftui/user-nip05/NostrNip05Badge.swift", target: "Components/NostrUser/NostrNip05Badge.swift", role: "source", content: nostrNip05BadgeSwift },
         ],
-        screenshots: [],
+        screenshots: ["user-nip05-swift-preview.png"],
         customization: [
           "The failable `init?(profile:)` lets you gate the badge in one line: `if let badge = NostrNip05Badge(profile: profile) { badge }`.",
           "`_@domain` identifiers (root-domain NIP-05) automatically render as just `domain` — no extra handling needed.",
@@ -493,7 +493,7 @@ const userComponents: Component[] = [
         files: [
           { source: "swiftui/user-npub/NostrNpubChip.swift", target: "Components/NostrUser/NostrNpubChip.swift", role: "source", content: nostrNpubChipSwift },
         ],
-        screenshots: [],
+        screenshots: ["user-npub-swift-preview.png"],
         customization: [
           "`npub` and `npubShort` must come from the kernel projection — never format them in Swift (aim.md §6.9).",
         ],
@@ -530,7 +530,7 @@ const userComponents: Component[] = [
         files: [
           { source: "swiftui/user-card/NostrUserCard.swift", target: "Components/NostrUser/NostrUserCard.swift", role: "source", content: nostrUserCardSwift },
         ],
-        screenshots: [],
+        screenshots: ["user-card-swift-preview.png"],
         customization: [
           "Set `avatarSize` to `32` for dense list rows and `64` for profile headers.",
           "The `onTap` callback receives the raw pubkey — push your own profile route from there rather than hardcoding any navigation dependency inside this component.",
