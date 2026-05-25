@@ -294,6 +294,7 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - relay_diagnostics.rs, markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10 (PRs #407-#412 — 2026-05-24)
 - doctrine-lint d11/d12/d15 (PRs #413-#415 — 2026-05-24)
 - nmp-nip29/projection/group_chat.rs (813 → 358 LOC), nmp-nip01/timeline_projection.rs (590 → 275 LOC), nmp-core/kernel/identity_state.rs (569 → 471 LOC) — third batch — 2026-05-24
+- nmp-router/src/router.rs (703 → 242 LOC), nmp-core/src/substrate/routing.rs (531 → 346 LOC), nmp-core/src/substrate/protocol.rs (745 → 519 LOC; still 19 LOC over — production split deferred) — fourth batch (PR TBD) — 2026-05-25
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
