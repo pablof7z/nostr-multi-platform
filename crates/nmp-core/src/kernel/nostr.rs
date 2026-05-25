@@ -14,7 +14,6 @@ use super::types::AuthorRelayList;
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
 use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
-use crate::display::{avatar_color_hex, display_name_initials, short_hex as short_hex_canonical, short_npub};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -54,17 +53,20 @@ pub(super) struct ProfileContent {
 
 pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
     let parsed = serde_json::from_str::<ProfileContent>(&event.content).unwrap_or_default();
+    // Verbatim display-name value from kind:0; empty string when the
+    // parsed metadata carries none of `display_name` / `displayName` /
+    // `name` (aim.md §2 — no `short_npub` fallback is substituted; the
+    // projection boundary converts `""` into `Option::None`).
     let display = parsed
         .display_name
         .or(parsed.display_name_camel)
         .or(parsed.name)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| short_npub(&event.pubkey));
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default();
     Profile {
         event_id: event.id.clone(),
         created_at: event.created_at,
-        avatar_initials: display_name_initials(&display),
-        avatar_color: avatar_color_hex(&event.pubkey),
         display,
         picture_url: parsed.picture.filter(|value| value.starts_with("http")),
         nip05: parsed.nip05.unwrap_or_default(),
@@ -239,16 +241,6 @@ pub(super) fn short_hex(value: &str) -> String {
     }
 }
 
-
-/// V-28 / V-33: `<first8>…<last8>` abbreviation for hex identifiers.
-///
-/// Delegates to [`crate::display::short_hex`], the canonical cross-surface
-/// algorithm. NIP crates (`nmp-nip01`, `nmp-nip29`) use the same canonical
-/// function, so all surfaces — NIP-01 timeline, DMs, NIP-29 group rows,
-/// and these kernel fields — are byte-identical.
-pub(super) fn short_hex_display(value: &str) -> String {
-    short_hex_canonical(value)
-}
 
 pub(super) fn truncate(value: &str, limit: usize) -> String {
     let mut out = String::new();

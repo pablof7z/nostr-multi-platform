@@ -12,14 +12,7 @@
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, short_hex_display, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
-use crate::display::{avatar_color_hex, short_npub};
-// `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
-// The single use site at `created_at_display` is already gated; import has
-// to match so `--no-default-features` (wasm32) compiles.
-#[cfg(feature = "native")]
-use super::format_timestamp;
-use crate::substrate::placeholder::picture_placeholder;
+use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.
 ///
@@ -63,9 +56,12 @@ impl Kernel {
         let (inserted, updated, removed) = diff_items(&self.last_emitted_items, &items);
         self.last_emitted_items = items.clone();
 
+        // "Profiled" = has a kind:0 picture URL (None signals no kind:0
+        // or no `picture` field in the parsed metadata — aim.md §2,
+        // backend ships raw Option, presentation picks the fallback).
         let visible_profiled_items = items
             .iter()
-            .filter(|item| item.author_avatar_source == "kind0")
+            .filter(|item| item.author_picture_url.is_some())
             .count();
         let visible_placeholder_avatar_items = items.len().saturating_sub(visible_profiled_items);
         let counters = self.total_counters();
@@ -429,17 +425,17 @@ impl Kernel {
         // `ThreadScreen.swift:23-35`). First writer wins on collision —
         // matches `mention_profiles_from_items` semantics. Empty `{}` only
         // when no events are visible and no view is open; never absent (D1).
-        let mut mention_profiles = Self::mention_profiles_from_items(items);
+        let mut mention_profiles = self.mention_profiles_from_items(items);
         for (k, v) in self
             .author_view()
-            .map(|av| Self::mention_profiles_from_items(&av.items))
+            .map(|av| self.mention_profiles_from_items(&av.items))
             .unwrap_or_default()
         {
             mention_profiles.entry(k).or_insert(v);
         }
         for (k, v) in self
             .thread_view()
-            .map(|tv| Self::mention_profiles_from_items(&tv.items))
+            .map(|tv| self.mention_profiles_from_items(&tv.items))
             .unwrap_or_default()
         {
             mention_profiles.entry(k).or_insert(v);
@@ -463,26 +459,21 @@ impl Kernel {
 
     pub(super) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
         let profile = self.profile_for_pubkey(&event.author);
-        // D1: author_picture_url is always non-empty.  Use the kind:0 URL when
-        // available; fall back to a deterministic identicon URI otherwise.
-        // ADR-0017: the source discriminator MUST track the same selection the
-        // URL did — a profile that exists but carries no picture still resolves
-        // to the placeholder, so it is reported as `placeholder`, not `kind0`.
-        let real_picture = profile
+        // aim.md §2: picture URL stays `Option<String>`. No identicon
+        // placeholder is substituted in NMP; presentation layers choose
+        // the missing-picture strategy.
+        let author_picture_url = profile
             .and_then(|p| p.picture_url.as_deref())
-            .filter(|url| !url.is_empty());
-        let author_picture_url = real_picture
-            .map_or_else(|| picture_placeholder(&event.author), str::to_owned);
-        // NIP-18 kind:6: the repost's `content` field carries the verbatim
-        // stringified inner event JSON. The view layer used to parse this in
-        // Swift (`innerEventField` in `NoteRowView.swift` / `ThreadNoteRow`),
-        // which violated the thin-shell rule — protocol decoding in the UI.
-        // We resolve it once here so the shell binds `nav_target_id` /
-        // `repost_inner_content` verbatim and never touches the JSON.
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned);
+        // NIP-18 kind:6: the repost's `content` field carries the
+        // verbatim stringified inner event JSON. We resolve it once here
+        // so the shell binds `nav_target_id` / `repost_inner_content`
+        // verbatim and never touches the JSON.
         //
-        // D1 best-effort: when `content` is empty or malformed JSON, the
-        // shell-visible fallbacks (`event.id`, `""`) match the prior Swift
-        // behaviour exactly — the "Repost" badge alone communicates state.
+        // D1 best-effort: when `content` is empty or malformed JSON,
+        // the shell-visible fallbacks (`event.id`, `""`) match prior
+        // behaviour — the "Repost" badge alone communicates state.
         let is_repost = event.kind == 6;
         let (nav_target_id, repost_inner_content) = if is_repost {
             let (inner_id, inner_content) = parse_repost_inner(&event.content);
@@ -496,25 +487,12 @@ impl Kernel {
         TimelineItem {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
-            author_display: profile
-                .map(|profile| profile.display.clone())
-                .filter(|display| !display.is_empty())
-                .unwrap_or_else(|| short_npub(&event.author)),
             author_picture_url,
-            author_avatar_initials: profile
-                .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
-            author_avatar_color: profile
-                .map_or_else(|| avatar_color_hex(&event.author), |profile| profile.avatar_color.clone()),
-            author_avatar_source: if real_picture.is_some() {
-                "kind0".to_string()
-            } else {
-                "placeholder".to_string()
-            },
             // NIP-57 — pre-extracted lightning address / LNURL from the
-            // author's kind:0 (or `None` when no kind:0 has arrived or it
-            // carried no lud16/lud06). Surfaced here so the shell zap
+            // author's kind:0 (or `None` when no kind:0 has arrived or
+            // it carried no lud16/lud06). Surfaced here so the shell zap
             // button toggles enabled/disabled without a separate profile
-            // lookup. Thin-shell: Rust decides zapability.
+            // lookup. Rust decides zapability.
             author_lnurl: profile.and_then(|p| p.lnurl.clone()),
             kind: event.kind,
             content: truncate(&event.content, 1_200),
@@ -523,19 +501,9 @@ impl Kernel {
             } else {
                 truncate(&event.content.replace('\n', " "), 180)
             },
-            // `format_timestamp` is `#[cfg(feature = "native")]` — the
-            // wall-clock display path lives in the native FFI surface. Under
-            // `--no-default-features` the snapshot still emits a valid
-            // string; only the human-readable formatting drops.
-            #[cfg(feature = "native")]
-            created_at_display: format_timestamp(event.created_at),
-            #[cfg(not(feature = "native"))]
-            created_at_display: event.created_at.to_string(),
-            // V-28 thin-shell: pre-formatted `<first 8>…<last 8>` so the
-            // Swift view layer can render the secondary author identifier
-            // and reply-banner caption without any string slicing.
-            author_pubkey_short: short_hex_display(&event.author),
-            short_id: short_hex_display(&event.id),
+            // aim.md §2 — raw Unix seconds; the presentation layer
+            // formats the relative-time label.
+            created_at: event.created_at,
             relay_count: event.relay_count,
             is_repost,
             nav_target_id,
@@ -557,45 +525,30 @@ impl Kernel {
         placeholder_about: &str,
     ) -> ProfileCard {
         let profile = self.profile_for_pubkey(pubkey);
-        // D1: picture_url is always non-empty.  Use the kind:0 URL when
-        // available; fall back to a deterministic identicon URI otherwise.
-        // ADR-0017: `source` MUST track the same selection the URL did.
-        let real_picture = profile
+        // aim.md §2 — picture URL stays `Option<String>` (no identicon
+        // placeholder substituted in NMP).
+        let picture_url = profile
             .and_then(|p| p.picture_url.as_deref())
-            .filter(|url| !url.is_empty());
-        let picture_url = real_picture
-            .map_or_else(|| picture_placeholder(pubkey), str::to_owned);
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned);
         let npub_str = npub.unwrap_or(pubkey).to_string();
-        let npub_short = profile_npub_short(&npub_str);
+        let display_name = profile
+            .map(|profile| profile.display.clone())
+            .filter(|display| !display.is_empty());
         ProfileCard {
             pubkey: pubkey.to_string(),
             npub: npub_str,
-            npub_short,
-            display: profile
-                .map(|profile| profile.display.clone())
-                .filter(|display| !display.is_empty())
-                .unwrap_or_else(|| short_npub(pubkey)),
+            display_name,
             picture_url,
             nip05: profile
                 .map(|profile| profile.nip05.clone())
                 .unwrap_or_default(),
             about: profile
                 .map_or_else(|| placeholder_about.to_string(), |profile| truncate(&profile.about.replace('\n', " "), 220)),
-            avatar_initials: profile
-                .map_or_else(|| "..".to_string(), |profile| profile.avatar_initials.clone()),
-            avatar_color: profile
-                .map_or_else(|| avatar_color_hex(pubkey), |profile| profile.avatar_color.clone()),
-            source: if real_picture.is_some() {
-                "kind0".to_string()
-            } else {
-                "placeholder".to_string()
-            },
             has_profile: profile.is_some(),
-            // NIP-57 — pre-extracted lightning address / LNURL from kind:0
-            // (lud16 preferred over lud06). `None` when no kind:0 has
-            // arrived OR the metadata had no lnurl. The shell shows / hides
-            // the zap affordance based on this field — Rust decides
-            // zapability, Swift renders it (aim.md §6.9).
+            // NIP-57 — pre-extracted lightning address / LNURL from
+            // kind:0 (lud16 preferred over lud06). `None` when no
+            // kind:0 has arrived OR the metadata had no lnurl.
             lnurl: profile.and_then(|p| p.lnurl.clone()),
         }
     }
@@ -662,9 +615,13 @@ impl Kernel {
         })
     }
 
-    /// Returns the accounts list enriched with profile picture URLs and real
-    /// display names from cached kind:0 metadata. The base `AccountSummary`
-    /// (built in the identity layer) doesn't see profile data; we patch here.
+    /// Returns the accounts list enriched with profile picture URLs and
+    /// real display names from cached kind:0 metadata. The base
+    /// `AccountSummary` (built in the identity layer) doesn't see profile
+    /// data; we patch here. Per aim.md §2 the patched fields stay
+    /// `Option<String>` — when kind:0 carries no display name or no
+    /// picture, the field stays `None` and the presentation layer chooses
+    /// its own fallback.
     pub(super) fn accounts_enriched(&self) -> Vec<AccountSummary> {
         let (accounts, _) = self.account_snapshot();
         accounts
@@ -678,18 +635,7 @@ impl Kernel {
                         .filter(|url| !url.is_empty());
                     acc.picture_url = real_picture.map(str::to_owned);
                     if !profile.display.is_empty() {
-                        acc.display_name = profile.display.clone();
-                        // V-26 — `avatar_initials` is derived from
-                        // `display_name`; recompute here so the placeholder
-                        // initials (npub-body fallback computed in
-                        // `actor::commands::identity`) flip to the real-name
-                        // initials when kind:0 lands. Otherwise the avatar
-                        // shows e.g. `"AB"` from the bech32 body while the
-                        // row text reads `"Alice Smith"`. `avatar_color_hex`
-                        // is derived from the immutable hex pubkey (`id`)
-                        // and stays valid.
-                        acc.avatar_initials =
-                            super::account_avatar_initials(&acc.display_name, &acc.npub);
+                        acc.display_name = Some(profile.display.clone());
                     }
                 }
                 acc
@@ -808,24 +754,34 @@ impl Kernel {
     }
 
     /// Build the `mention_profiles` projection from a slice of timeline
-    /// items.  Maps `author_pubkey -> MentionProfilePayload` using the same
-    /// per-author fields the timeline already carries — first writer wins
-    /// on collision (mirroring the Swift `Dictionary(uniquingKeysWith:)` it
-    /// replaces). The shell binds the resulting map directly into its
-    /// `NoteRenderContext` (aim.md §4.2: derived views are kernel output).
+    /// items. Maps `author_pubkey -> MentionProfilePayload` joining
+    /// against the kind:0 profile cache. First writer wins on collision
+    /// (mirroring the Swift `Dictionary(uniquingKeysWith:)` it replaces).
+    /// Per aim.md §2, every payload field that depends on kind:0 is
+    /// `Option<String>` — `None` when no kind:0 has arrived for this
+    /// author.
     pub(super) fn mention_profiles_from_items(
+        &self,
         items: &[TimelineItem],
     ) -> std::collections::HashMap<String, MentionProfilePayload> {
         let mut out: std::collections::HashMap<String, MentionProfilePayload> =
             std::collections::HashMap::new();
         for item in items {
-            out.entry(item.author_pubkey.clone())
-                .or_insert_with(|| MentionProfilePayload {
-                    display: item.author_display.clone(),
-                    picture_url: item.author_picture_url.clone(),
-                    avatar_initials: item.author_avatar_initials.clone(),
-                    avatar_color: item.author_avatar_color.clone(),
-                });
+            out.entry(item.author_pubkey.clone()).or_insert_with(|| {
+                let profile = self.profile_for_pubkey(&item.author_pubkey);
+                let display_name = profile
+                    .map(|p| p.display.clone())
+                    .filter(|d| !d.is_empty());
+                let picture_url = profile
+                    .and_then(|p| p.picture_url.as_deref())
+                    .filter(|url| !url.is_empty())
+                    .map(str::to_owned);
+                MentionProfilePayload {
+                    pubkey: item.author_pubkey.clone(),
+                    display_name,
+                    picture_url,
+                }
+            });
         }
         out
     }
@@ -919,53 +875,6 @@ mod repost_inner_tests {
         let (id, content) = parse_repost_inner(raw);
         assert_eq!(id.as_deref(), Some("x"));
         assert_eq!(content.as_deref(), Some("y"));
-    }
-}
-
-/// Truncate an `npub`-or-hex pubkey string to the compact display form the
-/// profile card shows next to the copy button: `<first10>…<last8>`. Values
-/// short enough that truncation would not help are returned unchanged. This
-/// mirrors the policy the Swift `truncatedNpub` helper used to own — Rust
-/// owns the display string now (aim.md §6.9, Chirp thin-shell).
-fn profile_npub_short(value: &str) -> String {
-    let count = value.chars().count();
-    if count <= 20 {
-        return value.to_string();
-    }
-    let prefix: String = value.chars().take(10).collect();
-    let suffix: String = value
-        .chars()
-        .rev()
-        .take(8)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("{prefix}…{suffix}")
-}
-
-#[cfg(test)]
-mod npub_short_tests {
-    use super::profile_npub_short;
-
-    #[test]
-    fn short_value_returned_verbatim() {
-        assert_eq!(profile_npub_short("abc"), "abc");
-        assert_eq!(profile_npub_short(""), "");
-    }
-
-    #[test]
-    fn boundary_value_at_20_chars_kept() {
-        let twenty = "a".repeat(20);
-        assert_eq!(profile_npub_short(&twenty), twenty);
-    }
-
-    #[test]
-    fn long_hex_truncated_first10_last8_with_ellipsis() {
-        let hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        let out = profile_npub_short(hex);
-        assert_eq!(out, "0123456789…89abcdef");
-        assert!(out.contains('…'));
     }
 }
 

@@ -205,15 +205,16 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
     // pubkey-less placeholder no matter what kind:0 arrives.
     kernel.active_account = Some(ACCOUNT.to_string());
 
-    // Cold snapshot: no kind:0 → placeholder card with the identicon source.
-    // D0: the profile card is no longer a typed `KernelSnapshot.profile`
-    // field — it is a built-in entry in the `projections` map under the
-    // key `"profile"`.
+    // Cold snapshot: no kind:0 → display_name / picture_url are `null`
+    // (aim.md §2 — presentation layer owns the missing-kind:0 fallback).
     let before = snapshot(&mut kernel);
-    assert_eq!(
-        before["projections"]["profile"]["source"].as_str(),
-        Some("placeholder"),
-        "before any kind:0 the profile card source must be `placeholder`",
+    assert!(
+        before["projections"]["profile"]["display_name"].is_null(),
+        "before any kind:0 the profile card display_name must be null",
+    );
+    assert!(
+        before["projections"]["profile"]["picture_url"].is_null(),
+        "before any kind:0 the profile card picture_url must be null",
     );
 
     // Ingest a kind:0 carrying real metadata.
@@ -232,9 +233,9 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
     let after = snapshot(&mut kernel);
     let card = &after["projections"]["profile"];
     assert_eq!(
-        card["display"].as_str(),
+        card["display_name"].as_str(),
         Some("Satoshi"),
-        "kind:0 display_name must be projected into profile.display",
+        "kind:0 display_name must be projected into profile.display_name",
     );
     assert_eq!(
         card["picture_url"].as_str(),
@@ -245,11 +246,6 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
         card["nip05"].as_str(),
         Some("sat@example.com"),
         "kind:0 nip05 must be projected into profile.nip05",
-    );
-    assert_eq!(
-        card["source"].as_str(),
-        Some("kind0"),
-        "with a real picture the card source must flip to `kind0` (ADR-0017)",
     );
     // The diagnostic profile counter must agree.
     assert_eq!(
@@ -300,7 +296,7 @@ fn profile_card_projects_pending_kind0_publish_intent_after_restart() {
 
     let snap = snapshot(&mut kernel);
     assert_eq!(
-        snap["projections"]["profile"]["display"].as_str(),
+        snap["projections"]["profile"]["display_name"].as_str(),
         Some("Pending Profile"),
         "pending kind:0 publish intent must survive kernel reconstruction"
     );
@@ -571,23 +567,26 @@ fn author_view_carries_note_count_display_string() {
 /// `profile.npub_short` is the truncated copy-button form — Rust owns the
 /// truncation policy (`<first10>…<last8>`), no Swift `truncatedNpub` helper.
 #[test]
-fn profile_card_carries_npub_short() {
+fn profile_card_carries_raw_pubkey_and_npub() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
 
     let snap = snapshot(&mut kernel);
     let profile = &snap["projections"]["profile"];
-    let npub_short = profile["npub_short"]
-        .as_str()
-        .expect("profile.npub_short must be a string");
-    assert!(
-        !npub_short.is_empty(),
-        "npub_short must be populated when an active account is set"
+    assert_eq!(
+        profile["pubkey"].as_str(),
+        Some(ACCOUNT),
+        "profile.pubkey must carry the raw hex (aim.md §2)"
     );
-    // ACCOUNT is a 64-hex pubkey, well over the 20-char no-op threshold.
+    // npub stays for shells without a bech32 encoder; presentation owns
+    // the abbreviation policy.
     assert!(
-        npub_short.contains('…'),
-        "long pubkey must be truncated with an ellipsis: {npub_short}"
+        profile["npub"].as_str().is_some(),
+        "profile.npub must carry the bech32 encoding"
+    );
+    assert!(
+        profile.get("npub_short").is_none(),
+        "npub_short field was removed by aim.md §2 — shells own abbreviation"
     );
 }
 
@@ -610,10 +609,12 @@ fn mention_profiles_projection_carries_each_author_in_author_view() {
         !entry.is_null(),
         "mention_profiles must carry an entry for the author of the open author-view"
     );
-    assert!(entry["display"].is_string());
-    assert!(entry["picture_url"].is_string());
-    assert!(entry["avatar_initials"].is_string());
-    assert!(entry["avatar_color"].is_string());
+    // Raw fields per aim.md §2: pubkey (hex), display_name + picture_url as Option<String>.
+    assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
+    assert!(entry["display_name"].is_null(), "no kind:0 → display_name null");
+    assert!(entry["picture_url"].is_null(), "no kind:0 → picture_url null");
+    assert!(entry.get("avatar_initials").is_none());
+    assert!(entry.get("avatar_color").is_none());
 }
 
 #[test]
@@ -649,10 +650,9 @@ fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
         !entry.is_null(),
         "mention_profiles must cover the home-timeline author with no author/thread view open"
     );
-    assert!(entry["display"].is_string());
-    assert!(entry["picture_url"].is_string());
-    assert!(entry["avatar_initials"].is_string());
-    assert!(entry["avatar_color"].is_string());
+    assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
+    assert!(entry["display_name"].is_null(), "no kind:0 → display_name null");
+    assert!(entry["picture_url"].is_null(), "no kind:0 → picture_url null");
 }
 
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar
@@ -664,13 +664,12 @@ fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
 fn timeline_item_picks_up_profile_after_later_kind0_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Note arrives first, with no profile yet → placeholder avatar source.
+    // Note arrives first, with no profile yet → author_picture_url is null.
     ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "a note");
     let before = snapshot(&mut kernel);
-    assert_eq!(
-        before["projections"]["timeline"][0]["author_avatar_source"].as_str(),
-        Some("placeholder"),
-        "before kind:0 the timeline item avatar source must be `placeholder`",
+    assert!(
+        before["projections"]["timeline"][0]["author_picture_url"].is_null(),
+        "before kind:0 the timeline item author_picture_url must be null (aim.md §2)",
     );
 
     // kind:0 for that author arrives later.
@@ -687,15 +686,18 @@ fn timeline_item_picks_up_profile_after_later_kind0_ingest() {
     kernel.ingest_profile(event);
 
     let after = snapshot(&mut kernel);
+    // The TimelineItem no longer carries `author_display` directly — the
+    // kind:0 display name surfaces via `mention_profiles` (the per-author
+    // join map).
     assert_eq!(
-        after["projections"]["timeline"][0]["author_display"].as_str(),
+        after["projections"]["mention_profiles"][ACCOUNT]["display_name"].as_str(),
         Some("Late Profile"),
-        "the timeline item must pick up the kind:0 display name in-place",
+        "the mention_profiles join must pick up the kind:0 display name in-place",
     );
     assert_eq!(
-        after["projections"]["timeline"][0]["author_avatar_source"].as_str(),
-        Some("kind0"),
-        "the timeline item avatar source must refine to `kind0` after kind:0",
+        after["projections"]["timeline"][0]["author_picture_url"].as_str(),
+        Some("https://example.com/p.png"),
+        "the timeline item author_picture_url must refine to the kind:0 picture after kind:0",
     );
 }
 

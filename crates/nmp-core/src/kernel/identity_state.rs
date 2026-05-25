@@ -58,21 +58,20 @@ pub fn new_active_account_slot() -> ActiveAccountSlot {
 pub(crate) struct AccountSummary {
     /// Hex pubkey — the canonical `IdentityId` (matches NDK / applesauce).
     pub(crate) id: String,
+    /// Bech32 `npub1…` encoding of `id`. Pubkey-deterministic; presentation
+    /// layer chooses how to abbreviate.
     pub(crate) npub: String,
-    /// Pre-formatted abbreviated bech32 npub (`npub1abcd…xyz`). Computed at
-    /// construction time so Swift never abbreviates npubs in-view (thin-shell
-    /// V-24; same pattern as `ProfileCard.npub_short`). The algorithm
-    /// matches `profile_npub_short` in `kernel/update.rs` byte-for-byte —
-    /// deliberate micro-duplication keeps the kernel modules decoupled
-    /// (`identity_state.rs` does not reach across into `update.rs`'s
-    /// private helpers).
-    pub(crate) npub_short: String,
-    pub(crate) display_name: String,
+    /// Display name from kind:0 (`display_name` / `displayName` / `name`,
+    /// first non-empty wins). `None` when no kind:0 has been received yet
+    /// — presentation layer chooses how to render the missing case
+    /// (typically by formatting the raw pubkey itself) — see aim.md §2.
+    pub(crate) display_name: Option<String>,
     pub(crate) signer_kind: String,
     /// `"active"` for the active account, `"idle"` otherwise.
     pub(crate) status: String,
-    /// Pre-classified, human-readable signer label (e.g. `"nsec"`, `"NIP-46"`).
-    /// Swift renders this verbatim instead of switching on `signer_kind`.
+    /// Pre-classified, human-readable signer label (e.g. `"nsec"`,
+    /// `"NIP-46"`). Free-form signer classification; the host renders this
+    /// verbatim instead of switching on `signer_kind`.
     pub(crate) signer_label: String,
     /// `true` when the signer's key material lives outside the kernel
     /// (NIP-46 bunker today, NIP-07 / hardware later). Lets native scope
@@ -80,30 +79,13 @@ pub(crate) struct AccountSummary {
     pub(crate) signer_is_remote: bool,
     /// Pre-derived `status == "active"`. Native binds this directly.
     pub(crate) is_active: bool,
-    /// Profile picture URL from kind:0 metadata. `None` when no kind:0 has
-    /// been received yet; enriched by `Kernel::accounts_enriched()` in
-    /// the snapshot builder so the toolbar avatar shows the user's real picture.
+    /// Profile picture URL from kind:0 metadata. `None` when no kind:0
+    /// has been received yet or the metadata carries no `picture` field;
+    /// enriched by `Kernel::accounts_enriched()` in the snapshot builder.
+    /// Presentation layer chooses a placeholder/identicon strategy for
+    /// the missing case (aim.md §2).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) picture_url: Option<String>,
-    /// Two-character initials for the avatar fallback (uppercase). Computed
-    /// from `display_name` (first char of the first two whitespace-separated
-    /// words), falling back to the first two chars of the bech32 body after
-    /// the `npub1` prefix, then `"??"`. V-26 — thin-shell: Swift no longer
-    /// derives initials from `displayName` in-view.
-    ///
-    /// `Kernel::accounts_enriched()` (`kernel/update.rs`) recomputes this when
-    /// kind:0 metadata replaces the placeholder `display_name`, so the
-    /// initials track the real display name once it arrives.
-    pub(crate) avatar_initials: String,
-    /// Deterministic 6-hex avatar background colour (uppercase, no `#`
-    /// prefix). Derived from the hex pubkey (`id`) via the canonical
-    /// [`crate::display::avatar_color_hex`] (V-33) — the same author
-    /// renders with the same tint across every NMP surface (DMs, NIP-29
-    /// group chat, the modular timeline, the Accounts toolbar, Marmot rows).
-    /// V-26 replaces a 6-colour Swift palette + unicode hash with the
-    /// canonical djb2 helper (one-time tint shift for every existing
-    /// account; that is the consistency fix, not a regression).
-    pub(crate) avatar_color_hex: String,
 }
 
 /// One in-flight / recently-completed publish. Per D1 (best-effort
@@ -426,74 +408,6 @@ impl super::Kernel {
 
 }
 
-/// Two-character avatar initials for an `AccountSummary`. Takes the first
-/// char of the first two whitespace-separated words of `display_name`,
-/// uppercased; if `display_name` yields nothing, falls back to the first two
-/// chars of the bech32 body following the `npub1` prefix of `npub`,
-/// uppercased; if still empty (defensive), returns `"??"`.
-///
-/// V-26 — mirrors the previous Swift `AccountSummary.avatarInitials` policy
-/// byte-for-byte so the iOS surface renders identically post-thin-shell.
-/// Distinct from [`crate::display::avatar_initials`] (which takes only an
-/// `npub` and has no display-name path); kept here because the kernel
-/// account fallback chain (display-name → npub body → `"??"`) is specific
-/// to the Accounts surface.
-pub(crate) fn account_avatar_initials(display_name: &str, npub: &str) -> String {
-    let initials: String = display_name
-        .split_whitespace()
-        .take(2)
-        .filter_map(|word| word.chars().next())
-        .map(|c| c.to_uppercase().next().unwrap_or(c))
-        .collect();
-    if !initials.is_empty() {
-        return initials;
-    }
-    let body = npub.strip_prefix("npub1").unwrap_or(npub);
-    let fallback: String = body.chars().take(2).map(|c| c.to_ascii_uppercase()).collect();
-    if fallback.is_empty() {
-        "??".to_string()
-    } else {
-        fallback
-    }
-}
-
-/// Deterministic 6-hex avatar background colour for an `AccountSummary` —
-/// delegates to the canonical [`crate::display::avatar_color_hex`] (V-33)
-/// so the Accounts toolbar tint stays byte-identical to every other NMP
-/// surface (DMs, NIP-29 group chat, the modular timeline, Marmot rows).
-///
-/// V-26 — replaces a 6-colour Swift palette + unicode-scalar hash that
-/// differed from every other surface (so the same author rendered with a
-/// different tint in the Accounts toolbar vs. DMs vs. group chat). Cross-
-/// surface consistency is the fix; one-time tint shift for every existing
-/// account on first run is documented in `docs/BACKLOG.md` V-26.
-pub(crate) fn account_avatar_color_hex(pubkey_hex: &str) -> String {
-    crate::display::avatar_color_hex(pubkey_hex)
-}
-
-/// Abbreviated npub: `<first10>…<last8>` for values longer than 20 chars;
-/// the value verbatim otherwise. Mirrors the `profile_npub_short` policy
-/// in `kernel/update.rs` byte-for-byte. Lives here (not as a re-import)
-/// so `identity_state.rs` does not depend on a private helper inside the
-/// sibling `update.rs` — keeps the kernel modules independently testable
-/// and respects the V-22 precedent of accepting a single line of micro-
-/// duplication over a cross-module coupling.
-pub(crate) fn account_npub_short(npub: &str) -> String {
-    let count = npub.chars().count();
-    if count <= 20 {
-        return npub.to_string();
-    }
-    let prefix: String = npub.chars().take(10).collect();
-    let suffix: String = npub
-        .chars()
-        .rev()
-        .take(8)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    format!("{prefix}…{suffix}")
-}
 
 #[cfg(test)]
 #[path = "identity_state/tests.rs"]
