@@ -41,6 +41,30 @@ class KernelBridge {
     fun chirpSnapshot(): String? = if (handle != 0L) nativeChirpSnapshot(handle) else null
 
     /**
+     * Demand-driven profile fetch claim: the UI is rendering [pubkey] under
+     * [consumerId]; the kernel batches a kind:0 REQ against the indexer lane
+     * (or the author's NIP-65 write set once known). Direct mirror of iOS
+     * `KernelHandle.claimProfile(pubkey:consumerId:)`.
+     *
+     * Idempotent — duplicate calls with the same [consumerId] are no-ops. The
+     * matching [releaseProfile] must be called when the view disappears so
+     * the kernel can reclaim the claim slot.
+     */
+    fun claimProfile(pubkey: String, consumerId: String) {
+        if (handle != 0L) nativeClaimProfile(handle, pubkey, consumerId)
+    }
+
+    /**
+     * Demand-driven profile fetch release: the UI no longer needs [pubkey]
+     * under [consumerId]. When the last consumer releases the kernel
+     * reclaims the profile-claim entry; subsequent kind:0 fetches are
+     * gated by a fresh [claimProfile].
+     */
+    fun releaseProfile(pubkey: String, consumerId: String) {
+        if (handle != 0L) nativeReleaseProfile(handle, pubkey, consumerId)
+    }
+
+    /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
      * must not store this value beyond the lifetime of this bridge.
@@ -61,5 +85,7 @@ class KernelBridge {
     private external fun nativeStop(handle: Long)
     private external fun nativeNextUpdate(handle: Long): String?
     private external fun nativeChirpSnapshot(handle: Long): String?
+    private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
+    private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeFree(handle: Long)
 }

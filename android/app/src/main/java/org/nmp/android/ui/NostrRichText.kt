@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -44,6 +45,16 @@ fun NostrRichText(
         Text(content, modifier = modifier, style = MaterialTheme.typography.bodyMedium)
         return
     }
+    // Demand-driven kind:0 fetch for every NIP-21 profile mention referenced
+    // by this content tree. Inline mentions render as styled spans inside a
+    // single `Text` (not individual composables), so per-mention
+    // `DisposableEffect` isn't reachable from `appendInline`; instead the
+    // tree is walked once here to collect the mention pubkey set and a
+    // single tracker claims/releases the set as a batch. The kernel's
+    // `claim_profile` is idempotent on `(pubkey, consumer_id)` so duplicate
+    // entries within the same tree are coalesced kernel-side.
+    val mentionPubkeys = remember(contentTree) { collectMentionPubkeys(contentTree) }
+    ClaimMentionProfiles(mentionPubkeys)
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -51,6 +62,41 @@ fun NostrRichText(
         contentTree.roots.forEach { index ->
             ContentNode(index, contentTree, items, cards, embedDepth)
         }
+    }
+}
+
+/**
+ * Walk every node in the content tree's arena and collect the set of
+ * 64-hex pubkeys appearing as profile mentions. Returned as a stable-sorted
+ * list so `remember(contentTree)` produces a stable key for
+ * [ClaimMentionProfiles].
+ */
+private fun collectMentionPubkeys(tree: ContentTreeWire): List<String> {
+    val set = sortedSetOf<String>()
+    tree.nodes.forEach { node ->
+        if (node is ContentWireNode.MentionNode) {
+            val id = node.uri.primaryId
+            if (id.length == 64 && id.all { ch ->
+                    ch.isDigit() || ch in 'a'..'f' || ch in 'A'..'F'
+                }) {
+                set.add(id)
+            }
+        }
+    }
+    return set.toList()
+}
+
+/**
+ * One [DisposableEffect] per mention pubkey. Hoisted out of [NostrRichText]
+ * so the surrounding `Column` stays single-purpose. Each `RememberProfileClaim`
+ * is its own composable subtree, so the claim/release lifecycle is independent
+ * per pubkey — if the tree shrinks (an edit drops one mention) only the
+ * dropped pubkey is released; the others' DisposableEffects survive.
+ */
+@Composable
+private fun ClaimMentionProfiles(pubkeys: List<String>) {
+    pubkeys.forEach { pubkey ->
+        RememberProfileClaim(pubkey, "mention-$pubkey")
     }
 }
 

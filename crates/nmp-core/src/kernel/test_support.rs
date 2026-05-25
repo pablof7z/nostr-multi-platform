@@ -95,7 +95,7 @@ impl Kernel {
                         && parsed.write.is_empty()
                         && parsed.both.is_empty();
                     let had_entry = self.mailbox_cache.known(&event.pubkey);
-                    if empty {
+                    let mailbox_mutated = if empty {
                         if had_entry {
                             self.mailbox_cache.remove(&event.pubkey);
                             self.lifecycle.enqueue_trigger(
@@ -104,6 +104,9 @@ impl Kernel {
                                     created_at: event.created_at,
                                 },
                             );
+                            true
+                        } else {
+                            false
                         }
                     } else {
                         self.mailbox_cache
@@ -114,6 +117,17 @@ impl Kernel {
                                 created_at: event.created_at,
                             },
                         );
+                        true
+                    };
+                    // Mirror the production `Kernel::on_mailbox_changed`
+                    // profile re-fetch (production: ingest/mod.rs wildcard
+                    // arm). This helper bypasses `verify_and_persist` and
+                    // therefore skips the production observer — without the
+                    // explicit call here every test driven through
+                    // `inject_replaceable_event(.., 10002, ..)` would
+                    // silently miss the Gap-2 re-fetch.
+                    if mailbox_mutated {
+                        self.refresh_profile_after_mailbox(&event.pubkey);
                     }
                     self.changed_since_emit = true;
                 }
@@ -430,6 +444,24 @@ impl Kernel {
     #[cfg(test)]
     pub(crate) fn timeline_authors_for_test(&self) -> &std::collections::BTreeSet<String> {
         &self.timeline_authors
+    }
+
+    /// Read-only snapshot of `profile_requests.pending` (the queued kind:0
+    /// fetch set).
+    #[cfg(test)]
+    pub(crate) fn profile_requests_pending_for_test(
+        &self,
+    ) -> &std::collections::BTreeSet<String> {
+        &self.profile_requests.pending
+    }
+
+    /// Read-only snapshot of `profile_requests.requested` (the inflight /
+    /// completed kind:0 fetch set).
+    #[cfg(test)]
+    pub(crate) fn profile_requests_requested_for_test(
+        &self,
+    ) -> &std::collections::HashSet<String> {
+        &self.profile_requests.requested
     }
 }
 

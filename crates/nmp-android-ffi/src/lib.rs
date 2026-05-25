@@ -31,8 +31,9 @@ use nmp_app_chirp::{
     nmp_app_chirp_unregister, ChirpHandle,
 };
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_free, nmp_app_new,
-    nmp_app_open_timeline, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_free,
+    nmp_app_new, nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback,
+    nmp_app_start, nmp_app_stop, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -194,6 +195,58 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeChirpSnapshot<'l>
     }
 }
 
+/// Demand-driven profile fetch claim: the UI is rendering `pubkey` under
+/// `consumer_id`; the kernel batches a kind:0 REQ against the indexer lane
+/// (or the author's NIP-65 write set once known). Same contract as the iOS
+/// `nmp_app_claim_profile` symbol; calls through to it directly.
+///
+/// D6 — null/invalid argument is a silent no-op. Non-hex pubkeys are
+/// dropped by the underlying `nmp_app_claim_profile` (the kernel's hex
+/// gate guards correctness across all FFI surfaces).
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+    consumer_id: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+}
+
+/// Demand-driven profile fetch release: the UI no longer needs `pubkey`
+/// under `consumer_id`. When the last consumer releases, the kernel
+/// reclaims the entry from `profile_claims`. Same contract as the iOS
+/// `nmp_app_release_profile` symbol.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+    consumer_id: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+}
+
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
     _env: JNIEnv,
@@ -224,6 +277,16 @@ pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
         // until nativeFree; Kotlin never calls after free.
         Some(unsafe { &*(handle as *const Session) })
     }
+}
+
+/// Copy a Java `JString` into an owned `CString` ready for handing across the
+/// C-ABI seam. Returns `None` if the `JString` was null or the JNI fetch
+/// failed; `nmp_app_*` shims downstream of this treat `None` as a silent
+/// no-op (D6).
+fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CString> {
+    let java_str = env.get_string(value).ok()?;
+    let owned = java_str.to_string_lossy().into_owned();
+    CString::new(owned).ok()
 }
 
 fn seed_chirp_reference_relays(app: *mut NmpApp) {
