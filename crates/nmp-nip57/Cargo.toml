@@ -11,6 +11,11 @@ nmp-core = { path = "../nmp-core" }
 # `nmp-core::ffi` in step 11-final). `register_actions` takes
 # `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
 nmp-ffi = { path = "../nmp-ffi" }
+# V-43: zap-pay chain — after fetching the bolt11, `FetchLnurlInvoiceCommand`
+# auto-dispatches `WalletPayInvoiceCommand` using the process-global
+# `active_wallet_runtime()`. The correlation_id threads through so the
+# `nmp.nip57.zap` action closes on kind:23195 confirmation, not on bolt11 fetch.
+nmp-nip47 = { path = "../nmp-nip47" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # LNURL-pay fetcher dependencies (V-41). The fetcher runs on

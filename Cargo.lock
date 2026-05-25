@@ -4073,6 +4073,7 @@ dependencies = [
  "bech32",
  "nmp-core",
  "nmp-ffi",
+ "nmp-nip47",
  "nostr",
  "serde",
  "serde_json",
