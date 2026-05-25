@@ -418,39 +418,166 @@ pre,
   outline-offset: 1px;
 }
 
-/* Screenshots --------------------------------------------------------- */
+/* Platform switcher --------------------------------------------------- */
+
+.platform-bar {
+  display: flex;
+  gap: 0;
+  margin: 1.25rem 0 1.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.platform-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0.35rem 0.35rem 0 0;
+  color: var(--fg-muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.1s ease, border-color 0.1s ease;
+}
+.platform-tab:hover:not(:disabled) {
+  color: var(--fg);
+}
+.platform-tab--active {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+.platform-tab--soon {
+  cursor: default;
+  opacity: 0.4;
+}
+.platform-tab__badge {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+
+.soon-note {
+  color: var(--fg-subtle);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+/* Screenshots / device mockup ----------------------------------------- */
 
 .screenshots {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  justify-content: flex-start;
   margin: 0.5rem 0 2rem;
 }
-.screenshot {
-  aspect-ratio: 16 / 10;
-  border-radius: 0.5rem;
+
+/* Phone shell */
+.device-mockup {
+  position: relative;
+  width: 260px;
+  background: #141414;
+  border-radius: 44px;
+  padding: 52px 8px 36px;
+  box-shadow:
+    0 0 0 1px #3a3a3a,
+    0 0 0 2px #1c1c1c,
+    0 8px 40px rgba(0, 0, 0, 0.55);
+  flex-shrink: 0;
+}
+
+/* Volume buttons (left side) */
+.device-mockup::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 100px;
+  width: 3px;
+  height: 34px;
+  background: #2a2a2a;
+  border-radius: 2px 0 0 2px;
+  box-shadow: 0 44px 0 #2a2a2a, 0 -52px 0 #2a2a2a;
+}
+
+/* Power button (right side) */
+.device-mockup::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: 120px;
+  width: 3px;
+  height: 60px;
+  background: #2a2a2a;
+  border-radius: 0 2px 2px 0;
+}
+
+/* Dynamic Island pill */
+.device-mockup__island {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90px;
+  height: 28px;
+  background: #000;
+  border-radius: 14px;
+}
+
+/* Screen area — fixed iPhone 14 aspect ratio */
+.device-mockup__screen {
+  aspect-ratio: 9 / 19.5;
+  background: #000;
+  border-radius: 32px;
   overflow: hidden;
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
   position: relative;
 }
-.screenshot img {
+
+.device-mockup__screen img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: top center;
   display: block;
 }
-.screenshot--placeholder {
+
+/* Home indicator bar */
+.device-mockup__home {
+  width: 100px;
+  height: 4px;
+  background: #4a4a4a;
+  border-radius: 2px;
+  margin: 10px auto 0;
+}
+
+/* Placeholder inside the screen */
+.device-mockup__placeholder {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 1rem;
-  border: 1px dashed var(--border-strong);
-  background: var(--bg-muted);
   color: var(--fg-subtle);
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   line-height: 1.45;
+  background: var(--bg-muted);
+}
+
+/* Standalone placeholder (no screenshots at all) */
+.screenshots > .device-mockup__placeholder {
+  width: 260px;
+  min-height: 200px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 0.5rem;
 }
 
 /* Tabs + code blocks -------------------------------------------------- */
