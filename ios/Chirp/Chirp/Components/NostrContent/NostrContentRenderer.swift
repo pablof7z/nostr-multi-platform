@@ -1,6 +1,6 @@
 import SwiftUI
 
-public struct NostrContentCallbacks {
+public struct NostrContentCallbacks: @unchecked Sendable {
     public var onMentionTap: (String) -> Void
     public var onHashtagTap: (String) -> Void
     public var onLinkTap: (URL) -> Void
@@ -24,7 +24,7 @@ public struct NostrContentCallbacks {
     }
 }
 
-public struct NostrContentRenderer {
+public struct NostrContentRenderer: @unchecked Sendable {
     public var textColor: Color
     public var secondaryTextColor: Color
     public var mentionColor: Color
