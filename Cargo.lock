@@ -939,6 +939,7 @@ dependencies = [
  "ratatui",
  "rexpect",
  "serde_json",
+ "ureq",
  "vt100",
 ]
 

@@ -320,7 +320,11 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
         },
         "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
         "Reply" => state.start_reply(),
-        "Zap" => state.status = "Connect wallet first (:wallet connect \u{2026})".to_string(),
+        "Zap" => {
+            state.status =
+                "use :zap <lightning-address> <sats> [comment] (requires :wallet connect first)"
+                    .to_string()
+        }
         _ => {}
     }
 }

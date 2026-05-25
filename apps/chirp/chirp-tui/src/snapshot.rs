@@ -15,7 +15,12 @@ impl SharedSnapshot {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
         };
-        Self::from_value(&value)
+        // Snapshots arrive wrapped as `{"t":"snapshot","v":<snapshot>}` —
+        // `KernelSnapshot` (metrics/projections/last_error_toast) lives
+        // under `v`. The `or_else` keeps backwards compatibility with raw
+        // snapshot fixtures used in tests.
+        let root = value.get("v").unwrap_or(&value);
+        Self::from_value(root)
     }
 
     fn from_value(value: &Value) -> Self {
@@ -251,5 +256,45 @@ mod tests {
         assert_eq!(snapshot.interests[0].cache_coverage, "live");
         assert_eq!(snapshot.action_results[0].correlation_id, "corr-1");
         assert_eq!(snapshot.action_stages[0].stage, "publishing");
+    }
+
+    /// Real-world payloads arrive wrapped as `{"t":"snapshot","v":<snapshot>}`.
+    /// The parser must reach into `v` so `projections`/`metrics` resolve.
+    #[test]
+    fn unwraps_snapshot_envelope_when_present() {
+        let payload = serde_json::json!({
+            "t": "snapshot",
+            "v": {
+                "metrics": {
+                    "events_rx": 7,
+                    "visible_items": 0,
+                    "actor_queue_depth": 0,
+                    "update_sequence": 3
+                },
+                "projections": {
+                    "relay_diagnostics": {
+                        "relays": [{
+                            "short_url": "relay.example",
+                            "role_label": "Read",
+                            "connection_label": "Open",
+                            "active_sub_count": 1,
+                            "total_events_display": "7",
+                            "last_event_display": null,
+                            "last_error": null
+                        }],
+                        "interests": []
+                    },
+                    "action_results": [],
+                    "action_stages": {}
+                }
+            }
+        })
+        .to_string();
+
+        let snapshot = SharedSnapshot::from_payload(&payload);
+
+        assert_eq!(snapshot.metrics.events_rx, 7);
+        assert_eq!(snapshot.relays.len(), 1);
+        assert_eq!(snapshot.relays[0].short_url, "relay.example");
     }
 }
