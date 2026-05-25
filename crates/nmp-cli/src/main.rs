@@ -16,6 +16,7 @@
 //! is deterministic. See `docs/cli.md`.
 
 mod component;
+mod export;
 mod gen;
 mod init;
 
@@ -38,6 +39,13 @@ fn run() -> Result<(), String> {
         Some("gen") => gen::run(&args[1..]),
         Some("add") => component::run_add(&args[1..]),
         Some("update") => component::run_update(&args[1..]),
+        Some("export") => {
+            match args.get(1).map(String::as_str) {
+                Some("jsrepo") => export::run(&args[2..]),
+                Some(other) => Err(format!("unknown export target `{other}`; try `jsrepo`")),
+                None => Err("usage: nmp export <target>  (e.g. jsrepo)".to_string()),
+            }
+        }
         Some("--help") | Some("-h") | Some("help") | None => {
             println!("{}", help());
             Ok(())
@@ -69,6 +77,13 @@ fn help() -> String {
         "      Files that match their lock baseline are overwritten and the lock",
         "      hash + version are refreshed. Files with local edits are reported",
         "      as conflicts and left untouched.",
+        "",
+        "  nmp export jsrepo [--output DIR] [--registry DIR]",
+        "      Emit a jsrepo/shadcn-compatible registry.json (full index) plus",
+        "      per-component r/<slug>.json files into DIR (default current",
+        "      directory). File content is inlined so consumers need no extra",
+        "      requests. Commit the output to web/registry/public/ to serve",
+        "      the live registry at https://nmpui.f7z.io.",
     ]
     .join("\n")
 }
