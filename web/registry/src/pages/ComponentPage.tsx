@@ -16,6 +16,8 @@ export default function ComponentPage() {
     <Show when={component()} fallback={<NotFound />}>
       {(c) => {
         const cmp = c();
+        const language: "swift" | "kotlin" =
+          cmp.target === "compose" ? "kotlin" : "swift";
         const tabs = cmp.files.map((file) => ({
           id: file.target,
           label: file.target.split("/").pop() ?? file.target,
@@ -23,7 +25,7 @@ export default function ComponentPage() {
             <CodeBlock
               source={file.content}
               filePath={file.target}
-              language="swift"
+              language={language}
             />
           ),
         }));

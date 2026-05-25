@@ -318,6 +318,79 @@ fn add_component_dependency_order() {
     );
 }
 
+#[test]
+fn add_component_installs_compose_content_core() {
+    let tmp = TempDir::new("compose-content-core");
+
+    let out = nmp(tmp.path(), &["add", "component", "compose/content-core"]);
+    assert!(
+        out.status.success(),
+        "nmp add component compose/content-core failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/ContentTreeWire.kt")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"compose/content-core\""));
+    assert!(lock.contains("ContentTreeWire.kt"));
+    assert!(lock.contains("NostrContentRenderer.kt"));
+}
+
+#[test]
+fn add_component_installs_compose_content_view_with_deps() {
+    let tmp = TempDir::new("compose-content-view");
+
+    let out = nmp(tmp.path(), &["add", "component", "compose/content-view"]);
+    assert!(
+        out.status.success(),
+        "nmp add component compose/content-view failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Direct sources.
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentView.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentGrouping.kt")
+        .exists());
+
+    // Transitive dependencies pulled by the resolver.
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/ContentTreeWire.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrMediaGrid.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrQuoteCard.kt")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"compose/content-core\""));
+    assert!(lock.contains("id = \"compose/content-media-grid\""));
+    assert!(lock.contains("id = \"compose/content-quote-card\""));
+    assert!(lock.contains("id = \"compose/content-view\""));
+    assert!(lock.contains("source_sha256 = \""));
+}
+
 /// The previous toy `swiftui/content-minimal` must remain installable so apps
 /// that adopted it keep working.
 #[test]
