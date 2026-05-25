@@ -5,115 +5,13 @@
 //! are reported as conflicts and left alone — that promise is the entire
 //! reason the lock records `source_sha256` in the first place.
 
+mod helpers;
+
+use helpers::{
+    bump_registry_version, nmp, overwrite_registry_file, read_lock_field, sha256_hex_of,
+    write_registry, TempDir,
+};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-const NMP: &str = env!("CARGO_BIN_EXE_nmp");
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let mut path = std::env::temp_dir();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        path.push(format!("nmp-cli-update-{tag}-{nanos}"));
-        fs::create_dir_all(&path).unwrap();
-        TempDir(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn nmp(cwd: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(NMP)
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .expect("run nmp")
-}
-
-/// Write a small synthetic registry the update test can mutate freely.
-/// The shape mirrors `crates/nmp-cli/registry/registry.toml` but stays
-/// out-of-tree so a test can change the "upstream" source content and
-/// version between install and update.
-fn write_registry(root: &Path, version: &str, files: &[(&str, &str, &str)]) -> PathBuf {
-    let registry_dir = root.join("registry");
-    fs::create_dir_all(&registry_dir).unwrap();
-    fs::create_dir_all(registry_dir.join("widget")).unwrap();
-
-    let mut manifest = String::from("schema_version = 1\nregistry_id = \"test-registry\"\n\n");
-    manifest.push_str("[[components]]\n");
-    manifest.push_str("id = \"widget/sample\"\n");
-    manifest.push_str(&format!("version = \"{version}\"\n"));
-    manifest.push_str("target = \"swiftui\"\n");
-    manifest.push_str("description = \"test component\"\n");
-    for (source, target, role) in files {
-        manifest.push_str("\n[[components.files]]\n");
-        manifest.push_str(&format!("source = \"{source}\"\n"));
-        manifest.push_str(&format!("target = \"{target}\"\n"));
-        manifest.push_str(&format!("role = \"{role}\"\n"));
-    }
-    fs::write(registry_dir.join("registry.toml"), manifest).unwrap();
-
-    for (source, _target, _role) in files {
-        let source_path = registry_dir.join(source);
-        if let Some(parent) = source_path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        // Initial content is the source path itself — a deterministic
-        // baseline the test can flip to a new value to simulate upstream
-        // changing.
-        fs::write(source_path, format!("// upstream v{version}: {source}\n")).unwrap();
-    }
-    registry_dir
-}
-
-fn overwrite_registry_file(registry_dir: &Path, source: &str, content: &str) {
-    fs::write(registry_dir.join(source), content).unwrap();
-}
-
-fn bump_registry_version(registry_dir: &Path, new_version: &str) {
-    let manifest_path = registry_dir.join("registry.toml");
-    let manifest = fs::read_to_string(&manifest_path).unwrap();
-    // Replace the first `version = "..."` line — the test manifest only
-    // contains one component, so this is unambiguous.
-    let mut out = String::new();
-    let mut replaced = false;
-    for line in manifest.lines() {
-        if !replaced && line.starts_with("version = ") {
-            out.push_str(&format!("version = \"{new_version}\"\n"));
-            replaced = true;
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    fs::write(&manifest_path, out).unwrap();
-}
-
-fn read_lock_field(lock: &str, key: &str) -> Vec<String> {
-    lock.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            let prefix = format!("{key} = \"");
-            line.strip_prefix(&prefix)
-                .and_then(|rest| rest.strip_suffix('"'))
-                .map(ToOwned::to_owned)
-        })
-        .collect()
-}
 
 #[test]
 fn update_overwrites_untouched_file_and_refreshes_lock() {
@@ -351,10 +249,150 @@ fn update_rejects_unknown_component() {
     );
 }
 
-fn sha256_hex_of(content: &str) -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(content.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+// -----------------------------------------------------------------------------
+// Edge-case coverage
+// -----------------------------------------------------------------------------
+
+/// Deleting an installed file is a user choice that must NOT be silently
+/// undone by `nmp update`. The update treats `read_to_string` failures as
+/// conflicts so the file is left absent + reported.
+///
+/// Without this gate, a user who removed a component file for a reason
+/// (e.g. cherry-picked just the example out, deleted the rest) would have
+/// their work silently re-created the next time they tracked upstream.
+#[test]
+fn update_reports_conflict_for_deleted_file() {
+    let tmp = TempDir::new("deleted");
+    let app = tmp.path().join("app");
+    fs::create_dir_all(&app).unwrap();
+
+    let registry = write_registry(
+        tmp.path(),
+        "0.1.0",
+        &[("widget/sample/A.swift", "A.swift", "source")],
+    );
+
+    let install = nmp(
+        &app,
+        &[
+            "add",
+            "component",
+            "widget/sample",
+            "--registry",
+            registry.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        install.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&install.stderr)
+    );
+    let installed = app.join("A.swift");
+    assert!(installed.exists());
+
+    // User deletes the file deliberately.
+    fs::remove_file(&installed).unwrap();
+
+    // Upstream still advances.
+    overwrite_registry_file(&registry, "widget/sample/A.swift", "// upstream v2\n");
+    bump_registry_version(&registry, "0.2.0");
+
+    let out = nmp(
+        &app,
+        &[
+            "update",
+            "component",
+            "widget/sample",
+            "--registry",
+            registry.to_str().unwrap(),
+        ],
+    );
+    // Conflicts are non-fatal — exit 0 with a report.
+    assert!(
+        out.status.success(),
+        "update should succeed (conflicts are non-fatal): {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("conflict") && stdout.contains("A.swift"),
+        "deleted file must be flagged as a conflict, got stdout: {stdout}"
+    );
+    assert!(stdout.contains("updated 0"), "stdout: {stdout}");
+    assert!(stdout.contains("1 conflicts"), "stdout: {stdout}");
+
+    // File MUST stay deleted — the user's choice was load-bearing.
+    assert!(
+        !installed.exists(),
+        "deleted file must NOT be re-created on update"
+    );
+}
+
+/// After a clean update (the on-disk file matched the lock's baseline), the
+/// lock's `source_sha256` must equal `sha256(new file content)` exactly.
+///
+/// The previous untouched-refresh test asserts on a constant string; this
+/// one asserts the derived invariant directly off whatever is on disk after
+/// the update, so a future change to how `update_one_file` writes content
+/// (line-ending normalisation, BOM stripping, etc.) trips the gate.
+#[test]
+fn update_writes_updated_sha256_in_lock() {
+    let tmp = TempDir::new("sha256");
+    let app = tmp.path().join("app");
+    fs::create_dir_all(&app).unwrap();
+
+    let registry = write_registry(
+        tmp.path(),
+        "0.1.0",
+        &[("widget/sample/A.swift", "A.swift", "source")],
+    );
+
+    let install = nmp(
+        &app,
+        &[
+            "add",
+            "component",
+            "widget/sample",
+            "--registry",
+            registry.to_str().unwrap(),
+        ],
+    );
+    assert!(install.status.success());
+
+    // Upstream ships a new revision with content the test gets to pick, so
+    // the sha is derived from a known string.
+    let new_content = "// upstream A — refreshed body\n";
+    overwrite_registry_file(&registry, "widget/sample/A.swift", new_content);
+    bump_registry_version(&registry, "0.2.0");
+
+    let out = nmp(
+        &app,
+        &[
+            "update",
+            "component",
+            "widget/sample",
+            "--registry",
+            registry.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "update failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Read what landed on disk and hash it; then read the lock and compare.
+    // We deliberately hash the on-disk content (not the upstream string)
+    // so the invariant being asserted is "the lock describes what the user
+    // would re-hash to detect drift on the NEXT update".
+    let on_disk = fs::read_to_string(app.join("A.swift")).unwrap();
+    let expected = sha256_hex_of(&on_disk);
+
+    let lock = fs::read_to_string(app.join("nmp.components.lock")).unwrap();
+    let hashes = read_lock_field(&lock, "source_sha256");
+    assert_eq!(hashes.len(), 1, "expected exactly one source_sha256 entry");
+    assert_eq!(
+        hashes[0], expected,
+        "lock's source_sha256 must match sha256(on-disk content): lock={lock}"
+    );
 }
