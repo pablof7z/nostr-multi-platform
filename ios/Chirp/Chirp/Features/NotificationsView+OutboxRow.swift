@@ -72,7 +72,7 @@ struct OutboxEventRow: View {
                         .labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(copied ? Color.green : Color.accentColor)
+                .foregroundStyle(copied ? ChirpColor.success : ChirpColor.accent)
                 .accessibilityLabel(copied ? "Copied event ID" : "Copy event ID")
             }
             .font(.callout.weight(.semibold))
@@ -83,9 +83,9 @@ struct OutboxEventRow: View {
 
     private var iconColor: Color {
         switch item.status {
-        case "retrying": return .orange
-        case "failed": return .red
-        default: return .accentColor
+        case "retrying": return ChirpColor.warning
+        case "failed": return ChirpColor.danger
+        default: return ChirpColor.accent
         }
     }
 }
@@ -117,10 +117,10 @@ struct OutboxRelayRow: View {
 
     private var statusColor: Color {
         switch relay.status {
-        case "sending", "ok": return .green
-        case "retrying", "pending": return .orange
-        case "failed": return .red
-        default: return .secondary
+        case "sending", "ok": return ChirpColor.success
+        case "retrying", "pending": return ChirpColor.warning
+        case "failed": return ChirpColor.danger
+        default: return ChirpColor.textSecondary
         }
     }
 }
@@ -142,10 +142,10 @@ struct OutboxStatusBadge: View {
 
     private var color: Color {
         switch status {
-        case "sending": return .green
-        case "retrying", "pending": return .orange
-        case "failed": return .red
-        default: return .secondary
+        case "sending": return ChirpColor.success
+        case "retrying", "pending": return ChirpColor.warning
+        case "failed": return ChirpColor.danger
+        default: return ChirpColor.textSecondary
         }
     }
 }

@@ -21,7 +21,7 @@ extension OnboardingView {
             } label: {
                 HStack {
                     Image(systemName: "qrcode")
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(ChirpColor.accent)
                     Text(showQR ? "Hide QR code" : "Show nostrconnect:// QR")
                         .font(ChirpFont.callout)
                     Spacer()
@@ -46,7 +46,7 @@ extension OnboardingView {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(.quaternary)
                             .frame(width: 200, height: 200)
-                            .overlay { ProgressView().tint(.accentColor) }
+                            .overlay { ProgressView().tint(ChirpColor.accent) }
                     }
                     Text("Scan with any NIP-46 signer app")
                         .font(ChirpFont.caption)
@@ -85,11 +85,11 @@ extension OnboardingView {
                let stage = onboarding.stageKind, stage != .idle {
                 HStack(spacing: ChirpSpace.s) {
                     if onboarding.isInFlight {
-                        ProgressView().tint(.accentColor).scaleEffect(0.8)
+                        ProgressView().tint(ChirpColor.accent).scaleEffect(0.8)
                     } else if onboarding.isTerminalSuccess {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(ChirpColor.success)
                     } else if onboarding.isFailed {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(ChirpColor.danger)
                     }
                     Text(onboarding.progressMessage ?? "")
                         .font(ChirpFont.caption)

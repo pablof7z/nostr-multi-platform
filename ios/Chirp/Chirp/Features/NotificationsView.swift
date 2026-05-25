@@ -48,7 +48,7 @@ struct NotificationsView: View {
         HStack(alignment: .center, spacing: 14) {
             Image(systemName: "paperplane.fill")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.tint)
+                .foregroundStyle(ChirpColor.accent)
                 .frame(width: 30)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -68,7 +68,7 @@ struct NotificationsView: View {
             Image(systemName: "checkmark.seal")
                 .font(.system(size: 34, weight: .light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.green)
+                .foregroundStyle(ChirpColor.success)
             Text("All published")
                 .font(.headline)
             Text("No relay acknowledgements are outstanding.")

@@ -68,7 +68,7 @@ struct DmConversationView: View {
                         ForEach(messages) { message in
                             DmMessageBubble(message: message)
                         }
-                        Color.clear.frame(height: 1).id("dm-bottom")
+                        ChirpColor.transparent.frame(height: 1).id("dm-bottom")
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 12)
@@ -115,7 +115,7 @@ struct DmConversationView: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 30))
                     .foregroundStyle(
-                        trimmedDraft.isEmpty ? Color.secondary : Color.accentColor)
+                        trimmedDraft.isEmpty ? ChirpColor.textSecondary : ChirpColor.accent)
             }
             .buttonStyle(.plain)
             .disabled(trimmedDraft.isEmpty)
@@ -152,11 +152,12 @@ private struct DmMessageBubble: View {
             VStack(alignment: outgoing ? .trailing : .leading, spacing: 2) {
                 Text(message.content)
                     .font(.body)
-                    .foregroundStyle(outgoing ? Color.white : Color.primary)
+                    .foregroundStyle(
+                        outgoing ? ChirpColor.messageOutgoingForeground : ChirpColor.messageIncomingForeground)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
-                        outgoing ? Color.accentColor : Color(.secondarySystemBackground),
+                        outgoing ? ChirpColor.messageOutgoingBackground : ChirpColor.messageIncomingBackground,
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 Text(message.createdAtDisplay)
                     .font(.caption2)

@@ -62,7 +62,7 @@ struct ProfileNoteRow: View {
                         } label: {
                             Image(systemName: likeTapped ? "heart.fill" : "heart")
                                 .font(.caption)
-                                .foregroundStyle(likeTapped ? Color.red : Color.secondary)
+                                .foregroundStyle(likeTapped ? ChirpColor.like : ChirpColor.textSecondary)
                                 .scaleEffect(likeTapped ? 1.35 : 1.0)
                                 .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
                         }

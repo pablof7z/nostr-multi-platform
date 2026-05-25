@@ -138,8 +138,8 @@ struct MarmotGroupChatView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(
                         trimmedDraft.isEmpty || sending
-                            ? Color.secondary
-                            : Color.accentColor)
+                            ? ChirpColor.textSecondary
+                            : ChirpColor.accent)
             }
             .buttonStyle(.plain)
             .disabled(trimmedDraft.isEmpty || sending)

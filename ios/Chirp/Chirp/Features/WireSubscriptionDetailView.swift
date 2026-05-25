@@ -40,19 +40,19 @@ struct WireSubscriptionDetailView: View {
                     label: "Events Rx",
                     value: sub.eventsRxDisplay ?? "—",
                     icon: "arrow.down.circle",
-                    color: .green
+                    color: ChirpColor.success
                 )
                 WireMetricTile(
                     label: "Consumers",
                     value: sub.consumerCountLabel.isEmpty ? "0" : sub.consumerCountLabel,
                     icon: "person.2",
-                    color: .accentColor
+                    color: ChirpColor.accent
                 )
                 WireMetricTile(
                     label: "EOSE",
                     value: sub.eoseObserved ? "Done" : "Pending",
                     icon: sub.eoseObserved ? "checkmark.circle.fill" : "clock",
-                    color: sub.eoseObserved ? .green : .secondary
+                    color: sub.eoseObserved ? ChirpColor.success : ChirpColor.textSecondary
                 )
             }
         }
@@ -122,7 +122,7 @@ struct WireSubscriptionDetailView: View {
                     SubDetailRow(label: "EOSE At") {
                         Text(eose)
                             .font(.body.monospaced())
-                            .foregroundStyle(.green)
+                            .foregroundStyle(ChirpColor.success)
                     }
                 }
             }
@@ -138,7 +138,7 @@ struct WireSubscriptionDetailView: View {
                 .foregroundStyle(.primary)
             Text(reason)
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(ChirpColor.danger)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)

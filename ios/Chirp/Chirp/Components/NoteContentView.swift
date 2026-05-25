@@ -94,13 +94,13 @@ struct NoteContentView: View {
             return Text(value)
         case .mention(let uri):
             let label = renderContext.mentionLabel(for: uri.primaryId)
-            return Text("@\(label)").foregroundStyle(Color.accentColor).bold()
+            return Text("@\(label)").foregroundStyle(ChirpColor.link).bold()
         case .eventRef(let uri):
-            return Text("↩ \(shortEntity(uri.primaryId))").foregroundStyle(Color.accentColor).bold()
+            return Text("↩ \(shortEntity(uri.primaryId))").foregroundStyle(ChirpColor.link).bold()
         case .hashtag(let tag):
-            return Text("#\(tag)").foregroundStyle(Color.accentColor).bold()
+            return Text("#\(tag)").foregroundStyle(ChirpColor.link).bold()
         case .url(let value):
-            return Text(value).foregroundStyle(Color.accentColor)
+            return Text(value).foregroundStyle(ChirpColor.link)
         case .emoji(let shortcode, _):
             return Text(":\(shortcode):")
         case .emphasis(let children):
@@ -160,7 +160,7 @@ struct NoteContentView: View {
                 .buttonStyle(.plain)
             case .empty:
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.secondary.opacity(0.12))
+                    .fill(ChirpColor.secondaryFill)
                     .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 120)
             default:
                 EmptyView()
@@ -234,10 +234,10 @@ enum NoteToken {
     func inlineText() -> Text {
         switch self {
         case .text(let s): return Text(s)
-        case .hashtag(let tag): return Text("#\(tag)").foregroundStyle(Color.accentColor).bold()
-        case .url(let u): return Text(u).foregroundStyle(Color.accentColor)
+        case .hashtag(let tag): return Text("#\(tag)").foregroundStyle(ChirpColor.link).bold()
+        case .url(let u): return Text(u).foregroundStyle(ChirpColor.link)
         case .mention(let bech32):
-            return Text("@\(bech32.prefix(10))…").foregroundStyle(Color.accentColor).bold()
+            return Text("@\(bech32.prefix(10))…").foregroundStyle(ChirpColor.link).bold()
         case .image, .video: return Text("")
         }
     }
@@ -287,7 +287,7 @@ private struct FullScreenImageViewer: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
+            ChirpColor.mediaBackdrop.ignoresSafeArea()
             AsyncImage(url: url) { phase in
                 if let img = phase.image {
                     img.resizable()
@@ -302,7 +302,7 @@ private struct FullScreenImageViewer: View {
                     }
                     .foregroundStyle(.secondary)
                 } else {
-                    ProgressView().tint(.white)
+                    ProgressView().tint(ChirpColor.mediaForeground)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -313,7 +313,7 @@ private struct FullScreenImageViewer: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title)
                     .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color(.systemGray3).opacity(0.7))
+                    .foregroundStyle(ChirpColor.mediaForeground, ChirpColor.mediaSecondaryForeground)
                     .padding(20)
             }
         }

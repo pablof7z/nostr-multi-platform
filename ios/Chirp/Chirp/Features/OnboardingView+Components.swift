@@ -65,7 +65,7 @@ extension OnboardingView {
             VStack(spacing: ChirpSpace.xl) {
                 Image(systemName: "person.badge.plus")
                     .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(ChirpColor.accent)
 
                 VStack(spacing: ChirpSpace.s) {
                     Text("Choose your display name")
@@ -167,7 +167,7 @@ extension OnboardingView {
         VStack(spacing: ChirpSpace.m) {
             Image(systemName: "bird.fill")
                 .font(.system(size: 48, weight: .medium))
-                .foregroundStyle(.tint)
+                .foregroundStyle(ChirpColor.accent)
 
             VStack(spacing: ChirpSpace.xs) {
                 Text("Chirp")

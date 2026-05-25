@@ -154,10 +154,10 @@ struct ThreadScreen: View {
         HStack(spacing: 4) {
             Image(systemName: "arrow.up.circle")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ChirpColor.link)
             Text(label)
                 .font(.callout)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ChirpColor.link)
             Spacer()
         }
         .padding(.vertical, 8)
@@ -181,7 +181,7 @@ struct ThreadScreen: View {
             Spacer()
                 .frame(width: 16 + (isFocused ? 46 : 38) / 2 - 1)
             Rectangle()
-                .fill(isFocused ? Color.accentColor.opacity(0.28) : Color(.separator))
+                .fill(isFocused ? ChirpColor.focusedLine : ChirpColor.hairline)
                 .frame(width: 2, height: 8)
                 .cornerRadius(1)
             Spacer()

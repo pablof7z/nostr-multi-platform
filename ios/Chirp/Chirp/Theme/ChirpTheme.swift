@@ -2,21 +2,56 @@ import SwiftUI
 
 enum ChirpColor {
     static let accent = Color.accentColor
-    static let accentSoft = Color.accentColor.opacity(0.12)
+    static let accentSoft = accent.opacity(0.12)
     static let bg = Color(.systemBackground)
     static let surface = Color(.secondarySystemBackground)
+    static let surfaceElevated = Color(.tertiarySystemBackground)
     static let hairline = Color(.separator)
+    static let hairlineSoft = hairline.opacity(0.35)
+    static let transparent = Color.clear
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
     static let textTertiary = Color(.tertiaryLabel)
-    static let positive = Color.green
-    static let zap = Color.yellow
-    static let like = Color.red
+    static let link = Color(.link)
+    static let success = Color(.systemGreen)
+    static let warning = Color(.systemOrange)
+    static let danger = Color(.systemRed)
+    static let network = Color(.systemCyan)
+    static let positive = success
+    static let zap = Color(.systemYellow)
+    static let like = Color(.systemRed)
+    static let systemFill = Color(.systemFill)
+    static let secondaryFill = Color(.secondarySystemFill)
+    static let controlDisabledBackground = textSecondary.opacity(0.2)
+    static let focusedBackground = accent.opacity(0.06)
+    static let focusedLine = accent.opacity(0.28)
+    static let messageOutgoingBackground = accent
+    static let messageIncomingBackground = surface
+    static let messageOutgoingForeground = Color(.white)
+    static let messageIncomingForeground = textPrimary
+    static let mediaBackdrop = Color(.black)
+    static let mediaForeground = Color(.white)
+    static let mediaSecondaryForeground = Color(.systemGray3).opacity(0.7)
+    static let inverseForeground = Color(.white)
+    static let emphasisForeground = Color(.white)
+    static let errorBannerBackground = danger.opacity(0.9)
 
     /// Deterministic avatar gradient from a hex color string the kernel
     /// supplies (`avatarColor`). Falls back to the accent.
     static func avatar(from hex: String) -> LinearGradient {
-        let base = Color(hex: hex) ?? accent
+        avatarGradient(base: avatarBase(from: hex))
+    }
+
+    static func avatarHeader(from hex: String?) -> LinearGradient {
+        avatarGradient(base: avatarBase(from: hex))
+    }
+
+    static func avatarBase(from hex: String?) -> Color {
+        guard let hex, let color = Color(hex: hex) else { return accent }
+        return color
+    }
+
+    private static func avatarGradient(base: Color) -> LinearGradient {
         return LinearGradient(
             colors: [base, base.opacity(0.65)],
             startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -93,7 +128,7 @@ struct ChirpAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.separator.opacity(0.35), lineWidth: 0.5))
+        .overlay(Circle().stroke(ChirpColor.hairlineSoft, lineWidth: 0.5))
     }
 }
 
@@ -163,7 +198,7 @@ extension Color {
 }
 
 /// Circular character-count progress ring for the compose sheet.
-/// Mimics Twitter/X: ring fills as limit approaches; turns red over limit.
+/// Ring fills as the limit approaches and switches to danger when over limit.
 struct ComposeProgressRing: View {
     let used: Int
     let limit: Int
@@ -174,15 +209,15 @@ struct ComposeProgressRing: View {
     private var showNumber: Bool { remaining <= 20 }
 
     private var ringColor: Color {
-        if isOver { return .red }
-        if remaining <= 20 { return .orange }
-        return .accentColor
+        if isOver { return ChirpColor.danger }
+        if remaining <= 20 { return ChirpColor.warning }
+        return ChirpColor.accent
     }
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color(.systemFill), lineWidth: 2.5)
+                .stroke(ChirpColor.systemFill, lineWidth: 2.5)
             Circle()
                 .trim(from: 0, to: fraction)
                 .stroke(ringColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
@@ -191,7 +226,7 @@ struct ComposeProgressRing: View {
             if showNumber {
                 Text("\(remaining)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(isOver ? .red : .secondary)
+                    .foregroundStyle(isOver ? ChirpColor.danger : ChirpColor.textSecondary)
                     .minimumScaleFactor(0.7)
             }
         }

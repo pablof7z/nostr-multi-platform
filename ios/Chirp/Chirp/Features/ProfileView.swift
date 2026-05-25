@@ -75,8 +75,8 @@ struct ProfileView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            (Color(hex: profile?.avatarColor ?? "7B66FF") ?? .accentColor).opacity(0.28),
-                            Color(.secondarySystemBackground)
+                            ChirpColor.avatarBase(from: profile?.avatarColor).opacity(0.28),
+                            ChirpColor.surface
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -92,7 +92,7 @@ struct ProfileView: View {
                     ChirpAvatar(
                         url: profile?.pictureUrl,
                         initials: profile?.avatarInitials ?? "?",
-                        colorHex: profile?.avatarColor ?? "7B66FF",
+                        colorHex: profile?.avatarColor ?? "",
                         size: 82
                     )
                     .padding(.top, -41)
@@ -141,7 +141,7 @@ struct ProfileView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(ChirpColor.success)
                     Text(nip05)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -201,7 +201,7 @@ struct ProfileView: View {
                     }
 
                     Capsule()
-                        .fill(.tint)
+                        .fill(ChirpColor.accent)
                         .frame(width: 36, height: 3)
                 }
                 .frame(maxWidth: .infinity)
