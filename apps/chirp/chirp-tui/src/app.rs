@@ -40,6 +40,8 @@ pub struct AppState {
     pub last_action_result: Option<ActionResult>,
     pub features: FeatureSnapshot,
     pub selected: usize,
+    pub detail_cursor: usize,
+    pub detail_scroll: u16,
     pub compose: String,
     pub reply_to: Option<String>,
     pub command: String,
@@ -66,6 +68,8 @@ impl Default for AppState {
             last_action_result: None,
             features: FeatureSnapshot::default(),
             selected: 0,
+            detail_cursor: 0,
+            detail_scroll: 0,
             compose: String::new(),
             reply_to: None,
             command: String::new(),
@@ -94,8 +98,13 @@ impl AppState {
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len);
             self.rows = TimelineRow::from_snapshot(&snapshot);
+            let previous_selected = self.selected;
             if self.selected >= self.rows.len() {
                 self.selected = self.rows.len().saturating_sub(1);
+            }
+            if self.selected != previous_selected {
+                self.detail_cursor = 0;
+                self.detail_scroll = 0;
             }
         }
         if !applied_action_result {
@@ -166,7 +175,7 @@ impl AppState {
         self.selected = self.rows.len().saturating_sub(1);
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn selected_row(&self) -> Option<&TimelineRow> {
         self.rows.get(self.selected)
     }

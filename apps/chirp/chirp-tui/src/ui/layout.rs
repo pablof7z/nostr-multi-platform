@@ -1,16 +1,15 @@
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui::Frame;
+use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::app::{AppState, Mode, Pane};
-use crate::short_id;
+use crate::app::AppState;
+use crate::app::Mode;
 use crate::features::FeatureTab;
-use crate::timeline::TimelineRow;
 use crate::ui::feature_panels;
 use crate::ui::help;
-use crate::ui::shared_snapshot_lines::{action_summary, relay_lines};
+use crate::ui::home;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     let area = frame.area();
@@ -53,154 +52,10 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 }
 
 fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    if state.tab != FeatureTab::Home {
-        feature_panels::render(frame, area, state);
-        return;
+    match state.tab {
+        FeatureTab::Home => home::render(frame, area, state),
+        _ => feature_panels::render(frame, area, state),
     }
-
-    if state.basic || area.width < 80 {
-        render_feed_panel(frame, area, state);
-        return;
-    }
-
-    if area.width < 104 {
-        let panes = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(area);
-        render_feed_panel(frame, panes[0], state);
-        render_detail_panel(frame, panes[1], state);
-        return;
-    }
-
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(28),
-            Constraint::Percentage(44),
-            Constraint::Percentage(28),
-        ])
-        .split(area);
-
-    render_feed_panel(frame, panes[0], state);
-    render_detail_panel(frame, panes[1], state);
-    render_profile_panel(frame, panes[2], state);
-}
-
-fn render_feed_panel(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let feed = Paragraph::new(feed_lines(state, area.height.saturating_sub(2) as usize))
-        .block(panel("Feed", state.focused == Pane::Feed))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(feed, area);
-}
-
-fn render_detail_panel(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let detail = Paragraph::new(detail_lines(state))
-        .block(panel("Detail", state.focused == Pane::Detail))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(detail, area);
-}
-
-fn render_profile_panel(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let profile = Paragraph::new(profile_lines(state))
-        .block(panel("Profile", state.focused == Pane::Profile))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(profile, area);
-}
-
-fn feed_lines(state: &AppState, height: usize) -> Vec<Line<'static>> {
-    let item_count = state.rows.len();
-    let selected = if item_count == 0 {
-        "0/0".to_string()
-    } else {
-        format!("{}/{}", state.selected + 1, item_count)
-    };
-    let mut lines = vec![Line::from(format!(
-        "items: {selected}  cards: {}  blocks: {}  events_rx: {}",
-        state.cards, state.blocks, state.metrics.events_rx
-    ))];
-    if state.rows.is_empty() {
-        lines.push(Line::from("Waiting for timeline events..."));
-        return lines;
-    }
-
-    let visible = height.saturating_sub(1).max(1);
-    let start = state.selected.saturating_sub(visible.saturating_sub(1) / 2);
-    for (idx, row) in state.rows.iter().enumerate().skip(start).take(visible) {
-        lines.push(render_feed_row(row, idx == state.selected));
-    }
-    lines
-}
-
-fn render_feed_row(row: &TimelineRow, selected: bool) -> Line<'static> {
-    let prefix = if selected { ">" } else { " " };
-    let indent = "  ".repeat(row.depth.min(3));
-    let gap = if row.has_gap { "*" } else { " " };
-    let text = format!(
-        "{prefix}{indent}{gap} {}  {}  [{}]",
-        row.author,
-        row.content.replace('\n', " "),
-        row.relation_counts.summary()
-    );
-    let style = if selected {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-    };
-    Line::from(Span::styled(text, style))
-}
-
-fn detail_lines(state: &AppState) -> Vec<Line<'static>> {
-    let Some(row) = state.selected_row() else {
-        return vec![
-            Line::from("Note / Thread"),
-            Line::from("Select a feed row once events arrive."),
-        ];
-    };
-    vec![
-        Line::from(row.author.clone()),
-        Line::from(format!("event {}", short_id(&row.id))),
-        Line::from(row.relation_counts.summary()),
-        Line::from(row.content.clone()),
-        Line::from(format!(
-            "visible {}  queue {}  seq {}",
-            state.metrics.visible_items,
-            state.metrics.actor_queue_depth,
-            state.metrics.update_sequence
-        )),
-        Line::from(action_summary(state)),
-        Line::from("Enter opens the full thread through NMP."),
-    ]
-}
-
-fn profile_lines(state: &AppState) -> Vec<Line<'static>> {
-    if let Some(profile) = &state.features.author_profile {
-        let mut lines = vec![
-            Line::from(profile.display.clone()),
-            Line::from(profile.note_count.clone()),
-            Line::from(profile.about.clone()),
-        ];
-        if !profile.action_label.is_empty() {
-            lines.push(Line::from(format!("action: {}", profile.action_label)));
-        }
-        lines.extend(relay_lines(state));
-        return lines;
-    }
-
-    let Some(row) = state.selected_row() else {
-        return relay_lines(state);
-    };
-    let mut lines = vec![
-        Line::from("Selected author"),
-        Line::from(row.author.clone()),
-        Line::from("p opens the full profile through NMP."),
-        Line::from(""),
-    ];
-    lines.extend(relay_lines(state));
-    lines
 }
 
 fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
@@ -265,18 +120,6 @@ fn fit_line(text: String, width: usize) -> String {
         fitted.push_str(&" ".repeat(width - len));
     }
     fitted
-}
-
-fn panel(title: &'static str, focused: bool) -> Block<'static> {
-    let style = if focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-    Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(style)
 }
 
 #[cfg(test)]
