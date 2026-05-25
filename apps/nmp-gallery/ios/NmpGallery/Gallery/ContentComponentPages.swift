@@ -118,19 +118,68 @@ struct ContentViewPage: View {
 
 // MARK: - content-mention-chip
 
+/// Inline-mention demo: a `ContentTreeWire` that renders "Hey @pablof7z,
+/// how are you?". The mention node's `primaryId` is the demo pubkey
+/// (`DEMO_PUBKEY_HEX`) and the `mentionLabel` closure looks up the live
+/// kind:0 profile the kernel claimed at startup. On first render the
+/// display name may still be in flight; the view re-renders automatically
+/// when the kernel pushes the resolved `ProfileWire`.
+private enum MentionSample {
+    /// Arena layout:
+    ///   0  text "Hey "
+    ///   1  mention(pablof7z)
+    ///   2  text ", how are you?"
+    ///   3  paragraph(children: [0, 1, 2])
+    static var note: ContentTreeWire {
+        ContentTreeWire(
+            nodes: [
+                .text("Hey "),
+                .mention(
+                    NostrWireUri(
+                        uri: "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
+                        kind: .profile,
+                        primaryId: DEMO_PUBKEY_HEX
+                    )
+                ),
+                .text(", how are you?"),
+                .paragraph(children: [0, 1, 2]),
+            ],
+            roots: [3],
+            mode: nil
+        )
+    }
+}
+
 struct ContentMentionChipPage: View {
+    @Environment(GalleryModel.self) private var model
+
     var body: some View {
+        let profile = model.profile(forPubkey: DEMO_PUBKEY_HEX)
         VStack(spacing: 16) {
-            ContentPageFrame(caption: "NostrMentionChip — identicon fallback") {
+            ContentPageFrame(caption: "NostrContentView — live mention resolution") {
+                NostrContentView(
+                    tree: MentionSample.note,
+                    mentionLabel: { uri in
+                        model.profile(forPubkey: uri.primaryId)?.displayName
+                            ?? NostrContentView.defaultMentionLabel(uri)
+                    }
+                )
+                Text("The kernel fetches kind:0 automatically; the app just reads the snapshot.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
+            ContentPageFrame(caption: "NostrMentionChip — kernel-resolved profile") {
+                NostrMentionChip(
+                    pubkey: DEMO_PUBKEY_HEX,
+                    displayName: profile?.displayName,
+                    avatarUrl: profile?.avatarURL
+                )
+            }
+            ContentPageFrame(caption: "NostrMentionChip — identicon fallback (unknown pubkey)") {
                 NostrMentionChip(
                     pubkey: "deadbeefcafebabedeadbeefcafebabe",
                     displayName: nil
-                )
-            }
-            ContentPageFrame(caption: "NostrMentionChip — with displayName") {
-                NostrMentionChip(
-                    pubkey: "deadbeefcafebabedeadbeefcafebabe",
-                    displayName: "satoshi"
                 )
             }
             ContentPageFrame(caption: "NostrMentionChip — no avatar") {
