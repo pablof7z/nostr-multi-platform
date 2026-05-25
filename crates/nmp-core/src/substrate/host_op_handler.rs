@@ -109,9 +109,9 @@ pub trait HostOpHandler: Send + Sync {
 /// `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` because:
 ///
 /// * the outer `Arc<Mutex<...>>` is the shared-slot pattern every other
-///   `NmpApp` ↔ actor slot uses ([`crate::ffi::MlsLocalNsecSlot`],
-///   [`crate::ffi::Nip17LocalKeysSlot`], etc.) — the `Mutex` is what makes
-///   the slot writable without `&mut self` on `NmpApp`.
+///   `NmpApp` ↔ actor slot uses ([`crate::slots::MlsLocalNsecSlot`],
+///   [`crate::slots::ActiveLocalKeysSlot`], etc.) — the `Mutex` is what
+///   makes the slot writable without `&mut self` on `NmpApp`.
 /// * the inner `Arc<dyn HostOpHandler>` is what the actor clones out under
 ///   the lock and calls — calling `handle` does NOT hold the outer mutex,
 ///   so a long-running handler does not block the FFI `set_host_op_handler`

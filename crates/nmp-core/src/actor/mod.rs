@@ -215,7 +215,7 @@ use std::sync::mpsc::{self, TryRecvError};
 #[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
-use crate::slots::{MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot};
+use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot, StoragePathSlot};
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
@@ -831,8 +831,10 @@ pub fn run_actor(
         // point has no FFI surface to read the slot, so it's a throwaway.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
-        // NIP-17 DM-inbox key slot — private throwaway: this backwards-compatible
-        // entry point has no FFI surface for a `DmInboxProjection` to read it.
+        // Active-account local-keys slot — private throwaway: this
+        // backwards-compatible entry point has no FFI surface for a
+        // non-substrate reader to consume it (production threads it through
+        // `nmp-ffi`'s `NmpApp::active_local_keys`).
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
@@ -901,7 +903,8 @@ pub fn run_actor_with_lifecycle_observer(
         // Typed slot constructor; private throwaway here.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
-        // NIP-17 DM-inbox key slot — private throwaway: no FFI surface here.
+        // Active-account local-keys slot — private throwaway: no FFI
+        // surface here for a non-substrate reader to consume it.
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
@@ -978,11 +981,15 @@ pub fn run_actor_with_observers(
     // `Arc<Mutex<Vec<…>>>` parameters here.
     relay_edit_rows: crate::kernel::RelayEditRowsSlot,
     mls_local_nsec: MlsLocalNsecSlot,
-    // NIP-17 DM-inbox decryption key seam. Shared `Arc` with the `NmpApp`:
-    // per-app crates read the slot through `NmpApp::nip17_local_keys`; this
-    // actor thread is the sole writer, updating it on every identity mutation
-    // (parallel to `mls_local_nsec`).
-    nip17_local_keys: Nip17LocalKeysSlot,
+    // Substrate-generic active-account local-keys slot. Shared `Arc` with
+    // the `NmpApp`: per-app crates read it through
+    // `NmpApp::active_local_keys` (today: `nmp-nip17` for gift-wrap
+    // unsealing, `nmp-nip57` for self-zap-receipt subscription); this
+    // actor thread is the sole writer, updating it on every identity
+    // mutation (parallel to `mls_local_nsec`). The substrate names no
+    // NIP — the slot's purpose is "the active account's local keys, when
+    // present"; what callers do with it is their concern (D0).
+    active_local_keys: ActiveLocalKeysSlot,
     capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
     // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
@@ -1297,7 +1304,7 @@ pub fn run_actor_with_observers(
                         relays_ready,
                         lifecycle_observer: &lifecycle_observer,
                         mls_local_nsec: &mls_local_nsec,
-                        nip17_local_keys: &nip17_local_keys,
+                        active_local_keys: &active_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
                         command_tx_self: &command_tx_self,

@@ -1414,7 +1414,7 @@ must receive DMs before NIP-17 can be called done.
 a real signed kind:1059 gift-wrap through `IngestPreVerifiedEvents` → `notify_raw_event_observers`
 → `DmInboxProjection`. `nmp_app_read_projection_json("nmp.nip17.dm_inbox")` confirms the message
 appears in the snapshot. The `dm_inbox_full_round_trip_through_ffi` test passes (no longer ignored).
-The test also gates that cold-start `nip17_local_keys` seed path works without calling `Start`.
+The test also gates that cold-start `active_local_keys` seed path works without calling `Start`.
 
 **Remaining:** device-level acceptance test against live relays (product QA, not CI-gatable).
 

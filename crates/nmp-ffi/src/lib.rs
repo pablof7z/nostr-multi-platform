@@ -138,9 +138,9 @@ use nmp_core::__ffi_internal::{
 #[cfg(feature = "wallet")]
 use nmp_core::__ffi_internal::new_wallet_status_slot;
 use nmp_core::slots::{
-    new_dm_inbox_observer_id_slot, new_mls_local_nsec_slot, new_nip17_local_keys_slot,
+    new_active_local_keys_slot, new_dm_inbox_observer_id_slot, new_mls_local_nsec_slot,
     new_routing_substrate_slot, new_routing_trace_slot, new_singleton_event_observer_id_slot,
-    new_storage_path_slot, DmInboxObserverIdSlot, MlsLocalNsecSlot, Nip17LocalKeysSlot,
+    new_storage_path_slot, ActiveLocalKeysSlot, DmInboxObserverIdSlot, MlsLocalNsecSlot,
     RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
@@ -165,7 +165,7 @@ struct UpdateCallbackRegistration {
 }
 
 // Step 11 final — the slot type aliases + constructors that used to live
-// here (MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot,
+// here (MlsLocalNsecSlot, ActiveLocalKeysSlot, StoragePathSlot,
 // RoutingTraceSlot, RoutingSubstrateSlot, DmInboxObserverIdSlot,
 // SingletonEventObserverIdSlot, and their `new_*_slot` constructors) moved
 // to `nmp-core::slots` so the actor (a crate-private module inside
@@ -271,16 +271,18 @@ pub struct NmpApp {
     /// identity mutation that changes the active local key (create, sign-in,
     /// switch, remove) — exactly parallel to `mls_local_nsec`.
     ///
-    /// This slot is the NIP-44 key seam for protocol-crate consumers that
-    /// need the in-process keypair to seal / unseal gift-wraps (NIP-17 DM
-    /// inbox decryption). It is DISTINCT from `mls_local_nsec`: that field
-    /// is the ADR-0025 bounded exception for MLS, and the ADR explicitly
-    /// scopes the exception. A consumer without this exception reads
-    /// THIS slot instead.
+    /// Substrate-generic: the actor (in `nmp-core`) names no NIP when
+    /// writing this slot. The accessor [`NmpApp::active_local_keys`] is
+    /// consumed by per-app crates that need the in-process keypair (today:
+    /// `nmp-nip17`'s `DmInboxProjection` for NIP-44 gift-wrap unsealing,
+    /// `nmp-nip57`'s zap-receipt runtime for the active pubkey). It is
+    /// DISTINCT from `mls_local_nsec`: that field is the ADR-0025 bounded
+    /// exception for MLS (raw bech32 nsec, D13-policed), and the ADR
+    /// explicitly scopes the exception.
     ///
     /// `nostr::Keys` is `Clone` and zeroizes its own secret on drop, so no
     /// `Zeroizing` wrapper is needed here.
-    nip17_local_keys: Nip17LocalKeysSlot,
+    active_local_keys: ActiveLocalKeysSlot,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
@@ -562,12 +564,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
     let mls_local_nsec: MlsLocalNsecSlot = new_mls_local_nsec_slot();
     let actor_mls_local_nsec = Arc::clone(&mls_local_nsec);
-    // Active local `nostr::Keys` slot — the NIP-44 key seam for non-ADR-0025
-    // protocol consumers (NIP-17 DM inbox decryption). Same shared-`Arc`
+    // Active local `nostr::Keys` slot — substrate-generic. Same shared-`Arc`
     // pattern as `mls_local_nsec`: the actor updates it on every identity
-    // mutation; per-app crates read via `NmpApp::nip17_local_keys`.
-    let nip17_local_keys: Nip17LocalKeysSlot = new_nip17_local_keys_slot();
-    let actor_nip17_local_keys = Arc::clone(&nip17_local_keys);
+    // mutation; per-app crates read via `NmpApp::active_local_keys` (today:
+    // `nmp-nip17` `DmInboxProjection` for NIP-44 gift-wrap unsealing,
+    // `nmp-nip57` zap-receipt runtime for the active pubkey).
+    let active_local_keys: ActiveLocalKeysSlot = new_active_local_keys_slot();
+    let actor_active_local_keys = Arc::clone(&active_local_keys);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
     // requests during start/sign-in/create/switch/remove.
@@ -685,7 +688,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_bunker_handshake,
                 actor_relay_edit_rows,
                 actor_mls_local_nsec,
-                actor_nip17_local_keys,
+                actor_active_local_keys,
                 actor_capability_callback,
                 actor_storage_path,
                 // G-S4 — the actor's clone of the command-channel depth
@@ -766,7 +769,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         singleton_event_observer_id,
         relay_edit_rows,
         mls_local_nsec,
-        nip17_local_keys,
+        active_local_keys,
         storage_path,
         routing_trace,
         routing_substrate,
@@ -1374,21 +1377,23 @@ impl NmpApp {
         self.mls_local_nsec.lock().ok()?.clone()
     }
 
-    /// Clone of the active-local-`nostr::Keys` slot — the NIP-44 key seam
-    /// for protocol consumers without the raw-key exception (e.g. NIP-17 DM
-    /// inbox decryption).
+    /// Clone of the active-local-`nostr::Keys` slot — substrate-generic.
     ///
     /// Returns a clone of the shared `Arc` so the caller (e.g. a
-    /// `DmInboxProjection`) holds its own handle and reads the current keys
-    /// at decrypt time. The actor is the sole writer; it updates the inner
-    /// `Option<Keys>` on every identity mutation, so a long-lived consumer
-    /// always observes the up-to-date account without re-registering.
+    /// `DmInboxProjection` for NIP-17 gift-wrap unsealing, or a
+    /// `ZapReceiptsRuntimeController` reading the active pubkey for the
+    /// NIP-57 self-zap subscription) holds its own handle and reads the
+    /// current keys on demand. The actor is the sole writer; it updates
+    /// the inner `Option<Keys>` on every identity mutation, so a long-lived
+    /// consumer always observes the up-to-date account without
+    /// re-registering.
     ///
     /// This is DELIBERATELY separate from [`Self::mls_local_nsec`]: that
-    /// accessor backs the ADR-0025 Marmot exception; NIP-17 uses this slot.
+    /// accessor backs the ADR-0025 Marmot exception (raw bech32 nsec,
+    /// D13-policed); this one is the substrate-generic active-keys feed.
     #[must_use]
-    pub fn nip17_local_keys(&self) -> Nip17LocalKeysSlot {
-        Arc::clone(&self.nip17_local_keys)
+    pub fn active_local_keys(&self) -> ActiveLocalKeysSlot {
+        Arc::clone(&self.active_local_keys)
     }
 
     /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]
