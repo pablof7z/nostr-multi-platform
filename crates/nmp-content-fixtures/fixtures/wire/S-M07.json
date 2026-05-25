@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "thread of thought "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
+        "kind": "event",
+        "primary_id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
+        "relays": [],
+        "author": null,
+        "event_kind": null
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

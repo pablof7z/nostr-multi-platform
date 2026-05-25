@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "shipped "
+    },
+    {
+      "kind": "hashtag",
+      "tag": "nostr"
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

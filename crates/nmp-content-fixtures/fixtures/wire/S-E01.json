@@ -1,0 +1,12 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "broken nostr:npub1thisisnotvalidbech32 still readable"
+    }
+  ],
+  "roots": [
+    0
+  ],
+  "mode": "Plain"
+}

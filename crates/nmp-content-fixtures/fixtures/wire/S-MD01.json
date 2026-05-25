@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "field notes from the install "
+    },
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/img/install.jpg"
+      ],
+      "media_kind": "Image"
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}
