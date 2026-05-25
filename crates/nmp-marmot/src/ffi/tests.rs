@@ -211,7 +211,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
     assert_eq!(g.members.len(), 2);
     assert!(g.members.contains(&alice_keys.public_key().to_hex()));
     assert!(g.members.contains(&bob_keys.public_key().to_hex()));
-    assert_eq!(g.unread, 0);
+    assert_eq!(g.unread_count, None);
 
     // 4. send dispatch.
     let r = proj
