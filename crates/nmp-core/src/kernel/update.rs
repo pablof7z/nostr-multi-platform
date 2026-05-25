@@ -444,6 +444,11 @@ impl Kernel {
         {
             mention_profiles.entry(k).or_insert(v);
         }
+        for pubkey in self.profile_claims.keys() {
+            mention_profiles
+                .entry(pubkey.clone())
+                .or_insert_with(|| self.mention_profile_for_pubkey(pubkey));
+        }
         projections.insert(
             "mention_profiles".to_string(),
             serde_json::to_value(&mention_profiles)
@@ -828,6 +833,16 @@ impl Kernel {
                 });
         }
         out
+    }
+
+    fn mention_profile_for_pubkey(&self, pubkey: &str) -> MentionProfilePayload {
+        let card = self.profile_card_for(pubkey, None, "");
+        MentionProfilePayload {
+            display: card.display,
+            picture_url: card.picture_url,
+            avatar_initials: card.avatar_initials,
+            avatar_color: card.avatar_color,
+        }
     }
 }
 

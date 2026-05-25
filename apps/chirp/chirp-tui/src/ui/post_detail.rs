@@ -4,20 +4,24 @@
 //! reply (`depth > 0`). When the Detail pane is focused, `state.detail_cursor`
 //! selects either the root (0) or one of the reply indices (1..=reply_count).
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::Frame;
+use ratatui_image::Image;
 
 use crate::app::{AppState, Pane};
+use crate::image_cache::ImageCache;
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
+use crate::timeline_content::{TimelineMedia, TimelineMediaKind};
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, HEART, REPLY_COLOR, REPOST,
-    SELECTED_BG, author_color, fmt_count, format_age,
+    author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT,
+    HEART, REPLY_COLOR, REPOST, SELECTED_BG,
 };
+use crate::ui::text::truncate;
 
-pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(f: &mut Frame, area: Rect, state: &AppState, images: &ImageCache) {
     let focused = state.focused == Pane::Detail;
     let border_color = if focused { ACCENT_CYAN } else { DIMMER_TEXT };
     let block = Block::default()
@@ -27,15 +31,42 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
 
     let inner = block.inner(area);
     let pane_width = inner.width as usize;
+    let image_url = selected_image_url(state);
+    let image_ready = image_url
+        .as_deref()
+        .and_then(|url| images.protocol(url))
+        .is_some();
+    let (text_area, image_area) = split_detail_area(inner, image_ready);
 
     let lines = build_lines(state, pane_width);
 
+    f.render_widget(block, area);
     let paragraph = Paragraph::new(lines)
-        .block(block)
         .style(Style::default().bg(DETAIL_BG).fg(BODY_TEXT))
         .wrap(Wrap { trim: false })
         .scroll((state.detail_scroll, 0));
-    f.render_widget(paragraph, area);
+    f.render_widget(paragraph, text_area);
+    if let Some(protocol) = image_url.as_deref().and_then(|url| images.protocol(url)) {
+        f.render_widget(Image::new(protocol), image_area);
+    }
+}
+
+fn split_detail_area(inner: Rect, image_ready: bool) -> (Rect, Rect) {
+    if !image_ready || inner.height < 18 || inner.width < 32 {
+        return (inner, Rect::default());
+    }
+    let image_height = 14u16.min(inner.height / 2);
+    let chunks =
+        Layout::vertical([Constraint::Min(4), Constraint::Length(image_height)]).split(inner);
+    (chunks[0], chunks[1])
+}
+
+fn selected_image_url(state: &AppState) -> Option<String> {
+    state
+        .selected_row()?
+        .media
+        .iter()
+        .find_map(|media| (media.kind == TimelineMediaKind::Image).then(|| media.url.clone()))
 }
 
 fn build_lines(state: &AppState, pane_width: usize) -> Vec<Line<'static>> {
@@ -158,6 +189,8 @@ fn append_main_post(
         ]));
     }
 
+    append_media_lines(lines, &prefix, bg, content_width, &row.media);
+
     // Reaction bar
     let (spans, used) = reaction_spans(&row.relation_counts, bg);
     let pad = pad_for(content_width, used);
@@ -206,6 +239,31 @@ fn append_reply(
         lines.push(Line::from(vec![
             prefix.clone(),
             Span::styled(body_line, Style::default().fg(BODY_TEXT).bg(bg)),
+            Span::styled(pad, Style::default().bg(bg)),
+        ]));
+    }
+
+    append_media_lines(lines, &prefix, bg, content_width, &row.media);
+}
+
+fn append_media_lines(
+    lines: &mut Vec<Line<'static>>,
+    prefix: &Span<'static>,
+    bg: ratatui::style::Color,
+    content_width: usize,
+    media: &[TimelineMedia],
+) {
+    for item in media {
+        let marker = format!("[{}] ", item.label());
+        let marker_len = marker.chars().count();
+        let body_width = content_width.saturating_sub(marker_len);
+        let body = truncate(&item.compact_display(), body_width);
+        let used = marker_len + body.chars().count();
+        let pad = pad_for(content_width, used);
+        lines.push(Line::from(vec![
+            prefix.clone(),
+            Span::styled(marker, Style::default().fg(ACCENT_CYAN).bg(bg)),
+            Span::styled(body, Style::default().fg(DIM_TEXT).bg(bg)),
             Span::styled(pad, Style::default().bg(bg)),
         ]));
     }

@@ -1,5 +1,10 @@
+use std::collections::{BTreeMap, HashMap};
+
 use nmp_core::display::short_npub;
 use serde_json::Value;
+
+use crate::snapshot::MentionProfile;
+use crate::timeline_content::{TimelineContent, TimelineMedia};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimelineRow {
@@ -7,6 +12,7 @@ pub struct TimelineRow {
     pub author: String,
     pub author_pubkey: String,
     pub content: String,
+    pub media: Vec<TimelineMedia>,
     pub created_at: u64,
     pub depth: usize,
     pub has_gap: bool,
@@ -20,6 +26,13 @@ pub struct TimelineRow {
 
 impl TimelineRow {
     pub fn from_snapshot(snapshot: &Value) -> Vec<Self> {
+        Self::from_snapshot_with_profiles(snapshot, &BTreeMap::new())
+    }
+
+    pub fn from_snapshot_with_profiles(
+        snapshot: &Value,
+        mention_profiles: &BTreeMap<String, MentionProfile>,
+    ) -> Vec<Self> {
         let cards = snapshot
             .get("cards")
             .and_then(Value::as_array)
@@ -29,7 +42,7 @@ impl TimelineRow {
                 let id = card.get("id")?.as_str()?.to_string();
                 Some((id, card))
             })
-            .collect::<std::collections::HashMap<_, _>>();
+            .collect::<HashMap<_, _>>();
 
         let mut rows = Vec::new();
         if let Some(blocks) = snapshot.get("blocks").and_then(Value::as_array) {
@@ -37,21 +50,30 @@ impl TimelineRow {
                 let (ids, has_gap) = ids_from_block(block);
                 for (depth, id) in ids.into_iter().enumerate() {
                     if let Some(card) = cards.get(id.as_str()) {
-                        rows.push(Self::from_card(card, depth, has_gap));
+                        rows.push(Self::from_card(card, depth, has_gap, mention_profiles));
                     }
                 }
             }
         }
 
         if rows.is_empty() {
-            rows.extend(cards.values().map(|card| Self::from_card(card, 0, false)));
+            rows.extend(
+                cards
+                    .values()
+                    .map(|card| Self::from_card(card, 0, false, mention_profiles)),
+            );
             rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         }
 
         rows
     }
 
-    fn from_card(card: &Value, depth: usize, has_gap: bool) -> Self {
+    fn from_card(
+        card: &Value,
+        depth: usize,
+        has_gap: bool,
+        mention_profiles: &BTreeMap<String, MentionProfile>,
+    ) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
         let author = card
@@ -61,14 +83,15 @@ impl TimelineRow {
             .map(str::to_string)
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| short_npub(&author_pubkey));
-        let content = string_field(card, "content");
+        let content = TimelineContent::from_card(card, mention_profiles);
         let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
         let mention_pubkeys = mention_pubkeys_from_card(card);
         Self {
             id,
             author,
             author_pubkey,
-            content: content_preview(&content),
+            content: content.text,
+            media: content.media,
             created_at,
             depth,
             has_gap,
@@ -137,7 +160,7 @@ impl RowRelationCounts {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn summary(&self) -> String {
         format!(
             "reply {}  react {}  repost {}",
@@ -215,17 +238,6 @@ fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
     }
 }
 
-
-fn content_preview(content: &str) -> String {
-    let compact = content.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.chars().count() <= 96 {
-        compact
-    } else {
-        let preview = compact.chars().take(95).collect::<String>();
-        format!("{preview}...")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +293,44 @@ mod tests {
             RowRelationCount::Known(3)
         );
         assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(1));
+    }
+
+    #[test]
+    fn row_content_uses_content_tree_mentions_and_media() {
+        let mention = "c".repeat(64);
+        let mut profiles = BTreeMap::new();
+        profiles.insert(
+            mention.clone(),
+            MentionProfile {
+                display: "Carol".to_string(),
+                picture_url: String::new(),
+                avatar_initials: "CA".to_string(),
+                avatar_color: "00FFFF".to_string(),
+            },
+        );
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "aaaaaaaaaaaaaaaa",
+                "created_at": 1,
+                "content": "raw nostr mention https://example.com/photo.jpg",
+                "content_tree": {
+                    "nodes": [
+                        {"kind": "text", "text": "hello "},
+                        {"kind": "mention", "uri": {"uri": "nostr:npub1...", "kind": "profile", "primary_id": mention, "relays": []}},
+                        {"kind": "text", "text": " see "},
+                        {"kind": "media", "media_kind": "Image", "urls": ["https://example.com/photo.jpg"]}
+                    ],
+                    "roots": [0, 1, 2, 3],
+                    "mode": "plaintext"
+                }
+            }]
+        });
+
+        let rows = TimelineRow::from_snapshot_with_profiles(&snapshot, &profiles);
+
+        assert_eq!(rows[0].content, "hello @Carol see");
+        assert_eq!(rows[0].media[0].url, "https://example.com/photo.jpg");
     }
 
     #[test]

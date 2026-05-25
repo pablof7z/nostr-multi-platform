@@ -5,18 +5,20 @@
 //!   row 2: gutter + body text
 //!   row 3: gutter + ♥ N · ↺ N · 💬 N
 
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::{AppState, Pane};
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
+use crate::timeline_content::TimelineMedia;
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, HEART, LIST_BG, REPLY_COLOR, REPOST,
-    SELECTED_BG, author_color, fmt_count, format_age,
+    author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, HEART,
+    LIST_BG, REPLY_COLOR, REPOST, SELECTED_BG,
 };
+use crate::ui::text::truncate;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     let focused = state.focused == Pane::Feed;
@@ -139,6 +141,8 @@ fn append_card(
     ]);
     lines.push(line2);
 
+    append_media_lines(lines, &gutter_span, row_bg, content_width, &row.media);
+
     // Row 3: reaction bar
     let (reaction_spans, reaction_len) = reaction_spans(&row.relation_counts, row_bg);
     let reaction_pad = pad_for(content_width, reaction_len);
@@ -146,6 +150,40 @@ fn append_card(
     line3_spans.extend(reaction_spans);
     line3_spans.push(Span::styled(reaction_pad, Style::default().bg(row_bg)));
     lines.push(Line::from(line3_spans));
+}
+
+fn append_media_lines(
+    lines: &mut Vec<Line<'static>>,
+    gutter: &Span<'static>,
+    bg: ratatui::style::Color,
+    content_width: usize,
+    media: &[TimelineMedia],
+) {
+    let max_visible = 2usize;
+    for item in media.iter().take(max_visible) {
+        let marker = format!("[{}] ", item.label());
+        let marker_len = marker.chars().count();
+        let body_width = content_width.saturating_sub(marker_len);
+        let body = truncate(&item.compact_display(), body_width);
+        let used = marker_len + body.chars().count();
+        let pad = pad_for(content_width, used);
+        lines.push(Line::from(vec![
+            gutter.clone(),
+            Span::styled(marker, Style::default().fg(ACCENT_CYAN).bg(bg)),
+            Span::styled(body, Style::default().fg(DIM_TEXT).bg(bg)),
+            Span::styled(pad, Style::default().bg(bg)),
+        ]));
+    }
+    if media.len() > max_visible {
+        let more = format!("+{} more media attachments", media.len() - max_visible);
+        let body = truncate(&more, content_width);
+        let pad = pad_for(content_width, body.chars().count());
+        lines.push(Line::from(vec![
+            gutter.clone(),
+            Span::styled(body, Style::default().fg(DIM_TEXT).bg(bg)),
+            Span::styled(pad, Style::default().bg(bg)),
+        ]));
+    }
 }
 
 fn reaction_spans(
@@ -194,21 +232,5 @@ fn pad_for(width: usize, used: usize) -> String {
         " ".repeat(width - used)
     } else {
         String::new()
-    }
-}
-
-fn truncate(value: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    let count = value.chars().count();
-    if count <= max {
-        value.to_string()
-    } else if max <= 1 {
-        value.chars().take(max).collect()
-    } else {
-        let mut out: String = value.chars().take(max.saturating_sub(1)).collect();
-        out.push('\u{2026}');
-        out
     }
 }

@@ -655,6 +655,31 @@ fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
     assert!(entry["avatar_color"].is_string());
 }
 
+#[test]
+fn mention_profiles_projection_covers_claimed_visible_profiles() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mentioned = FOLLOW_A.to_string();
+    let _ = kernel.claim_profile(mentioned.clone(), "chirp-tui.visible-mention".to_string(), false);
+    kernel.ingest_profile(nostr::NostrEvent {
+        id: "0000000000000000000000000000000000000000000000000000000000000030".to_string(),
+        pubkey: mentioned.clone(),
+        created_at: 1_700_000_000,
+        kind: 0,
+        tags: vec![],
+        content: r#"{"display_name":"Mentioned Person","picture":"https://example.com/m.png"}"#
+            .to_string(),
+        sig: String::new(),
+    });
+
+    let snap = snapshot(&mut kernel);
+    let entry = &snap["projections"]["mention_profiles"][&mentioned];
+    assert_eq!(entry["display"].as_str(), Some("Mentioned Person"));
+    assert_eq!(
+        entry["picture_url"].as_str(),
+        Some("https://example.com/m.png")
+    );
+}
+
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar
 /// in its `projections.timeline[]` row — proving the profile join happens at
 /// projection time, not just on the standalone `profile` card. Order of ingest

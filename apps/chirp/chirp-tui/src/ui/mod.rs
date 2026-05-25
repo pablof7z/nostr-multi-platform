@@ -12,6 +12,7 @@ pub mod profile_pane;
 pub mod relay_panel;
 pub mod settings;
 mod shared_snapshot_lines;
+pub mod text;
 pub mod wallet;
 
 #[cfg(test)]

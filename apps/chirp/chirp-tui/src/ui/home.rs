@@ -4,13 +4,14 @@
 //!   - Left column (38%): post_list or profile_pane (75%) above relay_panel (25%)
 //!   - Right column (62%): post_detail
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::Frame;
 
 use crate::app::{AppState, Mode, Pane};
+use crate::image_cache::ImageCache;
 use crate::ui::{palette, post_detail, post_list, profile_pane, relay_panel};
 
-pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(f: &mut Frame, area: Rect, state: &AppState, images: &ImageCache) {
     let cols =
         Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)]).split(area);
 
@@ -23,7 +24,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         post_list::render(f, left[0], state);
     }
     relay_panel::render(f, left[1], state);
-    post_detail::render(f, cols[1], state);
+    post_detail::render(f, cols[1], state, images);
 
     if let Mode::Palette { cursor } = state.mode {
         palette::render(f, area, state, cursor);
