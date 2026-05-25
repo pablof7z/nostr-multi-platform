@@ -688,7 +688,7 @@ fn nip42_auth_challenge_is_stored_verbatim_on_driver() {
     );
 
     let driver = kernel
-        .nip42_drivers
+        .auth_drivers
         .get(&RelayRole::Content)
         .expect("an AUTH challenge must create the per-role driver entry");
     assert_eq!(
