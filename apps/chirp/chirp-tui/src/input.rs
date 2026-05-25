@@ -77,9 +77,21 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('1') => state.focus(Pane::Feed),
         KeyCode::Char('2') => state.focus(Pane::Detail),
         KeyCode::Char('3') => state.focus(Pane::Profile),
-        KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => state.select_next(),
+        KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => {
+            match state.tab {
+                crate::features::FeatureTab::Chats => state.chat_select_next(),
+                crate::features::FeatureTab::Groups => state.group_select_next(),
+                crate::features::FeatureTab::Settings => state.settings_account_select_next(),
+                _ => state.select_next(),
+            }
+        }
         KeyCode::Up | KeyCode::Char('k') if state.focused != Pane::Detail => {
-            state.select_previous()
+            match state.tab {
+                crate::features::FeatureTab::Chats => state.chat_select_previous(),
+                crate::features::FeatureTab::Groups => state.group_select_previous(),
+                crate::features::FeatureTab::Settings => state.settings_account_select_previous(),
+                _ => state.select_previous(),
+            }
         }
         KeyCode::PageDown => state.select_page_down(),
         KeyCode::PageUp => state.select_page_up(),

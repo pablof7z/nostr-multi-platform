@@ -41,6 +41,9 @@ pub struct AppState {
     pub last_action_result: Option<ActionResult>,
     pub features: FeatureSnapshot,
     pub selected: usize,
+    pub chat_selected: usize,
+    pub group_selected: usize,
+    pub settings_account_selected: usize,
     pub detail_cursor: usize,
     pub detail_scroll: u16,
     pub compose: String,
@@ -70,6 +73,9 @@ impl Default for AppState {
             last_action_result: None,
             features: FeatureSnapshot::default(),
             selected: 0,
+            chat_selected: 0,
+            group_selected: 0,
+            settings_account_selected: 0,
             detail_cursor: 0,
             detail_scroll: 0,
             compose: String::new(),
@@ -90,6 +96,25 @@ impl AppState {
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
         self.features = FeatureSnapshot::from_payload(&event.payload);
+        // Clamp tab-specific selection indices to avoid out-of-bounds access.
+        let conv_len = self.features.dm_conversations.len();
+        if conv_len == 0 {
+            self.chat_selected = 0;
+        } else if self.chat_selected >= conv_len {
+            self.chat_selected = conv_len - 1;
+        }
+        let group_len = self.features.discovered_groups.len();
+        if group_len == 0 {
+            self.group_selected = 0;
+        } else if self.group_selected >= group_len {
+            self.group_selected = group_len - 1;
+        }
+        let account_len = self.features.accounts.len();
+        if account_len == 0 {
+            self.settings_account_selected = 0;
+        } else if self.settings_account_selected >= account_len {
+            self.settings_account_selected = account_len - 1;
+        }
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
         if let Some(snapshot) = runtime.chirp_snapshot() {
             self.blocks = snapshot
@@ -160,6 +185,39 @@ impl AppState {
 
     pub fn select_previous(&mut self) {
         self.selected = self.selected.saturating_sub(1);
+    }
+
+    pub fn chat_select_next(&mut self) {
+        let len = self.features.dm_conversations.len();
+        if len > 0 && self.chat_selected + 1 < len {
+            self.chat_selected += 1;
+        }
+    }
+
+    pub fn chat_select_previous(&mut self) {
+        self.chat_selected = self.chat_selected.saturating_sub(1);
+    }
+
+    pub fn group_select_next(&mut self) {
+        let len = self.features.discovered_groups.len();
+        if len > 0 && self.group_selected + 1 < len {
+            self.group_selected += 1;
+        }
+    }
+
+    pub fn group_select_previous(&mut self) {
+        self.group_selected = self.group_selected.saturating_sub(1);
+    }
+
+    pub fn settings_account_select_next(&mut self) {
+        let len = self.features.accounts.len();
+        if len > 0 && self.settings_account_selected + 1 < len {
+            self.settings_account_selected += 1;
+        }
+    }
+
+    pub fn settings_account_select_previous(&mut self) {
+        self.settings_account_selected = self.settings_account_selected.saturating_sub(1);
     }
 
     pub fn select_page_down(&mut self) {

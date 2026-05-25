@@ -19,9 +19,9 @@ fn tui_exposes_ios_parity_tabs_and_command_mode() -> Result<(), Box<dyn std::err
     p.exp_string("runtime")?;
 
     send_key(&mut p, "c")?;
-    p.exp_string("Conversation")?;
+    p.exp_string("Chats")?;
     send_key(&mut p, "g")?;
-    p.exp_string("Marmot MLS")?;
+    p.exp_string("Groups")?;
     send_key(&mut p, "w")?;
     p.exp_string("Wallet")?;
     send_key(&mut p, "s")?;
