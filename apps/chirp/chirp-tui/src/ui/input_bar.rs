@@ -18,16 +18,16 @@ use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIM_TEXT, FOOTER_BG};
 // Accessors — swap to real fields once wiring agent lands
 // ---------------------------------------------------------------------------
 
-fn input_label(_state: &AppState) -> &str {
-    ""
+fn input_label(state: &AppState) -> &str {
+    &state.input_bar_label
 }
 
-fn input_value(_state: &AppState) -> &str {
-    ""
+fn input_value(state: &AppState) -> &str {
+    &state.input_bar_value
 }
 
-fn input_masked(_state: &AppState) -> bool {
-    false
+fn input_masked(state: &AppState) -> bool {
+    state.input_bar_masked
 }
 
 // ---------------------------------------------------------------------------

@@ -27,15 +27,13 @@ use crate::ui::colors::{
 // ---------------------------------------------------------------------------
 
 /// Whether the inline DM compose strip is open.
-/// TODO(wiring): replace body with `state.chat_composing`
-fn is_composing(_state: &AppState) -> bool {
-    false
+fn is_composing(state: &AppState) -> bool {
+    state.chat_composing
 }
 
 /// Current text in the DM compose buffer.
-/// TODO(wiring): replace body with `state.chat_compose_buf.as_str()`
-fn compose_buf(_state: &AppState) -> &str {
-    ""
+fn compose_buf(state: &AppState) -> &str {
+    &state.chat_compose_buf
 }
 
 // ---------------------------------------------------------------------------

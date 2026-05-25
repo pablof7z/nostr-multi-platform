@@ -14,25 +14,44 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         return InputFlow::Quit;
     }
 
-    if matches!(state.mode, Mode::Palette { .. }) {
-        handle_palette_key(state, runtime, key);
-        return InputFlow::Continue;
-    }
-
-    if state.mode == Mode::Compose {
-        handle_compose_key(state, runtime, key);
-        return InputFlow::Continue;
-    }
-    if state.mode == Mode::Command {
-        handle_command_key(state, runtime, key);
-        return InputFlow::Continue;
+    // Non-Normal modes own all keys other than Ctrl+C above. Dispatch and bail
+    // before any of the Normal-mode arms run.
+    match state.mode {
+        Mode::Compose => {
+            handle_compose_key(state, runtime, key);
+            return InputFlow::Continue;
+        }
+        Mode::Command => {
+            handle_command_key(state, runtime, key);
+            return InputFlow::Continue;
+        }
+        Mode::Palette { .. } => {
+            handle_palette_key(state, runtime, key);
+            return InputFlow::Continue;
+        }
+        Mode::InputBar => {
+            handle_input_bar_key(state, runtime, key);
+            return InputFlow::Continue;
+        }
+        Mode::ModalForm => {
+            handle_modal_key(state, runtime, key);
+            return InputFlow::Continue;
+        }
+        Mode::AccountSwitcher => {
+            handle_account_switcher_key(state, key);
+            return InputFlow::Continue;
+        }
+        Mode::Normal => {}
     }
 
     match key.code {
         KeyCode::Char('q') => return InputFlow::Quit,
         KeyCode::Char('/') if state.mode == Mode::Normal => state.open_palette(),
         KeyCode::Char('?') => state.toggle_help(),
-        KeyCode::Char(':') => state.start_command(),
+        KeyCode::Char(':') => {
+            state.push_toast("Commands removed — press ? for help or / for palette");
+        }
+        KeyCode::Char('a') => state.open_account_switcher(),
         KeyCode::Tab => state.next_tab(),
         KeyCode::BackTab => state.previous_tab(),
         // Detail-pane focus movement — must come before the FeatureTab
@@ -98,8 +117,23 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Home => state.select_first(),
         KeyCode::End => state.select_last(),
         KeyCode::Enter => open_selected_thread(state, runtime),
-        KeyCode::Char('p') => open_selected_author(state, runtime),
-        KeyCode::Char('i') => state.start_compose(),
+        KeyCode::Char('p') => {
+            if state.tab == FeatureTab::Wallet {
+                state.start_input_bar("bolt11 invoice", false, "bolt11");
+            } else {
+                open_selected_author(state, runtime);
+            }
+        }
+        KeyCode::Char('n') => handle_n_key(state, runtime),
+        KeyCode::Char('i') => match state.tab {
+            FeatureTab::Chats => {
+                state.chat_composing = !state.chat_composing;
+            }
+            FeatureTab::Groups => {
+                state.group_composing = !state.group_composing;
+            }
+            _ => {}
+        },
         KeyCode::Char('r') => state.start_reply(),
         KeyCode::Char('+') => react_to_selected(state, runtime),
         KeyCode::Char('f') => follow_selected(state, runtime, true),
@@ -302,4 +336,138 @@ fn count_replies_for_selected(state: &AppState) -> usize {
         .iter()
         .take_while(|r| r.depth > 0)
         .count()
+}
+
+// ---------------------------------------------------------------------------
+// Tab-aware `n` key dispatcher
+// ---------------------------------------------------------------------------
+
+fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
+    match state.tab {
+        FeatureTab::Home => state.start_compose(),
+        FeatureTab::Chats => state.start_input_bar("New DM to", false, "dm-npub"),
+        FeatureTab::Groups => state.push_toast("✗ group discover not yet wired"),
+        FeatureTab::Wallet => state.start_input_bar("NWC URI", false, "nwc"),
+        FeatureTab::Settings => state.push_toast("✗ add relay/account not yet wired"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Input bar (Pattern A)
+// ---------------------------------------------------------------------------
+
+fn handle_input_bar_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => state.cancel_input(),
+        KeyCode::Backspace => state.backspace_input(),
+        KeyCode::Enter => {
+            if let Some((action, value)) = state.take_input() {
+                dispatch_input_bar_action(&action, &value, state, runtime);
+            }
+        }
+        KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
+            state.push_input_char(ch);
+        }
+        _ => {}
+    }
+}
+
+fn dispatch_input_bar_action(
+    action: &str,
+    value: &str,
+    state: &mut AppState,
+    runtime: &AppRuntime,
+) {
+    match action {
+        "nsec" => match runtime.sign_in_nsec(value) {
+            Ok(()) => state.push_toast("✓ nsec import requested"),
+            Err(e) => state.push_toast(&format!("✗ import failed: {e}")),
+        },
+        "nwc" => match runtime.wallet_connect(value) {
+            Ok(()) => state.push_toast("✓ wallet connect requested"),
+            Err(e) => state.push_toast(&format!("✗ wallet connect failed: {e}")),
+        },
+        "bolt11" => match runtime.wallet_pay_invoice(value, None) {
+            Ok(()) => state.push_toast("✓ zap payment requested"),
+            Err(e) => state.push_toast(&format!("✗ payment failed: {e}")),
+        },
+        "relay" => match runtime.add_relay(value, "both,indexer") {
+            Ok(()) => state.push_toast("✓ relay add requested"),
+            Err(e) => state.push_toast(&format!("✗ add relay failed: {e}")),
+        },
+        "dm-npub" => {
+            state.push_toast("✗ DM open not yet wired");
+        }
+        _ => {
+            state.push_toast(&format!("unknown action: {action}"));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Modal form (Pattern D)
+// ---------------------------------------------------------------------------
+
+fn handle_modal_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => state.cancel_modal(),
+        KeyCode::Tab => state.next_modal_field(),
+        KeyCode::BackTab => state.prev_modal_field(),
+        KeyCode::Backspace => state.backspace_modal(),
+        KeyCode::Enter => {
+            if let Some((action, fields)) = state.take_modal() {
+                dispatch_modal_action(&action, &fields, state, runtime);
+            }
+        }
+        KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
+            state.push_modal_char(ch);
+        }
+        _ => {}
+    }
+}
+
+fn dispatch_modal_action(
+    action: &str,
+    _fields: &[(String, String)],
+    state: &mut AppState,
+    _runtime: &AppRuntime,
+) {
+    // None of the modal actions map cleanly onto an existing AppRuntime
+    // method (e.g. `create_account` needs more fields than a simple
+    // two-field modal collects today). Show a toast until the dispatch
+    // surface grows.
+    match action {
+        "create-account" => state.push_toast("✗ create-account not yet wired"),
+        "bunker-connect" => state.push_toast("✗ bunker-connect not yet wired"),
+        _ => state.push_toast(&format!("✗ modal action '{action}' not wired")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Account switcher
+// ---------------------------------------------------------------------------
+
+fn handle_account_switcher_key(state: &mut AppState, key: KeyEvent) {
+    let n = state.features.accounts.len();
+    match key.code {
+        KeyCode::Esc => state.close_account_switcher(),
+        KeyCode::Char('j') | KeyCode::Down => {
+            if n > 0 {
+                state.account_switcher_cursor = (state.account_switcher_cursor + 1) % n;
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if n > 0 {
+                state.account_switcher_cursor =
+                    state.account_switcher_cursor.saturating_sub(1);
+            }
+        }
+        KeyCode::Enter => {
+            // TODO(post-wiring): wire to runtime.switch_account once we have
+            // an account-id resolution path from the selected row.
+            state.push_toast("✗ account switch not yet wired");
+            state.close_account_switcher();
+        }
+        _ => {}
+    }
 }

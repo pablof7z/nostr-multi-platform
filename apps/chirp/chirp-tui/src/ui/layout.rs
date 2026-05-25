@@ -1,25 +1,38 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::AppState;
 use crate::app::Mode;
 use crate::features::FeatureTab;
+use crate::ui::colors::{ACCENT_CYAN, DIM_TEXT, RELAY_DOWN, RELAY_OK};
 use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::home;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     let area = frame.area();
+
+    // Onboarding takes over the full screen when no accounts are configured.
+    // We still allow the help overlay (toggled by `?`) to paint on top so
+    // first-run users can discover keybindings before any account exists.
+    if state.features.accounts.is_empty() {
+        crate::ui::onboarding::render(frame, area, state);
+        if state.show_help {
+            help::render_with_state(frame, area, state);
+        }
+        return;
+    }
+
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(8),
-            Constraint::Length(3),
-            Constraint::Length(1),
+            Constraint::Length(1), // title bar
+            Constraint::Min(8),    // body
+            Constraint::Length(3), // compose / input bar
+            Constraint::Length(1), // status
         ])
         .split(area);
 
@@ -27,26 +40,62 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     render_body(frame, rows[1], state);
     render_compose(frame, rows[2], state);
     render_status(frame, rows[3], state);
+
+    // Toast stack — overlaid on the status row when non-empty.
+    crate::ui::toast::render(frame, rows[3], state);
+
+    // Full-screen overlays render last so they paint on top of the base UI.
     if state.show_help {
-        help::render(frame, area);
+        help::render_with_state(frame, area, state);
+    }
+    if let Mode::AccountSwitcher = state.mode {
+        crate::ui::account_switcher::render(frame, area, state);
+    }
+    if let Mode::ModalForm = state.mode {
+        crate::ui::modal_form::render(frame, area, state);
+    }
+    if let Mode::InputBar = state.mode {
+        // Input bar replaces the compose row.
+        crate::ui::input_bar::render(frame, rows[2], state);
     }
 }
 
 fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    // Active account display name.
+    let account = state
+        .features
+        .accounts
+        .iter()
+        .find(|a| a.active)
+        .map(|a| format!("@{}", a.display))
+        .unwrap_or_default();
+
+    // Relay health summary: count anything that looks "connected" / "open".
+    let connected = state
+        .relays
+        .iter()
+        .filter(|r| {
+            let lower = r.connection_label.to_ascii_lowercase();
+            lower.contains("connected") || lower == "open"
+        })
+        .count();
+    let relay_dot = if connected > 0 { '\u{25cf}' } else { '\u{25cb}' };
+    let relay_color = if connected > 0 { RELAY_OK } else { RELAY_DOWN };
+
     let title = Line::from(vec![
         Span::styled(
             "chirp",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(
-            format!("[{}]", state.tab.label()),
-            Style::default().fg(Color::Yellow),
-        ),
+        Span::styled(account, Style::default().fg(DIM_TEXT)),
         Span::raw("  "),
         Span::raw(tab_labels(state)),
+        Span::raw("  "),
+        Span::styled(
+            format!("{} {} relays", relay_dot, state.relays.len()),
+            Style::default().fg(relay_color),
+        ),
     ]);
     frame.render_widget(Paragraph::new(title), area);
 }
@@ -78,7 +127,7 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     } else {
         (
             "Compose".to_string(),
-            "h/c/g/w/s tabs  : command  i compose  r reply  + react  f/F follow  ? help"
+            "n new  r reply  + react  z zap  f follow  / palette  a accounts  ? help  q quit"
                 .to_string(),
         )
     };

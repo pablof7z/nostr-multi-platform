@@ -18,16 +18,16 @@ use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIM_TEXT, FOOTER_BG};
 // Accessors — replace bodies once wiring agent adds fields
 // ---------------------------------------------------------------------------
 
-fn modal_title(_state: &AppState) -> &str {
-    ""
+fn modal_title(state: &AppState) -> &str {
+    &state.modal_title
 }
 
-fn modal_fields(_state: &AppState) -> Vec<(String, String)> {
-    Vec::new()
+fn modal_fields(state: &AppState) -> Vec<(String, String)> {
+    state.modal_fields.clone()
 }
 
-fn modal_cursor(_state: &AppState) -> usize {
-    0
+fn modal_cursor(state: &AppState) -> usize {
+    state.modal_cursor
 }
 
 // ---------------------------------------------------------------------------

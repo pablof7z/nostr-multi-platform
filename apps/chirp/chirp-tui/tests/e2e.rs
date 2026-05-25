@@ -3,8 +3,18 @@ use std::process::Command;
 use rexpect::session::Options;
 use rexpect::spawn_with_options;
 
+/// Smoke test that the TUI binary boots, paints the onboarding overlay (which
+/// is unconditional when no account is configured — and the test process
+/// never configures one), and exits cleanly on `q`.
+///
+/// Tab-specific assertions (`Chats`, `Groups`, `Wallet`, `Accounts`, `Relays`)
+/// no longer apply at this layer: the onboarding overlay covers the full
+/// screen until `features.accounts` is non-empty, and the e2e harness has no
+/// way to mint an account in the test process. Per-tab rendering is now
+/// covered by `chirp_tui::ui::layout_tests` which stage an `AccountLine`
+/// directly.
 #[test]
-fn tui_exposes_ios_parity_tabs_and_command_mode() -> Result<(), Box<dyn std::error::Error>> {
+fn tui_boots_and_quits_cleanly() -> Result<(), Box<dyn std::error::Error>> {
     let bin = env!("CARGO_BIN_EXE_chirp-tui");
     let mut command = Command::new("sh");
     command.args([
@@ -16,23 +26,14 @@ fn tui_exposes_ios_parity_tabs_and_command_mode() -> Result<(), Box<dyn std::err
     let mut p = spawn_with_options(command, Options::new().timeout_ms(Some(20_000)))?;
     p.process_mut().set_kill_timeout(Some(2_000));
 
-    p.exp_string("runtime")?;
+    // Onboarding overlay renders the app name plus its welcome subtitle.
+    p.exp_string("chirp")?;
+    p.exp_string("nostr")?;
 
-    send_key(&mut p, "c")?;
-    p.exp_string("Chats")?;
-    send_key(&mut p, "g")?;
-    p.exp_string("Groups")?;
-    send_key(&mut p, "w")?;
-    p.exp_string("Wallet")?;
-    send_key(&mut p, "s")?;
-    p.exp_string("Accounts")?;
-    send_key(&mut p, "h")?;
-    p.exp_string("Relays")?;
-
-    send_key(&mut p, ":")?;
-    p.exp_string("command mode")?;
-    send_key(&mut p, "help\r")?;
-    p.exp_string("dm-relays wallet")?;
+    // Help overlay still works on top of onboarding.
+    send_key(&mut p, "?")?;
+    p.exp_string("Help")?;
+    send_key(&mut p, "?")?;
 
     send_key(&mut p, "q")?;
     let _ = p.exp_eof();

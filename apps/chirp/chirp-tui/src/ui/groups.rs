@@ -36,15 +36,13 @@ use crate::ui::colors::{
 // ---------------------------------------------------------------------------
 
 /// Whether the inline group compose strip is open.
-/// TODO(wiring): replace body with `state.group_composing`
-fn is_composing(_state: &AppState) -> bool {
-    false
+fn is_composing(state: &AppState) -> bool {
+    state.group_composing
 }
 
 /// Current text in the group compose buffer.
-/// TODO(wiring): replace body with `state.group_compose_buf.as_str()`
-fn compose_buf(_state: &AppState) -> &str {
-    ""
+fn compose_buf(state: &AppState) -> &str {
+    &state.group_compose_buf
 }
 
 // ---------------------------------------------------------------------------

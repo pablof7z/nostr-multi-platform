@@ -13,10 +13,9 @@ use ratatui::Frame;
 use crate::app::AppState;
 use crate::ui::colors::{ACCENT_CYAN, DIM_TEXT, DIMMER_TEXT, HEART, REPOST, ZAP};
 
-/// Extract toasts from state. Pre-wiring: returns empty.
-/// Post-wiring: replace body with `state.toasts.clone()`.
-fn toasts_of(_state: &AppState) -> Vec<(String, u8)> {
-    Vec::new()
+/// Extract toasts from state.
+fn toasts_of(state: &AppState) -> Vec<(String, u8)> {
+    state.toasts.clone()
 }
 
 /// Choose foreground color based on toast message prefix and TTL.

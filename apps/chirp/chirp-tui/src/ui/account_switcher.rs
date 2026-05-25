@@ -17,8 +17,8 @@ use crate::ui::colors::{ACCENT_CYAN, DIM_TEXT, RELAY_OK, SELECTED_BG};
 // Accessor — replace with `state.account_switcher_cursor` post-wiring
 // ---------------------------------------------------------------------------
 
-fn switcher_cursor(_state: &AppState) -> usize {
-    0
+fn switcher_cursor(state: &AppState) -> usize {
+    state.account_switcher_cursor
 }
 
 // ---------------------------------------------------------------------------

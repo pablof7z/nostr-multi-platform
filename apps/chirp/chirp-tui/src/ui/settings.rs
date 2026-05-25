@@ -26,10 +26,8 @@ const SECTION_NAMES: [&str; 6] = [
     "About",
 ];
 
-/// Fallback cursor — the wiring agent will replace this with `state.settings_cursor`.
-fn settings_cursor(_state: &AppState) -> usize {
-    // use state.settings_cursor if it exists, else 0
-    0 // fallback — wiring agent will replace
+fn settings_cursor(state: &AppState) -> usize {
+    state.settings_cursor
 }
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
