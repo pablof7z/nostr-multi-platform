@@ -1,0 +1,20 @@
+{
+  "name": "compose-user-card",
+  "type": "registry:ui",
+  "title": "User Card (Compose)",
+  "description": "Compact Compose author card composed from avatar, profile name, and optional NIP-05 badge.",
+  "dependencies": [],
+  "registryDependencies": [
+    "compose-user-avatar",
+    "compose-user-name",
+    "compose-user-nip05"
+  ],
+  "files": [
+    {
+      "path": "registry/compose/user-card/NostrUserCard.kt",
+      "type": "registry:ui",
+      "target": "Components/NostrUser/NostrUserCard.kt",
+      "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.clickable\nimport androidx.compose.foundation.layout.Column\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.unit.Dp\nimport androidx.compose.ui.unit.dp\n\n/**\n * Compact author header: avatar, display name, and optional NIP-05 badge.\n *\n * The most common pattern in note feeds and thread views. Tap routes\n * through [onTap] so this component can be used in any navigation stack.\n *\n * Depends on `compose/user-avatar`, `compose/user-name`, `compose/user-nip05`.\n */\n@Composable\nfun NostrUserCard(\n    profile: ProfileWire,\n    avatarSize: Dp = 40.dp,\n    onTap: ((String) -> Unit)? = null,\n    modifier: Modifier = Modifier,\n) {\n    val tapModifier = if (onTap != null) {\n        modifier.clickable { onTap(profile.pubkey) }\n    } else {\n        modifier\n    }\n\n    Row(\n        verticalAlignment = Alignment.CenterVertically,\n        modifier = tapModifier.semantics(mergeDescendants = true) {\n            contentDescription = \"${profile.display}, profile\"\n        },\n    ) {\n        NostrAvatar(profile = profile, size = avatarSize)\n        Spacer(Modifier.width(10.dp))\n        Column {\n            NostrProfileName(profile = profile)\n            NostrNip05Badge(profile = profile)\n        }\n    }\n}\n"
+    }
+  ]
+}

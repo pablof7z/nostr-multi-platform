@@ -25,14 +25,14 @@ export default function ComponentPage() {
         const cmp = c();
 
         const defaultPlatform: Platform =
-          PLATFORM_ORDER.find((p) => cmp.platforms[p]?.status === "stable") ?? "swift";
+          PLATFORM_ORDER.find((p) => cmp.platforms[p]?.status === "stable") ?? "swiftui";
 
         const [platform, setPlatform] = createSignal<Platform>(defaultPlatform);
 
         const impl = createMemo(() => cmp.platforms[platform()]);
 
         const language = createMemo<"swift" | "kotlin">(() =>
-          platform() === "kotlin" ? "kotlin" : "swift"
+          platform() === "compose" ? "kotlin" : "swift"
         );
 
         const tabs = createMemo(() => {
@@ -148,23 +148,39 @@ export default function ComponentPage() {
             </For>
 
             <h2 id="wire">Wire contract</h2>
-            <p>
-              Content components consume{" "}
-              <code class="inline-code">ContentTreeWire</code> — the parsed
-              content projection produced by the{" "}
-              <code class="inline-code">nmp-content</code> crate. The wire shape
-              is stable across the framework; what you change in your app is the
-              rendering.
-            </p>
-            <p>
-              Reference fixtures live at{" "}
-              <code class="inline-code">
-                crates/nmp-content-fixtures/src/scenarios/
-              </code>{" "}
-              — one file per scenario family. Run them via the{" "}
-              <code class="inline-code">build-bundle</code> binary to generate
-              the asset bundle the gallery apps consume.
-            </p>
+            <Show
+              when={cmp.slug.startsWith("user-")}
+              fallback={
+                <>
+                  <p>
+                    Content components consume{" "}
+                    <code class="inline-code">ContentTreeWire</code> — the parsed
+                    content projection produced by the{" "}
+                    <code class="inline-code">nmp-content</code> crate. The wire
+                    shape is stable across the framework; what you change in your
+                    app is the rendering.
+                  </p>
+                  <p>
+                    Reference fixtures live at{" "}
+                    <code class="inline-code">
+                      crates/nmp-content-fixtures/src/scenarios/
+                    </code>{" "}
+                    — one file per scenario family. Run them via the{" "}
+                    <code class="inline-code">build-bundle</code> binary to
+                    generate the asset bundle the gallery apps consume.
+                  </p>
+                </>
+              }
+            >
+              <p>
+                User components consume <code class="inline-code">ProfileWire</code>:
+                a Rust-owned projection containing the raw pubkey plus
+                Rust-formatted display strings such as{" "}
+                <code class="inline-code">npubShort</code>. Apps own fetching and
+                persistence; these files only render the profile snapshot they are
+                given.
+              </p>
+            </Show>
           </div>
         );
       }}

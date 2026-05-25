@@ -5,7 +5,7 @@ import SwiftUI
 /// The most common pattern in note feeds and thread views. Tap routes
 /// through `onTap` so this component can be placed in any navigation stack.
 ///
-/// Depends on `swiftui/user-core`, `swiftui/user-name`,
+/// Depends on `swiftui/user-avatar`, `swiftui/user-name`,
 /// `swiftui/user-nip05`.
 public struct NostrUserCard: View {
     public let profile: ProfileWire

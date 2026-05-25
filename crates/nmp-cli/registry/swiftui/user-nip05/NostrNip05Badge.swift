@@ -9,7 +9,7 @@ import SwiftUI
 /// if let badge = NostrNip05Badge(profile: profile) { badge }
 /// ```
 ///
-/// Depends on `swiftui/user-core` for `ProfileWire`.
+/// Depends on `swiftui/user-avatar` for `ProfileWire`.
 public struct NostrNip05Badge: View {
     public let nip05: String
 

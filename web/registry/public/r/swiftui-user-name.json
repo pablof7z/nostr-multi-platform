@@ -1,0 +1,18 @@
+{
+  "name": "swiftui-user-name",
+  "type": "registry:ui",
+  "title": "User Name (SwiftUI)",
+  "description": "Inline SwiftUI profile display-name text with Rust-formatted npub fallback.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/user-name/NostrProfileName.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrUser/NostrProfileName.swift",
+      "content": "import SwiftUI\n\n/// Inline display-name text for a Nostr profile.\n///\n/// Shows `displayName` when set; falls back to `npubShort`\n/// (always Rust-formatted — aim.md §6.9).\n///\n/// Depends on `swiftui/user-avatar` for `ProfileWire`.\npublic struct NostrProfileName: View {\n    public let profile: ProfileWire\n    public var font: Font\n    public var color: Color\n\n    public init(\n        profile: ProfileWire,\n        font: Font = .headline,\n        color: Color = .primary\n    ) {\n        self.profile = profile\n        self.font = font\n        self.color = color\n    }\n\n    public var body: some View {\n        Text(profile.display)\n            .font(font)\n            .foregroundStyle(color)\n            .lineLimit(1)\n            .accessibilityLabel(\"Display name: \\(profile.display)\")\n    }\n}\n"
+    }
+  ]
+}

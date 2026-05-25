@@ -17,7 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
  * Shows `displayName` when set; falls back to `npubShort`
  * (always Rust-formatted — never reformat in Kotlin).
  *
- * Depends on `compose/user-core` for [ProfileWire].
+ * Depends on `compose/user-avatar` for [ProfileWire].
  */
 @Composable
 fun NostrProfileName(

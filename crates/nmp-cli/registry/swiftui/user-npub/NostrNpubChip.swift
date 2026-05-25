@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Tappable chip that shows the Rust-truncated npub and copies the full
 /// bech32 `npub1…` to the clipboard on tap.
@@ -6,7 +7,7 @@ import SwiftUI
 /// `npub` and `npubShort` must come from the kernel projection —
 /// never reformat them in Swift (aim.md §6.9).
 ///
-/// Depends on `swiftui/user-core` for `ProfileWire`.
+/// Depends on `swiftui/user-avatar` for `ProfileWire`.
 public struct NostrNpubChip: View {
     public let npub: String
     public let npubShort: String

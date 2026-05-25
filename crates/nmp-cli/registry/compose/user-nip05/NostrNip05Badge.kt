@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
  *
  * Renders nothing when `profile.nip05` is null or empty.
  *
- * Depends on `compose/user-core` for [ProfileWire].
+ * Depends on `compose/user-avatar` for [ProfileWire].
  */
 @Composable
 fun NostrNip05Badge(

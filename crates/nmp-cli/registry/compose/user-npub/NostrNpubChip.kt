@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
  * `npub` and `npubShort` must come from the kernel projection —
  * never reformat them in Kotlin.
  *
- * Depends on `compose/user-core` for [ProfileWire].
+ * Depends on `compose/user-avatar` for [ProfileWire].
  */
 @Composable
 fun NostrNpubChip(

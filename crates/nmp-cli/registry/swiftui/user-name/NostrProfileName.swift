@@ -5,7 +5,7 @@ import SwiftUI
 /// Shows `displayName` when set; falls back to `npubShort`
 /// (always Rust-formatted — aim.md §6.9).
 ///
-/// Depends on `swiftui/user-core` for `ProfileWire`.
+/// Depends on `swiftui/user-avatar` for `ProfileWire`.
 public struct NostrProfileName: View {
     public let profile: ProfileWire
     public var font: Font

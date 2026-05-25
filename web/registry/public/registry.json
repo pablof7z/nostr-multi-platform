@@ -154,6 +154,102 @@
       ]
     },
     {
+      "name": "swiftui-user-avatar",
+      "type": "registry:ui",
+      "title": "User Avatar (SwiftUI)",
+      "description": "Circular Nostr profile avatar with remote image loading and deterministic identicon fallback.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/swiftui/user-avatar/ProfileWire.swift",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/ProfileWire.swift",
+          "content": "import Foundation\n\n/// Wire type for a Nostr user profile, decoded from the `nmp-profile`\n/// projection emitted by the kernel.\n///\n/// `npub` and `npubShort` are always Rust-formatted — never reformat\n/// them in Swift (aim.md §6.9).\npublic struct ProfileWire: Codable, Equatable, Sendable {\n    public let pubkey: String\n    public let displayName: String?\n    public let about: String?\n    public let pictureUrl: String?\n    public let nip05: String?\n    /// Full bech32 `npub1…` string. Use for copy / share.\n    public let npub: String\n    /// Rust-truncated npub (e.g. `npub1abcd…wxyz`). Display only.\n    public let npubShort: String\n\n    public init(\n        pubkey: String,\n        displayName: String? = nil,\n        about: String? = nil,\n        pictureUrl: String? = nil,\n        nip05: String? = nil,\n        npub: String,\n        npubShort: String\n    ) {\n        self.pubkey = pubkey\n        self.displayName = displayName\n        self.about = about\n        self.pictureUrl = pictureUrl\n        self.nip05 = nip05\n        self.npub = npub\n        self.npubShort = npubShort\n    }\n\n    /// Stable display label: `displayName` if set, else `npubShort`.\n    public var display: String {\n        if let name = displayName, !name.isEmpty { return name }\n        return npubShort\n    }\n\n    /// Parsed avatar URL; `nil` when no picture is set or URL is empty.\n    public var avatarURL: URL? {\n        guard let str = pictureUrl, !str.isEmpty else { return nil }\n        return URL(string: str)\n    }\n}\n"
+        },
+        {
+          "path": "registry/swiftui/user-avatar/NostrAvatar.swift",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrAvatar.swift",
+          "content": "import SwiftUI\n\n/// Circular avatar for a Nostr profile. Shows the remote picture when\n/// available; falls back to a deterministic identicon derived from `pubkey`.\n///\n/// Replace `AsyncImage` with your own image cache (Kingfisher, Nuke, etc.)\n/// if you already have one — the identicon fallback is self-contained.\n///\n/// Depends on `swiftui/user-avatar` for `ProfileWire`.\npublic struct NostrAvatar: View {\n    public let pubkey: String\n    public let pictureUrl: URL?\n    public let size: CGFloat\n\n    public init(pubkey: String, pictureUrl: URL? = nil, size: CGFloat = 40) {\n        self.pubkey = pubkey\n        self.pictureUrl = pictureUrl\n        self.size = size\n    }\n\n    public init(profile: ProfileWire, size: CGFloat = 40) {\n        self.pubkey = profile.pubkey\n        self.pictureUrl = profile.avatarURL\n        self.size = size\n    }\n\n    public var body: some View {\n        Group {\n            if let url = pictureUrl {\n                AsyncImage(url: url) { phase in\n                    switch phase {\n                    case .success(let image):\n                        image.resizable().scaledToFill()\n                    default:\n                        identicon\n                    }\n                }\n            } else {\n                identicon\n            }\n        }\n        .frame(width: size, height: size)\n        .clipShape(Circle())\n        .accessibilityHidden(true)\n    }\n\n    private var identicon: some View {\n        ZStack {\n            Circle().fill(NostrIdenticon.color(forPubkey: pubkey))\n            Text(NostrIdenticon.initials(forPubkey: pubkey))\n                .font(.system(size: size * 0.35, weight: .semibold))\n                .foregroundStyle(.white)\n        }\n    }\n}\n\n// MARK: - Identicon\n\n/// Deterministic color + initials from a raw pubkey hex string.\n/// Edit `palette` to match your app's brand palette.\npublic enum NostrIdenticon {\n    private static let palette: [Color] = [\n        Color(red: 0.36, green: 0.20, blue: 0.81),\n        Color(red: 0.10, green: 0.53, blue: 0.82),\n        Color(red: 0.13, green: 0.55, blue: 0.42),\n        Color(red: 0.82, green: 0.33, blue: 0.18),\n        Color(red: 0.76, green: 0.15, blue: 0.45),\n        Color(red: 0.20, green: 0.20, blue: 0.20),\n    ]\n\n    public static func color(forPubkey pubkey: String) -> Color {\n        let sum = pubkey.utf8.prefix(4).reduce(0) { $0 + Int($1) }\n        return palette[sum % palette.count]\n    }\n\n    public static func initials(forPubkey pubkey: String) -> String {\n        guard pubkey.count >= 2 else { return \"?\" }\n        return String(pubkey.prefix(2)).uppercased()\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "swiftui-user-name",
+      "type": "registry:ui",
+      "title": "User Name (SwiftUI)",
+      "description": "Inline SwiftUI profile display-name text with Rust-formatted npub fallback.",
+      "dependencies": [],
+      "registryDependencies": [
+        "swiftui-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/swiftui/user-name/NostrProfileName.swift",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrProfileName.swift",
+          "content": "import SwiftUI\n\n/// Inline display-name text for a Nostr profile.\n///\n/// Shows `displayName` when set; falls back to `npubShort`\n/// (always Rust-formatted — aim.md §6.9).\n///\n/// Depends on `swiftui/user-avatar` for `ProfileWire`.\npublic struct NostrProfileName: View {\n    public let profile: ProfileWire\n    public var font: Font\n    public var color: Color\n\n    public init(\n        profile: ProfileWire,\n        font: Font = .headline,\n        color: Color = .primary\n    ) {\n        self.profile = profile\n        self.font = font\n        self.color = color\n    }\n\n    public var body: some View {\n        Text(profile.display)\n            .font(font)\n            .foregroundStyle(color)\n            .lineLimit(1)\n            .accessibilityLabel(\"Display name: \\(profile.display)\")\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "swiftui-user-nip05",
+      "type": "registry:ui",
+      "title": "User Nip05 (SwiftUI)",
+      "description": "SwiftUI NIP-05 verified identity badge that hides itself when no identifier is present.",
+      "dependencies": [],
+      "registryDependencies": [
+        "swiftui-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/swiftui/user-nip05/NostrNip05Badge.swift",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrNip05Badge.swift",
+          "content": "import SwiftUI\n\n/// NIP-05 verified identity badge — checkmark icon + identifier string.\n///\n/// Renders nothing when `profile.nip05` is nil or empty.\n/// The failable init lets you gate the badge in one expression:\n///\n/// ```swift\n/// if let badge = NostrNip05Badge(profile: profile) { badge }\n/// ```\n///\n/// Depends on `swiftui/user-avatar` for `ProfileWire`.\npublic struct NostrNip05Badge: View {\n    public let nip05: String\n\n    /// Returns `nil` when the profile has no NIP-05 identifier.\n    public init?(profile: ProfileWire) {\n        guard let v = profile.nip05, !v.isEmpty else { return nil }\n        self.nip05 = v\n    }\n\n    public init(nip05: String) {\n        self.nip05 = nip05\n    }\n\n    public var body: some View {\n        HStack(spacing: 4) {\n            Image(systemName: \"checkmark.seal.fill\")\n                .font(.system(size: 12, weight: .semibold))\n                .foregroundStyle(Color.accentColor)\n            Text(nip05)\n                .font(.callout)\n                .foregroundStyle(.secondary)\n                .lineLimit(1)\n        }\n        .accessibilityElement(children: .combine)\n        .accessibilityLabel(\"Verified: \\(nip05)\")\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "swiftui-user-npub",
+      "type": "registry:ui",
+      "title": "User Npub (SwiftUI)",
+      "description": "SwiftUI npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard.",
+      "dependencies": [],
+      "registryDependencies": [
+        "swiftui-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/swiftui/user-npub/NostrNpubChip.swift",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrNpubChip.swift",
+          "content": "import SwiftUI\nimport UIKit\n\n/// Tappable chip that shows the Rust-truncated npub and copies the full\n/// bech32 `npub1…` to the clipboard on tap.\n///\n/// `npub` and `npubShort` must come from the kernel projection —\n/// never reformat them in Swift (aim.md §6.9).\n///\n/// Depends on `swiftui/user-avatar` for `ProfileWire`.\npublic struct NostrNpubChip: View {\n    public let npub: String\n    public let npubShort: String\n\n    @State private var copied = false\n\n    public init(profile: ProfileWire) {\n        self.npub = profile.npub\n        self.npubShort = profile.npubShort\n    }\n\n    public init(npub: String, npubShort: String) {\n        self.npub = npub\n        self.npubShort = npubShort\n    }\n\n    public var body: some View {\n        Button(action: copyNpub) {\n            HStack(spacing: 4) {\n                Text(npubShort)\n                    .font(.body.monospaced())\n                    .foregroundStyle(.secondary)\n                Image(systemName: copied ? \"checkmark\" : \"doc.on.doc\")\n                    .font(.system(size: 11))\n                    .foregroundStyle(.secondary)\n            }\n        }\n        .buttonStyle(.plain)\n        .accessibilityLabel(copied ? \"Copied\" : \"Copy npub\")\n        .accessibilityHint(\"Double tap to copy full npub to clipboard\")\n    }\n\n    private func copyNpub() {\n        UIPasteboard.general.string = npub\n        copied = true\n        Task {\n            try? await Task.sleep(for: .seconds(2))\n            copied = false\n        }\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "swiftui-user-card",
+      "type": "registry:ui",
+      "title": "User Card (SwiftUI)",
+      "description": "Compact SwiftUI author card composed from avatar, profile name, and optional NIP-05 badge.",
+      "dependencies": [],
+      "registryDependencies": [
+        "swiftui-user-avatar",
+        "swiftui-user-name",
+        "swiftui-user-nip05"
+      ],
+      "files": [
+        {
+          "path": "registry/swiftui/user-card/NostrUserCard.swift",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrUserCard.swift",
+          "content": "import SwiftUI\n\n/// Compact author header: avatar, display name, and optional NIP-05 badge.\n///\n/// The most common pattern in note feeds and thread views. Tap routes\n/// through `onTap` so this component can be placed in any navigation stack.\n///\n/// Depends on `swiftui/user-avatar`, `swiftui/user-name`,\n/// `swiftui/user-nip05`.\npublic struct NostrUserCard: View {\n    public let profile: ProfileWire\n    public var avatarSize: CGFloat\n    public var onTap: ((String) -> Void)?\n\n    public init(\n        profile: ProfileWire,\n        avatarSize: CGFloat = 40,\n        onTap: ((String) -> Void)? = nil\n    ) {\n        self.profile = profile\n        self.avatarSize = avatarSize\n        self.onTap = onTap\n    }\n\n    public var body: some View {\n        HStack(spacing: 10) {\n            NostrAvatar(profile: profile, size: avatarSize)\n\n            VStack(alignment: .leading, spacing: 2) {\n                NostrProfileName(profile: profile)\n\n                if let badge = NostrNip05Badge(profile: profile) {\n                    badge\n                }\n            }\n\n            Spacer(minLength: 0)\n        }\n        .contentShape(Rectangle())\n        .onTapGesture { onTap?(profile.pubkey) }\n        .accessibilityElement(children: .combine)\n        .accessibilityLabel(\"\\(profile.display), profile\")\n        .accessibilityAddTraits(.isButton)\n    }\n}\n"
+        }
+      ]
+    },
+    {
       "name": "compose-content-core",
       "type": "registry:ui",
       "title": "Content Core (Compose)",
@@ -252,6 +348,102 @@
           "type": "registry:ui",
           "target": "Components/NostrContent/NostrContentGrouping.kt",
           "content": "// Requires: nothing beyond the Kotlin stdlib. Kotlin 1.9+.\n//\n// Block-level grouping for a `ContentTreeWire`. `NostrContentView` consumes\n// these in order; the grouping logic lives in its own file so the renderer\n// composable stays focused on layout.\n\npackage nmp.content\n\n/** Display level for inline-text groups; lets the renderer pick paragraph vs\n *  heading typography without re-walking the arena. */\npublic sealed class NostrContentInlineLevel {\n    public object Paragraph : NostrContentInlineLevel()\n    public data class Heading(val level: UByte) : NostrContentInlineLevel()\n}\n\n/** Block-level group produced by walking the roots of a [ContentTreeWire]. */\npublic sealed class NostrContentGroup {\n    /** Inline runs that should be concatenated. The [children] are node\n     *  indices; `UInt.MAX_VALUE` is a sentinel trailing newline used to\n     *  separate adjacent paragraphs / headings. */\n    public data class Inline(\n        val level: NostrContentInlineLevel,\n        val children: List<UInt>,\n    ) : NostrContentGroup()\n\n    public data class MediaGroup(val urls: List<String>, val kind: MediaKind) : NostrContentGroup()\n    public data class EventRefGroup(val uri: WireNostrUri) : NostrContentGroup()\n    public data class CodeBlockGroup(val info: String?, val body: String) : NostrContentGroup()\n    public data class BlockQuoteGroup(val children: List<UInt>) : NostrContentGroup()\n    public data class ListGroup(\n        val orderedStart: ULong?,\n        val items: List<List<UInt>>,\n    ) : NostrContentGroup()\n    public object RuleGroup : NostrContentGroup()\n    public data class ImageGroup(\n        val alt: String,\n        val title: String?,\n        val src: String?,\n    ) : NostrContentGroup()\n    public data class PlaceholderGroup(val reason: PlaceholderReason) : NostrContentGroup()\n}\n\n/** Sentinel index used to inject a trailing newline between contiguous inline\n *  groups (paragraph / heading). `UInt.MAX_VALUE` cannot reference a real\n *  arena slot — the bounds check in [ContentTreeWire.nodeAt] rejects it — so\n *  renderers can safely treat it as a newline marker. */\npublic val NOSTR_CONTENT_NEWLINE_SENTINEL: UInt = UInt.MAX_VALUE\n\n/**\n * Flatten the document into a sequence of block-level groups. Mirrors the\n * `nostrContentGroups` function in the SwiftUI registry. Inline event refs\n * appearing inside paragraphs are pulled out into their own `EventRefGroup`\n * so the quote card renders block-level.\n */\npublic fun nostrContentGroups(tree: ContentTreeWire): List<NostrContentGroup> {\n    val groups = mutableListOf<NostrContentGroup>()\n    var pendingChildren = mutableListOf<UInt>()\n    var pendingLevel: NostrContentInlineLevel = NostrContentInlineLevel.Paragraph\n\n    fun flush() {\n        if (pendingChildren.isNotEmpty()) {\n            groups.add(NostrContentGroup.Inline(pendingLevel, pendingChildren.toList()))\n            pendingChildren = mutableListOf()\n            pendingLevel = NostrContentInlineLevel.Paragraph\n        }\n    }\n\n    fun appendInline(level: NostrContentInlineLevel, children: List<UInt>) {\n        if (pendingChildren.isNotEmpty() && pendingLevel != level) {\n            flush()\n        }\n        pendingLevel = level\n\n        val startCount = pendingChildren.size\n        for (child in children) {\n            val childNode = tree.nodeAt(child) ?: continue\n            if (childNode is WireNode.EventRef) {\n                flush()\n                groups.add(NostrContentGroup.EventRefGroup(childNode.uri))\n            } else {\n                pendingChildren.add(child)\n            }\n        }\n        if (pendingChildren.size > startCount) {\n            pendingChildren.add(NOSTR_CONTENT_NEWLINE_SENTINEL)\n        }\n    }\n\n    for (root in tree.roots) {\n        val node = tree.nodeAt(root) ?: continue\n        when (node) {\n            is WireNode.Paragraph -> appendInline(NostrContentInlineLevel.Paragraph, node.children)\n            is WireNode.Heading -> {\n                flush()\n                appendInline(NostrContentInlineLevel.Heading(node.level), node.children)\n                flush()\n            }\n            is WireNode.Media -> {\n                flush()\n                groups.add(NostrContentGroup.MediaGroup(node.urls, node.mediaKind))\n            }\n            is WireNode.EventRef -> {\n                flush()\n                groups.add(NostrContentGroup.EventRefGroup(node.uri))\n            }\n            is WireNode.CodeBlock -> {\n                flush()\n                groups.add(NostrContentGroup.CodeBlockGroup(node.info, node.body))\n            }\n            is WireNode.BlockQuote -> {\n                flush()\n                groups.add(NostrContentGroup.BlockQuoteGroup(node.children))\n            }\n            is WireNode.ListNode -> {\n                flush()\n                groups.add(NostrContentGroup.ListGroup(node.orderedStart, node.items))\n            }\n            WireNode.Rule -> {\n                flush()\n                groups.add(NostrContentGroup.RuleGroup)\n            }\n            is WireNode.Image -> {\n                flush()\n                groups.add(NostrContentGroup.ImageGroup(node.alt, node.title, node.src))\n            }\n            is WireNode.Placeholder -> {\n                flush()\n                groups.add(NostrContentGroup.PlaceholderGroup(node.reason))\n            }\n            // Bare inline node at the root (plain text without paragraph wrap).\n            // Treat it as a one-child paragraph.\n            is WireNode.Text,\n            is WireNode.Mention,\n            is WireNode.Hashtag,\n            is WireNode.Url,\n            is WireNode.Emoji,\n            is WireNode.Invoice,\n            is WireNode.Emphasis,\n            is WireNode.Strong,\n            is WireNode.InlineCode,\n            is WireNode.Link,\n            WireNode.SoftBreak,\n            WireNode.HardBreak -> appendInline(NostrContentInlineLevel.Paragraph, listOf(root))\n        }\n    }\n    flush()\n    return groups\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "compose-user-avatar",
+      "type": "registry:ui",
+      "title": "User Avatar (Compose)",
+      "description": "Circular Compose Nostr profile avatar with Coil image loading and deterministic identicon fallback.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/compose/user-avatar/ProfileWire.kt",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/ProfileWire.kt",
+          "content": "package org.nmp.registry\n\nimport kotlinx.serialization.SerialName\nimport kotlinx.serialization.Serializable\n\n/**\n * Wire type for a Nostr user profile, decoded from the `nmp-profile`\n * projection emitted by the kernel.\n *\n * `npub` and `npubShort` are always Rust-formatted — never reformat\n * them in Kotlin.\n */\n@Serializable\ndata class ProfileWire(\n    @SerialName(\"pubkey\") val pubkey: String,\n    @SerialName(\"display_name\") val displayName: String? = null,\n    @SerialName(\"about\") val about: String? = null,\n    @SerialName(\"picture_url\") val pictureUrl: String? = null,\n    @SerialName(\"nip05\") val nip05: String? = null,\n    /** Full bech32 `npub1…` string. Use for copy / share. */\n    @SerialName(\"npub\") val npub: String,\n    /** Rust-truncated npub (e.g. `npub1abcd…wxyz`). Display only. */\n    @SerialName(\"npub_short\") val npubShort: String,\n) {\n    /** Stable display label: `displayName` if set, else `npubShort`. */\n    val display: String get() = displayName?.takeIf { it.isNotEmpty() } ?: npubShort\n\n    /** Avatar URL string; `null` when no picture is set or empty. */\n    val avatarUrl: String? get() = pictureUrl?.takeIf { it.isNotEmpty() }\n}\n"
+        },
+        {
+          "path": "registry/compose/user-avatar/NostrAvatar.kt",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrAvatar.kt",
+          "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.background\nimport androidx.compose.foundation.layout.Box\nimport androidx.compose.foundation.layout.size\nimport androidx.compose.foundation.shape.CircleShape\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.draw.clip\nimport androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.semantics.clearAndSetSemantics\nimport androidx.compose.ui.text.font.FontWeight\nimport androidx.compose.ui.unit.Dp\nimport androidx.compose.ui.unit.dp\nimport androidx.compose.ui.unit.sp\nimport coil.compose.SubcomposeAsyncImage\n\n/**\n * Circular avatar for a Nostr profile. Shows the remote picture when\n * available; falls back to a deterministic identicon derived from `pubkey`.\n *\n * Replace [SubcomposeAsyncImage] with Glide/Picasso/custom if you already\n * have an image loader — the identicon fallback is self-contained.\n *\n * Depends on `compose/user-avatar` for [ProfileWire].\n */\n@Composable\nfun NostrAvatar(\n    pubkey: String,\n    avatarUrl: String? = null,\n    size: Dp = 40.dp,\n    modifier: Modifier = Modifier,\n) {\n    val baseModifier = modifier\n        .size(size)\n        .clip(CircleShape)\n        .clearAndSetSemantics {}\n\n    if (!avatarUrl.isNullOrEmpty()) {\n        SubcomposeAsyncImage(\n            model = avatarUrl,\n            contentDescription = null,\n            modifier = baseModifier,\n            error = { NostrIdenticonBox(pubkey = pubkey, size = size) },\n            loading = { NostrIdenticonBox(pubkey = pubkey, size = size) },\n        )\n    } else {\n        NostrIdenticonBox(pubkey = pubkey, size = size, modifier = baseModifier)\n    }\n}\n\n/** Convenience overload accepting a [ProfileWire]. */\n@Composable\nfun NostrAvatar(\n    profile: ProfileWire,\n    size: Dp = 40.dp,\n    modifier: Modifier = Modifier,\n) = NostrAvatar(\n    pubkey = profile.pubkey,\n    avatarUrl = profile.avatarUrl,\n    size = size,\n    modifier = modifier,\n)\n\n// ── Identicon ────────────────────────────────────────────────────────────────\n\nprivate val IDENTICON_PALETTE = listOf(\n    Color(0xFF5C33CF),\n    Color(0xFF1A87D1),\n    Color(0xFF218C6A),\n    Color(0xFFD1542E),\n    Color(0xFFC12573),\n    Color(0xFF333333),\n)\n\nprivate fun identiconColor(pubkey: String): Color {\n    val sum = pubkey.take(4).sumOf { it.code }\n    return IDENTICON_PALETTE[sum % IDENTICON_PALETTE.size]\n}\n\nprivate fun identiconInitials(pubkey: String): String =\n    pubkey.take(2).uppercase()\n\n@Composable\nprivate fun NostrIdenticonBox(pubkey: String, size: Dp, modifier: Modifier = Modifier) {\n    Box(\n        contentAlignment = Alignment.Center,\n        modifier = modifier\n            .size(size)\n            .clip(CircleShape)\n            .background(identiconColor(pubkey)),\n    ) {\n        Text(\n            text = identiconInitials(pubkey),\n            color = Color.White,\n            fontSize = (size.value * 0.35f).sp,\n            fontWeight = FontWeight.SemiBold,\n        )\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "compose-user-name",
+      "type": "registry:ui",
+      "title": "User Name (Compose)",
+      "description": "Inline Compose profile display-name text with Rust-formatted npub fallback.",
+      "dependencies": [],
+      "registryDependencies": [
+        "compose-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/compose/user-name/NostrProfileName.kt",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrProfileName.kt",
+          "content": "package org.nmp.registry\n\nimport androidx.compose.material3.LocalTextStyle\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.text.TextStyle\nimport androidx.compose.ui.text.font.FontWeight\nimport androidx.compose.ui.text.style.TextOverflow\n\n/**\n * Inline display-name text for a Nostr profile.\n *\n * Shows `displayName` when set; falls back to `npubShort`\n * (always Rust-formatted — never reformat in Kotlin).\n *\n * Depends on `compose/user-avatar` for [ProfileWire].\n */\n@Composable\nfun NostrProfileName(\n    profile: ProfileWire,\n    modifier: Modifier = Modifier,\n    style: TextStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.SemiBold),\n    color: Color = Color.Unspecified,\n) {\n    val label = profile.display\n    Text(\n        text = label,\n        style = style,\n        color = color,\n        maxLines = 1,\n        overflow = TextOverflow.Ellipsis,\n        modifier = modifier.semantics { contentDescription = \"Display name: $label\" },\n    )\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "compose-user-nip05",
+      "type": "registry:ui",
+      "title": "User Nip05 (Compose)",
+      "description": "Compose NIP-05 verified identity badge that renders nothing when no identifier is present.",
+      "dependencies": [],
+      "registryDependencies": [
+        "compose-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/compose/user-nip05/NostrNip05Badge.kt",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrNip05Badge.kt",
+          "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.size\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.material.icons.Icons\nimport androidx.compose.material.icons.filled.Verified\nimport androidx.compose.material3.Icon\nimport androidx.compose.material3.LocalContentColor\nimport androidx.compose.material3.MaterialTheme\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.text.style.TextOverflow\nimport androidx.compose.ui.unit.dp\n\n/**\n * NIP-05 verified identity badge — verified icon + identifier string.\n *\n * Renders nothing when `profile.nip05` is null or empty.\n *\n * Depends on `compose/user-avatar` for [ProfileWire].\n */\n@Composable\nfun NostrNip05Badge(\n    profile: ProfileWire,\n    modifier: Modifier = Modifier,\n) {\n    val nip05 = profile.nip05?.takeIf { it.isNotEmpty() } ?: return\n    NostrNip05Badge(nip05 = nip05, modifier = modifier)\n}\n\n@Composable\nfun NostrNip05Badge(\n    nip05: String,\n    modifier: Modifier = Modifier,\n) {\n    Row(\n        verticalAlignment = Alignment.CenterVertically,\n        modifier = modifier.semantics(mergeDescendants = true) {\n            contentDescription = \"Verified: $nip05\"\n        },\n    ) {\n        Icon(\n            imageVector = Icons.Filled.Verified,\n            contentDescription = null,\n            tint = MaterialTheme.colorScheme.primary,\n            modifier = Modifier.size(14.dp),\n        )\n        Spacer(Modifier.width(4.dp))\n        Text(\n            text = nip05,\n            style = MaterialTheme.typography.bodySmall,\n            color = LocalContentColor.current.copy(alpha = 0.65f),\n            maxLines = 1,\n            overflow = TextOverflow.Ellipsis,\n        )\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "compose-user-npub",
+      "type": "registry:ui",
+      "title": "User Npub (Compose)",
+      "description": "Compose npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard.",
+      "dependencies": [],
+      "registryDependencies": [
+        "compose-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/compose/user-npub/NostrNpubChip.kt",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrNpubChip.kt",
+          "content": "package org.nmp.registry\n\nimport android.content.ClipData\nimport android.content.ClipboardManager\nimport android.content.Context\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.size\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.material.icons.Icons\nimport androidx.compose.material.icons.filled.ContentCopy\nimport androidx.compose.material.icons.filled.Done\nimport androidx.compose.material3.Icon\nimport androidx.compose.material3.IconButton\nimport androidx.compose.material3.MaterialTheme\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.runtime.getValue\nimport androidx.compose.runtime.mutableStateOf\nimport androidx.compose.runtime.remember\nimport androidx.compose.runtime.rememberCoroutineScope\nimport androidx.compose.runtime.setValue\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.platform.LocalContext\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.text.font.FontFamily\nimport androidx.compose.ui.unit.dp\nimport kotlinx.coroutines.delay\nimport kotlinx.coroutines.launch\n\n/**\n * Tappable chip that shows the Rust-truncated npub and copies the full\n * bech32 `npub1…` to the clipboard on tap.\n *\n * `npub` and `npubShort` must come from the kernel projection —\n * never reformat them in Kotlin.\n *\n * Depends on `compose/user-avatar` for [ProfileWire].\n */\n@Composable\nfun NostrNpubChip(\n    profile: ProfileWire,\n    modifier: Modifier = Modifier,\n) = NostrNpubChip(\n    npub = profile.npub,\n    npubShort = profile.npubShort,\n    modifier = modifier,\n)\n\n@Composable\nfun NostrNpubChip(\n    npub: String,\n    npubShort: String,\n    modifier: Modifier = Modifier,\n) {\n    val context = LocalContext.current\n    val scope = rememberCoroutineScope()\n    var copied by remember { mutableStateOf(false) }\n\n    Row(\n        verticalAlignment = Alignment.CenterVertically,\n        modifier = modifier,\n    ) {\n        Text(\n            text = npubShort,\n            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),\n            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),\n        )\n        Spacer(Modifier.width(2.dp))\n        IconButton(\n            onClick = {\n                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager\n                clipboard.setPrimaryClip(ClipData.newPlainText(\"npub\", npub))\n                copied = true\n                scope.launch {\n                    delay(2_000)\n                    copied = false\n                }\n            },\n            modifier = Modifier\n                .size(24.dp)\n                .semantics { contentDescription = if (copied) \"Copied\" else \"Copy npub\" },\n        ) {\n            Icon(\n                imageVector = if (copied) Icons.Filled.Done else Icons.Filled.ContentCopy,\n                contentDescription = null,\n                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),\n                modifier = Modifier.size(14.dp),\n            )\n        }\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "compose-user-card",
+      "type": "registry:ui",
+      "title": "User Card (Compose)",
+      "description": "Compact Compose author card composed from avatar, profile name, and optional NIP-05 badge.",
+      "dependencies": [],
+      "registryDependencies": [
+        "compose-user-avatar",
+        "compose-user-name",
+        "compose-user-nip05"
+      ],
+      "files": [
+        {
+          "path": "registry/compose/user-card/NostrUserCard.kt",
+          "type": "registry:ui",
+          "target": "Components/NostrUser/NostrUserCard.kt",
+          "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.clickable\nimport androidx.compose.foundation.layout.Column\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.unit.Dp\nimport androidx.compose.ui.unit.dp\n\n/**\n * Compact author header: avatar, display name, and optional NIP-05 badge.\n *\n * The most common pattern in note feeds and thread views. Tap routes\n * through [onTap] so this component can be used in any navigation stack.\n *\n * Depends on `compose/user-avatar`, `compose/user-name`, `compose/user-nip05`.\n */\n@Composable\nfun NostrUserCard(\n    profile: ProfileWire,\n    avatarSize: Dp = 40.dp,\n    onTap: ((String) -> Unit)? = null,\n    modifier: Modifier = Modifier,\n) {\n    val tapModifier = if (onTap != null) {\n        modifier.clickable { onTap(profile.pubkey) }\n    } else {\n        modifier\n    }\n\n    Row(\n        verticalAlignment = Alignment.CenterVertically,\n        modifier = tapModifier.semantics(mergeDescendants = true) {\n            contentDescription = \"${profile.display}, profile\"\n        },\n    ) {\n        NostrAvatar(profile = profile, size = avatarSize)\n        Spacer(Modifier.width(10.dp))\n        Column {\n            NostrProfileName(profile = profile)\n            NostrNip05Badge(profile = profile)\n        }\n    }\n}\n"
         }
       ]
     }

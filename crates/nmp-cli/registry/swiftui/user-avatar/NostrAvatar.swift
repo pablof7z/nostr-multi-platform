@@ -6,7 +6,7 @@ import SwiftUI
 /// Replace `AsyncImage` with your own image cache (Kingfisher, Nuke, etc.)
 /// if you already have one — the identicon fallback is self-contained.
 ///
-/// Depends on `swiftui/user-core` for `ProfileWire`.
+/// Depends on `swiftui/user-avatar` for `ProfileWire`.
 public struct NostrAvatar: View {
     public let pubkey: String
     public let pictureUrl: URL?

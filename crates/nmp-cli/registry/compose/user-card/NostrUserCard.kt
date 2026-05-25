@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
  * The most common pattern in note feeds and thread views. Tap routes
  * through [onTap] so this component can be used in any navigation stack.
  *
- * Depends on `compose/user-core`, `compose/user-name`, `compose/user-nip05`.
+ * Depends on `compose/user-avatar`, `compose/user-name`, `compose/user-nip05`.
  */
 @Composable
 fun NostrUserCard(

@@ -109,6 +109,79 @@ target = "Components/Auth/NostrLoginBlock.swift"
 role = "source"
 
 # -----------------------------------------------------------------------------
+# SwiftUI user profile components. `swiftui/user-avatar` owns `ProfileWire`,
+# so the smaller name / NIP-05 / npub / card components all depend on it.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "swiftui/user-avatar"
+version = "0.1.0"
+target = "swiftui"
+description = "Circular Nostr profile avatar with remote image loading and deterministic identicon fallback."
+
+[[components.files]]
+source = "swiftui/user-avatar/ProfileWire.swift"
+target = "Components/NostrUser/ProfileWire.swift"
+role = "source"
+
+[[components.files]]
+source = "swiftui/user-avatar/NostrAvatar.swift"
+target = "Components/NostrUser/NostrAvatar.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-name"
+version = "0.1.0"
+target = "swiftui"
+description = "Inline SwiftUI profile display-name text with Rust-formatted npub fallback."
+dependencies = ["swiftui/user-avatar"]
+
+[[components.files]]
+source = "swiftui/user-name/NostrProfileName.swift"
+target = "Components/NostrUser/NostrProfileName.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-nip05"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI NIP-05 verified identity badge that hides itself when no identifier is present."
+dependencies = ["swiftui/user-avatar"]
+
+[[components.files]]
+source = "swiftui/user-nip05/NostrNip05Badge.swift"
+target = "Components/NostrUser/NostrNip05Badge.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-npub"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard."
+dependencies = ["swiftui/user-avatar"]
+
+[[components.files]]
+source = "swiftui/user-npub/NostrNpubChip.swift"
+target = "Components/NostrUser/NostrNpubChip.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-card"
+version = "0.1.0"
+target = "swiftui"
+description = "Compact SwiftUI author card composed from avatar, profile name, and optional NIP-05 badge."
+dependencies = [
+    "swiftui/user-avatar",
+    "swiftui/user-name",
+    "swiftui/user-nip05",
+]
+
+[[components.files]]
+source = "swiftui/user-card/NostrUserCard.swift"
+target = "Components/NostrUser/NostrUserCard.swift"
+role = "source"
+
+# -----------------------------------------------------------------------------
 # Android / Jetpack Compose components (M16-C4). Mirror the SwiftUI components
 # above in behavior and wire format. Install target paths mirror the SwiftUI
 # layout (Components/NostrContent/…) so cross-platform projects keep a
@@ -189,82 +262,15 @@ source = "compose/content-view/NostrContentGrouping.kt"
 target = "Components/NostrContent/NostrContentGrouping.kt"
 role = "source"
 
+# Jetpack Compose user profile components. `compose/user-avatar` owns the shared
+# `ProfileWire` mirror for the smaller profile display components.
 # -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# User / Profile components (user-avatar, user-card, user-name, user-nip05,
-# user-npub). Added alongside the web registry rename from user-core.
-# -----------------------------------------------------------------------------
-
-[[components]]
-id = "swiftui/user-avatar"
-version = "0.1.0"
-target = "swiftui"
-description = "SwiftUI circular avatar with identicon fallback and demand-driven kind:0 profile image loading."
-
-[[components.files]]
-source = "swiftui/user-avatar/ProfileWire.swift"
-target = "Components/NostrUser/ProfileWire.swift"
-role = "source"
-
-[[components.files]]
-source = "swiftui/user-avatar/NostrAvatar.swift"
-target = "Components/NostrUser/NostrAvatar.swift"
-role = "source"
-
-[[components]]
-id = "swiftui/user-name"
-version = "0.1.0"
-target = "swiftui"
-description = "SwiftUI display-name label with petname and NIP-05 fallback chain."
-dependencies = ["swiftui/user-avatar"]
-
-[[components.files]]
-source = "swiftui/user-name/NostrProfileName.swift"
-target = "Components/NostrUser/NostrProfileName.swift"
-role = "source"
-
-[[components]]
-id = "swiftui/user-nip05"
-version = "0.1.0"
-target = "swiftui"
-description = "SwiftUI NIP-05 verified handle badge with domain display."
-dependencies = ["swiftui/user-avatar"]
-
-[[components.files]]
-source = "swiftui/user-nip05/NostrNip05Badge.swift"
-target = "Components/NostrUser/NostrNip05Badge.swift"
-role = "source"
-
-[[components]]
-id = "swiftui/user-npub"
-version = "0.1.0"
-target = "swiftui"
-description = "SwiftUI truncated npub chip with copy-to-clipboard affordance."
-dependencies = ["swiftui/user-avatar"]
-
-[[components.files]]
-source = "swiftui/user-npub/NostrNpubChip.swift"
-target = "Components/NostrUser/NostrNpubChip.swift"
-role = "source"
-
-[[components]]
-id = "swiftui/user-card"
-version = "0.1.0"
-target = "swiftui"
-description = "SwiftUI horizontal profile card combining avatar, display name, and NIP-05 handle."
-dependencies = ["swiftui/user-avatar", "swiftui/user-name", "swiftui/user-nip05"]
-
-[[components.files]]
-source = "swiftui/user-card/NostrUserCard.swift"
-target = "Components/NostrUser/NostrUserCard.swift"
-role = "source"
 
 [[components]]
 id = "compose/user-avatar"
 version = "0.1.0"
 target = "compose"
-description = "Compose circular avatar with identicon fallback and demand-driven kind:0 profile image loading."
+description = "Circular Compose Nostr profile avatar with Coil image loading and deterministic identicon fallback."
 
 [[components.files]]
 source = "compose/user-avatar/ProfileWire.kt"
@@ -280,7 +286,7 @@ role = "source"
 id = "compose/user-name"
 version = "0.1.0"
 target = "compose"
-description = "Compose display-name label with petname and NIP-05 fallback chain."
+description = "Inline Compose profile display-name text with Rust-formatted npub fallback."
 dependencies = ["compose/user-avatar"]
 
 [[components.files]]
@@ -292,7 +298,7 @@ role = "source"
 id = "compose/user-nip05"
 version = "0.1.0"
 target = "compose"
-description = "Compose NIP-05 verified handle badge with domain display."
+description = "Compose NIP-05 verified identity badge that renders nothing when no identifier is present."
 dependencies = ["compose/user-avatar"]
 
 [[components.files]]
@@ -304,7 +310,7 @@ role = "source"
 id = "compose/user-npub"
 version = "0.1.0"
 target = "compose"
-description = "Compose truncated npub chip with copy-to-clipboard affordance."
+description = "Compose npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard."
 dependencies = ["compose/user-avatar"]
 
 [[components.files]]
@@ -316,8 +322,12 @@ role = "source"
 id = "compose/user-card"
 version = "0.1.0"
 target = "compose"
-description = "Compose horizontal profile card combining avatar, display name, and NIP-05 handle."
-dependencies = ["compose/user-avatar", "compose/user-name", "compose/user-nip05"]
+description = "Compact Compose author card composed from avatar, profile name, and optional NIP-05 badge."
+dependencies = [
+    "compose/user-avatar",
+    "compose/user-name",
+    "compose/user-nip05",
+]
 
 [[components.files]]
 source = "compose/user-card/NostrUserCard.kt"
