@@ -189,9 +189,10 @@ impl BunkerStageKind {
 /// branch on installed-signer kind can read one value, not parse `scheme`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SignerAppDescriptor {
-    /// Platform URL scheme to probe (`"nostrsigner://"`, `"primal://"`, …).
+    /// Platform URL scheme to probe (`"nostrsigner://"`, `"primal://"`,
+    /// `"nostrconnect://"`, …).
     pub(crate) scheme: String,
-    /// Human-readable name to show in "Open in <X>".
+    /// Human-readable name hosts use in detected-signer CTAs.
     pub(crate) display_label: String,
     /// Stable signer-kind token. All entries here are NIP-46 brokered
     /// signers, so this is always `"nip46"` today; carried as a field so a
@@ -218,6 +219,11 @@ fn signer_apps_table() -> Vec<SignerAppDescriptor> {
         SignerAppDescriptor {
             scheme: "primal://".to_string(),
             display_label: "Primal".to_string(),
+            signer_kind: "nip46".to_string(),
+        },
+        SignerAppDescriptor {
+            scheme: "nostrconnect://".to_string(),
+            display_label: "Signer App".to_string(),
             signer_kind: "nip46".to_string(),
         },
     ]

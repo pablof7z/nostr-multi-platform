@@ -16,8 +16,13 @@ fn idle_slot_yields_table_only_dto() {
     let slot = fresh_slot();
     let dto = build_nip46_onboarding_dto(&slot);
     assert!(!dto.signer_apps.is_empty(), "signer-app table is static");
-    assert!(dto.signer_apps.iter().any(|a| a.scheme == "nostrsigner://"));
-    assert!(dto.signer_apps.iter().any(|a| a.scheme == "primal://"));
+    let schemes: Vec<&str> = dto.signer_apps.iter().map(|a| a.scheme.as_str()).collect();
+    assert!(schemes.contains(&"nostrsigner://"));
+    assert!(schemes.contains(&"primal://"));
+    assert_eq!(schemes.last(), Some(&"nostrconnect://"));
+    assert!(dto.signer_apps.iter().any(|a| {
+        a.scheme == "nostrconnect://" && a.display_label == "Signer App" && a.signer_kind == "nip46"
+    }));
     assert_eq!(dto.stage_kind, None);
     assert_eq!(dto.progress_message, None);
     assert!(!dto.is_in_flight);
