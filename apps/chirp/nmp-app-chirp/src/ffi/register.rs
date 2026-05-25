@@ -94,7 +94,7 @@ pub extern "C" fn nmp_app_chirp_register(
     let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
     let spec = ModularTimelineSpec {
         viewer,
-        kinds: Vec::new(),
+        kinds: vec![nmp_nip01::KIND_SHORT_NOTE, nmp_nip18::KIND_REPOST],
         authors: None,
         policy: ModulePolicy::default(),
     };

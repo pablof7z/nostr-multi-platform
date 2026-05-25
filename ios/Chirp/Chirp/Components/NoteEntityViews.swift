@@ -101,6 +101,21 @@ struct NoteRenderContext: Equatable {
             colorHex: "888888"
         )
     }
+
+    func contentTree(for item: TimelineItem, fallback: ContentTreeWire?) -> ContentTreeWire? {
+        if item.isRepost {
+            return eventCards[item.id]?.contentTree
+                ?? eventCards[item.navTargetId]?.contentTree
+                ?? fallback
+        }
+        return fallback ?? eventCards[item.id]?.contentTree
+    }
+}
+
+extension TimelineItem {
+    var renderedContent: String {
+        isRepost ? repostInnerContent : content
+    }
 }
 
 struct EmbeddedNostrEventCard: View {

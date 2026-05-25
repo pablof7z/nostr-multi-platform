@@ -53,13 +53,15 @@ struct ThreadNoteRow: View {
     // with view builders inside the parent `HStack`.
 
     private var noteBodyContent: some View {
-        // Rust pre-resolves the NIP-18 inner-event content during projection
-        // (`Kernel::timeline_item` in `kernel/update.rs`). `repostInnerContent`
-        // is `""` for kind:1 rows and either the inner kind:1's content or
-        // `""` (D1 fallback) for kind:6 — so the view never parses event JSON
-        // (aim.md §6.9, Chirp thin-shell).
         let isRepost = item.isRepost
-        let displayContent: String = isRepost ? item.repostInnerContent : item.content
+        let context = NoteRenderContext(
+            mentionProfiles: mentionProfiles,
+            eventCards: eventCards,
+            timelineItems: timelineItems,
+            embedDepth: 0
+        )
+        let displayContent = item.renderedContent
+        let displayTree = context.contentTree(for: item, fallback: contentTree)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(item.authorDisplay)
@@ -86,14 +88,8 @@ struct ThreadNoteRow: View {
             if !displayContent.isEmpty {
                 NoteContentView(
                     content: displayContent,
-                    // contentTree was computed against the wrapper event;
-                    // it does not describe the inner note's text. Render
-                    // the inner content as plain text (D1 best-effort)
-                    // until the kernel emits a contentTree for the inner.
-                    contentTree: isRepost ? nil : contentTree,
-                    mentionProfiles: mentionProfiles,
-                    eventCards: eventCards,
-                    timelineItems: timelineItems,
+                    contentTree: displayTree,
+                    renderContext: context,
                     font: isFocused ? .body : .callout
                 )
                 .foregroundStyle(.primary)
