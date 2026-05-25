@@ -30,10 +30,9 @@
 //!
 //! For large or potentially stale interest sets (many authors, many
 //! historical events), a negentropy set-reconciliation round-trip has lower
-//! relay overhead than a blind REQ. The gate decides when the ratio tips:
-//! below `author_negentropy_threshold` the negentropy handshake overhead
-//! exceeds the bandwidth saved; at or above it, set-reconciliation savings
-//! dominate.
+//! relay overhead than a blind REQ. The gate decides when the ratio tips by
+//! counting the author × kind filter surface. A `kinds:[3,10000]` fetch for 25
+//! authors is the same 50-way fanout as a one-kind fetch for 50 authors.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -54,13 +53,14 @@
 /// a blind REQ. The gate decides when the ratio tips.
 #[derive(Clone, Debug)]
 pub struct CoverageGate {
-    /// Minimum number of distinct authors in a compiled plan before the gate
+    /// Minimum author × kind fanout for a single filter before the gate
     /// considers negentropy more efficient than a raw REQ.
     ///
-    /// Default: 50 authors. At fewer than 50 follows the overhead of a
-    /// negentropy handshake exceeds the bandwidth saved; above 50 the
-    /// set-reconciliation savings dominate.
-    pub author_negentropy_threshold: usize,
+    /// Default: 50 author-kind pairs. At smaller fanouts the overhead of a
+    /// negentropy handshake usually exceeds the bandwidth saved; at or above
+    /// 50 the set-reconciliation savings dominate. The count is per filter,
+    /// not per plan, so `3 kinds × 20 authors = 60` qualifies.
+    pub filter_fanout_negentropy_threshold: usize,
 
     /// `since` bump factor: when negentropy is selected, the assembly crate
     /// may add `floor(watermark_age_seconds * since_bump_factor)` to `since`
@@ -82,7 +82,7 @@ pub struct CoverageGate {
 impl Default for CoverageGate {
     fn default() -> Self {
         Self {
-            author_negentropy_threshold: 50,
+            filter_fanout_negentropy_threshold: 50,
             since_bump_factor: 0.05,
             max_relay_connections: 30,
         }
@@ -90,14 +90,29 @@ impl Default for CoverageGate {
 }
 
 impl CoverageGate {
-    /// Returns `true` when the plan's total author count justifies a
-    /// negentropy round-trip over a direct REQ.
+    /// Returns `true` when a single filter's author × kind fanout justifies a
+    /// negentropy round-trip over a direct REQ and the target relay is known to
+    /// support negentropy.
     ///
-    /// The assembly crate calls this with the sum of unique authors across
-    /// all `RelayPlan` entries in the compiled plan.
-    #[must_use] 
+    /// Empty authors or empty kinds return `false`: those filters are not the
+    /// large author-list fanout this policy is designed to steer.
+    #[must_use]
+    pub fn should_use_negentropy_for_filter(
+        &self,
+        fanout: FilterFanout,
+        relay_supports_negentropy: bool,
+    ) -> bool {
+        relay_supports_negentropy
+            && fanout.author_kind_pairs() >= self.filter_fanout_negentropy_threshold
+    }
+
+    /// Backward-compatible helper for callers that have not yet been upgraded
+    /// from author-only counting. New code should call
+    /// [`Self::should_use_negentropy_for_filter`] so multi-kind filters are
+    /// counted correctly.
+    #[must_use]
     pub fn should_use_negentropy(&self, total_author_count: usize) -> bool {
-        total_author_count >= self.author_negentropy_threshold
+        self.should_use_negentropy_for_filter(FilterFanout::new(total_author_count, 1), true)
     }
 
     /// Compute a `since` bump (seconds) to add to the existing `since`
@@ -120,6 +135,46 @@ impl CoverageGate {
     }
 }
 
+/// The author × kind surface area of a single Nostr filter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FilterFanout {
+    author_count: usize,
+    kind_count: usize,
+}
+
+impl FilterFanout {
+    /// Construct a filter fanout from already-normalized filter dimensions.
+    #[must_use]
+    pub const fn new(author_count: usize, kind_count: usize) -> Self {
+        Self {
+            author_count,
+            kind_count,
+        }
+    }
+
+    /// Number of authors in the filter.
+    #[must_use]
+    pub const fn author_count(self) -> usize {
+        self.author_count
+    }
+
+    /// Number of explicit kinds in the filter.
+    #[must_use]
+    pub const fn kind_count(self) -> usize {
+        self.kind_count
+    }
+
+    /// Author × kind product used by the D2 negentropy threshold.
+    #[must_use]
+    pub const fn author_kind_pairs(self) -> usize {
+        if self.author_count == 0 || self.kind_count == 0 {
+            0
+        } else {
+            self.author_count.saturating_mul(self.kind_count)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,47 +187,72 @@ mod tests {
     #[test]
     fn default_values_are_pinned() {
         let gate = CoverageGate::default();
-        assert_eq!(gate.author_negentropy_threshold, 50);
+        assert_eq!(gate.filter_fanout_negentropy_threshold, 50);
         assert!((gate.since_bump_factor - 0.05).abs() < f64::EPSILON);
         assert_eq!(gate.max_relay_connections, 30);
     }
 
-    // -- should_use_negentropy --------------------------------------------
+    // -- should_use_negentropy_for_filter ---------------------------------
 
     #[test]
-    fn should_use_negentropy_false_below_threshold() {
+    fn should_use_negentropy_for_filter_false_below_threshold() {
         let gate = CoverageGate::default();
-        // threshold = 50; anything strictly below must NOT trigger negentropy.
-        assert!(!gate.should_use_negentropy(0));
-        assert!(!gate.should_use_negentropy(1));
-        assert!(!gate.should_use_negentropy(49));
+        assert!(!gate.should_use_negentropy_for_filter(FilterFanout::new(0, 1), true));
+        assert!(!gate.should_use_negentropy_for_filter(FilterFanout::new(1, 0), true));
+        assert!(!gate.should_use_negentropy_for_filter(FilterFanout::new(49, 1), true));
+        assert!(!gate.should_use_negentropy_for_filter(FilterFanout::new(24, 2), true));
     }
 
     #[test]
-    fn should_use_negentropy_true_at_and_above_threshold() {
+    fn should_use_negentropy_for_filter_true_at_and_above_threshold() {
         let gate = CoverageGate::default();
-        // boundary value MUST trigger — the rustdoc contract is `>=`, not `>`.
-        assert!(gate.should_use_negentropy(50));
-        assert!(gate.should_use_negentropy(51));
-        assert!(gate.should_use_negentropy(10_000));
+        assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(50, 1), true));
+        assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(25, 2), true));
+        assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(20, 3), true));
+        assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(10_000, 1), true));
     }
 
     #[test]
-    fn should_use_negentropy_respects_custom_threshold() {
+    fn should_use_negentropy_for_filter_requires_relay_support() {
+        let gate = CoverageGate::default();
+        assert!(
+            !gate.should_use_negentropy_for_filter(FilterFanout::new(25, 2), false),
+            "large filters must still use raw REQ when NIP-77 support is not known"
+        );
+    }
+
+    #[test]
+    fn should_use_negentropy_for_filter_respects_custom_threshold() {
         let gate = CoverageGate {
-            author_negentropy_threshold: 5,
+            filter_fanout_negentropy_threshold: 5,
             ..CoverageGate::default()
         };
-        assert!(!gate.should_use_negentropy(4));
-        assert!(gate.should_use_negentropy(5));
-        assert!(gate.should_use_negentropy(6));
+        assert!(!gate.should_use_negentropy_for_filter(FilterFanout::new(2, 2), true));
+        assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(5, 1), true));
+        assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(2, 3), true));
+    }
+
+    #[test]
+    fn author_only_helper_preserves_legacy_semantics() {
+        let gate = CoverageGate::default();
+        assert!(!gate.should_use_negentropy(49));
+        assert!(gate.should_use_negentropy(50));
+    }
+
+    #[test]
+    fn filter_fanout_product_is_saturating() {
+        let fanout = FilterFanout::new(usize::MAX, 2);
+        assert_eq!(fanout.author_count(), usize::MAX);
+        assert_eq!(fanout.kind_count(), 2);
+        assert_eq!(fanout.author_kind_pairs(), usize::MAX);
     }
 
     // -- since_bump_secs --------------------------------------------------
 
     #[test]
     fn since_bump_secs_default_factor() {
-        let gate = CoverageGate::default(); // factor = 0.05
+        // Default factor = 0.05.
+        let gate = CoverageGate::default();
         // 0 age → 0 bump.
         assert_eq!(gate.since_bump_secs(0), 0);
         // 100s * 0.05 = 5s.
