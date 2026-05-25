@@ -7,6 +7,7 @@ use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterce
 use nmp_core::{Kernel, OutboundMessage, RelayRole};
 use nmp_coverage_gate::CoverageGate;
 use nostr::{ClientMessage, JsonUtil as _};
+use serde_json::Value;
 
 use crate::codec::{hex_decode, hex_encode};
 use crate::{NegentropySyncRuntime, RelayNegentropyState, SyncedItem, FRAME_SIZE_LIMIT};
@@ -59,15 +60,74 @@ fn counts_three_kinds_times_twenty_authors() {
 }
 
 #[test]
-fn below_threshold_or_tailing_falls_back_to_raw_req() {
+fn below_threshold_falls_back_to_raw_req() {
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());
     let mut kernel = Kernel::testing_new(50);
     assert!(runtime
         .intercept_req(&mut kernel, &ctx(24, &[3, 10_000]))
         .is_none());
+    let mut small_tailing = ctx(49, &[1]);
+    small_tailing.lifecycle = InterestLifecycle::Tailing;
+    assert!(runtime.intercept_req(&mut kernel, &small_tailing).is_none());
+}
+
+#[test]
+fn tailing_large_filter_opens_live_only_req_and_negentropy_backfill() {
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let mut kernel = Kernel::testing_new(50);
     let mut tailing = ctx(50, &[1]);
     tailing.lifecycle = InterestLifecycle::Tailing;
-    assert!(runtime.intercept_req(&mut kernel, &tailing).is_none());
+    tailing.filter_json = serde_json::json!({
+        "authors": (0..50).map(|i| author(i as u8)).collect::<Vec<_>>(),
+        "kinds": [1],
+        "limit": 200,
+    })
+    .to_string();
+
+    let out = runtime
+        .intercept_req(&mut kernel, &tailing)
+        .expect("large tailing filter must be split");
+    assert_eq!(out.len(), 2);
+
+    let (live_sub, live_filter) = req_parts(out[0].text());
+    assert_eq!(live_sub, "sub-large");
+    assert_eq!(live_filter["limit"], Value::from(0));
+    assert_eq!(live_filter["kinds"], serde_json::json!([1]));
+
+    let neg_open_filter = frame_filter(out[1].text(), "NEG-OPEN");
+    assert_eq!(
+        neg_open_filter["limit"],
+        Value::from(200),
+        "NIP-77 backfill must reconcile the original bounded stored set"
+    );
+}
+
+#[test]
+fn tailing_neg_err_falls_back_to_original_req_after_live_only_probe() {
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let mut kernel = Kernel::testing_new(50);
+    let mut tailing = ctx(50, &[1]);
+    tailing.lifecycle = InterestLifecycle::Tailing;
+    tailing.filter_json = serde_json::json!({
+        "authors": (0..50).map(|i| author(i as u8)).collect::<Vec<_>>(),
+        "kinds": [1],
+        "limit": 200,
+    })
+    .to_string();
+    assert_eq!(
+        runtime.intercept_req(&mut kernel, &tailing).unwrap().len(),
+        2
+    );
+
+    let out = runtime.on_relay_text(
+        &mut kernel,
+        "wss://relay.example",
+        r#"["NEG-ERR","sub-large","unsupported"]"#,
+    );
+    assert_eq!(out.len(), 1);
+    let (sub_id, filter) = req_parts(out[0].text());
+    assert_eq!(sub_id, "sub-large");
+    assert_eq!(filter["limit"], Value::from(200));
 }
 
 #[test]
@@ -159,6 +219,70 @@ fn fresh_runtime_uses_cached_store_items_and_fetches_only_missing_ids() {
     );
 }
 
+#[test]
+fn tailing_backfill_fetches_missing_ids_without_replacing_live_sub() {
+    let missing_id = id(0xb2);
+    let mut kernel = Kernel::testing_new(50);
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let mut tailing = ctx(50, &[1]);
+    tailing.lifecycle = InterestLifecycle::Tailing;
+    tailing.filter_json = serde_json::json!({
+        "authors": (0..50).map(|i| author(i as u8)).collect::<Vec<_>>(),
+        "kinds": [1],
+        "limit": 200,
+    })
+    .to_string();
+
+    let opened = runtime
+        .intercept_req(&mut kernel, &tailing)
+        .expect("large tailing filter must be split");
+    assert_eq!(opened.len(), 2);
+    assert!(opened[0].text().starts_with(r#"["REQ","sub-large","#));
+    assert!(opened[1].text().starts_with(r#"["NEG-OPEN","sub-large","#));
+
+    let relay_items = vec![SyncedItem {
+        created_at: 2_000,
+        id: missing_id,
+    }];
+    let mut server = negentropy_server(relay_items);
+    let mut client_payload = client_neg_payload(opened[1].text());
+
+    let final_out = loop {
+        let server_payload = server.reconcile(&client_payload).expect("server reconcile");
+        let relay_msg = format!(
+            r#"["NEG-MSG","sub-large","{}"]"#,
+            hex_encode(&server_payload)
+        );
+        let out = runtime.on_relay_text(&mut kernel, "wss://relay.example", &relay_msg);
+        if let Some(next) = out.iter().find(|msg| is_client_neg_msg(msg.text())) {
+            client_payload = client_neg_payload(next.text());
+        } else {
+            break out;
+        }
+    };
+
+    assert!(
+        final_out
+            .iter()
+            .any(|msg| msg.text().starts_with(r#"["NEG-CLOSE","sub-large"]"#)),
+        "tailing backfill must still close the NIP-77 session"
+    );
+    let ids_req = final_out
+        .iter()
+        .map(OutboundMessage::text)
+        .find(|text| text.starts_with(r#"["REQ","#))
+        .expect("missing relay-side events must be fetched by ids-only REQ");
+    let (ids_sub, ids_filter) = req_parts(ids_req);
+    assert_eq!(
+        ids_sub, "sub-large-neg-ids",
+        "ids fetch must not replace the live tailing sub"
+    );
+    assert!(ids_filter["ids"].as_array().unwrap()[0]
+        .as_str()
+        .unwrap()
+        .contains(&id_hex(0xb2)));
+}
+
 fn insert_cached_event(
     kernel: &mut Kernel,
     id: [u8; 32],
@@ -211,4 +335,19 @@ fn is_client_neg_msg(text: &str) -> bool {
         ClientMessage::from_json(text),
         Ok(ClientMessage::NegMsg { .. })
     )
+}
+
+fn req_parts(text: &str) -> (String, Value) {
+    let value: Value = serde_json::from_str(text).expect("REQ JSON");
+    assert_eq!(value[0], Value::from("REQ"));
+    (
+        value[1].as_str().expect("REQ sub id").to_string(),
+        value[2].clone(),
+    )
+}
+
+fn frame_filter(text: &str, verb: &str) -> Value {
+    let value: Value = serde_json::from_str(text).expect("client message JSON");
+    assert_eq!(value[0], Value::from(verb));
+    value[2].clone()
 }

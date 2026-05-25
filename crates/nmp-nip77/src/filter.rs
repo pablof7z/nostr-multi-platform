@@ -20,6 +20,8 @@ pub struct EligibleFilter {
     pub since: Option<u64>,
     /// Optional upper timestamp bound.
     pub until: Option<u64>,
+    /// Optional maximum number of newest matching events.
+    pub limit: Option<usize>,
 }
 
 impl EligibleFilter {
@@ -29,7 +31,10 @@ impl EligibleFilter {
             serde_json::from_str(filter_json).map_err(|_| FilterEligibilityError::MalformedJson)?;
         let object = value.as_object().ok_or(FilterEligibilityError::NotObject)?;
         for key in object.keys() {
-            if !matches!(key.as_str(), "authors" | "kinds" | "since" | "until") {
+            if !matches!(
+                key.as_str(),
+                "authors" | "kinds" | "since" | "until" | "limit"
+            ) {
                 return Err(FilterEligibilityError::UnsupportedField(key.clone()));
             }
         }
@@ -40,12 +45,14 @@ impl EligibleFilter {
         }
         let since = parse_optional_u64(object.get("since"), "since")?;
         let until = parse_optional_u64(object.get("until"), "until")?;
+        let limit = parse_optional_usize(object.get("limit"))?;
         Ok(Self {
             value,
             authors,
             kinds,
             since,
             until,
+            limit,
         })
     }
 
@@ -60,7 +67,11 @@ impl EligibleFilter {
         &self,
         store: &dyn EventStore,
     ) -> Result<Vec<SyncedItem>, FilterEligibilityError> {
+        if self.limit == Some(0) {
+            return Ok(Vec::new());
+        }
         let mut out = Vec::new();
+        let scan_limit = self.limit.unwrap_or(usize::MAX);
         for author_hex in &self.authors {
             let author = hex_to_32(author_hex)
                 .ok_or_else(|| FilterEligibilityError::InvalidAuthor(author_hex.clone()))?;
@@ -71,7 +82,7 @@ impl EligibleFilter {
                 until: self.until,
             };
             store
-                .query_visit(&query, usize::MAX, &mut |ev| {
+                .query_visit(&query, scan_limit, &mut |ev| {
                     out.push(SyncedItem {
                         created_at: ev.raw.created_at,
                         id: ev.raw.id_bytes(),
@@ -80,7 +91,23 @@ impl EligibleFilter {
                 })
                 .map_err(|e| FilterEligibilityError::Store(e.to_string()))?;
         }
+        if let Some(limit) = self.limit {
+            out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.id.cmp(&b.id)));
+            out.truncate(limit);
+        }
         Ok(out)
+    }
+
+    /// Return the same filter as a live-only NIP-01 subscription.
+    ///
+    /// NIP-77 performs the stored-set reconciliation while this paired REQ asks
+    /// the relay only for events that arrive after the live subscription opens.
+    pub fn live_only_filter_json(&self) -> String {
+        let mut value = self.value.clone();
+        if let Some(object) = value.as_object_mut() {
+            object.insert("limit".to_string(), Value::from(0));
+        }
+        serde_json::to_string(&value).unwrap_or_else(|_| r#"{"limit":0}"#.to_string())
     }
 }
 
@@ -169,6 +196,17 @@ fn parse_optional_u64(
         .transpose()
 }
 
+fn parse_optional_usize(value: Option<&Value>) -> Result<Option<usize>, FilterEligibilityError> {
+    value
+        .map(|v| {
+            let n = v
+                .as_u64()
+                .ok_or(FilterEligibilityError::InvalidField("limit"))?;
+            usize::try_from(n).map_err(|_| FilterEligibilityError::InvalidField("limit"))
+        })
+        .transpose()
+}
+
 fn hex_to_32(s: &str) -> Option<[u8; 32]> {
     if s.len() != 64 {
         return None;
@@ -215,8 +253,25 @@ mod tests {
         let err =
             EligibleFilter::parse(r##"{"authors":["aa"],"kinds":[1],"#e":["x"]}"##).unwrap_err();
         assert!(matches!(err, FilterEligibilityError::UnsupportedField(_)));
-        assert!(EligibleFilter::parse(r#"{"authors":["aa"],"kinds":[1],"limit":10}"#).is_err());
         assert!(EligibleFilter::parse(r#"{"ids":["aa"],"kinds":[1]}"#).is_err());
+    }
+
+    #[test]
+    fn accepts_limit_and_can_build_live_only_filter() {
+        let filter = EligibleFilter::parse(
+            &serde_json::json!({
+                "authors": [author(1)],
+                "kinds": [1],
+                "limit": 200,
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(filter.limit, Some(200));
+
+        let live: Value = serde_json::from_str(&filter.live_only_filter_json()).unwrap();
+        assert_eq!(live["limit"], Value::from(0));
+        assert_eq!(live["kinds"], serde_json::json!([1]));
     }
 
     #[test]

@@ -33,6 +33,13 @@ struct Session {
     relay_url: String,
     filter_json: String,
     reconciler: Reconciler,
+    mode: SessionMode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SessionMode {
+    ReplaceOneShot,
+    BackfillTailing { ids_sub_id: String },
 }
 
 /// Client-side NIP-77 runtime.
@@ -99,10 +106,14 @@ impl NegentropySyncRuntime {
     }
 
     fn ids_req(session: &Session, ids: &[[u8; 32]]) -> OutboundMessage {
+        let sub_id = match &session.mode {
+            SessionMode::ReplaceOneShot => session.sub_id.as_str(),
+            SessionMode::BackfillTailing { ids_sub_id } => ids_sub_id.as_str(),
+        };
         OutboundMessage::new(
             session.role,
             session.relay_url.clone(),
-            messages::ids_req_text(&session.sub_id, ids),
+            messages::ids_req_text(sub_id, ids),
         )
     }
 
@@ -142,12 +153,15 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
         kernel: &mut Kernel,
         ctx: &ReqFrameContext,
     ) -> Option<Vec<OutboundMessage>> {
-        if !matches!(ctx.lifecycle, InterestLifecycle::OneShot) {
-            return None;
-        }
         if self.relay_state(&ctx.relay_url) == RelayNegentropyState::Unsupported {
             return None;
         }
+        let mode = match ctx.lifecycle {
+            InterestLifecycle::OneShot => SessionMode::ReplaceOneShot,
+            InterestLifecycle::Tailing => SessionMode::BackfillTailing {
+                ids_sub_id: format!("{}-neg-ids", ctx.sub_id),
+            },
+        };
         let filter = EligibleFilter::parse(&ctx.filter_json).ok()?;
         let fanout = FilterFanout::new(filter.authors.len(), filter.kinds.len());
         if !self.gate.should_use_negentropy_for_filter(fanout, true) {
@@ -164,6 +178,7 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
             relay_url: ctx.relay_url.clone(),
             filter_json: ctx.filter_json.clone(),
             reconciler,
+            mode: mode.clone(),
         };
         let text = messages::neg_open_text(&ctx.sub_id, nostr_filter, &initial_msg);
         self.set_relay_state(
@@ -175,11 +190,18 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.insert((ctx.relay_url.clone(), ctx.sub_id.clone()), session);
         }
-        Some(vec![OutboundMessage::new(
-            ctx.role,
-            ctx.relay_url.clone(),
-            text,
-        )])
+        let neg_open = OutboundMessage::new(ctx.role, ctx.relay_url.clone(), text);
+        match mode {
+            SessionMode::ReplaceOneShot => Some(vec![neg_open]),
+            SessionMode::BackfillTailing { .. } => Some(vec![
+                OutboundMessage::new(
+                    ctx.role,
+                    ctx.relay_url.clone(),
+                    messages::req_text(&ctx.sub_id, &filter.live_only_filter_json()),
+                ),
+                neg_open,
+            ]),
+        }
     }
 }
 
@@ -256,7 +278,9 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                     Ok(ReconcilerOutcome::Done { need, .. }) => {
                         let mut out = vec![Self::close_msg(&session)];
                         if need.is_empty() {
-                            kernel.complete_rewritten_wire_sub(relay_url, &session.sub_id);
+                            if matches!(session.mode, SessionMode::ReplaceOneShot) {
+                                kernel.complete_rewritten_wire_sub(relay_url, &session.sub_id);
+                            }
                         } else {
                             out.push(Self::ids_req(&session, &need));
                         }
