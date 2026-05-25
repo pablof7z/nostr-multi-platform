@@ -1345,6 +1345,63 @@ the router always fans out via outbox/inbox.
 that relay's URL, drains REQ messages only to that relay, and never fans out to other
 relays even when the active account has a NIP-65 write set covering them.
 
+---
+
+### V-53 · iOS Swift sweep for raw-data projection doctrine (ADR-0032) [MEDIUM · follow-up to ec8decad / display-separation PR]
+
+**What we did:** ADR-0032 (commit ef9a9e50) executes Option A of
+`Plans/display-separation-plan.md` — the kernel and the four Layer-4 NIP
+projections now ship raw protocol data; presentation layers own all formatting.
+Rust shells (chirp-tui, nmp-desktop), the web TS shell, and the Android model +
+TimelineScreen Compose row are aligned with the new doctrine.
+
+**What's open:** the iOS Swift shell still reads the deleted projection fields
+(146 sites across 17 files):
+- Bridge Decodables: `KernelBridge.swift`, `ModularTimelineBridge.swift`,
+  `MarmotBridge.swift`, `DmBridge.swift`, `FollowListBridge.swift`,
+  `GroupChatBridge.swift`, `WalletBridge` slot in `KernelModel.swift`,
+  `TimelineBlock.swift`, `Bridge/Generated/KernelTypes.generated.swift`.
+- View files: `Features/{DmConversationView, ProfileView,
+  MarmotGroupChatView, DmListView, GroupChatView, MarmotGroupsView,
+  InvitesView, WalletView, AccountsView}.swift`,
+  `Components/{ModularBlockView, ProfileNoteRow, ThreadNoteRow,
+  NoteRowView}.swift`.
+
+**Why deferred from the doctrine PR:** the Swift sweep is verifiable only in
+Xcode (no `swiftc` build in the agent environment). Shipping unverified
+`Decodable` changes risks runtime JSON-decode failures the agent cannot catch.
+The Rust crates compile + test clean + codegen-drift clean, so the doctrine
+landing is durable; this V-entry tracks the surface that still needs a human
+Xcode pass.
+
+**Approach:**
+1. Add a `DisplayFormat.swift` namespace with `shortPubkey(_ hex: String)`,
+   `relativeAgo(_ unixSeconds: UInt64)`, `avatarInitials(_ hex: String)`,
+   `avatarColor(_ hex: String)` static helpers (8+8 / `Xs/Xm/Xh/Xd ago`
+   buckets / djb2 — matches the canonical `nmp_core::display::*` algorithms
+   the Rust shells use). Mirrors the equivalent shell-side helpers added to
+   `chirp-tui` / `nmp-desktop` in the doctrine PR.
+2. For every Bridge Decodable file, drop the now-deleted CodingKeys + struct
+   fields. Where the field becomes `Optional` (`authorDisplayName`,
+   `authorPictureUrl`, `displayName`, `pictureUrl`, etc.), use `String?` +
+   `decodeIfPresent`.
+3. For every view file, replace reads of the deleted formatted fields with
+   the locally-formatted equivalent via `DisplayFormat.*` over the raw
+   `author_pubkey` / `created_at`.
+4. Each step compiles + runs in Xcode before the next — the agent
+   environment cannot verify, so this is human-in-the-loop work.
+
+**Spec:** ADR-0032 §"Migration guidance for existing shell consumers".
+
+**Out of scope** for this V-entry (deliberately): codegen Swift port of
+`nmp-display` (separate ADR follow-up); generated Swift `Decodable` updates
+in `Bridge/Generated/KernelTypes.generated.swift` regenerate automatically
+once `nmp-codegen`'s Swift emitter is taught the new shape (the
+`gen modules --check` gate against `apps/fixture/nmp.toml` is currently
+green because the fixture types do not include these projection shapes).
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 
