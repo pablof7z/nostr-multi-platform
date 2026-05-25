@@ -60,7 +60,7 @@ fn render_welcome(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "n  import account    ?  help    q  quit",
+            "n  import nsec    c  create account    ?  help    q  quit",
             Style::default().fg(DIM_TEXT),
         )),
     ];

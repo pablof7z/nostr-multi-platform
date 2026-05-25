@@ -44,7 +44,7 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             return InputFlow::Continue;
         }
         Mode::AccountSwitcher => {
-            handle_account_switcher_key(state, key);
+            handle_account_switcher_key(state, runtime, key);
             return InputFlow::Continue;
         }
         Mode::Normal => {}
@@ -58,6 +58,9 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             state.push_toast("Commands removed — press ? for help or / for palette");
         }
         KeyCode::Char('a') => state.open_account_switcher(),
+        KeyCode::Char('c') if state.features.accounts.is_empty() => {
+            state.start_modal("Create account", vec!["Display name"], "create-account");
+        }
         KeyCode::Tab => state.next_tab(),
         KeyCode::BackTab => state.previous_tab(),
         KeyCode::Char('l') | KeyCode::Right
@@ -343,7 +346,7 @@ fn count_replies_for_selected(state: &AppState) -> usize {
 
 fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
     if state.features.accounts.is_empty() {
-        state.start_input_bar("nsec or bunker URI", false, "nsec");
+        state.start_input_bar("nsec  (or bunker:// URI)", false, "nsec");
         return;
     }
     match state.tab {
@@ -379,20 +382,25 @@ fn dispatch_input_bar_action(
 ) {
     match action {
         "nsec" => {
-            // sign_in_nsec is not yet exposed on AppRuntime — defer with a toast.
-            let _ = value;
-            state.push_toast("\u{2717} nsec import not yet wired on AppRuntime");
+            let trimmed = value.trim();
+            let result = if trimmed.starts_with("bunker://") {
+                runtime.sign_in_bunker(trimmed)
+            } else {
+                runtime.sign_in_nsec(trimmed)
+            };
+            match result {
+                Ok(()) => state.push_toast("\u{2713} signing in…"),
+                Err(e) => state.push_toast(&format!("\u{2717} sign-in failed: {e}")),
+            }
         }
-        "nwc" => {
-            // wallet_connect is not yet exposed on AppRuntime — defer with a toast.
-            let _ = value;
-            state.push_toast("\u{2717} wallet connect not yet wired on AppRuntime");
-        }
-        "bolt11" => {
-            // wallet_pay_invoice is not yet exposed on AppRuntime — defer with a toast.
-            let _ = value;
-            state.push_toast("\u{2717} wallet pay-invoice not yet wired on AppRuntime");
-        }
+        "nwc" => match runtime.wallet_connect(value.trim()) {
+            Ok(()) => state.push_toast("\u{2713} wallet connect requested"),
+            Err(e) => state.push_toast(&format!("\u{2717} wallet connect failed: {e}")),
+        },
+        "bolt11" => match runtime.wallet_pay_invoice(value.trim(), None) {
+            Ok(()) => state.push_toast("\u{2713} payment requested"),
+            Err(e) => state.push_toast(&format!("\u{2717} pay failed: {e}")),
+        },
         "relay" => match runtime.add_relay(value, "both,indexer") {
             Ok(()) => state.push_toast("\u{2713} relay add requested"),
             Err(e) => state.push_toast(&format!("\u{2717} add relay failed: {e}")),
@@ -426,18 +434,30 @@ fn handle_modal_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
 
 fn dispatch_modal_action(
     action: &str,
-    _fields: &[(String, String)],
+    fields: &[(String, String)],
     state: &mut AppState,
-    _runtime: &AppRuntime,
+    runtime: &AppRuntime,
 ) {
     match action {
-        "create-account" => state.push_toast("\u{2717} create-account not yet wired"),
-        "bunker-connect" => state.push_toast("\u{2717} bunker-connect not yet wired"),
+        "create-account" => {
+            let name = fields.first().map(|(_, v)| v.trim()).unwrap_or("anon");
+            match runtime.create_account(name, &[], false) {
+                Ok(()) => state.push_toast("\u{2713} account creation requested…"),
+                Err(e) => state.push_toast(&format!("\u{2717} create failed: {e}")),
+            }
+        }
+        "bunker-connect" => {
+            let uri = fields.first().map(|(_, v)| v.trim()).unwrap_or("");
+            match runtime.sign_in_bunker(uri) {
+                Ok(()) => state.push_toast("\u{2713} bunker connect requested…"),
+                Err(e) => state.push_toast(&format!("\u{2717} bunker failed: {e}")),
+            }
+        }
         _ => state.push_toast(&format!("\u{2717} modal action '{action}' not wired")),
     }
 }
 
-fn handle_account_switcher_key(state: &mut AppState, key: KeyEvent) {
+fn handle_account_switcher_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
     let n = state.features.accounts.len();
     match key.code {
         KeyCode::Esc => state.close_account_switcher(),
@@ -453,8 +473,17 @@ fn handle_account_switcher_key(state: &mut AppState, key: KeyEvent) {
             }
         }
         KeyCode::Enter => {
-            state.push_toast("\u{2717} account switch not yet wired");
-            state.close_account_switcher();
+            if let Some(account) = state.features.accounts.get(state.account_switcher_cursor) {
+                let id = account.id.clone();
+                let name = account.display.clone();
+                state.close_account_switcher();
+                match runtime.switch_account(&id) {
+                    Ok(()) => state.push_toast(&format!("\u{2713} switched to @{name}")),
+                    Err(e) => state.push_toast(&format!("\u{2717} switch failed: {e}")),
+                }
+            } else {
+                state.close_account_switcher();
+            }
         }
         _ => {}
     }
