@@ -458,6 +458,7 @@ const userComponents: Component[] = [
         screenshots: [],
         customization: [
           "The failable `init?(profile:)` lets you gate the badge in one line: `if let badge = NostrNip05Badge(profile: profile) { badge }`.",
+          "`_@domain` identifiers (root-domain NIP-05) automatically render as just `domain` — no extra handling needed.",
           "Swap `Color.accentColor` for your brand verification color on the checkmark icon.",
         ],
       },
@@ -472,6 +473,7 @@ const userComponents: Component[] = [
         screenshots: [],
         customization: [
           "`NostrNip05Badge(profile)` returns early when nip05 is absent; `NostrNip05Badge(nip05)` renders unconditionally when you've already validated the value.",
+          "`_@domain` identifiers (root-domain NIP-05) automatically render as just `domain` — no extra handling needed.",
           "Swap `MaterialTheme.colorScheme.primary` for your brand verification color on the icon tint.",
         ],
       },

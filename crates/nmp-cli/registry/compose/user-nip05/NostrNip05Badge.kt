@@ -39,10 +39,12 @@ fun NostrNip05Badge(
     nip05: String,
     modifier: Modifier = Modifier,
 ) {
+    // `_@domain` is NIP-05 shorthand: the domain itself is the identity. Display just the domain.
+    val displayText = if (nip05.startsWith("_@")) nip05.removePrefix("_@") else nip05
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier.semantics(mergeDescendants = true) {
-            contentDescription = "Verified: $nip05"
+            contentDescription = "Verified: $displayText"
         },
     ) {
         Icon(
@@ -53,7 +55,7 @@ fun NostrNip05Badge(
         )
         Spacer(Modifier.width(4.dp))
         Text(
-            text = nip05,
+            text = displayText,
             style = MaterialTheme.typography.bodySmall,
             color = LocalContentColor.current.copy(alpha = 0.65f),
             maxLines = 1,

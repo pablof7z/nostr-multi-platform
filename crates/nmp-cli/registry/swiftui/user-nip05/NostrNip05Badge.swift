@@ -23,17 +23,23 @@ public struct NostrNip05Badge: View {
         self.nip05 = nip05
     }
 
+    /// `_@domain` is a NIP-05 shorthand meaning the domain IS the identity.
+    /// Strip the `_@` prefix and display just the domain.
+    private var displayText: String {
+        nip05.hasPrefix("_@") ? String(nip05.dropFirst(2)) : nip05
+    }
+
     public var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
-            Text(nip05)
+            Text(displayText)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Verified: \(nip05)")
+        .accessibilityLabel("Verified: \(displayText)")
     }
 }
