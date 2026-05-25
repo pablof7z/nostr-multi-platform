@@ -1,0 +1,18 @@
+# Standalone TUI mockup — Approach B: Master-Detail Split.
+#
+# This crate is deliberately OUTSIDE the surrounding `nostr-multi-platform`
+# workspace. The empty `[workspace]` table below makes it a workspace root in
+# its own right, so Cargo will not try to attach it to the parent workspace
+# (whose `[workspace].members` we are not permitted to edit). Without this
+# opt-out, `cargo build` from this directory would error with
+# "current package believes it's in a workspace when it's not".
+[workspace]
+
+[package]
+name = "chirp-tui-approach-b"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
