@@ -49,15 +49,15 @@
 //!   `ModularTimelineProjection`, group-chat projection, Marmot, etc.).
 //!   Per-app crates wire those themselves on top of `register_defaults`.
 //! * It does not own a C-ABI surface. The `nmp_app_*` FFI lives in
-//!   `nmp-core` (and per-app `nmp_app_<app>_*` shells live in the app
+//!   `nmp-ffi` (and per-app `nmp_app_<app>_*` shells live in the app
 //!   crate). The template is pure Rust composition.
-//! * It does not call [`nmp_core::nmp_app_start`]. The caller drives
+//! * It does not call `nmp_app_start`. The caller drives
 //!   lifecycle.
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use nmp_core::{nmp_app_free, nmp_app_new};
+//! use nmp_ffi::{nmp_app_free, nmp_app_new};
 //!
 //! // 1. Construct the app.
 //! let app = nmp_app_new();
@@ -77,14 +77,14 @@
 //!
 //! # Ordering contract
 //!
-//! `register_defaults` MUST be called **before** [`nmp_core::nmp_app_start`].
+//! `register_defaults` MUST be called **before** `nmp_app_start`.
 //! All registrations need to be visible to the kernel when the first event
 //! arrives — late wiring is dropped silently per `D6`.
 //!
-//! [`NmpApp`]: nmp_core::NmpApp
-//! [`NmpApp::set_routing_substrate`]: nmp_core::NmpApp::set_routing_substrate
-//! [`NmpApp::set_publish_resolver_factory`]: nmp_core::NmpApp::set_publish_resolver_factory
-//! [`NmpApp::set_coverage_hook`]: nmp_core::NmpApp::set_coverage_hook
+//! [`NmpApp`]: nmp_ffi::NmpApp
+//! [`NmpApp::set_routing_substrate`]: nmp_ffi::NmpApp::set_routing_substrate
+//! [`NmpApp::set_publish_resolver_factory`]: nmp_ffi::NmpApp::set_publish_resolver_factory
+//! [`NmpApp::set_coverage_hook`]: nmp_ffi::NmpApp::set_coverage_hook
 //! [`CoverageGate`]: nmp_coverage_gate::CoverageGate
 
 use std::sync::Arc;
@@ -93,8 +93,8 @@ use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
 use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
-use nmp_ffi::NmpApp;
 use nmp_coverage_gate::CoverageGate;
+use nmp_ffi::NmpApp;
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Nip65OutboxResolver};
 
 pub mod runtimes;
@@ -113,7 +113,7 @@ pub mod runtimes;
 ///
 /// # Ordering
 ///
-/// MUST run before `nmp_core::nmp_app_start`. The kernel reads the
+/// MUST run before `nmp_app_start`. The kernel reads the
 /// ingest-parser dispatcher, the routing-substrate factory, and the
 /// coverage hook during its first compile/dispatch tick.
 ///

@@ -4112,6 +4112,7 @@ dependencies = [
  "nmp-core",
  "nmp-ffi",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

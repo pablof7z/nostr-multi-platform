@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +42,14 @@ import org.nmp.android.model.TimelineItem
  */
 @Composable
 fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
+    LaunchedEffect(model) {
+        model.openTimeline()
+    }
     val s by model.state.collectAsStateWithLifecycle()
+    val snapshotCount by model.snapshotCount.collectAsStateWithLifecycle()
+    val activeAccount = s.projections
+        ?.accounts
+        ?.firstOrNull { it.id == s.activeAccount }
     val itemLookup = s.items.associateBy { it.id }
     val cardLookup = s.modularTimeline.cards.associateBy { it.id }
     val blocks = if (s.modularTimeline.blocks.isNotEmpty()) {
@@ -56,13 +65,19 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         ) {
             Text("Chirp", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "rev ${s.rev} · ${s.modularTimeline.blocks.size} blocks",
+                "rev ${s.rev} · ${blocks.size} blocks",
                 style = MaterialTheme.typography.labelSmall,
             )
         }
         HorizontalDivider()
         if (blocks.isEmpty()) {
-            Placeholder(s.testNpub)
+            Placeholder(
+                activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
+                hasAccount = s.activeAccount.isNotEmpty(),
+                hasSnapshot = snapshotCount > 0,
+                lastErrorToast = s.lastErrorToast,
+                onCreateAccount = { model.createLocalAccount() },
+            )
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
@@ -75,19 +90,43 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Placeholder(testNpub: String) {
+private fun Placeholder(
+    activeAccountLabel: String,
+    hasAccount: Boolean,
+    hasSnapshot: Boolean,
+    lastErrorToast: String?,
+    onCreateAccount: () -> Unit,
+) {
+    val message = if (hasAccount) {
+        "No timeline events yet"
+    } else {
+        lastErrorToast?.nonEmptyOrNull() ?: if (hasSnapshot) "No active account" else "Starting kernel…"
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
-            Spacer(Modifier.size(16.dp))
-            Text("Waiting for kernel snapshot…")
-            Spacer(Modifier.size(8.dp))
+            if (!hasSnapshot) {
+                CircularProgressIndicator()
+                Spacer(Modifier.size(16.dp))
+            }
             Text(
-                "Bootstrap pubkey: $testNpub",
-                style = MaterialTheme.typography.bodySmall,
+                message,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
+            if (hasAccount) {
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    "Active account: $activeAccountLabel",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            } else if (hasSnapshot) {
+                Spacer(Modifier.size(16.dp))
+                Button(onClick = onCreateAccount) {
+                    Text("Create local account")
+                }
+            }
         }
     }
 }
@@ -129,29 +168,37 @@ private fun ModuleBlockRow(
 }
 
 @Composable
-private fun NoteRow(
+internal fun NoteRow(
     eventId: String,
     items: Map<String, TimelineItem>,
     cards: Map<String, ChirpEventCard>,
+    embedDepth: Int = 0,
+    embedded: Boolean = false,
 ) {
     val item = items[eventId]
     val card = cards[eventId]
-    val content = item?.contentPreview?.ifEmpty { item.content } ?: card?.content
+    val content = item?.contentPreview?.ifEmpty { item.content }
+        ?: card?.contentPreview?.ifEmpty { card.content }
     if (content == null) {
         MissingEventRow(eventId)
         return
     }
     val author = item?.authorDisplay?.nonEmptyOrNull()
-        ?: card?.authorPubkey?.take(12)?.let { "$it…" }
+        ?: card?.authorDisplayName?.nonEmptyOrNull()
+        ?: card?.authorPubkeyShort?.nonEmptyOrNull()
         ?: "unknown"
     val initials = item?.authorAvatarInitials?.nonEmptyOrNull()
+        ?: card?.authorAvatarInitials?.nonEmptyOrNull()
         ?: author.take(2).uppercase()
-    val color = item?.authorAvatarColor.orEmpty()
+    val color = item?.authorAvatarColor?.nonEmptyOrNull()
+        ?: card?.authorAvatarColor.orEmpty()
     val subtitle = item?.createdAtDisplay?.nonEmptyOrNull()
+        ?: card?.createdAtDisplay?.nonEmptyOrNull()
         ?: card?.let { "kind ${it.kind}" }
         ?: ""
 
-    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+    val rowPadding = if (embedded) 10.dp else 12.dp
+    Column(Modifier.fillMaxWidth().padding(rowPadding)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(initials, color)
             Spacer(Modifier.size(8.dp))
@@ -168,7 +215,13 @@ private fun NoteRow(
             }
         }
         Spacer(Modifier.size(6.dp))
-        NostrRichText(content = content)
+        NostrRichText(
+            content = content,
+            contentTree = card?.contentTree,
+            items = items,
+            cards = cards,
+            embedDepth = embedDepth,
+        )
     }
 }
 

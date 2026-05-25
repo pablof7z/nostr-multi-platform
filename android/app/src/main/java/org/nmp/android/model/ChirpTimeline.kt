@@ -32,6 +32,14 @@ data class ChirpEventCard(
     val kind: Int = 0,
     val createdAt: Long = 0,
     val content: String = "",
+    val contentTree: ContentTreeWire? = null,
+    val createdAtDisplay: String = "",
+    val authorAvatarInitials: String = "",
+    val authorAvatarColor: String = "",
+    val authorPubkeyShort: String = "",
+    val authorDisplayName: String = "",
+    val authorPictureUrl: String = "",
+    val contentPreview: String = "",
 )
 
 @Serializable(with = TimelineBlockSerializer::class)

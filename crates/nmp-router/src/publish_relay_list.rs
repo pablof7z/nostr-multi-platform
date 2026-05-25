@@ -67,7 +67,7 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
 use nmp_core::{canonical_relay_url, ActorCommand};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 /// NIP-65 kind: the relay list — read/write outbox/inbox advertisement.
 const KIND_RELAY_LIST: u32 = 10002;
@@ -78,12 +78,13 @@ const KIND_RELAY_LIST: u32 = 10002;
 /// * [`Both`] → tag `["r", url]` with no third element (the default).
 /// * [`Read`] → tag `["r", url, "read"]`.
 /// * [`Write`] → tag `["r", url, "write"]`.
+/// * [`Indexer`] → input-only host role; skipped, never emitted in kind:10002.
 ///
 /// The kernel parser treats *any* third-element string other than `"read"`
 /// or `"write"` as "both", but to keep the publish → ingest round-trip
 /// stable in the canonical case the builder OMITS the third element for
 /// [`Both`] rather than emitting `"both"`.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RelayMarker {
     /// Read + write. Wire form: `["r", url]` (no marker).
@@ -93,6 +94,51 @@ pub enum RelayMarker {
     Read,
     /// Write-only. Wire form: `["r", url, "write"]`.
     Write,
+    /// Host-side indexer-only relay. Not part of NIP-65; skipped by the
+    /// builder so native shells can pass their raw relay-row role strings
+    /// without deciding what belongs in a kind:10002.
+    Indexer,
+}
+
+impl RelayMarker {
+    fn from_role_string(raw: &str) -> Option<Self> {
+        let mut has_both = false;
+        let mut has_read = false;
+        let mut has_write = false;
+        let mut has_indexer = false;
+        for part in raw.split(',') {
+            match part.trim().to_ascii_lowercase().as_str() {
+                "" => {}
+                "both" => has_both = true,
+                "read" => has_read = true,
+                "write" => has_write = true,
+                "indexer" => has_indexer = true,
+                _ => return None,
+            }
+        }
+        if has_both || (has_read && has_write) {
+            Some(Self::Both)
+        } else if has_read {
+            Some(Self::Read)
+        } else if has_write {
+            Some(Self::Write)
+        } else if has_indexer {
+            Some(Self::Indexer)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RelayMarker {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::from_role_string(&raw)
+            .ok_or_else(|| de::Error::unknown_variant(&raw, &["both", "read", "write", "indexer"]))
+    }
 }
 
 /// One relay entry in the user's NIP-65 outbox/inbox advertisement.
@@ -105,8 +151,10 @@ pub enum RelayMarker {
 pub struct RelayListEntry {
     /// Relay URL. Canonicalised before being written to the tag.
     pub url: String,
-    /// Read/write role marker. Defaults to [`RelayMarker::Both`].
-    #[serde(default)]
+    /// Read/write role marker. Defaults to [`RelayMarker::Both`]. `role` is an
+    /// accepted alias for native relay-row DTOs; composite roles such as
+    /// `"both,indexer"` are normalized here, not in Swift/Kotlin.
+    #[serde(default, alias = "role")]
     pub marker: RelayMarker,
 }
 
@@ -155,6 +203,7 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
             RelayMarker::Both => vec!["r".to_string(), canonical],
             RelayMarker::Read => vec!["r".to_string(), canonical, "read".to_string()],
             RelayMarker::Write => vec!["r".to_string(), canonical, "write".to_string()],
+            RelayMarker::Indexer => continue,
         };
         tags.push(tag);
     }
