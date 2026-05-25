@@ -22,6 +22,14 @@ import quoteCardSwift from "../../../crates/nmp-cli/registry/swiftui/content-quo
 import mediaGridSwift from "../../../crates/nmp-cli/registry/swiftui/content-media-grid/NostrMediaGrid.swift?raw";
 import loginBlockSwift from "../../../crates/nmp-cli/registry/swiftui/login-block/NostrLoginBlock.swift?raw";
 
+// User profile — SwiftUI
+import profileWireSwift from "../../../crates/nmp-cli/registry/swiftui/user-core/ProfileWire.swift?raw";
+import nostrAvatarSwift from "../../../crates/nmp-cli/registry/swiftui/user-core/NostrAvatar.swift?raw";
+import nostrProfileNameSwift from "../../../crates/nmp-cli/registry/swiftui/user-name/NostrProfileName.swift?raw";
+import nostrNip05BadgeSwift from "../../../crates/nmp-cli/registry/swiftui/user-nip05/NostrNip05Badge.swift?raw";
+import nostrNpubChipSwift from "../../../crates/nmp-cli/registry/swiftui/user-npub/NostrNpubChip.swift?raw";
+import nostrUserCardSwift from "../../../crates/nmp-cli/registry/swiftui/user-card/NostrUserCard.swift?raw";
+
 import composeContentRendererKotlin from "../../../crates/nmp-cli/registry/compose/content-core/NostrContentRenderer.kt?raw";
 import composeContentTreeWireKotlin from "../../../crates/nmp-cli/registry/compose/content-core/ContentTreeWire.kt?raw";
 import composeContentViewKotlin from "../../../crates/nmp-cli/registry/compose/content-view/NostrContentView.kt?raw";
@@ -29,6 +37,14 @@ import composeContentGroupingKotlin from "../../../crates/nmp-cli/registry/compo
 import composeMentionChipKotlin from "../../../crates/nmp-cli/registry/compose/content-mention-chip/NostrMentionChip.kt?raw";
 import composeQuoteCardKotlin from "../../../crates/nmp-cli/registry/compose/content-quote-card/NostrQuoteCard.kt?raw";
 import composeMediaGridKotlin from "../../../crates/nmp-cli/registry/compose/content-media-grid/NostrMediaGrid.kt?raw";
+
+// User profile — Compose
+import profileWireKotlin from "../../../crates/nmp-cli/registry/compose/user-core/ProfileWire.kt?raw";
+import nostrAvatarKotlin from "../../../crates/nmp-cli/registry/compose/user-core/NostrAvatar.kt?raw";
+import nostrProfileNameKotlin from "../../../crates/nmp-cli/registry/compose/user-name/NostrProfileName.kt?raw";
+import nostrNip05BadgeKotlin from "../../../crates/nmp-cli/registry/compose/user-nip05/NostrNip05Badge.kt?raw";
+import nostrNpubChipKotlin from "../../../crates/nmp-cli/registry/compose/user-npub/NostrNpubChip.kt?raw";
+import nostrUserCardKotlin from "../../../crates/nmp-cli/registry/compose/user-card/NostrUserCard.kt?raw";
 
 export type Platform = "swiftui" | "compose" | "tui" | "web";
 
@@ -399,6 +415,244 @@ export const COMPONENTS: Component[] = [
           "Extend `NostrSignerDetector.knownSigners` to add future signer apps. Each entry needs its URL scheme listed in Info.plist too.",
           "Theming is driven by `NostrContentRenderer` from the `swiftui/content-core` dependency. Override colors with `.nostrContentRenderer(...)` on a parent view.",
           "Wire `onSignerSelected` to your NIP-46 Nostr Connect or NIP-55 deep-link flow. The `NostrSignerInfo.urlScheme` value is the scheme to use when constructing the handshake URL.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "user-core",
+    routeId: "user-core",
+    version: "0.1.0",
+    description:
+      "ProfileWire wire type and NostrAvatar — the foundation for all user profile components.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/user-core",
+        dependencies: [],
+        longDescription:
+          "`ProfileWire` is the Codable struct decoded from the `nmp-profile` projection. `NostrAvatar` renders the picture URL with a deterministic identicon fallback. Install once; every other user component depends on these.",
+        files: [
+          {
+            source: "swiftui/user-core/ProfileWire.swift",
+            target: "Components/NostrUser/ProfileWire.swift",
+            role: "source",
+            content: profileWireSwift,
+          },
+          {
+            source: "swiftui/user-core/NostrAvatar.swift",
+            target: "Components/NostrUser/NostrAvatar.swift",
+            role: "source",
+            content: nostrAvatarSwift,
+          },
+        ],
+        screenshots: ["user-core-swiftui-preview.png"],
+        customization: [
+          "Edit the `palette` array in `NostrIdenticon` to match your app's brand colors. The color is deterministic from the pubkey so the same user always gets the same color.",
+          "Replace `AsyncImage` in `NostrAvatar` with your own image cache (Kingfisher, Nuke) by swapping the URL loading block — the identicon fallback is self-contained.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/user-core",
+        dependencies: [],
+        longDescription:
+          "`ProfileWire` is the `@Serializable` data class decoded from the `nmp-profile` projection. `NostrAvatar` renders the picture URL via Coil with a deterministic identicon fallback. Install once; every other Compose user component depends on these.",
+        files: [
+          {
+            source: "compose/user-core/ProfileWire.kt",
+            target: "Components/NostrUser/ProfileWire.kt",
+            role: "source",
+            content: profileWireKotlin,
+          },
+          {
+            source: "compose/user-core/NostrAvatar.kt",
+            target: "Components/NostrUser/NostrAvatar.kt",
+            role: "source",
+            content: nostrAvatarKotlin,
+          },
+        ],
+        screenshots: ["user-core-compose-preview.png"],
+        customization: [
+          "Edit `IDENTICON_PALETTE` in `NostrAvatar.kt` to match your brand colors.",
+          "Replace `SubcomposeAsyncImage` with Glide or a custom `Painter` — the identicon fallback composables are self-contained and don't depend on Coil.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "user-name",
+    routeId: "user-name",
+    version: "0.1.0",
+    description: "Inline display-name text with fallback to Rust-truncated npub.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/user-name",
+        dependencies: ["user-core"],
+        files: [
+          {
+            source: "swiftui/user-name/NostrProfileName.swift",
+            target: "Components/NostrUser/NostrProfileName.swift",
+            role: "source",
+            content: nostrProfileNameSwift,
+          },
+        ],
+        screenshots: ["user-name-swiftui-preview.png"],
+        customization: [
+          "Pass any `Font` and `Color` — the component has no hardcoded styling. For section headers use `.headline`; for secondary rows use `.subheadline` and a muted color.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/user-name",
+        dependencies: ["user-core"],
+        files: [
+          {
+            source: "compose/user-name/NostrProfileName.kt",
+            target: "Components/NostrUser/NostrProfileName.kt",
+            role: "source",
+            content: nostrProfileNameKotlin,
+          },
+        ],
+        screenshots: ["user-name-compose-preview.png"],
+        customization: [
+          "Pass any `TextStyle` and `Color` — no hardcoded styling. Use `MaterialTheme.typography.titleMedium` for headers and `bodySmall` for secondary rows.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "user-nip05",
+    routeId: "user-nip05",
+    version: "0.1.0",
+    description: "NIP-05 verified identity badge — checkmark icon and identifier string.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/user-nip05",
+        dependencies: ["user-core"],
+        files: [
+          {
+            source: "swiftui/user-nip05/NostrNip05Badge.swift",
+            target: "Components/NostrUser/NostrNip05Badge.swift",
+            role: "source",
+            content: nostrNip05BadgeSwift,
+          },
+        ],
+        screenshots: ["user-nip05-swiftui-preview.png"],
+        customization: [
+          "The failable `init?(profile:)` lets you gate the badge in one line: `if let badge = NostrNip05Badge(profile: profile) { badge }`. Use the non-failable `init(nip05:)` when you've already checked for a value.",
+          "Swap `Color.accentColor` for your brand verification color on the checkmark icon.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/user-nip05",
+        dependencies: ["user-core"],
+        files: [
+          {
+            source: "compose/user-nip05/NostrNip05Badge.kt",
+            target: "Components/NostrUser/NostrNip05Badge.kt",
+            role: "source",
+            content: nostrNip05BadgeKotlin,
+          },
+        ],
+        screenshots: ["user-nip05-compose-preview.png"],
+        customization: [
+          "Both overloads are provided: `NostrNip05Badge(profile)` returns early when nip05 is absent; `NostrNip05Badge(nip05)` renders unconditionally when you've already validated the value.",
+          "Swap `MaterialTheme.colorScheme.primary` for your brand verification color on the icon tint.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "user-npub",
+    routeId: "user-npub",
+    version: "0.1.0",
+    description: "Tappable npub chip — shows Rust-truncated npub and copies full bech32 on tap.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/user-npub",
+        dependencies: ["user-core"],
+        files: [
+          {
+            source: "swiftui/user-npub/NostrNpubChip.swift",
+            target: "Components/NostrUser/NostrNpubChip.swift",
+            role: "source",
+            content: nostrNpubChipSwift,
+          },
+        ],
+        screenshots: ["user-npub-swiftui-preview.png"],
+        customization: [
+          "`npub` and `npubShort` must come from the kernel projection — never format them in Swift (aim.md §6.9). The Rust side owns the truncation length and encoding.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/user-npub",
+        dependencies: ["user-core"],
+        files: [
+          {
+            source: "compose/user-npub/NostrNpubChip.kt",
+            target: "Components/NostrUser/NostrNpubChip.kt",
+            role: "source",
+            content: nostrNpubChipKotlin,
+          },
+        ],
+        screenshots: ["user-npub-compose-preview.png"],
+        customization: [
+          "`npub` and `npubShort` must come from the kernel projection — never format them in Kotlin.",
+          "Uses `ClipboardManager` directly; no permission required on API 32 and below. On API 33+ the system shows a clipboard toast automatically.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "user-card",
+    routeId: "user-card",
+    version: "0.1.0",
+    description: "Compact author header: avatar, display name, and optional NIP-05 badge.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/user-card",
+        dependencies: ["user-core", "user-name", "user-nip05"],
+        longDescription:
+          "The most common pattern in note feeds and thread views. Composes `NostrAvatar`, `NostrProfileName`, and `NostrNip05Badge` into a single tappable row. Tap routes through an `onTap` callback so it works in any navigation stack.",
+        files: [
+          {
+            source: "swiftui/user-card/NostrUserCard.swift",
+            target: "Components/NostrUser/NostrUserCard.swift",
+            role: "source",
+            content: nostrUserCardSwift,
+          },
+        ],
+        screenshots: ["user-card-swiftui-preview.png"],
+        customization: [
+          "Set `avatarSize` to `32` for dense list rows and `64` for profile headers.",
+          "The `onTap` callback receives the raw pubkey — push your own profile route from there rather than hardcoding any navigation dependency inside this component.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/user-card",
+        dependencies: ["user-core", "user-name", "user-nip05"],
+        longDescription:
+          "The most common pattern in note feeds and thread views. Composes `NostrAvatar`, `NostrProfileName`, and `NostrNip05Badge` into a single tappable row. Tap routes through an `onTap` callback so it works with any Compose navigation setup.",
+        files: [
+          {
+            source: "compose/user-card/NostrUserCard.kt",
+            target: "Components/NostrUser/NostrUserCard.kt",
+            role: "source",
+            content: nostrUserCardKotlin,
+          },
+        ],
+        screenshots: ["user-card-compose-preview.png"],
+        customization: [
+          "Set `avatarSize` to `32.dp` for dense list rows and `64.dp` for profile headers.",
+          "The `onTap` callback receives the raw pubkey — push your own NavController route from there rather than importing any navigation dependency inside this component.",
         ],
       },
     },
