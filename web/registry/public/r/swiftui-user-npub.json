@@ -1,0 +1,18 @@
+{
+  "name": "swiftui-user-npub",
+  "type": "registry:ui",
+  "title": "User Npub (SwiftUI)",
+  "description": "SwiftUI truncated npub chip with copy-to-clipboard affordance.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/user-npub/NostrNpubChip.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrUser/NostrNpubChip.swift",
+      "content": "import SwiftUI\n\n/// Tappable chip that shows the Rust-truncated npub and copies the full\n/// bech32 `npub1…` to the clipboard on tap.\n///\n/// `npub` and `npubShort` must come from the kernel projection —\n/// never reformat them in Swift (aim.md §6.9).\n///\n/// Depends on `swiftui/user-core` for `ProfileWire`.\npublic struct NostrNpubChip: View {\n    public let npub: String\n    public let npubShort: String\n\n    @State private var copied = false\n\n    public init(profile: ProfileWire) {\n        self.npub = profile.npub\n        self.npubShort = profile.npubShort\n    }\n\n    public init(npub: String, npubShort: String) {\n        self.npub = npub\n        self.npubShort = npubShort\n    }\n\n    public var body: some View {\n        Button(action: copyNpub) {\n            HStack(spacing: 4) {\n                Text(npubShort)\n                    .font(.body.monospaced())\n                    .foregroundStyle(.secondary)\n                Image(systemName: copied ? \"checkmark\" : \"doc.on.doc\")\n                    .font(.system(size: 11))\n                    .foregroundStyle(.secondary)\n            }\n        }\n        .buttonStyle(.plain)\n        .accessibilityLabel(copied ? \"Copied\" : \"Copy npub\")\n        .accessibilityHint(\"Double tap to copy full npub to clipboard\")\n    }\n\n    private func copyNpub() {\n        UIPasteboard.general.string = npub\n        copied = true\n        Task {\n            try? await Task.sleep(for: .seconds(2))\n            copied = false\n        }\n    }\n}\n"
+    }
+  ]
+}
