@@ -37,19 +37,22 @@ struct ComponentDetailView: View {
     @ViewBuilder
     private var pageBody: some View {
         switch component.id {
-        // User pages — need a `ProfileWire`. While the kernel is still
-        // fetching kind:0 for the demo pubkey, `model.demoProfile` is nil
-        // and the page shows a `ProgressView`.
+        // User pages — never block on relay data. `bestEffortProfile`
+        // returns a placeholder `ProfileWire` (identicon + truncated npub)
+        // before kind:0 arrives; the registry components degrade gracefully
+        // on missing optional fields. SwiftUI re-renders automatically
+        // when the real profile lands because `GalleryModel` is
+        // `@Observable`.
         case "user-avatar":
-            UserAvatarPage(profile: model.demoProfile)
+            UserAvatarPage(profile: model.bestEffortProfile)
         case "user-name":
-            UserProfileNamePage(profile: model.demoProfile)
+            UserProfileNamePage(profile: model.bestEffortProfile)
         case "user-nip05":
-            UserNip05Page(profile: model.demoProfile)
+            UserNip05Page(profile: model.bestEffortProfile)
         case "user-npub":
-            UserNpubPage(profile: model.demoProfile)
+            UserNpubPage(profile: model.bestEffortProfile)
         case "user-card":
-            UserCardPage(profile: model.demoProfile)
+            UserCardPage(profile: model.bestEffortProfile)
         // Content pages — work without relay data; the wire trees are
         // constructed in-line inside each page builder.
         case "content-core":
