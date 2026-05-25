@@ -422,14 +422,56 @@ fn locate_slot<'a>(
 /// Convert one `tungstenite::Message` into a [`RelayFrame`]. Returns
 /// `None` for the raw `Frame(_)` variant which the kernel has never
 /// observed.
+///
+/// ## Step 8 phase E — AUTH pre-classification
+///
+/// Text frames are peeked for the `["AUTH", <challenge>]` NIP-42 shape
+/// (using the dependency-free parser in `nmp-nip42-types`). A match
+/// surfaces as [`RelayFrame::Auth`]; everything else (including
+/// malformed AUTH frames with empty challenges) stays as
+/// [`RelayFrame::Text`] so the kernel's existing ingest parser handles
+/// them uniformly. This is the **only** AUTH-aware behaviour in this
+/// crate — building the kind:22242 reply event lives in `nmp-nip42`,
+/// and the per-relay pause/replay FSM lives in
+/// `nmp-core::subs::AuthGate`.
 fn tungstenite_to_relay_frame(message: Message) -> Option<RelayFrame> {
     match message {
-        Message::Text(text) => Some(RelayFrame::Text(text)),
+        Message::Text(text) => Some(classify_text_frame(text)),
         Message::Binary(bytes) => Some(RelayFrame::Binary(bytes)),
         Message::Ping(_) => Some(RelayFrame::Ping),
         Message::Pong(_) => Some(RelayFrame::Pong),
         Message::Close(frame) => Some(RelayFrame::Close(frame.map(|f| f.reason.into_owned()))),
         Message::Frame(_) => None,
+    }
+}
+
+/// Peek a text frame for the NIP-42 `["AUTH", <challenge>]` shape and
+/// pre-classify it as [`RelayFrame::Auth`]; fall through to
+/// [`RelayFrame::Text`] on anything else (non-AUTH frame, malformed
+/// JSON, empty challenge).
+///
+/// `pub(crate)` so the phase-E pool tests can exercise the classifier
+/// directly without spinning up a real socket.
+pub(crate) fn classify_text_frame(text: String) -> RelayFrame {
+    // Cheap fast-path: only parse JSON if the frame looks like it might
+    // be an AUTH frame (NIP-42 frames are `["AUTH", ...]` — case-sensitive).
+    if !text.contains("\"AUTH\"") {
+        return RelayFrame::Text(text);
+    }
+    let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
+        return RelayFrame::Text(text);
+    };
+    // `relay_url` is empty here — the wire layer doesn't know its own
+    // URL (the worker is keyed by URL but the value isn't threaded into
+    // the translator), and `AuthChallenge.relay_url` is only used by
+    // the kernel for the `["relay", <url>]` tag on the kind:22242
+    // response. The kernel stamps the delivering URL from its own
+    // context (see `kernel/ingest/auth_handlers.rs` and ADR-T125).
+    // We only need `parse_auth_frame`'s shape + non-empty-challenge
+    // validation here.
+    match nmp_nip42_types::parse_auth_frame(&parsed, "") {
+        Some(challenge) => RelayFrame::Auth(challenge.challenge),
+        None => RelayFrame::Text(text),
     }
 }
 

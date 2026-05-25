@@ -39,6 +39,18 @@ mio = { version = "1", features = ["os-ext", "os-poll"], optional = true }
 rustls = { workspace = true, default-features = false, features = ["ring"], optional = true }
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
 
+# Step 8 phase E: pre-classify the inbound `["AUTH", <challenge>]` wire
+# frame into [`pool::RelayFrame::Auth`] so the kernel sees a typed
+# variant instead of re-discovering AUTH from raw text. `nmp-nip42-types`
+# is the dependency-free wire/type substrate (serde/serde_json only —
+# no workspace deps), purpose-built so both `nmp-core` (the FSM owner)
+# and `nmp-network` (the wire layer) share the exact parse without a
+# crate cycle. This crate only uses `parse_auth_frame` — it does NOT
+# import the FSM (`AuthGate`) or the kind:22242 builder; those live in
+# `nmp-core::subs::AuthGate` and `nmp-nip42::builder` respectively.
+nmp-nip42-types = { path = "../nmp-nip42-types" }
+serde_json = "1"
+
 # Step 8 phase C — `BrowserRelayDriver` owns the `web_sys::WebSocket`
 # lifecycle. Feature set kept minimal (mirrors what `nmp-wasm` carried
 # before the move): `WebSocket` itself for send/close, `MessageEvent` to

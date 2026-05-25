@@ -78,10 +78,43 @@ pub enum WireFrame {
 /// variant-rename. Defined here (not imported from `nmp-core`) because
 /// `nmp-network` MUST NOT depend on `nmp-core` — that direction would
 /// re-introduce the cycle the step-8 extraction broke.
+///
+/// ## Step 8 phase E — `Auth` variant
+///
+/// Per `docs/architecture/crate-boundaries.md` §3.8: the wire layer
+/// pre-classifies the inbound `["AUTH", <challenge>]` frame into the
+/// [`RelayFrame::Auth`] variant so the kernel sees a typed signal
+/// rather than re-discovering AUTH from raw text on the fast path.
+/// **This is the only AUTH-aware behaviour in `nmp-network`.** The
+/// crate still does NOT:
+///
+/// - construct the kind:22242 event (lives in `nmp-nip42::builder`),
+/// - own the per-relay handshake driver (lives in `nmp-nip42::flow`
+///   and the kernel's `kernel/auth.rs` mirror),
+/// - pause/replay subscriptions on a challenge (lives in
+///   `nmp-core::subs::AuthGate`).
+///
+/// Text frames that aren't AUTH (or are malformed AUTH — empty
+/// challenge, wrong shape) still surface as [`RelayFrame::Text`]; the
+/// kernel's ingest parser handles those uniformly.
 #[derive(Debug)]
 pub enum RelayFrame {
-    /// Text payload — the only frame the kernel actually parses.
+    /// Text payload — every NIP-01 frame other than AUTH the wire layer
+    /// can pre-classify (`EVENT` / `EOSE` / `OK` / `NOTICE` / `CLOSED`
+    /// are intentionally not pre-parsed here; the kernel ingest path
+    /// already owns that parse and the wire layer must not duplicate
+    /// the semantic vocabulary).
     Text(String),
+    /// Pre-classified `["AUTH", <challenge>]` frame. The wire layer
+    /// only extracts the non-empty challenge string (NIP-42 wire
+    /// shape); it does not compute the kind:22242 response nor decide
+    /// whether to pause subscriptions — those are the kernel's
+    /// `kernel/auth.rs` and `subs::AuthGate` jobs respectively.
+    ///
+    /// Malformed AUTH frames (empty challenge, missing fields) fall
+    /// through to [`Self::Text`] so the kernel can log them via the
+    /// existing parse path.
+    Auth(String),
     /// Binary payload — counted but otherwise ignored by the kernel.
     Binary(Vec<u8>),
     /// Keepalive ping (server → client). The pool surfaces this for

@@ -71,15 +71,33 @@
 //! the driver's behavior, event ordering, and borrow semantics identical
 //! to the pre-move version.
 //!
-//! ## Deferred to follow-up PRs (step 8 phases D/E)
+//! ## Step 8 phase E — NIP-42 AUTH wire/FSM split (this PR)
+//!
+//! Pre-classifies the inbound `["AUTH", <challenge>]` NIP-42 frame at
+//! the wire layer into a typed [`pool::RelayFrame::Auth`] variant so the
+//! kernel sees a structured signal instead of re-discovering AUTH from
+//! raw text on the ingest fast-path. Implemented in
+//! [`pool::inner::classify_text_frame`] via the dependency-free
+//! `nmp-nip42-types::parse_auth_frame` parser.
+//!
+//! Out-of-scope for this crate (deliberate layering, per
+//! `docs/architecture/crate-boundaries.md` §3.8):
+//!
+//! - **Build the kind:22242 reply event** — lives in
+//!   [`nmp_nip42::build_auth_event`]. `nmp-network` MUST NOT name
+//!   kind 22242 anywhere.
+//! - **Pause / replay subscriptions during a challenge** — lives in
+//!   `nmp_core::subs::AuthGate`. `nmp-network` MUST NOT name the gate
+//!   nor the per-relay `RelayAuthState` enum.
+//! - **Per-relay handshake driver state** — lives in
+//!   `nmp_nip42::flow::Nip42Driver` and the kernel's `kernel/auth.rs`
+//!   mirror.
+//!
+//! ## Deferred to follow-up PRs (step 8 phase D)
 //!
 //! - **Phase D** — migrate `nmp-signer-broker` onto the new `Pool` primitive
 //!   (V-13 dedupe: today `relay_client.rs` mirrors `relay_worker`'s mio +
 //!   tungstenite + jitter dance line-for-line).
-//! - **Phase E** — NIP-42 AUTH wire/FSM split. The pool performs the
-//!   wire handshake (surfaces inbound `AUTH` as a `RelayFrame` variant)
-//!   but does NOT compute the kind:22242 event (lives in `nmp-nip42`)
-//!   nor pause/replay subscriptions (lives in the planner's `AuthGate`).
 //!
 //! Each phase is a separate PR with its own acceptance criteria.
 
