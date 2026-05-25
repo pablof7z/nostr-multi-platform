@@ -31,8 +31,8 @@ export default function ComponentPage() {
 
         const impl = createMemo(() => cmp.platforms[platform()]);
 
-        const language = createMemo<"swift" | "kotlin">(() =>
-          platform() === "compose" ? "kotlin" : "swift"
+        const language = createMemo<"swift" | "kotlin" | "rust">(() =>
+          platform() === "compose" ? "kotlin" : platform() === "tui" ? "rust" : "swift"
         );
 
         const tabs = createMemo(() => {

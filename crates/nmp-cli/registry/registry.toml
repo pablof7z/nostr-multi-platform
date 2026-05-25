@@ -349,3 +349,77 @@ dependencies = [
 source = "compose/user-card/NostrUserCard.kt"
 target = "Components/NostrUser/NostrUserCard.kt"
 role = "source"
+
+# -----------------------------------------------------------------------------
+# Ratatui user profile widgets. These are pure render widgets: host apps own
+# keyboard actions, clipboard writes, image fetching, and navigation.
+# `tui/user-avatar` owns the shared `ProfileWire` mirror.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "tui/user-avatar"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui profile wire type and terminal avatar tile with deterministic identicon fallback."
+
+[[components.files]]
+source = "tui/user-avatar/profile_wire.rs"
+target = "src/components/nostr_user/profile_wire.rs"
+role = "source"
+
+[[components.files]]
+source = "tui/user-avatar/nostr_avatar.rs"
+target = "src/components/nostr_user/nostr_avatar.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-name"
+version = "0.1.0"
+target = "tui"
+description = "Inline Ratatui profile display-name widget with Rust-formatted npub fallback."
+dependencies = ["tui/user-avatar"]
+
+[[components.files]]
+source = "tui/user-name/nostr_profile_name.rs"
+target = "src/components/nostr_user/nostr_profile_name.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-nip05"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui NIP-05 verified identity badge that renders only when an identifier is present."
+dependencies = ["tui/user-avatar"]
+
+[[components.files]]
+source = "tui/user-nip05/nostr_nip05_badge.rs"
+target = "src/components/nostr_user/nostr_nip05_badge.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-npub"
+version = "0.1.0"
+target = "tui"
+description = "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings."
+dependencies = ["tui/user-avatar"]
+
+[[components.files]]
+source = "tui/user-npub/nostr_npub_chip.rs"
+target = "src/components/nostr_user/nostr_npub_chip.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-card"
+version = "0.1.0"
+target = "tui"
+description = "Compact Ratatui author card composed from avatar, profile name, and optional NIP-05 badge."
+dependencies = [
+    "tui/user-avatar",
+    "tui/user-name",
+    "tui/user-nip05",
+]
+
+[[components.files]]
+source = "tui/user-card/nostr_user_card.rs"
+target = "src/components/nostr_user/nostr_user_card.rs"
+role = "source"

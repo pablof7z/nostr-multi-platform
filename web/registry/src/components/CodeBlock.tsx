@@ -1,13 +1,13 @@
 import { createMemo } from "solid-js";
-import { highlightKotlin, highlightSwift } from "./highlight";
+import { highlightKotlin, highlightRust, highlightSwift } from "./highlight";
 
 type Props = {
   /** Source body to render. Set to `null` to render a placeholder. */
   source: string | null;
   /** File path shown above the code block. */
   filePath?: string;
-  /** Language hint — `swift`, `kotlin`, `shell`, or `text`. */
-  language?: "swift" | "kotlin" | "shell" | "text";
+  /** Language hint — `swift`, `kotlin`, `rust`, `shell`, or `text`. */
+  language?: "swift" | "kotlin" | "rust" | "shell" | "text";
 };
 
 /**
@@ -18,6 +18,9 @@ export default function CodeBlock(props: Props) {
     if (props.source === null) return null;
     if (props.language === "kotlin") {
       return highlightKotlin(props.source);
+    }
+    if (props.language === "rust") {
+      return highlightRust(props.source);
     }
     if (props.language === "swift" || props.language === undefined) {
       return highlightSwift(props.source);

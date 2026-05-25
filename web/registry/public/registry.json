@@ -468,6 +468,102 @@
           "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.clickable\nimport androidx.compose.foundation.layout.Column\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.unit.Dp\nimport androidx.compose.ui.unit.dp\n\n/**\n * Compact author header: avatar, display name, and optional NIP-05 badge.\n *\n * The most common pattern in note feeds and thread views. Tap routes\n * through [onTap] so this component can be used in any navigation stack.\n *\n * Depends on `compose/user-avatar`, `compose/user-name`, `compose/user-nip05`.\n */\n@Composable\nfun NostrUserCard(\n    profile: ProfileWire,\n    avatarSize: Dp = 40.dp,\n    onTap: ((String) -> Unit)? = null,\n    modifier: Modifier = Modifier,\n) {\n    val tapModifier = if (onTap != null) {\n        modifier.clickable { onTap(profile.pubkey) }\n    } else {\n        modifier\n    }\n\n    Row(\n        verticalAlignment = Alignment.CenterVertically,\n        modifier = tapModifier.semantics(mergeDescendants = true) {\n            contentDescription = \"${profile.display}, profile\"\n        },\n    ) {\n        NostrAvatar(profile = profile, size = avatarSize)\n        Spacer(Modifier.width(10.dp))\n        Column {\n            NostrProfileName(profile = profile)\n            NostrNip05Badge(profile = profile)\n        }\n    }\n}\n"
         }
       ]
+    },
+    {
+      "name": "tui-user-avatar",
+      "type": "registry:ui",
+      "title": "User Avatar (tui)",
+      "description": "Ratatui profile wire type and terminal avatar tile with deterministic identicon fallback.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/tui/user-avatar/profile_wire.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/profile_wire.rs",
+          "content": "/// Wire type for a Nostr user profile, decoded from the Rust-owned profile\n/// projection before it reaches the Ratatui view layer.\n///\n/// `npub` and `npub_short` are already Rust-formatted. TUI code should render\n/// them as provided rather than reformatting keys locally.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct ProfileWire {\n    pub pubkey: String,\n    pub display_name: Option<String>,\n    pub about: Option<String>,\n    pub picture_url: Option<String>,\n    pub nip05: Option<String>,\n    pub npub: String,\n    pub npub_short: String,\n}\n\nimpl ProfileWire {\n    pub fn display(&self) -> &str {\n        non_empty(self.display_name.as_deref()).unwrap_or(self.npub_short.as_str())\n    }\n\n    pub fn nip05(&self) -> Option<&str> {\n        non_empty(self.nip05.as_deref())\n    }\n\n    pub fn picture_url(&self) -> Option<&str> {\n        non_empty(self.picture_url.as_deref())\n    }\n\n    pub fn initials(&self) -> String {\n        let label = self.display();\n        let mut letters = label\n            .split_whitespace()\n            .filter_map(|part| part.chars().next())\n            .filter(|ch| ch.is_alphanumeric())\n            .take(2)\n            .collect::<String>();\n        if letters.is_empty() {\n            letters = self.npub_short.chars().take(2).collect();\n        }\n        letters.to_uppercase()\n    }\n}\n\nfn non_empty(value: Option<&str>) -> Option<&str> {\n    value.map(str::trim).filter(|value| !value.is_empty())\n}\n"
+        },
+        {
+          "path": "registry/tui/user-avatar/nostr_avatar.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/nostr_avatar.rs",
+          "content": "use ratatui::{\n    buffer::Buffer,\n    layout::{Alignment, Rect},\n    style::{Color, Modifier, Style},\n    text::{Line, Span},\n    widgets::{Block, Borders, Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\nconst PALETTE: [Color; 8] = [\n    Color::Rgb(244, 114, 182),\n    Color::Rgb(56, 189, 248),\n    Color::Rgb(52, 211, 153),\n    Color::Rgb(251, 191, 36),\n    Color::Rgb(167, 139, 250),\n    Color::Rgb(248, 113, 113),\n    Color::Rgb(45, 212, 191),\n    Color::Rgb(250, 204, 21),\n];\n\n/// Circular-ish terminal avatar with deterministic identicon fallback.\n///\n/// Terminals render cells, not real circles, so this widget uses a compact\n/// bordered tile with profile initials and a stable pubkey-derived accent.\npub struct NostrAvatar<'a> {\n    profile: &'a ProfileWire,\n    border_style: Style,\n}\n\nimpl<'a> NostrAvatar<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            border_style: Style::default().fg(accent_for(&profile.pubkey)),\n        }\n    }\n\n    pub fn border_style(mut self, style: Style) -> Self {\n        self.border_style = style;\n        self\n    }\n}\n\nimpl Widget for NostrAvatar<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        let accent = accent_for(&self.profile.pubkey);\n        let initials = self.profile.initials();\n        let block = Block::default()\n            .borders(Borders::ALL)\n            .border_style(self.border_style)\n            .style(Style::default().bg(Color::Reset));\n        let inner = block.inner(area);\n        block.render(area, buf);\n\n        if inner.is_empty() {\n            return;\n        }\n\n        let fill = Style::default()\n            .fg(Color::Black)\n            .bg(accent)\n            .add_modifier(Modifier::BOLD);\n        let line = Line::from(Span::styled(initials, fill));\n        Paragraph::new(line)\n            .alignment(Alignment::Center)\n            .style(fill)\n            .render(center_line(inner), buf);\n    }\n}\n\nfn accent_for(pubkey: &str) -> Color {\n    let hash = pubkey.bytes().fold(5381usize, |acc, byte| {\n        ((acc << 5).wrapping_add(acc)) ^ byte as usize\n    });\n    PALETTE[hash % PALETTE.len()]\n}\n\nfn center_line(area: Rect) -> Rect {\n    Rect {\n        x: area.x,\n        y: area.y + area.height.saturating_sub(1) / 2,\n        width: area.width,\n        height: 1,\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "tui-user-name",
+      "type": "registry:ui",
+      "title": "User Name (tui)",
+      "description": "Inline Ratatui profile display-name widget with Rust-formatted npub fallback.",
+      "dependencies": [],
+      "registryDependencies": [
+        "tui-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/tui/user-name/nostr_profile_name.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/nostr_profile_name.rs",
+          "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Modifier, Style},\n    text::{Line, Span},\n    widgets::{Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\n/// Inline profile display name with fallback to the Rust-formatted npub.\npub struct NostrProfileName<'a> {\n    profile: &'a ProfileWire,\n    style: Style,\n}\n\nimpl<'a> NostrProfileName<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            style: Style::default()\n                .fg(Color::White)\n                .add_modifier(Modifier::BOLD),\n        }\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n\n    pub fn line(&self) -> Line<'static> {\n        Line::from(Span::styled(self.profile.display().to_string(), self.style))\n    }\n}\n\nimpl Widget for NostrProfileName<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        Paragraph::new(self.line()).render(area, buf);\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "tui-user-nip05",
+      "type": "registry:ui",
+      "title": "User Nip05 (tui)",
+      "description": "Ratatui NIP-05 verified identity badge that renders only when an identifier is present.",
+      "dependencies": [],
+      "registryDependencies": [
+        "tui-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/tui/user-nip05/nostr_nip05_badge.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/nostr_nip05_badge.rs",
+          "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Modifier, Style},\n    text::{Line, Span},\n    widgets::{Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\n/// NIP-05 verified identity badge.\npub struct NostrNip05Badge {\n    label: String,\n    style: Style,\n}\n\nimpl NostrNip05Badge {\n    pub fn new(nip05: &str) -> Option<Self> {\n        Some(Self {\n            label: display_nip05(nip05)?,\n            style: Style::default().fg(Color::Rgb(45, 212, 191)),\n        })\n    }\n\n    pub fn from_profile(profile: &ProfileWire) -> Option<Self> {\n        Self::new(profile.nip05()?)\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n\n    pub fn line(&self) -> Line<'static> {\n        Line::from(vec![\n            Span::styled(\"✓ \", self.style.add_modifier(Modifier::BOLD)),\n            Span::styled(self.label.clone(), self.style),\n        ])\n    }\n}\n\nimpl Widget for NostrNip05Badge {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        Paragraph::new(self.line()).render(area, buf);\n    }\n}\n\nfn display_nip05(nip05: &str) -> Option<String> {\n    let trimmed = nip05.trim();\n    if trimmed.is_empty() {\n        return None;\n    }\n    match trimmed.strip_prefix(\"_@\") {\n        Some(domain) if !domain.is_empty() => Some(domain.to_string()),\n        _ => Some(trimmed.to_string()),\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "tui-user-npub",
+      "type": "registry:ui",
+      "title": "User Npub (tui)",
+      "description": "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings.",
+      "dependencies": [],
+      "registryDependencies": [
+        "tui-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/tui/user-npub/nostr_npub_chip.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/nostr_npub_chip.rs",
+          "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Style},\n    text::{Line, Span},\n    widgets::{Block, Borders, Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\n/// Display-only npub chip.\n///\n/// Clipboard writes are a host capability. Keep this widget pure and handle\n/// copy actions in the surrounding TUI input loop.\npub struct NostrNpubChip<'a> {\n    profile: &'a ProfileWire,\n    style: Style,\n}\n\nimpl<'a> NostrNpubChip<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            style: Style::default()\n                .fg(Color::Rgb(186, 230, 253))\n                .bg(Color::Rgb(15, 23, 42)),\n        }\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n\n    pub fn label(&self) -> String {\n        format!(\" {} \", self.profile.npub_short)\n    }\n}\n\nimpl Widget for NostrNpubChip<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        let block = Block::default()\n            .borders(Borders::ALL)\n            .border_style(self.style)\n            .style(self.style);\n        let inner = block.inner(area);\n        block.render(area, buf);\n        Paragraph::new(Line::from(Span::styled(self.label(), self.style))).render(inner, buf);\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "tui-user-card",
+      "type": "registry:ui",
+      "title": "User Card (tui)",
+      "description": "Compact Ratatui author card composed from avatar, profile name, and optional NIP-05 badge.",
+      "dependencies": [],
+      "registryDependencies": [
+        "tui-user-avatar",
+        "tui-user-name",
+        "tui-user-nip05"
+      ],
+      "files": [
+        {
+          "path": "registry/tui/user-card/nostr_user_card.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/nostr_user_card.rs",
+          "content": "use ratatui::{\n    buffer::Buffer,\n    layout::{Constraint, Layout, Rect},\n    style::{Color, Style},\n    text::Line,\n    widgets::{Block, Borders, Paragraph, Widget},\n};\n\nuse super::{\n    nostr_avatar::NostrAvatar, nostr_nip05_badge::NostrNip05Badge,\n    nostr_profile_name::NostrProfileName, profile_wire::ProfileWire,\n};\n\n/// Compact author header: avatar, display name, and optional NIP-05 badge.\npub struct NostrUserCard<'a> {\n    profile: &'a ProfileWire,\n    style: Style,\n}\n\nimpl<'a> NostrUserCard<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            style: Style::default().fg(Color::White).bg(Color::Rgb(12, 16, 28)),\n        }\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n}\n\nimpl Widget for NostrUserCard<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        let block = Block::default()\n            .borders(Borders::ALL)\n            .border_style(Style::default().fg(Color::Rgb(30, 41, 59)))\n            .style(self.style);\n        let inner = block.inner(area);\n        block.render(area, buf);\n        if inner.is_empty() {\n            return;\n        }\n\n        let chunks = Layout::horizontal([Constraint::Length(8), Constraint::Min(0)]).split(inner);\n        NostrAvatar::new(self.profile).render(chunks[0], buf);\n\n        let text_area = inset(chunks[1], 1, 0);\n        let name = NostrProfileName::new(self.profile).line();\n        let badge = NostrNip05Badge::from_profile(self.profile)\n            .map(|badge| badge.line())\n            .unwrap_or_else(|| Line::from(\"\"));\n\n        Paragraph::new(vec![name, badge])\n            .style(self.style)\n            .render(text_area, buf);\n    }\n}\n\nfn inset(area: Rect, x: u16, y: u16) -> Rect {\n    Rect {\n        x: area.x.saturating_add(x),\n        y: area.y.saturating_add(y),\n        width: area.width.saturating_sub(x),\n        height: area.height.saturating_sub(y),\n    }\n}\n"
+        }
+      ]
     }
   ]
 }
