@@ -1,0 +1,49 @@
+[package]
+name = "nmp-app-gallery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NmpGallery composition root — thin wrapper around `nmp-ffi` + `nmp-app-template`. No app-specific projections. Produces `libnmp_app_gallery.{a,so}` for iOS and Android. Step 10 follow-on to V-48 — second-app composition root that proves `register_defaults` works without any per-app glue."
+
+[lib]
+# `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
+# other NMP archives (same posture as `nmp-app-chirp`), `cdylib` so the
+# Android NDK build produces `libnmp_app_gallery.so` directly (rather than
+# going through a parallel JNI shim crate like `nmp-android-ffi`), and
+# `rlib` so Rust-side consumers (integration tests, future Android JNI
+# shims) reach the symbols through normal Rust paths.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = ["native"]
+# Mirror the `nmp-ffi` feature posture exactly. The kernel `nmp_app_*`
+# symbols are native-only (wasm uses wasm-bindgen, not C-ABI), so the
+# entire crate is gated behind `native`. Enabled by default.
+native = ["nmp-ffi/native"]
+# `android-ffi` re-exports deltas the Android JNI shim consumes — today
+# this is inert (the `native` feature already exposes every Rust-path
+# symbol the JNI shim would name), retained for parity with the rest of
+# the NMP `*-ffi` crates. `android-ffi` implies `native` because the
+# JNI shim is itself a native consumer.
+android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native"]
+
+[dependencies]
+# Substrate seam — `nmp_app_*` C-ABI symbol bodies live here. Re-exported
+# with `pub use nmp_ffi::*` so the iOS / Android shell links exactly one
+# archive (`libnmp_app_gallery.a` / `.so`) for the whole NMP surface.
+nmp-ffi = { path = "../nmp-ffi", default-features = false }
+# Canonical NMP composition root (V-48). `register_defaults` wires the
+# default action modules, ingest parsers, routing substrate, publish
+# resolver, coverage hook, and the canonical DM-inbox + zap-receipts
+# runtime controllers. The gallery's `nmp_app_gallery_register` is a
+# one-line forward to this call — that is the whole point of the crate.
+nmp-app-template = { path = "../nmp-app-template" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Test-support gates expose `nmp_app_new` / `nmp_app_free` so the
+# in-crate smoke tests can spin up a real `NmpApp`, call
+# `nmp_app_gallery_register`, and confirm the registration didn't panic
+# / didn't fail closed. Mirrors the pattern in `nmp-app-template` and
+# the per-NIP crates.
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
