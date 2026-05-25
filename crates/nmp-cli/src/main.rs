@@ -9,6 +9,8 @@
 //!   the per-app `nmp-app-<name>` FFI crate.
 //! * `nmp add component <id>` — copy app-owned native source components from
 //!   the offline NMP registry into an app tree.
+//! * `nmp update component <id>` — refresh installed component sources from
+//!   the registry while preserving locally edited files (conflict report).
 //!
 //! The scaffold compiles immediately after `nmp init`, and `nmp gen modules`
 //! is deterministic. See `docs/cli.md`.
@@ -35,6 +37,7 @@ fn run() -> Result<(), String> {
         Some("init") => init::run(&args[1..]),
         Some("gen") => gen::run(&args[1..]),
         Some("add") => component::run_add(&args[1..]),
+        Some("update") => component::run_update(&args[1..]),
         Some("--help") | Some("-h") | Some("help") | None => {
             println!("{}", help());
             Ok(())
@@ -60,6 +63,12 @@ fn help() -> String {
         "  nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]",
         "      Copy app-owned source components from the local offline registry",
         "      into DIR (default current directory) and update nmp.components.lock.",
+        "",
+        "  nmp update component <id> [--path DIR] [--registry DIR]",
+        "      Refresh an installed component's sources from the registry.",
+        "      Files that match their lock baseline are overwritten and the lock",
+        "      hash + version are refreshed. Files with local edits are reported",
+        "      as conflicts and left untouched.",
     ]
     .join("\n")
 }

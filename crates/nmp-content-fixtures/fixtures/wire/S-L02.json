@@ -1,0 +1,47 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "On Links"
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "children": [
+        0
+      ]
+    },
+    {
+      "kind": "text",
+      "text": "The spec lives "
+    },
+    {
+      "kind": "text",
+      "text": "on GitHub"
+    },
+    {
+      "kind": "link",
+      "children": [
+        3
+      ],
+      "href": "https://github.com/nostr-protocol/nips"
+    },
+    {
+      "kind": "text",
+      "text": "."
+    },
+    {
+      "kind": "paragraph",
+      "children": [
+        2,
+        4,
+        5
+      ]
+    }
+  ],
+  "roots": [
+    1,
+    6
+  ],
+  "mode": "Markdown"
+}

@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "listen: "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
+        "kind": "event",
+        "primary_id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
+        "relays": [
+          "wss://relay.nmp.test"
+        ],
+        "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "event_kind": 31337
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

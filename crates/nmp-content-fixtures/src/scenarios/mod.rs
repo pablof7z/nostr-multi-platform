@@ -4,7 +4,10 @@
 //! `RenderContext` recursion guard (see `crate::embed_store`).
 
 pub mod edge;
+pub mod hashtags;
+pub mod links;
 pub mod lists;
+pub mod media;
 pub mod mentions;
 pub mod quotes;
 pub mod text;

@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "Sunset from the office "
+    },
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/img/sunset.jpg"
+      ],
+      "media_kind": "Image"
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

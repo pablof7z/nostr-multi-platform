@@ -1,0 +1,41 @@
+{
+  "nodes": [
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/img/x.png"
+      ],
+      "media_kind": "Image"
+    },
+    {
+      "kind": "text",
+      "text": " "
+    },
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/v/y.webm"
+      ],
+      "media_kind": "Video"
+    },
+    {
+      "kind": "text",
+      "text": " "
+    },
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/a/z.mp3"
+      ],
+      "media_kind": "Audio"
+    }
+  ],
+  "roots": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "mode": "Plain"
+}

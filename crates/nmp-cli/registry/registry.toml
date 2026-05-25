@@ -3,13 +3,18 @@ registry_id = "nmp-local"
 
 [[components]]
 id = "swiftui/content-core"
-version = "0.1.0"
+version = "0.2.0"
 target = "swiftui"
-description = "Shared SwiftUI renderer configuration for app-owned Nostr content components."
+description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components."
 
 [[components.files]]
 source = "swiftui/content-core/NostrContentRenderer.swift"
 target = "Components/NostrContent/NostrContentRenderer.swift"
+role = "source"
+
+[[components.files]]
+source = "swiftui/content-core/ContentTreeWire.swift"
+target = "Components/NostrContent/ContentTreeWire.swift"
 role = "source"
 
 [[components]]
@@ -27,4 +32,66 @@ role = "source"
 [[components.files]]
 source = "swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift"
 target = "Components/NostrContent/Examples/NostrMinimalContentPreview.swift"
+role = "example"
+
+[[components]]
+id = "swiftui/content-mention-chip"
+version = "0.1.0"
+target = "swiftui"
+description = "Tappable profile mention chip with optional avatar and identicon fallback."
+dependencies = ["swiftui/content-core"]
+
+[[components.files]]
+source = "swiftui/content-mention-chip/NostrMentionChip.swift"
+target = "Components/NostrContent/NostrMentionChip.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-media-grid"
+version = "0.1.0"
+target = "swiftui"
+description = "Photo-style media grid with 1/2/3/4+ layouts and +N more overlay."
+dependencies = ["swiftui/content-core"]
+
+[[components.files]]
+source = "swiftui/content-media-grid/NostrMediaGrid.swift"
+target = "Components/NostrContent/NostrMediaGrid.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-quote-card"
+version = "0.1.0"
+target = "swiftui"
+description = "Reusable quote/embed card with collapsed, compact, rich, and missing variants."
+dependencies = ["swiftui/content-core"]
+
+[[components.files]]
+source = "swiftui/content-quote-card/NostrQuoteCard.swift"
+target = "Components/NostrContent/NostrQuoteCard.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-view"
+version = "0.1.0"
+target = "swiftui"
+description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
+dependencies = [
+    "swiftui/content-core",
+    "swiftui/content-media-grid",
+    "swiftui/content-quote-card",
+]
+
+[[components.files]]
+source = "swiftui/content-view/NostrContentView.swift"
+target = "Components/NostrContent/NostrContentView.swift"
+role = "source"
+
+[[components.files]]
+source = "swiftui/content-view/NostrContentGrouping.swift"
+target = "Components/NostrContent/NostrContentGrouping.swift"
+role = "source"
+
+[[components.files]]
+source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"
+target = "Components/NostrContent/Examples/NostrContentViewPreview.swift"
 role = "example"

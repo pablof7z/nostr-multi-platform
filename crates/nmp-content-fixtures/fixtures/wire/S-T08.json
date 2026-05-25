@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "gm "
+    },
+    {
+      "kind": "emoji",
+      "shortcode": "nmp",
+      "url": "https://nmp.test/e/nmp.png"
+    },
+    {
+      "kind": "text",
+      "text": " ship it "
+    },
+    {
+      "kind": "emoji",
+      "shortcode": "rocket",
+      "url": "https://nmp.test/e/rocket.png"
+    }
+  ],
+  "roots": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "mode": "Plain"
+}
