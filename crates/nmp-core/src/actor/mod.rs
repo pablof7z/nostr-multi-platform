@@ -191,8 +191,16 @@ use crate::relay::RelayRole;
 use crate::subs::PlanCoverageHook;
 #[cfg(feature = "native")]
 use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+// Step 8 phase F — actor cut-over to the push-model `Pool` API. The legacy
+// `nmp_network::relay_worker::{RelayCommand, RelayEvent, spawn_relay_worker}`
+// entry points are no longer named here; with no out-of-crate consumers
+// remaining the `relay_worker` module is `pub(crate)` inside `nmp-network`
+// (the `pool::Pool` translator wraps it internally). Every per-URL socket
+// the actor talks to is now owned by a process-wide `Pool`; the actor
+// holds a `RelayHandle` per URL in `RelayControl` and consumes `PoolEvent`s
+// on the dedicated relay-event channel below.
 #[cfg(feature = "native")]
-use nmp_network::relay_worker::{RelayCommand, RelayEvent};
+use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayHandle};
 use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;
@@ -753,14 +761,29 @@ pub enum ActorCommand {
 /// pool key — every resolved write/read relay gets its own socket. `role`
 /// is retained so the actor can route diagnostic-bucket updates back to
 /// the kernel's lane-keyed `RelayHealth` rows until per-URL health lands (M11).
+///
+/// Phase F: `handle` is the generational [`RelayHandle`] handed back by
+/// [`Pool::ensure_open_with_role`]; outbound frames go through
+/// `pool.send(handle, WireFrame::Text(..))` and shutdown is `pool.close(handle)`.
+/// The per-actor `generation` counter is unrelated to `handle.generation()`
+/// (the pool's slot generation) — it's a strictly-monotonic stamp the actor
+/// uses to drop in-flight events from prior `ensure_open` rounds (the pool's
+/// translator already drops events whose slot-generation is stale; the
+/// actor-side check is belt-and-braces for the same observable behaviour
+/// the pre-Pool design exposed via the `RelayEvent.generation()` field).
 #[cfg(feature = "native")]
 pub(super) struct RelayControl {
+    /// Strictly-monotonic per-actor stamp assigned at `ensure_relay_worker`
+    /// time. Phase F: no longer the worker-side generation (the pool owns
+    /// that as `handle.generation()`); kept as a diagnostic field for the
+    /// FFI surface and tests that still check spawn-order monotonicity.
+    #[allow(dead_code)]
     pub(super) generation: u64,
     #[allow(dead_code)] // Diagnostic lane label; per-URL health is M11.
     pub(super) role: RelayRole,
     #[allow(dead_code)] // The URL this worker dials — the routing key in the pool.
     pub(super) relay_url: String,
-    pub(super) tx: Sender<RelayCommand>,
+    pub(super) handle: RelayHandle,
 }
 
 #[cfg(feature = "native")]
@@ -1011,7 +1034,16 @@ pub fn run_actor_with_observers(
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
-    let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+    //
+    // Phase F: the channel item is now [`PoolEvent`] (push-model surface from
+    // `nmp_network::pool`). The `Pool` is constructed eagerly here — it owns
+    // every per-URL worker thread and the worker→pool translator thread that
+    // rewrites `RelayEvent` into `PoolEvent`. Default `PoolConfig` (production
+    // keepalive constants, `RelayRole::Content` default lane) matches the
+    // pre-Pool actor behaviour bit-for-bit; per-URL role attribution still
+    // flows through `Pool::ensure_open_with_role` from `ensure_relay_worker`.
+    let (relay_tx, relay_rx) = mpsc::channel::<PoolEvent>();
+    let pool = Pool::new(PoolConfig::default(), relay_tx);
 
     // T114b — bind a dispatch-drops counter for diagnostic visibility. Under
     // the new dual-channel design the counter is always zero (commands cannot
@@ -1185,6 +1217,14 @@ pub fn run_actor_with_observers(
     // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is
     // compiler-enforced — a raw `&str` cannot index the pool.
     let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
+    // Phase F: reverse lookup from a `RelayHandle.slot()` back to the
+    // canonical pool key. Inbound `PoolEvent`s carry the handle but not the
+    // URL on every variant (`Opened` carries it; `Frame`/`Closed`/`Failed`
+    // do not), so we maintain this side-map alongside `relay_controls` so
+    // the event dispatcher can resolve `slot → (url, role)` without an
+    // O(n) scan. Inserted by `ensure_relay_worker`, removed by
+    // `shutdown_relay_worker` / `close_relays`.
+    let mut slot_to_url: HashMap<u32, CanonicalRelayUrl> = HashMap::new();
     let mut connected_relays = HashSet::new();
     let mut connected_urls: HashSet<CanonicalRelayUrl> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
     let mut next_relay_generation = 1;
@@ -1244,7 +1284,8 @@ pub fn run_actor_with_observers(
                         #[cfg(feature = "wallet")]
                         wallet: &mut wallet,
                         relay_controls: &mut relay_controls,
-                        relay_tx: &relay_tx,
+                        slot_to_url: &mut slot_to_url,
+                        pool: &pool,
                         connected_relays: &mut connected_relays,
                         connected_urls: &mut connected_urls,
                         update_tx: &update_tx,
@@ -1275,7 +1316,8 @@ pub fn run_actor_with_observers(
                         running,
                         &mut queued_publish_outbound,
                         &mut relay_controls,
-                        &relay_tx,
+                        &mut slot_to_url,
+                        &pool,
                         &mut kernel,
                         &mut next_relay_generation,
                         outbound,
@@ -1286,7 +1328,8 @@ pub fn run_actor_with_observers(
                             &mut startup_sent,
                             &connected_relays,
                             &mut relay_controls,
-                            &relay_tx,
+                            &mut slot_to_url,
+                            &pool,
                             &mut kernel,
                             &mut next_relay_generation,
                         )
@@ -1296,7 +1339,13 @@ pub fn run_actor_with_observers(
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    close_relays(&mut relay_controls, &mut connected_relays, &mut kernel);
+                    close_relays(
+                        &mut relay_controls,
+                        &mut slot_to_url,
+                        &pool,
+                        &mut connected_relays,
+                        &mut kernel,
+                    );
                     connected_urls.clear();
                     return;
                 }
@@ -1305,77 +1354,74 @@ pub fn run_actor_with_observers(
 
         // ── Relay event lane ─────────────────────────────────────────────
         // Block up to compute_wait so emit-hz is respected without busy-spin.
+        //
+        // Phase F: the inbound item is `PoolEvent` (push-model). Stale-event
+        // filtering moved into `handle_relay_event` itself — the helper
+        // resolves `RelayHandle.slot()` → `(url, role)` via the
+        // `slot_to_url` side-map and the `relay_controls` entry, dropping
+        // any handle whose generation no longer matches the slot's current
+        // generation. The pool's translator already drops events with a
+        // stale slot-generation, so this is belt-and-braces.
         let wait = command_drain.relay_wait(compute_wait(&kernel, running, last_emit, emit_hz));
         match relay_rx.recv_timeout(wait) {
             Ok(event) => {
-                // The pool is keyed by `CanonicalRelayUrl`; a relay worker is
-                // spawned with — and reports events under — its canonical key,
-                // so `parse_or_raw` round-trips to the same map entry.
-                let relay_url = CanonicalRelayUrl::parse_or_raw(event.relay_url());
-                let generation = event.generation();
-                if relay_controls
-                    .get(&relay_url)
-                    .is_none_or(|control| control.generation != generation)
-                {
-                    // Stale event from a disposed worker — ignore.
-                } else {
-                    // Reliability north star: `handle_relay_event` processes
-                    // arbitrary bytes from the network — it is the highest-risk
-                    // panic site in the actor. Wrap it in `catch_unwind` so a
-                    // panic in relay frame processing cannot kill the kernel:
-                    // the actor loop survives, logs the payload, surfaces an
-                    // error toast, and processes the next event fresh.
-                    //
-                    // `AssertUnwindSafe` is required because the closure
-                    // captures `&mut` kernel state (`HashMap`/`Mutex` interiors
-                    // are not `UnwindSafe`). This is sound here: the actor is
-                    // single-threaded, so there is no other thread that could
-                    // observe partially-mutated / poisoned state. Per D1
-                    // (best-effort rendering) the kernel tolerates partial
-                    // state — the invariant we protect is loop survival, not
-                    // per-event atomicity.
-                    //
-                    // The command drain above is deliberately NOT wrapped:
-                    // commands are internally generated, so a panic there is a
-                    // genuine bug that must stay visible.
-                    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                        handle_relay_event(
-                            event,
-                            &mut kernel,
-                            #[cfg(feature = "wallet")]
-                            &mut wallet,
-                            &mut relay_controls,
-                            &relay_tx,
-                            &mut next_relay_generation,
-                            &mut connected_relays,
-                            &mut connected_urls,
-                            &update_tx,
-                            &mut last_emit,
-                            &mut startup_sent,
-                            running,
-                        );
-                    }));
-                    if let Err(panic_payload) = result {
-                        let msg = panic_payload
-                            .downcast_ref::<&str>()
-                            .map(std::string::ToString::to_string)
-                            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
-                            .unwrap_or_else(|| "unknown panic".to_string());
-                        kernel.log(format!("actor: relay event handler panicked: {msg}"));
-                        kernel.set_last_error_toast(Some(
-                            "relay processing error — continuing".to_string(),
-                        ));
-                        // Surface the toast on this tick rather than waiting
-                        // for the next `flush_due` — mirrors the pending-sign
-                        // error path below.
-                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                    }
+                // Reliability north star: `handle_relay_event` processes
+                // arbitrary bytes from the network — it is the highest-risk
+                // panic site in the actor. Wrap it in `catch_unwind` so a
+                // panic in relay frame processing cannot kill the kernel:
+                // the actor loop survives, logs the payload, surfaces an
+                // error toast, and processes the next event fresh.
+                //
+                // `AssertUnwindSafe` is required because the closure
+                // captures `&mut` kernel state (`HashMap`/`Mutex` interiors
+                // are not `UnwindSafe`). This is sound here: the actor is
+                // single-threaded, so there is no other thread that could
+                // observe partially-mutated / poisoned state. Per D1
+                // (best-effort rendering) the kernel tolerates partial
+                // state — the invariant we protect is loop survival, not
+                // per-event atomicity.
+                //
+                // The command drain above is deliberately NOT wrapped:
+                // commands are internally generated, so a panic there is a
+                // genuine bug that must stay visible.
+                let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    handle_relay_event(
+                        event,
+                        &mut kernel,
+                        #[cfg(feature = "wallet")]
+                        &mut wallet,
+                        &mut relay_controls,
+                        &mut slot_to_url,
+                        &pool,
+                        &mut next_relay_generation,
+                        &mut connected_relays,
+                        &mut connected_urls,
+                        &update_tx,
+                        &mut last_emit,
+                        &mut startup_sent,
+                        running,
+                    );
+                }));
+                if let Err(panic_payload) = result {
+                    let msg = panic_payload
+                        .downcast_ref::<&str>()
+                        .map(std::string::ToString::to_string)
+                        .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_string());
+                    kernel.log(format!("actor: relay event handler panicked: {msg}"));
+                    kernel.set_last_error_toast(Some(
+                        "relay processing error — continuing".to_string(),
+                    ));
+                    // Surface the toast on this tick rather than waiting
+                    // for the next `flush_due` — mirrors the pending-sign
+                    // error path below.
+                    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                 }
             }
             Err(_timeout_or_disconnected) => {
-                // Timeout (normal idle tick) or relay_rx disconnected (actor
-                // holds relay_tx so this can't happen in practice). Either way
-                // fall through to idle work below.
+                // Timeout (normal idle tick) or relay_rx disconnected (the
+                // pool holds the sender so this can't happen in practice).
+                // Either way fall through to idle work below.
             }
         }
 
@@ -1396,7 +1442,8 @@ pub fn run_actor_with_observers(
             if !pending.is_empty() {
                 send_all_outbound(
                     &mut relay_controls,
-                    &relay_tx,
+                    &mut slot_to_url,
+                    &pool,
                     &mut kernel,
                     &mut next_relay_generation,
                     pending,
@@ -1417,7 +1464,8 @@ pub fn run_actor_with_observers(
                 let outbound = wire_frames_to_outbound(wire_frames, &mut kernel);
                 send_all_outbound(
                     &mut relay_controls,
-                    &relay_tx,
+                    &mut slot_to_url,
+                    &pool,
                     &mut kernel,
                     &mut next_relay_generation,
                     outbound,
@@ -1443,7 +1491,8 @@ pub fn run_actor_with_observers(
             if !retry_frames.is_empty() {
                 send_all_outbound(
                     &mut relay_controls,
-                    &relay_tx,
+                    &mut slot_to_url,
+                    &pool,
                     &mut kernel,
                     &mut next_relay_generation,
                     retry_frames,
@@ -1512,7 +1561,8 @@ pub fn run_actor_with_observers(
                             running,
                             &mut queued_publish_outbound,
                             &mut relay_controls,
-                            &relay_tx,
+                            &mut slot_to_url,
+                            &pool,
                             &mut kernel,
                             &mut next_relay_generation,
                             outbound,

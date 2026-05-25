@@ -23,10 +23,11 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
-| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ⏳ in flight (subagent) |
+| 8 phase B (push-model `Pool` API redesign) | ✅ merged |
+| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ✅ merged |
 | 8 phase D (broker dedupe on Pool) | 🟡 PR #477 in flight |
-| 8 phase E (NIP-42 wire/FSM split — `RelayFrame::Auth`) | ⏳ in flight (this branch) |
+| 8 phase E (NIP-42 wire/FSM split — `RelayFrame::Auth`) | ✅ merged |
+| 8 phase F (kernel-actor cut-over to `Pool`) | ⏳ in flight (this branch) |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
 | 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode |
@@ -46,6 +47,8 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 - 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
 - 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
 - 2026-05-25 — feat(nmp-core/nmp-ffi/nmp-wasm): V-51 phase 2 — routing-trace FFI + wasm snapshot surface — PR #476. New FFI symbol `nmp_app_recent_routing_decisions` + wasm `NmpWasmRuntime::recent_routing_decisions()`; consumer-side JSON renderer in `nmp_core::kernel::routing_trace_dto` keeps substrate types free of `serde::Serialize`. `NmpCore.h` updated; CI drift gate green.
+- 2026-05-25 — feat(nmp-core/nmp-network): step 8 phase F — kernel-actor cut-over to `nmp_network::pool::Pool`. The actor's 47 `RelayEvent`/`RelayCommand`/`spawn_relay_worker` callsites across `actor/{mod,dispatch,relay_mgmt}.rs` and the three actor test files are migrated to `Pool::ensure_open_with_role` / `Pool::send(handle, WireFrame::Text)` / `Pool::close(handle)`; the inbound event channel item is now `PoolEvent::{Opened, Frame, Closed, Failed, Health}`. The generational handle's stale-rejection invariant is preserved (the pool's translator drops stale-generation events; the actor's `resolve_handle` rechecks `handle.generation()` against the slot's current `RelayControl.handle.generation()`). The legacy `nmp_network::relay_worker` module is demoted to `pub(crate)` with `spawn_relay_worker` deleted (zero out-of-crate consumers remain; the pool wraps `spawn_relay_worker_with_keepalive` internally). All ~904 nmp-core lib tests + nmp-network 43 + nmp-signer-broker 39 + nmp-app-chirp + doctrine_lint smoke 42 + routing_trace_real_nostr live pass. — branch `feat/step-8-phase-f-actor-pool-cutover`.
+
 - 2026-05-25 — feat(nmp-network): step 8 phase E — NIP-42 AUTH wire/FSM split. Adds `RelayFrame::Auth(challenge)` variant to `nmp_network::pool::RelayFrame` and pre-classifies inbound `["AUTH", <challenge>]` text frames at the wire layer via the dependency-free `nmp_nip42_types::parse_auth_frame`. The kind:22242 reply builder stays in `nmp-nip42::build_auth_event`; the per-relay pause/replay FSM stays in `nmp_core::subs::AuthGate`; `nmp-network` does not name either. A doctrine guard test (`auth_gate_and_22242_are_not_named_in_this_crate`) greps the crate's own source so future drift trips at test time. — branch `worktree-agent-ad2af474ef86cf998`.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)

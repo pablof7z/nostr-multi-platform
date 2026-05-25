@@ -40,7 +40,7 @@
 //!
 //! Adds the [`pool`] module: `Pool` / `RelayHandle` / `PoolEvent` /
 //! `PoolConfig` / `PoolSnapshot` per spec §3.8. Implemented as a thin
-//! wrapper around the existing [`relay_worker::spawn_relay_worker`]
+//! wrapper around the existing `relay_worker::spawn_relay_worker`
 //! lifecycle (preserves the per-URL state machine, jittered
 //! exponential backoff, T120b keepalive FSM bit-for-bit). The
 //! generational `RelayHandle` makes stale handles structurally
@@ -49,12 +49,17 @@
 //! "send to all" method on `Pool` (the structural answer to NDK
 //! issue #175).
 //!
-//! The legacy [`relay_worker::RelayEvent`] / [`relay_worker::RelayCommand`] /
-//! [`relay_worker::spawn_relay_worker`] entry points stay
-//! re-exported alongside `Pool` so the actor in
-//! `crates/nmp-core/src/actor/relay_mgmt.rs` (today's ~38 call sites)
-//! compiles unchanged. The actor migration to `Pool` is the next PR
-//! in this lane — see `WIP.md`.
+//! ## Step 8 phase F — actor cut-over + legacy surface withdrawn (this PR)
+//!
+//! The kernel actor in `crates/nmp-core/src/actor/` no longer drives
+//! `spawn_relay_worker` directly — every per-URL socket is owned by a
+//! process-wide [`pool::Pool`] and the actor consumes
+//! [`pool::PoolEvent`]s on its dedicated relay-event channel. With no
+//! external consumer left, the legacy `relay_worker` module is now
+//! crate-private (`pub(crate)`); `RelayEvent` / `RelayCommand` /
+//! `spawn_relay_worker` / `spawn_relay_worker_with_keepalive` survive
+//! only as the implementation detail [`pool::Pool`] wraps internally.
+//! Out-of-crate callers MUST use the `pool` module.
 //!
 //! ## Step 8 phase C — [`browser_driver`] move (this PR)
 //!
@@ -107,8 +112,12 @@ mod role;
 
 pub use role::RelayRole;
 
+// Phase F: `relay_worker` is the legacy per-URL worker primitive `pool::Pool`
+// wraps internally. With the kernel actor cut over to the `pool` surface
+// there are no remaining out-of-crate callers, so the module is crate-private
+// — out-of-crate consumers must reach the transport through `nmp_network::pool`.
 #[cfg(feature = "native")]
-pub mod relay_worker;
+pub(crate) mod relay_worker;
 
 #[cfg(feature = "native")]
 pub mod pool;

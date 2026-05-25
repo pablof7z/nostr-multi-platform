@@ -20,13 +20,27 @@
 //! into the actor transport layer — replacing the prior pattern of callers
 //! remembering to call `canonical_relay_url()` before a `HashMap<String, _>`
 //! lookup.
+//!
+//! # Step 8 phase F — `nmp_network::pool::Pool` cut-over
+//!
+//! The actor used to drive `nmp_network::relay_worker::spawn_relay_worker`
+//! directly, holding a per-URL `Sender<RelayCommand>` in `RelayControl.tx`
+//! and consuming a single shared `Receiver<RelayEvent>` in the main loop.
+//! Phase F migrates every callsite onto the push-model
+//! [`nmp_network::pool::Pool`] API: workers are owned by the pool;
+//! `ensure_open` returns a generational [`nmp_network::pool::RelayHandle`]
+//! the actor stores in [`RelayControl`]; outbound frames go through
+//! `pool.send(handle, WireFrame::Text(..))`; teardown is `pool.close(handle)`.
+//! The generational handle gives us structural stale-handle rejection
+//! (the pool drops events whose generation no longer matches the slot),
+//! and the per-URL state machine, keepalive FSM, and jittered backoff are
+//! preserved bit-for-bit (Pool wraps the same worker lifecycle).
 
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
-use nmp_network::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
+use nmp_network::pool::{Pool, WireFrame};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::Sender;
 
 use super::RelayControl;
 
@@ -48,7 +62,8 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
 /// resolved relay URLs.
 pub(super) fn spawn_missing_relays(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
 ) {
@@ -56,7 +71,8 @@ pub(super) fn spawn_missing_relays(
         for url in kernel.bootstrap_urls_for_role(role) {
             ensure_relay_worker(
                 relay_controls,
-                relay_tx,
+                slot_to_url,
+                pool,
                 kernel,
                 next_relay_generation,
                 role,
@@ -66,11 +82,12 @@ pub(super) fn spawn_missing_relays(
     }
 }
 
-/// Spawn (if missing) a worker for `(role, relay_url)` and stamp the kernel's
-/// per-role health row as `connecting`. Returns true iff a new worker was
-/// spawned (the URL was previously unseen). On-demand path: any
-/// `OutboundMessage` carrying a URL the pool has never seen gets a fresh
-/// socket here before `send_outbound` enqueues the frame.
+/// Spawn (if missing) a worker for `(role, relay_url)` via the
+/// [`Pool::ensure_open_with_role`] entry point and stamp the kernel's per-role
+/// health row as `connecting`. Returns true iff a new worker was spawned (the
+/// URL was previously unseen). On-demand path: any `OutboundMessage` carrying
+/// a URL the pool has never seen gets a fresh socket here before
+/// `send_outbound` enqueues the frame.
 ///
 /// T-relay-url-normalize: `relay_url` is passed through
 /// [`CanonicalRelayUrl::parse_or_raw`] before the pool-key lookup so that
@@ -80,9 +97,20 @@ pub(super) fn spawn_missing_relays(
 /// lowercase+clean), the raw string is wrapped unchanged — existing bootstrap
 /// behaviour is preserved. The newtype key makes this canonicalization the
 /// only way to obtain a pool key, so a raw `&str` can no longer index the map.
+///
+/// Phase F: `next_relay_generation` is no longer the worker-side generation
+/// (the pool owns that now). It survives as the **actor-visible** generation
+/// stamped onto `RelayControl` so the staleness check in the main loop
+/// against `event.h.generation()` keeps the same observable behaviour during
+/// the transition. The pool's translator already drops events with a stale
+/// slot-generation, so this counter is effectively a belt-and-braces marker
+/// the actor uses for symmetry with the previous design; it is bumped on
+/// every fresh `ensure_open` whose URL was not already in the pool.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn ensure_relay_worker(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
     role: RelayRole,
@@ -99,28 +127,32 @@ pub(super) fn ensure_relay_worker(
     let generation = *next_relay_generation;
     *next_relay_generation = generation.saturating_add(1);
     kernel.relay_connecting(role);
-    // `spawn_relay_worker` and `RelayControl.relay_url` both take `String`
-    // (the transport-worker API stays string-typed); hand them the canonical
-    // inner string while the pool key keeps the `CanonicalRelayUrl` newtype.
+    // Hand the canonical URL to the pool. `Pool::ensure_open_with_role` does
+    // its own (lighter) canonicalization but the input is already the canonical
+    // form so it round-trips byte-identically.
     let key_str = key.clone().into_string();
+    let handle = pool.ensure_open_with_role(&key_str, role);
+    slot_to_url.insert(handle.slot(), key.clone());
     relay_controls.insert(
         key,
         RelayControl {
             generation,
             role,
-            relay_url: key_str.clone(),
-            tx: spawn_relay_worker(role, key_str, generation, relay_tx.clone()),
+            relay_url: key_str,
+            handle,
         },
     );
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn maybe_send_startup(
     running: bool,
     startup_sent: &mut bool,
     connected_relays: &HashSet<RelayRole>,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
 ) -> bool {
@@ -131,7 +163,8 @@ pub(super) fn maybe_send_startup(
     let startup_requests = kernel.startup_requests();
     send_all_outbound(
         relay_controls,
-        relay_tx,
+        slot_to_url,
+        pool,
         kernel,
         next_relay_generation,
         startup_requests,
@@ -139,7 +172,8 @@ pub(super) fn maybe_send_startup(
     let view_requests = kernel.pending_view_requests();
     send_all_outbound(
         relay_controls,
-        relay_tx,
+        slot_to_url,
+        pool,
         kernel,
         next_relay_generation,
         view_requests,
@@ -150,7 +184,8 @@ pub(super) fn maybe_send_startup(
 
 pub(super) fn send_all_outbound(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
     outbound: Vec<OutboundMessage>,
@@ -163,7 +198,8 @@ pub(super) fn send_all_outbound(
     for message in outbound {
         send_outbound(
             relay_controls,
-            relay_tx,
+            slot_to_url,
+            pool,
             kernel,
             next_relay_generation,
             message,
@@ -175,21 +211,31 @@ pub(super) fn send_all_outbound(
 /// Non-publish frames remain running-gated; publish `EVENT` frames are retained
 /// in actor memory until the next running cycle, while `PublishEngine` remains
 /// the durable source of truth for process restart resume.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn route_dispatch_outbound(
     running: bool,
     queued_publish_outbound: &mut Vec<OutboundMessage>,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
     outbound: Vec<OutboundMessage>,
 ) {
     if running {
         let queued = take_non_duplicate_queued(queued_publish_outbound, &outbound);
-        send_all_outbound(relay_controls, relay_tx, kernel, next_relay_generation, queued);
         send_all_outbound(
             relay_controls,
-            relay_tx,
+            slot_to_url,
+            pool,
+            kernel,
+            next_relay_generation,
+            queued,
+        );
+        send_all_outbound(
+            relay_controls,
+            slot_to_url,
+            pool,
             kernel,
             next_relay_generation,
             outbound,
@@ -243,8 +289,8 @@ fn publish_message_key(message: &OutboundMessage) -> Option<(String, String)> {
     Some((message.relay_url.clone(), event_id.to_string()))
 }
 
-/// Route one `OutboundMessage` to the worker for its `relay_url`. Spawns a
-/// new worker on first sight (per-URL on-demand). The previous role-based
+/// Route one `OutboundMessage` to the pool worker for its `relay_url`. Spawns
+/// a new worker on first sight (per-URL on-demand). The previous role-based
 /// fallback (defer when role's socket is missing) is gone — every message
 /// resolves a concrete URL now (T105).
 ///
@@ -256,22 +302,23 @@ fn publish_message_key(message: &OutboundMessage) -> Option<(String, String)> {
 /// entry and silently defer the frame forever.
 pub(super) fn send_outbound(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
     message: OutboundMessage,
 ) {
     // Resolve to the canonical pool key first so both the spawn and the
     // subsequent lookup agree on the same HashMap entry. `ensure_relay_worker`
-    // takes a `String` (the transport-worker API stays string-typed); the
-    // `CanonicalRelayUrl` key is what indexes the pool here.
+    // takes a `String`; the `CanonicalRelayUrl` key is what indexes the pool here.
     let canonical_key = CanonicalRelayUrl::parse_or_raw(&message.relay_url);
 
     // Spawn on demand for any URL the pool has not seen before. The
     // diagnostic lane is `message.role`; the actual socket dials `canonical_key`.
     let _spawned = ensure_relay_worker(
         relay_controls,
-        relay_tx,
+        slot_to_url,
+        pool,
         kernel,
         next_relay_generation,
         message.role,
@@ -286,8 +333,13 @@ pub(super) fn send_outbound(
     };
 
     kernel.record_tx(message.role, message.text.len());
-    if control.tx.send(RelayCommand::Send(message.text)).is_err() {
-        // T105: the dead channel is this specific socket — scope the
+    // Phase F: a stale (or sentinel) handle returns false from `Pool::send`;
+    // we treat that exactly like the previous "channel disconnected" path —
+    // mark the per-URL row as retrying and move on. The pool's own
+    // reconnect/backoff will surface a fresh `Opened` event when the socket
+    // recovers (or `Failed`/`Closed` when it doesn't).
+    if !pool.send(control.handle, WireFrame::Text(message.text)) {
+        // T105: the dead handle is this specific socket — scope the
         // `retrying` mark to its URL, not the whole role lane.
         kernel.relay_failed(
             message.role,
@@ -299,12 +351,14 @@ pub(super) fn send_outbound(
 
 /// Shut down the worker for `url` (if one exists) and remove it from the pool.
 ///
-/// Mirrors `ensure_relay_worker` in the remove direction. Sends
-/// `RelayCommand::Shutdown` to the worker, which causes the worker thread to
-/// close the socket and emit `RelayEvent::Closed` back to the actor loop.
-/// The `relay_controls` entry is dropped immediately so the URL is no longer
-/// in the pool — future `ensure_relay_worker` calls for the same URL will
-/// spawn a fresh worker (T126 invariant preserved).
+/// Mirrors `ensure_relay_worker` in the remove direction. Calls
+/// [`Pool::close`] on the stored handle, which sends a shutdown command to
+/// the worker; the worker thread closes the socket and the pool's translator
+/// emits a [`nmp_network::pool::PoolEvent::Closed`] for the actor loop. The
+/// `relay_controls` entry is dropped immediately so the URL is no longer in
+/// the pool — future `ensure_relay_worker` calls for the same URL will spawn
+/// a fresh worker (the pool reopens the slot with a bumped generation; the
+/// T126 one-socket-per-URL invariant is preserved).
 ///
 /// T-relay-url-normalize: `url` is canonicalized before the pool-key lookup so
 /// that removing `"wss://R.Ex/"` correctly finds the entry stored under the
@@ -315,20 +369,26 @@ pub(super) fn send_outbound(
 /// not in the pool (idempotent, no panic).
 pub(super) fn shutdown_relay_worker(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     url: &str,
 ) -> bool {
     let key = CanonicalRelayUrl::parse_or_raw(url);
     let Some(control) = relay_controls.remove(&key) else {
         return false;
     };
-    // Best-effort send: if the worker channel is already closed the worker
-    // has already exited — treat as success (the entry is gone from the pool).
-    let _ = control.tx.send(RelayCommand::Shutdown);
+    slot_to_url.remove(&control.handle.slot());
+    // Best-effort close: stale handle / already-closed slot returns false
+    // from `Pool::close`, which is the correct behaviour for an idempotent
+    // shutdown (the entry is gone from the pool either way).
+    let _ = pool.close(control.handle);
     true
 }
 
 pub(super) fn close_relays(
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     connected_relays: &mut HashSet<RelayRole>,
     kernel: &mut Kernel,
 ) {
@@ -344,11 +404,12 @@ pub(super) fn close_relays(
         let key = CanonicalRelayUrl::parse_or_raw(&relay_url);
         if let Some(control) = relay_controls.get(&key) {
             let close = json!(["CLOSE", sub_id]).to_string();
-            let _ = control.tx.send(RelayCommand::Send(close));
+            let _ = pool.send(control.handle, WireFrame::Text(close));
         }
     }
     for (_url, control) in relay_controls.drain() {
-        let _ = control.tx.send(RelayCommand::Shutdown);
+        slot_to_url.remove(&control.handle.slot());
+        let _ = pool.close(control.handle);
     }
     // Mirror the lane-level "closed" status into the kernel diagnostics.
     bootstrap_lane_close(connected_relays, kernel);

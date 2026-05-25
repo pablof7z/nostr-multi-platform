@@ -3,8 +3,10 @@
 //! Split out of `mod.rs` to keep both files under the 300-LOC soft cap.
 //! `dispatch_command` resolves an [`ActorCommand`] into outbound relay
 //! messages (or `None` for shutdown); `handle_relay_event` folds a
-//! [`RelayEvent`] into the kernel + connection bookkeeping. No behavior
-//! change — pure move of the two reducers off the actor loop.
+//! [`nmp_network::pool::PoolEvent`] (phase F rename of the legacy
+//! `RelayEvent`) into the kernel + connection bookkeeping. No behavior
+//! change — the actor's per-URL bookkeeping, reconnect-replay, and
+//! startup-send gating are all preserved one-to-one across the rename.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
@@ -17,32 +19,38 @@ use crate::slots::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
 use crate::kernel::Kernel;
 use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
-use nmp_network::relay_worker::RelayEvent;
+use nmp_network::pool::{Pool, PoolEvent, RelayFrame as PoolFrame};
 
 use crate::kernel::RelayFrame;
-use tungstenite::Message;
 
-/// Convert a native [`tungstenite::Message`] into the wire-transport-agnostic
+/// Convert a [`nmp_network::pool::RelayFrame`] (the wire frame variant the
+/// pool's translator emits) into the kernel's wire-transport-agnostic
 /// [`RelayFrame`] consumed by `Kernel::handle_message`.
 ///
-/// Step 8 phase A: this conversion bridges `nmp-network`'s wire-message type
-/// to the kernel's frame enum. It lives in `nmp-core` (not `nmp-network`)
-/// because the `RelayFrame` enum is owned by the kernel layer — the
-/// transport crate must not name kernel value types (D0 / step-8 boundary).
-///
-/// V-01 Phase 1c original placement: the kernel no longer names `tungstenite`,
-/// so the conversion happens at the actor seam (the only native-feature
-/// site that owns both vocabularies).
-/// `Message::Frame` (raw-frame) maps to [`RelayFrame::Binary`] — the kernel's
-/// only observable for non-text payloads is the bytes counter.
-fn tungstenite_message_to_relay_frame(message: Message) -> RelayFrame {
-    match message {
-        Message::Text(text) => RelayFrame::Text(text),
-        Message::Binary(bytes) => RelayFrame::Binary(bytes),
-        Message::Ping(_) => RelayFrame::Ping,
-        Message::Pong(_) => RelayFrame::Pong,
-        Message::Close(frame) => RelayFrame::Close(frame.map(|f| f.reason.to_string())),
-        Message::Frame(_) => RelayFrame::Binary(Vec::new()),
+/// Step 8 phase F: replaces the prior `tungstenite::Message → RelayFrame`
+/// adapter — the pool already owns that conversion in its translator thread,
+/// so this adapter is now a pure variant-rename (1:1 mapping). The
+/// [`PoolFrame::Auth`] variant (phase E pre-classification) is round-tripped
+/// to `RelayFrame::Text` by reconstructing the canonical
+/// `["AUTH", <challenge>]` text frame; the kernel's existing
+/// `auth_handlers.rs` ingest path then sees an unchanged surface.
+/// `nmp-network`'s `nmp-nip42-types` parser already validated the shape on
+/// the way in, so the round-trip is structural.
+fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
+    match frame {
+        PoolFrame::Text(text) => RelayFrame::Text(text),
+        PoolFrame::Auth(challenge) => {
+            // Reconstruct the canonical NIP-42 wire shape so the kernel
+            // ingest's existing `["AUTH", ...]` parse path handles it
+            // unchanged (the wire-layer pre-classification is opportunistic;
+            // the kernel still owns the AUTH state machine).
+            let payload = serde_json::json!(["AUTH", challenge]).to_string();
+            RelayFrame::Text(payload)
+        }
+        PoolFrame::Binary(bytes) => RelayFrame::Binary(bytes),
+        PoolFrame::Ping => RelayFrame::Ping,
+        PoolFrame::Pong => RelayFrame::Pong,
+        PoolFrame::Close(reason) => RelayFrame::Close(reason),
     }
 }
 use crate::subs::PlanCoverageHook;
@@ -185,7 +193,14 @@ pub(super) struct ActorContext<'a> {
     #[cfg(feature = "wallet")]
     pub(super) wallet: &'a mut WalletRuntime,
     pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
-    pub(super) relay_tx: &'a Sender<RelayEvent>,
+    /// Phase F: side-map from `RelayHandle.slot()` → canonical URL so an
+    /// inbound [`PoolEvent`] (which carries the handle but not always the
+    /// URL) resolves back to `relay_controls` in O(1).
+    pub(super) slot_to_url: &'a mut HashMap<u32, CanonicalRelayUrl>,
+    /// Phase F: the push-model relay-connection pool. Cheap to clone, but the
+    /// borrow is sufficient for dispatch — the actor loop owns the master
+    /// handle for the whole process.
+    pub(super) pool: &'a Pool,
     pub(super) connected_relays: &'a mut HashSet<RelayRole>,
     pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
     pub(super) update_tx: &'a Sender<String>,
@@ -386,7 +401,8 @@ pub(super) fn dispatch_command(
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
             spawn_missing_relays(
                 ctx.relay_controls,
-                ctx.relay_tx,
+                ctx.slot_to_url,
+                ctx.pool,
                 ctx.kernel,
                 ctx.next_relay_generation,
             );
@@ -826,7 +842,8 @@ pub(super) fn dispatch_command(
             if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
                 ensure_relay_worker(
                     ctx.relay_controls,
-                    ctx.relay_tx,
+                    ctx.slot_to_url,
+                    ctx.pool,
                     ctx.kernel,
                     ctx.next_relay_generation,
                     crate::relay::RelayRole::Content,
@@ -856,7 +873,7 @@ pub(super) fn dispatch_command(
             // Removing a URL that was never present is a no-op and must NOT
             // re-publish kind:10002.
             let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
-            shutdown_relay_worker(ctx.relay_controls, &url);
+            shutdown_relay_worker(ctx.relay_controls, ctx.slot_to_url, ctx.pool, &url);
             commands::remove_relay(ctx.kernel, &url);
             let outbound = maybe_publish_relay_list_after_edit(
                 ctx.identity,
@@ -1042,7 +1059,7 @@ pub(super) fn dispatch_command(
         ActorCommand::Stop => {
             *ctx.running = false;
             *ctx.startup_sent = false;
-            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             // T116/G1 — clear reconnect-replay discriminator so a subsequent
             // Start replays cleanly (every URL appears as a first-connect).
             ctx.connected_urls.clear();
@@ -1050,7 +1067,7 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Reset => {
-            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             ctx.connected_urls.clear();
             // T114b — preserve the FFI-channel drop-counter handle across
             // Reset (the underlying Arc<AtomicU64> is shared with the FFI
@@ -1168,7 +1185,8 @@ pub(super) fn dispatch_command(
                 ctx.kernel.start();
                 spawn_missing_relays(
                     ctx.relay_controls,
-                    ctx.relay_tx,
+                    ctx.slot_to_url,
+                    ctx.pool,
                     ctx.kernel,
                     ctx.next_relay_generation,
                 );
@@ -1197,7 +1215,7 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Shutdown => {
-            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             ctx.connected_urls.clear();
             None
         }
@@ -1299,13 +1317,33 @@ pub(super) fn dispatch_command(
     }
 }
 
+/// Resolve a [`nmp_network::pool::RelayHandle`] back to the `(URL, role)`
+/// pair the actor tracks in `relay_controls`. Returns `None` for a stale
+/// handle — the slot may have been reopened (different generation) or the
+/// caller may have already shut down the worker for this URL. Stale events
+/// are dropped silently; the pool's translator already filters out events
+/// whose slot generation no longer matches, so this is belt-and-braces.
+fn resolve_handle<'a>(
+    h: nmp_network::pool::RelayHandle,
+    relay_controls: &'a HashMap<CanonicalRelayUrl, RelayControl>,
+    slot_to_url: &'a HashMap<u32, CanonicalRelayUrl>,
+) -> Option<(&'a CanonicalRelayUrl, RelayRole)> {
+    let url = slot_to_url.get(&h.slot())?;
+    let control = relay_controls.get(url)?;
+    if control.handle.generation() != h.generation() {
+        return None;
+    }
+    Some((url, control.role))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_relay_event(
-    event: RelayEvent,
+    event: PoolEvent,
     kernel: &mut Kernel,
     #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
     connected_urls: &mut HashSet<CanonicalRelayUrl>,
@@ -1315,15 +1353,29 @@ pub(super) fn handle_relay_event(
     running: bool,
 ) {
     match event {
-        RelayEvent::Connected {
-            role, relay_url, ..
-        } => {
+        // ── Opened ───────────────────────────────────────────────────────
+        // Pool→kernel handshake for "socket dial completed". Carries the
+        // URL (the only `PoolEvent` variant that does) plus the handle's
+        // generation — we look up the role from `relay_controls` keyed by
+        // the canonical URL the pool reports (already canonical, since
+        // `ensure_relay_worker` only ever hands canonical strings in).
+        PoolEvent::Opened { h, url, .. } => {
+            let canonical = CanonicalRelayUrl::parse_or_raw(&url);
+            let Some(control) = relay_controls.get(&canonical) else {
+                // No control row — stale event (worker spawned, then
+                // RemoveRelay shut down the slot before `Opened` arrived).
+                return;
+            };
+            if control.handle.generation() != h.generation() {
+                return;
+            }
+            let role = control.role;
             connected_relays.insert(role);
             kernel.relay_connected(role);
-            // T116/G1 — reconnect-replay. The first `Connected` for a URL is
+            // T116/G1 — reconnect-replay. The first `Opened` for a URL is
             // the initial dial; the startup path (`maybe_send_startup` /
             // `kernel.startup_requests()`) emits REQs there. Every
-            // subsequent `Connected` after a `Failed`/`Closed` is a true
+            // subsequent `Opened` after a `Failed`/`Closed` is a true
             // reconnect — the kernel's `wire_subs` for that URL were
             // evicted by `relay_closed` (T133), and the relay's
             // per-connection sub-id table is fresh, so we must re-emit
@@ -1334,13 +1386,14 @@ pub(super) fn handle_relay_event(
             //
             // D7 preserved: actor reports the OS-level transition; the
             // kernel decides what to replay and rewrites `since`.
-            let is_reconnect = !connected_urls.insert(CanonicalRelayUrl::parse_or_raw(&relay_url));
+            let is_reconnect = !connected_urls.insert(canonical.clone());
             if is_reconnect && running {
-                let replay = kernel.replay_on_reconnect(role, &relay_url);
+                let replay = kernel.replay_on_reconnect(role, &url);
                 if !replay.is_empty() {
                     send_all_outbound(
                         relay_controls,
-                        relay_tx,
+                        slot_to_url,
+                        pool,
                         kernel,
                         next_relay_generation,
                         replay,
@@ -1348,11 +1401,12 @@ pub(super) fn handle_relay_event(
                 }
             }
             if running {
-                let publish_replay = kernel.mark_publish_relay_available(&relay_url);
+                let publish_replay = kernel.mark_publish_relay_available(&url);
                 if !publish_replay.is_empty() {
                     send_all_outbound(
                         relay_controls,
-                        relay_tx,
+                        slot_to_url,
+                        pool,
                         kernel,
                         next_relay_generation,
                         publish_replay,
@@ -1364,64 +1418,78 @@ pub(super) fn handle_relay_event(
                 startup_sent,
                 connected_relays,
                 relay_controls,
-                relay_tx,
+                slot_to_url,
+                pool,
                 kernel,
                 next_relay_generation,
             );
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Failed {
-            role,
-            relay_url,
-            error,
-            ..
-        } => {
+        // ── Failed ───────────────────────────────────────────────────────
+        // Pool→kernel "socket dial / mid-session failed". The pool decides
+        // whether this is permanent (HTTP 401/403 → no reconnect) or
+        // transient (transport reset → it will retry with backoff). The
+        // kernel observable is the per-URL `retrying` mark either way; the
+        // permanent-vs-transient distinction surfaces via the next
+        // `Opened` (transient) or absence thereof (permanent).
+        PoolEvent::Failed { h, error, .. } => {
+            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+                return;
+            };
+            let url = url.as_str().to_string();
             connected_relays.remove(&role);
             *startup_sent = false;
             // T105: scope the `retrying` mark to the specific socket that
             // failed — sibling sockets sharing this role lane are still live.
-            kernel.relay_failed(role, &relay_url, error);
-            kernel.mark_publish_relay_unavailable(&relay_url);
+            kernel.relay_failed(role, &url, error.message);
+            kernel.mark_publish_relay_unavailable(&url);
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Closed {
-            role, relay_url, ..
-        } => {
+        // ── Closed ───────────────────────────────────────────────────────
+        // Pool→kernel "socket torn down, no retry". Mirrors the legacy
+        // `RelayEvent::Closed` arm one-to-one.
+        PoolEvent::Closed { h, .. } => {
+            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+                return;
+            };
+            let url = url.as_str().to_string();
             connected_relays.remove(&role);
             *startup_sent = false;
             // T105: scope T133 wire-sub eviction to the closed socket's URL,
             // not the whole role lane (sibling sockets keep their subs).
-            kernel.relay_closed(role, &relay_url);
-            kernel.mark_publish_relay_unavailable(&relay_url);
+            kernel.relay_closed(role, &url);
+            kernel.mark_publish_relay_unavailable(&url);
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Message {
-            role,
-            relay_url,
-            message,
-            ..
-        } if running => {
+        // ── Frame ────────────────────────────────────────────────────────
+        // Pool→kernel inbound wire frame. The pool's translator already
+        // converted `tungstenite::Message → RelayFrame` (and pre-classified
+        // NIP-42 AUTH frames into `RelayFrame::Auth` in phase E); we
+        // round-trip the `Auth` variant back to a `Text` frame so the
+        // kernel's existing ingest path handles AUTH unchanged.
+        PoolEvent::Frame { h, frame, .. } if running => {
+            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+                return;
+            };
+            let url_str = url.as_str().to_string();
             // NWC relay intercept: peek at text frames from the wallet relay
             // for kind:23195 responses before passing to kernel.handle_message.
             // The kernel silently drops unknown kinds, so letting it see wallet
             // events too is harmless; we just need to decrypt them first.
             // D0: gated behind the `wallet` feature — NWC is an app noun.
             #[cfg(feature = "wallet")]
-            let wallet_text = if wallet.is_nwc_relay(&relay_url) {
-                match &message {
-                    tungstenite::Message::Text(s) => Some(s.clone()),
+            let wallet_text = if wallet.is_nwc_relay(&url_str) {
+                match &frame {
+                    PoolFrame::Text(s) => Some(s.clone()),
+                    // Phase F: phase-E `RelayFrame::Auth` doesn't carry a
+                    // payload an NWC relay would interpret; nothing to peek.
                     _ => None,
                 }
             } else {
                 None
             };
-            // V-01 Phase 1c: convert the native `tungstenite::Message` into the
-            // wire-transport-agnostic [`RelayFrame`] before crossing the kernel
-            // boundary. The kernel no longer names `tungstenite`; the conversion
-            // lives here (the only native call site) and at the relay-worker
-            // socket-read seam.
-            let frame = tungstenite_message_to_relay_frame(message);
-            let mut outbound = kernel.handle_message(role, &relay_url, frame);
+            let kernel_frame = pool_frame_to_relay_frame(frame);
+            let mut outbound = kernel.handle_message(role, &url_str, kernel_frame);
             outbound.extend(kernel.pending_view_requests());
             #[cfg(feature = "wallet")]
             if let Some(text) = wallet_text {
@@ -1430,13 +1498,18 @@ pub(super) fn handle_relay_event(
             }
             send_all_outbound(
                 relay_controls,
-                relay_tx,
+                slot_to_url,
+                pool,
                 kernel,
                 next_relay_generation,
                 outbound,
             );
         }
-        RelayEvent::Message { .. } => {}
+        PoolEvent::Frame { .. } => {}
+        // ── Health ───────────────────────────────────────────────────────
+        // Diagnostic snapshot; the kernel doesn't act on it (per-URL health
+        // is M11). Reserved for future per-URL health-row writes.
+        PoolEvent::Health { .. } => {}
     }
 }
 

@@ -99,41 +99,24 @@ type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 // preserve the legacy in-module names so the body of `run_relay_worker` is
 // untouched.
 use crate::relay_protocol::{
-    is_permanent_error, jittered_backoff, KEEPALIVE_IDLE_THRESHOLD, KEEPALIVE_PONG_TIMEOUT,
-    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
+    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
 
-/// Spawn a worker that dials `relay_url` on transport lane `role`.
+/// Spawn-with-explicit-keepalive worker that dials `relay_url` on
+/// transport lane `role`.
 ///
 /// T105: the worker dials the explicit URL (the resolved write/read relay),
 /// not `role.url()`. `role` is retained as the diagnostic lane label so the
 /// kernel keeps per-lane `RelayHealth` rows while the actual sockets multiply
 /// per resolved URL.
 ///
-/// T120b: production calls into [`spawn_relay_worker_with_keepalive`] with the
-/// 30s/30s production constants; tests pass shorter intervals for hermetic
-/// keepalive exercises.
-pub fn spawn_relay_worker(
-    role: RelayRole,
-    relay_url: String,
-    generation: u64,
-    relay_tx: Sender<RelayEvent>,
-) -> Sender<RelayCommand> {
-    spawn_relay_worker_with_keepalive(
-        role,
-        relay_url,
-        generation,
-        relay_tx,
-        KEEPALIVE_IDLE_THRESHOLD,
-        KEEPALIVE_PONG_TIMEOUT,
-    )
-}
-
-/// Spawn-with-explicit-keepalive variant. The production entry-point
-/// [`spawn_relay_worker`] is a thin wrapper passing the 30s/30s constants;
-/// tests use this directly to exercise the keepalive path on millisecond
-/// budgets without 30s sleeps.
-pub fn spawn_relay_worker_with_keepalive(
+/// Phase F (step 8): the prior `spawn_relay_worker` thin wrapper that passed
+/// the 30s/30s production keepalive constants is gone — every caller (the
+/// `pool::Pool` translator + the in-crate tests) reaches the worker through
+/// this entry-point so the keepalive interval is always an explicit choice
+/// at the call site. The production constants live in
+/// [`crate::relay_protocol`].
+pub(crate) fn spawn_relay_worker_with_keepalive(
     role: RelayRole,
     relay_url: String,
     generation: u64,
