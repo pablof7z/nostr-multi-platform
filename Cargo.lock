@@ -4248,6 +4248,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-wot"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
