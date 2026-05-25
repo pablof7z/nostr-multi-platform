@@ -81,8 +81,8 @@ pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
     ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess,
     NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
-    NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
-    RecipientRelayLookup,
+    NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
+    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
 };
 // V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
 // only on `nmp-core` can name the signer-capability trait that

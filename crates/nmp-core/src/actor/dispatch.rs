@@ -1290,14 +1290,16 @@ pub(super) fn dispatch_command(
             // dispatch arm always populates this slot in production.
             let worker_tx = ctx.command_tx_self.clone();
             let mut pctx = crate::substrate::ProtocolCommandContext::new(
-                &send,
-                worker_tx,
-                &clock,
-                &signers,
-                &*dm_lookup,
-                &errors,
-                &stages,
-                &recipients,
+                crate::substrate::ProtocolCommandContextParts {
+                    send: &send,
+                    command_sender: worker_tx,
+                    clock: &clock,
+                    signers: &signers,
+                    dms: &*dm_lookup,
+                    errors: &errors,
+                    stages: &stages,
+                    recipients: &recipients,
+                },
             );
             if let Err(e) = cmd.run(&mut pctx) {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");

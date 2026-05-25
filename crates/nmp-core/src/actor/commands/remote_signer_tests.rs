@@ -353,6 +353,7 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     use crate::substrate::{
         EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker,
         NoopErrorSurface, NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
+        ProtocolCommandContextParts,
     };
     use nmp_nip59::{gift_wrap_with_signer, GIFT_WRAP_TOTAL_TIMEOUT};
     use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -389,9 +390,16 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
     let send = |_: crate::actor::ActorCommand| {};
     let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorCommand>();
-    let ctx = ProtocolCommandContext::new(
-        &send, tx, &CLOCK, &signers, &DMS, &ERRORS, &STAGES, &RECIPIENTS,
-    );
+    let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
+        send: &send,
+        command_sender: tx,
+        clock: &CLOCK,
+        signers: &signers,
+        dms: &DMS,
+        errors: &ERRORS,
+        stages: &STAGES,
+        recipients: &RECIPIENTS,
+    });
 
     let signer = ctx
         .signer_for_seal()

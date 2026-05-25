@@ -21,7 +21,6 @@
 
 **Known partial state** (honest about what's not yet clean):
 - `Nip65OutboxResolver` (279 LOC publish-side NIP-65 algorithm) still sits in `crates/nmp-core/src/publish/nip65/` — spec §271 forbids it; should move into `nmp-router`.
-- `ProtocolCommandContext::new` is 8 args + `#[allow(clippy::too_many_arguments)]` — Debt C is reduced from 12 args but not at the threshold yet.
 - V-08 bunker DM is wired (seam restored, test un-ignored) but the regression test runs against a `StubRemoteSigner`, not a live NIP-46 bunker.
 - `fixture-todo-core` is still in `crates/` because `nmp-codegen`'s `path = "../../../crates/{}"` hardcode hasn't been generalized — step 11 final closed but `fixture-todo-core` is the lone exception.
 - `crates/nmp-core/src/wallet/` (311 LOC) + the `wallet` Cargo feature still in `nmp-core` — V-38 deprioritized.

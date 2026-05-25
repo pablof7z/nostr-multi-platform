@@ -9,70 +9,59 @@
 //!
 //! ## Debt C — capability traits replace a 12-arg closure bundle
 //!
-//! Prior to Debt C the dispatch arm threaded 12 individual closures
-//! into [`ProtocolCommandContext::new`] (with `#[allow(clippy::too_many_arguments)]`).
-//! That bundle has been replaced by 6 typed capability traits the dispatch
-//! arm wires in once (the sixth, [`RecipientRelayLookup`], was added by
-//! the Debt-C follow-up that lifted NIP-57 LNURL `inject_recipient_relays`
-//! off its no-op-with-TODO state onto a router-driven path):
+//! Pre-Debt C the dispatch arm threaded 12 individual closures into
+//! [`ProtocolCommandContext::new`] (with `#[allow(clippy::too_many_arguments)]`).
+//! The follow-up (V-41 + V-39+V-40 + V-08 bunker DM) reduced the
+//! constructor to 6 typed capability traits plus 2 channel-shaped sinks
+//! (`send`, `command_sender`). A subsequent collapse pass folded those 8
+//! positional args into a single named-field [`ProtocolCommandContextParts`]
+//! struct so the constructor takes one arg and call sites read top-to-bottom
+//! as a complete construction recipe. D11 still holds: there is exactly
+//! one public production constructor, [`ProtocolCommandContext::new`]; the
+//! test-only [`ProtocolCommandContext::with_send_only`] is gated behind
+//! `cfg(any(test, feature = "test-support"))`.
 //!
-//! - [`KernelClock`] — wall-clock seam (D7).
-//! - [`LocalSignerAccess`] — local `nostr::Keys` snapshot + the V-08
-//!   `SignerForSeal` resolver that uniformly handles BOTH local-nsec
-//!   accounts AND NIP-46 bunker accounts on the gift-wrap path.
-//! - [`DmInboxLookup`] — kind:10050 DM-inbox relay reads. Substrate-
-//!   generic; the concrete kind:10050 cache lives in `nmp-nip17`.
-//! - [`ErrorSurface`] — D6 observable error writes: the
-//!   `last_error_toast` projection plus the `Failed` action-stage
-//!   recorder. The DM send and LNURL send paths both fire on every
-//!   early-exit branch.
-//! - [`ActionStageTracker`] — the `Requested` action stage write the
-//!   substrate arm performs when a `correlation_id` is in flight.
+//! Capability traits bundled by the parts struct:
+//!
+//! - [`KernelClock`] — D7 wall-clock seam.
+//! - [`LocalSignerAccess`] — local `nostr::Keys` snapshot + V-08
+//!   `SignerForSeal` resolver (covers BOTH local-nsec AND NIP-46 bunker).
+//! - [`DmInboxLookup`] — kind:10050 DM-inbox relay reads (concrete cache
+//!   lives in `nmp-nip17`).
+//! - [`ErrorSurface`] — D6 `last_error_toast` + `Failed` action-stage
+//!   recorder. Fired on every early-exit branch.
+//! - [`ActionStageTracker`] — `Requested` stage write.
 //! - [`RecipientRelayLookup`] — V-07 NIP-57 LNURL `relays` tag injection;
-//!   kernel-side adapter wraps `outbox_router.route_publish` with a
-//!   synthetic publish-direction `UnsignedEvent` (recipient's NIP-65
-//!   write set, with router lane-7 / lane-6 cold-start fallback).
+//!   kernel adapter wraps `outbox_router.route_publish` with a synthetic
+//!   publish-direction `UnsignedEvent` (recipient NIP-65 write set, with
+//!   router lane-7/lane-6 cold-start fallback).
 //!
-//! `ProtocolCommandContext::new` now takes 8 args (`send`,
-//! `command_sender`, plus the six `&dyn Capability` references). NIP
-//! commands call `ctx.clock().now_secs()`, `ctx.signers().signer_for_seal()`,
+//! NIP commands call `ctx.clock().now_secs()`, `ctx.signers().signer_for_seal()`,
 //! `ctx.dms().dm_inbox_relays(pk)`, `ctx.recipients().recipient_publish_relays(pk, kind)`,
-//! etc. — the trait names tell every reader which surface a given call
-//! belongs to.
+//! etc. — trait names tell every reader which surface a given call belongs to.
 //!
-//! ## Routing accessors removed (Debt A + Debt C overlap)
+//! Routing accessors (`author_write_relays`, `bootstrap_discovery_relays`)
+//! were removed in the Debt-A overlap: NIP commands that need a recipient
+//! relay set MUST go through `RecipientRelayLookup` (which drives the
+//! kernel's `OutboxRouter`).
 //!
-//! `author_write_relays` and `bootstrap_discovery_relays` were removed.
-//! Routing is the kernel's `OutboxRouter` — NIP commands that need a
-//! recipient relay set MUST route via `OutboxRouter::route_publish` (or
-//! populate `RoutingContext::explicit_targets`). The Debt-C follow-up
-//! formalised this through the [`RecipientRelayLookup`] capability trait:
-//! the kernel side implements it by driving its own `outbox_router` slot
-//! with a synthetic publish-direction `UnsignedEvent` (recipient's NIP-65
-//! write set falling back through the router's lane 7 / lane 6 cold-start
-//! seeds). NIP-57 LNURL kind:9734 `relays` tag injection consumes this
-//! capability.
+//! ## Why a wrapper context (`ProtocolCommandContext`) and not `ActorContext`
 //!
-//! ## Why a wrapper context type (`ProtocolCommandContext`) and not `ActorContext`
-//!
-//! The spec's §4.1 sketches `&mut ActorContext` as the context arg.
 //! [`crate::actor::dispatch::ActorContext`] is intentionally `pub(super)` —
-//! exposing it would publish 18 fields' worth of kernel internals to every
-//! NIP crate. Instead the dispatch arm constructs a public
-//! [`ProtocolCommandContext`] that exposes only what the trait needs through
-//! a fixed set of capability accessors. NIP crates name no internal
-//! types — every operation a `ProtocolCommand::run` body can perform is a
-//! method on `ProtocolCommandContext`.
+//! exposing it would publish ~18 fields of kernel internals to every NIP
+//! crate. Instead the dispatch arm constructs a public
+//! [`ProtocolCommandContext`] that exposes only what the trait needs.
+//! NIP crates never name `Kernel` / `IdentityRuntime` / `ActorContext` —
+//! every operation a `ProtocolCommand::run` body can perform is a method
+//! on `ProtocolCommandContext`.
 //!
 //! ## D15 catch_unwind discipline
 //!
 //! Every accessor that fires a capability method is wrapped in
 //! [`std::panic::catch_unwind`] so a panicking host-side adapter cannot
-//! unwind the calling `ProtocolCommand::run` frame (which would skip the
-//! dispatch arm's clean-up + emit). Read accessors fall back to safe
-//! defaults on panic (empty Vec, None, 0); the
-//! [`send`](ProtocolCommandContext::send) drop-on-panic is benign (the
-//! worker reads no return value).
+//! unwind the calling `ProtocolCommand::run` frame. Read accessors fall
+//! back to safe defaults on panic (empty `Vec`, `None`, 0);
+//! [`send`](ProtocolCommandContext::send)'s drop-on-panic is benign.
 
 use std::fmt;
 use std::sync::mpsc::Sender;
@@ -255,33 +244,50 @@ impl RecipientRelayLookup for NoopRecipientRelayLookup {
 // ProtocolCommandContext
 // ──────────────────────────────────────────────────────────────────────────
 
+/// Named-field construction recipe for [`ProtocolCommandContext`]. The
+/// previous 8-positional-arg `new()` (with `#[allow(clippy::too_many_arguments)]`)
+/// was collapsed onto this struct so every call site reads top-to-bottom
+/// as a fully-named bundle of capability references + actor sinks.
+///
+/// D11 holds: this is the only public production door into the context.
+/// The test-only [`ProtocolCommandContext::with_send_only`] constructor
+/// is gated behind `cfg(any(test, feature = "test-support"))`.
+pub struct ProtocolCommandContextParts<'a> {
+    /// Re-enter the actor loop. Called from [`ProtocolCommandContext::send`].
+    pub send: &'a dyn Fn(ActorCommand),
+    /// Owned actor-command sender clone the command's `run` body can hand
+    /// to a spawned worker thread (the LNURL fetcher pattern).
+    pub command_sender: Sender<ActorCommand>,
+    /// D7 wall-clock seam.
+    pub clock: &'a dyn KernelClock,
+    /// Active-account local signing material (incl. `SignerForSeal`).
+    pub signers: &'a dyn LocalSignerAccess,
+    /// NIP-17 kind:10050 DM-inbox relay reads.
+    pub dms: &'a dyn DmInboxLookup,
+    /// D6 toast + failure-record surface.
+    pub errors: &'a dyn ErrorSurface,
+    /// `Requested` action-stage write surface.
+    pub stages: &'a dyn ActionStageTracker,
+    /// V-07 recipient-relay router wrapper.
+    pub recipients: &'a dyn RecipientRelayLookup,
+}
+
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
 ///
-/// Post-Debt C the context exposes 6 typed capability traits
-/// ([`KernelClock`], [`LocalSignerAccess`], [`DmInboxLookup`],
-/// [`ErrorSurface`], [`ActionStageTracker`], [`RecipientRelayLookup`])
-/// plus the two channel-shaped primitives ([`send`](Self::send) and
-/// [`command_sender_clone`](Self::command_sender_clone)). The previous
-/// 12-positional-closure constructor is gone — `new()` takes 8 args.
+/// Exposes 6 typed capability traits ([`KernelClock`], [`LocalSignerAccess`],
+/// [`DmInboxLookup`], [`ErrorSurface`], [`ActionStageTracker`],
+/// [`RecipientRelayLookup`]) plus 2 channel sinks ([`send`](Self::send) and
+/// [`command_sender_clone`](Self::command_sender_clone)). Construction
+/// goes through a single named-field [`ProtocolCommandContextParts`]
+/// literal (the 12-arg closure bundle / 8-arg positional `new` are gone).
 ///
-/// The `RecipientRelayLookup` slot is the Debt-C-follow-up: it lets NIP
-/// crates ask "what relays would a synthetic `kind`-typed event from
-/// `recipient` route to?" without naming `OutboxRouter` or the substrate
-/// `MailboxCache` directly. The kernel-side adapter drives the injected
-/// `outbox_router` slot with a synthetic [`UnsignedEvent`].
-///
-/// NIP crates never name `Kernel` / `IdentityRuntime` (both crate-private).
-/// They only see this context and the capability traits.
+/// NIP crates never name `Kernel` / `IdentityRuntime` / `OutboxRouter` /
+/// `MailboxCache` directly — every operation goes through this context.
 pub struct ProtocolCommandContext<'a> {
     send: &'a dyn Fn(ActorCommand),
-    /// Owned actor-command sender clone the command's `run` body can hand
-    /// to a spawned worker thread. The actor thread's own
-    /// `Sender<ActorCommand>` is `'static`-clone-friendly, so this is a
-    /// plain owned `Sender` rather than another `&dyn Fn`. Always populated
-    /// by every constructor; the test-only `with_send_only` constructor
-    /// installs a fresh `mpsc::channel`'s sender with a discarded receiver
-    /// (sends become benign drops, matching D6 semantics for a
-    /// disconnected actor).
+    /// Owned `Sender<ActorCommand>` clone for handing to a spawned worker
+    /// thread; the test-only `with_send_only` ctor installs a sender whose
+    /// receiver is dropped (sends become benign no-ops, matching D6).
     command_sender: Sender<ActorCommand>,
     clock: &'a dyn KernelClock,
     signers: &'a dyn LocalSignerAccess,
@@ -292,45 +298,25 @@ pub struct ProtocolCommandContext<'a> {
 }
 
 impl<'a> ProtocolCommandContext<'a> {
-    /// Construct the production context — used by the kernel dispatch arm.
-    /// The 6 capability references close over the actor thread's mutable
-    /// references to the kernel + identity runtime; the resulting context's
-    /// lifetime is the dispatch arm's stack frame.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        send: &'a dyn Fn(ActorCommand),
-        command_sender: Sender<ActorCommand>,
-        clock: &'a dyn KernelClock,
-        signers: &'a dyn LocalSignerAccess,
-        dms: &'a dyn DmInboxLookup,
-        errors: &'a dyn ErrorSurface,
-        stages: &'a dyn ActionStageTracker,
-        recipients: &'a dyn RecipientRelayLookup,
-    ) -> Self {
-        Self {
-            send,
-            command_sender,
-            clock,
-            signers,
-            dms,
-            errors,
-            stages,
-            recipients,
-        }
+    /// Construct from a [`ProtocolCommandContextParts`] bundle (the sole
+    /// public production door). Capability references close over the
+    /// dispatch arm's stack-bound borrows of kernel + identity runtime;
+    /// the resulting context's lifetime is the dispatch arm's stack frame.
+    pub fn new(parts: ProtocolCommandContextParts<'a>) -> Self {
+        let ProtocolCommandContextParts {
+            send, command_sender, clock, signers, dms, errors, stages, recipients,
+        } = parts;
+        Self { send, command_sender, clock, signers, dms, errors, stages, recipients }
     }
 
     /// Test-only constructor that wires only the [`send`](Self::send)
     /// closure. All capability accessors return harmless defaults (0,
-    /// None, no-op) via the [`NoopKernelClock`] / [`NoopLocalSignerAccess`]
-    /// / [`crate::substrate::EmptyDmInboxRelayLookup`] / [`NoopErrorSurface`]
-    /// / [`NoopActionStageTracker`] noop singletons. The `command_sender_clone`
-    /// returns a sender whose receiver is immediately dropped — sends become
-    /// benign no-ops (matches the D6 "disconnected actor" pattern).
-    ///
-    /// Used by trait-level unit tests in this module and by sibling NIP
-    /// crate tests that don't exercise the kernel surface. Tests that DO
-    /// need a specific capability construct a small local adapter struct
-    /// implementing the relevant trait and pass it through [`Self::new`].
+    /// `None`, no-op) via the noop singletons; `command_sender_clone`
+    /// returns a sender whose receiver is dropped (sends become benign
+    /// no-ops, matching the D6 "disconnected actor" pattern). Tests
+    /// needing a specific capability build a small local adapter and
+    /// pass it through [`Self::new`] via a [`ProtocolCommandContextParts`]
+    /// literal.
     #[cfg(any(test, feature = "test-support"))]
     pub fn with_send_only(send: &'a dyn Fn(ActorCommand)) -> Self {
         static CLOCK: NoopKernelClock = NoopKernelClock;
@@ -341,7 +327,7 @@ impl<'a> ProtocolCommandContext<'a> {
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<ActorCommand>();
-        Self {
+        Self::new(ProtocolCommandContextParts {
             send,
             command_sender,
             clock: &CLOCK,
@@ -350,32 +336,24 @@ impl<'a> ProtocolCommandContext<'a> {
             errors: &ERRORS,
             stages: &STAGES,
             recipients: &RECIPIENTS,
-        }
+        })
     }
 
-    /// Return an owned [`Sender<ActorCommand>`] clone the command's `run`
-    /// body can hand to a spawned worker thread. The worker uses it to
-    /// post follow-up `ActorCommand`s back into the actor loop after the
-    /// dispatch arm (and therefore the `ProtocolCommandContext`) has
-    /// returned (the LNURL fetcher pattern — see
-    /// `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`).
-    ///
-    /// The test-only `with_send_only` constructor installs a sender whose
-    /// receiver is immediately dropped — sends become benign no-ops
-    /// (matches the D6 "disconnected actor" pattern).
+    /// Return an owned [`Sender<ActorCommand>`] clone for handing to a
+    /// spawned worker thread that posts follow-up `ActorCommand`s back
+    /// into the actor loop after the dispatch arm (and therefore this
+    /// `ProtocolCommandContext`) has returned — the LNURL fetcher pattern
+    /// (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`). The test-only
+    /// `with_send_only` ctor installs a sender whose receiver is dropped
+    /// (sends become benign no-ops, matching D6).
     #[must_use]
     pub fn command_sender_clone(&self) -> Sender<ActorCommand> {
         self.command_sender.clone()
     }
 
-    /// Re-enter the actor loop with `cmd`. The actor processes it in a
-    /// subsequent dispatch cycle (same thread, same channel).
-    ///
-    /// D15: the closure is host-supplied (constructed by the dispatch
-    /// arm but conceptually owned by the kernel boundary), so the
-    /// invocation is wrapped in [`std::panic::catch_unwind`] to keep a
-    /// panicking follow-up from unwinding the calling `ProtocolCommand`'s
-    /// `run()` frame.
+    /// Re-enter the actor loop with `cmd`. D15: the host-supplied closure
+    /// is wrapped in [`std::panic::catch_unwind`] so a panicking follow-up
+    /// cannot unwind the calling `ProtocolCommand::run` frame.
     pub fn send(&self, cmd: ActorCommand) {
         let send = self.send;
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| send(cmd)));
@@ -419,13 +397,13 @@ impl<'a> ProtocolCommandContext<'a> {
 
     // ── D15 catch_unwind shortcuts ──
     //
-    // The five accessors below wrap a capability call in `catch_unwind` so
-    // a panicking host-side adapter cannot unwind the calling
+    // The accessors below wrap a capability call in `catch_unwind` so a
+    // panicking host-side adapter cannot unwind the calling
     // `ProtocolCommand::run` frame. NIP commands MAY call the capability
     // method directly via `ctx.clock().now_secs()` etc., but these
-    // shortcuts make the panic-safety explicit and concise at the call
-    // site (every previous accessor had a `catch_unwind` wrapper; the
-    // shortcuts preserve that contract).
+    // shortcuts make the panic-safety explicit at the call site (every
+    // previous accessor had a `catch_unwind` wrapper; the shortcuts
+    // preserve that contract).
 
     /// Wall-clock seconds since the Unix epoch (D15-wrapped
     /// [`KernelClock::now_secs`]). Returns `0` on a panicking adapter.
