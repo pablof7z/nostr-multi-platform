@@ -1,197 +1,72 @@
-//! Grouped keymap help overlay.
-//!
-//! Two-column layout inside a centred overlay.  Scrollable via `state.detail_scroll`.
-
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::app::AppState;
-use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIM_TEXT};
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/// Backwards-compatible shim: called by `layout.rs` which the wiring agent
-/// will update to use `render` (3-arg form) before merge.
-pub fn render(f: &mut Frame, area: Rect) {
-    let dummy = AppState::default();
-    render_with_state(f, area, &dummy);
+pub fn render(frame: &mut Frame<'_>, area: Rect) {
+    let popup = centered(area, 62, 16);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(help_panel(), popup);
 }
 
-/// Full render with scroll support via `state.detail_scroll`.
-/// This is the canonical entry point once the wiring agent updates the caller.
-pub fn render_with_state(f: &mut Frame, area: Rect, state: &AppState) {
-    let width = (area.width * 80 / 100).max(50).min(area.width.saturating_sub(2));
-    let height = (area.height * 80 / 100).max(16).min(area.height.saturating_sub(2));
-    let popup = centered(area, width, height);
-
-    f.render_widget(Clear, popup);
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Help — press ? or Esc to close ")
-        .border_style(Style::default().fg(ACCENT_CYAN));
-
-    let inner = block.inner(popup);
-    f.render_widget(block, popup);
-
-    // Split inner into two equal columns.
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(inner);
-
-    let left_lines = left_column();
-    let right_lines = right_column();
-
-    let scroll = state.detail_scroll;
-
-    f.render_widget(
-        Paragraph::new(left_lines)
-            .style(Style::default().fg(BODY_TEXT))
-            .wrap(Wrap { trim: false })
-            .scroll((scroll, 0)),
-        cols[0],
-    );
-    f.render_widget(
-        Paragraph::new(right_lines)
-            .style(Style::default().fg(BODY_TEXT))
-            .wrap(Wrap { trim: false })
-            .scroll((scroll, 0)),
-        cols[1],
-    );
+fn help_panel() -> Paragraph<'static> {
+    let lines = vec![
+        Line::from(vec![hotkey("j/k"), text(" or arrows move selection")]),
+        Line::from(vec![hotkey("PgUp/PgDn"), text(" page feed")]),
+        Line::from(vec![hotkey("Home/End"), text(" jump to top/bottom")]),
+        Line::from(vec![hotkey("1 2 3"), text(" focus feed/detail/profile")]),
+        Line::from(vec![hotkey("h c g w s"), text(" switch Chirp tabs")]),
+        Line::from(vec![hotkey("Tab"), text(" cycle tabs")]),
+        Line::from(vec![
+            hotkey(":"),
+            text(" run account/profile/relay/dm/group/wallet commands"),
+        ]),
+        Line::from(vec![hotkey("Enter"), text(" open selected thread")]),
+        Line::from(vec![hotkey("p"), text(" open selected author")]),
+        Line::from(vec![hotkey("i"), text(" compose note")]),
+        Line::from(vec![hotkey("r"), text(" reply to selected note")]),
+        Line::from(vec![hotkey("+"), text(" react; f/F follow/unfollow")]),
+        Line::from(vec![hotkey("Ctrl+Enter"), text(" publish compose")]),
+        Line::from(vec![hotkey("Esc"), text(" close help or cancel compose")]),
+        Line::from(vec![hotkey("q"), text(" quit")]),
+    ];
+    Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Help"))
+        .wrap(Wrap { trim: true })
 }
 
-// ---------------------------------------------------------------------------
-// Content
-// ---------------------------------------------------------------------------
-
-fn left_column() -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    section_header(&mut lines, "Global");
-    binding(&mut lines, "1-5", "switch to tab 1-5");
-    binding(&mut lines, "Tab / BackTab", "next / previous tab");
-    binding(&mut lines, "?", "toggle this help");
-    binding(&mut lines, "/", "open command palette");
-    binding(&mut lines, "Esc", "cancel / close overlay");
-    binding(&mut lines, "a", "open account switcher");
-    binding(&mut lines, "q / Ctrl+C", "quit");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Navigation");
-    binding(&mut lines, "j / k", "move selection down / up");
-    binding(&mut lines, "gg / G", "jump to top / bottom");
-    binding(&mut lines, "h / l", "focus left / right pane");
-    binding(&mut lines, "PageUp / PageDn", "page through feed");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Home tab");
-    binding(&mut lines, "n", "compose new note");
-    binding(&mut lines, "r", "reply to selected note");
-    binding(&mut lines, "+", "react to selected note");
-    binding(&mut lines, "R", "repost selected note");
-    binding(&mut lines, "z", "zap selected note");
-    binding(&mut lines, "f", "follow author");
-    binding(&mut lines, "o", "open author profile");
-    binding(&mut lines, "F", "filter feed");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Chats tab");
-    binding(&mut lines, "n", "start new DM");
-    binding(&mut lines, "i", "compose message");
-    binding(&mut lines, "Enter", "open conversation");
-
-    lines
-}
-
-fn right_column() -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    section_header(&mut lines, "Groups tab");
-    binding(&mut lines, "n", "discover / join group");
-    binding(&mut lines, "i", "compose group message");
-    binding(&mut lines, "+", "react to message");
-    binding(&mut lines, "L", "leave group");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Wallet tab");
-    binding(&mut lines, "n", "connect wallet");
-    binding(&mut lines, "p", "pay invoice");
-    binding(&mut lines, "d", "disconnect wallet");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Settings tab");
-    binding(&mut lines, "n", "add relay / account");
-    binding(&mut lines, "d", "delete selected item");
-    binding(&mut lines, "Space", "toggle relay role");
-    binding(&mut lines, "Enter", "edit selected item");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Compose mode");
-    binding(&mut lines, "Ctrl+Enter", "publish note");
-    binding(&mut lines, "Esc Esc", "discard draft");
-    binding(&mut lines, "Enter", "insert newline");
-    lines.push(Line::raw(""));
-
-    section_header(&mut lines, "Palette");
-    binding(&mut lines, "j / k", "move selection");
-    binding(&mut lines, "Enter", "run command");
-    binding(&mut lines, "type", "filter commands");
-    binding(&mut lines, "Esc", "close palette");
-
-    lines
-}
-
-// ---------------------------------------------------------------------------
-// Line builders
-// ---------------------------------------------------------------------------
-
-fn section_header(lines: &mut Vec<Line<'static>>, title: &'static str) {
-    lines.push(Line::from(Span::styled(
-        title,
+fn hotkey(value: &'static str) -> Span<'static> {
+    Span::styled(
+        format!("{value:<12}"),
         Style::default()
-            .fg(ACCENT_CYAN)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-    )));
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )
 }
 
-fn binding(lines: &mut Vec<Line<'static>>, key: &'static str, desc: &'static str) {
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!("  {:<18}", key),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(desc, Style::default().fg(DIM_TEXT)),
-    ]));
+fn text(value: &'static str) -> Span<'static> {
+    Span::raw(value)
 }
-
-// ---------------------------------------------------------------------------
-// Layout helper
-// ---------------------------------------------------------------------------
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
-    let w = width.min(area.width.saturating_sub(2));
-    let h = height.min(area.height.saturating_sub(2));
-    let vert = Layout::default()
+    let width = width.min(area.width.saturating_sub(2)).max(20);
+    let height = height.min(area.height.saturating_sub(2)).max(8);
+    let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(area.height.saturating_sub(h) / 2),
-            Constraint::Length(h),
+            Constraint::Length((area.height.saturating_sub(height)) / 2),
+            Constraint::Length(height),
             Constraint::Min(0),
         ])
         .split(area);
-    let horiz = Layout::default()
+    let horizontal = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(area.width.saturating_sub(w) / 2),
-            Constraint::Length(w),
+            Constraint::Length((area.width.saturating_sub(width)) / 2),
+            Constraint::Length(width),
             Constraint::Min(0),
         ])
-        .split(vert[1]);
-    horiz[1]
+        .split(vertical[1]);
+    horizontal[1]
 }
