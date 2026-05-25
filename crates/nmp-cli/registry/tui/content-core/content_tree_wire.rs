@@ -339,6 +339,10 @@ fn indices_array(value: &Value) -> Vec<usize> {
         .collect()
 }
 
+fn is_hex_id_64(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 fn short_id(id: &str) -> String {
     let count = id.chars().count();
     if count <= 12 {
@@ -355,8 +359,4 @@ fn short_id(id: &str) -> String {
             .collect::<String>();
         format!("{head}…{tail}")
     }
-}
-
-fn is_hex_id_64(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }

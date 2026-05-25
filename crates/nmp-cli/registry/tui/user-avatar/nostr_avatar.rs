@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
+use ratatui_image::{protocol::Protocol, Image};
 
 use super::profile_wire::ProfileWire;
 
@@ -25,6 +26,7 @@ const PALETTE: [Color; 8] = [
 /// bordered tile with profile initials and a stable pubkey-derived accent.
 pub struct NostrAvatar<'a> {
     profile: &'a ProfileWire,
+    image: Option<&'a Protocol>,
     border_style: Style,
 }
 
@@ -32,8 +34,14 @@ impl<'a> NostrAvatar<'a> {
     pub fn new(profile: &'a ProfileWire) -> Self {
         Self {
             profile,
+            image: None,
             border_style: Style::default().fg(accent_for(&profile.pubkey)),
         }
+    }
+
+    pub fn image(mut self, image: Option<&'a Protocol>) -> Self {
+        self.image = image;
+        self
     }
 
     pub fn border_style(mut self, style: Style) -> Self {
@@ -54,6 +62,10 @@ impl Widget for NostrAvatar<'_> {
         block.render(area, buf);
 
         if inner.is_empty() {
+            return;
+        }
+        if let Some(image) = self.image {
+            Image::new(image).allow_clipping(true).render(inner, buf);
             return;
         }
 

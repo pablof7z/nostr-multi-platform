@@ -5,7 +5,7 @@
   "description": "Inline Ratatui profile display-name widget with Rust-formatted npub fallback.",
   "dependencies": [],
   "registryDependencies": [
-    "tui-user-avatar"
+    "tui-user-core"
   ],
   "files": [
     {

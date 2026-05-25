@@ -17,7 +17,7 @@ import nostrNpubChipKotlin from "../../../../crates/nmp-cli/registry/compose/use
 import nostrUserCardKotlin from "../../../../crates/nmp-cli/registry/compose/user-card/NostrUserCard.kt?raw";
 
 // User profile — Ratatui
-import profileWireRust from "../../../../crates/nmp-cli/registry/tui/user-avatar/profile_wire.rs?raw";
+import profileWireRust from "../../../../crates/nmp-cli/registry/tui/user-core/profile_wire.rs?raw";
 import nostrAvatarRust from "../../../../crates/nmp-cli/registry/tui/user-avatar/nostr_avatar.rs?raw";
 import nostrProfileNameRust from "../../../../crates/nmp-cli/registry/tui/user-name/nostr_profile_name.rs?raw";
 import nostrNip05BadgeRust from "../../../../crates/nmp-cli/registry/tui/user-nip05/nostr_nip05_badge.rs?raw";
@@ -25,6 +25,29 @@ import nostrNpubChipRust from "../../../../crates/nmp-cli/registry/tui/user-npub
 import nostrUserCardRust from "../../../../crates/nmp-cli/registry/tui/user-card/nostr_user_card.rs?raw";
 
 export const userComponents: Component[] = [
+  {
+    slug: "user-core",
+    routeId: "user-core",
+    version: "0.1.0",
+    description: "Shared Ratatui ProfileWire mirror for Rust-owned user profile projections.",
+    platforms: {
+      tui: {
+        status: "stable",
+        installId: "tui/user-core",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`ProfileWire` is the Rust-side projection mirror used by the TUI user widgets. It carries display-ready profile fields from the kernel; host apps should not derive profile names or npub truncation in terminal UI code.",
+        files: [
+          { source: "tui/user-core/profile_wire.rs", target: "src/components/nostr_user/profile_wire.rs", role: "source", content: profileWireRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Keep this type aligned with the kernel projection and use it as the input to the display widgets.",
+        ],
+      },
+    },
+  },
   {
     slug: "user-avatar",
     routeId: "user-avatar",
@@ -68,18 +91,18 @@ export const userComponents: Component[] = [
       tui: {
         status: "stable",
         installId: "tui/user-avatar",
-        version: "0.1.0",
-        dependencies: [],
+        version: "0.1.1",
+        dependencies: ["user-core"],
         longDescription:
-          "`ProfileWire` mirrors the Rust-owned profile projection. `NostrAvatar` renders a compact terminal tile with initials and a deterministic pubkey-derived accent.",
+          "`ProfileWire` mirrors the Rust-owned profile projection. `NostrAvatar` accepts an optional `ratatui-image` protocol supplied by the host app and falls back to initials with a deterministic pubkey-derived accent.",
         files: [
-          { source: "tui/user-avatar/profile_wire.rs", target: "src/components/nostr_user/profile_wire.rs", role: "source", content: profileWireRust },
+          { source: "tui/user-core/profile_wire.rs", target: "src/components/nostr_user/profile_wire.rs", role: "source", content: profileWireRust },
           { source: "tui/user-avatar/nostr_avatar.rs", target: "src/components/nostr_user/nostr_avatar.rs", role: "source", content: nostrAvatarRust },
         ],
         screenshots: ["tui-user-avatar-preview.png"],
         customization: [
           "Edit `PALETTE` in `nostr_avatar.rs` to match your terminal theme.",
-          "The widget is render-only; host apps own image fetching and navigation.",
+          "The widget is render-only; host apps own image fetching, terminal protocol selection, and navigation.",
         ],
       },
     },
@@ -120,7 +143,7 @@ export const userComponents: Component[] = [
         status: "stable",
         installId: "tui/user-name",
         version: "0.1.0",
-        dependencies: ["user-avatar"],
+        dependencies: ["user-core"],
         files: [
           { source: "tui/user-name/nostr_profile_name.rs", target: "src/components/nostr_user/nostr_profile_name.rs", role: "source", content: nostrProfileNameRust },
         ],
@@ -171,7 +194,7 @@ export const userComponents: Component[] = [
         status: "stable",
         installId: "tui/user-nip05",
         version: "0.1.0",
-        dependencies: ["user-avatar"],
+        dependencies: ["user-core"],
         files: [
           { source: "tui/user-nip05/nostr_nip05_badge.rs", target: "src/components/nostr_user/nostr_nip05_badge.rs", role: "source", content: nostrNip05BadgeRust },
         ],
@@ -220,7 +243,7 @@ export const userComponents: Component[] = [
         status: "stable",
         installId: "tui/user-npub",
         version: "0.1.0",
-        dependencies: ["user-avatar"],
+        dependencies: ["user-core"],
         files: [
           { source: "tui/user-npub/nostr_npub_chip.rs", target: "src/components/nostr_user/nostr_npub_chip.rs", role: "source", content: nostrNpubChipRust },
         ],
@@ -272,10 +295,10 @@ export const userComponents: Component[] = [
       tui: {
         status: "stable",
         installId: "tui/user-card",
-        version: "0.1.0",
-        dependencies: ["user-avatar", "user-name", "user-nip05"],
+        version: "0.1.1",
+        dependencies: ["user-core", "user-avatar", "user-name", "user-nip05"],
         longDescription:
-          "A compact terminal author header composed from `NostrAvatar`, `NostrProfileName`, and `NostrNip05Badge`. Host apps handle selection and profile navigation in their input loop.",
+          "A compact terminal author header composed from `NostrAvatar`, `NostrProfileName`, and `NostrNip05Badge`. Host apps pass an optional avatar image protocol and handle selection/profile navigation in their input loop.",
         files: [
           { source: "tui/user-card/nostr_user_card.rs", target: "src/components/nostr_user/nostr_user_card.rs", role: "source", content: nostrUserCardRust },
         ],

@@ -22,6 +22,16 @@ import composeMentionChipKotlin from "../../../../crates/nmp-cli/registry/compos
 import composeQuoteCardKotlin from "../../../../crates/nmp-cli/registry/compose/content-quote-card/NostrQuoteCard.kt?raw";
 import composeMediaGridKotlin from "../../../../crates/nmp-cli/registry/compose/content-media-grid/NostrMediaGrid.kt?raw";
 
+// Content — Ratatui
+import tuiContentTreeWireRust from "../../../../crates/nmp-cli/registry/tui/content-core/content_tree_wire.rs?raw";
+import tuiContentRenderDataRust from "../../../../crates/nmp-cli/registry/tui/content-core/content_render_data.rs?raw";
+import tuiTextWrapRust from "../../../../crates/nmp-cli/registry/tui/content-core/ratatui_text_wrap.rs?raw";
+import tuiContentViewRust from "../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_view.rs?raw";
+import tuiMentionChipRust from "../../../../crates/nmp-cli/registry/tui/content-mention-chip/nostr_mention_chip.rs?raw";
+import tuiMinimalContentRust from "../../../../crates/nmp-cli/registry/tui/content-minimal/nostr_minimal_content.rs?raw";
+import tuiMediaGridRust from "../../../../crates/nmp-cli/registry/tui/content-media-grid/nostr_media_grid.rs?raw";
+import tuiQuoteCardRust from "../../../../crates/nmp-cli/registry/tui/content-quote-card/nostr_quote_card.rs?raw";
+
 export const contentComponents: Component[] = [
   {
     slug: "content-core",
@@ -66,6 +76,24 @@ export const contentComponents: Component[] = [
           "`ContentTreeWire.kt` uses `kotlinx.serialization` with `@JsonClassDiscriminator(\"kind\")` so the JSON emitted by the Rust `nmp-content` crate decodes drift-free.",
         ],
       },
+      tui: {
+        status: "stable",
+        installId: "tui/content-core",
+        version: "0.1.1",
+        dependencies: [],
+        longDescription:
+          "`ContentTreeWire` mirrors the Rust `nmp-content` projection and `ContentRenderData` carries kernel-owned profile/event facts for resolved mentions and embedded notes. Widgets consume these values; they do not fetch or decode Nostr entities themselves.",
+        files: [
+          { source: "tui/content-core/content_tree_wire.rs", target: "src/components/nostr_content/content_tree_wire.rs", role: "source", content: tuiContentTreeWireRust },
+          { source: "tui/content-core/content_render_data.rs", target: "src/components/nostr_content/content_render_data.rs", role: "source", content: tuiContentRenderDataRust },
+          { source: "tui/content-core/ratatui_text_wrap.rs", target: "src/components/nostr_content/ratatui_text_wrap.rs", role: "source", content: tuiTextWrapRust },
+        ],
+        screenshots: ["tui-content-core-preview.png"],
+        customization: [
+          "Keep the wire types aligned with the kernel snapshot; app shells should only translate them into Ratatui lines/widgets.",
+          "`ContentRenderData` is optional so cold-start rows can render immediately and hydrate when kind:0 or quoted events arrive.",
+        ],
+      },
     },
   },
   {
@@ -89,6 +117,22 @@ export const contentComponents: Component[] = [
         customization: [
           "Pure SwiftUI — no UIKit, no third-party packages. Swap `FlowLayout` for `HStack` if you want different wrapping behaviour.",
           "The view reads `@Environment(\\.nostrContentRenderer)` for colors and callbacks, so customizing the look usually means tweaking the parent's renderer modifier rather than editing this file.",
+        ],
+      },
+      tui: {
+        status: "stable",
+        installId: "tui/content-minimal",
+        version: "0.1.1",
+        dependencies: ["content-core", "content-mention-chip"],
+        longDescription:
+          "A dense Ratatui line renderer for timeline cells. It resolves mention labels and quote previews from `ContentRenderData`, falling back to short ids until the kernel hydrates the referenced facts.",
+        files: [
+          { source: "tui/content-minimal/nostr_minimal_content.rs", target: "src/components/nostr_content/nostr_minimal_content.rs", role: "source", content: tuiMinimalContentRust },
+        ],
+        screenshots: ["tui-content-minimal-preview.png"],
+        customization: [
+          "Use this in list rows where a single preview line matters more than full block layout.",
+          "Pair it with the host kernel render-intent loop that claims visible profile and event references.",
         ],
       },
     },
@@ -135,6 +179,20 @@ export const contentComponents: Component[] = [
           "Inline runs are concatenated into a single `AnnotatedString` and rendered through `ClickableText` for tap-offset routing.",
         ],
       },
+      tui: {
+        status: "stable",
+        installId: "tui/content-view",
+        version: "0.1.2",
+        dependencies: ["content-core", "content-mention-chip", "content-media-grid", "content-quote-card"],
+        files: [
+          { source: "tui/content-view/nostr_content_view.rs", target: "src/components/nostr_content/nostr_content_view.rs", role: "source", content: tuiContentViewRust },
+        ],
+        screenshots: ["tui-content-view-preview.png"],
+        customization: [
+          "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and keeps event refs as quote cards when render data is present.",
+          "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
+        ],
+      },
     },
   },
   {
@@ -169,6 +227,19 @@ export const contentComponents: Component[] = [
         customization: [
           "Uses Coil's `SubcomposeAsyncImage` for the avatar. Swap to Glide or a custom Painter by replacing the loader call in `MentionAvatar`.",
           "Tap routes through `NostrContentCallbacks.onMentionTap`; override at the screen level to push into your own navigator.",
+        ],
+      },
+      tui: {
+        status: "stable",
+        installId: "tui/content-mention-chip",
+        version: "0.1.1",
+        dependencies: ["content-core"],
+        files: [
+          { source: "tui/content-mention-chip/nostr_mention_chip.rs", target: "src/components/nostr_content/nostr_mention_chip.rs", role: "source", content: tuiMentionChipRust },
+        ],
+        screenshots: ["tui-content-mention-chip-preview.png"],
+        customization: [
+          "The chip displays the kernel-projected kind:0 name when available and shortens the npub/pubkey fallback locally.",
         ],
       },
     },
@@ -208,6 +279,19 @@ export const contentComponents: Component[] = [
           "Border, corner radius, and padding are literals so they merge cleanly on `nmp update component`.",
         ],
       },
+      tui: {
+        status: "stable",
+        installId: "tui/content-quote-card",
+        version: "0.1.1",
+        dependencies: ["content-core"],
+        files: [
+          { source: "tui/content-quote-card/nostr_quote_card.rs", target: "src/components/nostr_content/nostr_quote_card.rs", role: "source", content: tuiQuoteCardRust },
+        ],
+        screenshots: ["tui-content-quote-card-preview.png"],
+        customization: [
+          "Feed it a `WireNode::EventRef` plus `ContentRenderData`; unresolved references stay visible as a quote placeholder instead of raw `nostr:nevent...` text.",
+        ],
+      },
     },
   },
   {
@@ -242,6 +326,19 @@ export const contentComponents: Component[] = [
         customization: [
           "Layout is count-driven: 1 = full-width 16:9, 2 = side-by-side, 3 = one large + two stacked, 4+ = 2×2 with `+N more` overlay — identical to the SwiftUI variant.",
           "Replace `SubcomposeAsyncImage` with your own loader if you already use Glide/Picasso. The cell composable is intentionally small to make the swap painless.",
+        ],
+      },
+      tui: {
+        status: "stable",
+        installId: "tui/content-media-grid",
+        version: "0.1.1",
+        dependencies: ["content-core"],
+        files: [
+          { source: "tui/content-media-grid/nostr_media_grid.rs", target: "src/components/nostr_content/nostr_media_grid.rs", role: "source", content: tuiMediaGridRust },
+        ],
+        screenshots: ["tui-content-media-grid-preview.png"],
+        customization: [
+          "Pass host-created `ratatui-image` protocols for URLs that have already been fetched and decoded. The widget lays out up to four inline images and leaves fetching/caching outside the display component.",
         ],
       },
     },
