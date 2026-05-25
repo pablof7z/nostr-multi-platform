@@ -79,6 +79,24 @@
     mirror the downstream consumer's gate (`__ffi_internal` uses `native`;
     the test-support surface uses `any(test, feature = "test-support")`).
 
+**Step 3 caveat resolution (2026-05-25, kind:10002 ingest leak)**: PR #484
+absorbed `nmp-nip65` into `nmp-router` (action module + `Kind10002Parser` +
+`InMemoryMailboxCache` + `Nip65OutboxResolver`), but did NOT wire the
+`Kind10002Parser` into `nmp-app-template::register_defaults`. Production
+kind:10002 ingest continued to run through a kernel-side `match
+event.kind { 10002 => self.ingest_relay_list(event); }` arm + a
+`crates/nmp-core/src/kernel/ingest/relay_list.rs` impl that named
+NIP-65, parsed `r` tags, and wrote the kernel-held `mailbox_cache` — a
+direct D0 violation (kernel must not name NIP nouns) and a structural
+contradiction (the substrate parser was dead code). The follow-up PR
+deletes both the arm and the file, registers `Kind10002Parser` in
+`register_defaults` against the same `Arc<InMemoryMailboxCache>` the
+routing factory hands to the kernel, and replaces the kernel-side
+recompile + trace-observer fan with a kind-agnostic `Kernel::on_mailbox_changed`
+hook on the wildcard ingest arm — fires when the substrate
+`MailboxCache::snapshot(&author)` transitions before-vs-after dispatch,
+without naming kind:10002 anywhere in `nmp-core/src/kernel/`.
+
 **Ghost crates this spec still names that do not yet exist on master:**
 `nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-proto`. (`nmp-marmot` is no
 longer a ghost: step 12 returned it from `apps/marmot/nmp-app-marmot/`

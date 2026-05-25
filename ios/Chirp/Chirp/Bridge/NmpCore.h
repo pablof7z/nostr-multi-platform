@@ -174,10 +174,15 @@ uint8_t nmp_app_is_alive(void *app);
 // `"nmp.publish"`) and passes the action as JSON; the returned heap-allocated
 // JSON string is `{"correlation_id":"<32-hex>"}` on accept or `{"error":"…"}`
 // on rejection, and MUST be freed via `nmp_app_free_string`.  D6: never NULL
-// for a non-NULL app.  SCOPE — this currently validates the action and
-// assigns a correlation id ONLY; it does NOT execute it.  A correlation id
-// means the action was *accepted*, not *published*; execution wiring and the
-// durable action ledger are an M6 follow-up.
+// for a non-NULL app.  SCOPE — this validates the action, assigns a
+// correlation id, AND executes it: after `ActionRegistry::start` validates
+// the action and mints the id, the dispatch path drives `M::execute` which
+// enqueues the appropriate `ActorCommand` (the actor thread re-verifies any
+// signed envelope, then routes through the publish engine / protocol-command
+// loop). A returned `{"correlation_id":"…"}` therefore means the action was
+// *accepted and enqueued for execution*; per-relay outcomes still surface
+// asynchronously through the snapshot path / `action_results`. The durable
+// action ledger is a separate M6 follow-up.
 //
 // Host action-namespace registration (ADR-0027) is Rust-only: a host calls
 // `NmpApp::register_action::<M>()` with a typed `ActionModule` impl whose

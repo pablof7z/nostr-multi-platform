@@ -3,15 +3,26 @@
 //! `handle_message` → `handle_text` → `handle_event` → kind-specific ingest:
 //! - kind:0  → `profile.rs` (`ingest_profile`)
 //! - kind:3  → `contacts.rs` (`ingest_contacts`)
-//! - kind:10002` → `relay_list.rs` (`ingest_relay_list`)
 //! - kind:1|6 → `timeline.rs` (`ingest_timeline_event`)
 //!
-//! Other kinds (kind:10050 NIP-17 DM-relay list, future NIP-51 lists, …)
-//! route through the substrate [`crate::substrate::EventIngestDispatcher`] —
-//! the wildcard arm fans the [`crate::store::VerifiedEvent`] to every
-//! registered [`crate::substrate::IngestParser`] before the
-//! `KernelEventObserver`s fire. Per-NIP crates register their parsers at
-//! composition time; the kernel never names the NIP kind directly.
+//! Every other kind (kind:10002 NIP-65 mailbox lists, kind:10050 NIP-17
+//! DM-relay lists, future NIP-51 lists, …) routes through the substrate
+//! [`crate::substrate::EventIngestDispatcher`] — the wildcard arm fans
+//! the [`crate::store::VerifiedEvent`] to every registered
+//! [`crate::substrate::IngestParser`] before the `KernelEventObserver`s
+//! fire. Per-NIP crates register their parsers at composition time; the
+//! kernel never names the NIP kind directly.
+//!
+//! For parsers that mutate the substrate
+//! [`crate::substrate::MailboxCache`], the wildcard arm also observes the
+//! cache state for the event author before/after dispatch — when the cache
+//! transitioned the kernel fires the `route_subscription_relays` trace
+//! observer and enqueues the `Nip65Arrived` recompile trigger, both
+//! kind-agnostically (the kernel only knows "the mailbox cache changed
+//! for this author", not "a kind:10002 arrived"). This replaces the
+//! pre-2026-05-25 `match event.kind { 10002 => ... }` arm + the deleted
+//! `relay_list.rs` impl, which both named NIP-65 explicitly and were a
+//! D0 violation (`docs/architecture/crate-boundaries.md` §0).
 //!
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
 
@@ -19,7 +30,6 @@ mod auth_handlers;
 mod closed;
 mod contacts;
 mod profile;
-mod relay_list;
 mod timeline;
 mod timeline_order;
 
@@ -361,9 +371,14 @@ impl Kernel {
 
         // D4: all events are persisted before kind-specific dispatch.
         // Kinds 1|6 handle their own store.insert inside ingest_timeline_event.
-        // For replaceable kinds (0, 3, 10002) we gate local cache mutations on
-        // the store outcome: only Inserted | Replaced means this event is now
-        // canonical (D4).
+        // For replaceable kinds (0, 3) we gate local cache mutations on the
+        // store outcome: only Inserted | Replaced means this event is now
+        // canonical (D4). Every other kind — including the former kind:10002
+        // arm (deleted 2026-05-25 alongside `kernel/ingest/relay_list.rs`
+        // when the substrate parser was wired in `nmp-app-template`) —
+        // routes through the wildcard arm, which fans through the
+        // `EventIngestDispatcher` inside `verify_and_persist` and then
+        // observes any substrate mailbox-cache mutation kind-agnostically.
         match event.kind {
             1 | 6 => self.ingest_timeline_event(role, relay_url, sub_id, event),
             0 => {
@@ -388,37 +403,43 @@ impl Kernel {
                 }
                 self.changed_since_emit = true;
             }
-            10002 => {
-                use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(relay_url, &event);
-                if matches!(
-                    outcome,
-                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                ) {
-                    self.ingest_relay_list(event);
-                }
-                self.changed_since_emit = true;
-            }
             _ => {
                 // Wildcard arm: every kind not handled by an explicit match
-                // arm above (zap receipts, NIP-29 chat kinds, NIP-29 group
-                // metadata, gift-wraps kind:1059, NIP-17 DM-relay lists
-                // kind:10050 — fans through the IngestParser registry
-                // inside `verify_and_persist`, …) reaches
-                // `KernelEventObserver`s through this seam. Pre-fix the
-                // wildcard called only `verify_and_persist`, so projections
-                // like `GroupChatProjection`, `DiscoveredGroupsProjection`,
-                // and the NIP-57 zap-aggregate projection registered as
+                // arm above (NIP-65 kind:10002 mailbox lists, NIP-17
+                // kind:10050 DM-relay lists, zap receipts, NIP-29 chat
+                // kinds + group metadata, gift-wraps kind:1059, future
+                // NIP-51 lists — all fan through the IngestParser registry
+                // inside `verify_and_persist`) reaches `KernelEventObserver`s
+                // through this seam. Pre-fix the wildcard called only
+                // `verify_and_persist`, so projections like
+                // `GroupChatProjection`, `DiscoveredGroupsProjection`, and
+                // the NIP-57 zap-aggregate projection registered as
                 // observers were structurally deaf. Gate fan-out on the
                 // store outcome (`Inserted | Replaced` only — D4 dedup so
                 // duplicate sibling-relay deliveries do not double-notify).
                 //
                 // V-40 — the substrate `EventIngestDispatcher` runs inside
                 // `verify_and_persist` for every gated outcome, so per-NIP
-                // parsers (today: `nmp-nip17::Kind10050Parser`) fire on
-                // EVERY arm (not just wildcard); the kernel deliberately
-                // does not name any NIP kind for dispatch purposes (D0).
+                // parsers (today: `nmp_router::Kind10002Parser` and
+                // `nmp_nip17::Kind10050Parser`) fire on EVERY arm (not just
+                // wildcard); the kernel deliberately does not name any NIP
+                // kind for dispatch purposes (D0).
+                //
+                // Mailbox-cache observer (replaces the deleted `10002 =>`
+                // arm + `ingest::relay_list::ingest_relay_list`, 2026-05-25):
+                // snapshot the substrate `MailboxCache` for `event.pubkey`
+                // before dispatch, run `verify_and_persist`, then snapshot
+                // again. If the cache transitioned (entry added / removed /
+                // replaced) the parser populated routing state — fire the
+                // `route_subscription_relays` trace observer (Debt A) and
+                // enqueue the `Nip65Arrived` recompile trigger (A1) so M2
+                // re-plans the author. Both calls are kind-agnostic: the
+                // kernel only knows "this author's mailbox changed".
                 use crate::store::InsertOutcome;
+                let author = event.pubkey.clone();
+                let event_id_for_trace = event.id.clone();
+                let created_at_for_trigger = event.created_at;
+                let before = self.mailbox_cache().snapshot(&author);
                 let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
                     outcome,
@@ -426,13 +447,21 @@ impl Kernel {
                 ) {
                     let kernel_event = crate::substrate::KernelEvent {
                         id: event.id.clone(),
-                        author: event.pubkey.clone(),
+                        author: author.clone(),
                         kind: event.kind,
                         created_at: event.created_at,
                         tags: event.tags.clone(),
                         content: event.content.clone(),
                     };
                     self.notify_event_observers(&kernel_event);
+                    let after = self.mailbox_cache().snapshot(&author);
+                    if before != after {
+                        self.on_mailbox_changed(
+                            &author,
+                            &event_id_for_trace,
+                            created_at_for_trigger,
+                        );
+                    }
                 }
                 self.changed_since_emit = true;
             }
@@ -535,6 +564,47 @@ impl Kernel {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
+    }
+
+    /// Substrate-honest mailbox-change observer (replaces the deleted
+    /// `kernel/ingest/relay_list.rs` impl, 2026-05-25).
+    ///
+    /// Called from the wildcard ingest arm when the substrate
+    /// [`crate::substrate::MailboxCache`] transitioned for `author`
+    /// (entry added / removed / replaced by a parser the
+    /// [`crate::substrate::EventIngestDispatcher`] fanned). The kernel
+    /// does not know which kind triggered the mutation; it only knows the
+    /// substrate cache mutated for this author.
+    ///
+    /// Two effects, both preserved from the pre-2026-05-25
+    /// `ingest_relay_list` flow:
+    ///
+    /// 1. **Debt A trace fire** — call `route_subscription_relays` with the
+    ///    just-updated author and the canonical content kinds (1+6) so the
+    ///    injected `OutboxRouter`'s trace observer records a routing decision
+    ///    attributed to lane 1 (`Nip65/Read`) reflecting the freshly-landed
+    ///    state. The synthetic interest mirrors the per-author timeline
+    ///    subscription shape `author_requests` builds; the returned URL set
+    ///    is discarded — only the trace fire matters here.
+    ///
+    /// 2. **A1 recompile trigger** — enqueue
+    ///    [`crate::subs::CompileTrigger::Nip65Arrived`] so the M2 subscription
+    ///    compiler re-routes the author on the next `drain_tick`. The
+    ///    trigger name is a historical artifact (kind:10002 is the only
+    ///    kind that today writes the mailbox cache); the kernel itself
+    ///    does not name the kind.
+    fn on_mailbox_changed(&mut self, author: &str, event_id: &str, created_at: u64) {
+        let _ = self.route_subscription_relays(
+            crate::stable_hash::stable_hash64(("mailbox-changed", event_id, created_at)),
+            &[author],
+            &[1, 6],
+            super::mailboxes::BootstrapSeed::Discovery,
+        );
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
+                pubkey: author.to_string(),
+                created_at,
+            });
     }
 }
 
