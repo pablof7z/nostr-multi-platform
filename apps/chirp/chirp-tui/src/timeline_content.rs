@@ -88,7 +88,7 @@ impl<'a> ContentBuilder<'a> {
 
     fn into_content(self) -> TimelineContent {
         TimelineContent {
-            text: preview(&compact_whitespace(&self.text)),
+            text: compact_whitespace(&self.text),
             media: self.media,
         }
     }
@@ -253,7 +253,7 @@ fn from_plain_content(content: &str) -> TimelineContent {
         }
     }
     TimelineContent {
-        text: preview(&words.join(" ")),
+        text: words.join(" "),
         media,
     }
 }
@@ -319,15 +319,6 @@ fn is_hex_pubkey_64(value: &str) -> bool {
 
 fn compact_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn preview(compact: &str) -> String {
-    if compact.chars().count() <= 96 {
-        compact.to_string()
-    } else {
-        let preview = compact.chars().take(95).collect::<String>();
-        format!("{preview}...")
-    }
 }
 
 fn string_field(value: &Value, key: &str) -> String {
@@ -408,5 +399,39 @@ mod tests {
 
         assert_eq!(content.text, "look");
         assert_eq!(content.media[0].url, "https://example.com/a.webp");
+    }
+
+    #[test]
+    fn content_tree_preserves_full_text_for_detail_rendering() {
+        let long_url = "https://24242.io/c5371b-full-url-tail-token";
+        let card = serde_json::json!({
+            "content": format!(
+                "Five flights, one boat ride and two days later, I am back in my island {long_url}"
+            ),
+            "content_tree": {
+                "nodes": [
+                    {"kind": "text", "text": "Five flights, one boat ride and two days later, "},
+                    {"kind": "text", "text": "I am back in my island "},
+                    {"kind": "url", "url": long_url}
+                ],
+                "roots": [0, 1, 2],
+                "mode": "plaintext"
+            }
+        });
+
+        let content = TimelineContent::from_card(&card, &BTreeMap::new());
+
+        assert!(content.text.contains("c5371b-full-url-tail-token"));
+        assert!(!content.text.ends_with("..."));
+    }
+
+    #[test]
+    fn plain_content_preserves_full_text_for_detail_rendering() {
+        let content = from_plain_content(
+            "this is long enough to exceed the old ninety-six character preview cutoff and still keep final-token",
+        );
+
+        assert!(content.text.contains("final-token"));
+        assert!(!content.text.ends_with("..."));
     }
 }

@@ -41,6 +41,33 @@ fn home_tab_renders_media_attachment_labels() {
 }
 
 #[test]
+fn detail_pane_wraps_full_reply_content_without_preview_truncation() {
+    let mut state = state_with_row();
+    state.rows.push(TimelineRow {
+        id: "reply-1".to_string(),
+        author: "bob".to_string(),
+        author_pubkey: "bob-pubkey".to_string(),
+        content: concat!(
+            "Five flights, one boat ride and two days later, I am back in my island ",
+            "after enough leading text to exceed the old preview cutoff ",
+            "https://24242.io/c5371b-full-url-tail-token"
+        )
+        .to_string(),
+        media: Vec::new(),
+        created_at: 2,
+        depth: 1,
+        has_gap: false,
+        relation_counts: Default::default(),
+        mention_pubkeys: Vec::new(),
+    });
+
+    let rendered = render_state(160, 50, state);
+
+    assert!(rendered.contains("c5371b-full-url-tail-token"));
+    assert!(!rendered.contains("preview cutoff ..."));
+}
+
+#[test]
 fn help_overlay_renders_keybindings() {
     let mut state = AppState::default();
     state.toggle_help();
