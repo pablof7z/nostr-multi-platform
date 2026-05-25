@@ -168,10 +168,12 @@ private fun ModuleBlockRow(
 }
 
 @Composable
-private fun NoteRow(
+internal fun NoteRow(
     eventId: String,
     items: Map<String, TimelineItem>,
     cards: Map<String, ChirpEventCard>,
+    embedDepth: Int = 0,
+    embedded: Boolean = false,
 ) {
     val item = items[eventId]
     val card = cards[eventId]
@@ -195,7 +197,8 @@ private fun NoteRow(
         ?: card?.let { "kind ${it.kind}" }
         ?: ""
 
-    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+    val rowPadding = if (embedded) 10.dp else 12.dp
+    Column(Modifier.fillMaxWidth().padding(rowPadding)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Avatar(initials, color)
             Spacer(Modifier.size(8.dp))
@@ -212,7 +215,13 @@ private fun NoteRow(
             }
         }
         Spacer(Modifier.size(6.dp))
-        NostrRichText(content = content, contentTree = card?.contentTree)
+        NostrRichText(
+            content = content,
+            contentTree = card?.contentTree,
+            items = items,
+            cards = cards,
+            embedDepth = embedDepth,
+        )
     }
 }
 

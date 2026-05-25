@@ -21,8 +21,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ContentTreeWire
 import org.nmp.android.model.ContentWireNode
+import org.nmp.android.model.TimelineItem
 import org.nmp.android.model.WireNostrUri
 
 /**
@@ -33,6 +35,9 @@ import org.nmp.android.model.WireNostrUri
 fun NostrRichText(
     content: String,
     contentTree: ContentTreeWire?,
+    items: Map<String, TimelineItem>,
+    cards: Map<String, ChirpEventCard>,
+    embedDepth: Int,
     modifier: Modifier = Modifier,
 ) {
     if (contentTree == null || contentTree.roots.isEmpty()) {
@@ -44,16 +49,22 @@ fun NostrRichText(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         contentTree.roots.forEach { index ->
-            ContentNode(index, contentTree)
+            ContentNode(index, contentTree, items, cards, embedDepth)
         }
     }
 }
 
 @Composable
-private fun ContentNode(index: Int, tree: ContentTreeWire) {
+private fun ContentNode(
+    index: Int,
+    tree: ContentTreeWire,
+    items: Map<String, TimelineItem>,
+    cards: Map<String, ChirpEventCard>,
+    embedDepth: Int,
+) {
     when (val node = tree.node(index)) {
         is ContentWireNode.MediaNode -> MediaBlock(node.urls, node.mediaKind)
-        is ContentWireNode.EventRefNode -> EventRefBlock(node.uri)
+        is ContentWireNode.EventRefNode -> EventRefBlock(node.uri, items, cards, embedDepth)
         is ContentWireNode.ImageNode -> MediaBlock(listOfNotNull(node.src), "Image")
         is ContentWireNode.CodeBlockNode -> CodeBlock(node.body, node.info)
         is ContentWireNode.ListNode -> ListBlock(node, tree)
@@ -71,6 +82,47 @@ private fun ContentNode(index: Int, tree: ContentTreeWire) {
 @Composable
 private fun MediaBlock(urls: List<String>, mediaKind: String) {
     if (urls.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        urls.forEach { url ->
+            when (mediaKind) {
+                "Image" -> RemoteImage(url)
+                "Video" -> RemoteVideo(url)
+                "Audio" -> RemoteAudio(url)
+                else -> MediaLink(url, mediaKind)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EventRefBlock(
+    uri: WireNostrUri,
+    items: Map<String, TimelineItem>,
+    cards: Map<String, ChirpEventCard>,
+    embedDepth: Int,
+) {
+    val eventId = uri.primaryId
+    if (embedDepth < MaxEmbedDepth && (items.containsKey(eventId) || cards.containsKey(eventId))) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            tonalElevation = 1.dp,
+        ) {
+            NoteRow(
+                eventId = eventId,
+                items = items,
+                cards = cards,
+                embedDepth = embedDepth + 1,
+                embedded = true,
+            )
+        }
+        return
+    }
+    PendingEventRef(eventId.ifEmpty { uri.uri })
+}
+
+@Composable
+private fun MediaLink(url: String, mediaKind: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -78,27 +130,23 @@ private fun MediaBlock(urls: List<String>, mediaKind: String) {
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(mediaKind.lowercase(), style = MaterialTheme.typography.labelMedium)
-            urls.take(3).forEach {
-                Text(it, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
-            }
+            Text(url, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
         }
     }
 }
 
 @Composable
-private fun EventRefBlock(uri: WireNostrUri) {
-    val label = shortEntity(uri.primaryId).ifEmpty { uri.uri }
-    Column(
+private fun PendingEventRef(value: String) {
+    Text(
+        "Event pending ${shortEntity(value)}",
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
             .background(Color.Gray.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
             .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text("Referenced event", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Text(label, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
-    }
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -214,3 +262,5 @@ private fun shortEntity(value: String): String {
 }
 
 private val MentionAccent = Color(0xFF5856D6)
+
+private const val MaxEmbedDepth = 2
