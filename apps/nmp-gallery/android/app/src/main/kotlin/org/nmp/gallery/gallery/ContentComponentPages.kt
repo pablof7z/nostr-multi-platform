@@ -2,15 +2,22 @@ package org.nmp.gallery.gallery
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.nmp.gallery.bridge.GalleryModel
@@ -33,6 +40,7 @@ import org.nmp.gallery.registry.defaultMentionLabel
 @Composable
 fun ContentComponentPage(model: GalleryModel, componentId: String) {
     val profileMap by model.profileMap.collectAsState()
+    var rawMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         model.claimProfile(DEMO_PUBKEY, GalleryModel.CONSUMER_ID)
@@ -48,9 +56,13 @@ fun ContentComponentPage(model: GalleryModel, componentId: String) {
     )
 
     val mentionLabel: (WireNostrUri) -> String = { uri ->
-        profileMap[uri.primaryId]?.displayName
-            ?: defaultMentionLabel(uri)
+        if (rawMode) uri.uri
+        else profileMap[uri.primaryId]?.displayName ?: defaultMentionLabel(uri)
     }
+
+    val showsRawToggle = componentId in setOf(
+        "content-view", "content-mention-chip", "content-minimal",
+    )
 
     CompositionLocalProvider(LocalNostrContentRenderer provides renderer) {
         Column(
@@ -64,6 +76,20 @@ fun ContentComponentPage(model: GalleryModel, componentId: String) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (showsRawToggle) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (rawMode) "Raw wire" else "Resolved",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Switch(checked = rawMode, onCheckedChange = { rawMode = it })
+                }
+            }
             ContentComponentBody(
                 componentId = componentId,
                 profileMap = profileMap,
@@ -82,8 +108,8 @@ private fun ContentComponentBody(
     when (componentId) {
         "content-core" -> ContentCoreDemo(mentionLabel)
         "content-view" -> ContentViewDemo(mentionLabel)
-        "content-mention-chip" -> MentionChipDemo(profileMap)
-        "content-minimal" -> MinimalContentDemo()
+        "content-mention-chip" -> MentionChipDemo(profileMap, mentionLabel)
+        "content-minimal" -> MinimalContentDemo(mentionLabel)
         "content-media-grid" -> MediaGridDemo()
         "content-quote-card" -> QuoteCardDemo(profileMap)
         else -> Text("Unknown content component: $componentId")
@@ -101,11 +127,16 @@ private fun ContentViewDemo(mentionLabel: (WireNostrUri) -> String) {
 }
 
 @Composable
-private fun MentionChipDemo(profileMap: Map<String, ProfileWire>) {
+private fun MentionChipDemo(
+    profileMap: Map<String, ProfileWire>,
+    mentionLabel: (WireNostrUri) -> String,
+) {
     val primary = profileMap[DEMO_PUBKEY]
     val other = profileMap[DEMO_OTHER_PUBKEY]
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Live kernel-resolved profile", style = MaterialTheme.typography.bodySmall)
+        Text("NostrContentView — inline mention", style = MaterialTheme.typography.bodySmall)
+        NostrContentView(tree = demoMentionTree(), mentionLabel = mentionLabel)
+        Text("NostrMentionChip — live kernel-resolved", style = MaterialTheme.typography.bodySmall)
         NostrMentionChip(
             pubkey = DEMO_PUBKEY,
             displayName = primary?.displayName,
@@ -132,8 +163,8 @@ private fun MentionChipDemo(profileMap: Map<String, ProfileWire>) {
 }
 
 @Composable
-private fun MinimalContentDemo() {
-    NostrContentView(tree = demoShortTree())
+private fun MinimalContentDemo(mentionLabel: (WireNostrUri) -> String) {
+    NostrContentView(tree = demoShortTree(), mentionLabel = mentionLabel)
 }
 
 @Composable
@@ -174,6 +205,22 @@ private fun QuoteCardDemo(profileMap: Map<String, ProfileWire>) {
 }
 
 // ── Synthetic content trees ──────────────────────────────────────────────────
+
+private fun demoMentionTree(): ContentTreeWire {
+    val nodes = listOf<WireNode>(
+        WireNode.Text("Hey "),
+        WireNode.Mention(
+            uri = WireNostrUri(
+                uri = "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
+                kind = WireNostrUriKind.Profile,
+                primaryId = DEMO_PUBKEY,
+            ),
+        ),
+        WireNode.Text(", how are you?"),
+        WireNode.Paragraph(children = listOf(0u, 1u, 2u)),
+    )
+    return ContentTreeWire(nodes = nodes, roots = listOf(3u))
+}
 
 private fun demoTextTree(): ContentTreeWire {
     val nodes = listOf<WireNode>(

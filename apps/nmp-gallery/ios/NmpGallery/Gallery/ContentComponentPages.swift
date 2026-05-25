@@ -21,6 +21,24 @@ private struct ContentPageFrame<Content: View>: View {
     }
 }
 
+/// Reusable toggle shown at the top of pages that render inline mentions.
+/// When on, `NostrContentView` receives the raw wire URI; when off, the
+/// kernel-resolved display name (or truncated pubkey while loading).
+private struct RawToggle: View {
+    @Binding var rawMode: Bool
+
+    var body: some View {
+        HStack {
+            Text(rawMode ? "Raw wire" : "Resolved")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Toggle("", isOn: $rawMode)
+                .labelsHidden()
+        }
+    }
+}
+
 // MARK: - Sample data
 
 /// A reusable rich `ContentTreeWire` exercise. Mirrors the registry's
@@ -30,7 +48,7 @@ private enum SampleContent {
     static var richTree: ContentTreeWire {
         // Arena layout:
         //   0  text "hello "
-        //   1  mention(deadbeef…)
+        //   1  mention(DEMO_PUBKEY_HEX)
         //   2  text " and "
         //   3  hashtag "nostr"
         //   4  text " — "
@@ -44,9 +62,9 @@ private enum SampleContent {
                 .text("hello "),
                 .mention(
                     NostrWireUri(
-                        uri: "nostr:npub1example",
+                        uri: "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
                         kind: .profile,
-                        primaryId: "deadbeefcafebabedeadbeefcafebabe"
+                        primaryId: DEMO_PUBKEY_HEX
                     )
                 ),
                 .text(" and "),
@@ -63,13 +81,7 @@ private enum SampleContent {
         )
     }
 
-    static var minimalRuns: [NostrContentRun] {
-        richTree.nostrMinimalRuns()
-    }
-
     static var imageUrls: [URL] {
-        // picsum.photos returns a different image per id, so the grid layout
-        // surface looks like a real photo feed.
         [
             URL(string: "https://picsum.photos/seed/nmp1/800/600")!,
             URL(string: "https://picsum.photos/seed/nmp2/800/600")!,
@@ -107,10 +119,22 @@ struct ContentCorePage: View {
 // MARK: - content-view
 
 struct ContentViewPage: View {
+    @Environment(GalleryModel.self) private var model
+    @State private var rawMode = false
+
     var body: some View {
         VStack(spacing: 16) {
+            RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrContentView(tree:)") {
-                NostrContentView(tree: SampleContent.richTree)
+                NostrContentView(
+                    tree: SampleContent.richTree,
+                    mentionLabel: { uri in
+                        rawMode
+                            ? uri.uri
+                            : model.profile(forPubkey: uri.primaryId)?.displayName
+                                ?? NostrContentView.defaultMentionLabel(uri)
+                    }
+                )
             }
         }
     }
@@ -119,15 +143,14 @@ struct ContentViewPage: View {
 // MARK: - content-mention-chip
 
 /// Inline-mention demo: a `ContentTreeWire` that renders "Hey @pablof7z,
-/// how are you?". The mention node's `primaryId` is the demo pubkey
-/// (`DEMO_PUBKEY_HEX`) and the `mentionLabel` closure looks up the live
-/// kind:0 profile the kernel claimed at startup. On first render the
-/// display name may still be in flight; the view re-renders automatically
-/// when the kernel pushes the resolved `ProfileWire`.
+/// how are you?". The mention node's `primaryId` is `DEMO_PUBKEY_HEX`
+/// and the `mentionLabel` closure looks up the live kind:0 profile the
+/// kernel claimed at startup. Raw toggle shows the wire URI vs the
+/// resolved display name.
 private enum MentionSample {
     /// Arena layout:
     ///   0  text "Hey "
-    ///   1  mention(pablof7z)
+    ///   1  mention(DEMO_PUBKEY_HEX)
     ///   2  text ", how are you?"
     ///   3  paragraph(children: [0, 1, 2])
     static var note: ContentTreeWire {
@@ -152,16 +175,20 @@ private enum MentionSample {
 
 struct ContentMentionChipPage: View {
     @Environment(GalleryModel.self) private var model
+    @State private var rawMode = false
 
     var body: some View {
         let profile = model.profile(forPubkey: DEMO_PUBKEY_HEX)
         VStack(spacing: 16) {
+            RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrContentView — live mention resolution") {
                 NostrContentView(
                     tree: MentionSample.note,
                     mentionLabel: { uri in
-                        model.profile(forPubkey: uri.primaryId)?.displayName
-                            ?? NostrContentView.defaultMentionLabel(uri)
+                        rawMode
+                            ? uri.uri
+                            : model.profile(forPubkey: uri.primaryId)?.displayName
+                                ?? NostrContentView.defaultMentionLabel(uri)
                     }
                 )
                 Text("The kernel fetches kind:0 automatically; the app just reads the snapshot.")
@@ -184,8 +211,8 @@ struct ContentMentionChipPage: View {
             }
             ContentPageFrame(caption: "NostrMentionChip — no avatar") {
                 NostrMentionChip(
-                    pubkey: "deadbeefcafebabedeadbeefcafebabe",
-                    displayName: "satoshi",
+                    pubkey: DEMO_PUBKEY_HEX,
+                    displayName: profile?.displayName,
                     showsAvatar: false
                 )
             }
@@ -196,12 +223,27 @@ struct ContentMentionChipPage: View {
 // MARK: - content-minimal
 
 struct ContentMinimalPage: View {
+    @Environment(GalleryModel.self) private var model
+    @State private var rawMode = false
+
     var body: some View {
         VStack(spacing: 16) {
+            RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrMinimalContentView(runs:)") {
-                NostrMinimalContentView(runs: SampleContent.minimalRuns)
+                NostrMinimalContentView(runs: runs)
             }
         }
+    }
+
+    private var runs: [NostrContentRun] {
+        SampleContent.richTree.nostrMinimalRuns(
+            mentionLabel: rawMode
+                ? { uri in uri.uri }
+                : { uri in
+                    model.profile(forPubkey: uri.primaryId)?.displayName
+                        ?? NostrContentView.defaultMentionLabel(uri)
+                }
+        )
     }
 }
 
@@ -229,14 +271,17 @@ struct ContentMediaGridPage: View {
 // MARK: - content-quote-card
 
 struct ContentQuoteCardPage: View {
+    @Environment(GalleryModel.self) private var model
+
     var body: some View {
+        let profile = model.profile(forPubkey: DEMO_PUBKEY_HEX)
         VStack(spacing: 16) {
             ContentPageFrame(caption: "NostrQuoteCard — rich") {
                 NostrQuoteCard(
                     model: NostrQuoteCardModel(
-                        id: "deadbeef",
-                        authorPubkey: "deadbeefcafebabedeadbeefcafebabe",
-                        authorDisplayName: "satoshi",
+                        id: "demo-event-1",
+                        authorPubkey: DEMO_PUBKEY_HEX,
+                        authorDisplayName: profile?.displayName,
                         content: "GM Nostr. This is what an embedded note quote card looks like.",
                         createdAtDisplay: "2026-05-25"
                     ),
@@ -246,10 +291,10 @@ struct ContentQuoteCardPage: View {
             ContentPageFrame(caption: "NostrQuoteCard — compact") {
                 NostrQuoteCard(
                     model: NostrQuoteCardModel(
-                        id: "deadbeef",
-                        authorPubkey: "deadbeefcafebabedeadbeefcafebabe",
-                        authorDisplayName: "satoshi",
-                        content: "GM. Compact card variant — single-line attribution + truncated body."
+                        id: "demo-event-2",
+                        authorPubkey: DEMO_PUBKEY_HEX,
+                        authorDisplayName: profile?.displayName,
+                        content: "Compact card variant — single-line attribution + truncated body."
                     ),
                     variant: .compact
                 )
@@ -257,7 +302,7 @@ struct ContentQuoteCardPage: View {
             ContentPageFrame(caption: "NostrQuoteCard — collapsed") {
                 NostrQuoteCard(
                     model: NostrQuoteCardModel(
-                        id: "deadbeef",
+                        id: "demo-event-3",
                         unresolvedUri: "nostr:nevent1example"
                     ),
                     variant: .collapsed
