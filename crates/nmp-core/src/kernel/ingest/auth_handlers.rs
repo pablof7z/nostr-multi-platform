@@ -112,6 +112,7 @@ impl Kernel {
             .lifecycle
             .handle_auth_state_change(relay_url.clone(), RelayAuthState::ChallengeReceived);
         self.update_relay_auth_status(role, RelayAuthState::ChallengeReceived, None);
+        self.sync_transport_from_lane(role, delivering_relay_url);
 
         let Some((signer, active_pubkey)) = self
             .auth_signers
@@ -160,6 +161,7 @@ impl Kernel {
                         .lifecycle
                         .handle_auth_state_change(relay_url, RelayAuthState::Failed);
                     self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
+                    self.sync_transport_from_lane(role, delivering_relay_url);
                     // T76 fail-closed: discard any REQs already deferred for
                     // this relay so they cannot leak unauthenticated.
                     self.purge_deferred_reqs_for(role);
@@ -174,6 +176,7 @@ impl Kernel {
                     .lifecycle
                     .handle_auth_state_change(relay_url, RelayAuthState::Authenticating);
                 self.update_relay_auth_status(role, RelayAuthState::Authenticating, None);
+                self.sync_transport_from_lane(role, delivering_relay_url);
                 let wire = json!([
                     "AUTH",
                     {
@@ -210,6 +213,7 @@ impl Kernel {
                     .lifecycle
                     .handle_auth_state_change(relay_url, RelayAuthState::Failed);
                 self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
+                self.sync_transport_from_lane(role, delivering_relay_url);
                 self.purge_deferred_reqs_for(role);
                 Vec::new()
             }
@@ -254,6 +258,7 @@ impl Kernel {
             None
         };
         self.update_relay_auth_status(role, new_state.clone(), reason);
+        self.sync_transport_from_lane(role, delivering_relay_url);
         if matches!(new_state, RelayAuthState::Failed) {
             // T76 fail-closed: relay rejected our AUTH event — discard any
             // deferred REQs for this relay rather than leak them.

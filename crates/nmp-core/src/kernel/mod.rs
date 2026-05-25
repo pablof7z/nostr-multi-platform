@@ -78,6 +78,7 @@ mod publish_terminal_status_tests;
 // derivations the three iOS diagnostics views used to do client-side. See
 // the module doc for the bible references.
 mod relay_diagnostics;
+mod relay_transport;
 // V-51 phase 1 — bounded ring-buffer projection of recent routing decisions
 // fed by the `RoutingTraceObserver` substrate seam. Constructed by
 // `Kernel::new` and held as `Arc<RoutingTraceProjection>` so the same
@@ -328,6 +329,7 @@ pub(crate) use lifecycle::LifecycleTransition;
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
 // `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
+use relay_transport::RelayTransportMap;
 use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
 use crate::substrate::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher,
@@ -401,6 +403,7 @@ pub(crate) struct Kernel {
     /// [`TimingMilestones`].
     timing: TimingMilestones,
     relays: HashMap<RelayRole, RelayHealth>,
+    transport_relays: RelayTransportMap,
     profiles: HashMap<String, Profile>,
     /// Locally-authored kind:0 publish intents that have not necessarily
     /// round-tripped from a relay yet. Kept separate from `profiles` so
@@ -1189,6 +1192,7 @@ impl Kernel {
                 .into_iter()
                 .map(|role| (role, RelayHealth::default()))
                 .collect(),
+            transport_relays: RelayTransportMap::default(),
             profiles: HashMap::new(),
             local_profile_intents,
             events: HashMap::new(),

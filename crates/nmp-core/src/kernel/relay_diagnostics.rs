@@ -174,7 +174,7 @@ impl Kernel {
 
         // Pre-compute statuses keyed by relay URL so each row can be filled
         // without a per-row linear scan back through `relay_statuses`.
-        let statuses = self.relay_statuses();
+        let statuses = self.relay_diagnostics_statuses();
         let mut by_url: BTreeMap<String, RelayStatus> = BTreeMap::new();
         let mut order: Vec<String> = Vec::with_capacity(statuses.len());
         for status in statuses {

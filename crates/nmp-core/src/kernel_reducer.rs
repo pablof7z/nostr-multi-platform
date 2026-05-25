@@ -134,7 +134,7 @@ impl KernelReducer {
         relay_url: &str,
         is_reconnect: bool,
     ) -> Vec<OutboundMessage> {
-        self.kernel.relay_connected(role);
+        self.kernel.relay_connected_url(role, relay_url);
         let mut outbound = Vec::new();
         if is_reconnect {
             // Same call shape the native actor uses; `replay_on_reconnect`

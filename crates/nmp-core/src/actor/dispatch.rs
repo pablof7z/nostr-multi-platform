@@ -1404,7 +1404,7 @@ pub(super) fn handle_relay_event(
             }
             let role = control.role;
             connected_relays.insert(role);
-            kernel.relay_connected(role);
+            kernel.relay_connected_url(role, &url);
             // T116/G1 — reconnect-replay. The first `Opened` for a URL is
             // the initial dial; the startup path (`maybe_send_startup` /
             // `kernel.startup_requests()`) emits REQs there. Every
