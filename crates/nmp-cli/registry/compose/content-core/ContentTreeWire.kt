@@ -65,21 +65,30 @@ public enum class PlaceholderReason {
     @SerialName("unresolved_uri") UnresolvedUri,
 }
 
-/** Reserved payment segment (`WireNode::Invoice`). */
+/**
+ * Reserved payment segment (`WireNode::Invoice`).
+ *
+ * The Rust `InvoiceKind` enum has bare `Serialize`/`Deserialize` derives
+ * (no `#[serde(tag = "…")]`), so serde emits the default
+ * **externally-tagged** form — one of:
+ *
+ *     {"Bolt11": "lnbc…"}
+ *     {"Bolt12": "lno…"}
+ *     {"Cashu":  "cashuA…"}
+ *
+ * We mirror that on the wire as three mutually-exclusive optional fields
+ * rather than a `sealed class`, because `kotlinx.serialization`'s default
+ * polymorphic encoding for sealed classes is *internally* tagged (`"type"`
+ * key + payload fields at the same level), which would not decode the
+ * externally-tagged JSON Rust actually emits. Exactly one of the three
+ * fields will be present in a well-formed payload.
+ */
 @Serializable
-public sealed class WireInvoice {
-    @Serializable
-    @SerialName("Bolt11")
-    public data class Bolt11(val value: String) : WireInvoice()
-
-    @Serializable
-    @SerialName("Bolt12")
-    public data class Bolt12(val value: String) : WireInvoice()
-
-    @Serializable
-    @SerialName("Cashu")
-    public data class Cashu(val value: String) : WireInvoice()
-}
+public data class WireInvoice(
+    @SerialName("Bolt11") val bolt11: String? = null,
+    @SerialName("Bolt12") val bolt12: String? = null,
+    @SerialName("Cashu") val cashu: String? = null,
+)
 
 /**
  * Flattened, Serializable projection of `nmp_core::nip21::NostrUri`. `uri` is
