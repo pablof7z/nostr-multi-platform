@@ -13,26 +13,75 @@ let DEMO_PUBKEY_HEX = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae5
 /// id means claim/release stays balanced even across re-renders.
 let GALLERY_PROFILE_CONSUMER_ID = "gallery"
 
+/// Bootstrap relay set seeded into the kernel on cold start. The gallery has
+/// no logged-in user, so there is no kind:10002 to source app relays from;
+/// without these seeds the kernel has nowhere to send a kind:0 fetch and
+/// every component page hangs on a placeholder.
+///
+///   • `wss://purplepag.es`  — canonical kind:0 / kind:10002 indexer
+///     (`FALLBACK_INDEXER_RELAY` in `crates/nmp-core/src/relay.rs`).
+///   • `wss://relay.damus.io`, `wss://nos.lol` — redundancy so pablof7z's
+///     write relays (discovered via kind:10002) remain reachable even if one
+///     of them is throttling at the moment of the screenshot.
+///
+/// Role `"both"` lets the same socket carry inbox + outbox legs of the
+/// planner's interest set (the diagnostic lane is `RelayRole::Content`; the
+/// NIP-65 read/write split lives on the `RelayEditRow`, not on the pool key).
+let GALLERY_BOOTSTRAP_RELAYS: [String] = [
+    "wss://purplepag.es",
+    "wss://relay.damus.io",
+    "wss://nos.lol",
+]
+
+/// Wire-shape of `projections.author_view.profile` — the kernel's
+/// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
+/// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
+private struct AuthorProfileWire: Decodable {
+    let pubkey: String
+    let npub: String
+    let displayName: String?
+    let pictureUrl: String?
+    let nip05: String?
+    let about: String?
+    let hasProfile: Bool?
+}
+
+/// Wire-shape of one entry in `projections.mention_profiles` — the kernel's
+/// `MentionProfilePayload`. Carries the bare minimum (no `npub`, no `nip05`,
+/// no `about`) so the gallery decoder falls back to deriving an `npubShort`
+/// from the hex pubkey when only this surface is available.
+private struct MentionProfileWire: Decodable {
+    let pubkey: String
+    let displayName: String?
+    let pictureUrl: String?
+}
+
+/// Wire-shape of `projections.author_view` (or null when no view is open).
+private struct AuthorViewWire: Decodable {
+    let pubkey: String
+    let profile: AuthorProfileWire
+}
+
 /// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The
-/// parallel `nmp-app-gallery` crate is authoritative; this decoder treats
-/// every key as optional so a missing `profiles` (the kernel is still
-/// fetching kind:0) or missing `accounts` (phase 1, no sign-in surface)
-/// degrades to empty rather than failing the whole tick.
+/// kernel's `KernelSnapshot` ships a host-extensible `projections` map; the
+/// gallery reads two keys from it:
+///
+///   * `projections.author_view.profile` — populated by `open_author`,
+///     carries a full `ProfileCard` with `npub`, `nip05`, and `about`.
+///     This is the primary source for the gallery's demo author.
+///   * `projections.mention_profiles[pubkey]` — populated for every author
+///     whose notes appear in a visible timeline / author view / thread
+///     view. Carries `display_name` + `picture_url` only (no `npub`).
+///     Secondary source; useful once the author_view's items are visible.
+///
+/// `snapshot.profiles[pubkey] -> ProfileWire?` is synthesised from those
+/// two surfaces so the per-component pages stay decoupled from the wire
+/// shape. Decoding is fault-tolerant — a missing/null projection key
+/// degrades to an empty map instead of failing the whole tick.
 struct GallerySnapshot: Decodable, Equatable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
-
-    private enum CodingKeys: String, CodingKey {
-        case running, profiles, accounts
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
-        self.profiles = try container.decodeIfPresent([String: ProfileWire].self, forKey: .profiles) ?? [:]
-        self.accounts = try container.decodeIfPresent([AccountWire].self, forKey: .accounts) ?? []
-    }
 
     static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [])
 
@@ -41,6 +90,119 @@ struct GallerySnapshot: Decodable, Equatable {
         self.profiles = profiles
         self.accounts = accounts
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case running, projections, accounts
+    }
+
+    private enum ProjectionsKeys: String, CodingKey {
+        case authorView, mentionProfiles, accounts
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
+
+        // `accounts` may live either at the top level (legacy / test fixtures)
+        // or under `projections.accounts` (current kernel snapshot shape).
+        var resolvedAccounts: [AccountWire] = []
+
+        var assembled: [String: ProfileWire] = [:]
+        if let projections = try? container.nestedContainer(
+            keyedBy: ProjectionsKeys.self,
+            forKey: .projections
+        ) {
+            if let view = try? projections.decodeIfPresent(
+                AuthorViewWire.self,
+                forKey: .authorView
+            ) {
+                let card = view.profile
+                let pubkey = card.pubkey.isEmpty ? view.pubkey : card.pubkey
+                assembled[pubkey] = profileWire(fromAuthorProfile: card, pubkey: pubkey)
+            }
+            if let mentions = try? projections.decodeIfPresent(
+                [String: MentionProfileWire].self,
+                forKey: .mentionProfiles
+            ) {
+                for (pubkey, payload) in mentions where assembled[pubkey] == nil {
+                    assembled[pubkey] = profileWire(fromMention: payload, pubkey: pubkey)
+                }
+            }
+            if let accs = try? projections.decodeIfPresent(
+                [AccountWire].self,
+                forKey: .accounts
+            ) {
+                resolvedAccounts = accs
+            }
+        }
+        // Top-level `accounts` fallback for tests / fixtures pre-projections.
+        if resolvedAccounts.isEmpty,
+           let topAccounts = try? container.decodeIfPresent(
+               [AccountWire].self,
+               forKey: .accounts
+           )
+        {
+            resolvedAccounts = topAccounts
+        }
+
+        self.profiles = assembled
+        self.accounts = resolvedAccounts
+    }
+}
+
+/// Build a `ProfileWire` from the kernel's `ProfileCard` (which carries
+/// `npub` already-formatted by Rust per aim.md §2). `npubShort` is the only
+/// Swift-side derivation; aim.md §2 stipulates shells own abbreviation.
+private func profileWire(fromAuthorProfile card: AuthorProfileWire, pubkey: String) -> ProfileWire {
+    ProfileWire(
+        pubkey: pubkey,
+        displayName: card.displayName?.nonEmpty,
+        about: card.about?.nonEmpty,
+        pictureUrl: card.pictureUrl?.nonEmpty,
+        nip05: card.nip05?.nonEmpty,
+        npub: card.npub,
+        npubShort: shortenNpub(card.npub)
+    )
+}
+
+/// Build a `ProfileWire` from a `mention_profiles` payload. The mention
+/// surface carries no `npub` / `nip05` / `about`, so the bech32 is empty
+/// (the npubShort still derives from the hex via `shortenNpub`'s pubkey
+/// suffix fallback when the npub is missing).
+private func profileWire(fromMention payload: MentionProfileWire, pubkey: String) -> ProfileWire {
+    ProfileWire(
+        pubkey: pubkey,
+        displayName: payload.displayName?.nonEmpty,
+        about: nil,
+        pictureUrl: payload.pictureUrl?.nonEmpty,
+        nip05: nil,
+        npub: "",
+        npubShort: shortHexPubkey(pubkey)
+    )
+}
+
+/// Truncate a bech32 npub for display (e.g. `npub1abcd…wxyz`). Mirrors the
+/// Rust-side helper the kernel deleted (aim.md §2 — shells own abbreviation).
+private func shortenNpub(_ npub: String) -> String {
+    guard npub.count > 12 else { return npub }
+    let prefix = npub.prefix(9) // "npub1XXXX"
+    let suffix = npub.suffix(4)
+    return "\(prefix)…\(suffix)"
+}
+
+/// Fallback display string when no npub is available (mention_profiles
+/// payload). Shows the first 8 and last 4 hex chars.
+private func shortHexPubkey(_ hex: String) -> String {
+    guard hex.count > 12 else { return hex }
+    let prefix = hex.prefix(8)
+    let suffix = hex.suffix(4)
+    return "\(prefix)…\(suffix)"
+}
+
+private extension String {
+    /// Return `nil` for an empty string, otherwise `self`. Lets the gallery
+    /// treat `displayName: ""` (kernel default) the same as a missing field.
+    var nonEmpty: String? { isEmpty ? nil : self }
 }
 
 /// Optional `{ "t":"snapshot", "v": GallerySnapshot }` outer envelope. The
@@ -90,8 +252,8 @@ final class GalleryModel {
     }
 
     /// One-shot bootstrap. Wires the push callback, starts the kernel actor,
-    /// then claims the demo pubkey's profile so user-* component pages have
-    /// real data to render.
+    /// seeds the bootstrap relay set, then opens an author view on the demo
+    /// pubkey so user-* component pages have real data to render.
     func start() {
         // Wire the push callback BEFORE start so the very first snapshot
         // tick lands in our model. The callback fires from the kernel actor
@@ -103,36 +265,73 @@ final class GalleryModel {
             }
         }
         kernel.start()
-        // Claim the demo profile (pablof7z). The kernel opens the right
-        // relay subscriptions and pushes the ProfileWire through the update
-        // callback under `snapshot.profiles[DEMO_PUBKEY_HEX]` when kind:0
-        // arrives.
-        kernel.claimProfile(pubkey: DEMO_PUBKEY_HEX, consumerID: GALLERY_PROFILE_CONSUMER_ID)
+        // Seed bootstrap relays. The gallery has no logged-in user → no
+        // kind:10002 → empty `app_relays` and no routing target. Adding these
+        // BEFORE the author-view open means the very first compile pass
+        // already has candidates, so the kind:0 fetch ships on tick 1
+        // instead of waiting for an external mailbox to arrive.
+        for url in GALLERY_BOOTSTRAP_RELAYS {
+            kernel.addRelay(url: url, role: "both")
+        }
+        // Open an author view on the demo pubkey (pablof7z). The kernel
+        // fetches kind:10002 + kind:0 from the discovery relays seeded
+        // above and surfaces the resolved `ProfileCard` under
+        // `projections.author_view.profile` in the push-callback snapshot.
+        //
+        // We deliberately do NOT use `claim_profile` here even though it
+        // is semantically the right primitive for "I want this profile":
+        // the kernel populates its internal `self.profiles` cache on
+        // kind:0 arrival, but no projection on the snapshot wire surface
+        // exposes that map for a claim-only pubkey (only the active
+        // account lands in `projections.profile`). `open_author` is the
+        // shortest path to the same data with a decoder-visible projection.
+        kernel.openAuthor(pubkey: DEMO_PUBKEY_HEX)
     }
 
     /// Decode a snapshot JSON payload received from the push callback.
-    /// Tries the direct `GallerySnapshot` shape first, then the
-    /// Chirp-style `{t,v}` envelope. A decode failure logs once and keeps
-    /// the previous snapshot intact (soft-fail).
+    /// Detects the Chirp-style `{ "t":"snapshot", "v":{…} }` envelope first —
+    /// the gallery's `register_defaults` composition ships every tick wrapped
+    /// in that envelope (the field-name discriminator is the `t` key). Direct
+    /// `GallerySnapshot` decode is the legacy / test-fixture fallback.
+    ///
+    /// A decode failure logs and keeps the previous snapshot intact (soft-fail).
     func decode(payload: String) {
         guard !payload.isEmpty else { return }
         let data = Data(payload.utf8)
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        // Attempt 1: direct payload — `{ running, profiles, accounts }`.
-        if let next = try? decoder.decode(GallerySnapshot.self, from: data) {
-            self.snapshot = next
-            self.lastDecodeError = nil
+        // Envelope-vs-direct discriminator. The kernel's update-channel
+        // payload always carries a top-level `t` key when wrapped (every
+        // production tick does). A payload without `t` is treated as a
+        // direct `GallerySnapshot` (legacy / test fixtures).
+        let isEnvelope: Bool = {
+            guard
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return false }
+            return json["t"] != nil && json["v"] is [String: Any]
+        }()
+
+        if isEnvelope {
+            do {
+                let envelope = try decoder.decode(GalleryEnvelope.self, from: data)
+                self.snapshot = envelope.v
+                self.lastDecodeError = nil
+            } catch {
+                let msg = "GallerySnapshot envelope decode failed: \(error.localizedDescription)"
+                gmLog.error("\(msg, privacy: .public)")
+                self.lastDecodeError = msg
+            }
             return
         }
-        // Attempt 2: envelope-wrapped — `{ "t":"snapshot", "v":{…} }`.
+
+        // Direct payload — `{ running, projections, accounts }`.
         do {
-            let envelope = try decoder.decode(GalleryEnvelope.self, from: data)
-            self.snapshot = envelope.v
+            let next = try decoder.decode(GallerySnapshot.self, from: data)
+            self.snapshot = next
             self.lastDecodeError = nil
         } catch {
-            let msg = "GallerySnapshot decode failed: \(error.localizedDescription)"
+            let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
             self.lastDecodeError = msg
         }

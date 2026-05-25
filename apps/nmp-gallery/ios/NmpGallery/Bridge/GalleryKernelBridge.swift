@@ -10,8 +10,11 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 /// Data-flow architecture (CRITICAL):
 ///   • Profile data arrives via the PUSH callback registered with
 ///     `nmp_app_set_update_callback`. The JSON the callback receives carries
-///     the full snapshot (including `profiles: {…}`) — this is identical to
-///     Chirp's update-channel pattern.
+///     the full snapshot wrapped in the kernel's `{ "t":"snapshot", "v":{…} }`
+///     envelope. The gallery reads `v.projections.author_view.profile` (and
+///     falls back to `v.projections.mention_profiles[pubkey]`) to find a
+///     specific pubkey's resolved kind:0 — this is the projection surface the
+///     `open_author` seam populates.
 ///   • `nmp_app_gallery_snapshot` is a status envelope only
 ///     (`{schema, alive, projections:{}}`); it is NOT a profile source. The
 ///     gallery does not rely on it for component data.
@@ -20,26 +23,28 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   1. `init()`         — `nmp_app_new()` then `nmp_app_gallery_register(raw)`.
 ///   2. `listen(_:)`     — registers the push callback that delivers snapshot JSON.
 ///   3. `start()`        — turns on the actor.
-///   4. `claimProfile/releaseProfile` — refcounted profile interest. The kernel
-///      fetches kind:0 from the relay and pushes the result via the callback.
-///   5. `dispatchAction` — generic action dispatch (phase 2).
-///   6. `deinit`         — clears callback, frees app.
+///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
+///      routing target when no logged-in user is present).
+///   5. `openAuthor`     — focused profile interest. The kernel fetches kind:10002
+///      + kind:0 and surfaces the resolved ProfileCard under
+///      `projections.author_view.profile`. The parallel
+///      `claimProfile/releaseProfile` pair stays available for the
+///      refcounted-interest case (a future kernel projection will expose those
+///      results in the snapshot — see the PR description).
+///   6. `dispatchAction` — generic action dispatch (phase 2).
+///   7. `deinit`         — clears callback, frees app.
 final class GalleryKernelHandle {
     let raw: UnsafeMutableRawPointer
-    /// Opaque handle returned by `nmp_app_gallery_register`. The status-envelope
-    /// pull (`nmp_app_gallery_snapshot`) uses it; profile data does NOT.
-    let galleryHandle: UnsafeMutableRawPointer?
     private var updateSink: GalleryUpdateSink?
 
     init() {
         raw = nmp_app_new()
         Self.configureStoragePath(for: raw)
-        // Phase 1: register the gallery projection on the kernel. The parallel
-        // `nmp-app-gallery` crate decides what the projection contributes.
-        galleryHandle = nmp_app_gallery_register(raw)
-        if galleryHandle == nil {
-            kbLog.error("nmp_app_gallery_register returned NULL — gallery projection not registered")
-        }
+        // Phase 1: register the gallery composition on the kernel. The parallel
+        // `nmp-app-gallery` crate forwards to `nmp_app_template::register_defaults`;
+        // the call is fire-and-forget (D6) — there is no opaque handle to capture
+        // because the gallery has no per-app projection mutex.
+        nmp_app_gallery_register(raw)
     }
 
     deinit {
@@ -113,6 +118,36 @@ final class GalleryKernelHandle {
         }
     }
 
+    /// Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
+    /// from discovery relays and exposes the resolved ProfileCard under
+    /// `projections.author_view.profile` in the push-callback snapshot. This
+    /// is the seam the gallery uses to read pablof7z's data — the parallel
+    /// `claim_profile` call populates the kernel's internal store but no
+    /// projection surfaces it for claim-only (no-active-account) pubkeys.
+    func openAuthor(pubkey: String) {
+        pubkey.withCString { nmp_app_open_author(raw, $0) }
+    }
+
+    func closeAuthor(pubkey: String) {
+        pubkey.withCString { nmp_app_close_author(raw, $0) }
+    }
+
+    // ── Relay seeding ────────────────────────────────────────────────────
+
+    /// Add a relay row. The kernel canonicalizes the URL, dials the socket via
+    /// `ensure_relay_worker`, and threads the URL into the planner's
+    /// `app_relays` set so kind:0 / kind:10002 lookups have a routing target
+    /// when there is no logged-in user. `role` accepts `"read"`, `"write"`, or
+    /// `"both"`; the gallery seeds indexer/content relays as `"both"` so the
+    /// same socket serves both inbox and outbox legs.
+    func addRelay(url: String, role: String) {
+        url.withCString { uPtr in
+            role.withCString { rPtr in
+                nmp_app_add_relay(raw, uPtr, rPtr)
+            }
+        }
+    }
+
     // ── Demo sign-in (phase 2) ───────────────────────────────────────────
 
     func signInNsec(_ secret: String) {
@@ -139,12 +174,14 @@ final class GalleryKernelHandle {
     // ── Status-envelope pull (NOT a profile source) ──────────────────────
 
     /// Pull the gallery's status envelope (`{schema, alive, projections:{}}`).
-    /// Returns nil when the projection isn't registered. Use this for
-    /// alive-checks / diagnostics only — profile data comes through the push
-    /// callback registered via `listen(_:)`.
+    /// Returns nil on any kernel-side failure (null pointer, allocation error,
+    /// JSON encode failure — all silent under D6). Use this for alive-checks /
+    /// diagnostics only — profile data comes through the push callback
+    /// registered via `listen(_:)`. The snapshot accessor takes the same `app`
+    /// pointer that drives every other FFI call (there is no separate handle
+    /// because the gallery carries no per-app projection mutex).
     func gallerySnapshotJSON() -> String? {
-        guard let handle = galleryHandle else { return nil }
-        guard let ptr = nmp_app_gallery_snapshot(handle) else { return nil }
+        guard let ptr = nmp_app_gallery_snapshot(raw) else { return nil }
         defer { nmp_app_gallery_snapshot_free(ptr) }
         return String(cString: ptr)
     }

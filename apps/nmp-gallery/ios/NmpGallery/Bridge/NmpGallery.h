@@ -31,9 +31,37 @@ void nmp_app_stop(void *app);
 
 // Claim a profile for `pubkey`. The kernel keeps a refcounted interest open
 // across all consumers (`consumer_id` is the bookkeeping key for matched
-// release calls). The gallery uses one consumer id — `"gallery"`.
+// release calls). The gallery uses one consumer id — `"gallery"`. NOTE:
+// `claim_profile` populates the kernel's internal `self.profiles` cache but
+// the snapshot does NOT surface that map for claim-only pubkeys (only the
+// active account's `projections.profile`, and `projections.mention_profiles`
+// derived from visible timeline items, are exposed). The gallery uses
+// `nmp_app_open_author` (below) instead so the claimed pubkey lands in
+// `projections.author_view.profile` where it is decodable.
 void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
+
+// Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
+// from discovery relays and surfaces the resolved `ProfileCard` under
+// `projections.author_view.profile` in the push-callback snapshot. The
+// gallery uses this seam to read pablof7z's profile because the alternative
+// `nmp_app_claim_profile` path does not project the resolved profile data
+// (claim-only pubkeys land in `self.profiles` but no projection exposes
+// that map). Refcounted — paired with `nmp_app_close_author`.
+void nmp_app_open_author(void *app, const char *pubkey);
+void nmp_app_close_author(void *app, const char *pubkey);
+
+// ── Relay management ─────────────────────────────────────────────────────
+
+// Add a relay row (operator-supplied), canonicalizing the URL and dialing a
+// real socket. The kernel uses the resulting `app_relays` set for routing
+// when there is no logged-in user and threads it through the planner so
+// kind:0 / kind:10002 lookups can reach a peer. `role` accepts `"read"`,
+// `"write"`, or `"both"` (NULL → `"both"`). Mirrors the corresponding entry
+// in Chirp's `NmpCore.h`; kept hand-in-sync by
+// `ci/check-ffi-header-drift.sh`.
+void nmp_app_add_relay(void *app, const char *url, const char *role);
+void nmp_app_remove_relay(void *app, const char *url);
 
 // ── Generic action dispatch (phase 2 / write surface) ────────────────────
 
@@ -62,21 +90,23 @@ void nmp_app_signin_nsec(void *app, const char *secret);
 // Identical to Chirp's update-channel pattern.
 //
 // `nmp_app_gallery_snapshot` returns a minimal status envelope only:
-//   { "schema": <u32>, "alive": <bool>, "projections": {} }
+//   { "schema": "nmp.gallery.snapshot/1", "alive": <bool>, "projections": {} }
 // The gallery uses it for diagnostics / alive-checks, not for component data.
 //
 // Flow:
-// 1. Call `nmp_app_gallery_register(app)` once after `nmp_app_new()` succeeds.
-//    Returns an opaque handle, or NULL on any failure (D6).
+// 1. Call `nmp_app_gallery_register(app)` once after `nmp_app_new()` succeeds
+//    and BEFORE `nmp_app_start`. Silent no-op on a NULL app (D6).
 // 2. Register the push callback via `nmp_app_set_update_callback`. Profile
 //    JSON arrives on every emit tick.
-// 3. `nmp_app_gallery_snapshot(handle)` is for status only; the shell owns
-//    the returned pointer until it calls `nmp_app_gallery_snapshot_free(ptr)`.
+// 3. `nmp_app_gallery_snapshot(app)` is for status only; the shell owns the
+//    returned pointer until it calls `nmp_app_gallery_snapshot_free(ptr)`.
+//    The snapshot accessor takes the same `app` pointer (there is no
+//    separate handle — the gallery has no per-app projection mutex).
 //
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or serialization failure (D6).
-void *nmp_app_gallery_register(void *app);
-char *nmp_app_gallery_snapshot(void *handle);
+void nmp_app_gallery_register(void *app);
+char *nmp_app_gallery_snapshot(void *app);
 void nmp_app_gallery_snapshot_free(char *ptr);
 
 // ── Heap-string release ──────────────────────────────────────────────────
