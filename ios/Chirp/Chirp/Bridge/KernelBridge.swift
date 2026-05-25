@@ -942,29 +942,30 @@ struct KernelUpdate: Decodable {
 // it to the existing rich struct used by `NoteRenderContext`. No Swift
 // derives a `MentionProfile` from a `TimelineItem` anymore.
 
-/// Wire shape for one entry in `projections["mention_profiles"]`.
-/// `pictureUrl` is always non-empty (Rust falls back to the identicon URI),
-/// so it surfaces as a plain `String` and the call site coerces to the
-/// existing `MentionProfile.pictureUrl: String?` (empty → nil) at the
-/// adapter boundary.
+/// Wire shape for one entry in `projections["mention_profiles"]`. Raw kind:0
+/// metadata fields — `displayName` is `nil` when no kind:0 has arrived for
+/// this pubkey, `pictureUrl` is `nil` when kind:0 has no `picture`. The
+/// presentation layer chooses the fallback (typically the abbreviated hex
+/// pubkey for the display name). ADR-0032 — backend ships raw data,
+/// presentation layer formats.
 struct MentionProfileWire: Decodable, Equatable {
-    let display: String
-    let pictureUrl: String
-    let avatarInitials: String
-    let avatarColor: String
+    let pubkey: String
+    let displayName: String?
+    let pictureUrl: String?
 }
 
 extension MentionProfile {
-    /// Bridge from the kernel-supplied wire payload. An empty
-    /// `picture_url` (which Rust never emits today — the placeholder URI is
-    /// always populated) collapses to `nil` so the existing
-    /// `MentionProfile.pictureUrl: String?` semantics stay unchanged.
+    /// Bridge from the kernel-supplied wire payload. `displayName` falls
+    /// back to the abbreviated hex pubkey when no kind:0 has arrived;
+    /// avatar initials and tint colour are derived locally from the same
+    /// inputs (`PubkeyFormatting.swift`).
     init(wire: MentionProfileWire) {
+        let display = wire.displayName ?? wire.pubkey.shortHex
         self.init(
-            display: wire.display,
-            pictureUrl: wire.pictureUrl.isEmpty ? nil : wire.pictureUrl,
-            initials: wire.avatarInitials,
-            colorHex: wire.avatarColor
+            display: display,
+            pictureUrl: wire.pictureUrl,
+            initials: display.displayInitials,
+            colorHex: wire.pubkey.pubkeyColorHex
         )
     }
 }
@@ -999,53 +1000,24 @@ struct SettingsHubSummary: Decodable, Equatable {
 /// surface area — omitted deliberately.
 struct GroupChatMessage: Decodable, Identifiable, Equatable {
     let id: String
+    /// Author Nostr pubkey, hex (64 chars). Presentation layer formats for
+    /// display (ADR-0032).
     let pubkey: String
     let content: String
+    /// Event `created_at` (Unix seconds). Presentation layer formats for
+    /// display via `relativeTimeFromUnixSeconds` (ADR-0032).
     let createdAt: UInt64
-    /// Pre-formatted abbreviated relative-time label (e.g. `"3s ago"`,
-    /// `"12m ago"`, `"5h ago"`, `"2d ago"`) computed by the Rust NIP-29
-    /// group-chat projection at every snapshot tick (V-22 thin-shell fix —
-    /// aim.md §2: display formatting is Rust-owned). The view binds this
-    /// directly and never calls `RelativeDateTimeFormatter`.
-    let createdAtDisplay: String
-    /// Pre-formatted abbreviated hex pubkey (`"<first8>…<last8>"`) — what
-    /// the chat row header and the reply banner render in place of the raw
-    /// hex (V-25 thin-shell fix). Computed in
-    /// `nmp_nip29::projection::group_chat::pubkey_display` at ingest; the
-    /// view binds it directly and never slices the hex string itself.
-    let authorDisplay: String
-    /// Two-char uppercase avatar-tile label — the first two hex chars of
-    /// `pubkey`, uppercased. Computed in
-    /// `nmp_nip29::projection::group_chat::pubkey_initials` at ingest
-    /// (V-25 thin-shell fix).
-    let authorInitials: String
-    /// Deterministic 6-hex avatar background colour (uppercase, no `#`).
-    /// Computed in `nmp_nip29::projection::group_chat::avatar_color_hex`
-    /// using the **same djb2 algorithm** as `nmp_nip17::display::
-    /// avatar_color_hex` and `nmp_marmot::projection::display::
-    /// avatar_color_hex`, so the same author renders with the same tint
-    /// in DMs, in NIP-29 group chat, and in Marmot rows (V-25 thin-shell
-    /// fix — Swift used to slice `String(pubkey.prefix(6))`, a different
-    /// algorithm that produced inconsistent tints across surfaces).
-    let authorColorHex: String
     let kind: UInt32
 }
 
 /// The serialised read-model a group-chat screen consumes. `messages` is
 /// ordered newest-first (`created_at` descending, ties broken by id) by the
-/// Rust projection — Swift does not re-sort.
-///
-/// `groupInitials` is the V-29 thin-shell field: the two-char uppercase
-/// avatar-tile label for `PublicGroupRow`, computed in Rust from
-/// `GroupId::local_id` (`nmp_nip29::projection::group_chat::group_initials`)
-/// at every snapshot tick. The view binds it directly and never slices the
-/// local-id string itself. Decoded via `.convertFromSnakeCase` from the
-/// snake_case JSON key `group_initials`.
+/// Rust projection — Swift does not re-sort. Avatar / initials for the
+/// group tile are derived by the presentation layer (ADR-0032).
 struct GroupChatSnapshot: Decodable, Equatable {
     let messages: [GroupChatMessage]
-    let groupInitials: String
 
-    static let empty = GroupChatSnapshot(messages: [], groupInitials: "?")
+    static let empty = GroupChatSnapshot(messages: [])
 }
 
 // ─── NIP-29 group-discovery read model ────────────────────────────────────
@@ -1180,13 +1152,9 @@ struct DmMessage: Decodable, Identifiable, Equatable {
     let id: String
     let senderPubkey: String
     let content: String
+    /// Event `created_at` (Unix seconds). Presentation layer formats via
+    /// `relativeTimeFromUnixSeconds` (ADR-0032).
     let createdAt: UInt64
-    /// Pre-formatted abbreviated relative-time label (e.g. `"3s ago"`,
-    /// `"12m ago"`, `"5h ago"`, `"2d ago"`) computed by the Rust DM
-    /// projection at every snapshot tick (V-20 thin-shell fix — aim.md §2:
-    /// display formatting is Rust-owned). The view binds this directly and
-    /// never calls `RelativeDateTimeFormatter`.
-    let createdAtDisplay: String
     let replyTo: String?
     let isOutgoing: Bool
     let sourceRelays: [String]?
@@ -1198,20 +1166,12 @@ struct DmMessage: Decodable, Identifiable, Equatable {
 /// reverses (thin-shell rule). The thread's most-recent message is
 /// `messages.last`.
 ///
-/// Display fields (`peerNpub`, `peerShortNpub`, `peerAvatarInitials`,
-/// `peerAvatarColor`) are computed in Rust at snapshot time — the shell
-/// renders them directly (thin-shell rule, no bech32 encoding in Swift).
+/// ADR-0032: only the raw peer hex pubkey crosses the FFI boundary. The
+/// presentation layer formats it for display (`shortHex`,
+/// `pubkeyColorHex`, `displayInitials`).
 struct DmConversation: Decodable, Identifiable, Equatable {
     /// The OTHER party in the thread (hex pubkey). Also the list identity.
     let peerPubkey: String
-    /// Full bech32 `npub1…` encoding of `peerPubkey`. For copy/paste.
-    let peerNpub: String
-    /// Abbreviated bech32: 10-head + "…" + 6-tail. Ready for display rows.
-    let peerShortNpub: String
-    /// Two-char uppercase initials for the avatar tile.
-    let peerAvatarInitials: String
-    /// Six-hex deterministic avatar background colour (no `#` prefix).
-    let peerAvatarColor: String
     let messages: [DmMessage]
 
     var id: String { peerPubkey }
@@ -1223,13 +1183,11 @@ struct DmConversation: Decodable, Identifiable, Equatable {
 // under the snapshot key `"nmp.follow_list"`. All display strings are
 // computed in Rust; Swift renders what it receives (thin-shell rule).
 
-/// One entry in the active account's follow list.
+/// One entry in the active account's follow list. Only the raw hex
+/// `pubkey` crosses the FFI boundary; the presentation layer formats
+/// the abbreviated label / avatar tint / initials locally (ADR-0032).
 struct FollowEntry: Decodable, Identifiable, Equatable {
     let pubkey: String
-    let npub: String
-    let shortNpub: String
-    let avatarInitials: String
-    let avatarColor: String
     var id: String { pubkey }
 }
 
@@ -1744,52 +1702,66 @@ struct OutboxSummary: Decodable, Equatable {
 /// maps Rust snake_case (`balance_sats`, `wallet_npub_short`, …) onto these
 /// camelCase properties automatically.
 ///
-/// V-23 thin-shell: `balanceSats`, `balanceSatsDisplay`, `walletNpubShort`,
-/// `isReady`, and `isConnected` are now Rust-computed and decoded — the shell
-/// no longer derives any of them.
+/// ADR-0032: `balanceSatsDisplay` and `walletNpubShort` are no longer
+/// emitted by the kernel. The presentation layer formats the satoshi
+/// balance and abbreviates the wallet npub locally. `isReady` /
+/// `isConnected` remain pre-computed because they encode protocol
+/// semantics, not display formatting.
 struct WalletStatusData: Decodable, Equatable {
     /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
     let status: String
     let relayUrl: String
+    /// Wallet service pubkey, hex (64 chars). Presentation layer formats
+    /// for display (ADR-0032 — bech32 / abbreviation are shell concerns).
+    let walletPubkeyHex: String
     let walletNpub: String
     let balanceMsats: UInt64?
-    /// Pre-computed satoshi balance (= `balance_msats / 1000`). `nil` until the
-    /// wallet responds to `get_balance`. Replaces the Swift-computed `balanceSats`
-    /// property (thin-shell V-23).
-    let balanceSats: UInt64?
-    /// Pre-formatted balance string with thousands separators (`"12,345"`). Binds
-    /// directly in `WalletView` — no Swift `formatted()` call needed (thin-shell V-23).
-    let balanceSatsDisplay: String?
-    /// Abbreviated wallet npub (`npub1abcd…wxyz`). Replaces `WalletView.shortNpub()`
-    /// (thin-shell V-23).
-    let walletNpubShort: String
-    /// `status == "ready"` pre-computed in Rust (thin-shell V-23).
+    /// Satoshi balance (= `balance_msats / 1000`). `nil` until the wallet
+    /// responds to `get_balance`. Presentation layer formats for display.
+    let balanceSats: Int?
+    /// `status == "ready"` pre-computed in Rust.
     let isReady: Bool
-    /// `status == "connecting" || status == "ready"` pre-computed in Rust
-    /// (thin-shell V-23).
+    /// `status == "connecting" || status == "ready"` pre-computed in Rust.
     let isConnected: Bool
 }
 
+/// Profile summary card. Raw kind:0 metadata fields — `displayName` and
+/// `pictureUrl` are `nil` until a kind:0 has arrived; the presentation
+/// layer chooses its own fallback (typically the abbreviated hex pubkey).
+/// ADR-0032.
 struct ProfileCard: Decodable, Equatable {
     let pubkey: String
+    /// Bech32 `npub1…` encoding. Pubkey-deterministic; retained for shells
+    /// that lack a bech32 encoder. Presentation layer chooses how to
+    /// abbreviate via `shortHex` on the underlying hex pubkey.
     let npub: String
-    /// Pre-truncated display form Rust formats with the `<first10>…<last8>`
-    /// policy. The shell binds this verbatim — no Swift-side truncation helper
-    /// (aim.md §6.9, Chirp thin-shell: zero display formatting in Swift).
-    let npubShort: String
-    let display: String
+    /// Display name from kind:0 (`display_name` / `displayName` / `name`,
+    /// first non-empty wins). `nil` when no kind:0 has arrived yet —
+    /// presentation layer renders its own fallback.
+    let displayName: String?
+    /// Picture URL from kind:0. `nil` when no kind:0 has arrived yet or
+    /// the metadata carries no `picture` field — presentation layer
+    /// chooses a placeholder strategy.
     let pictureUrl: String?
     let nip05: String
     let about: String
-    let avatarInitials: String
-    let avatarColor: String
-    let source: String
+    /// True when a kind:0 metadata event has been received for this
+    /// pubkey. False means the card is a placeholder pending relay
+    /// response.
     let hasProfile: Bool
     /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
     /// from kind:0. `nil` when the user has no lightning address or their
     /// kind:0 hasn't arrived. The zap button is shown only when this is
-    /// non-nil — Rust decides zapability, Swift renders (thin-shell rule).
+    /// non-nil — Rust decides zapability, the shell renders (thin-shell
+    /// rule).
     let lnurl: String?
+}
+
+extension ProfileCard {
+    /// Display label for this profile — kind:0 display name when present,
+    /// abbreviated hex pubkey otherwise. ADR-0032 fallback owned by the
+    /// presentation layer.
+    var displayLabel: String { displayName ?? pubkey.shortHex }
 }
 
 /// Dispatch spec for a `ProfileAction` that fires a write through

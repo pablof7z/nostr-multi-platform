@@ -145,7 +145,7 @@ struct EmbeddedNostrEventCard: View {
                     eventID: card.id,
                     pubkey: card.authorPubkey,
                     kind: card.kind,
-                    createdAt: card.createdAtDisplay
+                    createdAt: card.createdAt.relativeTimeFromUnixSeconds
                 )
                 NoteContentView(
                     content: card.content,
@@ -170,7 +170,7 @@ struct EmbeddedNostrEventCard: View {
                     eventID: item.id,
                     pubkey: item.authorPubkey,
                     kind: 1,
-                    createdAt: item.createdAtDisplay
+                    createdAt: item.createdAt.relativeTimeFromUnixSeconds
                 )
                 Text(item.contentPreview.isEmpty ? item.content : item.contentPreview)
                     .font(.callout)

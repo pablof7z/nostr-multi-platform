@@ -128,8 +128,8 @@ struct HomeFeedView: View {
                 } label: {
                     ChirpAvatar(
                         url: account.pictureUrl,
-                        initials: account.avatarInitials,
-                        colorHex: account.avatarColorHex,
+                        initials: (account.displayName ?? account.id).displayInitials,
+                        colorHex: account.id.pubkeyColorHex,
                         size: 32
                     )
                     .frame(width: 44, height: 44)

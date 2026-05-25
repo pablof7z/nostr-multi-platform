@@ -71,19 +71,20 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
     let name: String
     /// Empty-name fallback already applied by Rust ("Untitled group").
     let displayName: String
-    /// 2-char ASCII initials for the avatar tile, Rust-derived.
+    /// 2-char ASCII initials for the avatar tile, Rust-derived from
+    /// free-form metadata (group name) — not a banned pubkey/timestamp
+    /// formatter, kept in Rust per aim.md §2.
     let initials: String
+    /// Member Nostr pubkeys, hex (64 chars). Presentation layer formats
+    /// each entry for display (ADR-0032).
     let members: [String]
-    /// Pre-formatted abbreviated bech32 npubs (`npub1abcd…wxyz`) paired
-    /// 1:1 with `members`. Rust does the hex→npub conversion; the UI
-    /// renders these strings verbatim in the member-list sheet.
-    let membersDisplay: [String]
-    /// Pluralised member-count string ("3 members" / "1 member"),
-    /// Rust-derived; the UI prepends the lock visual.
-    let memberCountDisplay: String
-    let unread: UInt64
-    /// `Some("3")` when unread > 0, `nil` when no badge should render.
-    let unreadDisplay: String?
+    /// Member count (length of `members`). Pluralisation lives in the
+    /// presentation layer (ADR-0032).
+    let memberCount: UInt32
+    /// Total decrypted application-message count for the group, or `nil`
+    /// when zero. Read-cursor seam — the host shell owns the per-device
+    /// read watermark.
+    let unreadCount: UInt32?
     let lastMsgAt: UInt64?
 
     var id: String { idHex }
@@ -94,10 +95,8 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
         case displayName = "display_name"
         case initials
         case members
-        case membersDisplay = "members_display"
-        case memberCountDisplay = "member_count_display"
-        case unread
-        case unreadDisplay = "unread_display"
+        case memberCount = "member_count"
+        case unreadCount = "unread_count"
         case lastMsgAt = "last_msg_at"
     }
 }
@@ -107,9 +106,10 @@ struct MarmotPendingWelcome: Decodable, Identifiable, Equatable {
     let groupName: String
     /// Empty-name fallback already applied by Rust ("Group invite").
     let displayName: String
+    /// The inviter's Nostr pubkey, hex (64 chars — the field name is
+    /// historical; the value is hex, not bech32). Presentation layer
+    /// formats for display (ADR-0032).
     let inviterNpub: String
-    /// Pre-abbreviated bech32 form `npub1abcd…wxyz` (Rust-derived).
-    let inviterShort: String
 
     var id: String { idHex }
 
@@ -118,7 +118,6 @@ struct MarmotPendingWelcome: Decodable, Identifiable, Equatable {
         case groupName = "group_name"
         case displayName = "display_name"
         case inviterNpub = "inviter_npub"
-        case inviterShort = "inviter_short"
     }
 }
 
@@ -195,29 +194,20 @@ struct MarmotSnapshot: Decodable, Equatable {
 
 struct MarmotMessage: Decodable, Identifiable, Equatable {
     let id: String
-    let senderNpub: String
-    /// `npub1abcd…wxyz` abbreviation (Rust-derived).
-    let senderShort: String
-    /// 2-char ASCII initials for the avatar tile (Rust-derived).
-    let senderInitials: String
-    /// 6-hex deterministic avatar tint (Rust-derived).
-    let senderColorHex: String
+    /// Author Nostr pubkey, hex (64 chars). Presentation layer formats
+    /// for display (ADR-0032).
+    let senderPubkeyHex: String
     let content: String
+    /// Rumor `created_at` (sender clock, Unix seconds). Presentation
+    /// layer formats via `relativeTimeFromUnixSeconds` (ADR-0032).
     let createdAt: UInt64
-    /// Relative-time stamp ("3m" / "2h" / "5d"), Rust-formatted against
-    /// the snapshot's `now_secs` — the UI renders verbatim.
-    let createdAtDisplay: String
     let epoch: UInt64?
 
     enum CodingKeys: String, CodingKey {
         case id
-        case senderNpub = "sender_npub"
-        case senderShort = "sender_short"
-        case senderInitials = "sender_initials"
-        case senderColorHex = "sender_color_hex"
+        case senderPubkeyHex = "sender_pubkey_hex"
         case content
         case createdAt = "created_at"
-        case createdAtDisplay = "created_at_display"
         case epoch
     }
 }

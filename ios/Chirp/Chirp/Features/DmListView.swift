@@ -107,24 +107,24 @@ private struct DmConversationRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            // Rust pre-computes initials and colour — render verbatim
-            // (thin-shell rule: no pubkey truncation or colour derivation here).
+            // ADR-0032: initials, colour, and pubkey abbreviation are
+            // derived locally from the raw peer hex pubkey.
             ChirpAvatar(
                 url: nil,
-                initials: conversation.peerAvatarInitials,
-                colorHex: conversation.peerAvatarColor,
+                initials: conversation.peerPubkey.displayInitials,
+                colorHex: conversation.peerPubkey.pubkeyColorHex,
                 size: 40
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(conversation.peerShortNpub)
+                    Text(conversation.peerPubkey.shortHex)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer()
                     if let latest {
-                        Text(latest.createdAtDisplay)
+                        Text(latest.createdAt.relativeTimeFromUnixSeconds)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -181,13 +181,13 @@ private struct DmComposeSheet: View {
         !trimmedRecipient.isEmpty && !trimmedDraft.isEmpty
     }
 
-    /// Follows filtered by `searchQuery` against the short npub.
-    /// An empty query shows all follows (up to the list length).
+    /// Follows filtered by `searchQuery` against the abbreviated pubkey
+    /// derived locally (ADR-0032). An empty query shows all follows.
     private var filteredFollows: [FollowEntry] {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return model.followList.follows }
         return model.followList.follows.filter {
-            $0.shortNpub.lowercased().contains(q)
+            $0.pubkey.lowercased().contains(q)
         }
     }
 
@@ -209,11 +209,11 @@ private struct DmComposeSheet: View {
                                 HStack(spacing: 8) {
                                     ChirpAvatar(
                                         url: nil,
-                                        initials: follow.avatarInitials,
-                                        colorHex: follow.avatarColor,
+                                        initials: follow.pubkey.displayInitials,
+                                        colorHex: follow.pubkey.pubkeyColorHex,
                                         size: 32
                                     )
-                                    Text(follow.shortNpub)
+                                    Text(follow.pubkey.shortHex)
                                         .font(.subheadline)
                                         .foregroundStyle(.primary)
                                     Spacer()
