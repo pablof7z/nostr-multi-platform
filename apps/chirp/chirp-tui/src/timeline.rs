@@ -1,6 +1,11 @@
 use nmp_core::display::short_npub;
 use serde_json::Value;
 
+use crate::ui::nostr_content::{
+    content_render_data::ContentRenderData, content_tree_wire::ContentTreeWire,
+};
+
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimelineRow {
     pub id: String,
@@ -11,6 +16,8 @@ pub struct TimelineRow {
     pub depth: usize,
     pub has_gap: bool,
     pub relation_counts: RowRelationCounts,
+    pub content_tree: Option<ContentTreeWire>,
+    pub content_render: ContentRenderData,
     /// 64-hex pubkeys appearing as NIP-21 profile mentions inside this
     /// row's `content_tree`. Sorted + deduped at construction so a stable
     /// equality holds across snapshot ticks (`RenderIntentTracker` diff-set
@@ -63,7 +70,14 @@ impl TimelineRow {
             .unwrap_or_else(|| short_npub(&author_pubkey));
         let content = string_field(card, "content");
         let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
-        let mention_pubkeys = mention_pubkeys_from_card(card);
+        let content_tree = card
+            .get("content_tree")
+            .and_then(ContentTreeWire::from_value);
+        let mention_pubkeys = content_tree
+            .as_ref()
+            .map(ContentTreeWire::mentioned_pubkeys)
+            .unwrap_or_default();
+        let content_render = ContentRenderData::from_value(card.get("content_render"));
         Self {
             id,
             author,
@@ -73,6 +87,8 @@ impl TimelineRow {
             depth,
             has_gap,
             relation_counts: RowRelationCounts::from_card(card),
+            content_tree,
+            content_render,
             mention_pubkeys,
         }
     }

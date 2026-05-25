@@ -1,6 +1,6 @@
 use super::*;
 use nmp_content::{WireNode, WireNostrUriKind};
-use nmp_core::nip19::encode_npub;
+use nmp_core::nip19::{encode_note, encode_npub};
 use nmp_threading::{ModulePolicy, TimelineBlock};
 use std::sync::Arc;
 
@@ -101,6 +101,101 @@ fn cards_include_content_tree_wire_for_mentions() {
                 if uri.kind == WireNostrUriKind::Profile && uri.primary_id == PK
         )
     }));
+}
+
+#[test]
+fn content_render_profiles_refresh_when_kind0_arrives_later() {
+    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    let mention = format!("nostr:{}", encode_npub(PK).expect("fixture npub encodes"));
+    let proj = ModularTimelineProjection::new(&spec());
+    proj.on_kernel_event(&note_with_content("S", 1, vec![], &format!("hello {mention}")));
+
+    let pre = proj
+        .snapshot()
+        .cards
+        .into_iter()
+        .find(|c| c.id == "S")
+        .expect("card exists");
+    assert_eq!(
+        pre.content_render
+            .profiles
+            .get(PK)
+            .and_then(|profile| profile.display.name.as_deref()),
+        None
+    );
+
+    proj.on_kernel_event(&KernelEvent {
+        id: "P".into(),
+        author: PK.into(),
+        kind: 0,
+        created_at: 2,
+        tags: vec![],
+        content: r#"{"display_name":"Bob","picture":"https://example.com/b.png"}"#.into(),
+    });
+    let post = proj
+        .snapshot()
+        .cards
+        .into_iter()
+        .find(|c| c.id == "S")
+        .expect("card exists");
+    let profile = post.content_render.profiles.get(PK).expect("mention profile");
+    assert_eq!(profile.display.name.as_deref(), Some("Bob"));
+    assert_eq!(
+        profile.display.picture_url.as_deref(),
+        Some("https://example.com/b.png")
+    );
+}
+
+#[test]
+fn content_render_events_refresh_when_quoted_event_arrives_later() {
+    let quoted_id = "b".repeat(64);
+    let note_uri = format!(
+        "nostr:{}",
+        encode_note(&quoted_id).expect("fixture note id encodes")
+    );
+    let proj = ModularTimelineProjection::new(&spec());
+    proj.on_kernel_event(&note_with_content(
+        "root",
+        1,
+        vec![],
+        &format!("quote {note_uri}"),
+    ));
+    let pre = proj
+        .snapshot()
+        .cards
+        .into_iter()
+        .find(|c| c.id == "root")
+        .expect("card exists");
+    assert!(
+        pre.content_render.events.is_empty(),
+        "quote cannot render until the referenced event is in the projection"
+    );
+
+    proj.on_kernel_event(&KernelEvent {
+        id: quoted_id.clone(),
+        author: "c".repeat(64),
+        kind: 1,
+        created_at: 2,
+        tags: vec![],
+        content: "quoted note body #nostr".into(),
+    });
+    let post = proj
+        .snapshot()
+        .cards
+        .into_iter()
+        .find(|c| c.id == "root")
+        .expect("card exists");
+    let quote = post
+        .content_render
+        .events
+        .get(&quoted_id)
+        .expect("resolved quote event");
+    assert_eq!(quote.content_preview, "quoted note body #nostr");
+    assert!(quote
+        .content_tree
+        .nodes
+        .iter()
+        .any(|node| matches!(node, WireNode::Hashtag { tag } if tag == "nostr")));
 }
 
 #[test]

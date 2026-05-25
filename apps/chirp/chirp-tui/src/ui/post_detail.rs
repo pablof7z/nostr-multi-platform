@@ -250,6 +250,49 @@ fn count_value(count: &RowRelationCount) -> u64 {
     }
 }
 
+fn append_content_lines(
+    lines: &mut Vec<Line<'static>>,
+    row: &TimelineRow,
+    prefix: Span<'static>,
+    bg: ratatui::style::Color,
+    width: usize,
+) {
+    let rendered = row
+        .content_tree
+        .as_ref()
+        .map(|tree| {
+            NostrContentView::new(tree)
+                .render_data(Some(&row.content_render))
+                .lines(width)
+        })
+        .unwrap_or_else(|| {
+            wrap_body(&row.content, width)
+                .into_iter()
+                .map(|body| Line::from(Span::styled(body, Style::default().fg(BODY_TEXT))))
+                .collect()
+        });
+    for line in rendered {
+        lines.push(prefix_line(line, prefix.clone(), bg, width));
+    }
+}
+
+fn prefix_line(
+    line: Line<'static>,
+    prefix: Span<'static>,
+    bg: ratatui::style::Color,
+    width: usize,
+) -> Line<'static> {
+    let mut used = 0usize;
+    let mut spans = vec![prefix];
+    for span in line.spans {
+        used += span.content.chars().count();
+        spans.push(Span::styled(span.content.to_string(), span.style.bg(bg)));
+    }
+    spans.push(Span::styled(pad_for(width, used), Style::default().bg(bg)));
+    Line::from(spans)
+}
+
+
 fn wrap_body(content: &str, width: usize) -> Vec<String> {
     if width == 0 {
         return vec![String::new()];

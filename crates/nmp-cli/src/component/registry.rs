@@ -80,6 +80,60 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         "compose/content-view/NostrContentGrouping.kt",
         include_str!("../../registry/compose/content-view/NostrContentGrouping.kt"),
     ),
+    // Ratatui content widgets.
+    (
+        "tui/content-core/content_tree_wire.rs",
+        include_str!("../../registry/tui/content-core/content_tree_wire.rs"),
+    ),
+    (
+        "tui/content-core/content_render_data.rs",
+        include_str!("../../registry/tui/content-core/content_render_data.rs"),
+    ),
+    (
+        "tui/content-minimal/nostr_minimal_content.rs",
+        include_str!("../../registry/tui/content-minimal/nostr_minimal_content.rs"),
+    ),
+    (
+        "tui/content-mention-chip/nostr_mention_chip.rs",
+        include_str!("../../registry/tui/content-mention-chip/nostr_mention_chip.rs"),
+    ),
+    (
+        "tui/content-media-grid/nostr_media_grid.rs",
+        include_str!("../../registry/tui/content-media-grid/nostr_media_grid.rs"),
+    ),
+    (
+        "tui/content-quote-card/nostr_quote_card.rs",
+        include_str!("../../registry/tui/content-quote-card/nostr_quote_card.rs"),
+    ),
+    (
+        "tui/content-view/nostr_content_view.rs",
+        include_str!("../../registry/tui/content-view/nostr_content_view.rs"),
+    ),
+    // Ratatui user profile widgets.
+    (
+        "tui/user-avatar/profile_wire.rs",
+        include_str!("../../registry/tui/user-avatar/profile_wire.rs"),
+    ),
+    (
+        "tui/user-avatar/nostr_avatar.rs",
+        include_str!("../../registry/tui/user-avatar/nostr_avatar.rs"),
+    ),
+    (
+        "tui/user-name/nostr_profile_name.rs",
+        include_str!("../../registry/tui/user-name/nostr_profile_name.rs"),
+    ),
+    (
+        "tui/user-nip05/nostr_nip05_badge.rs",
+        include_str!("../../registry/tui/user-nip05/nostr_nip05_badge.rs"),
+    ),
+    (
+        "tui/user-npub/nostr_npub_chip.rs",
+        include_str!("../../registry/tui/user-npub/nostr_npub_chip.rs"),
+    ),
+    (
+        "tui/user-card/nostr_user_card.rs",
+        include_str!("../../registry/tui/user-card/nostr_user_card.rs"),
+    ),
 ];
 
 #[derive(Deserialize)]

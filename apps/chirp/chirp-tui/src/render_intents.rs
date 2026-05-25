@@ -77,6 +77,8 @@ mod tests {
             depth: 0,
             has_gap: false,
             relation_counts: Default::default(),
+            content_tree: None,
+            content_render: Default::default(),
             mention_pubkeys,
         }
     }
