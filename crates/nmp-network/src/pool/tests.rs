@@ -21,8 +21,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::{
-    inner::canonicalize, ClosedReason, HealthState, Pool, PoolConfig, PoolEvent, RelayFrame,
-    RelayHandle, WireFrame,
+    inner::{canonicalize, classify_text_frame},
+    ClosedReason, HealthState, Pool, PoolConfig, PoolEvent, RelayFrame, RelayHandle, WireFrame,
 };
 use crate::role::RelayRole;
 
@@ -375,4 +375,158 @@ fn ensure_open_with_explicit_role_overrides_default() {
         .expect("default-role row");
     assert_eq!(row_a.role, RelayRole::Indexer);
     pool.shutdown();
+}
+
+// ─── Step 8 phase E — NIP-42 AUTH wire/FSM split ─────────────────────
+//
+// These tests lock the wire-layer side of the split: the pool's
+// translator pre-classifies `["AUTH", <challenge>]` into
+// `RelayFrame::Auth(challenge)` and leaves everything else as
+// `RelayFrame::Text`. The kind:22242 reply builder lives in
+// `nmp-nip42` and the per-relay pause/replay FSM lives in
+// `nmp-core::subs::AuthGate` — neither is named anywhere in this crate
+// (see `auth_gate_and_22242_are_not_named_in_this_crate`).
+
+#[test]
+fn classify_auth_extracts_non_empty_challenge() {
+    match classify_text_frame(r#"["AUTH","challenge-abc"]"#.to_string()) {
+        RelayFrame::Auth(c) => assert_eq!(c, "challenge-abc"),
+        other => panic!("expected RelayFrame::Auth, got {other:?}"),
+    }
+}
+
+#[test]
+fn classify_passes_non_auth_text_through_untouched() {
+    // EVENT/EOSE/OK/NOTICE/CLOSED all stay as Text — the kernel ingest
+    // path owns those semantics; the wire layer never duplicates the
+    // vocabulary.
+    let cases = [
+        r#"["EVENT","sub1",{"id":"x"}]"#,
+        r#"["EOSE","sub1"]"#,
+        r#"["OK","abcd",true,""]"#,
+        r#"["NOTICE","hi"]"#,
+        r#"["CLOSED","sub1","reason"]"#,
+    ];
+    for raw in cases {
+        match classify_text_frame(raw.to_string()) {
+            RelayFrame::Text(t) => assert_eq!(t, raw),
+            other => panic!("expected RelayFrame::Text for {raw}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn classify_malformed_auth_falls_through_to_text() {
+    // Empty challenge — NIP-42 forbids it (would yield an unsignable
+    // event). The pool must NOT silently swallow these; the kernel
+    // ingest path logs them as malformed.
+    match classify_text_frame(r#"["AUTH",""]"#.to_string()) {
+        RelayFrame::Text(t) => assert_eq!(t, r#"["AUTH",""]"#),
+        other => panic!("expected fall-through to Text, got {other:?}"),
+    }
+    // Wrong-typed challenge (number instead of string).
+    match classify_text_frame(r#"["AUTH",42]"#.to_string()) {
+        RelayFrame::Text(_) => {}
+        other => panic!("expected Text for typed-wrong challenge, got {other:?}"),
+    }
+    // Missing challenge.
+    match classify_text_frame(r#"["AUTH"]"#.to_string()) {
+        RelayFrame::Text(_) => {}
+        other => panic!("expected Text for missing challenge, got {other:?}"),
+    }
+}
+
+#[test]
+fn classify_does_not_misfire_on_auth_substring_in_other_frames() {
+    // A NOTICE that happens to mention AUTH must NOT be pre-classified.
+    let raw = r#"["NOTICE","AUTH required for write"]"#;
+    match classify_text_frame(raw.to_string()) {
+        RelayFrame::Text(t) => assert_eq!(t, raw),
+        other => panic!("expected Text, got {other:?}"),
+    }
+}
+
+#[test]
+fn classify_invalid_json_falls_through_to_text() {
+    // The pool must not crash on garbage; the kernel's parser owns the
+    // structural error path.
+    let raw = "not-json-at-all-AUTH";
+    match classify_text_frame(raw.to_string()) {
+        RelayFrame::Text(t) => assert_eq!(t, raw),
+        other => panic!("expected Text on garbage, got {other:?}"),
+    }
+}
+
+/// Doctrine guard: `nmp-network` MUST NOT name the planner-side
+/// `AuthGate`, the kind:22242 event, or the per-relay
+/// `RelayAuthState` enum anywhere — those belong to
+/// `nmp-core::subs::AuthGate` and `nmp-nip42` respectively. This test
+/// greps the crate's own source tree at test time so future drift
+/// (someone reaching for `nmp-core::subs::AuthGate` from inside the
+/// transport layer) trips a hard failure rather than silently
+/// re-entangling the layers.
+///
+/// Bare references in comments are allowed (and exist today to point
+/// readers at the canonical home); the guard only rejects code
+/// references.
+#[test]
+fn auth_gate_and_22242_are_not_named_in_this_crate() {
+    use std::path::Path;
+    let crate_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let this_file = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("pool")
+        .join("tests.rs");
+    let mut offenders: Vec<String> = Vec::new();
+    walk_rs_files(&crate_src, &mut |path, contents| {
+        // The test file itself has to name the forbidden tokens to test
+        // for their absence; skip it.
+        if path == this_file {
+            return;
+        }
+        for (lineno, line) in contents.lines().enumerate() {
+            // Strip trivial trailing comments so a `// AuthGate lives in
+            // nmp-core::subs` doc-comment doesn't trip the guard.
+            let code = line.split("//").next().unwrap_or("");
+            // Forbidden semantic tokens:
+            //   - `AuthGate` (the pause/replay FSM)
+            //   - `22242`    (the kind:22242 AUTH event id)
+            //   - `RelayAuthState` (the per-relay FSM enum)
+            //   - `build_auth_event` (the kind:22242 builder)
+            for needle in ["AuthGate", "22242", "RelayAuthState", "build_auth_event"] {
+                if code.contains(needle) {
+                    offenders.push(format!(
+                        "{}:{}: {}",
+                        path.display(),
+                        lineno + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+    });
+    assert!(
+        offenders.is_empty(),
+        "nmp-network must not name AuthGate / kind:22242 / RelayAuthState in code \
+         (the FSM lives in `nmp-core::subs::AuthGate` and the event builder lives \
+         in `nmp-nip42::build_auth_event`); offenders:\n{}",
+        offenders.join("\n")
+    );
+}
+
+fn walk_rs_files(dir: &std::path::Path, sink: &mut dyn FnMut(&std::path::Path, &str)) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_rs_files(&path, sink);
+        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            if let Ok(contents) = std::fs::read_to_string(&path) {
+                sink(&path, &contents);
+            }
+        }
+    }
 }

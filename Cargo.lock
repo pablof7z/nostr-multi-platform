@@ -3957,7 +3957,9 @@ version = "0.1.0"
 dependencies = [
  "js-sys",
  "mio",
+ "nmp-nip42-types",
  "rustls",
+ "serde_json",
  "tungstenite",
  "wasm-bindgen",
  "web-sys",

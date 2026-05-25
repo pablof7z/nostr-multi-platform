@@ -46,7 +46,11 @@
 //!   PR. `nmp-signer-broker::relay_client` still runs its own
 //!   tungstenite client until then (V-13 Stage 2).
 //! - **Phase E** (NIP-42 wire/FSM split — surface `AUTH` as a distinct
-//!   [`RelayFrame::Auth`] variant) is a separate PR.
+//!   [`RelayFrame::Auth`] variant) shipped: the translator's
+//!   `tungstenite::Message::Text → RelayFrame` step pre-classifies the
+//!   NIP-42 frame shape via `nmp-nip42-types::parse_auth_frame`.
+//!   `nmp-network` still does NOT name `AuthGate`, kind:22242, or the
+//!   `RelayAuthState` enum.
 //! - **Actor migration** off the legacy `RelayEvent`/`RelayCommand`
 //!   API. Today's actor (`crates/nmp-core/src/actor/relay_mgmt.rs`)
 //!   still drives `spawn_relay_worker` directly. The legacy entry
