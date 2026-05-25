@@ -19,6 +19,15 @@ import mentionChipSwift from "../../../crates/nmp-cli/registry/swiftui/content-m
 import quoteCardSwift from "../../../crates/nmp-cli/registry/swiftui/content-quote-card/NostrQuoteCard.swift?raw";
 import mediaGridSwift from "../../../crates/nmp-cli/registry/swiftui/content-media-grid/NostrMediaGrid.swift?raw";
 
+// Compose (M16-C4): mirror the SwiftUI components in behavior.
+import composeContentRendererKotlin from "../../../crates/nmp-cli/registry/compose/content-core/NostrContentRenderer.kt?raw";
+import composeContentTreeWireKotlin from "../../../crates/nmp-cli/registry/compose/content-core/ContentTreeWire.kt?raw";
+import composeContentViewKotlin from "../../../crates/nmp-cli/registry/compose/content-view/NostrContentView.kt?raw";
+import composeContentGroupingKotlin from "../../../crates/nmp-cli/registry/compose/content-view/NostrContentGrouping.kt?raw";
+import composeMentionChipKotlin from "../../../crates/nmp-cli/registry/compose/content-mention-chip/NostrMentionChip.kt?raw";
+import composeQuoteCardKotlin from "../../../crates/nmp-cli/registry/compose/content-quote-card/NostrQuoteCard.kt?raw";
+import composeMediaGridKotlin from "../../../crates/nmp-cli/registry/compose/content-media-grid/NostrMediaGrid.kt?raw";
+
 export type ComponentFile = {
   /** Source path in the registry tree (where `nmp add component` reads from). */
   source: string;
@@ -228,6 +237,144 @@ export const COMPONENTS: Component[] = [
       "Replace the `AsyncImage` calls with your own loader; the file deliberately exposes a `MediaThumbnailLoader` typealias for that swap.",
     ],
   },
+  // ---------------------------------------------------------------------
+  // Compose components (M16-C4). Mirror the SwiftUI components above in
+  // behavior; identical install layout + dependency graph.
+  // ---------------------------------------------------------------------
+  {
+    id: "compose/content-core",
+    slug: "compose-content-core",
+    routeId: "compose-content-core",
+    version: "0.1.0",
+    target: "compose",
+    description:
+      "Shared Compose renderer configuration + ContentTreeWire kotlinx.serialization mirror for app-owned Nostr content components.",
+    longDescription:
+      "`NostrContentRenderer` is the small CompositionLocal-injected data class every content component reads to pick colors and tap callbacks. Install it once; every other Compose content component on this page picks it up automatically.",
+    dependencies: [],
+    files: [
+      {
+        source: "compose/content-core/NostrContentRenderer.kt",
+        target: "Components/NostrContent/NostrContentRenderer.kt",
+        role: "source",
+        content: composeContentRendererKotlin,
+      },
+      {
+        source: "compose/content-core/ContentTreeWire.kt",
+        target: "Components/NostrContent/ContentTreeWire.kt",
+        role: "source",
+        content: composeContentTreeWireKotlin,
+      },
+    ],
+    screenshots: ["content-core-preview.png"],
+    customization: [
+      "Edit `NostrContentRenderer.kt` to change the default text, mention, hashtag, and link colors — or to swap the callback signatures for your own routing model.",
+      "Inject a per-screen renderer with `CompositionLocalProvider(LocalNostrContentRenderer provides ...)`; child content components pick it up via `LocalNostrContentRenderer.current`.",
+      "`ContentTreeWire.kt` uses `kotlinx.serialization` with `@JsonClassDiscriminator(\"kind\")` so the JSON arena emitted by the Rust `nmp-content` crate decodes drift-free. Unknown variants are forward-compat: keep `ignoreUnknownKeys = true` on your `Json` config when adopting new framework versions.",
+    ],
+  },
+  {
+    id: "compose/content-mention-chip",
+    slug: "compose-content-mention-chip",
+    routeId: "compose-content-mention-chip",
+    version: "0.1.0",
+    target: "compose",
+    description:
+      "Tappable Compose profile mention chip with optional avatar and identicon fallback.",
+    dependencies: ["compose/content-core"],
+    files: [
+      {
+        source: "compose/content-mention-chip/NostrMentionChip.kt",
+        target: "Components/NostrContent/NostrMentionChip.kt",
+        role: "source",
+        content: composeMentionChipKotlin,
+      },
+    ],
+    screenshots: ["content-mention-chip-preview.png"],
+    customization: [
+      "Uses Coil's `SubcomposeAsyncImage` for the avatar. Swap to your own image loader (Glide, custom Painter, etc.) by replacing the loader call in `MentionAvatar`.",
+      "Tap routes through `NostrContentCallbacks.onMentionTap`; override at the screen level to push into your own navigator.",
+    ],
+  },
+  {
+    id: "compose/content-media-grid",
+    slug: "compose-content-media-grid",
+    routeId: "compose-content-media-grid",
+    version: "0.1.0",
+    target: "compose",
+    description:
+      "Adaptive Compose 1–4 image grid for inline media attached to a note.",
+    dependencies: ["compose/content-core"],
+    files: [
+      {
+        source: "compose/content-media-grid/NostrMediaGrid.kt",
+        target: "Components/NostrContent/NostrMediaGrid.kt",
+        role: "source",
+        content: composeMediaGridKotlin,
+      },
+    ],
+    screenshots: ["content-media-grid-preview.png"],
+    customization: [
+      "Layout is count-driven: 1 = full-width 16:9, 2 = side-by-side, 3 = one large + two stacked, 4+ = 2×2 with `+N more` overlay — identical to the SwiftUI variant.",
+      "Replace `SubcomposeAsyncImage` with your own loader if you already use Glide/Picasso. The cell composable is intentionally small to make the swap painless.",
+    ],
+  },
+  {
+    id: "compose/content-quote-card",
+    slug: "compose-content-quote-card",
+    routeId: "compose-content-quote-card",
+    version: "0.1.0",
+    target: "compose",
+    description:
+      "Reusable Compose quote / embed card — collapsed, compact, rich, and missing variants.",
+    dependencies: ["compose/content-core"],
+    files: [
+      {
+        source: "compose/content-quote-card/NostrQuoteCard.kt",
+        target: "Components/NostrContent/NostrQuoteCard.kt",
+        role: "source",
+        content: composeQuoteCardKotlin,
+      },
+    ],
+    screenshots: ["content-quote-card-preview.png"],
+    customization: [
+      "Pick the variant per call-site — `Rich` for inline quote cards, `Collapsed` for a `View quote` affordance, `Missing` for an unresolved reference, `Compact` for dense feeds.",
+      "Border, corner radius, and padding are literals so they merge cleanly on `nmp update component`.",
+    ],
+  },
+  {
+    id: "compose/content-view",
+    slug: "compose-content-view",
+    routeId: "compose-content-view",
+    version: "0.1.0",
+    target: "compose",
+    description:
+      "Full Compose `ContentTreeWire` renderer. Stitches inline runs, mentions, quote cards, and media grids into one composable.",
+    dependencies: [
+      "compose/content-core",
+      "compose/content-media-grid",
+      "compose/content-quote-card",
+    ],
+    files: [
+      {
+        source: "compose/content-view/NostrContentView.kt",
+        target: "Components/NostrContent/NostrContentView.kt",
+        role: "source",
+        content: composeContentViewKotlin,
+      },
+      {
+        source: "compose/content-view/NostrContentGrouping.kt",
+        target: "Components/NostrContent/NostrContentGrouping.kt",
+        role: "source",
+        content: composeContentGroupingKotlin,
+      },
+    ],
+    screenshots: ["content-view-preview.png"],
+    customization: [
+      "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content` and dispatches each block-level group to the matching sub-component. Customizing the look usually means editing the sub-component file rather than this dispatcher.",
+      "Inline runs are concatenated into a single `AnnotatedString` and rendered through `ClickableText` so tap-offset → annotation routing dispatches the matching callback in `LocalNostrContentRenderer.current.callbacks`.",
+    ],
+  },
 ];
 
 /** Components grouped by target platform for the sidebar. */
@@ -245,8 +392,8 @@ export const COMPONENT_GROUPS: ComponentGroup[] = [
   },
   {
     label: "Compose",
-    status: "soon",
-    components: [],
+    status: "stable",
+    components: COMPONENTS.filter((c) => c.target === "compose"),
   },
 ];
 

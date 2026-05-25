@@ -47,6 +47,35 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         "swiftui/content-view/Examples/NostrContentViewPreview.swift",
         include_str!("../../registry/swiftui/content-view/Examples/NostrContentViewPreview.swift"),
     ),
+    // Compose (M16-C4)
+    (
+        "compose/content-core/NostrContentRenderer.kt",
+        include_str!("../../registry/compose/content-core/NostrContentRenderer.kt"),
+    ),
+    (
+        "compose/content-core/ContentTreeWire.kt",
+        include_str!("../../registry/compose/content-core/ContentTreeWire.kt"),
+    ),
+    (
+        "compose/content-mention-chip/NostrMentionChip.kt",
+        include_str!("../../registry/compose/content-mention-chip/NostrMentionChip.kt"),
+    ),
+    (
+        "compose/content-media-grid/NostrMediaGrid.kt",
+        include_str!("../../registry/compose/content-media-grid/NostrMediaGrid.kt"),
+    ),
+    (
+        "compose/content-quote-card/NostrQuoteCard.kt",
+        include_str!("../../registry/compose/content-quote-card/NostrQuoteCard.kt"),
+    ),
+    (
+        "compose/content-view/NostrContentView.kt",
+        include_str!("../../registry/compose/content-view/NostrContentView.kt"),
+    ),
+    (
+        "compose/content-view/NostrContentGrouping.kt",
+        include_str!("../../registry/compose/content-view/NostrContentGrouping.kt"),
+    ),
 ];
 
 #[derive(Deserialize)]

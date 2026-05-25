@@ -7,8 +7,9 @@ type Props = {
 };
 
 /**
- * Left-rail catalog. Grouped by target platform; Compose is "Coming soon"
- * and renders no items. Items use SolidJS `<A>` so the URL drives state.
+ * Left-rail catalog. Grouped by target platform; items use SolidJS `<A>` so
+ * the URL drives state. An empty group falls back to a friendly hint — kept
+ * around for future targets that aren't shipped yet.
  */
 export default function Sidebar(props: Props) {
   const location = useLocation();
@@ -33,7 +34,7 @@ export default function Sidebar(props: Props) {
                   style="font-size: 0.8rem; color: var(--fg-subtle); padding: 0 0.75rem;"
                   role="note"
                 >
-                  Compose target coming once SwiftUI ships.
+                  No components yet — check back soon.
                 </p>
               }
             >

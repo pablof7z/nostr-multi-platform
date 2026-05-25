@@ -95,3 +95,84 @@ role = "source"
 source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"
 target = "Components/NostrContent/Examples/NostrContentViewPreview.swift"
 role = "example"
+
+# -----------------------------------------------------------------------------
+# Android / Jetpack Compose components (M16-C4). Mirror the SwiftUI components
+# above in behavior and wire format. Install target paths mirror the SwiftUI
+# layout (Components/NostrContent/…) so cross-platform projects keep a
+# consistent local file tree; users on a strict Android Gradle layout can
+# move them after install.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "compose/content-core"
+version = "0.1.0"
+target = "compose"
+description = "Shared Compose renderer configuration + ContentTreeWire kotlinx.serialization mirror for app-owned Nostr content components."
+
+[[components.files]]
+source = "compose/content-core/NostrContentRenderer.kt"
+target = "Components/NostrContent/NostrContentRenderer.kt"
+role = "source"
+
+[[components.files]]
+source = "compose/content-core/ContentTreeWire.kt"
+target = "Components/NostrContent/ContentTreeWire.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-mention-chip"
+version = "0.1.0"
+target = "compose"
+description = "Tappable Compose profile mention chip with optional avatar and identicon fallback."
+dependencies = ["compose/content-core"]
+
+[[components.files]]
+source = "compose/content-mention-chip/NostrMentionChip.kt"
+target = "Components/NostrContent/NostrMentionChip.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-media-grid"
+version = "0.1.0"
+target = "compose"
+description = "Compose photo-style media grid with 1/2/3/4+ layouts and +N more overlay."
+dependencies = ["compose/content-core"]
+
+[[components.files]]
+source = "compose/content-media-grid/NostrMediaGrid.kt"
+target = "Components/NostrContent/NostrMediaGrid.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-quote-card"
+version = "0.1.0"
+target = "compose"
+description = "Reusable Compose quote/embed card with collapsed, compact, rich, and missing variants."
+dependencies = ["compose/content-core"]
+
+[[components.files]]
+source = "compose/content-quote-card/NostrQuoteCard.kt"
+target = "Components/NostrContent/NostrQuoteCard.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-view"
+version = "0.1.0"
+target = "compose"
+description = "Full Compose ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
+dependencies = [
+    "compose/content-core",
+    "compose/content-media-grid",
+    "compose/content-quote-card",
+]
+
+[[components.files]]
+source = "compose/content-view/NostrContentView.kt"
+target = "Components/NostrContent/NostrContentView.kt"
+role = "source"
+
+[[components.files]]
+source = "compose/content-view/NostrContentGrouping.kt"
+target = "Components/NostrContent/NostrContentGrouping.kt"
+role = "source"
