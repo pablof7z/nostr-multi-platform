@@ -227,105 +227,23 @@ struct ChirpTimelineSnapshot: Decodable, Equatable {
     static let empty = ChirpTimelineSnapshot(blocks: [], cards: [])
 }
 
-// ─── nmp-content ContentTreeWire mirror ──────────────────────────────────
+// ─── nmp-content ContentTreeWire mirror ─────────────────────────────────
+//
+// M16-C7: Chirp now uses the registry types from
+// ios/Chirp/Chirp/Components/NostrContent/ directly.  The hand-rolled
+// ContentTreeWire, ContentWireNode, MediaKind, and WireNostrUri definitions
+// have been replaced with their registry counterparts:
+//
+//   ContentTreeWire  →  public struct ContentTreeWire  (ContentTreeWire.swift)
+//   ContentWireNode  →  public enum   NostrWireNode     (ContentTreeWire.swift)
+//   MediaKind        →  public enum   NostrMediaKind    (ContentTreeWire.swift)
+//   WireNostrUri     →  public struct NostrWireUri      (ContentTreeWire.swift)
+//
+// Type aliases below keep existing call-sites compiling without a rename sweep.
 
-struct ContentTreeWire: Decodable, Equatable {
-    let nodes: [ContentWireNode]
-    let roots: [UInt32]
-    let mode: String?
-}
-
-/// Typed mirror of the Rust `nmp_content::MediaKind` enum. Raw values match the
-/// PascalCase Rust serde representation (the Rust enum has no `rename_all`).
-/// Pinned cross-platform by `crates/nmp-content/src/wire/tests.rs`.
-enum MediaKind: String, Decodable, Equatable {
-    case image = "Image"
-    case video = "Video"
-    case audio = "Audio"
-}
-
-enum ContentWireNode: Decodable, Equatable {
-    case text(String)
-    case mention(WireNostrUri)
-    case eventRef(WireNostrUri)
-    case hashtag(String)
-    case url(String)
-    case media(urls: [String], mediaKind: MediaKind)
-    case emoji(shortcode: String, url: String?)
-    case paragraph(children: [UInt32])
-    case heading(level: UInt8, children: [UInt32])
-    case emphasis(children: [UInt32])
-    case strong(children: [UInt32])
-    case inlineCode(String)
-    case softBreak
-    case hardBreak
-    case placeholder
-
-    private enum CodingKeys: String, CodingKey {
-        case kind, text, uri, tag, url, urls, mediaKind = "media_kind"
-        case shortcode, level, children, code
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        switch try c.decode(String.self, forKey: .kind) {
-        case "text":
-            self = .text(try c.decode(String.self, forKey: .text))
-        case "mention":
-            self = .mention(try c.decode(WireNostrUri.self, forKey: .uri))
-        case "event_ref":
-            self = .eventRef(try c.decode(WireNostrUri.self, forKey: .uri))
-        case "hashtag":
-            self = .hashtag(try c.decode(String.self, forKey: .tag))
-        case "url":
-            self = .url(try c.decode(String.self, forKey: .url))
-        case "media":
-            self = .media(
-                urls: try c.decode([String].self, forKey: .urls),
-                mediaKind: try c.decode(MediaKind.self, forKey: .mediaKind)
-            )
-        case "emoji":
-            self = .emoji(
-                shortcode: try c.decode(String.self, forKey: .shortcode),
-                url: try c.decodeIfPresent(String.self, forKey: .url)
-            )
-        case "paragraph":
-            self = .paragraph(children: try c.decode([UInt32].self, forKey: .children))
-        case "heading":
-            self = .heading(
-                level: try c.decode(UInt8.self, forKey: .level),
-                children: try c.decode([UInt32].self, forKey: .children)
-            )
-        case "emphasis":
-            self = .emphasis(children: try c.decode([UInt32].self, forKey: .children))
-        case "strong":
-            self = .strong(children: try c.decode([UInt32].self, forKey: .children))
-        case "inline_code":
-            self = .inlineCode(try c.decode(String.self, forKey: .code))
-        case "soft_break":
-            self = .softBreak
-        case "hard_break":
-            self = .hardBreak
-        default:
-            self = .placeholder
-        }
-    }
-}
-
-struct WireNostrUri: Decodable, Equatable {
-    let uri: String
-    let kind: String
-    let primaryId: String
-    let relays: [String]
-    let author: String?
-    let eventKind: UInt32?
-
-    private enum CodingKeys: String, CodingKey {
-        case uri, kind, relays, author
-        case primaryId = "primary_id"
-        case eventKind = "event_kind"
-    }
-}
+typealias ContentWireNode = NostrWireNode
+typealias MediaKind = NostrMediaKind
+typealias WireNostrUri = NostrWireUri
 
 struct MentionProfile: Equatable {
     let display: String

@@ -13,7 +13,7 @@ final class NoteContentRenderingTests: XCTestCase {
                 .text("hey "),
                 .mention(WireNostrUri(
                     uri: "nostr:npub1example",
-                    kind: "npub",
+                    kind: .profile,
                     primaryId: pubkey,
                     relays: [],
                     author: nil,
@@ -22,7 +22,7 @@ final class NoteContentRenderingTests: XCTestCase {
                 .text(" here is "),
                 .eventRef(WireNostrUri(
                     uri: "nostr:nevent1example",
-                    kind: "nevent",
+                    kind: .event,
                     primaryId: eventID,
                     relays: [],
                     author: pubkey,
