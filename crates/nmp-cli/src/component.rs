@@ -32,15 +32,32 @@ pub fn run_add(args: &[String]) -> Result<(), String> {
     let order = registry.resolve(&request.id)?;
     let mut lock = ComponentLock::read(&request.root, LOCK_FILE)?;
 
-    for component in &order {
-        if lock.components.iter().any(|entry| entry.id == component.id) {
-            return Err(format!("component `{}` is already installed", component.id));
-        }
+    // Only the explicitly-requested component is rejected when already
+    // installed. Already-installed transitive dependencies are skipped
+    // silently so a user can install sibling components that share a
+    // common dep without manually de-duping.
+    if lock
+        .components
+        .iter()
+        .any(|entry| entry.id == request.id)
+    {
+        return Err(format!("component `{}` is already installed", request.id));
     }
 
-    let planned = plan_files(&request, &registry, &order)?;
+    let to_install: Vec<&RegistryComponent> = order
+        .iter()
+        .filter(|component| {
+            !lock
+                .components
+                .iter()
+                .any(|entry| entry.id == component.id)
+        })
+        .copied()
+        .collect();
+
+    let planned = plan_files(&request, &registry, &to_install)?;
     write_files(&request.root, &planned)?;
-    write_lock_entries(&request.root, &registry, &mut lock, &order, &planned)?;
+    write_lock_entries(&request.root, &registry, &mut lock, &to_install, &planned)?;
 
     println!(
         "installed component `{}` into {}",
