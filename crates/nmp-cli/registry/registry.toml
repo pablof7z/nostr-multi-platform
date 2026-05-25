@@ -108,6 +108,22 @@ source = "swiftui/login-block/NostrLoginBlock.swift"
 target = "Components/Auth/NostrLoginBlock.swift"
 role = "source"
 
+[[components]]
+id = "swiftui/relay-list"
+version = "0.1.0"
+target = "swiftui"
+description = "Relay list component showing relay URLs with role badges and connection status dots."
+
+[[components.files]]
+source = "swiftui/relay-list/NostrRelayList.swift"
+target = "Components/NostrRelays/NostrRelayList.swift"
+role = "source"
+
+[[components.files]]
+source = "swiftui/relay-list/Examples/NostrRelayListPreview.swift"
+target = "Components/NostrRelays/Examples/NostrRelayListPreview.swift"
+role = "example"
+
 # -----------------------------------------------------------------------------
 # SwiftUI user profile components. `swiftui/user-avatar` owns `ProfileWire`,
 # so the smaller name / NIP-05 / npub / card components all depend on it.
