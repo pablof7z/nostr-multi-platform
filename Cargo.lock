@@ -3803,6 +3803,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-app-gallery"
+version = "0.1.0"
+dependencies = [
+ "nmp-app-template",
+ "nmp-ffi",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-app-longform"
 version = "0.1.0"
 dependencies = [

@@ -25,6 +25,7 @@ members = [
     "crates/nmp-nip47",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
+    "crates/nmp-app-gallery",
     "crates/nmp-app-template",
     "crates/nmp-ffi",
     "crates/nmp-network",
