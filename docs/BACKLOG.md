@@ -157,6 +157,9 @@ to it; delete the hand-rolled path.
 The backstop closure enforces `max_relay_connections = 30` cap (redundant with
 `apply_selection`'s built-in cap — proves seam wired). Full negentropy steering (the
 original D2 intent) is a future follow-up once negentropy relay infra is available.
+The reusable gate now counts author × kind fanout per filter (`2 kinds × 25 authors`
+and `3 kinds × 20 authors` both qualify at the default threshold of 50) and still
+requires known relay support before choosing reconciliation.
 
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 

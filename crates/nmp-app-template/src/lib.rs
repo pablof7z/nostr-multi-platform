@@ -252,10 +252,11 @@ pub fn register_defaults(app: &mut NmpApp) {
     // — important for reproducible test runs and human-readable
     // diagnostics.
     //
-    // Stage 3 (post-v1) will extend this closure with negentropy steering
-    // — once the negentropy infrastructure is available the body will
-    // check `gate.should_use_negentropy(author_count)` and mark sub-shapes
-    // for a reconciliation handshake instead of a raw REQ.
+    // Stage 3 (post-v1) will extend this closure with negentropy steering.
+    // Once the transport engine is available, the body will feed each
+    // sub-shape's author × kind fanout into `CoverageGate` and route eligible
+    // filters through reconciliation when the target relay is known to
+    // support it.
     let gate = CoverageGate::default();
     app.set_coverage_hook(Arc::new(move |plan| {
         let cap = gate.max_relay_connections;
