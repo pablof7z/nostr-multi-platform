@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
@@ -13,6 +14,7 @@ use ratatui::Terminal;
 
 use chirp_tui::app::{AppRuntime, AppState};
 use chirp_tui::bridge::NmpEvent;
+use chirp_tui::image_cache::{ImageCache, ImageEvent};
 use chirp_tui::input::{self, InputFlow};
 use chirp_tui::render_intents::{RenderIntent, RenderIntentDiff, RenderIntentTracker};
 use chirp_tui::ui;
@@ -28,11 +30,15 @@ struct Args {
 
     #[arg(long = "relay")]
     relays: Vec<String>,
+
+    #[arg(long = "fixture-snapshot", hide = true)]
+    fixture_snapshot: Option<PathBuf>,
 }
 
 enum UiEvent {
     Terminal(Event),
     Nmp(NmpEvent),
+    Image(ImageEvent),
 }
 
 fn main() -> Result<()> {
@@ -48,31 +54,43 @@ fn run(args: Args) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let (runtime, nmp_rx) = AppRuntime::new().map_err(|e| eyre!(e))?;
-    if args.relays.is_empty() {
-        for entry in nmp_chirp_config::chirp_default_relay_bootstrap() {
-            runtime
-                .add_relay(entry.url, entry.role)
-                .map_err(|e| eyre!(e))?;
-        }
-    } else {
-        for relay in &args.relays {
-            runtime
-                .add_relay(relay, "both,indexer")
-                .map_err(|e| eyre!(e))?;
+    if args.fixture_snapshot.is_none() {
+        if args.relays.is_empty() {
+            for entry in nmp_chirp_config::chirp_default_relay_bootstrap() {
+                runtime
+                    .add_relay(entry.url, entry.role)
+                    .map_err(|e| eyre!(e))?;
+            }
+        } else {
+            for relay in &args.relays {
+                runtime
+                    .add_relay(relay, "both,indexer")
+                    .map_err(|e| eyre!(e))?;
+            }
         }
     }
 
+    let mut state = AppState::default();
+    let mut image_cache = ImageCache::enabled();
     let (ui_tx, ui_rx) = mpsc::channel();
     spawn_terminal_reader(ui_tx.clone());
-    spawn_nmp_forwarder(nmp_rx, ui_tx);
+    spawn_nmp_forwarder(nmp_rx, ui_tx.clone());
 
-    let mut state = AppState::default();
+    let (image_tx, image_rx) = mpsc::channel();
+    spawn_image_forwarder(image_rx, ui_tx);
     let mut render_intents = RenderIntentTracker::default();
     if args.basic {
         state.set_basic();
     }
+    if let Some(path) = &args.fixture_snapshot {
+        let payload = std::fs::read_to_string(path)?;
+        state
+            .apply_fixture_payload(&payload)
+            .map_err(|e| eyre!(e))?;
+    }
 
-    terminal.draw(|frame| ui::layout::render(frame, &state))?;
+    image_cache.request_selected(&state, &image_tx);
+    terminal.draw(|frame| ui::layout::render_with_images(frame, &state, &image_cache))?;
 
     while let Ok(event) = ui_rx.recv() {
         match event {
@@ -83,10 +101,12 @@ fn run(args: Args) -> Result<()> {
             }
             UiEvent::Terminal(_) => {}
             UiEvent::Nmp(event) => state.apply_nmp_event(&runtime, event),
+            UiEvent::Image(event) => image_cache.absorb(event),
         }
         let diff = render_intents.sync_rows(&state.rows);
         apply_render_intents(&runtime, diff).map_err(|e| eyre!(e))?;
-        terminal.draw(|frame| ui::layout::render(frame, &state))?;
+        image_cache.request_selected(&state, &image_tx);
+        terminal.draw(|frame| ui::layout::render_with_images(frame, &state, &image_cache))?;
     }
 
     Ok(())
@@ -120,6 +140,16 @@ fn spawn_nmp_forwarder(rx: mpsc::Receiver<NmpEvent>, tx: mpsc::Sender<UiEvent>) 
     thread::spawn(move || {
         while let Ok(event) = rx.recv() {
             if tx.send(UiEvent::Nmp(event)).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+fn spawn_image_forwarder(rx: mpsc::Receiver<ImageEvent>, tx: mpsc::Sender<UiEvent>) {
+    thread::spawn(move || {
+        while let Ok(event) = rx.recv() {
+            if tx.send(UiEvent::Image(event)).is_err() {
                 break;
             }
         }

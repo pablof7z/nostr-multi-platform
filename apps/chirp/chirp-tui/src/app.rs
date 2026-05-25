@@ -125,7 +125,8 @@ impl AppState {
                 .get("cards")
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len);
-            self.rows = TimelineRow::from_snapshot(&snapshot);
+            self.rows =
+                TimelineRow::from_snapshot_with_profiles(&snapshot, &shared.mention_profiles);
             let previous_selected = self.selected;
             if self.selected >= self.rows.len() {
                 self.selected = self.rows.len().saturating_sub(1);
@@ -142,6 +143,23 @@ impl AppState {
                 event.payload.len()
             );
         }
+    }
+
+    pub fn apply_fixture_payload(&mut self, payload: &str) -> Result<(), String> {
+        let value = serde_json::from_str::<Value>(payload).map_err(|err| err.to_string())?;
+        let shared = crate::snapshot::SharedSnapshot::from_payload(payload);
+        let snapshot = value.get("chirp_snapshot").unwrap_or(&value);
+        self.blocks = snapshot
+            .get("blocks")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.cards = snapshot
+            .get("cards")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.rows = TimelineRow::from_snapshot_with_profiles(snapshot, &shared.mention_profiles);
+        self.status = "loaded render fixture".to_string();
+        Ok(())
     }
 
     pub fn focus(&mut self, pane: Pane) {

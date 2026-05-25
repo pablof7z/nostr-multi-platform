@@ -73,6 +73,7 @@ mod tests {
             author: pubkey.to_string(),
             author_pubkey: pubkey.to_string(),
             content: String::new(),
+            media: Vec::new(),
             created_at: 1,
             depth: 0,
             has_gap: false,

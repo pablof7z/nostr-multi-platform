@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -7,10 +9,11 @@ pub struct SharedSnapshot {
     pub interests: Vec<InterestRow>,
     pub action_results: Vec<ActionResult>,
     pub action_stages: Vec<ActionStageRow>,
+    pub mention_profiles: BTreeMap<String, MentionProfile>,
 }
 
 impl SharedSnapshot {
-    #[must_use] 
+    #[must_use]
     pub fn from_payload(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
@@ -26,6 +29,7 @@ impl SharedSnapshot {
             interests: interests_from(projections),
             action_results: action_results_from(projections),
             action_stages: action_stages_from(projections),
+            mention_profiles: mention_profiles_from(projections),
         }
     }
 }
@@ -83,6 +87,14 @@ pub struct ActionStageRow {
     pub correlation_id: String,
     pub stage: String,
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MentionProfile {
+    pub display: String,
+    pub picture_url: String,
+    pub avatar_initials: String,
+    pub avatar_color: String,
 }
 
 fn relays_from(projections: Option<&Value>) -> Vec<RelayRow> {
@@ -157,6 +169,29 @@ fn action_stages_from(projections: Option<&Value>) -> Vec<ActionStageRow> {
     rows
 }
 
+fn mention_profiles_from(projections: Option<&Value>) -> BTreeMap<String, MentionProfile> {
+    let Some(entries) = projections
+        .and_then(|p| p.get("mention_profiles"))
+        .and_then(Value::as_object)
+    else {
+        return BTreeMap::new();
+    };
+    entries
+        .iter()
+        .map(|(pubkey, profile)| {
+            (
+                pubkey.clone(),
+                MentionProfile {
+                    display: string_field(profile, "display"),
+                    picture_url: string_field(profile, "picture_url"),
+                    avatar_initials: string_field(profile, "avatar_initials"),
+                    avatar_color: string_field(profile, "avatar_color"),
+                },
+            )
+        })
+        .collect()
+}
+
 fn string_field(value: &Value, key: &str) -> String {
     value
         .get(key)
@@ -218,6 +253,14 @@ mod tests {
                         {"stage": "requested", "at_ms": 1},
                         {"stage": "publishing", "at_ms": 2}
                     ]
+                },
+                "mention_profiles": {
+                    "aaaaaaaa": {
+                        "display": "Alice",
+                        "picture_url": "https://example.com/a.png",
+                        "avatar_initials": "AL",
+                        "avatar_color": "08E60C"
+                    }
                 }
             }
         })
@@ -230,5 +273,6 @@ mod tests {
         assert_eq!(snapshot.interests[0].cache_coverage, "live");
         assert_eq!(snapshot.action_results[0].correlation_id, "corr-1");
         assert_eq!(snapshot.action_stages[0].stage, "publishing");
+        assert_eq!(snapshot.mention_profiles["aaaaaaaa"].display, "Alice");
     }
 }

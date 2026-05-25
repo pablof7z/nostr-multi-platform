@@ -39,6 +39,30 @@ fn tui_exposes_ios_parity_tabs_and_command_mode() -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+#[test]
+fn tui_renders_fixture_mentions_and_media_labels() -> Result<(), Box<dyn std::error::Error>> {
+    let bin = env!("CARGO_BIN_EXE_chirp-tui");
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/rich_renderer_snapshot.json");
+    let mut command = Command::new("sh");
+    command.args([
+        "-lc",
+        "stty rows 40 cols 120; exec \"$CHIRP_TUI_BIN\" --fixture-snapshot \"$FIXTURE\"",
+    ]);
+    command.env("CHIRP_TUI_BIN", bin);
+    command.env("FIXTURE", fixture);
+
+    let mut p = spawn_with_options(command, Options::new().timeout_ms(Some(10_000)))?;
+    p.process_mut().set_kill_timeout(Some(2_000));
+
+    p.exp_string("@branie")?;
+    p.exp_string("[image]")?;
+
+    send_key(&mut p, "q")?;
+    let _ = p.exp_eof();
+    Ok(())
+}
+
 fn send_key(
     p: &mut rexpect::session::PtySession,
     key: &str,

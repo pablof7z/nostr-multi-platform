@@ -1,0 +1,65 @@
+{
+  "projections": {
+    "mention_profiles": {
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+        "display": "branie",
+        "picture_url": "",
+        "avatar_initials": "BR",
+        "avatar_color": "55D0E0"
+      }
+    }
+  },
+  "chirp_snapshot": {
+    "blocks": [
+      {
+        "Standalone": "fixture-note"
+      }
+    ],
+    "cards": [
+      {
+        "id": "fixture-note",
+        "author_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "author_display": {
+          "name": "alice"
+        },
+        "created_at": 1,
+        "content": "when nostr:npub1raw posted https://example.com/cover.jpg",
+        "content_tree": {
+          "nodes": [
+            {
+              "kind": "text",
+              "text": "when "
+            },
+            {
+              "kind": "mention",
+              "uri": {
+                "uri": "nostr:npub1raw",
+                "kind": "profile",
+                "primary_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "relays": []
+              }
+            },
+            {
+              "kind": "text",
+              "text": " posted "
+            },
+            {
+              "kind": "media",
+              "media_kind": "Image",
+              "urls": [
+                "https://example.com/cover.jpg"
+              ]
+            }
+          ],
+          "roots": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "mode": "plaintext"
+        }
+      }
+    ]
+  }
+}

@@ -1,17 +1,23 @@
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::app::Mode;
 use crate::features::FeatureTab;
+use crate::image_cache::ImageCache;
 use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::home;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
+    let images = ImageCache::disabled();
+    render_with_images(frame, state, &images);
+}
+
+pub fn render_with_images(frame: &mut Frame<'_>, state: &AppState, images: &ImageCache) {
     let area = frame.area();
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -24,7 +30,7 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState) {
         .split(area);
 
     render_title(frame, rows[0], state);
-    render_body(frame, rows[1], state);
+    render_body(frame, rows[1], state, images);
     render_compose(frame, rows[2], state);
     render_status(frame, rows[3], state);
     if state.show_help {
@@ -51,9 +57,9 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     frame.render_widget(Paragraph::new(title), area);
 }
 
-fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState, images: &ImageCache) {
     match state.tab {
-        FeatureTab::Home => home::render(frame, area, state),
+        FeatureTab::Home => home::render(frame, area, state, images),
         _ => feature_panels::render(frame, area, state),
     }
 }

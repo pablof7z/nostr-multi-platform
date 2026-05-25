@@ -1,8 +1,9 @@
-use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::Terminal;
 
 use crate::app::AppState;
 use crate::timeline::TimelineRow;
+use crate::timeline_content::{TimelineMedia, TimelineMediaKind};
 use crate::ui::layout::render;
 
 #[test]
@@ -22,6 +23,21 @@ fn home_tab_renders_post_author_and_content() {
     // Author and body of the depth-0 post are rendered by post_list/post_detail.
     assert!(rendered.contains("alice"));
     assert!(rendered.contains("hello from nostr"));
+}
+
+#[test]
+fn home_tab_renders_media_attachment_labels() {
+    let mut state = state_with_row();
+    state.rows[0].media.push(TimelineMedia {
+        kind: TimelineMediaKind::Image,
+        url: "https://example.com/photo.jpg".to_string(),
+        alt: Some("album art".to_string()),
+    });
+
+    let rendered = render_state(120, 40, state);
+
+    assert!(rendered.contains("[image]"));
+    assert!(rendered.contains("album art"));
 }
 
 #[test]
@@ -46,6 +62,7 @@ fn home_tab_handles_narrow_terminal_without_panicking() {
         author_pubkey: "a".repeat(64),
         content: "reply 0 repost 0 like 0 -- this content should wrap inside the feed pane"
             .to_string(),
+        media: Vec::new(),
         created_at: 1,
         depth: 0,
         has_gap: false,
@@ -75,6 +92,7 @@ fn state_with_row() -> AppState {
         author: "alice".to_string(),
         author_pubkey: "alice-pubkey".to_string(),
         content: "hello from nostr".to_string(),
+        media: Vec::new(),
         created_at: 1,
         depth: 0,
         has_gap: false,
