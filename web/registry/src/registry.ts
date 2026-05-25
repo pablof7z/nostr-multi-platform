@@ -50,6 +50,10 @@ import nostrNip05BadgeKotlin from "../../../crates/nmp-cli/registry/compose/user
 import nostrNpubChipKotlin from "../../../crates/nmp-cli/registry/compose/user-npub/NostrNpubChip.kt?raw";
 import nostrUserCardKotlin from "../../../crates/nmp-cli/registry/compose/user-card/NostrUserCard.kt?raw";
 
+// Relay — SwiftUI
+import nostrRelayListSwift from "../../../crates/nmp-cli/registry/swiftui/relay-list/NostrRelayList.swift?raw";
+import nostrRelayListPreviewSwift from "../../../crates/nmp-cli/registry/swiftui/relay-list/Examples/NostrRelayListPreview.swift?raw";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type Platform = "swiftui" | "compose" | "tui" | "web";
@@ -550,11 +554,41 @@ const userComponents: Component[] = [
   },
 ];
 
-export const COMPONENTS: Component[] = [...contentComponents, ...userComponents];
+const relayComponents: Component[] = [
+  {
+    slug: "relay-list",
+    routeId: "relay-list",
+    version: "0.1.0",
+    description: "Relay list showing relay URLs with role badges and live connection status dots.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/relay-list",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`NostrRelayList` renders the `projections.relay_edit_rows` array as a list of relay URLs with semantic role badges and animated connection status dots. Connection dots pulse on `.connecting` state. Pass `relayStatuses` to fold live connection state from the top-level `relay_statuses` snapshot field.",
+        files: [
+          { source: "swiftui/relay-list/NostrRelayList.swift", target: "Components/NostrRelays/NostrRelayList.swift", role: "source", content: nostrRelayListSwift },
+          { source: "swiftui/relay-list/Examples/NostrRelayListPreview.swift", target: "Components/NostrRelays/Examples/NostrRelayListPreview.swift", role: "example", content: nostrRelayListPreviewSwift },
+        ],
+        screenshots: [],
+        customization: [
+          "Pass a `relayStatuses: [String: String]` dictionary keyed by relay URL to animate connection dots. Build it with `Dictionary(uniqueKeysWithValues: snapshot.relayStatuses.map { ($0.relayUrl, $0.connection) })`.",
+          "Role badge colors map semantic tokens (`accent`, `info`, `success`, `neutral`) to SwiftUI system colors — override `tintColor(for:)` to match your brand.",
+          "Edit `displayUrl` in `NostrRelayEditRow` to strip or preserve the `wss://` scheme prefix.",
+        ],
+      },
+    },
+  },
+];
+
+export const COMPONENTS: Component[] = [...contentComponents, ...userComponents, ...relayComponents];
 
 export const SECTIONS: Section[] = [
   { label: "Content", components: contentComponents },
   { label: "User", components: userComponents },
+  { label: "Relay", components: relayComponents },
 ];
 
 export function findComponent(routeId: string): Component | undefined {
