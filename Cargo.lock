@@ -3845,6 +3845,9 @@ name = "nmp-cli"
 version = "0.1.0"
 dependencies = [
  "nmp-codegen",
+ "serde",
+ "sha2",
+ "toml",
 ]
 
 [[package]]
