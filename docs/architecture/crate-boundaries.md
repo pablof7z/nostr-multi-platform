@@ -52,7 +52,7 @@
 **Substrate-honest debts** (raised by 2026-05-24 adversarial review):
 - A — router becomes decision authority: ✅ merged (PR #468) with kind:10002 self-seal fix via router lane 6 Indexer
 - B — delete `default_routing.rs` algorithm duplicate (484 LOC): ✅ merged (PR #473); kernel defaults switched to `EmptyOutboxRouter` + `(test) TestInMemoryMailboxCache`
-- C — `ProtocolCommandContext` capability-trait bundling: ✅ merged (PR #471) — 12 positional closure args → 5 capability traits + `send` + `command_sender_clone`. **Caveat**: `crates/nmp-core/src/substrate/protocol.rs:299` still carries `#[allow(clippy::too_many_arguments)]`; an 8-arg `new()` survives. Reducing further is a follow-up.
+- C — `ProtocolCommandContext` capability-trait bundling: ✅ merged (PR #471) — 12 positional closure args → 5 capability traits + `send` + `command_sender_clone`. Follow-up collapse pass folded the surviving 8-arg `new()` (+`#[allow(clippy::too_many_arguments)]`) onto a single named-field `ProtocolCommandContextParts` struct literal; the allow is gone and `protocol.rs` is back under the 500-LOC ceiling.
 - D — fix 14 `expect("RwLock poisoned")` panic-on-host-input sites: ✅ merged (PR #465)
 - V-08 — bunker (NIP-46) DM signing restored: ✅ merged (PR #466). **Caveat**: the un-`#[ignore]`d regression test asserts against a `StubRemoteSigner` in-process; live bunker DM round-trip is not e2e-validated. V-08 inbox decryption (post-v1) remains.
 

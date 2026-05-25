@@ -20,7 +20,7 @@
 use super::*;
 use nmp_core::substrate::{
     ActionStageTracker, KernelClock, LocalSignerAccess, NoopErrorSurface,
-    NoopRecipientRelayLookup, RecipientRelayLookup,
+    NoopRecipientRelayLookup, ProtocolCommandContextParts, RecipientRelayLookup,
 };
 
 const RECIPIENT_HEX: &str =
@@ -106,16 +106,16 @@ fn ctx_with<'a>(
     static EMPTY_DM: nmp_core::substrate::EmptyDmInboxRelayLookup =
         nmp_core::substrate::EmptyDmInboxRelayLookup;
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
-    ProtocolCommandContext::new(
+    ProtocolCommandContext::new(ProtocolCommandContextParts {
         send,
-        tx,
+        command_sender: tx,
         clock,
         signers,
-        &EMPTY_DM,
-        &ERRORS,
+        dms: &EMPTY_DM,
+        errors: &ERRORS,
         stages,
         recipients,
-    )
+    })
 }
 
 // ────────────────────────────────────────────────────────────────────

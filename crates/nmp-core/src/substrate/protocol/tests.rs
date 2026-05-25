@@ -183,9 +183,16 @@ fn full_constructor_threads_capabilities() {
     };
     let (tx, rx) = mpsc::channel::<ActorCommand>();
 
-    let ctx = ProtocolCommandContext::new(
-        &send, tx, &clock, &signers, &dms, &errors, &stages, &recipients,
-    );
+    let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
+        send: &send,
+        command_sender: tx,
+        clock: &clock,
+        signers: &signers,
+        dms: &dms,
+        errors: &errors,
+        stages: &stages,
+        recipients: &recipients,
+    });
 
     assert_eq!(ctx.now_secs(), 123_456);
     assert!(ctx.active_local_keys().is_none());
