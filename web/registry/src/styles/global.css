@@ -534,16 +534,19 @@ pre,
 /* Screen area — fixed iPhone 14 aspect ratio */
 .device-mockup__screen {
   aspect-ratio: 9 / 19.5;
-  background: #000;
+  background: #f2f2f7;
   border-radius: 32px;
   overflow: hidden;
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .device-mockup__screen img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top center;
   display: block;
 }
