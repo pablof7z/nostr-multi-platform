@@ -23,18 +23,17 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phase B (push-model `Pool` API redesign) | ✅ merged |
-| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ✅ merged |
-| 8 phase D (broker dedupe on Pool) | 🟡 PR #477 in flight |
-| 8 phase E (NIP-42 wire/FSM split — `RelayFrame::Auth`) | ✅ merged |
-| 8 phase F (kernel-actor cut-over to `Pool`) | ⏳ in flight (this branch) |
+| 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
+| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ⏳ in flight (subagent) |
+| 8 phase D (`nmp-signer-broker` rides `nmp_network::Pool` — V-13 Stage 2 dedupe) | ⏳ in flight (subagent) |
+| 8 phase E (NIP-42 wire/FSM split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
 | 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged; `fixture-todo-core` deferred on codegen path hardcode |
 | 11 final (`nmp-ffi` extraction) | ⏳ in flight (subagent) |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
-Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phase 2 (FFI/wasm snapshot surface) ⏳ in flight (branch `feat/v51-routing-trace-ffi-wasm-snapshot`). Phase 3 (Chirp inspector UI) not started.
+Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
 **Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C (`ProtocolCommandContext` capability-trait bundling, currently 12 accessors with `#[allow(clippy::too_many_arguments)]`) ❌ not started.
 
@@ -52,6 +51,8 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 - 2026-05-25 — chore(V-12): test-extraction batch — extract inline `#[cfg(test)] mod tests` blocks from `crates/nmp-router/src/router.rs` (703 → 242 LOC), `crates/nmp-core/src/substrate/routing.rs` (531 → 346 LOC), and `crates/nmp-core/src/substrate/protocol.rs` (745 → 519 LOC) into sibling `*/tests.rs` files via `#[path = ".../tests.rs"]`. All 904 nmp-core lib tests + 47 nmp-router tests + 42 doctrine_lint smoke pass; tests moved unchanged. router.rs and routing.rs now under the 500-LOC ceiling; protocol.rs remains 19 LOC over (production-side split is out-of-scope per V-12 staging). — PR #480.
 
 - 2026-05-25 — feat(nmp-network): step 8 phase E — NIP-42 AUTH wire/FSM split. Adds `RelayFrame::Auth(challenge)` variant to `nmp_network::pool::RelayFrame` and pre-classifies inbound `["AUTH", <challenge>]` text frames at the wire layer via the dependency-free `nmp_nip42_types::parse_auth_frame`. The kind:22242 reply builder stays in `nmp-nip42::build_auth_event`; the per-relay pause/replay FSM stays in `nmp_core::subs::AuthGate`; `nmp-network` does not name either. A doctrine guard test (`auth_gate_and_22242_are_not_named_in_this_crate`) greps the crate's own source so future drift trips at test time. — branch `worktree-agent-ad2af474ef86cf998`.
+
+- 2026-05-25 — feat(nmp-signer-broker): step 8 phase D — V-13 Stage 2 dedupe. `relay_client.rs` rewritten as a thin `nmp_network::Pool` adapter (`PoolRelayClient` — kept `TungsteniteRelayClient` as a type alias for legacy callers). One `Pool` per active session (rationale: bunker relays are not the user's app relays; lifecycle isolation). The duplicate ~700-line mio/tungstenite readiness loop is gone — the broker's `Cargo.toml` no longer names `tungstenite` / `mio` / `rustls` directly; only `nmp-network` (which transitively provides them). V-14 invariants preserved: mid-session reconnect now lives in `nmp_network::relay_worker`; subscription replay still driven by the broker via the dispatcher's `Opened`-triggered replay. — branch `worktree-agent-a40870f8e0f4ce566`.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

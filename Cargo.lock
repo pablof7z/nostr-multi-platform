@@ -4118,7 +4118,6 @@ dependencies = [
 name = "nmp-signer-broker"
 version = "0.1.0"
 dependencies = [
- "mio",
  "nmp-core",
  "nmp-ffi",
  "nmp-network",
@@ -4126,10 +4125,8 @@ dependencies = [
  "nmp-signers",
  "nostr",
  "rand 0.8.6",
- "rustls",
  "serde",
  "serde_json",
- "tungstenite",
 ]
 
 [[package]]

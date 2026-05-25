@@ -300,7 +300,7 @@ the 500-LOC ceiling. All 32 lib tests pass.
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
 (ActorCommand closed enum analysis required — Opus review #10).
 
-### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM] — **DONE** (PR #431)
+### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM] — **DONE** (PR #431 — Stage 1; step 8 phase D — Stage 2 dedupe)
 
 **Verified:** `crates/nmp-signer-broker/src/relay_client.rs:103` calls
 `set_read_timeout(&mut socket, Duration::from_millis(100))`. The worker loop at
@@ -334,9 +334,18 @@ and the broker then depend on the same shared primitive.
   shared crate; delete the duplicated mio/readiness code in `relay_client.rs`.
   PR #431 already drains Shutdown between connect attempts as a partial
   mitigation for the residual stall.
-- **Status (2026-05-24):** PR #431 closes the polling-loop half (V-13) and the
-  auto-reconnect half (V-14a) with a self-contained mio readiness loop;
-  Stage 1 dedupe and connect-timeout remain.
+- **Status (2026-05-25):** Stage 2 dedupe shipped under step 8 phase D
+  (`docs/architecture/crate-boundaries.md` §5 step 8). `relay_client.rs` is
+  now a thin `nmp_network::Pool` adapter (`PoolRelayClient`); the duplicate
+  ~700-line mio/tungstenite readiness loop is gone, the broker's Cargo.toml
+  no longer names `tungstenite` / `mio` / `rustls` directly, and one
+  readiness-driven WebSocket implementation lives in the workspace
+  (`nmp_network::relay_worker`). The connect-timeout (Stage 1 residual) is
+  partially mitigated by `PoolRelayClient::connect`'s 10 s
+  CONNECT_BUDGET, which bounds the broker's per-URL try window so the
+  multi-relay cycle pivots within bounded time. The deeper fix (bound the
+  TCP/TLS handshake inside `nmp_network::relay_worker::open_relay_socket`)
+  still applies workspace-wide and remains open.
 - **Deadline:** before v1-A (any user sign-in via bunker hits this path).
 
 ### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
@@ -371,6 +380,13 @@ surface for "bunker connection lost" exists because the broker has no state for 
   REQ frame survives a flap. The UI-visible `BunkerConnectionState` projection
   (step b) is NOT yet wired — the host shell still gets only `"ready"` /
   `"failed"` from the handshake stage.
+- **Status (2026-05-25):** Step 8 phase D migrated the reconnect machinery
+  onto the shared `nmp_network::Pool` primitive (V-13 Stage 2 dedupe).
+  Mid-session reconnect with jittered exponential backoff now lives in
+  `nmp_network::relay_worker`; the broker's dispatcher replays installed
+  subscriptions on every fresh `PoolEvent::Opened` so REQ-survives-flap
+  is preserved end-to-end. V-14 step b (host-visible
+  `BunkerConnectionState`) is still pending and not blocked by this dedupe.
 - **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
   NIP-46 as a v1 sign-in method.
 
