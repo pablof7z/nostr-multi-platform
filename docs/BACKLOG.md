@@ -1298,7 +1298,52 @@ The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
-## Section 2 — In Flight
+### V-52 · Single-relay browsing — read events from one relay only, with cache origin tracking [HIGH · v1 DX]
+
+**What we want:** an app must be able to scope an interest to a single specific relay URL
+("show me what *this* relay has"). When a subscription is scoped that way:
+
+- REQs and `NEG-OPEN` (NIP-77 negentropy) are sent ONLY to that relay, never to any
+  outbox/inbox/indexer set the router would otherwise pick.
+- The cache must be queryable for events known to have originated from that specific
+  relay. We need a per-event provenance signal — for each cached event, did it (also)
+  arrive from relay X? Today's `Provenance` lane (lane 3 in `nmp-router`) already
+  carries relay-origin URLs in events' tag set, but the cache index can't be queried
+  by "events seen on relay X" as a primary lookup.
+- A scoped subscription does NOT cause an unscoped re-broadcast. The router treats
+  the relay scope as an `explicit_targets` override (similar to lane 5) and does not
+  add discovery/AppRelay fallbacks.
+
+**Why this matters:** every modern Nostr client has a "browse this relay" or "switch
+relay" affordance (relay-trawler, what's-on-this-relay debugging, single-relay reads
+for private/paid relays). Today an NMP app has no structural way to express it —
+the router always fans out via outbox/inbox.
+
+**Code-grounded surfaces to extend:**
+
+- `crates/nmp-core/src/substrate/routing.rs` — `RoutingContext` already has
+  `explicit_targets: Option<BTreeSet<Url>>`, but there is no parallel `LogicalInterest`
+  shape for the subscribe side. Add a `LogicalInterest::SingleRelay { url, inner }` or
+  an `interest.scope_relays: Option<BTreeSet<Url>>` field that the router will honour
+  in lane 5 on the subscribe path (today lane 5 is publish-only in `nmp-router`).
+- `crates/nmp-store/` — cache lookup needs a `by_relay(url)` index, OR
+  `EventStore::list_events_seen_on(relay, filter)`. The relay-origin provenance set
+  already lives in `Provenance` events; the store must expose a primary lookup by
+  any one relay URL.
+- `crates/nmp-router/src/router.rs` lane 5 — extend the `ClassRouted` lane to cover
+  the subscribe path when `interest.scope_relays.is_some()`. Today the subscribe-side
+  lane 5 is empty (see PR #483).
+- FFI: surface a `nmp.subscribe_scoped_to_relay(url, filter, ...)` action namespace
+  so apps can request it without learning the substrate types.
+- Chirp: expose this as a UI affordance — a relay picker in any timeline view that,
+  when set, runs the same view bound to a single-relay scoped subscription. The
+  routing-trace inspector (V-51) already shows the lane attribution, so this
+  surface lights up "you are looking at relay X" naturally.
+
+**Acceptance test:** a chirp-repl flow `chirp-repl browse --relay wss://relay.damus.io
+--kind 1 --limit 100` returns exactly the kind:1 events the cache has stamped with
+that relay's URL, drains REQ messages only to that relay, and never fans out to other
+relays even when the active account has a NIP-65 write set covering them.
 
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
