@@ -19,7 +19,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +38,49 @@ import org.nmp.android.model.ModuleTimelineBlock
 import org.nmp.android.model.StandaloneTimelineBlock
 import org.nmp.android.model.TimelineBlock
 import org.nmp.android.model.TimelineItem
+
+/**
+ * Per-view callbacks for demand-driven profile fetching. The presentation
+ * layer claims a pubkey when it begins rendering and releases on
+ * `DisposableEffect.onDispose`. The kernel batches the kind:0 REQ and
+ * re-fetches against the author's NIP-65 write set once it lands.
+ *
+ * `LocalProfileClaimer.current` is `null` outside a provider scope; the
+ * `RememberProfileClaim` composable below treats that as a no-op so the
+ * call sites stay non-conditional.
+ */
+typealias ProfileClaimer = (pubkey: String, consumerId: String, claim: Boolean) -> Unit
+
+val LocalProfileClaimer = compositionLocalOf<ProfileClaimer?> { null }
+
+/**
+ * Lightweight 64-hex pubkey gate. Mirrors the C-ABI `is_hex_pubkey` guard so
+ * the JNI shim's silent no-op never fires from an obviously-wrong key (avoids
+ * pointless JNI round-trips). Decoders that hand us short/empty pubkeys
+ * (cold-start, missing data) are filtered here.
+ */
+private fun isHexPubkey64(value: String): Boolean {
+    if (value.length != 64) return false
+    return value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+}
+
+/**
+ * Claim [pubkey] on enter, release on dispose. No-op when:
+ *  - `LocalProfileClaimer.current` is null (outside a provider scope), or
+ *  - [pubkey] is not a 64-char hex string.
+ *
+ * Stable [consumerId] (caller-supplied) so a recompose with the same [pubkey]
+ * does not churn the kernel's per-pubkey claim slot.
+ */
+@Composable
+fun RememberProfileClaim(pubkey: String, consumerId: String) {
+    val claimer = LocalProfileClaimer.current ?: return
+    if (!isHexPubkey64(pubkey)) return
+    DisposableEffect(pubkey, consumerId) {
+        claimer(pubkey, consumerId, true)
+        onDispose { claimer(pubkey, consumerId, false) }
+    }
+}
 
 /**
  * Live kind:1 feed straight from the kernel snapshot — Android peer of iOS
@@ -58,31 +104,38 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         s.items.map { StandaloneTimelineBlock(it.id) }
     }
 
-    Column(modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("Chirp", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "rev ${s.rev} · ${blocks.size} blocks",
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-        HorizontalDivider()
-        if (blocks.isEmpty()) {
-            Placeholder(
-                activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
-                hasAccount = s.activeAccount.isNotEmpty(),
-                hasSnapshot = snapshotCount > 0,
-                lastErrorToast = s.lastErrorToast,
-                onCreateAccount = { model.createLocalAccount() },
-            )
-        } else {
-            LazyColumn(Modifier.fillMaxSize()) {
-                itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
-                    TimelineBlockRow(block, itemLookup, cardLookup)
-                    HorizontalDivider()
+    val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
+        if (claim) model.claimProfile(pubkey, consumerId)
+        else model.releaseProfile(pubkey, consumerId)
+    }
+
+    CompositionLocalProvider(LocalProfileClaimer provides claimer) {
+        Column(modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Chirp", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "rev ${s.rev} · ${blocks.size} blocks",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            HorizontalDivider()
+            if (blocks.isEmpty()) {
+                Placeholder(
+                    activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
+                    hasAccount = s.activeAccount.isNotEmpty(),
+                    hasSnapshot = snapshotCount > 0,
+                    lastErrorToast = s.lastErrorToast,
+                    onCreateAccount = { model.createLocalAccount() },
+                )
+            } else {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
+                        TimelineBlockRow(block, itemLookup, cardLookup)
+                        HorizontalDivider()
+                    }
                 }
             }
         }
@@ -182,6 +235,18 @@ internal fun NoteRow(
     if (content == null) {
         MissingEventRow(eventId)
         return
+    }
+    // Demand-driven kind:0 fetch for the note author. Stable consumer-id
+    // (`note-author-<eventId>`) so two re-renders of the same row do not
+    // churn the kernel's per-pubkey claim slot. The kernel's `claim_profile`
+    // is idempotent on `(pubkey, consumer_id)`.
+    //
+    // Only `ChirpEventCard` carries the raw author pubkey in the snapshot;
+    // `TimelineItem` ships the displayable name only (snapshot.rs design).
+    // No card → no claim (cold-start, missing card metadata).
+    val authorPubkey = card?.authorPubkey.orEmpty()
+    if (authorPubkey.isNotEmpty()) {
+        RememberProfileClaim(authorPubkey, "note-author-$eventId")
     }
     val author = item?.authorDisplay?.nonEmptyOrNull()
         ?: card?.authorDisplayName?.nonEmptyOrNull()

@@ -228,6 +228,50 @@ impl Kernel {
         self.log(format!("queue note author profile {}", short_hex(pubkey)));
     }
 
+    /// Re-queue `pubkey` for kind:0 re-fetch after its NIP-65 mailbox just
+    /// changed.
+    ///
+    /// **Why.** When a UI view claims a profile for an unknown pubkey the
+    /// kernel batches a kind:0 fetch against the *indexer* lane (the only
+    /// outbox set known cold-start — see `pending_profile_claim_requests`,
+    /// lane 7 fallback `BootstrapSeed::IndexerOnly`). After kind:10002 lands
+    /// for that pubkey the substrate `MailboxCache` knows the author's
+    /// actual NIP-65 write set; any kind:0 we already cached came from the
+    /// indexer only and may differ from what the author publishes on their
+    /// own write relays. Moving the pubkey from `profile_requests.requested`
+    /// (inflight or completed) back to `profile_requests.pending` lets the
+    /// next `pending_view_requests` tick (which calls
+    /// `pending_profile_claim_requests`) re-batch a fresh kind:0 REQ —
+    /// this time routed through `route_outbox_subscription_relays` against
+    /// the now-known write set.
+    ///
+    /// **Gating.** No-op when the pubkey is not in `requested` (nothing to
+    /// refresh — never-claimed or first fetch still pending). Also no-op
+    /// when the pubkey is already in `pending` (the upcoming tick will
+    /// satisfy it). Does NOT clear `profiles` — the stale kind:0 stays as
+    /// the rendered fallback until the fresh one arrives (D6: views never
+    /// blank).
+    ///
+    /// Called from [`Kernel::on_mailbox_changed`] (production: substrate
+    /// `Kind10002Parser` mutated the cache; test_support:
+    /// `inject_replaceable_event`'s `10002 =>` arm substitutes the same
+    /// effect).
+    pub(in crate::kernel) fn refresh_profile_after_mailbox(&mut self, pubkey: &str) {
+        if !self.profile_requests.requested.contains(pubkey) {
+            return;
+        }
+        if self.profile_requests.pending.contains(pubkey) {
+            return;
+        }
+        self.profile_requests.requested.remove(pubkey);
+        self.profile_requests.pending.insert(pubkey.to_string());
+        self.changed_since_emit = true;
+        self.log(format!(
+            "refresh profile after mailbox change {}",
+            short_hex(pubkey)
+        ));
+    }
+
     pub(crate) fn close_author(&mut self, pubkey: &str) -> Vec<OutboundMessage> {
         let Some(interest) = self.author_view.selected_author.as_mut() else {
             return Vec::new();

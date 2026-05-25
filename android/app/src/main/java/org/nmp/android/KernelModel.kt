@@ -83,6 +83,21 @@ class KernelModel : ViewModel() {
     }
 
     /**
+     * Demand-driven profile fetch claim. Called from a Compose `LaunchedEffect`
+     * when a view starts rendering a pubkey; the kernel batches a kind:0 REQ
+     * and re-fetches against the author's NIP-65 write set once it lands.
+     * Matched by a [releaseProfile] in `DisposableEffect.onDispose`.
+     */
+    fun claimProfile(pubkey: String, consumerId: String) {
+        bridge.claimProfile(pubkey, consumerId)
+    }
+
+    /** Inverse of [claimProfile]; safe to call even if no matching claim is live. */
+    fun releaseProfile(pubkey: String, consumerId: String) {
+        bridge.releaseProfile(pubkey, consumerId)
+    }
+
+    /**
      * Decode one frame from the `update_tx` channel.
      *
      * The kernel emits `{"t":"snapshot","v":{…}}` (T103 envelope). Attempt to

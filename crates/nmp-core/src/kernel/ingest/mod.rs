@@ -602,6 +602,14 @@ impl Kernel {
     ///    trigger name is a historical artifact (kind:10002 is the only
     ///    kind that today writes the mailbox cache); the kernel itself
     ///    does not name the kind.
+    ///
+    /// 3. **Profile re-fetch** — call
+    ///    [`Kernel::refresh_profile_after_mailbox`] so an already-fetched
+    ///    kind:0 (necessarily fetched against the indexer lane, since
+    ///    cold-start is the only state in which `pending_profile_claim_requests`
+    ///    runs without a cached mailbox) is re-queued for a fresh fetch
+    ///    against the author's now-known write relays. No-op when the
+    ///    pubkey was never claimed.
     fn on_mailbox_changed(&mut self, author: &str, event_id: &str, created_at: u64) {
         let _ = self.route_subscription_relays(
             crate::stable_hash::stable_hash64(("mailbox-changed", event_id, created_at)),
@@ -614,6 +622,7 @@ impl Kernel {
                 pubkey: author.to_string(),
                 created_at,
             });
+        self.refresh_profile_after_mailbox(author);
     }
 }
 

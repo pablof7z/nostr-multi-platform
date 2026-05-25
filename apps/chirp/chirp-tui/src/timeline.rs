@@ -11,6 +11,11 @@ pub struct TimelineRow {
     pub depth: usize,
     pub has_gap: bool,
     pub relation_counts: RowRelationCounts,
+    /// 64-hex pubkeys appearing as NIP-21 profile mentions inside this
+    /// row's `content_tree`. Sorted + deduped at construction so a stable
+    /// equality holds across snapshot ticks (`RenderIntentTracker` diff-set
+    /// math relies on stable orderings to avoid spurious claim churn).
+    pub mention_pubkeys: Vec<String>,
 }
 
 impl TimelineRow {
@@ -58,6 +63,7 @@ impl TimelineRow {
             .unwrap_or_else(|| short_npub(&author_pubkey));
         let content = string_field(card, "content");
         let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
+        let mention_pubkeys = mention_pubkeys_from_card(card);
         Self {
             id,
             author,
@@ -67,8 +73,51 @@ impl TimelineRow {
             depth,
             has_gap,
             relation_counts: RowRelationCounts::from_card(card),
+            mention_pubkeys,
         }
     }
+}
+
+/// Walk `card.content_tree.nodes`, collect every NIP-21 profile mention's
+/// primary id, validate as 64-hex, return sorted + deduped. Returns an empty
+/// `Vec` when `content_tree` is absent (cold-start, missing card) or carries
+/// no mentions — never panics on shape regressions (D1).
+///
+/// The wire shape is fixed: `WireNode` serializes with
+/// `#[serde(tag = "kind", rename_all = "snake_case")]`, so a mention is
+/// `{"kind": "mention", "uri": {"primary_id": "<hex>", "kind": "profile", ...}}`.
+fn mention_pubkeys_from_card(card: &Value) -> Vec<String> {
+    let Some(nodes) = card
+        .get("content_tree")
+        .and_then(|tree| tree.get("nodes"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let mut set = std::collections::BTreeSet::new();
+    for node in nodes {
+        if node.get("kind").and_then(Value::as_str) != Some("mention") {
+            continue;
+        }
+        let Some(id) = node
+            .get("uri")
+            .and_then(|uri| uri.get("primary_id"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if is_hex_pubkey_64(id) {
+            set.insert(id.to_string());
+        }
+    }
+    set.into_iter().collect()
+}
+
+/// 64-char lowercase-or-uppercase hex gate. Mirrors the C-ABI `is_hex_pubkey`
+/// guard the kernel uses on every claim/release boundary; here it filters out
+/// short/garbage mention ids before they reach the kernel.
+fn is_hex_pubkey_64(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,6 +281,131 @@ mod tests {
             RowRelationCount::Known(3)
         );
         assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(1));
+    }
+
+    #[test]
+    fn mention_pubkeys_extracted_from_content_tree() {
+        let mention_a = "a".repeat(64);
+        let mention_b = "b".repeat(64);
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "aaaaaaaaaaaaaaaa",
+                "created_at": 1,
+                "content": "hello",
+                "content_tree": {
+                    "nodes": [
+                        {"kind": "text", "text": "hi "},
+                        {
+                            "kind": "mention",
+                            "uri": {
+                                "uri": "nostr:npub1...",
+                                "kind": "profile",
+                                "primary_id": mention_a,
+                                "relays": [],
+                            }
+                        },
+                        {"kind": "text", "text": " and "},
+                        {
+                            "kind": "mention",
+                            "uri": {
+                                "uri": "nostr:npub1...",
+                                "kind": "profile",
+                                "primary_id": mention_b,
+                                "relays": [],
+                            }
+                        },
+                    ],
+                    "roots": [0, 1, 2, 3],
+                    "mode": "plaintext"
+                }
+            }]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert_eq!(rows[0].mention_pubkeys, vec![mention_a, mention_b]);
+    }
+
+    #[test]
+    fn mention_pubkeys_filter_non_hex_and_short_ids() {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "aaaaaaaaaaaaaaaa",
+                "created_at": 1,
+                "content": "hello",
+                "content_tree": {
+                    "nodes": [
+                        {
+                            "kind": "mention",
+                            "uri": {
+                                "uri": "nostr:npub1...",
+                                "kind": "profile",
+                                "primary_id": "too-short",
+                                "relays": [],
+                            }
+                        },
+                        {
+                            "kind": "mention",
+                            "uri": {
+                                "uri": "nostr:npub1...",
+                                "kind": "profile",
+                                // 64 chars but with a non-hex `z` mid-string.
+                                "primary_id": "zzzz1111111111111111111111111111111111111111111111111111111111zz",
+                                "relays": [],
+                            }
+                        },
+                    ],
+                    "roots": [0, 1],
+                    "mode": "plaintext"
+                }
+            }]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert!(
+            rows[0].mention_pubkeys.is_empty(),
+            "non-hex / wrong-length mention ids must be filtered, got {:?}",
+            rows[0].mention_pubkeys
+        );
+    }
+
+    #[test]
+    fn mention_pubkeys_dedup_and_sort() {
+        let a = "a".repeat(64);
+        let b = "b".repeat(64);
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "x",
+                "created_at": 1,
+                "content": "",
+                "content_tree": {
+                    "nodes": [
+                        // Duplicate mention should collapse to one entry.
+                        {"kind": "mention", "uri": {"uri": "", "kind": "profile", "primary_id": b, "relays": []}},
+                        {"kind": "mention", "uri": {"uri": "", "kind": "profile", "primary_id": a, "relays": []}},
+                        {"kind": "mention", "uri": {"uri": "", "kind": "profile", "primary_id": b, "relays": []}},
+                    ],
+                    "roots": [0, 1, 2],
+                    "mode": "plaintext"
+                }
+            }]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert_eq!(rows[0].mention_pubkeys, vec![a, b]);
+    }
+
+    #[test]
+    fn missing_content_tree_yields_empty_mention_pubkeys() {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "x",
+                "created_at": 1,
+                "content": "hello",
+            }]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert!(rows[0].mention_pubkeys.is_empty());
     }
 
     #[test]
