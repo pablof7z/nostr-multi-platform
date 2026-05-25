@@ -1,0 +1,12 @@
+[package]
+name = "chirp-tui-approach-c"
+version = "0.1.0"
+edition = "2021"
+
+# Detach from the parent Cargo workspace so this standalone demo binary is not
+# pulled into the nmp-* workspace build graph. Empty table = standalone package.
+[workspace]
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
