@@ -5,7 +5,7 @@
   "description": "Ratatui NIP-05 verified identity badge that renders only when an identifier is present.",
   "dependencies": [],
   "registryDependencies": [
-    "tui-user-avatar"
+    "tui-user-core"
   ],
   "files": [
     {

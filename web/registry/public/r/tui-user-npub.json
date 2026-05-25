@@ -5,7 +5,7 @@
   "description": "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings.",
   "dependencies": [],
   "registryDependencies": [
-    "tui-user-avatar"
+    "tui-user-core"
   ],
   "files": [
     {

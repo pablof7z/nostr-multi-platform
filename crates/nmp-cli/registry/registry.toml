@@ -286,7 +286,7 @@ role = "source"
 
 [[components]]
 id = "tui/content-core"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
 description = "Ratatui ContentTreeWire mirror and helpers for app-owned Nostr content widgets."
 
@@ -300,9 +300,14 @@ source = "tui/content-core/content_render_data.rs"
 target = "src/components/nostr_content/content_render_data.rs"
 role = "source"
 
+[[components.files]]
+source = "tui/content-core/ratatui_text_wrap.rs"
+target = "src/components/nostr_content/ratatui_text_wrap.rs"
+role = "source"
+
 [[components]]
 id = "tui/content-minimal"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
 description = "Minimal Ratatui Nostr content renderer with inline text, mentions, links, and hashtags."
 dependencies = ["tui/content-core", "tui/content-mention-chip"]
@@ -314,7 +319,7 @@ role = "source"
 
 [[components]]
 id = "tui/content-mention-chip"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
 description = "Inline Ratatui profile mention chip for kernel-projected mention URIs."
 dependencies = ["tui/content-core"]
@@ -326,9 +331,9 @@ role = "source"
 
 [[components]]
 id = "tui/content-media-grid"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
-description = "Display-only Ratatui media grid summary for kernel-projected media URLs."
+description = "Display-only Ratatui media grid for kernel-projected URLs with optional ratatui-image protocols."
 dependencies = ["tui/content-core"]
 
 [[components.files]]
@@ -338,9 +343,9 @@ role = "source"
 
 [[components]]
 id = "tui/content-quote-card"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
-description = "Ratatui quote/event reference card for ContentTreeWire block quotes and event refs."
+description = "Ratatui quote/event reference card with resolved event content and optional inline media."
 dependencies = ["tui/content-core"]
 
 [[components.files]]
@@ -350,9 +355,9 @@ role = "source"
 
 [[components]]
 id = "tui/content-view"
-version = "0.1.0"
+version = "0.1.2"
 target = "tui"
-description = "Full Ratatui ContentTreeWire renderer for terminal timelines and thread detail views."
+description = "Full Ratatui ContentTreeWire renderer with resolved mentions, quote cards, and inline media."
 dependencies = [
     "tui/content-core",
     "tui/content-mention-chip",
@@ -441,19 +446,26 @@ role = "source"
 # -----------------------------------------------------------------------------
 # Ratatui user profile widgets. These are pure render widgets: host apps own
 # keyboard actions, clipboard writes, image fetching, and navigation.
-# `tui/user-avatar` owns the shared `ProfileWire` mirror.
+# `tui/user-core` owns the shared `ProfileWire` mirror.
 # -----------------------------------------------------------------------------
 
 [[components]]
-id = "tui/user-avatar"
+id = "tui/user-core"
 version = "0.1.0"
 target = "tui"
-description = "Ratatui profile wire type and terminal avatar tile with deterministic identicon fallback."
+description = "Shared Ratatui ProfileWire mirror for Rust-owned user profile projections."
 
 [[components.files]]
-source = "tui/user-avatar/profile_wire.rs"
+source = "tui/user-core/profile_wire.rs"
 target = "src/components/nostr_user/profile_wire.rs"
 role = "source"
+
+[[components]]
+id = "tui/user-avatar"
+version = "0.1.1"
+target = "tui"
+description = "Ratatui terminal avatar image via ratatui-image, with deterministic identicon fallback."
+dependencies = ["tui/user-core"]
 
 [[components.files]]
 source = "tui/user-avatar/nostr_avatar.rs"
@@ -465,7 +477,7 @@ id = "tui/user-name"
 version = "0.1.0"
 target = "tui"
 description = "Inline Ratatui profile display-name widget with Rust-formatted npub fallback."
-dependencies = ["tui/user-avatar"]
+dependencies = ["tui/user-core"]
 
 [[components.files]]
 source = "tui/user-name/nostr_profile_name.rs"
@@ -477,7 +489,7 @@ id = "tui/user-nip05"
 version = "0.1.0"
 target = "tui"
 description = "Ratatui NIP-05 verified identity badge that renders only when an identifier is present."
-dependencies = ["tui/user-avatar"]
+dependencies = ["tui/user-core"]
 
 [[components.files]]
 source = "tui/user-nip05/nostr_nip05_badge.rs"
@@ -489,7 +501,7 @@ id = "tui/user-npub"
 version = "0.1.0"
 target = "tui"
 description = "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings."
-dependencies = ["tui/user-avatar"]
+dependencies = ["tui/user-core"]
 
 [[components.files]]
 source = "tui/user-npub/nostr_npub_chip.rs"
@@ -498,10 +510,11 @@ role = "source"
 
 [[components]]
 id = "tui/user-card"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
-description = "Compact Ratatui author card composed from avatar, profile name, and optional NIP-05 badge."
+description = "Compact Ratatui author card composed from ratatui-image avatar, profile name, and optional NIP-05 badge."
 dependencies = [
+    "tui/user-core",
     "tui/user-avatar",
     "tui/user-name",
     "tui/user-nip05",

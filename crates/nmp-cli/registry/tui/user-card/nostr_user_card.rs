@@ -5,6 +5,7 @@ use ratatui::{
     text::Line,
     widgets::{Block, Borders, Paragraph, Widget},
 };
+use ratatui_image::protocol::Protocol;
 
 use super::{
     nostr_avatar::NostrAvatar, nostr_nip05_badge::NostrNip05Badge,
@@ -14,6 +15,7 @@ use super::{
 /// Compact author header: avatar, display name, and optional NIP-05 badge.
 pub struct NostrUserCard<'a> {
     profile: &'a ProfileWire,
+    avatar_image: Option<&'a Protocol>,
     style: Style,
 }
 
@@ -21,8 +23,14 @@ impl<'a> NostrUserCard<'a> {
     pub fn new(profile: &'a ProfileWire) -> Self {
         Self {
             profile,
+            avatar_image: None,
             style: Style::default().fg(Color::White).bg(Color::Rgb(12, 16, 28)),
         }
+    }
+
+    pub fn avatar_image(mut self, image: Option<&'a Protocol>) -> Self {
+        self.avatar_image = image;
+        self
     }
 
     pub fn style(mut self, style: Style) -> Self {
@@ -43,8 +51,10 @@ impl Widget for NostrUserCard<'_> {
             return;
         }
 
-        let chunks = Layout::horizontal([Constraint::Length(8), Constraint::Min(0)]).split(inner);
-        NostrAvatar::new(self.profile).render(chunks[0], buf);
+        let chunks = Layout::horizontal([Constraint::Length(14), Constraint::Min(0)]).split(inner);
+        NostrAvatar::new(self.profile)
+            .image(self.avatar_image)
+            .render(chunks[0], buf);
 
         let text_area = inset(chunks[1], 1, 0);
         let name = NostrProfileName::new(self.profile).line();

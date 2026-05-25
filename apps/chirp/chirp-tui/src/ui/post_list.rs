@@ -5,18 +5,18 @@
 //!   row 2: gutter + body text
 //!   row 3: gutter + ♥ N · ↺ N · 💬 N
 
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::{AppState, Pane};
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
 use crate::ui::nostr_content::nostr_minimal_content::NostrMinimalContent;
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, HEART, LIST_BG, REPLY_COLOR, REPOST,
-    SELECTED_BG, author_color, fmt_count, format_age,
+    author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, HEART,
+    LIST_BG, REPLY_COLOR, REPOST, SELECTED_BG,
 };
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
@@ -130,7 +130,7 @@ fn append_card(
     lines.push(line1);
 
     // Row 2: body
-    let body = truncate(&row.content.replace('\n', " "), content_width);
+    let body = content_preview(row, content_width);
     let body_len = body.chars().count();
     let body_pad = pad_for(content_width, body_len);
     let line2 = Line::from(vec![

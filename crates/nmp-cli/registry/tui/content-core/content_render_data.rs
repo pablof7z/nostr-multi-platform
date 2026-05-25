@@ -61,9 +61,13 @@ impl ContentProfileRenderData {
             pubkey: string(value, "pubkey")
                 .or_else(|| string(display, "pubkey"))
                 .unwrap_or_else(|| key.to_string()),
-            display_name: string(display, "name").or_else(|| string(value, "display_name")),
+            display_name: string(display, "name")
+                .or_else(|| string(value, "profile_name"))
+                .or_else(|| string(value, "display_name")),
             npub: string(display, "npub").or_else(|| string(value, "npub")),
-            picture_url: string(display, "picture_url").or_else(|| string(value, "picture_url")),
+            picture_url: string(display, "picture_url")
+                .or_else(|| string(value, "profile_picture"))
+                .or_else(|| string(value, "picture_url")),
         })
     }
 

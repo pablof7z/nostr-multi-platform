@@ -1,0 +1,27 @@
+[package]
+name = "nmp-gallery-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ratatui target for NmpGallery component previews."
+
+[lib]
+name = "nmp_gallery_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nmp-gallery-tui"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.29"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+nmp-app-gallery = { path = "../../../crates/nmp-app-gallery" }
+nmp-content = { path = "../../../crates/nmp-content" }
+nmp-core = { path = "../../../crates/nmp-core" }
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
+ratatui = { version = "0.30", features = ["crossterm"] }
+ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+ureq = { version = "2", default-features = false, features = ["tls"] }

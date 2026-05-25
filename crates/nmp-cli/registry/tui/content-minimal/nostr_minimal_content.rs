@@ -10,6 +10,7 @@ use super::{
     content_render_data::ContentRenderData,
     content_tree_wire::{ContentTreeWire, WireNode},
     nostr_mention_chip::NostrMentionChip,
+    ratatui_text_wrap::wrap_spans,
 };
 
 /// Minimal inline renderer for text, mentions, hashtags, URLs, and breaks.
@@ -80,10 +81,23 @@ fn append_inline(
             format!("`{code}`"),
             Style::default().fg(Color::Rgb(253, 186, 116)),
         )),
-        WireNode::EventRef(uri) => spans.push(Span::styled(
-            format!("nostr:{}", short_id(&uri.primary_id)),
-            Style::default().fg(Color::Rgb(196, 181, 253)),
-        )),
+        WireNode::EventRef(uri) => {
+            let label = render_data
+                .and_then(|data| data.event_for(uri))
+                .map(|event| {
+                    let body = if event.content_preview.is_empty() {
+                        short_id(&event.id)
+                    } else {
+                        event.content_preview.clone()
+                    };
+                    format!("quote {}: {body}", event.author_label())
+                })
+                .unwrap_or_else(|| format!("quote {}", short_id(&uri.primary_id)));
+            spans.push(Span::styled(
+                label,
+                Style::default().fg(Color::Rgb(196, 181, 253)),
+            ));
+        }
         WireNode::Emoji { shortcode, .. } => spans.push(Span::raw(format!(":{shortcode}:"))),
         WireNode::Invoice { invoice } => spans.push(Span::styled(
             format!("[{} invoice]", invoice.kind.to_ascii_lowercase()),
@@ -117,42 +131,6 @@ fn append_inline(
             }
         }
     }
-}
-
-fn wrap_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Line<'static>> {
-    if width == 0 {
-        return vec![Line::from("")];
-    }
-    let text = spans
-        .into_iter()
-        .map(|span| span.content.to_string())
-        .collect::<String>();
-    wrap_words(&text.replace('\n', " "), width)
-        .into_iter()
-        .map(Line::from)
-        .collect()
-}
-
-fn wrap_words(value: &str, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut line = String::new();
-    for word in value.split_whitespace() {
-        let next = if line.is_empty() {
-            word.to_string()
-        } else {
-            format!("{line} {word}")
-        };
-        if next.chars().count() > width && !line.is_empty() {
-            out.push(std::mem::take(&mut line));
-            line.push_str(word);
-        } else {
-            line = next;
-        }
-    }
-    if !line.is_empty() || out.is_empty() {
-        out.push(line);
-    }
-    out
 }
 
 fn short_id(id: &str) -> String {

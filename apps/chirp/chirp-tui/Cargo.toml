@@ -26,6 +26,7 @@ clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"
 ratatui = { version = "0.30", features = ["crossterm"] }
+ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
 serde_json = "1.0"
 # NIP-05 pubkey resolution for `:zap <lightning-address>` — fetches
 # `https://{domain}/.well-known/nostr.json?name={user}` to obtain the

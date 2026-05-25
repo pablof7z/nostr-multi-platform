@@ -4,18 +4,18 @@
 //! reply (`depth > 0`). When the Detail pane is focused, `state.detail_cursor`
 //! selects either the root (0) or one of the reply indices (1..=reply_count).
 
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::{AppState, Pane};
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
 use crate::ui::nostr_content::nostr_content_view::NostrContentView;
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, HEART, REPLY_COLOR, REPOST,
-    SELECTED_BG, author_color, fmt_count, format_age,
+    author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT,
+    HEART, REPLY_COLOR, REPOST, SELECTED_BG,
 };
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
@@ -148,16 +148,7 @@ fn append_main_post(
         Span::styled(pad, Style::default().bg(bg)),
     ]));
 
-    // Body (wrapped manually so background fills the line)
-    for body_line in wrap_body(&row.content, content_width) {
-        let used = body_line.chars().count();
-        let pad = pad_for(content_width, used);
-        lines.push(Line::from(vec![
-            prefix.clone(),
-            Span::styled(body_line, Style::default().fg(BODY_TEXT).bg(bg)),
-            Span::styled(pad, Style::default().bg(bg)),
-        ]));
-    }
+    append_content_lines(lines, row, prefix.clone(), bg, content_width);
 
     // Reaction bar
     let (spans, used) = reaction_spans(&row.relation_counts, bg);
@@ -201,15 +192,7 @@ fn append_reply(
         Span::styled(pad, Style::default().bg(bg)),
     ]));
 
-    for body_line in wrap_body(&row.content, content_width) {
-        let used = body_line.chars().count();
-        let pad = pad_for(content_width, used);
-        lines.push(Line::from(vec![
-            prefix.clone(),
-            Span::styled(body_line, Style::default().fg(BODY_TEXT).bg(bg)),
-            Span::styled(pad, Style::default().bg(bg)),
-        ]));
-    }
+    append_content_lines(lines, row, prefix, bg, content_width);
 }
 
 fn reaction_spans(
@@ -292,7 +275,6 @@ fn prefix_line(
     spans.push(Span::styled(pad_for(width, used), Style::default().bg(bg)));
     Line::from(spans)
 }
-
 
 fn wrap_body(content: &str, width: usize) -> Vec<String> {
     if width == 0 {

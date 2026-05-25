@@ -5,10 +5,13 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
+use ratatui_image::protocol::Protocol;
 
 use super::{
-    content_render_data::ContentRenderData,
+    content_render_data::{ContentEventRenderData, ContentRenderData},
     content_tree_wire::{ContentTreeWire, WireNode},
+    nostr_media_grid::NostrMediaGrid,
+    ratatui_text_wrap::wrap_prefixed,
 };
 
 /// Terminal quote/event reference card.
@@ -16,6 +19,7 @@ pub struct NostrQuoteCard<'a> {
     tree: &'a ContentTreeWire,
     node: &'a WireNode,
     render_data: Option<&'a ContentRenderData>,
+    media_images: &'a [(&'a str, &'a Protocol)],
     style: Style,
 }
 
@@ -25,12 +29,18 @@ impl<'a> NostrQuoteCard<'a> {
             tree,
             node,
             render_data: None,
+            media_images: &[],
             style: Style::default().fg(Color::Rgb(203, 213, 225)),
         }
     }
 
     pub fn render_data(mut self, render_data: Option<&'a ContentRenderData>) -> Self {
         self.render_data = render_data;
+        self
+    }
+
+    pub fn media_images(mut self, images: &'a [(&'a str, &'a Protocol)]) -> Self {
+        self.media_images = images;
         self
     }
 
@@ -48,7 +58,7 @@ impl<'a> NostrQuoteCard<'a> {
                     } else {
                         event.content_preview.clone()
                     };
-                    lines.extend(wrap_prefixed(&body, width, "  "));
+                    lines.extend(wrap_prefixed(&body, width, "  ", muted_style()));
                     lines
                 } else {
                     vec![Line::from(vec![
@@ -60,10 +70,22 @@ impl<'a> NostrQuoteCard<'a> {
             WireNode::BlockQuote { children } => self
                 .text_for_nodes(children)
                 .split('\n')
-                .flat_map(|line| wrap_prefixed(line, width, "> "))
+                .flat_map(|line| wrap_prefixed(line, width, "> ", muted_style()))
                 .collect(),
             _ => Vec::new(),
         }
+    }
+
+    pub fn preferred_height(&self, width: usize) -> u16 {
+        match self.node {
+            WireNode::EventRef(uri) => self
+                .render_data
+                .and_then(|data| data.event_for(uri))
+                .map(|event| 1 + self.event_body_height(event, width.saturating_sub(2)))
+                .unwrap_or_else(|| self.lines(width).len() as u16),
+            _ => self.lines(width).len() as u16,
+        }
+        .max(1)
     }
 
     fn text_for_nodes(&self, children: &[usize]) -> String {
@@ -84,46 +106,198 @@ impl Widget for NostrQuoteCard<'_> {
             .border_style(Style::default().fg(Color::Rgb(71, 85, 105)));
         let inner = block.inner(area);
         block.render(area, buf);
-        Paragraph::new(self.lines(inner.width as usize)).render(inner, buf);
-    }
-}
-
-fn wrap_prefixed(value: &str, width: usize, prefix: &str) -> Vec<Line<'static>> {
-    let body_width = width.saturating_sub(prefix.chars().count()).max(1);
-    wrap_words(value, body_width)
-        .into_iter()
-        .map(|line| {
-            Line::from(vec![
-                Span::styled(
-                    prefix.to_string(),
-                    Style::default().fg(Color::Rgb(148, 163, 184)),
-                ),
-                Span::raw(line),
-            ])
-        })
-        .collect()
-}
-
-fn wrap_words(value: &str, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut line = String::new();
-    for word in value.split_whitespace() {
-        let next = if line.is_empty() {
-            word.to_string()
-        } else {
-            format!("{line} {word}")
-        };
-        if next.chars().count() > width && !line.is_empty() {
-            out.push(std::mem::take(&mut line));
-            line.push_str(word);
-        } else {
-            line = next;
+        match self.node {
+            WireNode::EventRef(uri) => {
+                if let Some(event) = self.render_data.and_then(|data| data.event_for(uri)) {
+                    self.render_event(event, inner, buf);
+                } else {
+                    Paragraph::new(self.lines(inner.width as usize)).render(inner, buf);
+                }
+            }
+            _ => Paragraph::new(self.lines(inner.width as usize)).render(inner, buf),
         }
     }
-    if !line.is_empty() || out.is_empty() {
-        out.push(line);
+}
+
+impl NostrQuoteCard<'_> {
+    fn render_event(&self, event: &ContentEventRenderData, area: Rect, buf: &mut Buffer) {
+        if area.is_empty() {
+            return;
+        }
+        let header = format!("quote {} · kind:{}", event.author_label(), event.kind);
+        Paragraph::new(Line::from(Span::styled(header, muted_style())))
+            .render(Rect { height: 1, ..area }, buf);
+
+        let mut cursor = area.y.saturating_add(1);
+        let body_area = Rect {
+            x: area.x.saturating_add(2),
+            y: cursor,
+            width: area.width.saturating_sub(2),
+            height: area.bottom().saturating_sub(cursor),
+        };
+        if let Some(tree) = event.content_tree.as_ref() {
+            self.render_tree(tree, body_area, buf, &mut cursor);
+        } else {
+            let body = if event.content_preview.is_empty() {
+                short_id(&event.id)
+            } else {
+                event.content_preview.clone()
+            };
+            render_lines(
+                wrap_prefixed(&body, body_area.width as usize, "", muted_style()),
+                body_area,
+                buf,
+                &mut cursor,
+            );
+        }
     }
-    out
+
+    fn render_tree(&self, tree: &ContentTreeWire, area: Rect, buf: &mut Buffer, cursor: &mut u16) {
+        for root in &tree.roots {
+            self.render_tree_node(tree, *root, area, buf, cursor);
+            if *cursor >= area.bottom() {
+                break;
+            }
+        }
+    }
+
+    fn render_tree_node(
+        &self,
+        tree: &ContentTreeWire,
+        index: usize,
+        area: Rect,
+        buf: &mut Buffer,
+        cursor: &mut u16,
+    ) {
+        let Some(node) = tree.node(index) else {
+            return;
+        };
+        match node {
+            WireNode::Paragraph { children } => {
+                let mut text = String::new();
+                for child in children {
+                    let Some(child_node) = tree.node(*child) else {
+                        continue;
+                    };
+                    match child_node {
+                        WireNode::Media { urls, kind } => {
+                            render_plain(&mut text, area, buf, cursor);
+                            self.render_media(urls, kind, area, buf, cursor);
+                        }
+                        WireNode::Image { src, .. } => {
+                            render_plain(&mut text, area, buf, cursor);
+                            if let Some(src) = src {
+                                self.render_media(
+                                    std::slice::from_ref(src),
+                                    "image",
+                                    area,
+                                    buf,
+                                    cursor,
+                                );
+                            }
+                        }
+                        _ => text.push_str(&child_node.inline_label(tree)),
+                    }
+                }
+                render_plain(&mut text, area, buf, cursor);
+            }
+            WireNode::Media { urls, kind } => self.render_media(urls, kind, area, buf, cursor),
+            WireNode::Image { src, .. } => {
+                if let Some(src) = src {
+                    self.render_media(std::slice::from_ref(src), "image", area, buf, cursor);
+                }
+            }
+            _ => {
+                let mut text = node.inline_label(tree);
+                render_plain(&mut text, area, buf, cursor);
+            }
+        }
+    }
+
+    fn render_media(
+        &self,
+        urls: &[String],
+        kind: &str,
+        area: Rect,
+        buf: &mut Buffer,
+        cursor: &mut u16,
+    ) {
+        let grid = NostrMediaGrid::new(urls, kind).images(self.media_images);
+        let rect = take_area(area, cursor, grid.preferred_height());
+        if rect.is_empty() {
+            return;
+        }
+        grid.render(rect, buf);
+        *cursor = rect.bottom().saturating_add(1).min(area.bottom());
+    }
+
+    fn event_body_height(&self, event: &ContentEventRenderData, width: usize) -> u16 {
+        if let Some(tree) = event.content_tree.as_ref() {
+            tree.roots
+                .iter()
+                .filter_map(|root| tree.node(*root))
+                .map(|node| self.node_height(tree, node, width))
+                .sum::<u16>()
+                .max(1)
+        } else {
+            wrap_prefixed(&event.content_preview, width, "", muted_style()).len() as u16
+        }
+    }
+
+    fn node_height(&self, tree: &ContentTreeWire, node: &WireNode, width: usize) -> u16 {
+        match node {
+            WireNode::Media { urls, kind } => NostrMediaGrid::new(urls, kind)
+                .images(self.media_images)
+                .preferred_height()
+                .saturating_add(1),
+            WireNode::Image { src, .. } => src
+                .as_ref()
+                .map(|src| {
+                    NostrMediaGrid::new(std::slice::from_ref(src), "image")
+                        .images(self.media_images)
+                        .preferred_height()
+                        .saturating_add(1)
+                })
+                .unwrap_or(0),
+            _ => wrap_prefixed(&node.inline_label(tree), width, "", muted_style()).len() as u16,
+        }
+    }
+}
+
+fn render_plain(text: &mut String, area: Rect, buf: &mut Buffer, cursor: &mut u16) {
+    if text.trim().is_empty() {
+        text.clear();
+        return;
+    }
+    let lines = wrap_prefixed(text, area.width as usize, "", muted_style());
+    render_lines(lines, area, buf, cursor);
+    text.clear();
+}
+
+fn render_lines(lines: Vec<Line<'static>>, area: Rect, buf: &mut Buffer, cursor: &mut u16) {
+    let rect = take_area(area, cursor, lines.len() as u16);
+    if rect.is_empty() {
+        return;
+    }
+    Paragraph::new(lines).render(rect, buf);
+    *cursor = rect.bottom();
+}
+
+fn take_area(area: Rect, cursor: &mut u16, wanted_height: u16) -> Rect {
+    if *cursor >= area.bottom() || wanted_height == 0 {
+        return Rect::new(area.x, area.bottom(), area.width, 0);
+    }
+    let available = area.bottom().saturating_sub(*cursor);
+    Rect {
+        x: area.x,
+        y: *cursor,
+        width: area.width,
+        height: wanted_height.min(available),
+    }
+}
+
+fn muted_style() -> Style {
+    Style::default().fg(Color::Rgb(148, 163, 184))
 }
 
 fn short_id(id: &str) -> String {

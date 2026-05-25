@@ -8,6 +8,7 @@ members = [
     "apps/chirp/chirp-tui",
     "apps/chirp/chirp-repl",
     "apps/chirp/nmp-chirp-config",
+    "apps/nmp-gallery/tui",
     "crates/nmp-cli",
     "crates/nmp-codegen",
     "crates/nmp-content",

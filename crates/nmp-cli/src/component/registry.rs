@@ -90,6 +90,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/tui/content-core/content_render_data.rs"),
     ),
     (
+        "tui/content-core/ratatui_text_wrap.rs",
+        include_str!("../../registry/tui/content-core/ratatui_text_wrap.rs"),
+    ),
+    (
         "tui/content-minimal/nostr_minimal_content.rs",
         include_str!("../../registry/tui/content-minimal/nostr_minimal_content.rs"),
     ),
@@ -111,8 +115,8 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
     ),
     // Ratatui user profile widgets.
     (
-        "tui/user-avatar/profile_wire.rs",
-        include_str!("../../registry/tui/user-avatar/profile_wire.rs"),
+        "tui/user-core/profile_wire.rs",
+        include_str!("../../registry/tui/user-core/profile_wire.rs"),
     ),
     (
         "tui/user-avatar/nostr_avatar.rs",

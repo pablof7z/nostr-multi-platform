@@ -1,7 +1,7 @@
-#[path = "../../../../../../crates/nmp-cli/registry/tui/content-core/content_tree_wire.rs"]
-pub mod content_tree_wire;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/content-core/content_render_data.rs"]
 pub mod content_render_data;
+#[path = "../../../../../../crates/nmp-cli/registry/tui/content-core/content_tree_wire.rs"]
+pub mod content_tree_wire;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_view.rs"]
 pub mod nostr_content_view;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/content-media-grid/nostr_media_grid.rs"]
@@ -12,3 +12,5 @@ pub mod nostr_mention_chip;
 pub mod nostr_minimal_content;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/content-quote-card/nostr_quote_card.rs"]
 pub mod nostr_quote_card;
+#[path = "../../../../../../crates/nmp-cli/registry/tui/content-core/ratatui_text_wrap.rs"]
+pub mod ratatui_text_wrap;
