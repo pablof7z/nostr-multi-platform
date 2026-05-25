@@ -19,6 +19,7 @@ pub enum Mode {
     Normal,
     Compose,
     Command,
+    Palette { cursor: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +47,7 @@ pub struct AppState {
     pub reply_to: Option<String>,
     pub command: String,
     pub status: String,
+    pub profile_pubkey: String,
 }
 
 impl Default for AppState {
@@ -74,6 +76,7 @@ impl Default for AppState {
             reply_to: None,
             command: String::new(),
             status: "starting NMP runtime".to_string(),
+            profile_pubkey: String::new(),
         }
     }
 }
@@ -178,6 +181,14 @@ impl AppState {
     #[must_use]
     pub fn selected_row(&self) -> Option<&TimelineRow> {
         self.rows.get(self.selected)
+    }
+
+    pub fn open_palette(&mut self) {
+        self.mode = Mode::Palette { cursor: 0 };
+    }
+
+    pub fn close_palette(&mut self) {
+        self.mode = Mode::Normal;
     }
 
     pub fn start_compose(&mut self) {
