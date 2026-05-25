@@ -212,3 +212,21 @@ fn truncate(value: &str, max: usize) -> String {
         out
     }
 }
+
+fn content_preview(row: &TimelineRow, width: usize) -> String {
+    if let Some(tree) = &row.content_tree {
+        let line = NostrMinimalContent::new(tree)
+            .render_data(Some(&row.content_render))
+            .lines(width)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Line::from(""));
+        let text = line
+            .spans
+            .into_iter()
+            .map(|span| span.content.to_string())
+            .collect::<String>();
+        return truncate(&text, width);
+    }
+    truncate(&row.content.replace('\n', " "), width)
+}

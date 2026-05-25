@@ -4,9 +4,9 @@
 //! shells also need the per-event render metadata in the same pushed snapshot,
 //! so this projection owns the generic card cache beside the view state.
 
-use std::sync::Mutex;
+use std::{collections::BTreeMap, sync::Mutex};
 
-use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
+use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, ViewContext, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use nmp_nip18::try_from_kernel_event as try_from_repost_event;
@@ -36,6 +36,13 @@ pub struct TimelineEventCard {
     pub created_at: u64,
     pub content: String,
     pub content_tree: ContentTreeWire,
+    /// Kernel-owned render facts for URI nodes in `content_tree`.
+    ///
+    /// The tree stays a protocol projection. This companion payload carries
+    /// best-known, already-ingested kind:0/profile and quote-event facts so
+    /// render shells can display names and embed cards without decoding,
+    /// fetching, or inventing policy.
+    pub content_render: ContentRenderData,
     pub relation_counts: NoteRelationCounts,
     /// Flat mirror of `author_display.name` for renderers that want a
     /// simple display-name field without decoding the nested
@@ -57,6 +64,8 @@ impl TimelineEventCard {
     fn from_event(
         event: &KernelEvent,
         profile: Option<&ProfileDisplay>,
+        profiles: &BoundedMessageMap<String, ProfileDisplay>,
+        cards: &BoundedMessageMap<String, TimelineEventCard>,
         relation_counts: NoteRelationCounts,
     ) -> Self {
         let render_payload = RenderPayload::from_event(event);
@@ -70,6 +79,7 @@ impl TimelineEventCard {
         let author_display = AuthorDisplay::from_profile(&event.author, profile);
         let author_display_name = author_display.name.clone();
         let author_picture_url = author_display.picture_url.clone();
+        let content_render = content_render_for(&content_tree, profiles, cards);
         Self {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
@@ -78,10 +88,78 @@ impl TimelineEventCard {
             created_at: event.created_at,
             content: render_payload.content,
             content_tree,
+            content_render,
             relation_counts,
             author_display_name,
             author_picture_url,
             content_preview: content_preview(&render_payload.preview_source, 180),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ContentRenderData {
+    pub profiles: BTreeMap<String, ContentProfileRenderData>,
+    pub events: BTreeMap<String, ContentEventRenderData>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ContentProfileRenderData {
+    pub pubkey: String,
+    pub display: AuthorDisplay,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ContentEventRenderData {
+    pub id: String,
+    pub author_pubkey: String,
+    pub author_display: AuthorDisplay,
+    pub kind: u32,
+    pub created_at: u64,
+    pub content_preview: String,
+    pub content_tree: ContentTreeWire,
+}
+
+fn content_render_for(
+    tree: &ContentTreeWire,
+    profiles: &BoundedMessageMap<String, ProfileDisplay>,
+    cards: &BoundedMessageMap<String, TimelineEventCard>,
+) -> ContentRenderData {
+    let mut data = ContentRenderData::default();
+    for node in &tree.nodes {
+        match node {
+            WireNode::Mention { uri } if uri.kind == WireNostrUriKind::Profile => {
+                let pubkey = &uri.primary_id;
+                data.profiles
+                    .entry(pubkey.clone())
+                    .or_insert_with(|| ContentProfileRenderData {
+                        pubkey: pubkey.clone(),
+                        display: AuthorDisplay::from_profile(pubkey, profiles.get(pubkey)),
+                    });
+            }
+            WireNode::EventRef { uri } if uri.kind == WireNostrUriKind::Event => {
+                if let Some(card) = cards.get(uri.primary_id.as_str()) {
+                    data.events
+                        .entry(uri.primary_id.clone())
+                        .or_insert_with(|| ContentEventRenderData::from(card));
+                }
+            }
+            _ => {}
+        }
+    }
+    data
+}
+
+impl From<&TimelineEventCard> for ContentEventRenderData {
+    fn from(card: &TimelineEventCard) -> Self {
+        Self {
+            id: card.id.clone(),
+            author_pubkey: card.author_pubkey.clone(),
+            author_display: card.author_display.clone(),
+            kind: card.kind,
+            created_at: card.created_at,
+            content_preview: card.content_preview.clone(),
+            content_tree: card.content_tree.clone(),
         }
     }
 }
@@ -197,6 +275,7 @@ impl KernelEventObserver for ModularTimelineProjection {
             if should_replace(inner.profiles.get(&event.author), &profile) {
                 inner.profiles.insert(event.author.clone(), profile);
                 inner.refresh_author_cards(&event.author);
+                inner.refresh_content_render_data();
             }
             return;
         }
@@ -207,10 +286,15 @@ impl KernelEventObserver for ModularTimelineProjection {
         if has_render_card(event) {
             let profile = inner.profiles.get(&event.author).cloned();
             let relation_counts = inner.relations.counts_for(&event.id);
-            inner.cards.insert(
-                event.id.clone(),
-                TimelineEventCard::from_event(event, profile.as_ref(), relation_counts),
+            let card = TimelineEventCard::from_event(
+                event,
+                profile.as_ref(),
+                &inner.profiles,
+                &inner.cards,
+                relation_counts,
             );
+            inner.cards.insert(event.id.clone(), card);
+            inner.refresh_content_render_data();
         }
         let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
         // delta unused — projection takes snapshots directly
@@ -236,11 +320,56 @@ impl Inner {
         }
     }
 
+    fn refresh_content_render_data(&mut self) {
+        let profiles = &self.profiles;
+        let cards = self.cards.values().cloned().collect::<Vec<_>>();
+        let card_lookup = {
+            let mut lookup = BTreeMap::new();
+            for card in &cards {
+                lookup.insert(card.id.clone(), ContentEventRenderData::from(card));
+            }
+            lookup
+        };
+        for card in self.cards.values_mut() {
+            card.content_render = content_render_for_snapshot(&card.content_tree, profiles, &card_lookup);
+        }
+    }
+
     fn refresh_relation_counts(&mut self, event_id: &str) {
         if let Some(card) = self.cards.get_mut(event_id) {
             card.relation_counts = self.relations.counts_for(event_id);
         }
     }
+}
+
+fn content_render_for_snapshot(
+    tree: &ContentTreeWire,
+    profiles: &BoundedMessageMap<String, ProfileDisplay>,
+    cards: &BTreeMap<String, ContentEventRenderData>,
+) -> ContentRenderData {
+    let mut data = ContentRenderData::default();
+    for node in &tree.nodes {
+        match node {
+            WireNode::Mention { uri } if uri.kind == WireNostrUriKind::Profile => {
+                let pubkey = &uri.primary_id;
+                data.profiles
+                    .entry(pubkey.clone())
+                    .or_insert_with(|| ContentProfileRenderData {
+                        pubkey: pubkey.clone(),
+                        display: AuthorDisplay::from_profile(pubkey, profiles.get(pubkey)),
+                    });
+            }
+            WireNode::EventRef { uri } if uri.kind == WireNostrUriKind::Event => {
+                if let Some(card) = cards.get(&uri.primary_id) {
+                    data.events
+                        .entry(uri.primary_id.clone())
+                        .or_insert_with(|| card.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    data
 }
 
 #[cfg(test)]

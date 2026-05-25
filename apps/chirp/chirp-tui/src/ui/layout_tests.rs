@@ -48,6 +48,8 @@ fn home_tab_handles_narrow_terminal_without_panicking() {
         depth: 0,
         has_gap: false,
         relation_counts: Default::default(),
+        content_tree: None,
+        content_render: Default::default(),
         mention_pubkeys: Vec::new(),
     });
 
@@ -89,6 +91,8 @@ fn state_with_row() -> AppState {
         depth: 0,
         has_gap: false,
         relation_counts: Default::default(),
+        content_tree: None,
+        content_render: Default::default(),
         mention_pubkeys: Vec::new(),
     });
     state

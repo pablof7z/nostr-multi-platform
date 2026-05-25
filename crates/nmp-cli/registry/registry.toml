@@ -278,6 +278,94 @@ source = "compose/content-view/NostrContentGrouping.kt"
 target = "Components/NostrContent/NostrContentGrouping.kt"
 role = "source"
 
+# -----------------------------------------------------------------------------
+# Ratatui content widgets. These consume the Rust-owned ContentTreeWire
+# projection and stay render-only: host apps own navigation, image protocol
+# negotiation, clipboard, and network capabilities.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "tui/content-core"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui ContentTreeWire mirror and helpers for app-owned Nostr content widgets."
+
+[[components.files]]
+source = "tui/content-core/content_tree_wire.rs"
+target = "src/components/nostr_content/content_tree_wire.rs"
+role = "source"
+
+[[components.files]]
+source = "tui/content-core/content_render_data.rs"
+target = "src/components/nostr_content/content_render_data.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-minimal"
+version = "0.1.0"
+target = "tui"
+description = "Minimal Ratatui Nostr content renderer with inline text, mentions, links, and hashtags."
+dependencies = ["tui/content-core", "tui/content-mention-chip"]
+
+[[components.files]]
+source = "tui/content-minimal/nostr_minimal_content.rs"
+target = "src/components/nostr_content/nostr_minimal_content.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-mention-chip"
+version = "0.1.0"
+target = "tui"
+description = "Inline Ratatui profile mention chip for kernel-projected mention URIs."
+dependencies = ["tui/content-core"]
+
+[[components.files]]
+source = "tui/content-mention-chip/nostr_mention_chip.rs"
+target = "src/components/nostr_content/nostr_mention_chip.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-media-grid"
+version = "0.1.0"
+target = "tui"
+description = "Display-only Ratatui media grid summary for kernel-projected media URLs."
+dependencies = ["tui/content-core"]
+
+[[components.files]]
+source = "tui/content-media-grid/nostr_media_grid.rs"
+target = "src/components/nostr_content/nostr_media_grid.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-quote-card"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui quote/event reference card for ContentTreeWire block quotes and event refs."
+dependencies = ["tui/content-core"]
+
+[[components.files]]
+source = "tui/content-quote-card/nostr_quote_card.rs"
+target = "src/components/nostr_content/nostr_quote_card.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-view"
+version = "0.1.0"
+target = "tui"
+description = "Full Ratatui ContentTreeWire renderer for terminal timelines and thread detail views."
+dependencies = [
+    "tui/content-core",
+    "tui/content-mention-chip",
+    "tui/content-media-grid",
+    "tui/content-quote-card",
+]
+
+[[components.files]]
+source = "tui/content-view/nostr_content_view.rs"
+target = "src/components/nostr_content/nostr_content_view.rs"
+role = "source"
+
+
 # Jetpack Compose user profile components. `compose/user-avatar` owns the shared
 # `ProfileWire` mirror for the smaller profile display components.
 # -----------------------------------------------------------------------------
