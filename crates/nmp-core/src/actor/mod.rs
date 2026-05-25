@@ -27,6 +27,13 @@ mod commands;
 mod dispatch;
 #[cfg(feature = "native")]
 mod fairness;
+// Indexer-republish pipeline (passive gossip replication for replaceable
+// kinds). Native-only: depends on `nmp_network::pool::Pool` for the
+// outbound `["EVENT", ...]` frame. D0-clean: the module names only
+// substrate concepts (`RelayRole::Indexer`, `IndexerRelaysSlot`,
+// `EventStore`) — no NIP nouns.
+#[cfg(feature = "native")]
+pub(crate) mod indexer_republish;
 #[cfg(feature = "native")]
 mod outbound;
 #[cfg(feature = "native")]
@@ -1156,6 +1163,32 @@ pub fn run_actor_with_observers(
     // on. Survives `Reset` the same way the event-observer slot does so
     // external registrations stay live across a kernel rebuild.
     kernel.set_raw_event_observers_handle(Arc::clone(&raw_event_observers));
+    // Indexer-republish pipeline (passive gossip replication for
+    // NIP-01 replaceable kinds). Registered as a typed `RawEventObserver`
+    // on the same `raw_event_observers` slot the kernel fans out to from
+    // its ingest path. The pipeline holds a `Pool` clone (cheap —
+    // `Arc<Mutex<PoolInner>>` inside), the kernel's `IndexerRelaysSlot`
+    // (sole writer = actor reducer, D4), and the kernel's `EventStore`
+    // handle for the `provenance_for` loop-prevention check. D0-clean:
+    // every concept named here is substrate-grade
+    // (`RelayRole::Indexer` / `IndexerRelaysSlot` / `EventStore`).
+    //
+    // The pipeline's `IndexerRelaysSlot` and `EventStore` handles are
+    // kernel-owned (they go away on `ActorCommand::Reset` when the kernel
+    // is rebuilt). The `id_slot` below holds the observer id so the
+    // `Reset` arm (`actor/dispatch.rs`) can unregister the stale
+    // pipeline and re-register a fresh one bound to the rebuilt kernel.
+    // Mirrors the survive-Reset pattern used by `routing_substrate_slot`
+    // / `publish_resolver_slot` (factory closure re-applied on Reset)
+    // but simpler — the pipeline's construction args come straight from
+    // the kernel's accessors, so a hand-rolled helper is enough.
+    let indexer_republish_observer_id = indexer_republish::new_indexer_republish_observer_id_slot();
+    indexer_republish::register_indexer_republish_pipeline(
+        &kernel,
+        &raw_event_observers,
+        &pool,
+        &indexer_republish_observer_id,
+    );
     // Bind the shared snapshot-projection slot. The kernel runs every
     // host-registered projection closure in `make_update` and appends the
     // result to `KernelSnapshot::projections`. Per-app crates register
@@ -1315,6 +1348,8 @@ pub fn run_actor_with_observers(
                         routing_trace_slot: &routing_trace_slot,
                         routing_substrate_slot: &routing_substrate_slot,
                         publish_resolver_slot: &publish_resolver_slot,
+                        indexer_republish_observer_id: &indexer_republish_observer_id,
+                        raw_event_observers_handle: &raw_event_observers,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
