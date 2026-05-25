@@ -51,20 +51,20 @@ pub trait RelayTextInterceptor: Send + Sync + 'static {
     ) -> Vec<OutboundMessage>;
 }
 
-/// Shared slot holding the active [`RelayTextInterceptor`].
+/// Shared slot holding active [`RelayTextInterceptor`]s.
 ///
-/// `Arc<Mutex<Option<Arc<dyn …>>>>` so the slot is host-mutable
-/// (`*slot.lock() = Some(rt)` at app construction) without `&mut self` on
-/// `NmpApp`, and the inner `Arc` can be cloned out under the lock and
-/// invoked outside it (no long-held mutex around the hook body).
+/// `Arc<Mutex<Vec<Arc<dyn …>>>>` so the slot is host-mutable during app
+/// construction without `&mut self` on `NmpApp`, and the inner `Arc`s can be
+/// cloned out under the lock and invoked outside it (no long-held mutex around
+/// hook bodies).
 ///
-/// Only ONE interceptor today — `nmp-nip47`. A future second consumer
-/// (e.g. a NIP-44 group relay watcher) gets its own typed slot.
-pub type RelayTextInterceptorSlot =
-    Arc<Mutex<Option<Arc<dyn RelayTextInterceptor>>>>;
+/// Multiple protocol crates can observe the same inbound text frame. Each
+/// hook decides whether the frame is relevant to it; uninteresting frames
+/// return an empty `Vec`.
+pub type RelayTextInterceptorSlot = Arc<Mutex<Vec<Arc<dyn RelayTextInterceptor>>>>;
 
 /// Construct a fresh, empty [`RelayTextInterceptorSlot`].
 #[must_use]
 pub fn new_relay_text_interceptor_slot() -> RelayTextInterceptorSlot {
-    Arc::new(Mutex::new(None))
+    Arc::new(Mutex::new(Vec::new()))
 }

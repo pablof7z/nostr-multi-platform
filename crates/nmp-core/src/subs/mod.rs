@@ -217,6 +217,10 @@ pub struct SubscriptionLifecycle {
     /// Set via [`Self::set_coverage_hook`]; absent by default so the kernel
     /// links cleanly without any NIP-77 dependency.
     coverage_hook: Option<PlanCoverageHook>,
+    /// Optional outbound REQ rewrite hook. Protocol crates install this
+    /// through app composition when they can replace a planner REQ with a
+    /// more efficient relay-side sync protocol.
+    req_frame_interceptor: Option<Arc<dyn crate::substrate::ReqFrameInterceptor>>,
     /// T129 — optional watermark resolver. Installed by the kernel from the
     /// `EventStore` at startup; tests inject a stub closure. When set,
     /// [`Self::recompile_and_diff`] rewrites each non-ephemeral sub-shape's

@@ -26,6 +26,7 @@ nmp-router = { path = "../nmp-router" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip57 = { path = "../nmp-nip57" }
+nmp-nip77 = { path = "../nmp-nip77" }
 # D2 coverage-gate policy: thresholds + back-off rules for the default
 # `set_coverage_hook` installation. Zero `nmp-core` dep (the gate is pure
 # policy data); this assembly crate is one of the layers entitled to depend

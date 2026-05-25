@@ -238,6 +238,9 @@ pub(super) struct ActorContext<'a> {
     /// the hook on the rebuilt kernel (mirrors initial install in
     /// `run_actor_with_observers`).
     pub(super) coverage_hook_slot: &'a Arc<Mutex<Option<PlanCoverageHook>>>,
+    /// Outbound planner REQ interceptor slot. Read by the `Reset` arm to
+    /// re-install the hook on the rebuilt kernel.
+    pub(super) req_frame_interceptor_slot: &'a crate::substrate::ReqFrameInterceptorSlot,
     /// Host-installed [`crate::substrate::HostOpHandler`] slot. Read by the
     /// [`ActorCommand::DispatchHostOp`] arm to route the action body to the
     /// owner of the app-side state (today: `nmp-app-marmot`'s MLS service).
@@ -1143,6 +1146,16 @@ pub(super) fn dispatch_command(
             {
                 ctx.kernel.lifecycle_mut().set_coverage_hook(hook);
             }
+            if let Some(interceptor) = ctx
+                .req_frame_interceptor_slot
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+            {
+                ctx.kernel
+                    .lifecycle_mut()
+                    .set_req_frame_interceptor(interceptor);
+            }
             // V-51 phase 4 — re-publish the rebuilt kernel's routing-trace
             // projection clone into the shared slot. The previous projection
             // was attached to the now-discarded kernel; `Reset` is a "wipe
@@ -1549,11 +1562,11 @@ pub(super) fn handle_relay_event(
             let mut outbound = kernel.handle_message(role, &url_str, kernel_frame);
             outbound.extend(kernel.pending_view_requests());
             if let Some(text) = raw_text {
-                let interceptor_handle = relay_text_interceptor
+                let interceptors = relay_text_interceptor
                     .lock()
-                    .ok()
-                    .and_then(|guard| guard.as_ref().cloned());
-                if let Some(interceptor) = interceptor_handle {
+                    .map(|guard| guard.clone())
+                    .unwrap_or_default();
+                for interceptor in interceptors {
                     let extra = interceptor.on_relay_text(kernel, &url_str, &text);
                     outbound.extend(extra);
                 }

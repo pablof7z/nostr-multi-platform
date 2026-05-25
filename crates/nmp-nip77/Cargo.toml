@@ -1,0 +1,18 @@
+[package]
+name = "nmp-nip77"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "nmp_nip77"
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+negentropy = { version = "0.5", default-features = false, features = ["std"] }
+nostr = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

@@ -34,10 +34,9 @@
 //!    resolver survives a state wipe. Mirrors the routing factory — both
 //!    deliberately live in `nmp-router` (Layer 2) so `nmp-core` (Layer 3)
 //!    stays NIP-neutral (D0).
-//! 5. **D2 coverage hook** — a [`CoverageGate`]-based hook is installed via
-//!    [`NmpApp::set_coverage_hook`] so the production kernel enforces D2
-//!    ("negentropy before REQ") for large follow sets — backstop trim on
-//!    `max_relay_connections`.
+//! 5. **D2 coverage + NIP-77 hooks** — a [`CoverageGate`]-based hook trims
+//!    oversized relay plans, and [`nmp_nip77::NegentropySyncRuntime`] replaces
+//!    eligible large one-shot author×kind REQs with NIP-77 negentropy.
 //! 6. **Canonical runtime controllers** — see [`runtimes`] — for the
 //!    NIP-17 DM-inbox subscription/projection and the NIP-57
 //!    self-zap-receipts subscription. These are pure host-side
@@ -243,7 +242,7 @@ pub fn register_defaults(app: &mut NmpApp) {
         },
     );
 
-    // ── D2 coverage hook ────────────────────────────────────────────────
+    // ── D2 coverage + NIP-77 sync hooks ─────────────────────────────────
     //
     // Install a `CoverageGate`-based hook on the kernel so the M2 compiler
     // pipeline's `apply_selection` output is trimmed to the gate's
@@ -252,12 +251,13 @@ pub fn register_defaults(app: &mut NmpApp) {
     // — important for reproducible test runs and human-readable
     // diagnostics.
     //
-    // Stage 3 (post-v1) will extend this closure with negentropy steering.
-    // Once the transport engine is available, the body will feed each
-    // sub-shape's author × kind fanout into `CoverageGate` and route eligible
-    // filters through reconciliation when the target relay is known to
-    // support it.
     let gate = CoverageGate::default();
+    let negentropy_runtime = Arc::new(nmp_nip77::NegentropySyncRuntime::new(gate.clone()));
+    let req_interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor> =
+        negentropy_runtime.clone();
+    let relay_interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor> = negentropy_runtime;
+    app.set_req_frame_interceptor(req_interceptor);
+    app.add_relay_text_interceptor(relay_interceptor);
     app.set_coverage_hook(Arc::new(move |plan| {
         let cap = gate.max_relay_connections;
         if plan.per_relay.len() > cap {

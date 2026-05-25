@@ -565,6 +565,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(AtomicU64::new(0)),
             // D2 — test wiring; no coverage hook installed.
             Arc::new(std::sync::Mutex::new(None)),
+            crate::substrate::new_req_frame_interceptor_slot(),
             // Host-op handler slot — test wiring; this remote-signer test does
             // not exercise the `DispatchHostOp` path.
             crate::substrate::new_host_op_handler_slot(),

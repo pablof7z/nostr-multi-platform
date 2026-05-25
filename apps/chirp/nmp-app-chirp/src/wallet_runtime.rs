@@ -66,7 +66,7 @@ pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
 
     // 5. Substrate-generic relay-text interceptor — the actor calls this
     //    for every inbound text frame.
-    app.set_relay_text_interceptor(Arc::new(WalletInterceptor {
+    app.add_relay_text_interceptor(Arc::new(WalletInterceptor {
         runtime: Arc::clone(&handle),
     }));
 

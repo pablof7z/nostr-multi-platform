@@ -15,6 +15,12 @@ use super::*;
 use crate::relay::RelayRoleTestExt;
 
 impl Kernel {
+    /// Test-support constructor for downstream protocol crates.
+    #[must_use]
+    pub fn testing_new(visible_limit: usize) -> Self {
+        Self::new(visible_limit)
+    }
+
     /// Deliver a replaceable event (kind:0, 3, or 10002) to the kernel,
     /// bypassing signature verification.
     ///
@@ -464,4 +470,3 @@ impl Kernel {
         &self.profile_requests.requested
     }
 }
-

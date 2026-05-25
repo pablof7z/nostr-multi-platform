@@ -51,6 +51,7 @@ impl SubscriptionLifecycle {
             auth_gate: AuthGate::new(),
             compile_count: 0,
             coverage_hook: None,
+            req_frame_interceptor: None,
             watermark_fn: None,
             select_max_connections: DEFAULT_SELECT_MAX_CONNECTIONS,
             select_max_per_user: DEFAULT_SELECT_MAX_PER_USER,
@@ -184,6 +185,26 @@ impl SubscriptionLifecycle {
     /// is covered by `subs::coverage_hook_tests`.
     pub fn set_coverage_hook(&mut self, hook: PlanCoverageHook) {
         self.coverage_hook = Some(hook);
+    }
+
+    /// Install (or replace) the outbound planner REQ interceptor.
+    ///
+    /// The actor invokes this hook after planner registration and before raw
+    /// NIP-01 serialization. Returning `None` from the hook keeps the original
+    /// REQ path.
+    pub fn set_req_frame_interceptor(
+        &mut self,
+        interceptor: std::sync::Arc<dyn crate::substrate::ReqFrameInterceptor>,
+    ) {
+        self.req_frame_interceptor = Some(interceptor);
+    }
+
+    /// Clone the installed outbound REQ interceptor, if any.
+    #[must_use]
+    pub(crate) fn req_frame_interceptor(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::substrate::ReqFrameInterceptor>> {
+        self.req_frame_interceptor.as_ref().map(std::sync::Arc::clone)
     }
 
     /// T129 — install (or replace) the watermark resolver used by
