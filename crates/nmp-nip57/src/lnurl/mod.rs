@@ -72,6 +72,7 @@
 mod pay;
 
 use std::io::Read;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use nmp_core::substrate::{
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
@@ -300,7 +301,7 @@ fn first_p_tag(tags: &[Vec<String>]) -> Option<String> {
 /// `nostr::Event` via `EventBuilder`, then re-serialize to JSON. The reseat
 /// step is the bridge between the substrate's typed `UnsignedEvent` shape
 /// (kind / tags / content / `created_at`) and the nostr crate's signer API.
-pub(crate) fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<String, String> {
+pub fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<String, String> {
     let kind = Kind::from_u16(
         u16::try_from(unsigned.kind).map_err(|e| format!("zap kind out of range: {e}"))?,
     );
@@ -322,8 +323,8 @@ pub(crate) fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<
 
 /// Two-leg LNURL-pay HTTP round-trip. Runs on the spawned worker thread —
 /// blocking I/O is acceptable here precisely because we are NOT on the
-/// actor thread.
-fn fetch_lnurl_invoice_blocking(
+/// actor thread. Also usable from standalone tools (see `fetch_bolt11_for_zap`).
+pub fn fetch_lnurl_invoice_blocking(
     lnurl_or_address: &str,
     amount_msats: u64,
     signed_zap_request_json: &str,
@@ -442,6 +443,40 @@ fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
         .map_err(|e| format!("read response body from {url}: {e}"))?;
     serde_json::from_slice::<serde_json::Value>(&body)
         .map_err(|e| format!("parse JSON from {url}: {e}"))
+}
+
+/// Standalone blocking entry point for one-shot tools and integration tests.
+///
+/// Unlike [`FetchLnurlInvoiceCommand`] (which runs inside the NMP actor
+/// pipeline), this function blocks the calling thread directly. Use it from
+/// CLI binaries and integration tests where the actor stack is not available.
+///
+/// Signs the kind:9734 zap request with `keys`, does the two-leg LNURL-pay
+/// round-trip, and returns the bolt11 invoice string on success.
+pub fn fetch_bolt11_for_zap(
+    keys: &Keys,
+    lnurl_or_address: &str,
+    amount_msats: u64,
+    recipient_pubkey: &str,
+    relays: &[String],
+    comment: Option<&str>,
+) -> Result<String, String> {
+    let mut builder = crate::build::ZapRequest::to_pubkey(recipient_pubkey)
+        .amount_msats(amount_msats)
+        .relays(relays.to_vec());
+    if let Some(c) = comment {
+        builder = builder.comment(c);
+    }
+    let pubkey_hex = keys.public_key().to_hex();
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let unsigned = builder
+        .build(pubkey_hex, created_at)
+        .map_err(|e| format!("build kind:9734: {e}"))?;
+    let signed_json = sign_zap_request(keys, &unsigned)?;
+    fetch_lnurl_invoice_blocking(lnurl_or_address, amount_msats, &signed_json)
 }
 
 #[cfg(test)]

@@ -8133,6 +8133,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zap-smoke"
+version = "0.1.0"
+dependencies = [
+ "nmp-nip57",
+ "nmp-nwc",
+ "nostr",
+ "serde_json",
+ "tungstenite",
+ "ureq",
+]
+
+[[package]]
 name = "zbus"
 version = "4.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

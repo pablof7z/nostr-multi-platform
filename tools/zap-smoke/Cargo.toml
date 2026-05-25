@@ -1,0 +1,18 @@
+[package]
+name = "zap-smoke"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Standalone smoke-test: NIP-57 zap via NWC without the full NMP actor stack."
+
+[[bin]]
+name = "zap-smoke"
+path = "src/main.rs"
+
+[dependencies]
+nmp-nwc = { path = "../../crates/nmp-nwc" }
+nmp-nip57 = { path = "../../crates/nmp-nip57" }
+nostr = { workspace = true }
+serde_json = "1"
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+ureq = { version = "2", default-features = false, features = ["tls"] }
