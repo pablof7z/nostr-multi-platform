@@ -252,8 +252,22 @@ impl PoolInner {
         // We can't take it out of `self` (it's used cloned), but
         // replacing with a fresh dead channel lets the original
         // senders go out of scope as workers exit.
-        let (dead_tx, _dead_rx) = mpsc::channel();
-        self.worker_event_tx = dead_tx;
+        let (dead_worker_tx, _dead_worker_rx) = mpsc::channel();
+        self.worker_event_tx = dead_worker_tx;
+        // Same surgery for the public events sender. Without this, a
+        // `Pool::shutdown` caller who keeps the `Pool` alive while
+        // joining their own event-loop thread deadlocks: the dispatcher
+        // blocks on `events_rx.recv()` waiting for the sender to drop,
+        // but `PoolInner.events` is held by the `Arc<Mutex<PoolInner>>`
+        // the `Pool` keeps alive, and the `Pool` won't drop until *after*
+        // the caller returns from `shutdown()` and lets its `Drop` run.
+        // The bunker broker's `PoolRelayClient::shutdown` hits this loop
+        // exactly: it owns the `Pool` AND the dispatcher join. Dropping
+        // the original `events` sender here breaks the cycle so the
+        // dispatcher's `recv()` resolves once the translator finishes
+        // draining post-shutdown events.
+        let (dead_events_tx, _dead_events_rx) = mpsc::channel();
+        self.events = dead_events_tx;
     }
 
     pub(super) fn snapshot(&self) -> PoolSnapshot {
