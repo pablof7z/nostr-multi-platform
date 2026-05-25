@@ -76,7 +76,18 @@
 //! the driver's behavior, event ordering, and borrow semantics identical
 //! to the pre-move version.
 //!
-//! ## Step 8 phase E — NIP-42 AUTH wire/FSM split (this PR)
+//! ## Step 8 phase D — `nmp-signer-broker` rides `Pool` (shipped)
+//!
+//! `nmp-signer-broker::relay_client` is now a thin wrapper over
+//! [`pool::Pool`] (`PoolRelayClient`). The duplicate mio/tungstenite
+//! readiness loop in the broker is gone — V-13 Stage 2 dedupe. The
+//! broker owns ONE `Pool` per active bunker session; the dispatcher
+//! thread replays installed subscriptions on each fresh
+//! [`pool::PoolEvent::Opened`] so the inbound REQ survives a relay flap
+//! (V-14). The broker's Cargo.toml no longer names `tungstenite` /
+//! `mio` / `rustls` directly — only this crate.
+//!
+//! ## Step 8 phase E — NIP-42 AUTH wire/FSM split (shipped)
 //!
 //! Pre-classifies the inbound `["AUTH", <challenge>]` NIP-42 frame at
 //! the wire layer into a typed [`pool::RelayFrame::Auth`] variant so the
@@ -97,12 +108,6 @@
 //! - **Per-relay handshake driver state** — lives in
 //!   `nmp_nip42::flow::Nip42Driver` and the kernel's `kernel/auth.rs`
 //!   mirror.
-//!
-//! ## Deferred to follow-up PRs (step 8 phase D)
-//!
-//! - **Phase D** — migrate `nmp-signer-broker` onto the new `Pool` primitive
-//!   (V-13 dedupe: today `relay_client.rs` mirrors `relay_worker`'s mio +
-//!   tungstenite + jitter dance line-for-line).
 //!
 //! Each phase is a separate PR with its own acceptance criteria.
 

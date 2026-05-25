@@ -23,18 +23,17 @@ The crate-boundary spec lives at
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
 | 7 (V-38 NWC → `nmp-nip47`) | 🟡 PR #460 open, deprioritized |
 | 8 phase A (`nmp-network` extraction) | ✅ merged |
-| 8 phase B (push-model `Pool` API redesign) | ✅ merged |
-| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ✅ merged |
-| 8 phase D (broker dedupe on Pool) | 🟡 PR #477 in flight |
-| 8 phase E (NIP-42 wire/FSM split — `RelayFrame::Auth`) | ✅ merged |
-| 8 phase F (kernel-actor cut-over to `Pool`) | ⏳ in flight (this branch) |
+| 8 phase B (push-model `Pool` API redesign) | ⏳ in flight (subagent) |
+| 8 phase C (`BrowserRelayDriver` move into `nmp-network`) | ⏳ in flight (subagent) |
+| 8 phase D (`nmp-signer-broker` rides `nmp_network::Pool` — V-13 Stage 2 dedupe) | ⏳ in flight (subagent) |
+| 8 phase E (NIP-42 wire/FSM split) | ❌ not started |
 | 9 (`nmp-store` + `nmp-planner` extraction) | ✅ merged |
 | 10 (`nmp-app-template`, V-48) | ✅ merged (#467) |
 | 11 partial (chirp-* + `nmp-chirp-config` → `apps/chirp/`) | ✅ merged |
 | 11 final (`nmp-ffi` extraction; codegen path hardcode lifted + `fixture-todo-core` → `apps/fixture/`) | ✅ merged (#472 + follow-up) |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
-Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phase 2 (FFI/wasm snapshot surface) ⏳ in flight (branch `feat/v51-routing-trace-ffi-wasm-snapshot`). Phase 3 (Chirp inspector UI) not started.
+Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
 
 **Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C (`ProtocolCommandContext` capability-trait bundling) ✅ merged (PR #471); follow-up collapse of the surviving 8-arg `new()` onto a named-field `ProtocolCommandContextParts` struct (drops `#[allow(clippy::too_many_arguments)]`; `protocol.rs` back under 500 LOC) in flight (see "Active" below).
 
@@ -62,6 +61,8 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 - 2026-05-25 — feat(nmp-router): implement lanes 2/3/4/5 — close the `// TODO §3.1 lane N` markers in `crates/nmp-router/src/router.rs`. Lane 2 (Hint) lifts e/p/a/q tag position 2 on publish and `interest.hints[..].source = HintSource::EventTag` on subscribe; lane 3 (Provenance) lifts `interest.hints[..].source = HintSource::Provenance` (subscribe-only); lane 4 (UserConfigured) attributes `session_keys.active_write` on self-publish and `session_keys.active_read` when the active account is in the interest's author scope (or the interest is authorless); lane 5 (ClassRouted) refines the explicit-targets attribution to the right `EventClass` (Wiki for 818/30818/30819, Draft for 1234/31234, `Other("explicit")` otherwise) so the V-51 routing-trace inspector reports the class label rather than the placeholder. The mirror `nmp_core::kernel::test_router::TestOutboxRouter` is updated lane-for-lane so kernel tests cover the same coverage as production. 16 new tests in `crates/nmp-router/src/router/tests_lanes.rs`; 904 nmp-core lib + 63 nmp-router tests pass. — branch `agent/router-lanes-2345`.
 
 - 2026-05-25 — feat(nmp-network): step 8 phase E — NIP-42 AUTH wire/FSM split. Adds `RelayFrame::Auth(challenge)` variant to `nmp_network::pool::RelayFrame` and pre-classifies inbound `["AUTH", <challenge>]` text frames at the wire layer via the dependency-free `nmp_nip42_types::parse_auth_frame`. The kind:22242 reply builder stays in `nmp-nip42::build_auth_event`; the per-relay pause/replay FSM stays in `nmp_core::subs::AuthGate`; `nmp-network` does not name either. A doctrine guard test (`auth_gate_and_22242_are_not_named_in_this_crate`) greps the crate's own source so future drift trips at test time. — branch `worktree-agent-ad2af474ef86cf998`.
+
+- 2026-05-25 — feat(nmp-signer-broker): step 8 phase D — V-13 Stage 2 dedupe. `relay_client.rs` rewritten as a thin `nmp_network::Pool` adapter (`PoolRelayClient` — kept `TungsteniteRelayClient` as a type alias for legacy callers). One `Pool` per active session (rationale: bunker relays are not the user's app relays; lifecycle isolation). The duplicate ~700-line mio/tungstenite readiness loop is gone — the broker's `Cargo.toml` no longer names `tungstenite` / `mio` / `rustls` directly; only `nmp-network` (which transitively provides them). V-14 invariants preserved: mid-session reconnect now lives in `nmp_network::relay_worker`; subscription replay still driven by the broker via the dispatcher's `Opened`-triggered replay. — branch `worktree-agent-a40870f8e0f4ce566`.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
