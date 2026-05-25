@@ -749,8 +749,8 @@ These are new framework affordances — they require an ADR before implementatio
 **V-37 is the actual PD-033-A blocker (review #18 finding 10):** the ADR for these
 three affordances has not been written. Until the ADR exists and the affordances are
 built, PD-033-A cannot close without re-using the Notes raw-event bypass. Either
-promote V-37 to a v1 blocker (F-08) or drop PD-033-A from the v1 exit criteria with
-a written rationale. V-45 splits sub-item (c) into its own tracked item.
+promote V-37 to a v1 blocker or drop PD-033-A from the v1 exit criteria with a
+written rationale. V-45 splits sub-item (c) into its own tracked item.
 
 ---
 
@@ -970,7 +970,7 @@ only as a constant — no decoder, no projection, no action module.
   client for HEIC vs JPEG, dimensions, MIME, SHA-256. Need: `imeta` tag parser + action
   for upload. Effort: ~2 days per NIP.
 
-**Recommended action:** promote NIP-51 mute list to v1-A backlog (add to F-08 or separate);
+**Recommended action:** promote NIP-51 mute list to v1-A backlog as its own item;
 add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
 
 ---
@@ -1561,6 +1561,30 @@ F-05b (post-v1)" so the v1 claim is scoped accurately.
 
 Completed — see V-02. Moved to `apps/marmot/nmp-app-marmot/`.
 
+### F-08 · App-owned component registry + content rendering kits [V1 DX]
+
+Promoted from the post-v1 bucket by user direction on 2026-05-25. This is the
+M16 developer-experience track for reusable source components that apps can
+install, own, customize, and update later.
+
+**Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
+
+**Initial scope:**
+
+- Component manifest and lock-file model for app-owned source installation.
+- `nmp add component` and `nmp update component` over a local offline registry.
+- Optional jsrepo-compatible export after the NMP-native path works.
+- iOS SwiftUI content-rendering kits over `ContentTreeWire`.
+- Android Compose content-rendering kits with matching names and fallback
+  behavior.
+- Renderer variants such as minimal mentions, avatar mentions, rich
+  press-and-hold profile preview, compact quote cards, rich quote cards, media
+  grids, and markdown/article rendering.
+
+**Acceptance:** a clean app can install a content kit, render the shared content
+fixtures, customize one renderer in app-owned source, update the upstream kit,
+and preserve the local customization.
+
 ---
 
 ## Section 5 — Post-V1
@@ -1579,7 +1603,7 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | `nmp-codegen` full Swift bridge | Pilot (F-05) must land first to prove the pattern |
 | Second non-social app (shipped product) | PD-033-A decision needed first; the v1 spike is a thesis test, not a shipped product |
 | Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. Parity work blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
-| Nostr-aware UI component registry | Curated reusable UI primitives — components, builders, complete blocks — distributed à la NDK's `svelte/registry` (`/Users/pablofernandez/Work/NDK-nhlteu/svelte/registry`). Blocked on (a) stable snapshot projection contracts so registry components have a versioned surface to bind against, and (b) target-platform decision (SwiftUI registry vs. multi-target via UniFFI views vs. web-only via `nmp-wasm`). Naming TBD; provisional `nmp-ui-registry`. |
+| Additional Nostr-aware component packs | Content rendering moved to F-08 / M16. Post-v1 packs cover broader reusable app blocks such as account switchers, diagnostics inspectors, full thread screens, auth blocks, and non-content templates. |
 
 ---
 
