@@ -10,7 +10,7 @@ pub struct SharedSnapshot {
 }
 
 impl SharedSnapshot {
-    #[must_use] 
+    #[must_use]
     pub fn from_payload(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
@@ -19,9 +19,10 @@ impl SharedSnapshot {
     }
 
     fn from_value(value: &Value) -> Self {
-        let projections = value.get("projections");
+        let snapshot = value.get("v").unwrap_or(value);
+        let projections = snapshot.get("projections");
         Self {
-            metrics: RuntimeMetrics::from_value(value.get("metrics")),
+            metrics: RuntimeMetrics::from_value(snapshot.get("metrics")),
             relays: relays_from(projections),
             interests: interests_from(projections),
             action_results: action_results_from(projections),
@@ -182,8 +183,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_shared_diagnostics_and_action_projections() {
+    fn parses_direct_shared_diagnostics_and_action_projections() {
+        let payload = sample_payload().to_string();
+
+        let snapshot = SharedSnapshot::from_payload(&payload);
+
+        assert_sample_snapshot(snapshot);
+    }
+
+    #[test]
+    fn parses_enveloped_shared_diagnostics_and_action_projections() {
         let payload = serde_json::json!({
+            "t": "FullState",
+            "v": sample_payload()
+        })
+        .to_string();
+
+        let snapshot = SharedSnapshot::from_payload(&payload);
+
+        assert_sample_snapshot(snapshot);
+    }
+
+    fn sample_payload() -> Value {
+        serde_json::json!({
             "metrics": {
                 "events_rx": 5,
                 "visible_items": 2,
@@ -221,10 +243,9 @@ mod tests {
                 }
             }
         })
-        .to_string();
+    }
 
-        let snapshot = SharedSnapshot::from_payload(&payload);
-
+    fn assert_sample_snapshot(snapshot: SharedSnapshot) {
         assert_eq!(snapshot.metrics.events_rx, 5);
         assert_eq!(snapshot.relays[0].connection_label, "Open");
         assert_eq!(snapshot.interests[0].cache_coverage, "live");
