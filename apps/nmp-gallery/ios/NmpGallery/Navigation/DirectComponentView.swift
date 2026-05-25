@@ -43,15 +43,15 @@ struct DirectComponentView: View {
     private var pageBody: some View {
         switch component.id {
         case "user-avatar":
-            UserAvatarPage(profile: model.demoProfile)
+            UserAvatarPage(profile: model.bestEffortProfile)
         case "user-name":
-            UserProfileNamePage(profile: model.demoProfile)
+            UserProfileNamePage(profile: model.bestEffortProfile)
         case "user-nip05":
-            UserNip05Page(profile: model.demoProfile)
+            UserNip05Page(profile: model.bestEffortProfile)
         case "user-npub":
-            UserNpubPage(profile: model.demoProfile)
+            UserNpubPage(profile: model.bestEffortProfile)
         case "user-card":
-            UserCardPage(profile: model.demoProfile)
+            UserCardPage(profile: model.bestEffortProfile)
         case "content-core":
             ContentCorePage()
         case "content-view":

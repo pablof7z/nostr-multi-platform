@@ -22,137 +22,135 @@ private struct PageFrame<Content: View>: View {
     }
 }
 
-/// Loading placeholder when the demo profile's kind:0 hasn't arrived yet.
-private struct ProfileLoading: View {
-    var body: some View {
-        VStack(spacing: 8) {
-            ProgressView()
-            Text("Loading profile from relays…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 30)
-    }
-}
-
 // MARK: - user-avatar
 
+/// Renders the avatar component using the best-effort profile passed in.
+///
+/// Never gates on kind:0 arrival — the registry's `NostrAvatar` falls back
+/// to a deterministic identicon when `pictureUrl` is nil, so the first
+/// frame always shows a meaningful preview. When the real kind:0 lands
+/// `GalleryModel.bestEffortProfile` flips to the kernel-supplied
+/// `ProfileWire` and SwiftUI re-renders automatically.
 struct UserAvatarPage: View {
-    let profile: ProfileWire?
+    let profile: ProfileWire
 
     var body: some View {
-        if let profile {
-            VStack(spacing: 16) {
-                PageFrame(caption: "NostrAvatar(profile:)") {
-                    NostrAvatar(profile: profile, size: 80)
-                }
-                PageFrame(caption: "Smaller size") {
-                    HStack(spacing: 12) {
-                        NostrAvatar(profile: profile, size: 32)
-                        NostrAvatar(profile: profile, size: 48)
-                        NostrAvatar(profile: profile, size: 64)
-                    }
-                }
-                PageFrame(caption: "Identicon fallback (no picture URL)") {
-                    NostrAvatar(pubkey: profile.pubkey, pictureUrl: nil, size: 80)
+        VStack(spacing: 16) {
+            PageFrame(caption: "NostrAvatar(profile:)") {
+                NostrAvatar(profile: profile, size: 80)
+            }
+            PageFrame(caption: "Smaller size") {
+                HStack(spacing: 12) {
+                    NostrAvatar(profile: profile, size: 32)
+                    NostrAvatar(profile: profile, size: 48)
+                    NostrAvatar(profile: profile, size: 64)
                 }
             }
-        } else {
-            ProfileLoading()
+            PageFrame(caption: "Identicon fallback (no picture URL)") {
+                NostrAvatar(pubkey: profile.pubkey, pictureUrl: nil, size: 80)
+            }
         }
     }
 }
 
 // MARK: - user-name
 
+/// Renders the display-name component using the best-effort profile.
+///
+/// When `displayName` is nil (kind:0 not yet arrived) the registry
+/// component falls back to the Rust-formatted `npubShort` — never a
+/// Swift-side abbreviation (aim.md §6.9).
 struct UserProfileNamePage: View {
-    let profile: ProfileWire?
+    let profile: ProfileWire
 
     var body: some View {
-        if let profile {
-            VStack(spacing: 16) {
-                PageFrame(caption: "NostrProfileName(profile:)") {
-                    NostrProfileName(profile: profile)
-                }
-                PageFrame(caption: "Custom font") {
-                    NostrProfileName(profile: profile, font: .title2)
-                }
+        VStack(spacing: 16) {
+            PageFrame(caption: "NostrProfileName(profile:)") {
+                NostrProfileName(profile: profile)
             }
-        } else {
-            ProfileLoading()
+            PageFrame(caption: "Custom font") {
+                NostrProfileName(profile: profile, font: .title2)
+            }
         }
     }
 }
 
 // MARK: - user-nip05
 
+/// Renders the NIP-05 badge component using the best-effort profile.
+///
+/// When the profile has no `nip05` field the failable initializer
+/// returns nil and the first `PageFrame` shows the documented
+/// "(no NIP-05 on this profile)" hint — that IS the correct demo for the
+/// real-world behaviour, not a loading state. The second `PageFrame`
+/// always renders via the direct `nip05:` init so the component visual
+/// is on screen regardless of whether kind:0 has landed.
 struct UserNip05Page: View {
-    let profile: ProfileWire?
+    let profile: ProfileWire
 
     var body: some View {
-        if let profile {
-            VStack(spacing: 16) {
-                PageFrame(caption: "NostrNip05Badge(profile:)") {
-                    if let badge = NostrNip05Badge(profile: profile) {
-                        badge
-                    } else {
-                        Text("(no NIP-05 on this profile)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                PageFrame(caption: "Always renders (direct init)") {
-                    NostrNip05Badge(nip05: "demo@nmp.dev")
+        VStack(spacing: 16) {
+            PageFrame(caption: "NostrNip05Badge(profile:)") {
+                if let badge = NostrNip05Badge(profile: profile) {
+                    badge
+                } else {
+                    Text("(no NIP-05 on this profile)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-        } else {
-            ProfileLoading()
+            PageFrame(caption: "Always renders (direct init)") {
+                NostrNip05Badge(nip05: "demo@nmp.dev")
+            }
         }
     }
 }
 
 // MARK: - user-npub
 
+/// Renders the npub-chip component using the best-effort profile.
+///
+/// `npub` and `npubShort` are always Rust-formatted (placeholder values
+/// pinned in `GalleryModel.swift` match `nmp_core::display::short_npub`
+/// before kind:0 arrives; replaced by the kernel-supplied values once
+/// the real profile lands).
 struct UserNpubPage: View {
-    let profile: ProfileWire?
+    let profile: ProfileWire
 
     var body: some View {
-        if let profile {
-            VStack(spacing: 16) {
-                PageFrame(caption: "NostrNpubChip(profile:)") {
-                    NostrNpubChip(profile: profile)
-                }
-                PageFrame(caption: "Full npub (for reference)") {
-                    Text(profile.npub)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
+        VStack(spacing: 16) {
+            PageFrame(caption: "NostrNpubChip(profile:)") {
+                NostrNpubChip(profile: profile)
             }
-        } else {
-            ProfileLoading()
+            PageFrame(caption: "Full npub (for reference)") {
+                Text(profile.npub)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
     }
 }
 
 // MARK: - user-card
 
+/// Renders the user-card component using the best-effort profile.
+///
+/// Composes `NostrAvatar` + `NostrProfileName` + `NostrNip05Badge`; each
+/// piece degrades gracefully on missing fields, so the card renders on
+/// the first frame (identicon + truncated npub, no badge) and upgrades
+/// in place when kind:0 arrives.
 struct UserCardPage: View {
-    let profile: ProfileWire?
+    let profile: ProfileWire
 
     var body: some View {
-        if let profile {
-            VStack(spacing: 16) {
-                PageFrame(caption: "NostrUserCard(profile:)") {
-                    NostrUserCard(profile: profile)
-                }
-                PageFrame(caption: "Larger avatar") {
-                    NostrUserCard(profile: profile, avatarSize: 64)
-                }
+        VStack(spacing: 16) {
+            PageFrame(caption: "NostrUserCard(profile:)") {
+                NostrUserCard(profile: profile)
             }
-        } else {
-            ProfileLoading()
+            PageFrame(caption: "Larger avatar") {
+                NostrUserCard(profile: profile, avatarSize: 64)
+            }
         }
     }
 }

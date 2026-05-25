@@ -8,6 +8,25 @@ private let gmLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryModel
 /// pablof7z — picked as a known well-populated kind:0 source for live data.
 let DEMO_PUBKEY_HEX = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
 
+/// Full bech32 `npub1…` form of [`DEMO_PUBKEY_HEX`]. Used as a fallback
+/// before kind:0 arrives so user-* component pages can render real-shape
+/// data immediately (no spinner).
+///
+/// Computed once in Rust via `nmp_core::display::to_npub(DEMO_PUBKEY_HEX)`
+/// and pinned here as a literal — Swift never reformats npubs (aim.md §6.9).
+let DEMO_NPUB =
+    "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft"
+
+/// Rust-truncated `npub1…` form of [`DEMO_PUBKEY_HEX`]: first 10 chars +
+/// `"…"` + last 6 chars. Matches `nmp_core::display::short_npub` exactly
+/// — pinned by a `nmp-core` unit test so any drift in the canonical
+/// abbreviation algorithm fails CI before this constant goes stale.
+///
+/// Used only as a placeholder in [`GalleryModel.bestEffortProfile`] until
+/// the kernel pushes the real `ProfileWire` (which carries its own
+/// Rust-computed `npubShort`).
+let DEMO_NPUB_SHORT = "npub1l2vyh…utajft"
+
 /// Stable consumer id for the gallery's profile interest. The kernel
 /// refcounts profile claims per `(pubkey, consumer_id)` pair; using one stable
 /// id means claim/release stays balanced even across re-renders.
@@ -139,9 +158,39 @@ final class GalleryModel {
     }
 
     /// Convenience accessor for the demo profile. Returns nil while kind:0
-    /// is still in flight; the UI should show a `ProgressView` until it lands.
+    /// is still in flight — most call sites should prefer
+    /// [`bestEffortProfile`] which never returns nil.
     var demoProfile: ProfileWire? {
         snapshot.profiles[DEMO_PUBKEY_HEX]
+    }
+
+    /// Always-renderable `ProfileWire` for the demo account. Returns the
+    /// real kernel-supplied profile when kind:0 has arrived; otherwise a
+    /// placeholder built from `(DEMO_PUBKEY_HEX, DEMO_NPUB, DEMO_NPUB_SHORT)`
+    /// with every optional field set to nil.
+    ///
+    /// The registry components are designed to degrade gracefully on
+    /// missing fields (identicon avatar fallback, `npubShort` display name
+    /// fallback, hidden NIP-05 badge), so user-* component pages can render
+    /// immediately on first frame and update reactively when the real
+    /// profile lands — no spinner.
+    ///
+    /// `GalleryModel` is `@Observable`; SwiftUI re-evaluates this
+    /// computed property on every snapshot change, so the cutover from
+    /// placeholder → real profile is automatic.
+    var bestEffortProfile: ProfileWire {
+        if let real = snapshot.profiles[DEMO_PUBKEY_HEX] {
+            return real
+        }
+        return ProfileWire(
+            pubkey: DEMO_PUBKEY_HEX,
+            displayName: nil,
+            about: nil,
+            pictureUrl: nil,
+            nip05: nil,
+            npub: DEMO_NPUB,
+            npubShort: DEMO_NPUB_SHORT
+        )
     }
 
     /// Lookup any profile that arrived through the gallery's profiles map.
