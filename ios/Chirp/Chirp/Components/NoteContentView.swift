@@ -104,7 +104,15 @@ struct NoteContentView: View {
             return Text("\n")
         case .paragraph(let children), .heading(_, let children):
             return children.reduce(Text("")) { $0 + inlineText($1, in: tree) }
-        case .media, .placeholder:
+        case .blockQuote(let children):
+            return children.reduce(Text("")) { $0 + inlineText($1, in: tree) }
+        case .link(let children, _):
+            return children.reduce(Text("")) { $0 + inlineText($1, in: tree) }
+        case .invoice:
+            return Text("⚡ invoice").foregroundStyle(ChirpColor.link)
+        case .image(let alt, _, _):
+            return Text(alt.isEmpty ? "[image]" : "[\(alt)]").foregroundStyle(.secondary)
+        case .media, .codeBlock, .list, .rule, .placeholder(_):
             return Text("")
         }
     }
