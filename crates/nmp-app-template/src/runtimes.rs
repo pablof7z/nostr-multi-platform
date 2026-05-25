@@ -71,7 +71,7 @@ pub fn register_dm_runtime(app: &NmpApp) {
 
     let controller = Arc::new(DmRuntimeController {
         relay_rows: app.relay_edit_rows_handle(),
-        local_keys: app.nip17_local_keys(),
+        local_keys: app.active_local_keys(),
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
     });
@@ -79,7 +79,7 @@ pub fn register_dm_runtime(app: &NmpApp) {
 }
 
 fn register_inbox_projection(app: &NmpApp) {
-    let projection = Arc::new(DmInboxProjection::new(app.nip17_local_keys()));
+    let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
     let observer_id = app.register_raw_event_observer(
         DmInboxProjection::kind_filter(),
         Arc::clone(&projection) as Arc<dyn RawEventObserver>,
@@ -182,7 +182,7 @@ struct DmRelayListSnapshot {
 /// subscription by itself.
 pub fn register_zap_receipts_runtime(app: &NmpApp) {
     let controller = Arc::new(ZapReceiptsRuntimeController {
-        local_keys: app.nip17_local_keys(),
+        local_keys: app.active_local_keys(),
         tx: app.actor_sender(),
         last_pushed_pubkey: Mutex::new(None),
     });

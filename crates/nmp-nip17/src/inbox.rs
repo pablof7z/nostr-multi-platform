@@ -28,12 +28,14 @@
 //!
 //! # Key seam (ADR-0026 boundary)
 //!
-//! The projection holds an `Arc<Mutex<Option<nostr::Keys>>>` — the slot the
-//! actor writes on every identity mutation (`NmpApp::nip17_local_keys`). When
-//! the slot is `None` the user is not signed in (or holds a remote-signer
-//! account); every incoming envelope is then a silent no-op. Bunker (NIP-46)
-//! decrypt support is gated on ADR-0026 Phase 2 — a remote signer cannot
-//! currently unseal a gift-wrap because `unwrap_gift_wrap` needs raw `Keys`.
+//! The projection holds an `Arc<Mutex<Option<nostr::Keys>>>` — the
+//! substrate-generic active-local-keys slot the actor writes on every
+//! identity mutation, exposed by the FFI shell as
+//! `NmpApp::active_local_keys`. When the slot is `None` the user is not
+//! signed in (or holds a remote-signer account); every incoming envelope
+//! is then a silent no-op. Bunker (NIP-46) decrypt support is gated on
+//! ADR-0026 Phase 2 — a remote signer cannot currently unseal a gift-wrap
+//! because `unwrap_gift_wrap` needs raw `Keys`.
 //!
 //! This is the NIP-17 key seam and is DELIBERATELY distinct from any
 //! other crate's key slots — each consumer owns its own slot.
@@ -185,9 +187,10 @@ impl DmInboxSnapshot {
 /// Accumulates decrypted NIP-17 direct messages into a per-peer conversation
 /// model.
 ///
-/// Construct with the shared local-keys slot (`NmpApp::nip17_local_keys`),
-/// register the same `Arc` as a [`RawEventObserver`] with [`Self::kind_filter`],
-/// and capture it in a snapshot-projection closure (`snapshot_json`).
+/// Construct with the shared active-local-keys slot
+/// (`NmpApp::active_local_keys`), register the same `Arc` as a
+/// [`RawEventObserver`] with [`Self::kind_filter`], and capture it in a
+/// snapshot-projection closure (`snapshot_json`).
 pub struct DmInboxProjection {
     /// Shared local-keys slot. The actor writes the active account's
     /// `nostr::Keys` here on every identity mutation; the projection reads it

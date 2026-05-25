@@ -15,7 +15,7 @@ use std::time::Instant;
 
 use zeroize::Zeroizing;
 
-use crate::slots::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
+use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 use crate::kernel::Kernel;
 use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
@@ -72,20 +72,22 @@ use crate::capability_socket::CapabilityCallbackSlot;
 
 /// Sync every host-readable local-key mirror to the current active account.
 ///
-/// Two parallel slots track the active account's secret material on every
-/// identity mutation:
+/// Two parallel substrate-generic slots track the active account's local
+/// signing material on every identity mutation:
 ///
 /// * `mls_local_nsec` — bech32 `nsec1…` wrapped in [`Zeroizing`] so the
 ///   previous string is wiped from the heap on overwrite.
-/// * `nip17_local_keys` — the parsed `nostr::Keys` for NIP-17 DM gift-wrap
-///   decryption. `Keys` zeroizes its own secret on drop, so no extra wrapper
-///   is needed.
+/// * `active_local_keys` — the parsed `nostr::Keys`. `Keys` zeroizes its own
+///   secret on drop, so no extra wrapper is needed.
 ///
 /// Both derive from `identity.active_keys()`, so they always change together.
-/// Each slot is locked, written, and dropped sequentially — there is no
-/// cross-slot atomicity contract (a host that races a snapshot read against
-/// an identity switch may briefly observe one slot updated and the other not;
-/// the next snapshot tick reconciles).
+/// The substrate publishes both unconditionally; non-substrate consumers
+/// (FFI-shell readers exposed via `NmpApp::active_local_keys`) decide what
+/// to do with the data (today: NIP-17 gift-wrap unsealing, NIP-57 zap
+/// receipt pubkey reads). Each slot is locked, written, and dropped
+/// sequentially — there is no cross-slot atomicity contract (a host that
+/// races a snapshot read against an identity switch may briefly observe one
+/// slot updated and the other not; the next snapshot tick reconciles).
 ///
 /// Called synchronously BEFORE `maybe_emit_after_dispatch` (and before
 /// `emit_now` on the `Start` arm) so the slots are visible to host callbacks
@@ -93,12 +95,12 @@ use crate::capability_socket::CapabilityCallbackSlot;
 fn update_local_key_slots(
     identity: &IdentityRuntime,
     nsec_slot: &MlsLocalNsecSlot,
-    nip17_keys_slot: &Nip17LocalKeysSlot,
+    keys_slot: &ActiveLocalKeysSlot,
 ) {
     if let Ok(mut guard) = nsec_slot.lock() {
         *guard = identity.active_nsec_bech32().map(Zeroizing::new);
     }
-    if let Ok(mut guard) = nip17_keys_slot.lock() {
+    if let Ok(mut guard) = keys_slot.lock() {
         *guard = identity.active_local_keys().cloned();
     }
 }
@@ -213,10 +215,14 @@ pub(super) struct ActorContext<'a> {
     pub(super) relays_ready: bool,
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
     pub(super) mls_local_nsec: &'a MlsLocalNsecSlot,
-    /// NIP-17 DM-inbox decryption key seam — the active account's local
-    /// `nostr::Keys`. Updated alongside `mls_local_nsec` at every identity
-    /// mutation. See [`update_local_key_slots`].
-    pub(super) nip17_local_keys: &'a Nip17LocalKeysSlot,
+    /// Substrate-generic active-account local-keys slot — the active
+    /// account's `nostr::Keys`, parallel in shape to `mls_local_nsec` and
+    /// written together by [`update_local_key_slots`] on every identity
+    /// mutation. The substrate names no NIP; non-substrate consumers
+    /// (today: `nmp-nip17` gift-wrap unsealing via `DmInboxProjection`,
+    /// `nmp-nip57` zap-receipt subscription) read the same `Arc` clone
+    /// through the FFI shell's `NmpApp::active_local_keys` accessor.
+    pub(super) active_local_keys: &'a ActiveLocalKeysSlot,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
     /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
@@ -398,7 +404,7 @@ pub(super) fn dispatch_command(
                 ctx.capability_callback,
                 ctx.relays_ready,
             );
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             spawn_missing_relays(
                 ctx.relay_controls,
                 ctx.slot_to_url,
@@ -478,7 +484,7 @@ pub(super) fn dispatch_command(
             // the wrapper wipe the plaintext when it drops at end of scope.
             let outbound =
                 commands::sign_in_nsec(ctx.identity, ctx.kernel, secret.as_str(), ctx.relays_ready);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -504,7 +510,7 @@ pub(super) fn dispatch_command(
                 &relays,
                 mls,
             );
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -515,7 +521,7 @@ pub(super) fn dispatch_command(
         ActorCommand::SwitchActive { identity_id } => {
             let outbound =
                 commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -525,7 +531,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::forget_account(&identity_id, ctx.capability_callback);
             session_persistence::persist_current_active_session(
                 ctx.identity,
@@ -546,7 +552,7 @@ pub(super) fn dispatch_command(
                     ctx.capability_callback,
                 );
             }
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,

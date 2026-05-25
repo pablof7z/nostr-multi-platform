@@ -25,11 +25,19 @@ use zeroize::Zeroizing;
 /// [`crate::kernel::IndexerRelaysSlot`] so D14 catches shape regressions.
 pub type MlsLocalNsecSlot = Arc<Mutex<Option<Zeroizing<String>>>>;
 
-/// Typed slot for the active account's parsed `nostr::Keys` (for NIP-17 DM gift-wrap).
+/// Typed slot for the active account's parsed `nostr::Keys`.
 ///
-/// Parallel to [`MlsLocalNsecSlot`] but scoped to NIP-17 consumers per ADR-0025.
-/// The actor is the sole writer; per-app crates read via `NmpApp::nip17_local_keys`.
-pub type Nip17LocalKeysSlot = Arc<Mutex<Option<nostr::Keys>>>;
+/// Substrate-generic — the slot holds the active local-keys handle the actor
+/// derives from `IdentityRuntime::active_local_keys()` on every identity
+/// mutation; the substrate names no NIP. Non-substrate readers (today:
+/// `nmp-nip17` for gift-wrap unsealing, `nmp-nip57` for self-zap-receipt
+/// pubkey reads) consume the slot through `nmp-ffi`'s `NmpApp` accessor.
+///
+/// Parallel in shape to [`MlsLocalNsecSlot`] (which is the ADR-0025 raw-key
+/// escape, deliberately MLS-scoped — see D13). The actor is the sole writer;
+/// `None` means no account is active OR the active account uses a remote
+/// signer (NIP-46 bunker) that does not expose raw `Keys`.
+pub type ActiveLocalKeysSlot = Arc<Mutex<Option<nostr::Keys>>>;
 
 /// Typed slot for the FFI-supplied LMDB storage directory path.
 ///
@@ -64,9 +72,9 @@ pub fn new_mls_local_nsec_slot() -> MlsLocalNsecSlot {
     Arc::new(Mutex::new(None))
 }
 
-/// Construct a fresh, empty [`Nip17LocalKeysSlot`].
+/// Construct a fresh, empty [`ActiveLocalKeysSlot`].
 #[must_use]
-pub fn new_nip17_local_keys_slot() -> Nip17LocalKeysSlot {
+pub fn new_active_local_keys_slot() -> ActiveLocalKeysSlot {
     Arc::new(Mutex::new(None))
 }
 

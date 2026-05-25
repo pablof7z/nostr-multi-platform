@@ -40,6 +40,8 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 
 ## Active
 
+- 2026-05-25 — refactor(nmp-core): eliminate `Nip17LocalKeysSlot` plumbing (V-39 §substrate-purity). Renamed the NIP-17-named slot type to substrate-generic `ActiveLocalKeysSlot`; dropped the NIP-17 noun from `ActorContext`, `run_actor_with_observers`, and all dispatch-arm writer call sites. `nmp-ffi` exposes the same `Arc<Mutex<Option<nostr::Keys>>>` through a renamed `NmpApp::active_local_keys()` accessor (was `nip17_local_keys()`); consumers in `nmp-app-template` (`DmInboxProjection` registration, NIP-57 zap-receipt runtime) and `apps/chirp/nmp-app-chirp/tests/dm_inbox_round_trip.rs` updated to match. The substrate now names no NIP at the active-local-keys seam (D0). — branch `refactor/eliminate-nip17-local-keys-slot`.
+
 - 2026-05-24 — refactor(nmp-core): Debt A — router becomes live decision authority — PR #468. **Needs follow-up before merge**: `kernel/requests/profile.rs:431` routes kind:10002 discovery through the cached write set, which can self-seal stale metadata (if the cached relay list is old, asking only the old write relays misses the author's newer kind:10002 elsewhere). Discovery kinds (0/3/10000–19999) must hit the Indexer lane (router §3.1 lane 6).
 - 2026-05-24 — refactor(nmp-core): Debt B — delete `default_routing.rs` (484 LOC algorithm duplicate); kernel defaults switched to `EmptyOutboxRouter` + `(test) TestInMemoryMailboxCache` — branch `worktree-agent-a635030638058cda7`.
 - 2026-05-24 — feat(nmp-network): step 8 phase B — push-model `Pool` API + generational `RelayHandle` + `PoolEvent` channel — subagent in flight.

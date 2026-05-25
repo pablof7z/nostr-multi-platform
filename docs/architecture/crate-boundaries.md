@@ -27,7 +27,7 @@
 | 2 | create `nmp-router` crate (`InMemoryMailboxCache`, `Kind10002Parser`, `GenericOutboxRouter`) | ✅ merged (PR #450) |
 | 3 | kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65` | ✅ merged (PR #454) — **caveat**: `Nip65OutboxResolver` (publish-side, 279 LOC) stayed in `crates/nmp-core/src/publish/nip65/` rather than moving into `nmp-router`. Spec §271 forbids the NIP-65 algorithm body in nmp-core; this is a known follow-up. |
 | 4 | V-41 LNURL fetcher → `nmp-nip57` | ✅ merged (PR #456 + PR #474 follow-up that closed the `inject_recipient_relays` TODO via router-based `RecipientRelayLookup`) |
-| 5 | V-39 NIP-17 DM send → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-40) — **caveat**: `Nip17LocalKeysSlot` NIP-17 noun still threads through `crates/nmp-core/src/{actor/dispatch.rs, slots.rs}`. V-39 was supposed to remove this; partial. |
+| 5 | V-39 NIP-17 DM send → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-40); follow-up cleanup renamed the residual `Nip17LocalKeysSlot` → substrate-generic `ActiveLocalKeysSlot` (no NIP nouns in `nmp-core::{actor, slots}`). |
 | 6 | V-40 kind:10050 ingest + `DmRelayCache` → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-39) |
 | 7 | V-38 NWC → `nmp-nip47` | ⚠ PR #460 sitting, deprioritized — `crates/nmp-core/src/wallet/` (311 LOC) + the `wallet` Cargo feature still live in nmp-core |
 | 8 phase A | `nmp-network` crate (`relay_worker` + `relay_protocol` + `keepalive` + `RelayRole`) | ✅ merged (PR #459) |

@@ -11,7 +11,7 @@
 //! consumer would — same wire as the existing `tests/end_to_end.rs`.
 //!
 //! What `nmp_app_chirp_register_dm_inbox` does (apps/chirp/nmp-app-chirp/src/ffi.rs:321):
-//!   1. Grabs `app.nip17_local_keys()` — the shared `Arc<Mutex<Option<Keys>>>`
+//!   1. Grabs `app.active_local_keys()` — the shared `Arc<Mutex<Option<Keys>>>`
 //!      slot the actor writes on every identity mutation.
 //!   2. Constructs a `DmInboxProjection::new(local_keys)` bound to that slot.
 //!   3. Registers the projection as a `RawEventObserver` for kind:1059.
@@ -57,14 +57,14 @@ fn gift_wrapped_dm(
 
 /// THE NIP-17 DM INBOX SLOT-BINDING PROOF: register the DM inbox through the
 /// FFI symbol, then construct an auxiliary `DmInboxProjection` bound to
-/// the EXACT SAME `app.nip17_local_keys()` slot the FFI registration
+/// the EXACT SAME `app.active_local_keys()` slot the FFI registration
 /// captured. Write Bob's keys into the slot, ingest an Alice→Bob
 /// gift-wrap, and assert the snapshot surfaces the message.
 ///
 /// This proves:
 /// - `nmp_app_chirp_register_dm_inbox` does not panic or take exclusive
 ///   ownership of the keys slot (the test reads/writes the same `Arc`).
-/// - The `Arc<Mutex<Option<Keys>>>` returned by `app.nip17_local_keys()`
+/// - The `Arc<Mutex<Option<Keys>>>` returned by `app.active_local_keys()`
 ///   is the same slot the registered projection reads — writing Bob's
 ///   keys here would also be visible to the FFI-registered projection.
 /// - The full gift-wrap → unseal → conversation projection pipeline runs
@@ -85,18 +85,18 @@ fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
 
     // Register the DM inbox through the FFI symbol exactly as Swift does
     // at startup. This is the load-bearing call: it captures
-    // `app.nip17_local_keys()` into the projection it stores in the
+    // `app.active_local_keys()` into the projection it stores in the
     // raw-event-observer slot AND the snapshot registry.
     nmp_app_chirp_register_dm_inbox(app);
 
     // Write Bob's keys into the SAME shared slot the FFI registration
     // captured. In production the actor mutates this slot on every
     // identity reducer; here the test plays the role of the actor (the
-    // public `nip17_local_keys()` accessor returns an `Arc` clone, and
+    // public `active_local_keys()` accessor returns an `Arc` clone, and
     // a direct write is the deterministic test surrogate for the
     // `SignInNsec` command path).
     // SAFETY: app came from nmp_app_new() and is live for this call.
-    let local_keys_slot = unsafe { (*app).nip17_local_keys() };
+    let local_keys_slot = unsafe { (*app).active_local_keys() };
     *local_keys_slot.lock().unwrap() = Some(bob.clone());
 
     // Construct an AUXILIARY projection bound to the same slot. This is
@@ -173,7 +173,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
 
     // Same slot the FFI registration captured.
     // SAFETY: app came from nmp_app_new() and is live for this call.
-    let local_keys_slot = unsafe { (*app).nip17_local_keys() };
+    let local_keys_slot = unsafe { (*app).active_local_keys() };
     *local_keys_slot.lock().unwrap() = Some(bob.clone());
 
     let projection = DmInboxProjection::new(local_keys_slot);
@@ -205,12 +205,12 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     // older kernels (backward compat via V-08 Stage 2 iOS fix).
     let empty_projection = DmInboxProjection::new(
         // SAFETY: app is still live.
-        unsafe { (*app).nip17_local_keys() },
+        unsafe { (*app).active_local_keys() },
     );
     // Clear the slot so the projection sees "not signed in" →
     // remote_signer_unsupported surfaces as true.
     // SAFETY: app is still live.
-    *unsafe { (*app).nip17_local_keys() }.lock().unwrap() = None;
+    *unsafe { (*app).active_local_keys() }.lock().unwrap() = None;
     let empty_json = empty_projection.snapshot_json();
     assert_eq!(
         empty_json,
@@ -259,20 +259,22 @@ fn dm_inbox_full_round_trip_through_ffi() {
     // production FFI symbol — exactly the call Swift makes at startup.
     nmp_app_chirp_register_dm_inbox(app);
 
-    // Write Bob's keys into the shared NIP-17 local-keys slot. In production
-    // the actor mutates this on every identity reducer; here the test plays
-    // the role of the actor — same surrogate the two preceding tests use.
+    // Write Bob's keys into the shared active-local-keys slot. In
+    // production the actor mutates this on every identity reducer; here
+    // the test plays the role of the actor — same surrogate the two
+    // preceding tests use.
     //
     // NB: `nmp_app_start` is deliberately NOT called here. The actor thread
     // is already spawned by `nmp_app_new`, and `ActorCommand::IngestPreVerifiedEvents`
     // is dispatched unconditionally regardless of `*ctx.running` (see
     // `actor/dispatch.rs:958`). Calling `Start` would synchronously fire
     // `update_local_key_slots` (`actor/dispatch.rs:213`) which clobbers
-    // `nip17_local_keys` with `identity.active_local_keys()` (None here, no
-    // sign-in), defeating the slot write below and causing the projection
-    // to surface `remote_signer_unsupported:true` instead of decrypting.
+    // `active_local_keys` with `identity.active_local_keys()` (None here,
+    // no sign-in), defeating the slot write below and causing the
+    // projection to surface `remote_signer_unsupported:true` instead of
+    // decrypting.
     // SAFETY: app came from nmp_app_new() and is live for this call.
-    *unsafe { (*app).nip17_local_keys() }.lock().unwrap() = Some(bob.clone());
+    *unsafe { (*app).active_local_keys() }.lock().unwrap() = Some(bob.clone());
 
     // Build the gift-wrap envelope (kind:1059) from Alice to Bob through the
     // exact production primitive (`nmp_nip59::gift_wrap`).
