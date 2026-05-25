@@ -69,7 +69,54 @@ impl Kernel {
             match kind {
                 0 => self.ingest_profile(event),
                 3 => self.ingest_contacts(event),
-                10002 => self.ingest_relay_list(event),
+                10002 => {
+                    // 2026-05-25: the kernel-side `ingest_relay_list` impl
+                    // was deleted alongside the production `10002 =>` arm
+                    // (the substrate parser `nmp_router::Kind10002Parser`
+                    // is the production writer). Tests cannot wire the
+                    // production parser through this helper (which bypasses
+                    // `verify_and_persist` and therefore the dispatcher),
+                    // so substitute the parser's effect inline:
+                    //   1. parse `r` tags into a `ParsedRelayList` (the
+                    //      legacy adapter; identical shape to what the
+                    //      parser produces);
+                    //   2. upsert (or remove on empty) into the substrate
+                    //      `MailboxCache` the test kernel owns;
+                    //   3. enqueue the `Nip65Arrived` recompile trigger —
+                    //      what the kernel's substrate-honest mailbox-change
+                    //      observer (`Kernel::on_mailbox_changed`) does in
+                    //      production.
+                    let parsed = parse_relay_list_to_substrate(
+                        &event.id,
+                        event.created_at,
+                        &event.tags,
+                    );
+                    let empty = parsed.read.is_empty()
+                        && parsed.write.is_empty()
+                        && parsed.both.is_empty();
+                    let had_entry = self.mailbox_cache.known(&event.pubkey);
+                    if empty {
+                        if had_entry {
+                            self.mailbox_cache.remove(&event.pubkey);
+                            self.lifecycle.enqueue_trigger(
+                                crate::subs::CompileTrigger::Nip65Arrived {
+                                    pubkey: event.pubkey.clone(),
+                                    created_at: event.created_at,
+                                },
+                            );
+                        }
+                    } else {
+                        self.mailbox_cache
+                            .upsert(event.pubkey.clone(), parsed);
+                        self.lifecycle.enqueue_trigger(
+                            crate::subs::CompileTrigger::Nip65Arrived {
+                                pubkey: event.pubkey.clone(),
+                                created_at: event.created_at,
+                            },
+                        );
+                    }
+                    self.changed_since_emit = true;
+                }
                 // V-40: kind:10050 no longer has a kernel-side ingest arm —
                 // it routes through the substrate `EventIngestDispatcher`
                 // inside `verify_and_persist` above (which this helper
