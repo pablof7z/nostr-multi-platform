@@ -149,9 +149,9 @@ struct HomeFeedView: View {
                     if !model.publishOutbox.isEmpty {
                         Text("\(min(model.publishOutbox.count, 9))")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Color(.systemBackground))
+                            .foregroundStyle(ChirpColor.emphasisForeground)
                             .frame(minWidth: 14, minHeight: 14)
-                            .background(.tint, in: Circle())
+                            .background(ChirpColor.accent, in: Circle())
                             .offset(x: 8, y: -8)
                     }
                 }

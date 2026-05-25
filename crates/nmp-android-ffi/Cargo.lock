@@ -853,8 +853,10 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-core",
  "nmp-ffi",
+ "serde_json",
 ]
 
 [[package]]
@@ -891,6 +893,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "nmp-chirp-config"
+version = "0.1.0"
 
 [[package]]
 name = "nmp-content"
@@ -944,9 +950,14 @@ dependencies = [
 name = "nmp-network"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "mio",
+ "nmp-nip42-types",
  "rustls",
+ "serde_json",
  "tungstenite",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -1059,7 +1070,6 @@ dependencies = [
 name = "nmp-signer-broker"
 version = "0.1.0"
 dependencies = [
- "mio",
  "nmp-core",
  "nmp-ffi",
  "nmp-network",
@@ -1067,10 +1077,8 @@ dependencies = [
  "nmp-signers",
  "nostr",
  "rand",
- "rustls",
  "serde",
  "serde_json",
- "tungstenite",
 ]
 
 [[package]]

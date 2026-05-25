@@ -240,7 +240,7 @@ struct ModularBlockView: View {
         } label: {
             Text("Show this thread")
                 .font(.caption)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ChirpColor.link)
         }
         .buttonStyle(.borderless)
         .accessibilityIdentifier("show-this-thread-\(rootID.prefix(8))")

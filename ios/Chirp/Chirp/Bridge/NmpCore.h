@@ -4,11 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Pulse uses the same Path-A FFI shape as NmpStress — raw C bridge over the
-// kernel actor. This header MUST stay in sync with the non-test-gated
-// `#[no_mangle] extern "C" fn nmp_app_*` symbols exported from
-// `crates/nmp-core/src/ffi/`. The M14 UniFFI codegen path will supersede
-// this; until then it's hand-maintained and verified by the CI gate
+// Chirp uses the raw C bridge over the NMP kernel actor. This header MUST stay
+// in sync with the non-test-gated `#[no_mangle] extern "C" fn nmp_app_*`
+// symbols exported from `crates/nmp-ffi/src/`. The M14 UniFFI codegen path
+// will supersede this; until then it's hand-maintained and verified by the CI gate
 // `ci/check-ffi-header-drift.sh`.
 
 void *nmp_app_new(void);
@@ -38,8 +37,8 @@ void nmp_app_close_thread(void *app, const char *event_id);
 // The per-verb `nmp_app_react` / `nmp_app_follow` / `nmp_app_unfollow`
 // symbols were deleted: the three social verbs are D0 app nouns and now
 // route through the generic `nmp_app_dispatch_action` path under the
-// `chirp.react` / `chirp.follow` / `chirp.unfollow` namespaces, which
-// `nmp-app-chirp` registers at `nmp_app_chirp_register` time.
+// `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` namespaces, which
+// `nmp-app-template` registers from `nmp_app_chirp_register`.
 void nmp_app_signin_nsec(void *app, const char *secret);
 void nmp_app_signin_bunker(void *app, const char *uri);
 void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls);
@@ -174,10 +173,15 @@ uint8_t nmp_app_is_alive(void *app);
 // `"nmp.publish"`) and passes the action as JSON; the returned heap-allocated
 // JSON string is `{"correlation_id":"<32-hex>"}` on accept or `{"error":"…"}`
 // on rejection, and MUST be freed via `nmp_app_free_string`.  D6: never NULL
-// for a non-NULL app.  SCOPE — this currently validates the action and
-// assigns a correlation id ONLY; it does NOT execute it.  A correlation id
-// means the action was *accepted*, not *published*; execution wiring and the
-// durable action ledger are an M6 follow-up.
+// for a non-NULL app.  SCOPE — this validates the action, assigns a
+// correlation id, AND executes it: after `ActionRegistry::start` validates
+// the action and mints the id, the dispatch path drives `M::execute` which
+// enqueues the appropriate `ActorCommand` (the actor thread re-verifies any
+// signed envelope, then routes through the publish engine / protocol-command
+// loop). A returned `{"correlation_id":"…"}` therefore means the action was
+// *accepted and enqueued for execution*; per-relay outcomes still surface
+// asynchronously through the snapshot path / `action_results`. The durable
+// action ledger is a separate M6 follow-up.
 //
 // Host action-namespace registration (ADR-0027) is Rust-only: a host calls
 // `NmpApp::register_action::<M>()` with a typed `ActionModule` impl whose
@@ -186,9 +190,9 @@ uint8_t nmp_app_is_alive(void *app);
 // `nmp_app_register_action_module`) was deleted — `M::Action` and
 // `ActorCommand` have no stable C representation, so any non-Rust host that
 // wants a custom action namespace stages it through a Rust shim crate it
-// controls. The Rust composition root in `apps/chirp/nmp-app-chirp` wires
-// `chirp.react`/`chirp.follow`/`chirp.unfollow` and the NIP-29/NIP-17
-// `ActionModule` impls this way.
+// controls. The `nmp-app-template` composition root wires common Nostr actions
+// (`nmp.publish`, NIP-02, NIP-17, NIP-57, NIP-65); `nmp-app-chirp` adds
+// Chirp's NIP-29/Marmot app surfaces on top.
 //
 // `nmp_app_register_snapshot_projection` is the OUTPUT-side counterpart to
 // the action registration seam.  `KernelSnapshot` is a sealed social wire
@@ -338,7 +342,7 @@ void nmp_app_chirp_unregister(void *handle);
 //       {"host_relay_url":"wss://groups.example.com","local_id":"room"}
 //   • Returns void — registers no handle and exports no companion
 //     `unregister`. The group's chat messages surface on every kernel
-//     snapshot tick under the `projections` key `"nip29.group_chat"`,
+//     snapshot tick under the `projections` key `"nmp.nip29.group_chat"`,
 //     shaped `{ "messages": [ { id, pubkey, content, created_at, kind } ] }`
 //     ordered newest-first.
 //   • Single-screen scope: calling it twice overwrites the snapshot key
@@ -363,7 +367,7 @@ void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 //     `local_id` are two different groups (NIP-29 identity is the pair).
 //   • Returns void — registers no handle and exports no companion
 //     `unregister`. Discovered groups surface on every kernel snapshot
-//     tick under the `projections` key `"nip29.discovered_groups"`,
+//     tick under the `projections` key `"nmp.nip29.discovered_groups"`,
 //     shaped `{ "host_relay_url": "wss://…", "groups": [
 //     { group_id, host_relay_url, name?, picture?, about?, member_count,
 //       admin_count, public, open } ] }` ordered alphabetically by
@@ -394,10 +398,11 @@ void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_ur
 //     lifecycle itself.
 //   • Returns void — registers no handle, no companion `unregister`. The
 //     decrypted conversations surface on every kernel snapshot tick under
-//     the `projections` key `"nip17.dm_inbox"`, shaped
+//     the `projections` key `"nmp.nip17.dm_inbox"`, shaped
 //     `{ "conversations": [ { peer_pubkey, messages: [...] } ] }`.
-//   • `nmp_app_chirp_register` wires this eagerly. A second call replaces the
-//     observer and projection keys idempotently.
+//   • `nmp_app_chirp_register` inherits this from `nmp-app-template` eagerly.
+//     This symbol remains a compatibility entry point for hosts that have not
+//     moved to the template registration path.
 //   • Fire-and-forget (D6): a null `app` degrades to a silent no-op.
 //   • `app` MUST outlive the registration; it is borrowed only for the
 //     duration of this call.
@@ -414,7 +419,7 @@ void nmp_app_chirp_register_dm_inbox(void *app);
 //     correct account's follows. NULL is permitted (startup before sign-in);
 //     the caller MUST re-invoke after sign-in / account switch.
 //   • Returns void — registers no handle. The follow list surfaces under
-//     the `projections` key `"chirp.follow_list"`, shaped
+//     the `projections` key `"nmp.follow_list"`, shaped
 //     `{ "follows": [ { pubkey, npub, short_npub, avatar_initials,
 //       avatar_color } ] }`.
 //   • Fire-and-forget (D6): a null `app` degrades to a silent no-op.

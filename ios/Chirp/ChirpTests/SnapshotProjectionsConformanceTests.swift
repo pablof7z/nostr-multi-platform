@@ -73,7 +73,8 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         let json = """
         {
           "nmp.nip29.group_chat": {
-            "messages": []
+            "messages": [],
+            "group_initials": "?"
           },
           "nmp.nip29.discovered_groups": {
             "host_relay_url": "wss://groups.example.com",

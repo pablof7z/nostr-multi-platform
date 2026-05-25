@@ -123,8 +123,7 @@ fn build_dedups_equivalent_urls() {
 
 #[test]
 fn build_canonicalises_scheme_and_host() {
-    let event =
-        build_relay_list_event(&[entry("WSS://Relay.Example", RelayMarker::Both)]);
+    let event = build_relay_list_event(&[entry("WSS://Relay.Example", RelayMarker::Both)]);
     assert_eq!(
         event.tags,
         vec![vec!["r".to_string(), "wss://relay.example".to_string()]]
@@ -195,6 +194,45 @@ fn build_emits_mixed_markers_in_input_order() {
     );
 }
 
+#[test]
+fn input_accepts_native_role_alias_and_skips_indexer_only_rows() {
+    let input: PublishRelayListInput = serde_json::from_value(serde_json::json!({
+        "relays": [
+            { "url": "wss://read.example", "role": "read" },
+            { "url": "wss://both.example", "role": "both,indexer" },
+            { "url": "wss://indexer.example", "role": "indexer" }
+        ]
+    }))
+    .expect("native relay-row role shape must decode");
+    let event = build_relay_list_event(&input.relays);
+    assert_eq!(
+        event.tags,
+        vec![
+            vec![
+                "r".to_string(),
+                "wss://read.example".to_string(),
+                "read".to_string()
+            ],
+            vec!["r".to_string(), "wss://both.example".to_string()],
+        ],
+        "Rust, not Swift/Kotlin, decides which relay roles belong in NIP-65",
+    );
+}
+
+#[test]
+fn start_rejects_relay_rows_that_are_only_indexers() {
+    let input: PublishRelayListInput = serde_json::from_value(serde_json::json!({
+        "relays": [
+            { "url": "wss://indexer.example", "role": "indexer" }
+        ]
+    }))
+    .expect("indexer is a known native relay-row role");
+    assert!(matches!(
+        PublishRelayListAction::start(&mut ctx(), input),
+        Err(ActionRejection::Invalid(_))
+    ));
+}
+
 // --- action -----------------------------------------------------------
 
 #[test]
@@ -257,12 +295,22 @@ fn execute_emits_kind10002_publish_unsigned_event_command() {
     })
     .expect("execute must not fail");
     let cmds = captured.into_inner();
-    assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+    assert_eq!(
+        cmds.len(),
+        1,
+        "executor must send exactly one command, got {cmds:?}"
+    );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishUnsignedEvent { event, correlation_id } => {
+        ActorCommand::PublishUnsignedEvent {
+            event,
+            correlation_id,
+        } => {
             assert_eq!(event.kind, 10002, "relay list must emit kind:10002");
-            assert_eq!(correlation_id.as_deref(), Some("test-cid"),
-                "correlation_id must thread through so the host spinner closes");
+            assert_eq!(
+                correlation_id.as_deref(),
+                Some("test-cid"),
+                "correlation_id must thread through so the host spinner closes"
+            );
         }
         other => panic!("expected PublishUnsignedEvent, got {other:?}"),
     }

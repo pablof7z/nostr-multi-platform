@@ -27,7 +27,7 @@ fn tui_exposes_ios_parity_tabs_and_command_mode() -> Result<(), Box<dyn std::err
     send_key(&mut p, "s")?;
     p.exp_string("Accounts")?;
     send_key(&mut p, "h")?;
-    p.exp_string("Feed")?;
+    p.exp_string("Relays")?;
 
     send_key(&mut p, ":")?;
     p.exp_string("command mode")?;

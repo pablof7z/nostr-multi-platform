@@ -222,9 +222,9 @@ struct NoteActionsRow: View {
 
     // ── Zap (NIP-57) ─────────────────────────────────────────────────────
 
-    /// Yellow bolt when the author has a kind:0 lightning address AND the
-    /// host wired `onZap`; greyed/static when either is missing. The
-    /// disabled state still renders so the row layout stays stable
+    /// Payment-styled bolt when the author has a kind:0 lightning address
+    /// AND the host wired `onZap`; muted/static when either is missing.
+    /// The disabled state still renders so the row layout stays stable
     /// regardless of whether the author has published lud16/lud06.
     @ViewBuilder
     private var zapButton: some View {
@@ -235,7 +235,7 @@ struct NoteActionsRow: View {
             } label: {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(ChirpColor.zap)
                     .frame(minWidth: 44, minHeight: 32, alignment: .center)
             }
             .buttonStyle(.borderless)

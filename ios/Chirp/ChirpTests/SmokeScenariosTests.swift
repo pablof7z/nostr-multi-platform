@@ -17,8 +17,8 @@ import XCTest
 ///
 ///  1. **Process-shared kernel.** `nmp_app_new()` → `nmp_app_free()` →
 ///     `nmp_app_new()` in one process SEGVs when relay sockets were live
-///     during the free (`crates/nmp-core/src/ffi/mod.rs:62-104`,
-///     `crates/nmp-core/src/relay_worker.rs`). The suite uses ONE shared
+    ///     during the free (`crates/nmp-ffi/src/lib.rs`,
+    ///     `crates/nmp-network/src/relay_worker/mod.rs`). The suite uses ONE shared
 ///     `KernelModel`; scenarios run additively in XCTest's default
 ///     alphabetical method order (2 < 3 < 4 < 6).
 ///  2. **Polling, never Combine sinks.** Attaching `model.$x.sink`

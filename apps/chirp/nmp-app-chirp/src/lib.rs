@@ -53,12 +53,12 @@ pub use nmp_signer_broker::{
 // timeline symbols' naming / lifetime / free conventions. The iOS agent
 // links these alongside the timeline symbols.
 //
-// PD-033-A relocation: the C-ABI shell now lives in the `nmp-marmot` crate
-// (`apps/marmot/nmp-app-marmot/src/ffi.rs` + siblings) so the crate is a
-// standalone buildable target for a future Marmot-only app. Chirp pulls it
-// in via the `nmp-marmot/ffi` feature; the `#[no_mangle] nmp_marmot_*`
-// symbols flow through `libnmp_app_chirp.a` automatically via rlib linkage
-// (iOS still links exactly one staticlib).
+// The C-ABI shell lives in the `nmp-marmot` crate
+// (`crates/nmp-marmot/src/ffi.rs` + siblings) so the crate is a standalone
+// buildable target for a future Marmot-only app. Chirp pulls it in via the
+// `nmp-marmot/ffi` feature; the `#[no_mangle] nmp_marmot_*` symbols flow
+// through `libnmp_app_chirp.a` automatically via rlib linkage (iOS still
+// links exactly one staticlib).
 //
 // Gated behind the `marmot` feature: MLS-over-Nostr was formally deferred to
 // post-v1. Chirp opts in via its default feature set; a no-default-features

@@ -7,9 +7,23 @@
 //!   ["r", "<url>", "read"]    → read only
 //!   ["r", "<url>", "write"]   → write only
 //! ```
-//! Unknown markers are ignored. Empty URLs are ignored. Duplicates within a
-//! single event are deduped lane-wise (an event with two `["r","wss://x"]`
-//! tags upserts a single entry).
+//! Unknown markers are ignored. Empty URLs are ignored. Only `wss://` URLs
+//! are accepted (the same defensive scheme gate the legacy kernel-side
+//! `parse_relay_list` applied — `ws://` / `https://` URLs in an `r` tag
+//! are misconfiguration and routing must not consume them). Duplicates
+//! within a single event are deduped lane-wise (an event with two
+//! `["r","wss://x"]` tags upserts a single entry).
+//!
+//! ## Empty-list semantics
+//!
+//! A canonical kind:10002 carrying zero parseable `r` tags is the author's
+//! "I cleared my NIP-65 metadata" signal. The parser removes the entry from
+//! the cache rather than upserting an empty list, so subsequent
+//! [`MailboxCache::known`] lookups fail closed exactly as for an author who
+//! never published a kind:10002. The kernel's mailbox-change observer (in
+//! `kernel/ingest/mod.rs`) sees the cache transition Some→None and fires
+//! a recompile trigger so the M2 planner re-routes the author off the
+//! now-stale relays.
 
 use std::sync::Arc;
 
@@ -33,13 +47,23 @@ impl Kind10002Parser {
 
     /// Static-dispatch path for tests and direct callers. Identical effect
     /// to [`IngestParser::parse`].
+    ///
+    /// Empty-list (the author cleared their NIP-65) removes the cache entry
+    /// rather than upserting an empty `ParsedRelayList`. The kernel's
+    /// mailbox-change observer (see `kernel/ingest/mod.rs`) detects the
+    /// transition and fires the recompile trigger; the parser itself does
+    /// not name the kernel-side lifecycle.
     pub fn parse_event(&self, evt: &VerifiedEvent) {
         let raw = evt.raw();
         if raw.kind != 10_002 {
             return;
         }
         let parsed = parse_relay_list(&raw.tags);
-        self.cache.upsert(raw.pubkey.clone(), parsed);
+        if parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty() {
+            self.cache.remove(&raw.pubkey);
+        } else {
+            self.cache.upsert(raw.pubkey.clone(), parsed);
+        }
     }
 }
 
@@ -59,8 +83,12 @@ fn parse_relay_list(tags: &[Vec<String>]) -> ParsedRelayList {
         if tag.first().map(String::as_str) != Some("r") {
             continue;
         }
+        // Defensive scheme gate — only `wss://` URLs are routable. The
+        // legacy kernel-side parser applied this gate; the substrate
+        // parser must too so a misconfigured `r` tag (`https://…`,
+        // `ws://…`, bare host, etc.) does not poison the routing cache.
         let url = match tag.get(1) {
-            Some(u) if !u.is_empty() => u.clone(),
+            Some(u) if u.starts_with("wss://") => u.clone(),
             _ => continue,
         };
         match tag.get(2).map(String::as_str) {
@@ -174,6 +202,53 @@ mod tests {
         let r = cache.read_relays(&"alice".into()).unwrap();
         assert!(!r.contains(&"wss://weird.example".to_string()));
         assert!(r.contains(&"wss://ok.example".to_string()));
+    }
+
+    #[test]
+    fn non_wss_url_dropped() {
+        // The legacy kernel parser filtered URLs by the `wss://` scheme.
+        // The substrate parser must match — `https://` / `ws://` URLs in
+        // an `r` tag are misconfiguration and must not enter the cache.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        let parser = Kind10002Parser::new(cache.clone());
+        parser.parse_event(&evt("alice", 10_002, vec![
+            vec!["r".into(), "https://not-a-relay.example".into()],
+            vec!["r".into(), "ws://insecure.example".into()],
+            vec!["r".into(), "wss://ok.example".into()],
+        ]));
+
+        let r = cache.read_relays(&"alice".into()).unwrap();
+        assert_eq!(r, vec!["wss://ok.example".to_string()]);
+    }
+
+    #[test]
+    fn empty_relay_list_removes_known_entry() {
+        // Seed a non-empty list, then ingest an empty kind:10002 — the
+        // entry must be REMOVED (not upserted as an empty list) so
+        // `MailboxCache::known` returns false, mirroring the pre-delete
+        // kernel `ingest_relay_list` behaviour.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        let parser = Kind10002Parser::new(cache.clone());
+        parser.parse_event(&evt("alice", 10_002, vec![
+            vec!["r".into(), "wss://x.example".into()],
+        ]));
+        assert!(cache.read_relays(&"alice".into()).is_some());
+
+        // Now an empty list (e.g. all tags filtered out, or no `r` tags
+        // at all) — the parser must remove the entry.
+        parser.parse_event(&evt("alice", 10_002, Vec::new()));
+        assert!(
+            cache.read_relays(&"alice".into()).is_none(),
+            "an empty kind:10002 must remove the cache entry, not upsert []",
+        );
+    }
+
+    #[test]
+    fn empty_relay_list_for_unknown_author_is_noop() {
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        let parser = Kind10002Parser::new(cache.clone());
+        parser.parse_event(&evt("alice", 10_002, Vec::new()));
+        assert!(cache.is_empty());
     }
 
     #[test]

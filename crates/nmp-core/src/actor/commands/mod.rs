@@ -134,7 +134,11 @@ pub use lifecycle::{
 };
 // `pub` (not `pub(crate)`) so the test-support re-export in `lib.rs` works.
 // `commands` is crate-private (`mod commands;`), so external Rust code only
-// sees these through the gated `pub use` in lib.rs.
+// sees these through the gated `pub use` in lib.rs. The downstream re-export
+// fires under `any(test, feature = "test-support")` (top-level) or
+// `feature = "native"` (`__ffi_internal::LifecycleObserverFn`), so this gate
+// is the union: anything narrower would leave the lib.rs imports unresolved.
+#[cfg(any(test, feature = "test-support", feature = "native"))]
 pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 // T146 — kernel event observer slot. Re-exported up the actor module chain so
 // `ffi/event_observer.rs` and the per-app crate registration path (via
@@ -156,10 +160,15 @@ pub use event_observer::register_c_observer;
 pub use event_observer::{
     new_event_observer_slot, register_rust_observer, unregister_observer,
 };
-pub use event_observer::{
-    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
-    KernelEventObserverRegistration,
-};
+// `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
+// are the typed observer surface re-exported unconditionally from `lib.rs`
+// (per-app Rust crates and the C-ABI wire shape). `KernelEventObserverRegistration`
+// only reaches the outside world through `lib.rs::__ffi_internal`
+// (`#[cfg(feature = "native")]`); gate it so a `--no-default-features` build
+// does not see an unused-import on the registration type.
+pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+#[cfg(feature = "native")]
+pub use event_observer::KernelEventObserverRegistration;
 // Raw signed-event tap. Parallel to the kernel-event observer slot above
 // but delivers the verbatim flat NIP-01 signed event (`sig` included),
 // kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
@@ -178,18 +187,29 @@ pub(super) use publish::{
 // `nmp-core` no longer carries the entry point.
 pub(crate) use raw_event_observer::{notify_raw_observers, raw_observers_idle_for_kind};
 // `register_c_raw_observer` reaches `nmp-ffi` through
-// `nmp_core::__ffi_internal::register_c_raw_observer`.
+// `nmp_core::__ffi_internal::register_c_raw_observer`. `__ffi_internal` is
+// `#[cfg(feature = "native")]`; mirror the gate so a `--no-default-features`
+// build does not see an unused re-export.
+#[cfg(feature = "native")]
 pub use raw_event_observer::register_c_raw_observer;
-// Slot constructor + Rust-side register/unregister helpers + slot type
-// reach `nmp-ffi` through `nmp_core::__ffi_internal::*`.
+// Slot constructor + Rust-side register/unregister helpers reach `nmp-ffi`
+// through `nmp_core::__ffi_internal::*` (same `native` gate). The
+// `RawEventObserverSlot` type itself is consumed unconditionally by
+// `kernel/raw_event_observer.rs` (the kernel holds an
+// `Option<RawEventObserverSlot>` field), so the slot type re-export stays
+// ungated.
+#[cfg(feature = "native")]
 pub use raw_event_observer::{
     new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
-    RawEventObserverSlot,
 };
-pub use raw_event_observer::{
-    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-    RawEventObserverRegistration,
-};
+pub use raw_event_observer::RawEventObserverSlot;
+// `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
+// are the typed observer surface re-exported unconditionally from `lib.rs`.
+// `RawEventObserverRegistration` reaches the outside world only through
+// `lib.rs::__ffi_internal` (`#[cfg(feature = "native")]`); gate it to match.
+pub use raw_event_observer::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
+#[cfg(feature = "native")]
+pub use raw_event_observer::RawEventObserverRegistration;
 // NIP golden-tag conformance harness — `pub` (not `pub(crate)`) so the gated
 // test-support re-export in `lib.rs` reaches the integration test outside the
 // crate. `commands` is itself crate-private, so non-test Rust code only sees

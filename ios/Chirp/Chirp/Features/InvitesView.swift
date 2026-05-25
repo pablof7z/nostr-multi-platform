@@ -35,7 +35,7 @@ struct PendingInviteRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "envelope.badge.fill")
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(ChirpColor.accent)
                 Text(welcome.displayName)
                     .font(.headline)
                     .foregroundStyle(.primary)

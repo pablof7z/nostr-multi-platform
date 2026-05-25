@@ -1,3 +1,20 @@
+//! Generic DM-inbox routing tests — pins the kernel invariant that
+//! `#p`-tagged interests carrying [`PTagRouting::Nip17DmRelays`] resolve
+//! through the substrate's [`crate::substrate::DmInboxRelayLookup`] seam
+//! and NOT through the per-pubkey NIP-65 read-relay list.
+//!
+//! The kernel itself is NIP-neutral: the `DmInboxRelayLookup` trait is a
+//! generic per-pubkey "DM-inbox relays" capability. Concrete NIP bindings
+//! (today: NIP-17 / kind:10050) live in downstream protocol crates such as
+//! `nmp-nip17`. The `PTagRouting::Nip17DmRelays` discriminant is named in
+//! `nmp-planner` (also outside `nmp-core`); the kernel only ever sees it
+//! as "look up `#p` recipients through the inbox-lookup capability".
+//!
+//! These tests live under `kernel/` because the asserted behaviour is the
+//! kernel's planner-tick routing decision, not a NIP-17-specific message
+//! shape — moving them out of `nmp-core` would force a re-export of the
+//! kernel's test fixtures.
+
 use std::collections::BTreeMap;
 
 use super::*;
@@ -20,7 +37,12 @@ fn seed_read_relay_list(kernel: &Kernel, account: &str, read: &[&str]) {
     );
 }
 
-fn active_giftwrap_interest(pubkey: &str) -> LogicalInterest {
+/// Logical interest that requests `#p`-tagged gift-wrap (kind:1059) for the
+/// active account. The kernel routes the resulting REQ through the
+/// substrate's `DmInboxRelayLookup` (per `PTagRouting::Nip17DmRelays`),
+/// not through the NIP-65 read-relay list — the very behaviour this file
+/// pins.
+fn active_dm_inbox_interest(pubkey: &str) -> LogicalInterest {
     let mut tags = BTreeMap::new();
     tags.insert("p".to_string(), [pubkey.to_string()].into_iter().collect());
     LogicalInterest {
@@ -38,16 +60,21 @@ fn active_giftwrap_interest(pubkey: &str) -> LogicalInterest {
 }
 
 #[test]
-fn active_giftwrap_inbox_uses_kind10050_relays_not_nip65_read_relays() {
+fn active_dm_inbox_uses_lookup_relays_not_nip65_read_relays() {
     let account = pk("account");
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_read_relay_list(&kernel, &account, &["wss://public-read.example"]);
+    // Seed the kernel's substrate `DmInboxRelayLookup` (`TestDmInboxRelayCache`
+    // under the hood). The helper still names kind:10050 because that is the
+    // concrete NIP-17 binding the production composition wires in via
+    // `nmp_nip17::DmRelayCache`; the kernel itself only sees the generic
+    // lookup capability.
     kernel.seed_kind10050_for_test(&account, &["wss://dm-only.example/"]);
 
     kernel
         .lifecycle_mut()
         .registry_mut()
-        .push(active_giftwrap_interest(&account));
+        .push(active_dm_inbox_interest(&account));
     let frames = kernel.drain_lifecycle_tick();
 
     let req_relays: Vec<&str> = frames
@@ -66,10 +93,10 @@ fn active_giftwrap_inbox_uses_kind10050_relays_not_nip65_read_relays() {
 
     assert!(
         req_relays.contains(&"wss://dm-only.example"),
-        "active gift-wrap inbox must subscribe through kind:10050 DM relays",
+        "active DM-inbox interest must subscribe through the substrate DM-inbox lookup",
     );
     assert!(
         !req_relays.contains(&"wss://public-read.example"),
-        "active gift-wrap inbox must not fall back to NIP-65 public read relays",
+        "active DM-inbox interest must not fall back to NIP-65 public read relays",
     );
 }

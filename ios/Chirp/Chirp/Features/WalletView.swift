@@ -107,10 +107,10 @@ struct WalletView: View {
 
     private func statusColor(_ status: String) -> Color {
         switch status {
-        case "ready": return .green
+        case "ready": return ChirpColor.success
         case "connecting": return ChirpColor.zap
-        case "error": return ChirpColor.like
-        default: return .secondary
+        case "error": return ChirpColor.danger
+        default: return ChirpColor.textSecondary
         }
     }
 
@@ -137,8 +137,8 @@ struct WalletView: View {
         Section("Powered By") {
             HStack(spacing: 12) {
                 TechTile(label: "NWC", sublabel: "Nostr Wallet Connect", color: ChirpColor.zap)
-                TechTile(label: "NIP-57", sublabel: "Zap protocol", color: .accentColor)
-                TechTile(label: "Cashu", sublabel: "Ecash tokens", color: .secondary)
+                TechTile(label: "NIP-57", sublabel: "Zap protocol", color: ChirpColor.accent)
+                TechTile(label: "Cashu", sublabel: "Ecash tokens", color: ChirpColor.textSecondary)
             }
         }
     }

@@ -749,8 +749,8 @@ These are new framework affordances — they require an ADR before implementatio
 **V-37 is the actual PD-033-A blocker (review #18 finding 10):** the ADR for these
 three affordances has not been written. Until the ADR exists and the affordances are
 built, PD-033-A cannot close without re-using the Notes raw-event bypass. Either
-promote V-37 to a v1 blocker (F-08) or drop PD-033-A from the v1 exit criteria with
-a written rationale. V-45 splits sub-item (c) into its own tracked item.
+promote V-37 to a v1 blocker or drop PD-033-A from the v1 exit criteria with a
+written rationale. V-45 splits sub-item (c) into its own tracked item.
 
 ---
 
@@ -970,7 +970,7 @@ only as a constant — no decoder, no projection, no action module.
   client for HEIC vs JPEG, dimensions, MIME, SHA-256. Need: `imeta` tag parser + action
   for upload. Effort: ~2 days per NIP.
 
-**Recommended action:** promote NIP-51 mute list to v1-A backlog (add to F-08 or separate);
+**Recommended action:** promote NIP-51 mute list to v1-A backlog as its own item;
 add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
 
 ---
@@ -1298,7 +1298,52 @@ The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
-## Section 2 — In Flight
+### V-52 · Single-relay browsing — read events from one relay only, with cache origin tracking [HIGH · v1 DX]
+
+**What we want:** an app must be able to scope an interest to a single specific relay URL
+("show me what *this* relay has"). When a subscription is scoped that way:
+
+- REQs and `NEG-OPEN` (NIP-77 negentropy) are sent ONLY to that relay, never to any
+  outbox/inbox/indexer set the router would otherwise pick.
+- The cache must be queryable for events known to have originated from that specific
+  relay. We need a per-event provenance signal — for each cached event, did it (also)
+  arrive from relay X? Today's `Provenance` lane (lane 3 in `nmp-router`) already
+  carries relay-origin URLs in events' tag set, but the cache index can't be queried
+  by "events seen on relay X" as a primary lookup.
+- A scoped subscription does NOT cause an unscoped re-broadcast. The router treats
+  the relay scope as an `explicit_targets` override (similar to lane 5) and does not
+  add discovery/AppRelay fallbacks.
+
+**Why this matters:** every modern Nostr client has a "browse this relay" or "switch
+relay" affordance (relay-trawler, what's-on-this-relay debugging, single-relay reads
+for private/paid relays). Today an NMP app has no structural way to express it —
+the router always fans out via outbox/inbox.
+
+**Code-grounded surfaces to extend:**
+
+- `crates/nmp-core/src/substrate/routing.rs` — `RoutingContext` already has
+  `explicit_targets: Option<BTreeSet<Url>>`, but there is no parallel `LogicalInterest`
+  shape for the subscribe side. Add a `LogicalInterest::SingleRelay { url, inner }` or
+  an `interest.scope_relays: Option<BTreeSet<Url>>` field that the router will honour
+  in lane 5 on the subscribe path (today lane 5 is publish-only in `nmp-router`).
+- `crates/nmp-store/` — cache lookup needs a `by_relay(url)` index, OR
+  `EventStore::list_events_seen_on(relay, filter)`. The relay-origin provenance set
+  already lives in `Provenance` events; the store must expose a primary lookup by
+  any one relay URL.
+- `crates/nmp-router/src/router.rs` lane 5 — extend the `ClassRouted` lane to cover
+  the subscribe path when `interest.scope_relays.is_some()`. Today the subscribe-side
+  lane 5 is empty (see PR #483).
+- FFI: surface a `nmp.subscribe_scoped_to_relay(url, filter, ...)` action namespace
+  so apps can request it without learning the substrate types.
+- Chirp: expose this as a UI affordance — a relay picker in any timeline view that,
+  when set, runs the same view bound to a single-relay scoped subscription. The
+  routing-trace inspector (V-51) already shows the lane attribution, so this
+  surface lights up "you are looking at relay X" naturally.
+
+**Acceptance test:** a chirp-repl flow `chirp-repl browse --relay wss://relay.damus.io
+--kind 1 --limit 100` returns exactly the kind:1 events the cache has stamped with
+that relay's URL, drains REQ messages only to that relay, and never fans out to other
+relays even when the active account has a NIP-65 write set covering them.
 
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
@@ -1516,6 +1561,30 @@ F-05b (post-v1)" so the v1 claim is scoped accurately.
 
 Completed — see V-02. Moved to `apps/marmot/nmp-app-marmot/`.
 
+### F-08 · App-owned component registry + content rendering kits [V1 DX]
+
+Promoted from the post-v1 bucket by user direction on 2026-05-25. This is the
+M16 developer-experience track for reusable source components that apps can
+install, own, customize, and update later.
+
+**Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
+
+**Initial scope:**
+
+- Component manifest and lock-file model for app-owned source installation.
+- `nmp add component` and `nmp update component` over a local offline registry.
+- Optional jsrepo-compatible export after the NMP-native path works.
+- iOS SwiftUI content-rendering kits over `ContentTreeWire`.
+- Android Compose content-rendering kits with matching names and fallback
+  behavior.
+- Renderer variants such as minimal mentions, avatar mentions, rich
+  press-and-hold profile preview, compact quote cards, rich quote cards, media
+  grids, and markdown/article rendering.
+
+**Acceptance:** a clean app can install a content kit, render the shared content
+fixtures, customize one renderer in app-owned source, update the upstream kit,
+and preserve the local customization.
+
 ---
 
 ## Section 5 — Post-V1
@@ -1534,7 +1603,7 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | `nmp-codegen` full Swift bridge | Pilot (F-05) must land first to prove the pattern |
 | Second non-social app (shipped product) | PD-033-A decision needed first; the v1 spike is a thesis test, not a shipped product |
 | Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. Parity work blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
-| Nostr-aware UI component registry | Curated reusable UI primitives — components, builders, complete blocks — distributed à la NDK's `svelte/registry` (`/Users/pablofernandez/Work/NDK-nhlteu/svelte/registry`). Blocked on (a) stable snapshot projection contracts so registry components have a versioned surface to bind against, and (b) target-platform decision (SwiftUI registry vs. multi-target via UniFFI views vs. web-only via `nmp-wasm`). Naming TBD; provisional `nmp-ui-registry`. |
+| Additional Nostr-aware component packs | Content rendering moved to F-08 / M16. Post-v1 packs cover broader reusable app blocks such as account switchers, diagnostics inspectors, full thread screens, auth blocks, and non-content templates. |
 
 ---
 

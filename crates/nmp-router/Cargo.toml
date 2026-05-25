@@ -20,3 +20,4 @@ serde = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+serde_json.workspace = true

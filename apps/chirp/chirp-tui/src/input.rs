@@ -29,6 +29,40 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char(':') => state.start_command(),
         KeyCode::Tab => state.next_tab(),
         KeyCode::BackTab => state.previous_tab(),
+        // Detail-pane focus movement — must come before the FeatureTab
+        // tab-switching and generic j/k navigation arms so the pane-focus
+        // guards take precedence.
+        KeyCode::Char('l') | KeyCode::Right
+            if state.mode == Mode::Normal && state.focused != Pane::Detail =>
+        {
+            state.focused = Pane::Detail;
+            state.detail_cursor = 0;
+            state.detail_scroll = 0;
+            state.status = "focus:detail".to_string();
+        }
+        KeyCode::Char('h') | KeyCode::Left
+            if state.mode == Mode::Normal && state.focused == Pane::Detail =>
+        {
+            state.focused = Pane::Feed;
+            state.status = "focus:feed".to_string();
+        }
+        KeyCode::Char('j') | KeyCode::Down
+            if state.mode == Mode::Normal && state.focused == Pane::Detail =>
+        {
+            let reply_count = count_replies_for_selected(state);
+            state.detail_cursor = (state.detail_cursor + 1).min(reply_count);
+        }
+        KeyCode::Char('k') | KeyCode::Up
+            if state.mode == Mode::Normal && state.focused == Pane::Detail =>
+        {
+            state.detail_cursor = state.detail_cursor.saturating_sub(1);
+        }
+        KeyCode::Char('J') if state.mode == Mode::Normal && state.focused == Pane::Detail => {
+            state.detail_scroll = state.detail_scroll.saturating_add(1);
+        }
+        KeyCode::Char('K') if state.mode == Mode::Normal && state.focused == Pane::Detail => {
+            state.detail_scroll = state.detail_scroll.saturating_sub(1);
+        }
         KeyCode::Char(ch) if FeatureTab::from_key(ch).is_some() => {
             if let Some(tab) = FeatureTab::from_key(ch) {
                 state.set_tab(tab);
@@ -37,8 +71,10 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('1') => state.focus(Pane::Feed),
         KeyCode::Char('2') => state.focus(Pane::Detail),
         KeyCode::Char('3') => state.focus(Pane::Profile),
-        KeyCode::Down | KeyCode::Char('j') => state.select_next(),
-        KeyCode::Up | KeyCode::Char('k') => state.select_previous(),
+        KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => state.select_next(),
+        KeyCode::Up | KeyCode::Char('k') if state.focused != Pane::Detail => {
+            state.select_previous()
+        }
         KeyCode::PageDown => state.select_page_down(),
         KeyCode::PageUp => state.select_page_up(),
         KeyCode::Home => state.select_first(),
@@ -165,4 +201,15 @@ fn short(value: &str) -> String {
     } else {
         format!("{}...{}", &value[..8], &value[value.len() - 4..])
     }
+}
+
+fn count_replies_for_selected(state: &AppState) -> usize {
+    let start = state.selected.saturating_add(1);
+    if start >= state.rows.len() {
+        return 0;
+    }
+    state.rows[start..]
+        .iter()
+        .take_while(|r| r.depth > 0)
+        .count()
 }

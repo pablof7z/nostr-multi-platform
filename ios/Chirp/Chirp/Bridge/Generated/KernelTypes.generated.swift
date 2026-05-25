@@ -81,7 +81,7 @@ public struct RelayStatus: Decodable, Equatable, Identifiable, Sendable {
     public let lastError: String?
     public let lastEventAtMs: UInt64?
     public let lastNotice: String?
-    public let nip77Negentropy: String
+    public let negentropyProbe: String
     public let reconnectCount: UInt32
     public let relayUrl: String
     public let role: String

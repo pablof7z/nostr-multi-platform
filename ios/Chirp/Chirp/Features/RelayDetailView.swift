@@ -70,17 +70,17 @@ struct RelayDetailView: View {
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Active Subs") {
-                    Text("\(row.activeSubCount)")
-                        .font(.body.monospaced())
-                        .foregroundStyle(row.activeSubCount > 10 ? .red : .primary)
-                        .monospacedDigit()
+                        Text("\(row.activeSubCount)")
+                            .font(.body.monospaced())
+                            .foregroundStyle(row.activeSubCount > 10 ? ChirpColor.danger : ChirpColor.textPrimary)
+                            .monospacedDigit()
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Reconnects") {
-                    Text("\(row.reconnectCount)")
-                        .font(.body.monospaced())
-                        .foregroundStyle(row.reconnectCount > 0 ? .orange : .secondary)
-                        .monospacedDigit()
+                        Text("\(row.reconnectCount)")
+                            .font(.body.monospaced())
+                            .foregroundStyle(row.reconnectCount > 0 ? ChirpColor.warning : ChirpColor.textSecondary)
+                            .monospacedDigit()
                 }
                 if let bytesRx = row.bytesRxDisplay {
                     RelayDetailDivider()
@@ -119,7 +119,7 @@ struct RelayDetailView: View {
                     RelayDetailRow(label: "Last Notice") {
                         Text(notice)
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(ChirpColor.warning)
                             .multilineTextAlignment(.trailing)
                     }
                 }
@@ -128,7 +128,7 @@ struct RelayDetailView: View {
                     RelayDetailRow(label: "Last Error") {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(ChirpColor.danger)
                             .multilineTextAlignment(.trailing)
                     }
                 }
@@ -147,13 +147,13 @@ struct RelayDetailView: View {
                     label: "Total",
                     value: "\(row.totalSubCount)",
                     icon: "dot.radiowaves.left.and.right",
-                    color: .accentColor
+                    color: ChirpColor.accent
                 )
                 RelayMetricTile(
                     label: "Active",
                     value: "\(row.activeSubCount)",
                     icon: "bolt.fill",
-                    color: row.activeSubCount == 0 ? .secondary : .green
+                    color: row.activeSubCount == 0 ? ChirpColor.textSecondary : ChirpColor.success
                 )
             }
             HStack(spacing: 12) {
@@ -161,7 +161,7 @@ struct RelayDetailView: View {
                     label: "Events Rx",
                     value: row.totalEventsDisplay,
                     icon: "arrow.down.circle",
-                    color: .green
+                    color: ChirpColor.success
                 )
                 RelayMetricTile(
                     label: "EOSE'd",
@@ -251,17 +251,17 @@ private struct WireSubRow: View {
                 if let rx = sub.eventsRxDisplay {
                     Label("\(rx) events", systemImage: "arrow.down.circle")
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(ChirpColor.success)
                 }
                 if sub.eoseObserved {
                     Label("EOSE", systemImage: "checkmark.circle")
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(ChirpColor.success)
                 }
                 if let reason = sub.closeReason {
                     Label(reason, systemImage: "xmark.circle")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(ChirpColor.danger)
                         .lineLimit(1)
                 }
             }

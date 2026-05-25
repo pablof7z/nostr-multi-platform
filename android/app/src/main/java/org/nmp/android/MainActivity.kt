@@ -25,8 +25,9 @@ import org.nmp.android.ui.TimelineScreen
 
 /**
  * Single-activity Compose host. Mirrors iOS Chirp `RootShell`'s tabs, but for L1
- * read-side parity there is no onboarding gate — see `android/README.md`
- * §Deviations. The kernel auto-loads the bootstrap-pubkey feed on `start()`.
+ * read-side parity there is no onboarding gate yet. The Rust JNI bridge seeds
+ * Chirp's shared default relays, and the Timeline tab explicitly opens the
+ * Rust-owned timeline view.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -20,6 +20,9 @@
 //!    * kind:10050 → [`nmp_nip17::DmRelayCache`] (wired inside
 //!      `nmp_nip17::register_actions` alongside the action modules — the
 //!      same call installs the substrate `DmInboxRelayLookup`).
+//!    * kind:10002 → [`nmp_router::InMemoryMailboxCache`] (wired below
+//!      against the same shared cache the routing factory hands to the
+//!      kernel — the `Kind10002Parser` is the cache's single writer).
 //! 3. **Production routing substrate** — a factory closure that returns
 //!    `(Arc<GenericOutboxRouter>, Arc<InMemoryMailboxCache>)` is installed
 //!    via [`NmpApp::set_routing_substrate`]. The kernel re-invokes the
@@ -46,15 +49,15 @@
 //!   `ModularTimelineProjection`, group-chat projection, Marmot, etc.).
 //!   Per-app crates wire those themselves on top of `register_defaults`.
 //! * It does not own a C-ABI surface. The `nmp_app_*` FFI lives in
-//!   `nmp-core` (and per-app `nmp_app_<app>_*` shells live in the app
+//!   `nmp-ffi` (and per-app `nmp_app_<app>_*` shells live in the app
 //!   crate). The template is pure Rust composition.
-//! * It does not call [`nmp_core::nmp_app_start`]. The caller drives
+//! * It does not call `nmp_app_start`. The caller drives
 //!   lifecycle.
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use nmp_core::{nmp_app_free, nmp_app_new};
+//! use nmp_ffi::{nmp_app_free, nmp_app_new};
 //!
 //! // 1. Construct the app.
 //! let app = nmp_app_new();
@@ -74,14 +77,14 @@
 //!
 //! # Ordering contract
 //!
-//! `register_defaults` MUST be called **before** [`nmp_core::nmp_app_start`].
+//! `register_defaults` MUST be called **before** `nmp_app_start`.
 //! All registrations need to be visible to the kernel when the first event
 //! arrives — late wiring is dropped silently per `D6`.
 //!
-//! [`NmpApp`]: nmp_core::NmpApp
-//! [`NmpApp::set_routing_substrate`]: nmp_core::NmpApp::set_routing_substrate
-//! [`NmpApp::set_publish_resolver_factory`]: nmp_core::NmpApp::set_publish_resolver_factory
-//! [`NmpApp::set_coverage_hook`]: nmp_core::NmpApp::set_coverage_hook
+//! [`NmpApp`]: nmp_ffi::NmpApp
+//! [`NmpApp::set_routing_substrate`]: nmp_ffi::NmpApp::set_routing_substrate
+//! [`NmpApp::set_publish_resolver_factory`]: nmp_ffi::NmpApp::set_publish_resolver_factory
+//! [`NmpApp::set_coverage_hook`]: nmp_ffi::NmpApp::set_coverage_hook
 //! [`CoverageGate`]: nmp_coverage_gate::CoverageGate
 
 use std::sync::Arc;
@@ -90,8 +93,8 @@ use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
 use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
-use nmp_ffi::NmpApp;
 use nmp_coverage_gate::CoverageGate;
+use nmp_ffi::NmpApp;
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Nip65OutboxResolver};
 
 pub mod runtimes;
@@ -110,7 +113,7 @@ pub mod runtimes;
 ///
 /// # Ordering
 ///
-/// MUST run before `nmp_core::nmp_app_start`. The kernel reads the
+/// MUST run before `nmp_app_start`. The kernel reads the
 /// ingest-parser dispatcher, the routing-substrate factory, and the
 /// coverage hook during its first compile/dispatch tick.
 ///
@@ -148,15 +151,33 @@ pub fn register_defaults(app: &mut NmpApp) {
     // former `nmp-nip65` crate into `nmp-router`).
     nmp_router::register_actions(app);
 
-    // ── Routing substrate (V-51 phase 5) ────────────────────────────────
+    // ── Routing substrate (V-51 phase 5 + kind:10002 ingest wiring) ─────
     //
-    // Install the production substrate-routing factory. Without this swap
-    // the kernel keeps its in-crate `EmptyOutboxRouter` (substrate-honest
-    // debt B, 2026-05-24) — every routing decision returns `Unroutable`.
-    // `nmp-core` (Layer 3) cannot depend on `nmp-router` (Layer 2), so the
-    // production router is injected through this factory slot. The
-    // injected `GenericOutboxRouter` carries the documented routing lanes
-    // (1+7 today; 2/3/4/5/6 are `TODO §3.1 lane X` insertion points).
+    // Install the production substrate-routing factory AND register the
+    // [`nmp_router::Kind10002Parser`] against the same shared cache the
+    // factory hands the kernel. Without the swap the kernel keeps its
+    // in-crate `EmptyOutboxRouter` (substrate-honest debt B, 2026-05-24)
+    // — every routing decision returns `Unroutable`. Without the parser
+    // registration kind:10002 events arrive but never populate the cache
+    // (D0 violation flagged 2026-05-25 — the kernel previously named
+    // kind:10002 by hand in `ingest/mod.rs:391` because the parser was
+    // never wired; that explicit arm + `kernel/ingest/relay_list.rs` are
+    // both deleted in the same PR as this wiring lands).
+    //
+    // `nmp-core` (Layer 3) cannot depend on `nmp-router` (Layer 2), so
+    // both injections go through the substrate seam: the routing factory
+    // for `(OutboxRouter, MailboxCache)`, and the dispatcher slot for
+    // the parser. The same `Arc<InMemoryMailboxCache>` is captured by
+    // BOTH paths so the writer (parser) and the readers (router +
+    // planner adapter) see one source of truth.
+    //
+    // Cache lifetime: created once at composition time and shared
+    // process-lifetime (mirrors `nmp_nip17::register_actions`'s
+    // single-`DmRelayCache` pattern). A `Reset` rebuilds the router but
+    // re-uses this cache — the parser's `Arc` clone in the dispatcher
+    // would otherwise dangle (writes to a cache no longer held by the
+    // rebuilt kernel). The factory closure captures `Arc::clone(&cache)`
+    // so the rebuilt kernel sees the live cache, not a fresh empty one.
     //
     // The supplied `RoutingTraceObserver` is threaded through
     // `GenericOutboxRouter::with_trace_observer` so the kernel's
@@ -165,14 +186,28 @@ pub fn register_defaults(app: &mut NmpApp) {
     // routing-trace` (phase 4) keep working unchanged. The closure is
     // re-invoked by the `Reset` dispatch arm against the rebuilt kernel's
     // fresh trace projection.
+    let mailbox_cache: Arc<InMemoryMailboxCache> = Arc::new(InMemoryMailboxCache::new());
+    let cache_for_factory = Arc::clone(&mailbox_cache);
     app.set_routing_substrate(
-        |observer: Arc<dyn RoutingTraceObserver>| -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
+        move |observer: Arc<dyn RoutingTraceObserver>|
+              -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
             let router: Arc<dyn OutboxRouter> =
                 Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
-            let cache: Arc<dyn MailboxCache> = Arc::new(InMemoryMailboxCache::new());
+            let cache: Arc<dyn MailboxCache> = Arc::clone(&cache_for_factory) as _;
             (router, cache)
         },
     );
+    // Register the substrate kind:10002 ingest parser against the same
+    // cache `set_routing_substrate` hands the kernel. The
+    // `EventIngestDispatcher` fans every accepted (D4 `Inserted | Replaced`)
+    // kind:10002 to this parser; the parser upserts the resolved
+    // `ParsedRelayList` (or removes the entry on an empty list) into
+    // the shared cache. The kernel observes the cache transition in its
+    // wildcard ingest arm and fires the recompile trigger — no NIP
+    // knowledge in `nmp-core/src/kernel/`.
+    let parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
+    app.register_ingest_parser(10_002, parser);
 
     // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
     //

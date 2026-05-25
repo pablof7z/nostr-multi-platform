@@ -137,7 +137,7 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
-mod nip17_dm_inbox_routing_tests;
+mod dm_inbox_routing_tests;
 #[cfg(test)]
 mod perf_tests;
 #[cfg(test)]
@@ -228,7 +228,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
-use auth::{AuthSignerFn, Nip42DriverState};
+use auth::{AuthSignerFn, AuthDriverState};
 use clock::{Clock, SystemClock};
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
@@ -571,7 +571,7 @@ pub(crate) struct Kernel {
     /// M5+M2+M8 wiring: per-relay NIP-42 driver state. One entry per
     /// `RelayRole`. Default `NotRequired`; an inbound `AUTH` frame transitions
     /// to `ChallengeReceived` and triggers signer invocation.
-    nip42_drivers: HashMap<RelayRole, Nip42DriverState>,
+    auth_drivers: HashMap<RelayRole, AuthDriverState>,
     /// M5+M2+M8 wiring: subscription lifecycle. Today the kernel uses ONLY
     /// `handle_auth_state_change` (diagnostic state fan-in to `AuthGate`); the
     /// compile / registry / wire-diff machinery stays dormant because the
@@ -1228,9 +1228,9 @@ impl Kernel {
             max_events_per_update: 0,
             changed_since_emit: true,
             logs: VecDeque::new(),
-            nip42_drivers: RelayRole::all()
+            auth_drivers: RelayRole::all()
                 .into_iter()
-                .map(|role| (role, Nip42DriverState::new()))
+                .map(|role| (role, AuthDriverState::new()))
                 .collect(),
             lifecycle,
             unknown_ids: UnknownIds::new(),

@@ -14,9 +14,9 @@
 
 fn main() {
     let production_symbols = [
-        // ffi/mod.rs (lifecycle + read-side) — the only surface the L1
-        // Android app touches today. Identity / publish / etc. land when
-        // the Android equivalents of the iOS T66a screens are wired.
+        // Lifecycle/read-side symbols. Android calls the wider FFI surface
+        // through Rust paths in `src/lib.rs`; these `-u` entries are kept for
+        // the startup symbols that must survive linker dead stripping.
         "nmp_app_new",
         "nmp_app_free",
         "nmp_app_set_update_callback",
