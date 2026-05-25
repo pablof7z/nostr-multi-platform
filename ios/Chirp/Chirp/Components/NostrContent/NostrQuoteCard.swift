@@ -17,7 +17,7 @@ public enum NostrQuoteCardVariant: Equatable {
 /// Data model the embedding app populates per quote card. The card view is
 /// pure — it never fetches network state. Apps pass a closure or environment
 /// value into their data layer to hydrate `NostrQuoteCardModel` instances.
-public struct NostrQuoteCardModel: Equatable {
+public struct NostrQuoteCardModel: Equatable, Sendable {
     public var id: String
     public var unresolvedUri: String?
     public var authorPubkey: String?

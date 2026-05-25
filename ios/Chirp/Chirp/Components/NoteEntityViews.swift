@@ -58,7 +58,7 @@ private func noteContentNode(_ index: UInt32, in tree: ContentTreeWire) -> Conte
     return tree.nodes[i]
 }
 
-struct NoteRenderContext: Equatable {
+struct NoteRenderContext: Equatable, Sendable {
     let mentionProfiles: [String: MentionProfile]
     let eventCards: [String: ChirpEventCard]
     let timelineItems: [String: TimelineItem]

@@ -318,7 +318,7 @@ public struct NostrContentView: View {
 
     // MARK: - Defaults / helpers
 
-    public static func defaultMentionLabel(_ uri: NostrWireUri) -> String {
+    public nonisolated static func defaultMentionLabel(_ uri: NostrWireUri) -> String {
         let value = uri.primaryId
         guard value.count > 12 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"

@@ -155,7 +155,7 @@ enum ThreadPointer: Decodable, Equatable {
 /// payload `nmp-app-chirp` ships so blocks are self-renderable when an id
 /// is not in the kernel's visible-items window (e.g., an ancestor that
 /// arrived before its child took the row).
-struct ChirpEventCard: Decodable, Equatable, Identifiable {
+struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     let id: String
     let authorPubkey: String
     let kind: UInt32
@@ -245,7 +245,7 @@ typealias ContentWireNode = NostrWireNode
 typealias MediaKind = NostrMediaKind
 typealias WireNostrUri = NostrWireUri
 
-struct MentionProfile: Equatable {
+struct MentionProfile: Equatable, Sendable {
     let display: String
     let pictureUrl: String?
     let initials: String
