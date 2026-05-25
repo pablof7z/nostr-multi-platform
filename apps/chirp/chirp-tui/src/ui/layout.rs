@@ -1,25 +1,33 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::AppState;
 use crate::app::Mode;
 use crate::features::FeatureTab;
+use crate::ui::colors::{ACCENT_CYAN, DIM_TEXT, RELAY_DOWN, RELAY_OK};
 use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::home;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     let area = frame.area();
+
+    // First-run welcome: no accounts configured yet.
+    if state.features.accounts.is_empty() {
+        render_welcome(frame, area, state);
+        return;
+    }
+
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(8),
-            Constraint::Length(3),
-            Constraint::Length(1),
+            Constraint::Length(1), // title bar
+            Constraint::Min(8),    // body
+            Constraint::Length(3), // compose / input bar
+            Constraint::Length(1), // status
         ])
         .split(area);
 
@@ -27,26 +35,72 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     render_body(frame, rows[1], state);
     render_compose(frame, rows[2], state);
     render_status(frame, rows[3], state);
+
     if state.show_help {
-        help::render(frame, area);
+        help::render_with_state(frame, area, state);
+    }
+}
+
+fn render_welcome(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let lines = vec![
+        Line::from(""),
+        Line::from(""),
+        Line::from(Span::styled(
+            "chirp",
+            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "the nostr social client",
+            Style::default().fg(DIM_TEXT),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "n  new account    ?  help    q  quit",
+            Style::default().fg(DIM_TEXT),
+        )),
+    ];
+    let welcome = Paragraph::new(lines).alignment(Alignment::Center);
+    frame.render_widget(welcome, area);
+
+    if state.show_help {
+        help::render_with_state(frame, area, state);
     }
 }
 
 fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let account = state
+        .features
+        .accounts
+        .iter()
+        .find(|a| a.active)
+        .map(|a| format!("@{}", a.display))
+        .unwrap_or_default();
+
+    let connected = state
+        .relays
+        .iter()
+        .filter(|r| {
+            let lower = r.connection_label.to_ascii_lowercase();
+            lower.contains("connected") || lower == "open"
+        })
+        .count();
+    let relay_dot = if connected > 0 { '\u{25cf}' } else { '\u{25cb}' };
+    let relay_color = if connected > 0 { RELAY_OK } else { RELAY_DOWN };
+
     let title = Line::from(vec![
         Span::styled(
             "chirp",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(
-            format!("[{}]", state.tab.label()),
-            Style::default().fg(Color::Yellow),
-        ),
+        Span::styled(account, Style::default().fg(DIM_TEXT)),
         Span::raw("  "),
         Span::raw(tab_labels(state)),
+        Span::raw("  "),
+        Span::styled(
+            format!("{} {} relays", relay_dot, state.relays.len()),
+            Style::default().fg(relay_color),
+        ),
     ]);
     frame.render_widget(Paragraph::new(title), area);
 }
@@ -75,10 +129,62 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             format!("Compose ({})", state.compose.chars().count()),
             format!("{text}\nCtrl+Enter publish  Esc cancel"),
         )
+    } else if state.mode == Mode::InputBar {
+        let label = if state.input_bar_label.is_empty() {
+            "input".to_string()
+        } else {
+            state.input_bar_label.clone()
+        };
+        let display = if state.input_bar_masked {
+            "\u{25cf}".repeat(state.input_bar_value.chars().count())
+        } else {
+            state.input_bar_value.clone()
+        };
+        (
+            label,
+            format!("{}\u{2588}\nEnter confirm  Esc cancel", display),
+        )
+    } else if state.mode == Mode::ModalForm {
+        let fields: String = state
+            .modal_fields
+            .iter()
+            .enumerate()
+            .map(|(i, (l, v))| {
+                if i == state.modal_cursor {
+                    format!("{}: {}\u{2588}", l, v)
+                } else {
+                    format!("{}: {}", l, v)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("  \u{2502}  ");
+        (
+            state.modal_title.clone(),
+            format!("{}\nTab next  Enter submit  Esc cancel", fields),
+        )
+    } else if state.mode == Mode::AccountSwitcher {
+        let accounts = state
+            .features
+            .accounts
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                if i == state.account_switcher_cursor {
+                    format!("[{}]", a.display)
+                } else {
+                    a.display.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+        (
+            "Switch Account".to_string(),
+            format!("{}\nj/k move  Enter switch  Esc cancel", accounts),
+        )
     } else {
         (
             "Compose".to_string(),
-            "h/c/g/w/s tabs  : command  i compose  r reply  + react  f/F follow  ? help"
+            "n new  r reply  + react  z zap  f follow  / palette  a accounts  ? help  q quit"
                 .to_string(),
         )
     };

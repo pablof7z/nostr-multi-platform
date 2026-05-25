@@ -2,16 +2,15 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 use crate::app::AppState;
+use crate::feature_snapshot::AccountLine;
 use crate::timeline::TimelineRow;
 use crate::ui::layout::render;
 
 #[test]
 fn home_tab_renders_chrome_and_compose_at_120_by_40() {
-    let rendered = render_state(120, 40, AppState::default());
+    let rendered = render_state(120, 40, state_with_account());
 
-    // Title bar still shows the app name.
     assert!(rendered.contains("chirp"));
-    // Compose bar still rendered below the body.
     assert!(rendered.contains("Compose"));
 }
 
@@ -19,26 +18,25 @@ fn home_tab_renders_chrome_and_compose_at_120_by_40() {
 fn home_tab_renders_post_author_and_content() {
     let rendered = render_state(120, 40, state_with_row());
 
-    // Author and body of the depth-0 post are rendered by post_list/post_detail.
     assert!(rendered.contains("alice"));
     assert!(rendered.contains("hello from nostr"));
 }
 
 #[test]
 fn help_overlay_renders_keybindings() {
-    let mut state = AppState::default();
+    let mut state = state_with_account();
     state.toggle_help();
 
     let rendered = render_state(120, 40, state);
 
     assert!(rendered.contains("Help"));
     assert!(rendered.contains("Ctrl+Enter"));
-    assert!(rendered.contains("open selected thread"));
+    assert!(rendered.contains("open"));
 }
 
 #[test]
 fn home_tab_handles_narrow_terminal_without_panicking() {
-    let mut state = AppState::default();
+    let mut state = state_with_account();
     state.status = "narrow terminal smoke test".to_string();
     state.rows.push(TimelineRow {
         id: "event-with-display-counts".to_string(),
@@ -55,7 +53,6 @@ fn home_tab_handles_narrow_terminal_without_panicking() {
 
     let rendered = render_state(80, 24, state);
 
-    // App chrome still visible at narrow widths.
     assert!(rendered.contains("chirp"));
     assert!(rendered.contains("Compose"));
 }
@@ -68,8 +65,21 @@ fn render_state(width: u16, height: u16, state: AppState) -> String {
     format!("{:?}", terminal.backend().buffer())
 }
 
-fn state_with_row() -> AppState {
+fn state_with_account() -> AppState {
     let mut state = AppState::default();
+    state.features.accounts.push(AccountLine {
+        id: "test-id".to_string(),
+        display: "tester".to_string(),
+        npub: "npub1testtesttesttesttesttesttesttesttesttesttesttesttesttesttest".to_string(),
+        signer: "nsec".to_string(),
+        active: true,
+    });
+    state.features.active_account = "tester".to_string();
+    state
+}
+
+fn state_with_row() -> AppState {
+    let mut state = state_with_account();
     state.rows.push(TimelineRow {
         id: "event-1".to_string(),
         author: "alice".to_string(),

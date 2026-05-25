@@ -18,8 +18,19 @@ pub enum Pane {
 pub enum Mode {
     Normal,
     Compose,
+    /// Legacy command line (`:foo bar`). The `:` key no longer opens this mode
+    /// after the chirp-tui UX redesign — it is kept here so the existing
+    /// `commands::execute` pipeline still has a parking spot for power-user
+    /// callers that want to drive it directly.
     Command,
     Palette { cursor: usize },
+    /// Bottom-bar single-field input (Pattern A — nsec import, relay add, …).
+    InputBar,
+    /// Multi-field centered overlay (Pattern D — create account, bunker
+    /// connect, …).
+    ModalForm,
+    /// Account list overlay invoked from the `a` key.
+    AccountSwitcher,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +62,39 @@ pub struct AppState {
     pub command: String,
     pub status: String,
     pub profile_pubkey: String,
+
+    // Input bar (Pattern A) — single-field bottom-bar input.
+    pub input_bar_label: String,
+    pub input_bar_value: String,
+    pub input_bar_masked: bool,
+    /// Tag identifying which dispatch handler runs on Enter, e.g. "nsec",
+    /// "nwc", "bolt11", "relay", "zap-amount", "dm-npub".
+    pub input_bar_action: String,
+
+    // Modal form (Pattern D) — multi-field centered overlay.
+    pub modal_title: String,
+    pub modal_fields: Vec<(String, String)>,
+    pub modal_cursor: usize,
+    /// Tag identifying which dispatch handler runs on Enter, e.g.
+    /// "create-account", "bunker-connect".
+    pub modal_action: String,
+
+    // Account switcher overlay.
+    pub account_switcher_cursor: usize,
+
+    /// Toast queue: each entry is `(message, ttl_ticks)`. TTL counts down from
+    /// 50 (~5s at 10 Hz). Expired toasts are dropped by `tick_toasts`.
+    pub toasts: Vec<(String, u8)>,
+
+    // Inline compose for chats/groups tabs.
+    pub chat_composing: bool,
+    pub chat_compose_buf: String,
+    pub group_composing: bool,
+    pub group_compose_buf: String,
+
+    /// Settings section cursor (0=Account, 1=Relays, 2=Outbox, 3=Keys,
+    /// 4=Appearance, 5=About).
+    pub settings_cursor: usize,
 }
 
 impl Default for AppState {
@@ -83,6 +127,21 @@ impl Default for AppState {
             command: String::new(),
             status: "starting NMP runtime".to_string(),
             profile_pubkey: String::new(),
+            input_bar_label: String::new(),
+            input_bar_value: String::new(),
+            input_bar_masked: false,
+            input_bar_action: String::new(),
+            modal_title: String::new(),
+            modal_fields: Vec::new(),
+            modal_cursor: 0,
+            modal_action: String::new(),
+            account_switcher_cursor: 0,
+            toasts: Vec::new(),
+            chat_composing: false,
+            chat_compose_buf: String::new(),
+            group_composing: false,
+            group_compose_buf: String::new(),
+            settings_cursor: 0,
         }
     }
 }
@@ -328,6 +387,146 @@ impl AppState {
         self.compose.clear();
         self.mode = Mode::Normal;
         Some((content, reply_to))
+    }
+
+    // -----------------------------------------------------------------
+    // Input bar (Pattern A)
+    // -----------------------------------------------------------------
+
+    pub fn start_input_bar(&mut self, label: &str, masked: bool, action: &str) {
+        self.mode = Mode::InputBar;
+        self.input_bar_label = label.to_string();
+        self.input_bar_value.clear();
+        self.input_bar_masked = masked;
+        self.input_bar_action = action.to_string();
+    }
+
+    pub fn push_input_char(&mut self, ch: char) {
+        self.input_bar_value.push(ch);
+    }
+
+    pub fn backspace_input(&mut self) {
+        self.input_bar_value.pop();
+    }
+
+    pub fn take_input(&mut self) -> Option<(String, String)> {
+        let value = self.input_bar_value.trim().to_string();
+        if value.is_empty() {
+            self.push_toast("input is empty");
+            return None;
+        }
+        let action = std::mem::take(&mut self.input_bar_action);
+        self.input_bar_value.clear();
+        self.input_bar_label.clear();
+        self.input_bar_masked = false;
+        self.mode = Mode::Normal;
+        Some((action, value))
+    }
+
+    pub fn cancel_input(&mut self) {
+        self.mode = Mode::Normal;
+        self.input_bar_value.clear();
+        self.input_bar_label.clear();
+        self.input_bar_action.clear();
+        self.input_bar_masked = false;
+        self.push_toast("canceled");
+    }
+
+    // -----------------------------------------------------------------
+    // Modal form (Pattern D)
+    // -----------------------------------------------------------------
+
+    pub fn start_modal(&mut self, title: &str, fields: Vec<&str>, action: &str) {
+        self.mode = Mode::ModalForm;
+        self.modal_title = title.to_string();
+        self.modal_fields = fields
+            .into_iter()
+            .map(|label| (label.to_string(), String::new()))
+            .collect();
+        self.modal_cursor = 0;
+        self.modal_action = action.to_string();
+    }
+
+    pub fn push_modal_char(&mut self, ch: char) {
+        if let Some((_, value)) = self.modal_fields.get_mut(self.modal_cursor) {
+            value.push(ch);
+        }
+    }
+
+    pub fn backspace_modal(&mut self) {
+        if let Some((_, value)) = self.modal_fields.get_mut(self.modal_cursor) {
+            value.pop();
+        }
+    }
+
+    pub fn next_modal_field(&mut self) {
+        let n = self.modal_fields.len();
+        if n == 0 {
+            return;
+        }
+        self.modal_cursor = (self.modal_cursor + 1) % n;
+    }
+
+    pub fn prev_modal_field(&mut self) {
+        let n = self.modal_fields.len();
+        if n == 0 {
+            return;
+        }
+        self.modal_cursor = (self.modal_cursor + n - 1) % n;
+    }
+
+    pub fn take_modal(&mut self) -> Option<(String, Vec<(String, String)>)> {
+        if self.modal_fields.is_empty() {
+            self.push_toast("modal has no fields");
+            return None;
+        }
+        let action = std::mem::take(&mut self.modal_action);
+        let fields = std::mem::take(&mut self.modal_fields);
+        self.modal_title.clear();
+        self.modal_cursor = 0;
+        self.mode = Mode::Normal;
+        Some((action, fields))
+    }
+
+    pub fn cancel_modal(&mut self) {
+        self.mode = Mode::Normal;
+        self.modal_title.clear();
+        self.modal_fields.clear();
+        self.modal_cursor = 0;
+        self.modal_action.clear();
+        self.push_toast("canceled");
+    }
+
+    // -----------------------------------------------------------------
+    // Account switcher
+    // -----------------------------------------------------------------
+
+    pub fn open_account_switcher(&mut self) {
+        self.mode = Mode::AccountSwitcher;
+        if let Some(idx) = self.features.accounts.iter().position(|a| a.active) {
+            self.account_switcher_cursor = idx;
+        } else {
+            self.account_switcher_cursor = 0;
+        }
+    }
+
+    pub fn close_account_switcher(&mut self) {
+        self.mode = Mode::Normal;
+    }
+
+    // -----------------------------------------------------------------
+    // Toast queue
+    // -----------------------------------------------------------------
+
+    pub fn push_toast(&mut self, msg: &str) {
+        self.toasts.push((msg.to_string(), 50));
+    }
+
+    pub fn tick_toasts(&mut self) {
+        for entry in &mut self.toasts {
+            entry.1 = entry.1.saturating_sub(1);
+        }
+        self.toasts.retain(|(_, ttl)| *ttl > 0);
     }
 
     pub fn track_action(&mut self, correlation_id: String, label: &str) {
