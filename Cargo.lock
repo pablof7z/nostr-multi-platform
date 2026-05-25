@@ -3849,6 +3849,7 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip77",
  "nmp-router",
+ "nmp-wot",
  "nostr",
  "serde",
  "serde_json",
@@ -4279,7 +4280,12 @@ dependencies = [
 name = "nmp-wot"
 version = "0.1.0"
 dependencies = [
+ "nmp-core",
+ "nmp-ffi",
+ "nmp-nip77",
+ "nostr",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

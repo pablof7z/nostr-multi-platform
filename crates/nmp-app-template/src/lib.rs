@@ -37,10 +37,10 @@
 //! 5. **D2 coverage + NIP-77 hooks** — a [`CoverageGate`]-based hook trims
 //!    oversized relay plans, and [`nmp_nip77::NegentropySyncRuntime`] replaces
 //!    eligible large one-shot author×kind REQs with NIP-77 negentropy.
-//! 6. **Canonical runtime controllers** — see [`runtimes`] — for the
-//!    NIP-17 DM-inbox subscription/projection and the NIP-57
+//! 6. **Canonical runtime controllers** — see [`runtimes`] — for WOT
+//!    bootstrap, the NIP-17 DM-inbox subscription/projection, and the NIP-57
 //!    self-zap-receipts subscription. These are pure host-side
-//!    reconcilers; the kernel ships zero DM/zap nouns (D0).
+//!    reconcilers; the kernel ships zero WOT/DM/zap nouns (D0).
 //!
 //! # What this crate is NOT
 //!
@@ -268,10 +268,11 @@ pub fn register_defaults(app: &mut NmpApp) {
 
     // ── Canonical runtime controllers ───────────────────────────────────
     //
-    // Two snapshot-projection-driven reconcilers that own per-tick
+    // WOT bootstrap plus two snapshot-projection-driven reconcilers that own
     // PushInterest / WithdrawInterest book-keeping for the active account.
-    // Kernel ships zero DM/zap nouns (D0); these controllers are the
+    // Kernel ships zero WOT/DM/zap nouns (D0); these controllers are the
     // canonical host-side wiring every NMP-based app needs.
+    nmp_wot::register_runtime(app);
     runtimes::register_dm_runtime(app);
     runtimes::register_zap_receipts_runtime(app);
 }

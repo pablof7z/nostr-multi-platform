@@ -1,26 +1,22 @@
-//! `nmp-wot` — client-side Web-of-Trust scoring for Nostr apps.
+//! Client-side web-of-trust support for NMP apps.
 //!
-//! The crate is intentionally local-only. It does not fetch relays, query
-//! providers, or consume delegated assertion events. Callers feed it the graph
-//! signals they already have: kind:3 follow lists and public kind:10000 mute
-//! lists. The output is a deterministic personalized score that app
-//! projections can use to rank nearby authors first and hide authors who are
-//! heavily muted by the viewer's trusted graph.
+//! The crate has two responsibilities:
 //!
-//! The algorithm is deliberately bounded for mobile/client use:
+//! - score a local follow/mute graph without depending on any relay-side
+//!   recommendation protocol;
+//! - bootstrap that graph by pushing one exact, replaceable-kind interest for
+//!   the active account's follow set.
 //!
-//! - direct follows are always closest;
-//! - trust propagates through follow edges up to `TrustConfig::max_depth`;
-//! - high-degree follow lists are damped with `sqrt(out_degree)`;
-//! - the viewer's own mute list is a hard hide;
-//! - community mutes only auto-hide authors the viewer does not directly follow.
+//! `register_runtime` is wired by `nmp-app-template`, so apps such as Chirp get
+//! the bootstrap through the normal `register_defaults` path.
 
-mod graph;
-mod rank;
-mod score;
+pub mod interest;
+pub mod runtime;
+pub mod score;
 
-pub use graph::{
-    is_hex_pubkey, GraphStats, SignalGraph, SignalIngest, KIND_CONTACT_LIST, KIND_MUTE_LIST,
+pub use interest::{
+    active_follow_graph_interest_id, follow_graph_interest, KIND_CONTACT_LIST, KIND_MUTE_LIST,
+    KIND_PROFILE, KIND_RELAY_LIST, WOT_BOOTSTRAP_KINDS,
 };
-pub use rank::ScoredPubkey;
-pub use score::{TrustConfig, TrustDecision, TrustIndex, TrustScore};
+pub use runtime::{register_runtime, WotBootstrapRuntime};
+pub use score::{TrustDecision, WotGraph};
