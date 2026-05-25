@@ -241,6 +241,26 @@ mod tests {
         assert_eq!(s, "zz", "short string returned unchanged");
     }
 
+    /// Pins the canonical short-npub form of the NmpGallery demo pubkey
+    /// (`apps/nmp-gallery/ios/.../GalleryModel.swift::DEMO_NPUB_SHORT`).
+    ///
+    /// The Swift `bestEffortProfile` fallback renders this exact literal
+    /// before kind:0 arrives so the user-* component screenshots show
+    /// real-shape data on the first frame. Per aim.md §6.9 Swift never
+    /// reformats npubs — so any drift in [`short_npub`] must show up
+    /// here (and require updating the Swift literal alongside).
+    #[test]
+    fn short_npub_pins_nmp_gallery_demo_account() {
+        // pablof7z, the NmpGallery demo account.
+        let hex = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+        assert_eq!(
+            short_npub(hex),
+            "npub1l2vyh…utajft",
+            "if this fails, update DEMO_NPUB_SHORT in \
+             apps/nmp-gallery/ios/NmpGallery/Bridge/GalleryModel.swift"
+        );
+    }
+
     // ── short_hex ────────────────────────────────────────────────────────
 
     #[test]
