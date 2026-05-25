@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "shoutout "
+    },
+    {
+      "kind": "mention",
+      "uri": {
+        "uri": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
+        "kind": "profile",
+        "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "relays": [
+          "wss://relay.nmp.test"
+        ],
+        "author": null,
+        "event_kind": null
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}
