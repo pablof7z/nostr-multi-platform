@@ -28,8 +28,11 @@ use common::{
     report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, NOS_LOL, NOSTR_BAND,
     PRIMAL_RELAY,
 };
-use nmp_core::publish::{Nip65OutboxResolver, OutboxResolver, PublishTarget};
+use nmp_core::publish::{OutboxResolver, PublishTarget};
 use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+// Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved from
+// `nmp_core::publish::nip65` into `nmp-router`.
+use nmp_router::Nip65OutboxResolver;
 use serde_json::Value;
 
 /// Per (author, relay) fetch budget. Short so a relay that does not hold the

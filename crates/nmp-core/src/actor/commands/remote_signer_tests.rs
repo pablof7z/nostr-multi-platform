@@ -567,6 +567,12 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(std::sync::Mutex::new(None)),
             // V-51 phase 5 — test wiring; no per-app routing factory installed.
             Arc::new(std::sync::Mutex::new(None)),
+            // Spec §271 (2026-05-25) — test wiring; no per-app
+            // publish-resolver factory installed. The under-`cfg(test)`
+            // auto-install on `Kernel::new()` (also via this actor's
+            // `Kernel::with_storage_path`) gives the kernel a working
+            // `Nip65OutboxResolver` regardless of this slot.
+            Arc::new(std::sync::Mutex::new(None)),
         );
     });
 

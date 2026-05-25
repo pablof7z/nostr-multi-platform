@@ -226,6 +226,21 @@ impl PublishEngine {
         }
     }
 
+    /// Swap the engine's `OutboxResolver` in-place.
+    ///
+    /// Spec §271 (2026-05-25): the kernel constructs `PublishEngine` with
+    /// the in-crate `NoopOutboxResolver` default, then production
+    /// composition (`nmp-app-template::register_defaults` →
+    /// `Kernel::set_publish_resolver`) swaps in
+    /// `nmp_router::Nip65OutboxResolver`. MUST be called BEFORE any publish
+    /// reaches `start_publish` — swapping mid-publish would leave the
+    /// in-flight resolver decisions inconsistent with subsequent retries
+    /// (the engine's `dispatch_due` path re-asks the current resolver on
+    /// every tick).
+    pub fn set_outbox(&mut self, outbox: Arc<dyn OutboxResolver>) {
+        self.outbox = outbox;
+    }
+
     /// Resume any pending records left by a prior process. Called once at
     /// kernel boot. M3 LMDB will return real rows; the in-memory shim returns
     /// what was previously upserted.

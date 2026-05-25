@@ -238,10 +238,14 @@ use clock::{Clock, SystemClock};
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    account_avatar_color_hex, account_avatar_initials, account_npub_short,
-    new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry,
-    RelayAckOutcome, SettingsHubSummary,
+    account_avatar_color_hex, account_avatar_initials, account_npub_short, AccountSummary,
+    PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
 };
+// Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
+// re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`
+// (spec §271) constructs slots through these. Direct consumers in nmp-core
+// continue to import through `crate::kernel::{...}`.
+pub use identity_state::{new_active_account_slot, ActiveAccountSlot};
 // V6 Stage 1 — Swift codegen pilot. The four projection types below are
 // `pub(crate) struct`s in `types` (widened from `pub(super)` so the
 // re-export can lift them out of `kernel`); the `codegen-schema` build
@@ -300,7 +304,11 @@ pub use snapshot_registry::new_snapshot_projection_slot;
 // caller names them directly (the resolver constructs slots via the
 // `new_*_slot()` helpers and reads through `as_slice()`).
 pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
-pub(crate) use relay_projection::{
+// Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
+// surface them — `nmp-router::Nip65OutboxResolver` (spec §271) constructs
+// resolver slots with handles shared by the kernel actor's reducer. Direct
+// in-crate consumers continue to import through `crate::kernel::{...}`.
+pub use relay_projection::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 // `new_relay_edit_rows_slot` is reached by `nmp-ffi` through
@@ -922,6 +930,69 @@ impl Kernel {
         self.mailbox_cache = cache;
     }
 
+    /// Install a router-side publish-resolver implementation on the
+    /// kernel's `PublishEngine`.
+    ///
+    /// Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in `nmp-router`,
+    /// not `nmp-core`. The kernel constructs `PublishEngine` with the
+    /// in-crate `NoopOutboxResolver` default (every `PublishTarget::Auto`
+    /// resolves to an empty set → `PublishEngineError::NoTargets`,
+    /// fail-closed). Production composition
+    /// (`nmp-app-template::register_defaults` → the
+    /// `NmpApp::set_publish_resolver_factory` slot the actor reads at
+    /// kernel construction) calls this method right after
+    /// [`Self::set_routing`] to install
+    /// `nmp_router::Nip65OutboxResolver::with_local_relays(...)` over the
+    /// kernel-owned [`event_store_handle`](Self::event_store_handle) /
+    /// [`indexer_relays_handle`](Self::indexer_relays_handle) /
+    /// [`local_write_relays_handle`](Self::local_write_relays_handle) /
+    /// [`active_account_handle`](Self::active_account_handle) slots.
+    ///
+    /// MUST be called BEFORE any publish lands. Swapping mid-publish leaves
+    /// the in-flight engine state inconsistent with the resolver decisions
+    /// that produced it.
+    pub fn set_publish_resolver(&mut self, resolver: Arc<dyn crate::publish::OutboxResolver>) {
+        self.publish_engine.set_outbox(resolver);
+    }
+
+    /// Borrow the kernel's `EventStore` handle.
+    ///
+    /// Returned as a cloned `Arc<dyn EventStore>` (the kernel uses `Arc` so
+    /// the resolver can share the same store without a second copy). Used
+    /// by the `set_publish_resolver_factory` composition site to construct
+    /// `nmp_router::Nip65OutboxResolver::with_local_relays(store, ...)`
+    /// over the same store the kernel reads kind:10002 from. Spec §271
+    /// (2026-05-25).
+    #[must_use]
+    pub fn event_store_handle(&self) -> Arc<dyn EventStore> {
+        Arc::clone(&self.store)
+    }
+
+    /// Borrow the kernel's indexer-relays slot.
+    ///
+    /// The actor pushes the configured indexer URL list into this slot on
+    /// every relay-config mutation (D4 sole-writer); router-side resolvers
+    /// (`nmp_router::Nip65OutboxResolver`) read through it without crossing
+    /// the kernel boundary. Spec §271 (2026-05-25).
+    #[must_use]
+    pub fn indexer_relays_handle(&self) -> IndexerRelaysSlot {
+        Arc::clone(&self.indexer_relays_handle)
+    }
+
+    /// Borrow the kernel's local-write-relays slot. See
+    /// [`Self::indexer_relays_handle`] for the threading model.
+    #[must_use]
+    pub fn local_write_relays_handle(&self) -> LocalWriteRelaysSlot {
+        Arc::clone(&self.local_write_relays_handle)
+    }
+
+    /// Borrow the kernel's active-account-pubkey slot. See
+    /// [`Self::indexer_relays_handle`] for the threading model.
+    #[must_use]
+    pub fn active_account_handle(&self) -> ActiveAccountSlot {
+        Arc::clone(&self.active_account_handle)
+    }
+
     /// V-51 phase 1 — borrow the kernel's routing-trace projection.
     ///
     /// Returns an `Arc<RoutingTraceProjection>` so a host that swaps in a
@@ -990,13 +1061,20 @@ impl Kernel {
         let indexer_relays_handle: IndexerRelaysSlot = new_indexer_relays_slot();
         let local_write_relays_handle: LocalWriteRelaysSlot = new_local_write_relays_slot();
         let active_account_handle: ActiveAccountSlot = new_active_account_slot();
+        // Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in
+        // `nmp-router`, not `nmp-core`. The engine is built with the
+        // in-crate `NoopOutboxResolver` default; production composition
+        // (`nmp-app-template::register_defaults` → the
+        // `set_publish_resolver_factory` slot the actor reads at
+        // construction) swaps in the router-side resolver via
+        // [`Kernel::set_publish_resolver`]. The `indexer_relays_handle`,
+        // `local_write_relays_handle`, and `active_account_handle` slots
+        // are still kernel-owned (the actor is the sole writer per D4) and
+        // are surfaced through the kernel accessors below so the
+        // router-side resolver constructor can wire them in.
         let publish_engine = publish_engine::build_engine(
-            Arc::clone(&store),
             Arc::clone(&publish_dispatcher),
             Arc::clone(&publish_store),
-            Arc::clone(&indexer_relays_handle),
-            Arc::clone(&local_write_relays_handle),
-            Arc::clone(&active_account_handle),
         );
 
         // T129 — install the store-backed watermark resolver on the
@@ -1072,6 +1150,34 @@ impl Kernel {
         // layering).
         let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::new());
         let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
+
+        // Spec §271 (2026-05-25): under `cfg(test)` / `feature="test-support"`
+        // the kernel auto-installs the in-crate `TestKind10002OutboxResolver`
+        // (a minimal kind:10002 reader) so the dozens of in-tree publish
+        // tests (`publish_engine_tests`, `outbox_tests`, `action_failure_tests`,
+        // `publish_terminal_status_tests`, `eose_ok_notice_ingest_tests`,
+        // `actor::commands::tests`, `kernel::test_support::seed_kind10002_for_test`
+        // consumers) keep working without each test calling
+        // `Kernel::set_publish_resolver` manually. Production builds use the
+        // `NoopOutboxResolver` default the engine was built with above; the
+        // production composition site (`nmp-app-template::register_defaults`)
+        // installs the full router-side `nmp_router::Nip65OutboxResolver`
+        // via `NmpApp::set_publish_resolver_factory` →
+        // `Kernel::set_publish_resolver` (D0 — `nmp-core` does not name
+        // `nmp-router` in its production graph; a dev-dep on `nmp-router`
+        // would form a feature-incompatible cycle with `nmp-router`'s own
+        // dep on `nmp-core`).
+        #[cfg(any(test, feature = "test-support"))]
+        let test_publish_resolver: Arc<dyn crate::publish::OutboxResolver> = Arc::new(
+            crate::publish::TestKind10002OutboxResolver::new(Arc::clone(&store)).with_local_relays(
+                Arc::clone(&local_write_relays_handle),
+                Arc::clone(&active_account_handle),
+            ),
+        );
+        #[cfg(any(test, feature = "test-support"))]
+        let mut publish_engine = publish_engine;
+        #[cfg(any(test, feature = "test-support"))]
+        publish_engine.set_outbox(test_publish_resolver);
 
         Self {
             store,

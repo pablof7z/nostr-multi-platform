@@ -868,6 +868,12 @@ pub fn run_actor(
         // `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`
         // defaults (substrate-honest debt B).
         Arc::new(Mutex::new(None)),
+        // Spec §271 (2026-05-25) — no `NmpApp` here, so the
+        // substrate-publish-resolver factory slot is a private throwaway.
+        // The kernel keeps its `NoopOutboxResolver` default; every publish
+        // through `PublishTarget::Auto` resolves to an empty set and the
+        // engine surfaces `NoTargets` (fail-closed).
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -925,6 +931,9 @@ pub fn run_actor_with_lifecycle_observer(
         // V-51 phase 4 — same private-throwaway pattern.
         Arc::new(Mutex::new(None)),
         // V-51 phase 5 — same private-throwaway pattern (no factory installed).
+        Arc::new(Mutex::new(None)),
+        // Spec §271 (2026-05-25) — same private-throwaway pattern for the
+        // substrate-publish-resolver factory slot (no factory installed).
         Arc::new(Mutex::new(None)),
     );
 }
@@ -1038,6 +1047,17 @@ pub fn run_actor_with_observers(
     // through as the `RoutingTraceObserver`. `None` (the default and the
     // production test state) leaves the kernel's in-crate defaults.
     routing_substrate_slot: crate::slots::RoutingSubstrateSlot,
+    // Spec §271 (2026-05-25) — per-app substrate-publish-resolver factory
+    // slot. Mirrors `routing_substrate_slot`. The `NmpApp` owns the writer
+    // side (`NmpApp::set_publish_resolver_factory`); this actor thread
+    // reads the current factory after kernel construction (and on
+    // `Reset`) and applies the produced `Arc<dyn OutboxResolver>` via
+    // `Kernel::set_publish_resolver`, threading the kernel's
+    // `event_store_handle` / `indexer_relays_handle` /
+    // `local_write_relays_handle` / `active_account_handle` slots into
+    // the factory. `None` (the default and the production test state)
+    // leaves the kernel's `NoopOutboxResolver` default in place.
+    publish_resolver_slot: crate::slots::PublishResolverSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1110,6 +1130,28 @@ pub fn run_actor_with_observers(
             kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
         let (router, cache) = factory(observer);
         kernel.set_routing(router, cache);
+    }
+    // Spec §271 (2026-05-25) — apply the per-app substrate-publish-resolver
+    // factory (if any) BEFORE any publish lands. Mirrors the routing factory
+    // application above: the factory receives the kernel's `EventStore` +
+    // typed slot handles (D4 sole-writer is the actor reducer, the resolver
+    // is a reader) so the produced `Nip65OutboxResolver` reads through the
+    // same shared state the actor pushes into. D6: a poisoned slot is a
+    // silent no-op (the kernel keeps its `NoopOutboxResolver` default; every
+    // publish then fails closed with `NoTargets`, exactly as the production
+    // resolver would for an uncached author).
+    if let Some(factory) = publish_resolver_slot
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(Arc::clone))
+    {
+        let resolver = factory(
+            kernel.event_store_handle(),
+            kernel.indexer_relays_handle(),
+            kernel.local_write_relays_handle(),
+            kernel.active_account_handle(),
+        );
+        kernel.set_publish_resolver(resolver);
     }
     // V-40 — bind the shared `EventIngestDispatcher` slot + the
     // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
@@ -1314,6 +1356,7 @@ pub fn run_actor_with_observers(
                         dm_inbox_relays_slot: &dm_inbox_relays_slot,
                         routing_trace_slot: &routing_trace_slot,
                         routing_substrate_slot: &routing_substrate_slot,
+                        publish_resolver_slot: &publish_resolver_slot,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {

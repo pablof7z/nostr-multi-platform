@@ -96,6 +96,44 @@ pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
     Arc::new(Mutex::new(None))
 }
 
+// ─── Publish-resolver factory (spec §271, 2026-05-25) ───────────────────────
+//
+// Per-app substrate-publish-resolver factory. Mirrors `RoutingSubstrateFactory`:
+// production composition (`nmp-app-template::register_defaults`) writes a
+// closure into the [`PublishResolverSlot`] via
+// `NmpApp::set_publish_resolver_factory`; the actor reads it right after
+// kernel construction and applies the produced `Arc<dyn OutboxResolver>`
+// via `Kernel::set_publish_resolver`.
+//
+// The closure receives the four kernel-owned handles the router-side
+// `Nip65OutboxResolver` needs (`EventStore` + indexer / local-write /
+// active-account slots) so the resolver reads through the same shared
+// state the kernel actor writes to. `Fn` (not `FnOnce`) so the `Reset`
+// dispatch arm can re-invoke against the rebuilt kernel's fresh handles.
+pub type PublishResolverFactory = dyn Fn(
+        Arc<dyn crate::store::EventStore>,
+        IndexerRelaysSlot,
+        LocalWriteRelaysSlot,
+        ActiveAccountSlot,
+    ) -> Arc<dyn crate::publish::OutboxResolver>
+    + Send
+    + Sync;
+
+/// Slot wrapper for [`PublishResolverFactory`]. `None` until production
+/// composition calls `NmpApp::set_publish_resolver_factory`; the actor
+/// then reads it after kernel construction (and on `Reset`) and applies
+/// the produced resolver. `None` leaves the kernel's
+/// `NoopOutboxResolver` default in place (every publish fails closed
+/// with `NoTargets`, matching the production `Nip65OutboxResolver`'s
+/// behaviour for an uncached author).
+pub type PublishResolverSlot = Arc<Mutex<Option<Arc<PublishResolverFactory>>>>;
+
+/// Construct a fresh, empty [`PublishResolverSlot`].
+#[must_use]
+pub fn new_publish_resolver_slot() -> PublishResolverSlot {
+    Arc::new(Mutex::new(None))
+}
+
 /// Typed slot for the previously-installed NIP-17 DM-inbox raw-event observer id.
 ///
 /// Used by the idempotent `NmpApp::swap_nip17_dm_inbox_observer` seam so
@@ -121,3 +159,21 @@ pub fn new_dm_inbox_observer_id_slot() -> DmInboxObserverIdSlot {
 pub fn new_singleton_event_observer_id_slot() -> SingletonEventObserverIdSlot {
     Arc::new(Mutex::new(None))
 }
+
+// ─── Publish-resolver slots (re-exported for `nmp-router::Nip65OutboxResolver`) ──
+//
+// Crate-boundary spec §271 (2026-05-25): the `Nip65OutboxResolver` lives in
+// `nmp-router`, not `nmp-core`. The kernel still owns these slots (the actor
+// is the sole writer per D4), but the resolver — now in a sibling crate —
+// reads through them. The slot type aliases (and their constructors) are
+// re-exported here so external production composition can construct a
+// resolver whose handles are shared with the kernel's actor side.
+//
+// `RelayUrls` itself is intentionally NOT re-exported — its `replace()`
+// writer is `pub(crate)`, so an external reader cannot mutate the slot.
+// External callers only `lock()` + `as_slice()` to read, which is exactly
+// what the resolver needs.
+pub use crate::kernel::{
+    new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
+    ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
+};
