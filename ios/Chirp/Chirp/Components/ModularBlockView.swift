@@ -141,8 +141,7 @@ struct ModularBlockView: View {
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: cards,
-            timelineItems: items,
-            embedDepth: 0
+            timelineItems: items
         )
 
         return Button {
@@ -284,10 +283,9 @@ struct ModularBlockView: View {
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
         // `isRepost` / `navTargetId` / `repostInnerContent` are computed by
         // Rust on real timeline rows; synthetic embedded-card items are not
-        // surfaced through the repost rendering path (they back the inline
-        // `EmbeddedNostrEventCard`, not a row), so we feed neutral defaults
-        // that match the Rust fallback for kind:1 — no inner-event parsing
-        // here either.
+        // surfaced through the repost rendering path, so we feed neutral
+        // defaults that match the Rust fallback for kind:1. The shared content
+        // renderer consumes the card as a quoted-event preview, not a row.
         //
         // V6 Stage 3 partial (F-05): `TimelineItem` is now generated. The
         // three formerly-optional fallbacks (`authorPictureUrl`, etc.) are

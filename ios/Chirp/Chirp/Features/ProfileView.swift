@@ -32,8 +32,7 @@ struct ProfileView: View {
             mentionProfiles: model.mentionProfiles,
             eventCards: Dictionary(
                 uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) }),
-            timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }),
-            embedDepth: 0
+            timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         )
     }
 

@@ -422,7 +422,6 @@ fn add_component_keeps_content_minimal_installable() {
 /// component's target paths must abort the install with a clear error so the
 /// user can either move the existing file out of the way or skip the install.
 #[test]
-#[test]
 fn add_component_rejects_preexisting_target_file() {
     let tmp = TempDir::new("preexisting");
     let target_dir = tmp.path().join("Components/NostrContent");

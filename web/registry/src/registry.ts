@@ -1,11 +1,10 @@
 /*
  * Static component manifest for the registry showcase site.
  *
- * This is the SINGLE SOURCE OF TRUTH the site renders. It is hand-mirrored
- * from `crates/nmp-cli/registry/registry.toml` (the CLI's manifest).
- * Where a component exists in the registry, the `source` field is a string
- * (imported via Vite `?raw`). Where a component is still being built on a
- * feature branch, `source` is null and the page renders a placeholder.
+ * Install-critical metadata is mirrored from the CLI manifest at
+ * `crates/nmp-cli/registry/registry.toml`. The nmp-cli integration tests
+ * compare ids, versions, targets, dependencies, and file mappings so this
+ * showcase cannot drift from the offline registry apps actually install.
  */
 
 import contentCoreSwift from "../../../crates/nmp-cli/registry/swiftui/content-core/NostrContentRenderer.swift?raw";
@@ -67,10 +66,10 @@ export const COMPONENTS: Component[] = [
     id: "swiftui/content-core",
     slug: "content-core",
     routeId: "content-core",
-    version: "0.1.0",
+    version: "0.2.0",
     target: "swiftui",
     description:
-      "Shared SwiftUI renderer configuration for app-owned Nostr content components.",
+      "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components.",
     longDescription:
       "`NostrContentRenderer` is the small environment-injected struct every content component reads to pick colors and tap callbacks. Install it once; every other content component on this page picks it up automatically.",
     dependencies: [],
@@ -131,16 +130,14 @@ export const COMPONENTS: Component[] = [
     id: "swiftui/content-view",
     slug: "content-view",
     routeId: "content-view",
-    version: "0.1.0",
+    version: "0.1.1",
     target: "swiftui",
     description:
       "Full `ContentTreeWire` renderer. Stitches text runs, mentions, quote cards, and media grids into one view.",
     dependencies: [
       "swiftui/content-core",
-      "swiftui/content-minimal",
-      "swiftui/content-mention-chip",
-      "swiftui/content-quote-card",
       "swiftui/content-media-grid",
+      "swiftui/content-quote-card",
     ],
     files: [
       {
@@ -195,11 +192,11 @@ export const COMPONENTS: Component[] = [
     id: "swiftui/content-quote-card",
     slug: "content-quote-card",
     routeId: "content-quote-card",
-    version: "0.1.0",
+    version: "0.1.1",
     target: "swiftui",
     description:
       "Quoted-note card — author header, content preview, subtle border. Drops into any feed.",
-    dependencies: ["swiftui/content-core", "swiftui/content-minimal"],
+    dependencies: ["swiftui/content-core"],
     files: [
       {
         source: "swiftui/content-quote-card/NostrQuoteCard.swift",
@@ -210,7 +207,7 @@ export const COMPONENTS: Component[] = [
     ],
     screenshots: ["content-quote-card-preview.png"],
     customization: [
-      "Renders a `ContentTreeWire` recursively, so a quoted note that itself contains quotes renders correctly to whatever depth your app chooses to allow (the renderer caps recursion at three levels by default).",
+      "Renders a hydrated `NostrQuoteCardModel`; apps resolve quoted events from their own state and pass preview text, author display data, and optional media thumbnails.",
       "Adjust the border, corner radius, and padding directly in the source file — they're literals, not configuration knobs, so they merge cleanly on `nmp update`.",
     ],
   },
@@ -323,7 +320,7 @@ export const COMPONENTS: Component[] = [
     id: "compose/content-quote-card",
     slug: "compose-content-quote-card",
     routeId: "compose-content-quote-card",
-    version: "0.1.0",
+    version: "0.1.1",
     target: "compose",
     description:
       "Reusable Compose quote / embed card — collapsed, compact, rich, and missing variants.",

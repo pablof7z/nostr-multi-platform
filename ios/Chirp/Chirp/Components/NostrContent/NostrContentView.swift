@@ -3,8 +3,7 @@ import SwiftUI
 /// SwiftUI renderer for a `ContentTreeWire`. Walks `tree.roots`, flattens the
 /// arena into block-level groups via `nostrContentGroups`, and renders each
 /// block (paragraph/heading/media/code/list/quote/rule/image/event-ref/
-/// placeholder) with the inline-text concatenation pattern proven by Chirp's
-/// `NoteContentView`.
+/// placeholder) with SwiftUI `Text` concatenation for inline runs.
 ///
 /// Data injection contract:
 ///   • Theming + tap callbacks come from `NostrContentRenderer` in the

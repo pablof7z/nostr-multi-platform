@@ -31,8 +31,8 @@ public enum NostrContentInlineLevel: Equatable {
 /// safely treat it as a newline marker.
 public let nostrContentNewlineSentinel: UInt32 = .max
 
-/// Flatten the document into a sequence of block-level groups. Mirrors the
-/// shape of `noteContentGroups` in Chirp's `NoteEntityViews.swift`.
+/// Flatten the document into the block-level sequence consumed by
+/// `NostrContentView`.
 public func nostrContentGroups(_ tree: ContentTreeWire) -> [NostrContentGroup] {
     var groups: [NostrContentGroup] = []
     var pendingChildren: [UInt32] = []
