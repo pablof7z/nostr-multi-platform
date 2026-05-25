@@ -1,0 +1,20 @@
+{
+  "name": "swiftui-user-card",
+  "type": "registry:ui",
+  "title": "User Card (SwiftUI)",
+  "description": "Compact SwiftUI author card composed from avatar, profile name, and optional NIP-05 badge.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-user-avatar",
+    "swiftui-user-name",
+    "swiftui-user-nip05"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/user-card/NostrUserCard.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrUser/NostrUserCard.swift",
+      "content": "import SwiftUI\n\n/// Compact author header: avatar, display name, and optional NIP-05 badge.\n///\n/// The most common pattern in note feeds and thread views. Tap routes\n/// through `onTap` so this component can be placed in any navigation stack.\n///\n/// Depends on `swiftui/user-avatar`, `swiftui/user-name`,\n/// `swiftui/user-nip05`.\npublic struct NostrUserCard: View {\n    public let profile: ProfileWire\n    public var avatarSize: CGFloat\n    public var onTap: ((String) -> Void)?\n\n    public init(\n        profile: ProfileWire,\n        avatarSize: CGFloat = 40,\n        onTap: ((String) -> Void)? = nil\n    ) {\n        self.profile = profile\n        self.avatarSize = avatarSize\n        self.onTap = onTap\n    }\n\n    public var body: some View {\n        HStack(spacing: 10) {\n            NostrAvatar(profile: profile, size: avatarSize)\n\n            VStack(alignment: .leading, spacing: 2) {\n                NostrProfileName(profile: profile)\n\n                if let badge = NostrNip05Badge(profile: profile) {\n                    badge\n                }\n            }\n\n            Spacer(minLength: 0)\n        }\n        .contentShape(Rectangle())\n        .onTapGesture { onTap?(profile.pubkey) }\n        .accessibilityElement(children: .combine)\n        .accessibilityLabel(\"\\(profile.display), profile\")\n        .accessibilityAddTraits(.isButton)\n    }\n}\n"
+    }
+  ]
+}

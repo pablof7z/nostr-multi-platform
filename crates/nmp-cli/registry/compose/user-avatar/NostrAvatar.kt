@@ -24,7 +24,7 @@ import coil.compose.SubcomposeAsyncImage
  * Replace [SubcomposeAsyncImage] with Glide/Picasso/custom if you already
  * have an image loader — the identicon fallback is self-contained.
  *
- * Depends on `compose/user-core` for [ProfileWire].
+ * Depends on `compose/user-avatar` for [ProfileWire].
  */
 @Composable
 fun NostrAvatar(
