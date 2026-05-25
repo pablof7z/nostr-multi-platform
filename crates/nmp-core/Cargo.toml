@@ -27,11 +27,16 @@ crate-type = ["staticlib", "rlib"]
 # gated.
 default = ["native"]
 # I/O layer — native platforms (Linux, macOS, iOS, Android).
-# Gates: tungstenite (still named by the actor's RelayEvent::Message arm —
-# the `tungstenite::Message` type is the inbound wire frame nmp-network's
-# `relay_worker` produces; the `tungstenite_message_to_relay_frame`
-# conversion runs in `actor::dispatch`), heed, nostr-database,
-# nmp-nostr-lmdb, and the chrono/clock feature.
+# Phase F (this PR) — the production actor consumes only the
+# `nmp_network::pool::Pool` push-model surface; `tungstenite` survives in
+# this manifest solely so the loopback-server test fixtures in
+# `actor::relay_mgmt::tests` can run a fake relay (`tungstenite::accept`).
+# The production kernel→transport seam speaks `nmp_network::pool::RelayFrame`
+# (the pool's translator owns the underlying `tungstenite::Message`
+# conversion).
+#
+# Gates: tungstenite (test-only fake server in `relay_mgmt::tests`), heed,
+# nostr-database, nmp-nostr-lmdb, and the chrono/clock feature.
 #
 # `nmp-network` itself is an unconditional dep (declared below) because
 # `relay.rs` re-exports `RelayRole` from there for downstream callers;
