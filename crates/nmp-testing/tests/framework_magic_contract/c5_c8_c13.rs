@@ -299,26 +299,19 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
         .find(|item| item["id"].as_str() == Some(event_id))
         .expect("our event must appear in items");
 
-    // C13 core assertion: author_picture_url must be a non-null, non-empty String.
-    let pic_url = our_item["author_picture_url"]
-        .as_str()
-        .expect("author_picture_url must be a JSON string (not null) — D1 violation if missing");
+    // C13 core assertion: aim.md §2 — NMP ships raw data; the presentation
+    // layer owns the placeholder/identicon strategy. author_picture_url is
+    // null until a kind:0 event is received for this author (ADR-0032).
     assert!(
-        !pic_url.is_empty(),
-        "author_picture_url must be non-empty (D1 placeholder contract)"
+        our_item["author_picture_url"].is_null(),
+        "author_picture_url must be null before kind:0 arrives (aim.md §2)"
     );
+    // author_avatar_source was removed by ADR-0032 display separation sweep;
+    // the presentation layer tracks placeholder vs authoritative state itself.
     assert!(
-        pic_url.starts_with("identicon:"),
-        "no-profile placeholder must be an identicon URI, got: {pic_url}"
+        our_item.get("author_avatar_source").map_or(true, |v| v.is_null()),
+        "author_avatar_source must not be present after ADR-0032"
     );
-
-    // author_avatar_source distinguishes placeholder from authoritative.
-    // ADR-0017: with no kind:0 ingested, the discriminator MUST be
-    // "placeholder" (not "kind0"), tracking the actual URL selection.
-    let source = our_item["author_avatar_source"]
-        .as_str()
-        .expect("author_avatar_source must be present");
-    assert_eq!(source, "placeholder");
 
     tx.send(ActorCommand::Shutdown).ok();
 }
