@@ -132,9 +132,20 @@ impl DesktopApp {
                         self.bridge.publish_note(self.compose.trim().to_string());
                         self.compose.clear();
                     }
-                    if !snap.profile.display.is_empty() {
+                    // aim.md §2 — display_name is None until kind:0
+                    // arrives; fall back to the short_npub of the raw
+                    // pubkey at render time (presentation layer choice).
+                    if let Some(name) = snap.profile.display_name.as_deref() {
+                        if !name.is_empty() {
+                            ui.label(RichText::new(format!("as {}", name)).weak());
+                        }
+                    } else if !snap.profile.pubkey.is_empty() {
                         ui.label(
-                            RichText::new(format!("as {}", snap.profile.display)).weak(),
+                            RichText::new(format!(
+                                "as {}",
+                                nmp_core::display::short_npub(&snap.profile.pubkey)
+                            ))
+                            .weak(),
                         );
                     }
                 });
@@ -173,17 +184,32 @@ impl DesktopApp {
 }
 
 fn note_card(ui: &mut egui::Ui, item: &crate::snapshot::TimelineItem) {
+    // aim.md §2 — backend ships raw hex pubkeys + Unix seconds; the
+    // desktop shell is the presentation layer and formats locally via
+    // the nmp-core display helpers (legitimate in TUI / CLI / desktop
+    // render code).
+    let author_display = nmp_core::display::short_npub(&item.author_pubkey);
+    let initials = nmp_core::display::avatar_initials(
+        &nmp_core::display::to_npub(&item.author_pubkey),
+    );
+    let color = nmp_core::display::avatar_color_hex(&item.author_pubkey);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let created_at_display = nmp_core::display::format_ago_secs(now, item.created_at);
+
     Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                avatar(ui, &item.author_avatar_initials, &item.author_avatar_color);
+                avatar(ui, &initials, &color);
                 ui.add_space(6.0);
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(&item.author_display).strong());
+                        ui.label(RichText::new(&author_display).strong());
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(RichText::new(&item.created_at_display).weak().small());
+                            ui.label(RichText::new(&created_at_display).weak().small());
                             if item.relay_count > 1 {
                                 ui.label(
                                     RichText::new(format!("·{}×", item.relay_count))
