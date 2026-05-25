@@ -70,7 +70,6 @@ use std::collections::BTreeSet;
 
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
-use crate::projection::display;
 use crate::projection::payload::MarmotMessageRow;
 use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
 
@@ -227,17 +226,14 @@ fn missing_key_package_result(
     fetch_pubkeys: &[PublicKey],
 ) -> Value {
     let fetch_requested = h.request_key_package_fetch(fetch_pubkeys);
-    // Pre-format the abbreviated npub list the UI shows in its error
-    // string. Per aim.md §6, formatting belongs in Rust.
-    let needs_display: Vec<String> = needs
-        .iter()
-        .map(|n| display::short_npub_compact(n))
-        .collect();
+    // The presentation layer formats the missing pubkeys for display
+    // (aim.md §2 — backend ships raw hex; shells own abbreviation).
+    let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
     json!({
         "ok": false,
         "error": "key_package_unavailable",
         "needs": needs,
-        "needs_display": needs_display,
+        "needs_pubkeys_hex": needs_pubkeys_hex,
         "fetch_requested": fetch_requested,
         "hint": "key package lookup was requested; results arrive via the kernel tap"
     })
@@ -251,7 +247,6 @@ pub fn group_messages(
     h: &mut InnerHandle<'_>,
     group_id_hex: &str,
     page: usize,
-    now_secs: u64,
 ) -> Vec<MarmotMessageRow> {
     let Ok(gid) = group_id_from_hex(group_id_hex) else {
         return Vec::new();
@@ -263,27 +258,12 @@ pub fn group_messages(
     msgs.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
     msgs.into_iter()
         .take(page)
-        .map(|m| {
-            let sender_npub = m.pubkey.to_hex();
-            let sender_short = display::short_npub(&sender_npub);
-            // Avatar initials are first 2 ASCII hex chars of the pubkey
-            // (preserves the previous Swift derivation, which never
-            // matched `hasPrefix("npub1")` against the raw hex string).
-            let sender_initials = display::initials(&sender_npub);
-            let sender_color_hex = display::avatar_color_hex(&sender_npub);
-            let created_at = m.created_at.as_secs();
-            let created_at_display = display::relative_time(created_at, now_secs);
-            MarmotMessageRow {
-                id: m.id.to_hex(),
-                sender_npub,
-                sender_short,
-                sender_initials,
-                sender_color_hex,
-                content: m.content.clone(),
-                created_at,
-                created_at_display,
-                epoch: m.epoch,
-            }
+        .map(|m| MarmotMessageRow {
+            id: m.id.to_hex(),
+            sender_pubkey_hex: m.pubkey.to_hex(),
+            content: m.content.clone(),
+            created_at: m.created_at.as_secs(),
+            epoch: m.epoch,
         })
         .collect()
 }

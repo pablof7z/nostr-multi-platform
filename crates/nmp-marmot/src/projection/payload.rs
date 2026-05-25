@@ -9,28 +9,21 @@
 //! The iOS shell depends on these field names VERBATIM. Treat any rename
 //! as a breaking ABI change.
 //!
-//! ## Display fields — Rust owns formatting (aim.md §6, RMP bible)
+//! ## Raw data only (aim.md §2)
 //!
-//! Per aim.md anti-pattern #1 ("Duplicated formatting logic across
-//! platforms (timestamps, display names) — Rust pre-formats into strings,
-//! native renders them") and the chirp/AGENTS.md "canonical bad example",
-//! every string the UI displays is computed HERE and crosses the FFI
-//! pre-formatted:
+//! Per aim.md §2, NMP is a data framework: projection and snapshot code
+//! sends raw protocol data (hex pubkeys, Unix timestamps, raw counts).
+//! Presentation layers (Swift, Kotlin, TUI, web) own all formatting:
+//! bech32 encoding, abbreviation, avatar initials/tints for pubkeys,
+//! relative-time labels, plural-count strings. This module ships counts
+//! as `u32`/`u64`, timestamps as `u64`, pubkeys as 64-char hex.
 //!
-//! * `initials` / `*_initials` — 2-char ASCII initials for avatar tiles.
-//! * `member_count_display` / `unread_display` — pluralised, ready-to-render.
-//! * `inviter_short` / `sender_short` / `needs_display` — bech32-aware
-//!   abbreviated npubs.
-//! * `created_at_display` — RelativeDateTime-style stamp (e.g. "3m", "2h")
-//!   computed against the snapshot's `now_secs` so the UI does no date
-//!   math.
-//! * `sender_color_hex` — deterministic 6-hex avatar tint.
-//! * `invites_chip_label` — top-of-list pluralised invite chip ("1 invite"
-//!   / "3 invites"); `None` when there are no pending invites.
-//!
-//! These fields exist precisely so the Swift layer can be a pure render of
-//! whatever Rust hands it; no `.filter` / `.sorted` / `RelativeDateTimeFormatter`
-//! / `Date(timeIntervalSince1970:)` should ever appear on the consumer side.
+//! Free-form metadata fallbacks (empty group name → "Untitled group",
+//! empty welcome name → "Group invite", pluralised invite chip label,
+//! 2-char initials over the group name) are still computed here — those
+//! are protocol-level decisions about how to surface a name field with
+//! no kind-defined empty-string semantics, not banned helper
+//! forwarders.
 
 use serde::{Deserialize, Serialize};
 
@@ -39,33 +32,31 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotGroupRow {
     pub id_hex: String,
+    /// Group name verbatim from MLS metadata. May be empty — presentation
+    /// layers own the rendering decision (typically a fallback string).
     pub name: String,
     /// Group name with an empty-name fallback ("Untitled group") so the UI
-    /// can render `display_name` unconditionally.
+    /// can render `display_name` unconditionally. Free-form metadata
+    /// fallback for the name field, NOT a banned pubkey/timestamp
+    /// formatter — see aim.md §2.
     pub display_name: String,
-    /// 2-char ASCII initials for the avatar tile (rendered on a flat
-    /// background by the UI).
+    /// 2-char ASCII initials for the avatar tile derived from `name`
+    /// (rendered on a flat background by the UI). Free-form metadata
+    /// derivation, not a banned pubkey/timestamp formatter.
     pub initials: String,
-    /// Member Nostr pubkeys (hex), sorted (BTreeSet order from MDK).
+    /// Member Nostr pubkeys (hex, 64 chars), sorted (BTreeSet order from
+    /// MDK). Presentation layer formats each entry for display.
     pub members: Vec<String>,
-    /// Pre-formatted abbreviated bech32 npubs (`npub1abcd…wxyz`) paired
-    /// 1:1 with `members`. Lets the UI render the member list without a
-    /// hex→npub conversion in Swift (aim.md §6 anti-pattern #1).
-    pub members_display: Vec<String>,
-    /// Pluralised member-count string ("3 members" / "1 member") — Rust
-    /// owns formatting per aim.md §6.
-    pub member_count_display: String,
-    /// **Read-cursor seam**: there is no per-device read watermark in
-    /// `MarmotService` / MDK, so this is the TOTAL decrypted
-    /// application-message count for the group, NOT a true unread delta.
-    /// The iOS shell owns the read watermark and computes
-    /// `unread = this - last_seen_count` itself. The field keeps the name
-    /// `unread` because the iOS agent's schema is pinned to it; treat it
-    /// as "message_count" until a read-cursor lands.
-    pub unread: u64,
-    /// `Some("3")` when `unread > 0`, else `None`. Lets the UI render the
-    /// badge with a single `if let` and no derivation.
-    pub unread_display: Option<String>,
+    /// Member count (length of `members`, surfaced separately so a host
+    /// shell can render the count without iterating the array).
+    pub member_count: u32,
+    /// Total decrypted application-message count for the group, or `None`
+    /// when zero. **Read-cursor seam**: there is no per-device read
+    /// watermark in `MarmotService` / MDK, so this is NOT a true unread
+    /// delta — the host shell owns the read watermark and computes
+    /// `unread = unread_count - last_seen_count` itself. Carries a count
+    /// rather than a display string (aim.md §2).
+    pub unread_count: Option<u32>,
     /// Sender `created_at` of the most recent message, or `null` if none.
     pub last_msg_at: Option<u64>,
 }
@@ -80,14 +71,17 @@ pub struct PendingWelcomeRow {
     /// The kind:444 Welcome event id, hex. Pass back as `welcome_id_hex`
     /// to the `accept_welcome` / `decline_welcome` dispatch ops.
     pub id_hex: String,
+    /// Group name verbatim from the Welcome envelope. May be empty —
+    /// presentation layers own the empty-name fallback.
     pub group_name: String,
     /// Empty-name fallback ("Group invite") so the UI renders this string
-    /// unconditionally.
+    /// unconditionally. Free-form metadata fallback, not a banned
+    /// pubkey/timestamp formatter — see aim.md §2.
     pub display_name: String,
-    /// The inviter's Nostr pubkey, hex (the gift-wrap seal sender).
+    /// The inviter's Nostr pubkey (hex, 64 chars — the field name is
+    /// historical; the value is hex, not bech32). The gift-wrap seal
+    /// sender. Presentation layer formats for display.
     pub inviter_npub: String,
-    /// `npub1abcd…wxyz` abbreviation of `inviter_npub` for compact UI rows.
-    pub inviter_short: String,
 }
 
 /// KeyPackage publication health for the local identity.
@@ -230,21 +224,13 @@ impl MarmotSnapshot {
 pub struct MarmotMessageRow {
     /// The message (rumor) event id, hex.
     pub id: String,
-    /// Author Nostr pubkey, hex.
-    pub sender_npub: String,
-    /// `npub1abcd…wxyz` abbreviation of `sender_npub`.
-    pub sender_short: String,
-    /// 2-char ASCII initials for the avatar tile.
-    pub sender_initials: String,
-    /// Deterministic 6-hex avatar tint derived from `sender_npub`.
-    pub sender_color_hex: String,
+    /// Author Nostr pubkey (hex, 64 chars). The presentation layer formats
+    /// for display.
+    pub sender_pubkey_hex: String,
     pub content: String,
-    /// Rumor `created_at` (sender clock).
+    /// Rumor `created_at` (sender clock, Unix seconds). The presentation
+    /// layer formats for display (aim.md §2).
     pub created_at: u64,
-    /// Rust-formatted relative timestamp ("3m" / "2h" / "5d") relative to
-    /// the snapshot's `now_secs`. The UI renders verbatim — no
-    /// `RelativeDateTimeFormatter` in Swift.
-    pub created_at_display: String,
     /// MLS epoch the message was decrypted at, or `null` (pre-epoch msgs).
     pub epoch: Option<u64>,
 }
