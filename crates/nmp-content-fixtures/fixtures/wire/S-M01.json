@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "talked with "
+    },
+    {
+      "kind": "mention",
+      "uri": {
+        "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+        "kind": "profile",
+        "primary_id": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+        "relays": [],
+        "author": null,
+        "event_kind": null
+      }
+    },
+    {
+      "kind": "text",
+      "text": " about reconnects"
+    }
+  ],
+  "roots": [
+    0,
+    1,
+    2
+  ],
+  "mode": "Plain"
+}

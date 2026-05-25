@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "this nails it: "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
+        "kind": "event",
+        "primary_id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+        "relays": [],
+        "author": null,
+        "event_kind": null
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

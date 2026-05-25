@@ -1,0 +1,40 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "On Hashtags"
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "children": [
+        0
+      ]
+    },
+    {
+      "kind": "text",
+      "text": "Tags like "
+    },
+    {
+      "kind": "hashtag",
+      "tag": "nostr"
+    },
+    {
+      "kind": "text",
+      "text": " remain inline hashtags inside markdown bodies."
+    },
+    {
+      "kind": "paragraph",
+      "children": [
+        2,
+        3,
+        4
+      ]
+    }
+  ],
+  "roots": [
+    1,
+    5
+  ],
+  "mode": "Markdown"
+}

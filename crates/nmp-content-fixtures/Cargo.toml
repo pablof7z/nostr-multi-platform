@@ -12,6 +12,10 @@ name = "nmp_content_fixtures"
 name = "build-bundle"
 path = "src/bin/build-bundle.rs"
 
+[[bin]]
+name = "build-wire-fixtures"
+path = "src/bin/build-wire-fixtures.rs"
+
 [dependencies]
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }

@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "missing "
+    },
+    {
+      "kind": "emoji",
+      "shortcode": "ghost",
+      "url": null
+    },
+    {
+      "kind": "text",
+      "text": " shortcode"
+    }
+  ],
+  "roots": [
+    0,
+    1,
+    2
+  ],
+  "mode": "Plain"
+}

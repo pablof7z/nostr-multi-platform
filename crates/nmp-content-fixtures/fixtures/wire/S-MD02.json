@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "demo reel "
+    },
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/v/demo.mp4"
+      ],
+      "media_kind": "Video"
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

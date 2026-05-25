@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "Broken Link"
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "children": [
+        0
+      ]
+    },
+    {
+      "kind": "text",
+      "text": "See "
+    },
+    {
+      "kind": "text",
+      "text": "["
+    },
+    {
+      "kind": "text",
+      "text": "this thing"
+    },
+    {
+      "kind": "text",
+      "text": "]"
+    },
+    {
+      "kind": "text",
+      "text": "(not a url) for context."
+    },
+    {
+      "kind": "paragraph",
+      "children": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    }
+  ],
+  "roots": [
+    1,
+    7
+  ],
+  "mode": "Markdown"
+}

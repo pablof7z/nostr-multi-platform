@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "Trip photos "
+    },
+    {
+      "kind": "media",
+      "urls": [
+        "https://nmp.test/img/a.jpg",
+        "https://nmp.test/img/b.png",
+        "https://nmp.test/img/c.webp"
+      ],
+      "media_kind": "Image"
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}
