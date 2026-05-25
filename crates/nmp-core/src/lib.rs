@@ -136,6 +136,11 @@ pub use kernel::routing_trace::{
     PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
     DEFAULT_ROUTING_TRACE_CAPACITY,
 };
+// V-51 phase 2 — JSON DTO renderer. Consumer-side helper: turns a
+// projection snapshot into a Swift/wasm-friendly JSON value the FFI symbol
+// (`nmp_app_recent_routing_decisions`) and the wasm runtime
+// (`recent_routing_decisions`) both ship to their respective hosts.
+pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VERSION};
 // V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
 // Promoted to the public surface so the wasm32 `BrowserRelayDriver` (lives
 // in `nmp-network::browser_driver` as of step 8 phase C) can be bridged from

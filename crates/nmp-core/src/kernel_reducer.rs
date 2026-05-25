@@ -236,6 +236,29 @@ impl KernelReducer {
             .publish_signed_with_correlation(signed, p_tags, correlation_id);
         self.kernel.partition_auth_paused(outbound)
     }
+
+    /// V-51 phase 2 — render the kernel's routing-trace projection as JSON.
+    ///
+    /// The shape is documented at
+    /// [`crate::kernel::routing_trace_dto`]: a `schema_version`-keyed object
+    /// carrying `publishes` and `subscriptions` arrays with per-URL
+    /// `lanes[]` attribution.
+    ///
+    /// Wasm-friendly read seam — the `nmp-wasm` runtime exposes this to JS
+    /// hosts (`NmpWasmRuntime::recent_routing_decisions`) so the web Chirp
+    /// shell can render the same routing inspector iOS gets via the
+    /// `nmp_app_recent_routing_decisions` FFI symbol. Native callers reach
+    /// the projection directly through [`crate::Kernel::routing_trace`].
+    ///
+    /// D6 — total: the projection always exists (`Kernel::new` constructs
+    /// it); a serialisation hiccup falls back to an empty-rings document.
+    #[must_use]
+    pub fn recent_routing_decisions_json(&self) -> String {
+        let value = crate::projection_to_json(&self.kernel.routing_trace());
+        serde_json::to_string(&value).unwrap_or_else(|_| {
+            String::from(r#"{"schema_version":1,"capacity":0,"publishes":[],"subscriptions":[]}"#)
+        })
+    }
 }
 
 impl Default for KernelReducer {

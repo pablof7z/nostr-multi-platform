@@ -451,3 +451,20 @@ fn app_namespaced_dispatch_without_signer_returns_signer_not_installed() {
         other => panic!("expected CapabilityFailure, got {other:?}"),
     }
 }
+
+// V-51 phase 2 — routing-trace JSON snapshot accessor. Mirrors the iOS
+// `nmp_app_recent_routing_decisions` FFI symbol on the wasm surface so the
+// web Chirp shell (phase 3) can render the same routing inspector.
+#[test]
+fn recent_routing_decisions_returns_schema_versioned_json() {
+    let runtime = WasmRuntime::new();
+    let json = runtime.recent_routing_decisions();
+    let value: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+    assert_eq!(value["schema_version"], 1);
+    // Fresh kernel: both rings are empty. The accessor must still emit
+    // well-formed array shells (D6 — never null, never undefined).
+    assert!(value["publishes"].is_array());
+    assert!(value["subscriptions"].is_array());
+    assert_eq!(value["publishes"].as_array().unwrap().len(), 0);
+    assert_eq!(value["subscriptions"].as_array().unwrap().len(), 0);
+}

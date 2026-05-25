@@ -13,6 +13,10 @@ mod identity;
 mod lifecycle;
 mod publish;
 mod raw_event_tap;
+// V-51 phase 2 — routing-trace FFI snapshot accessor
+// (`nmp_app_recent_routing_decisions`). Pull-only diagnostic surface; not
+// folded into the snapshot tick.
+mod routing_trace;
 mod snapshot;
 mod timeline;
 // D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
@@ -79,6 +83,11 @@ pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 pub use raw_event_tap::{
     nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
 };
+// V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
+// pointer is heap-owned and must be freed via `nmp_app_free_string`.
+#[cfg(feature = "native")]
+#[allow(unused_imports)]
+pub use routing_trace::nmp_app_recent_routing_decisions;
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use snapshot::nmp_app_register_snapshot_projection;
