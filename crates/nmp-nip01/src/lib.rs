@@ -36,7 +36,7 @@ pub use meta_timeline::{
     Nip10ModularTimelineView, Nip10Resolver,
 };
 pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-pub use profile_display::{AuthorDisplay, AuthorDisplaySource};
+pub use profile_display::AuthorDisplay;
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard,
 };

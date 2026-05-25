@@ -103,13 +103,13 @@ fn kind0_profile_refines_existing_author_display() {
 
     let before = proj.snapshot();
     let card = before.cards.iter().find(|c| c.id == "S").expect("card");
-    assert_ne!(card.author_display.name, "Alice");
+    assert_eq!(card.author_display.name, None);
 
     proj.on_kernel_event(&profile_event(author, "Alice"));
 
     let after = proj.snapshot();
     let card = after.cards.iter().find(|c| c.id == "S").expect("card");
-    assert_eq!(card.author_display.name, "Alice");
+    assert_eq!(card.author_display.name.as_deref(), Some("Alice"));
 }
 
 #[test]
