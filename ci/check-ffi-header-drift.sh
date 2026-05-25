@@ -14,14 +14,15 @@
 #   1. crates/nmp-core/src/ffi/            -> libnmp_core.a        (the kernel)
 #   2. crates/nmp-signer-broker/src/ffi.rs -> libnmp_signer_broker.a (NIP-46)
 #   3. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
-#      apps/marmot/nmp-app-marmot/src/ffi.rs +
-#      apps/marmot/nmp-app-marmot/src/identity.rs +
-#      apps/marmot/nmp-app-marmot/src/fetch.rs -> libnmp_app_chirp.a
-#      (relocated from nmp-app-chirp into nmp-marmot, PR #348)
+#      crates/nmp-marmot/src/ffi.rs +
+#      crates/nmp-marmot/src/identity.rs +
+#      crates/nmp-marmot/src/fetch.rs -> libnmp_app_chirp.a
+#      (originally relocated from nmp-app-chirp into nmp-marmot in PR #348;
+#       returned from apps/marmot/ to crates/nmp-marmot/ in step 12, 2026-05-25)
 #
 # The Chirp link is the union of libnmp_app_chirp.a + libnmp_marmot.a (when the
-# marmot feature is enabled). The marmot C-ABI symbols live in nmp-marmot since
-# PR #348. The chirp glue is enumerated as an explicit file list (not a
+# marmot feature is enabled). The marmot C-ABI symbols live in nmp-marmot. The
+# chirp glue is enumerated as an explicit file list (not a
 # directory scan) ON PURPOSE: the `ffi/tests.rs` suite is reachable only via a
 # `#[cfg(test)] mod tests;` declaration and carries NO file-level
 # `#![cfg(...test...)]` inner attribute, so a directory scan would mis-include
@@ -107,11 +108,13 @@ FFI_FILE_ROOTS=(
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/helpers.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
-    # Marmot C-ABI relocated from nmp-app-chirp → nmp-marmot (PR #348).
-    # Symbols still land in the Chirp link via nmp-marmot's rlib inclusion.
-    "${REPO_ROOT}/apps/marmot/nmp-app-marmot/src/ffi.rs"
-    "${REPO_ROOT}/apps/marmot/nmp-app-marmot/src/identity.rs"
-    "${REPO_ROOT}/apps/marmot/nmp-app-marmot/src/fetch.rs"
+    # Marmot C-ABI lives in nmp-marmot (originally relocated from
+    # nmp-app-chirp in PR #348; the crate itself returned from apps/marmot/
+    # to crates/nmp-marmot/ in step 12, 2026-05-25). Symbols still land in
+    # the Chirp link via nmp-marmot's rlib inclusion.
+    "${REPO_ROOT}/crates/nmp-marmot/src/ffi.rs"
+    "${REPO_ROOT}/crates/nmp-marmot/src/identity.rs"
+    "${REPO_ROOT}/crates/nmp-marmot/src/fetch.rs"
 )
 
 if [[ ! -f "${HEADER}" ]]; then

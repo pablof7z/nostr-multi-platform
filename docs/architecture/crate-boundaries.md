@@ -40,7 +40,7 @@
 | 10 | `nmp-app-template` (V-48 DX) | ✅ merged (PR #467; Chirp register surface −547 LOC) |
 | 11 partial | move chirp-* + `nmp-chirp-config` to `apps/chirp/` | ✅ merged (PR #451) |
 | 11 final | extract `nmp-ffi` from `nmp-core::ffi` (5,654 LOC moved) | ✅ merged (PR #472). Follow-up: codegen path-template hardcode lifted and `fixture-todo-core` relocated to `apps/fixture/fixture-todo-core/`; per-module `path = "…"` strings are now computed from the workspace's `[workspace] members` (`nmp-codegen/src/workspace.rs`), with the legacy `../../../crates/<name>` template as a temp-dir fallback for the codegen's own pure-string unit tests. |
-| 12 | return `nmp-marmot` from `apps/` to `crates/` (gated on Marmot FFI port to `nmp.marmot.*` action namespace) | ❌ not started |
+| 12 | return `nmp-marmot` from `apps/` to `crates/` | ✅ merged (step 12, 2026-05-25). The bespoke `nmp_marmot_dispatch` write-side C-ABI symbol was deleted in ADR-0025 PR 3 (2026-05-23); mutating ops now flow through `nmp_app_dispatch_action("nmp.marmot", …)`. The surviving `nmp_marmot_*` C-ABI cluster (`register{,_active}`, `_snapshot`, `_group_messages`, `_string_free`, `_unregister`, `_fetch_key_packages`, `_app_chirp_identity_*`) is kernel-shaped per-app FFI — observer / projection / opaque-handle lifecycle — explicitly NOT a `dispatch_action` violation (see ADR-0025 update 2026-05-23) and structurally the same pattern Chirp's `nmp_app_chirp_*` cluster uses. Path B from the step-12 brief: per-app FFI is sanctioned for Layer-4 NIP crates whose runtime is a stateful handle. |
 
 **Adjacent observability work (V-51)**:
 - Phase 1 (substrate `RoutingTraceObserver` + bounded ring-buffer projection) ✅ merged (PR #457)
@@ -63,10 +63,11 @@
 (none — router lanes 2/3/4/5 closed 2026-05-25; see commit log.)
 
 **Ghost crates this spec still names that do not yet exist on master:**
-`nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-marmot` (lives at
-`apps/marmot/nmp-app-marmot/` pending FFI port), `nmp-proto`. The
-per-crate table below describes their target shape; the migration
-progress table above is the source of truth for what's currently real.
+`nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-proto`. (`nmp-marmot` is no
+longer a ghost: step 12 returned it from `apps/marmot/nmp-app-marmot/`
+to `crates/nmp-marmot/` on 2026-05-25.) The per-crate table below describes
+the target shape of the remaining ghosts; the migration progress table above
+is the source of truth for what's currently real.
 
 ---
 
@@ -300,7 +301,7 @@ all live together. A NIP crate cannot leak into Layer 3.
 | `nmp-nip59` | 4 | NIP-59 gift-wrap / seal / rumor primitives. | • `gift_wrap`, `unwrap_gift_wrap` free functions<br>• `gift_wrap_with_signer` | • Anything else; substrate-grade per its own docs | `nmp-proto`; **MAY** be depended on by `nmp-core` (gift-wrap is a substrate-grade NIP — the kernel uses it to seal DM rumors on the actor thread without owning DM semantics) | ✅ (the one NIP crate that legitimately sits below the substrate's policy boundary because it carries no NIP-17 / Marmot nouns — only the wrap primitive) |
 | `nmp-nip77` | 4 | NIP-77 negentropy sync. | • Negentropy reconciler<br>• Sync action surface | • The coverage gate policy (`nmp-coverage-gate`) | `nmp-core`, `nmp-proto` | 🆕 (today implicit / partial under various names; promote to a discrete NIP crate) |
 | `nmp-threading` | 4 | Reply-convention-agnostic timeline grouping algorithm. | • `ThreadPointer`, `ParentResolver`, `ModulePolicy`, `TimelineBlock`, `Grouper` | • Any kind semantics<br>• Any app nouns | `nmp-core` | ✅ (sibling to NIP crates — it's a generic algorithm consumed by them; arguably its layer is "between" 3 and 4 but with no NIP knowledge it is correctly modeled as a Layer-4 substrate sibling consumed by `nmp-nip01`) |
-| `nmp-marmot` | 4 | Marmot/MLS encrypted groups end-to-end. | • MLS group lifecycle + welcome handling<br>• Group state owning the MLS group relay URL per group<br>• Every `nmp.marmot.*` publish action populates `RoutingContext::explicit_targets` with the group's MLS relay before dispatch. Marmot registers no routing logic with the router.<br>• `nmp.marmot.*` `ActionModule`s<br>• Group-member projection (V-17) | • Anything else | `nmp-core`, `nmp-nip59`, `nmp-router`, `nmp-proto` | ⚠️ (today in `apps/marmot/nmp-app-marmot/` because it had a Chirp-specific FFI surface that ADR-0025 carved out. Once the FFI cluster ports to `nmp.marmot.*` `dispatch_action`s, it returns to `crates/nmp-marmot/` as a Layer-4 NIP crate. ADR-0025 is the precedent retiring on this schedule.) |
+| `nmp-marmot` | 4 | Marmot/MLS encrypted groups end-to-end. | • MLS group lifecycle + welcome handling<br>• Group state owning the MLS group relay URL per group<br>• Every `nmp.marmot.*` publish action populates `RoutingContext::explicit_targets` with the group's MLS relay before dispatch. Marmot registers no routing logic with the router.<br>• `nmp.marmot.*` `ActionModule`s<br>• Group-member projection (V-17)<br>• The kernel-shaped `nmp_marmot_*` per-app FFI cluster (observer registration, opaque handle, snapshot read, group-messages read, key-package fetch enqueue, unregister) — same structural pattern as Chirp's `nmp_app_chirp_*` cluster. | • Anything else (no business logic in Swift) | `nmp-core`, `nmp-ffi`, `nmp-nip59` | ✅ (lives at `crates/nmp-marmot/` after step 12, 2026-05-25). The ADR-0025 bespoke write-side `nmp_marmot_dispatch` C symbol was deleted in PR 3 (2026-05-23) — mutating ops now flow through the generic `nmp_app_dispatch_action("nmp.marmot", action_json)` seam. The surviving FFI cluster is explicitly NOT a `dispatch_action` violation: those symbols are kernel-shaped observer / projection / opaque-handle lifecycle, the same per-app FFI pattern any Layer-4 NIP crate may expose when its runtime needs a stateful handle. Compare to Chirp's `nmp_app_chirp_*` cluster. |
 
 ### Layer 5 — app composition
 
@@ -1004,12 +1005,22 @@ Strict dependency order. Each step has a prerequisite cited.
     document describes, the C-ABI surface is a separate concern and the
     app-specific shells stop polluting `crates/`.
 
-12. **Return `nmp-marmot` from `apps/marmot/` to `crates/nmp-marmot/`.**
+12. **Return `nmp-marmot` from `apps/marmot/` to `crates/nmp-marmot/`.** ✅ done 2026-05-25.
 
     **Why twelfth:** ADR-0025 carved Marmot out because its FFI cluster was
-    Chirp-coupled. Once the bespoke FFI ports to `nmp.marmot.*`
-    `dispatch_action`s (PD-039 Batch 3 territory), Marmot is a Layer-4 NIP
-    crate exactly like the others.
+    Chirp-coupled. The bespoke write-side `nmp_marmot_dispatch` C symbol
+    ported to the generic `nmp_app_dispatch_action("nmp.marmot", …)` seam
+    in ADR-0025 PR 3 (2026-05-23). The remaining `nmp_marmot_*` symbols
+    (register, snapshot, group_messages, string_free, unregister,
+    fetch_key_packages, plus the legacy `nmp_app_chirp_identity_*` names)
+    are kernel-shaped per-app FFI — observer / projection / opaque-handle
+    lifecycle — and follow the same pattern as Chirp's `nmp_app_chirp_*`
+    cluster. That pattern is sanctioned for Layer-4 NIP crates whose
+    runtime needs a stateful handle (per ADR-0025 update 2026-05-23).
+    Done as Path B from the step-12 brief: per-app FFI accepted as-is,
+    crate moved to `crates/nmp-marmot/`, workspace + dependent path
+    deps + CI header-drift gate updated; the FFI surface (ABI, header,
+    Swift bridge) is byte-stable.
 
 ---
 
@@ -1115,6 +1126,13 @@ crate's existence).
   implementation.
 - **2026-05-24** — `nmp-marmot` returns to `crates/` once its FFI cluster
   ports to `nmp.marmot.*` `dispatch_action`s (ADR-0025 retirement schedule).
+- **2026-05-25** — `nmp-marmot` returned to `crates/nmp-marmot/` (step 12,
+  Path B). The bespoke write-side `nmp_marmot_dispatch` C symbol was
+  already retired (ADR-0025 PR 3, 2026-05-23); the surviving
+  `nmp_marmot_*` cluster is kernel-shaped per-app FFI (the same pattern
+  Chirp's `nmp_app_chirp_*` cluster uses), so the per-app FFI is
+  sanctioned and the spec no longer requires those symbols to port to a
+  generic seam.
 - **2026-05-24** — Layer 6 binding crates (`nmp-ffi`, `nmp-wasm`,
   `nmp-android-ffi`) are siblings. No cross-binding dependency exists or
   may be introduced.
