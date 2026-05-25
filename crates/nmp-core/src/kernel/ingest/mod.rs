@@ -88,6 +88,7 @@ impl Kernel {
                 let relay = self.relay_mut(role);
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
+                self.record_transport_rx(role, relay_url, text.len());
                 let mut outbound = self.handle_text(role, relay_url, &text);
                 // T117: opportunistic publish-engine retry pump. Every
                 // inbound text frame ticks the engine so transient retries fire
@@ -102,6 +103,7 @@ impl Kernel {
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx =
                     relay.counters.bytes_rx.saturating_add(bytes.len() as u64);
+                self.record_transport_rx(role, relay_url, bytes.len());
                 Vec::new()
             }
             RelayFrame::Ping | RelayFrame::Pong => Vec::new(),
@@ -109,6 +111,8 @@ impl Kernel {
                 let relay = self.relay_mut(role);
                 relay.connection = "closed".to_string();
                 relay.last_error = reason;
+                self.mark_transport_closed(role, relay_url);
+                self.sync_transport_from_lane(role, relay_url);
                 self.changed_since_emit = true;
                 Vec::new()
             }
@@ -162,6 +166,7 @@ impl Kernel {
                     let relay = self.relay_mut(role);
                     relay.counters.eose_rx = relay.counters.eose_rx.saturating_add(1);
                 }
+                self.record_transport_eose(role, relay_url);
                 // T105: the follow-feed (seed-timeline) is now per-relay
                 // (`seed-timeline-<short-hash>`). Both the legacy id and its
                 // per-relay variants stay live after EOSE. Persistent subs
@@ -238,6 +243,7 @@ impl Kernel {
                 let relay = self.relay_mut(role);
                 relay.counters.notices_rx = relay.counters.notices_rx.saturating_add(1);
                 relay.last_notice = Some(notice.clone());
+                self.record_transport_notice(role, relay_url, notice.clone());
                 self.changed_since_emit = true;
                 self.log(format!("NOTICE {} {notice}", role.key()));
             }
@@ -255,6 +261,7 @@ impl Kernel {
                     let relay = self.relay_mut(role);
                     relay.counters.closed_rx = relay.counters.closed_rx.saturating_add(1);
                 }
+                self.record_transport_closed_frame(role, relay_url);
                 // T133: a relay-initiated CLOSED is terminal — the relay just
                 // told us the subscription is dead. Evict the row instead of
                 // leaving it with `state="closed_by_relay"` (which previously
@@ -289,6 +296,7 @@ impl Kernel {
                 // branch can pause the right per-URL bucket in the lifecycle's
                 // AuthGate, not the lane's bootstrap host.
                 self.classify_and_route_closed(role, relay_url, &sub_id, reason.as_deref());
+                self.sync_transport_from_lane(role, relay_url);
             }
             "OK" => {
                 // M5+M2+M8 wiring: an OK frame may be the ack of an in-flight
@@ -351,6 +359,7 @@ impl Kernel {
             relay.counters.events_rx = relay.counters.events_rx.saturating_add(1);
             relay.last_event_at = Some(now);
         }
+        self.record_transport_event(role, relay_url, now);
         self.events_since_last_update = self.events_since_last_update.saturating_add(1);
         self.timing.last_event_at = Some(now);
         self.timing.first_event_at.get_or_insert(now);

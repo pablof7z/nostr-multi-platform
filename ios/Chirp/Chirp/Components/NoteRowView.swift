@@ -125,13 +125,15 @@ struct NoteRowView: View {
     // ── Note content ──────────────────────────────────────────────────────
 
     private var noteContent: some View {
-        // For reposts, the visible text is the *inner* note's content. Rust
-        // unpacks the NIP-18 embedded event JSON once during projection and
-        // emits `repostInnerContent` (empty string for kind:1, D1 fallback to
-        // "" for malformed kind:6) so the view layer never re-parses event
-        // JSON — that would be a thin-shell violation (aim.md §6.9).
         let isRepost = item.isRepost
-        let text = isRepost ? item.repostInnerContent : item.content
+        let context = NoteRenderContext(
+            mentionProfiles: mentionProfiles,
+            eventCards: eventCards,
+            timelineItems: timelineItems,
+            embedDepth: 0
+        )
+        let text = item.renderedContent
+        let tree = context.contentTree(for: item, fallback: contentTree)
         return VStack(alignment: .leading, spacing: 4) {
             if isRepost {
                 HStack(spacing: 3) {
@@ -145,14 +147,8 @@ struct NoteRowView: View {
             if !text.isEmpty {
                 NoteContentView(
                     content: text,
-                    // contentTree was computed against the wrapper event;
-                    // it does not describe the inner note's text. Render the
-                    // inner content as plain text (D1 best-effort) until the
-                    // kernel emits a contentTree for the inner event.
-                    contentTree: isRepost ? nil : contentTree,
-                    mentionProfiles: mentionProfiles,
-                    eventCards: eventCards,
-                    timelineItems: timelineItems,
+                    contentTree: tree,
+                    renderContext: context,
                     font: .body
                 )
                     .foregroundStyle(.primary)

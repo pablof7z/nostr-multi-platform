@@ -126,11 +126,11 @@ pub(super) fn ensure_relay_worker(
     }
     let generation = *next_relay_generation;
     *next_relay_generation = generation.saturating_add(1);
-    kernel.relay_connecting(role);
+    let key_str = key.clone().into_string();
+    kernel.relay_connecting_url(role, &key_str);
     // Hand the canonical URL to the pool. `Pool::ensure_open_with_role` does
     // its own (lighter) canonicalization but the input is already the canonical
     // form so it round-trips byte-identically.
-    let key_str = key.clone().into_string();
     let handle = pool.ensure_open_with_role(&key_str, role);
     slot_to_url.insert(handle.slot(), key.clone());
     relay_controls.insert(
@@ -332,7 +332,7 @@ pub(super) fn send_outbound(
         return;
     };
 
-    kernel.record_tx(message.role, message.text.len());
+    kernel.record_tx_to(message.role, canonical_key.as_str(), message.text.len());
     // Phase F: a stale (or sentinel) handle returns false from `Pool::send`;
     // we treat that exactly like the previous "channel disconnected" path —
     // mark the per-URL row as retrying and move on. The pool's own

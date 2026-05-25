@@ -3,7 +3,7 @@ name = "nmp-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NMP developer CLI: scaffold apps (`nmp init`) and run codegen (`nmp gen modules`)."
+description = "NMP developer CLI: scaffold apps, install app-owned components, and run codegen."
 
 # The user-facing command is `nmp`. nmp-cli is the canonical superset:
 # `nmp init` scaffolds a new app, `nmp gen modules` delegates to the
@@ -15,3 +15,9 @@ path = "src/main.rs"
 
 [dependencies]
 nmp-codegen = { path = "../nmp-codegen" }
+serde = { workspace = true, features = ["derive"] }
+sha2 = "0.10"
+toml = "0.8"
+
+[dev-dependencies]
+sha2 = "0.10"

@@ -3777,6 +3777,7 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip02",
  "nmp-nip17",
+ "nmp-nip18",
  "nmp-nip29",
  "nmp-nip57",
  "nmp-nip59",
@@ -3844,6 +3845,9 @@ name = "nmp-cli"
 version = "0.1.0"
 dependencies = [
  "nmp-codegen",
+ "serde",
+ "sha2",
+ "toml",
 ]
 
 [[package]]
@@ -3971,6 +3975,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-nip18",
  "nmp-threading",
  "serde",
  "serde_json",
@@ -3998,6 +4003,15 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "nmp-nip18"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

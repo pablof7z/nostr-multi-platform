@@ -5,9 +5,13 @@ use nmp_threading::{ModulePolicy, TimelineBlock};
 use std::sync::Arc;
 
 fn spec() -> ModularTimelineSpec {
+    spec_with_kinds(vec![])
+}
+
+fn spec_with_kinds(kinds: Vec<u32>) -> ModularTimelineSpec {
     ModularTimelineSpec {
         viewer: "me".into(),
-        kinds: vec![],
+        kinds,
         authors: None,
         policy: ModulePolicy::default(),
     }
@@ -97,6 +101,44 @@ fn cards_include_content_tree_wire_for_mentions() {
                 if uri.kind == WireNostrUriKind::Profile && uri.primary_id == PK
         )
     }));
+}
+
+#[test]
+fn repost_cards_render_embedded_event_content_tree() {
+    let embedded = serde_json::json!({
+        "id": "inner",
+        "pubkey": "inner-author",
+        "kind": 1,
+        "created_at": 123,
+        "tags": [],
+        "content": "boosted #nostr",
+        "sig": "ignored"
+    });
+    let repost = KernelEvent {
+        id: "repost".into(),
+        author: "reposter".into(),
+        kind: nmp_nip18::KIND_REPOST,
+        created_at: 2,
+        tags: vec![vec!["e".into(), "inner".into()]],
+        content: embedded.to_string(),
+    };
+    let proj = ModularTimelineProjection::new(&spec_with_kinds(vec![1, nmp_nip18::KIND_REPOST]));
+
+    proj.on_kernel_event(&repost);
+    let snap = proj.snapshot();
+    let card = snap
+        .cards
+        .iter()
+        .find(|c| c.id == "repost")
+        .expect("repost card exists");
+
+    assert_eq!(card.kind, nmp_nip18::KIND_REPOST);
+    assert_eq!(card.content, "boosted #nostr");
+    assert!(card
+        .content_tree
+        .nodes
+        .iter()
+        .any(|node| { matches!(node, WireNode::Hashtag { tag } if tag == "nostr") }));
 }
 
 #[test]

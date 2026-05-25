@@ -1569,6 +1569,11 @@ install, own, customize, and update later.
 
 **Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
 
+**Status:** First implementation slice in progress: a built-in offline
+component registry, `nmp add component`, `nmp.components.lock`, dependency
+resolution, duplicate-install rejection, and the `swiftui/content-minimal`
+fixture kit.
+
 **Initial scope:**
 
 - Component manifest and lock-file model for app-owned source installation.

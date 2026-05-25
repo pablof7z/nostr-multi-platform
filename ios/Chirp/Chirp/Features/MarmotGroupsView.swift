@@ -44,69 +44,49 @@ struct GroupsView: View {
     // ── Unified group list ────────────────────────────────────────────────
 
     private var groupList: some View {
-        let hasAny = !store.groups.isEmpty || store.invitesChipLabel != nil
-        return Group {
-            if hasAny {
-                List {
-                    // Pending invites chip — Rust supplies the label or nil.
-                    if let invitesLabel = store.invitesChipLabel {
-                        NavigationLink {
-                            InvitesView()
-                                .environmentObject(model)
-                        } label: {
-                            HStack {
-                                Image(systemName: "envelope.badge.fill")
-                                    .foregroundStyle(ChirpColor.accent)
-                                Text(invitesLabel)
-                                    .font(.callout.weight(.medium))
-                                Spacer()
-                            }
-                            .padding(.vertical, 8)
-                        }
-                        .accessibilityIdentifier("groups-invites-chip")
+        List {
+            // Pending invites chip — Rust supplies the label or nil.
+            if let invitesLabel = store.invitesChipLabel {
+                NavigationLink {
+                    InvitesView()
+                        .environmentObject(model)
+                } label: {
+                    HStack {
+                        Image(systemName: "envelope.badge.fill")
+                            .foregroundStyle(ChirpColor.accent)
+                        Text(invitesLabel)
+                            .font(.callout.weight(.medium))
+                        Spacer()
                     }
-
-                    // NIP-29 public group row
-                    NavigationLink {
-                        GroupChatView(store: model.groupChat)
-                    } label: {
-                        PublicGroupRow(
-                            groupId: model.groupChat.groupId,
-                            initials: model.groupChat.groupInitials)
-                    }
-                    .accessibilityIdentifier("nip29-group-row")
-                    .accessibilityValue(model.groupChat.groupId.localId)
-
-                    // MLS encrypted group rows
-                    ForEach(store.groups) { group in
-                        NavigationLink {
-                            MarmotGroupChatView(group: group)
-                                .environmentObject(model)
-                        } label: {
-                            EncryptedGroupRow(group: group)
-                        }
-                        .accessibilityIdentifier("marmot-group-row-\(group.idHex)")
-                        .accessibilityValue(group.displayName)
-                    }
+                    .padding(.vertical, 8)
                 }
-                .scrollContentBackground(.hidden)
-            } else {
-                emptyState
+                .accessibilityIdentifier("groups-invites-chip")
+            }
+
+            // NIP-29 public group row
+            NavigationLink {
+                GroupChatView(store: model.groupChat)
+            } label: {
+                PublicGroupRow(
+                    groupId: model.groupChat.groupId,
+                    initials: model.groupChat.groupInitials)
+            }
+            .accessibilityIdentifier("nip29-group-row")
+            .accessibilityValue(model.groupChat.groupId.localId)
+
+            // MLS encrypted group rows
+            ForEach(store.groups) { group in
+                NavigationLink {
+                    MarmotGroupChatView(group: group)
+                        .environmentObject(model)
+                } label: {
+                    EncryptedGroupRow(group: group)
+                }
+                .accessibilityIdentifier("marmot-group-row-\(group.idHex)")
+                .accessibilityValue(group.displayName)
             }
         }
-    }
-
-    // ── Empty state ───────────────────────────────────────────────────────
-
-    private var emptyState: some View {
-        ScrollView {
-            ChirpPlaceholder(
-                systemImage: "person.3",
-                title: "No groups yet",
-                subtitle: "Create a group with friends or browse public groups."
-            )
-            .frame(minHeight: 360)
-        }
+        .scrollContentBackground(.hidden)
     }
 
     // ── Toolbar: create ───────────────────────────────────────────────────
@@ -121,7 +101,7 @@ struct GroupsView: View {
                     .font(.system(size: 17, weight: .semibold))
             }
             .buttonStyle(.borderless)
-            .disabled(!store.isRegistered)
+            .disabled(!model.hasActiveAccount)
             .accessibilityLabel("Create group")
         }
     }
@@ -235,122 +215,5 @@ private struct EncryptedGroupRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-    }
-}
-
-// ── Create-group sheet ────────────────────────────────────────────────────
-
-struct NewGroupSheet: View {
-    @EnvironmentObject private var model: KernelModel
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var name = ""
-    @State private var groupDescription = ""
-    @State private var inviteeText = ""
-    @State private var errorMessage: String?
-    @State private var busy = false
-
-    private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    field("Group name", text: $name, placeholder: "Trusted circle")
-                    field("Description", text: $groupDescription, placeholder: "Optional")
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Members")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $inviteeText)
-                            .frame(minHeight: 90)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .overlay(alignment: .topLeading) {
-                                if inviteeText.isEmpty {
-                                    Text("npub1... or hex pubkey, one per line")
-                                        .font(.body)
-                                        .foregroundStyle(.secondary)
-                                        .allowsHitTesting(false)
-                                        .padding(.top, 8)
-                                }
-                            }
-                    }
-                }
-
-                Section {
-                    Picker("Type", selection: .constant(0)) {
-                        Text("Private").tag(0)
-                        Text("Public (coming soon)").tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(true)
-                } footer: {
-                    Text("Private groups are end-to-end encrypted. Public groups are coming soon.")
-                }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(ChirpColor.danger)
-                    }
-                }
-
-                Section {
-                    Button {
-                        create()
-                    } label: {
-                        Text("Create group")
-                    }
-                    .disabled(trimmedName.isEmpty || busy)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .chirpScreenBackground()
-            .navigationTitle("New Group")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private func create() {
-        busy = true
-        errorMessage = nil
-        Task {
-            let result = await model.marmot.createGroup(
-                name: trimmedName,
-                description: groupDescription.trimmingCharacters(in: .whitespacesAndNewlines),
-                inviteeText: inviteeText)
-            busy = false
-            if result.ok {
-                dismiss()
-            } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
-                // Rust pre-abbreviated each npub; Swift only joins them.
-                errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
-            } else {
-                errorMessage = result.error ?? "Could not create group"
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField(placeholder, text: text)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-        }
     }
 }

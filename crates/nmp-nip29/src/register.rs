@@ -23,7 +23,8 @@ use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 
 use crate::action::{
-    DiscoverGroupsAction, JoinGroupAction, PostChatMessageAction, ReactInGroupAction,
+    CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction, PostChatMessageAction,
+    ReactInGroupAction,
 };
 use crate::group_id::GroupId;
 use crate::projection::{DiscoveredGroupsProjection, GroupChatProjection};
@@ -94,6 +95,7 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
 /// Binds the typed [`ActionModule`] impls for:
 /// - `nmp.nip29.post_chat_message`
 /// - `nmp.nip29.react_in_group`
+/// - `nmp.nip29.create_public_group`
 /// - `nmp.nip29.discover`
 /// - `nmp.nip29.join`
 ///
@@ -103,6 +105,7 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
 pub fn register_actions(app: &mut NmpApp) {
     app.register_action::<PostChatMessageAction>();
     app.register_action::<ReactInGroupAction>();
+    app.register_action::<CreatePublicGroupAction>();
     app.register_action::<DiscoverGroupsAction>();
     app.register_action::<JoinGroupAction>();
 }

@@ -134,7 +134,7 @@ final class KernelModel: ObservableObject {
     private var marmotRegistrationRequested = false
 
     private(set) lazy var marmot = MarmotStore(kernel: kernel)
-    private(set) lazy var groupChat = GroupChatStore(groupId: Self.demoGroupId, kernel: kernel)
+    @Published private(set) var groupChat: GroupChatStore
     /// Rust owns the NIP-17 kind:1059 active-account interest and kind:10050
     /// DM-relay-list publish lifecycle; this store only mirrors snapshots.
     private(set) lazy var dmInbox = DmInboxStore(kernel: kernel)
@@ -177,6 +177,7 @@ final class KernelModel: ObservableObject {
         if let v = ProcessInfo.processInfo.environment["NMP_EMIT_HZ"].flatMap(UInt32.init) {
             emitHz = v
         }
+        groupChat = GroupChatStore(groupId: Self.demoGroupId, kernel: kernel)
         kernel.listen({ [weak self] result in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -443,6 +444,15 @@ final class KernelModel: ObservableObject {
     @discardableResult
     func dispatchProfileAction(_ spec: ProfileDispatchSpec) -> DispatchResult {
         track(kernel.dispatchRawAction(namespace: spec.namespace, bodyJson: spec.bodyJson))
+    }
+
+    @discardableResult
+    func createPublicGroup(group: GroupId, name: String, about: String?) -> DispatchResult {
+        let result = track(kernel.createPublicGroup(group: group, name: name, about: about))
+        if case .accepted = result {
+            groupChat = GroupChatStore(groupId: group, kernel: kernel)
+        }
+        return result
     }
 
     /// V5 thin-shell: read the kernel's `action_lifecycle` projection for
