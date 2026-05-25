@@ -27,7 +27,7 @@ struct SettingsHubView: View {
                         subtitle: model.settingsHub.relaysSubtitle
                     )
                 }
-                .listRowBackground(Color.clear)
+                .listRowBackground(ChirpColor.transparent)
                 .listRowSeparator(.hidden)
             } header: {
                 ChirpSectionHeader(title: "Relays")
@@ -82,7 +82,7 @@ struct SettingsHubView: View {
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(iconColor)
             }
 
             VStack(alignment: .leading, spacing: 2) {

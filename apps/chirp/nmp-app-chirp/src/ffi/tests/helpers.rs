@@ -8,7 +8,8 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::{nmp_app_dispatch_action, nmp_app_free_string, ActorCommand, NmpApp};
+use nmp_core::ActorCommand;
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free_string, NmpApp};
 
 /// Run an `ActionModule`'s typed executor once and capture **every**
 /// `ActorCommand` it sends, in order. Mirrors `nmp_nip17::dm_relay_list`'s

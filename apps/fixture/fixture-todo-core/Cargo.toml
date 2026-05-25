@@ -1,0 +1,22 @@
+[package]
+name = "fixture-todo-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+# The `test-support` gate exposes the `nmp_app_new` / `nmp_app_free` /
+# `nmp_app_dispatch_action` / `nmp_app_free_string` FFI symbols via Rust
+# paths so the action-seam tests can spin up a real `NmpApp` and dispatch
+# through `nmp_app_dispatch_action` without an `extern "C"` block. Matches the
+# pattern in `nmp-app-chirp` and the protocol crates.
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }

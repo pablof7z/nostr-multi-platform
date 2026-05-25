@@ -35,11 +35,11 @@ struct DiagnosticsView: View {
                 Spacer()
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(model.isRunning ? .green : .red)
+                        .fill(model.isRunning ? ChirpColor.success : ChirpColor.danger)
                         .frame(width: 8, height: 8)
                     Text(model.isRunning ? "Running" : "Stopped")
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(model.isRunning ? .green : .red)
+                        .foregroundStyle(model.isRunning ? ChirpColor.success : ChirpColor.danger)
                 }
             }
             HStack {
@@ -279,7 +279,7 @@ struct DiagnosticsView: View {
                     Spacer()
                     Text(account.status)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(account.isActive ? .green : .secondary)
+                        .foregroundStyle(account.isActive ? ChirpColor.success : ChirpColor.textSecondary)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("npub")
@@ -303,7 +303,7 @@ struct DiagnosticsView: View {
                                 .multilineTextAlignment(.leading)
                             Spacer(minLength: 0)
                             Image(systemName: copiedNpub ? "checkmark.circle.fill" : "doc.on.doc")
-                                .foregroundStyle(copiedNpub ? .green : Color.accentColor)
+                                .foregroundStyle(copiedNpub ? ChirpColor.success : ChirpColor.accent)
                         }
                     }
                     .buttonStyle(.plain)
@@ -347,7 +347,7 @@ private struct MetricTile: View {
         VStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ChirpColor.accent)
             Text(value)
                 .font(.headline)
                 .foregroundStyle(.primary)
@@ -394,7 +394,7 @@ struct DiagRelayRow: View {
                 if row.reconnectCount > 0 {
                     Text("↩ \(row.reconnectCount)")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(ChirpColor.warning)
                 }
             }
             if let notice = row.lastNotice {
@@ -406,7 +406,7 @@ struct DiagRelayRow: View {
             if let error = row.lastError {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(ChirpColor.danger)
                     .lineLimit(2)
             }
         }
@@ -442,14 +442,14 @@ private struct DiagPublishRow: View {
         return "\(id.prefix(8))…"
     }
     /// Publish-queue status colors. The publish queue is a SEPARATE
-    /// projection from `relay_diagnostics` and was NOT in scope for this
-    /// cleanup; left as-is.
+    /// projection from `relay_diagnostics`; the semantic status labels come
+    /// from Rust and the shell only maps them to theme tokens.
     private func statusColor(_ s: String) -> Color {
         switch s.lowercased() {
-        case "published", "ok", "sent": return .green
-        case "pending", "queued": return .orange
-        case "failed", "error": return .red
-        default: return .secondary
+        case "published", "ok", "sent": return ChirpColor.success
+        case "pending", "queued": return ChirpColor.warning
+        case "failed", "error": return ChirpColor.danger
+        default: return ChirpColor.textSecondary
         }
     }
 }
@@ -461,14 +461,14 @@ private struct DiagPublishRow: View {
 enum DiagnosticsColor {
     static func color(forTone tone: String) -> Color {
         switch tone {
-        case "ok": return .green
-        case "warn": return .orange
-        case "error": return .red
-        case "write": return .green
-        case "accent": return .accentColor
-        case "primary": return .accentColor
-        case "muted", "secondary": return .secondary
-        default: return .secondary
+        case "ok": return ChirpColor.success
+        case "warn": return ChirpColor.warning
+        case "error": return ChirpColor.danger
+        case "write": return ChirpColor.success
+        case "accent": return ChirpColor.accent
+        case "primary": return ChirpColor.accent
+        case "muted", "secondary": return ChirpColor.textSecondary
+        default: return ChirpColor.textSecondary
         }
     }
 }

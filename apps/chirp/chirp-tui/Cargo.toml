@@ -17,6 +17,11 @@ path = "src/main.rs"
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final.
+# V-38: nmp-core no longer has a `wallet` feature; nmp-ffi exposes wallet
+# shims unconditionally that route through dispatch_action to `nmp-nip47`.
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"

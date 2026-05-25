@@ -1,4 +1,15 @@
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
 use serde_json::Value;
+
+use nmp_core::{
+    substrate::{
+        AppRelayMode, ClassRoutingPath, Direction, EventClass, RoutingRelayUrl, RoutingSource,
+        UserConfiguredCategory,
+    },
+    PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
+};
 
 use crate::session::Session;
 
@@ -24,7 +35,7 @@ pub fn help() {
     println!("  dms:          send-dm <npub|nprofile|hex> <text> (alias: dm)");
     println!("  mls:          mls-init, mls-status, mls-create, mls-invite");
     println!("                mls-accept, mls-send, mls-messages");
-    println!("  diagnostics:  diagnostics, parity");
+    println!("  diagnostics:  diagnostics, parity, routing-trace");
 }
 
 pub fn parity() {
@@ -168,6 +179,131 @@ pub fn marmot_messages(rows: &Value) {
 pub fn publish_result(label: &str, id: &str, ok: usize, fail: usize) {
     println!("{BLUE}{label}{RESET} {}", short(id));
     println!("  {GREEN}accepted/sent:{RESET} {ok}   {YELLOW}failed:{RESET} {fail}");
+}
+
+/// V-51 phase 4 — pretty-print the kernel's routing-trace ring buffers.
+/// Each entry: kind, author (truncated), resolved relay URL, per-URL lane
+/// attribution. Empty rings render as `<no recent X>`.
+pub fn routing_trace(projection: Option<&Arc<RoutingTraceProjection>>) {
+    let Some(projection) = projection else {
+        println!(
+            "{YELLOW}routing-trace{RESET} kernel not started yet (no projection slot bound)"
+        );
+        return;
+    };
+    let publishes = projection.snapshot_publishes();
+    let subs = projection.snapshot_subscriptions();
+    println!(
+        "{BLUE}routing-trace{RESET} publishes:{} subscriptions:{} (capacity:{})",
+        publishes.len(),
+        subs.len(),
+        projection.capacity()
+    );
+    render_publishes(&publishes);
+    render_subscriptions(&subs);
+}
+
+fn render_publishes(entries: &[PublishTraceEntry]) {
+    println!("{BLUE}  recent publishes{RESET}");
+    if entries.is_empty() {
+        println!("    {DIM}<no recent publishes>{RESET}");
+        return;
+    }
+    for entry in entries.iter().rev() {
+        let author = short(&entry.trace.author);
+        let explicit = if entry.trace.explicit_targets_set {
+            " [explicit-targets]"
+        } else {
+            ""
+        };
+        println!(
+            "    kind:{:<5} author:{author}{explicit}",
+            entry.trace.kind
+        );
+        render_urls(&entry.urls);
+    }
+}
+
+fn render_subscriptions(entries: &[SubscriptionTraceEntry]) {
+    println!("{BLUE}  recent subscriptions{RESET}");
+    if entries.is_empty() {
+        println!("    {DIM}<no recent subscriptions>{RESET}");
+        return;
+    }
+    for entry in entries.iter().rev() {
+        let explicit = if entry.trace.explicit_targets_set {
+            " [explicit-targets]"
+        } else {
+            ""
+        };
+        println!(
+            "    interest:{} kinds:{:?} authors:{}{explicit}",
+            entry.trace.interest_id, entry.trace.kinds, entry.trace.authors_count
+        );
+        render_urls(&entry.urls);
+    }
+}
+
+fn render_urls(urls: &[(RoutingRelayUrl, BTreeSet<RoutingSource>)]) {
+    if urls.is_empty() {
+        println!("      {YELLOW}(no relays resolved){RESET}");
+        return;
+    }
+    for (url, sources) in urls {
+        let lanes = sources
+            .iter()
+            .map(format_lane)
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("      {GREEN}{url}{RESET}  {DIM}[{lanes}]{RESET}");
+    }
+}
+
+/// Pretty-print a single [`RoutingSource`] for the trace output. Compact,
+/// greppable form: `Nip65/Write`, `AppRelay/Fallback`, `ClassRouted/Explicit`,
+/// etc. The shell smoke (`scripts/validate-routing.sh`) grep-asserts on these
+/// labels so the format is load-bearing — do not casually rename a lane.
+fn format_lane(source: &RoutingSource) -> String {
+    match source {
+        RoutingSource::Nip65 { direction } => format!(
+            "Nip65/{}",
+            match direction {
+                Direction::Read => "Read",
+                Direction::Write => "Write",
+            }
+        ),
+        RoutingSource::Hint => "Hint".into(),
+        RoutingSource::Provenance => "Provenance".into(),
+        RoutingSource::UserConfigured(cat) => format!(
+            "UserConfigured/{}",
+            match cat {
+                UserConfiguredCategory::ActiveAccountRead => "ActiveAccountRead",
+                UserConfiguredCategory::ActiveAccountWrite => "ActiveAccountWrite",
+                UserConfiguredCategory::Debug => "Debug",
+            }
+        ),
+        RoutingSource::ClassRouted { class, via } => format!(
+            "ClassRouted/{}/{}",
+            match class {
+                EventClass::Search => "Search".into(),
+                EventClass::Draft => "Draft".into(),
+                EventClass::Wiki => "Wiki".into(),
+                EventClass::Other(name) => format!("Other({name})"),
+            },
+            match via {
+                ClassRoutingPath::Explicit => "Explicit",
+                ClassRoutingPath::Nip51 => "Nip51",
+            }
+        ),
+        RoutingSource::Indexer => "Indexer".into(),
+        RoutingSource::AppRelay { mode } => format!(
+            "AppRelay/{}",
+            match mode {
+                AppRelayMode::Fallback => "Fallback",
+                AppRelayMode::Always => "Always",
+            }
+        ),
+    }
 }
 
 fn list(items: &[String]) -> String {

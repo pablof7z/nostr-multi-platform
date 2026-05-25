@@ -15,7 +15,7 @@ impl Kernel {
     /// `Failed` relay never silently downgrades to unauthenticated reads.
     pub(crate) fn relay_auth_paused(&self, role: RelayRole) -> bool {
         let state = self
-            .nip42_drivers
+            .auth_drivers
             .get(&role)
             .map_or(crate::subs::RelayAuthState::NotRequired, |d| d.state.clone());
         matches!(
@@ -31,7 +31,7 @@ impl Kernel {
     /// segregation). Recovery is reconnect-only. Rationale: ADR-0019.
     pub(crate) fn relay_auth_failed(&self, role: RelayRole) -> bool {
         matches!(
-            self.nip42_drivers.get(&role).map(|d| d.state.clone()),
+            self.auth_drivers.get(&role).map(|d| d.state.clone()),
             Some(crate::subs::RelayAuthState::Failed)
         )
     }

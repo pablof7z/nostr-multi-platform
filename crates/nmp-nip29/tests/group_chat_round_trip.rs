@@ -36,9 +36,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_core::store::{RawEvent, VerifiedEvent};
-use nmp_core::{
+use nmp_core::ActorCommand;
+use nmp_ffi::{
     nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new,
-    nmp_app_set_update_callback, nmp_app_start, ActorCommand,
+    nmp_app_set_update_callback, nmp_app_start,
 };
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::{register_actions, wire_group_chat};
@@ -70,7 +71,7 @@ fn raw_chat_event(id: &str, author: &str, local_id: &str, ts: u64, content: &str
     }
 }
 
-fn inject(app: *mut nmp_core::NmpApp, events: Vec<VerifiedEvent>) {
+fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
     // SAFETY: `app` is a valid pointer from `nmp_app_new` owned by the caller.
     let app_ref = unsafe { &*app };
     app_ref

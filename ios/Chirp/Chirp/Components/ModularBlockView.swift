@@ -25,7 +25,7 @@ import SwiftUI
 //     edge of the next row's avatar. Drawn for every event EXCEPT the
 //     last one in the module.
 //   • Self-thread vs cross-author render with the same machinery; the
-//     "Replying to @x" header that legacy reply rows show is suppressed
+//     "Replying to @x" header that non-module reply rows show is suppressed
 //     here (per spec — it would be tautological inside a single block).
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -137,7 +137,13 @@ struct ModularBlockView: View {
         // is no card (no abbreviated form exists for an item-only row; the
         // dual-identity row collapses to just the primary display name).
         let display = card?.authorPubkeyShort ?? ""
-        let content = item?.content ?? card?.content ?? ""
+        let content = displayContent(item: item, card: card)
+        let context = NoteRenderContext(
+            mentionProfiles: mentionProfiles,
+            eventCards: cards,
+            timelineItems: items,
+            embedDepth: 0
+        )
 
         return Button {
             router.push(.thread(eventID: id))
@@ -149,10 +155,8 @@ struct ModularBlockView: View {
                     if !content.isEmpty {
                         NoteContentView(
                             content: truncate(content, 1_200),
-                            contentTree: card?.contentTree,
-                            mentionProfiles: mentionProfiles,
-                            eventCards: cards,
-                            timelineItems: items,
+                            contentTree: displayContentTree(item: item, card: card, context: context),
+                            renderContext: context,
                             font: .body
                         )
                             .foregroundStyle(.primary)
@@ -230,15 +234,13 @@ struct ModularBlockView: View {
     private func showThisThreadPill(rootID: String) -> some View {
         // Tap drops the user into ThreadScreen anchored at the chain's
         // resolved root (or the chain top when `root` is nil — see
-        // `rootEventID(root:)` for the precedence). ThreadScreen still
-        // consumes the legacy `ThreadViewPayload`; that migration is
-        // explicitly out of scope for this PR (M2 follow-up).
+        // `rootEventID(root:)` for the precedence).
         Button {
             router.push(.thread(eventID: rootID))
         } label: {
             Text("Show this thread")
                 .font(.caption)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ChirpColor.link)
         }
         .buttonStyle(.borderless)
         .accessibilityIdentifier("show-this-thread-\(rootID.prefix(8))")
@@ -261,6 +263,22 @@ struct ModularBlockView: View {
     private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
         if let item, !item.authorDisplay.isEmpty { return item.authorDisplay }
         return card?.authorDisplayName ?? "Unknown"
+    }
+
+    private func displayContent(item: TimelineItem?, card: ChirpEventCard?) -> String {
+        if let item, item.isRepost {
+            return card?.content ?? item.repostInnerContent
+        }
+        return item?.content ?? card?.content ?? ""
+    }
+
+    private func displayContentTree(
+        item: TimelineItem?,
+        card: ChirpEventCard?,
+        context: NoteRenderContext
+    ) -> ContentTreeWire? {
+        guard let item else { return card?.contentTree }
+        return context.contentTree(for: item, fallback: card?.contentTree)
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {

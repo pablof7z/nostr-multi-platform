@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::RelayTextInterceptor;
-use nmp_core::{Kernel, NmpApp, OutboundMessage};
+use nmp_core::{Kernel, OutboundMessage};
+use nmp_ffi::NmpApp;
 
 use nmp_nip47::{
     install_wallet_runtime, new_wallet_runtime_handle, WalletConnectModule, WalletDisconnectModule,

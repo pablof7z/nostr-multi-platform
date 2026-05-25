@@ -15,7 +15,7 @@
 //!
 //! ## What this DOES NOT test
 //!
-//! The kernel-side `nip42_drivers: HashMap<RelayRole, _>` continues to key
+//! The kernel-side `auth_drivers: HashMap<RelayRole, _>` continues to key
 //! by role, not URL — splitting that into per-URL drivers is a separate,
 //! larger change (one socket per URL is already invariant per T126; the
 //! per-role driver collapses correctly today because each lane has at most
@@ -23,7 +23,7 @@
 
 use super::auth_test_helpers::*;
 use super::*;
-use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::relay::{RelayRoleTestExt, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::RelayAuthState;
 
 const NON_BOOTSTRAP_URL: &str = "wss://nip65-resolved.example/";

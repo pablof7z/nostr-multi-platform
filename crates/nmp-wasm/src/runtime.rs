@@ -4,10 +4,11 @@
 //!
 //! Stage 3 (read path) shipped the live relay transport: `WasmRuntime` drives
 //! a real [`nmp_core::KernelReducer`] AND, on `wasm32`, owns a pool of
-//! [`crate::relay_driver::BrowserRelayDriver`]s — one `web_sys::WebSocket`
-//! per (URL, role) pair. Inbound relay frames arrive on the JS event loop,
-//! route through `KernelReducer::handle_relay_frame`, and the resulting
-//! outbound is fanned back out over the same sockets.
+//! [`nmp_network::browser_driver::BrowserRelayDriver`]s — one
+//! `web_sys::WebSocket` per (URL, role) pair. Inbound relay frames arrive on
+//! the JS event loop, route through `KernelReducer::handle_relay_frame`
+//! (wrapped by the [`crate::relay_pool::build_handlers`] callback bag), and
+//! the resulting outbound is fanned back out over the same sockets.
 //!
 //! Stage 3b (this commit) adds the **signer install path** and the **async
 //! snapshot push channel**:
@@ -58,7 +59,7 @@ use nmp_core::{KernelAction, KernelReducer, KernelUpdate};
 use nmp_signers::Signer;
 
 #[cfg(target_arch = "wasm32")]
-use crate::relay_driver::BrowserRelayDriver;
+use nmp_network::browser_driver::BrowserRelayDriver;
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
 
@@ -294,23 +295,22 @@ impl WasmRuntime {
     }
 
     /// V-01 Stage 3 — instantiate one `BrowserRelayDriver` per configured
-    /// relay URL. Wires each driver's outbound sink to the relay pool's
-    /// fan-out closure, which also pushes a snapshot through the registered
-    /// callback (if any) so the JS host sees kernel mutations as they
-    /// happen.
+    /// relay URL. Wires each driver's kernel-handler callbacks (Step 8
+    /// phase C: the driver itself lives in `nmp-network` and is kernel-
+    /// agnostic; the callback bag bridges it back into our `KernelReducer`)
+    /// to the relay-pool helpers, which also push a snapshot through the
+    /// registered callback (if any) so the JS host sees kernel mutations
+    /// as they happen.
     #[cfg(target_arch = "wasm32")]
     fn spawn_relay_drivers(&mut self) -> Result<(), WasmRuntimeError> {
-        let sink = relay_pool::build_sink(
+        let handlers = relay_pool::build_handlers(
             Rc::clone(&self.relays),
             Rc::clone(&self.snapshot_callback),
             Rc::clone(&self.reducer),
             Rc::clone(&self.meta),
         );
-        let drivers = relay_pool::spawn_drivers(
-            &self.meta.borrow().relay_bootstrap,
-            Rc::clone(&self.reducer),
-            sink,
-        )?;
+        let drivers =
+            relay_pool::spawn_drivers(&self.meta.borrow().relay_bootstrap, handlers)?;
         *self.relays.borrow_mut() = drivers;
         Ok(())
     }
@@ -396,6 +396,21 @@ impl WasmRuntime {
     fn snapshot_event(&self) -> WorkerEvent {
         let envelope = build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow());
         WorkerEvent::Update { envelope }
+    }
+
+    /// V-51 phase 2 — JSON snapshot of the kernel's recent routing
+    /// decisions. Sibling of the FFI `nmp_app_recent_routing_decisions`
+    /// symbol; same payload shape on both surfaces so the web Chirp shell
+    /// and the iOS Chirp shell can share a single routing-inspector
+    /// renderer (V-51 phase 3).
+    ///
+    /// Pull-only: the runtime does not push this on every snapshot tick
+    /// (routing traces are diagnostic; the cost model is "pay when a host
+    /// asks"). The `wasm-bindgen` wrapper exposes this as
+    /// `NmpWasmRuntime::recent_routing_decisions()`.
+    #[must_use]
+    pub fn recent_routing_decisions(&self) -> String {
+        self.reducer.borrow().recent_routing_decisions_json()
     }
 
     /// Build the inner snapshot `v` payload. Used by tests that want to

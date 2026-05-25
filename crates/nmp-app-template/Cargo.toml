@@ -1,0 +1,47 @@
+[package]
+name = "nmp-app-template"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Canonical composition root for an NMP-based Nostr application. One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-57 zap, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), the canonical DM-inbox + zap-receipts runtimes, and the D2 coverage hook. Closes V-48 (step 10 of `docs/architecture/crate-boundaries.md` §5)."
+
+[dependencies]
+# Kernel substrate — `ActorCommand`, observer traits, the routing
+# substrate factory seam, and the action-registry entry point. `NmpApp`
+# (the C-ABI handle) moved to `nmp-ffi` in step 11-final of
+# `docs/architecture/crate-boundaries.md` §5.
+nmp-core = { path = "../nmp-core" }
+# C-ABI surface owner (extracted from `nmp-core::ffi`). The template
+# composition root takes `&mut NmpApp` so callers reach it through this
+# crate. `register_defaults` itself names `NmpApp`, `nmp_app_*` symbols,
+# and slot constructors all through here.
+nmp-ffi = { path = "../nmp-ffi" }
+# Layer-2 routing: `GenericOutboxRouter`, `InMemoryMailboxCache`, and the
+# `nmp.nip65.publish_relay_list` action module the template registers.
+nmp-router = { path = "../nmp-router" }
+# Common NIP action modules + ingest parsers the canonical NMP composition
+# wires by default. A second app that does not need one of these is expected
+# to call the per-NIP `register_actions` selectively rather than
+# `register_defaults` wholesale.
+nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip17 = { path = "../nmp-nip17" }
+nmp-nip57 = { path = "../nmp-nip57" }
+# D2 coverage-gate policy: thresholds + back-off rules for the default
+# `set_coverage_hook` installation. Zero `nmp-core` dep (the gate is pure
+# policy data); this assembly crate is one of the layers entitled to depend
+# on both `nmp-core` and the coverage-gate crate.
+nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+nostr = { version = "0.44", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Test-support gates expose the FFI `nmp_app_new` / `nmp_app_free` symbols
+# through a normal Rust path so the integration test can spin up a real
+# `NmpApp`, call `register_defaults`, and inspect the resulting registry
+# entries. Mirrors the per-NIP-crate test pattern (`nmp-nip17`,
+# `nmp-app-chirp`).
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# Same posture for the extracted FFI crate so dev/test builds see
+# `nmp_app_new`/`nmp_app_free`.
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

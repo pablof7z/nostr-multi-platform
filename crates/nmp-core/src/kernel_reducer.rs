@@ -23,7 +23,7 @@
 //! [`KernelReducer::handle_relay_failed`],
 //! [`KernelReducer::handle_relay_closed`], and [`KernelReducer::tick`] —
 //! that mirror the per-event arms the native `actor::dispatch::handle_relay_event`
-//! handles for each [`crate::relay_worker::RelayEvent`] variant. The wasm32
+//! handles for each `nmp_network::relay_worker::RelayEvent` variant. The wasm32
 //! `BrowserRelayDriver` in `nmp-wasm` is callback-driven (no thread, no
 //! blocking `read_frame`) so it cannot share the native `run_relay_worker`
 //! loop; instead it owns the WebSocket lifecycle directly and feeds each
@@ -134,7 +134,7 @@ impl KernelReducer {
         relay_url: &str,
         is_reconnect: bool,
     ) -> Vec<OutboundMessage> {
-        self.kernel.relay_connected(role);
+        self.kernel.relay_connected_url(role, relay_url);
         let mut outbound = Vec::new();
         if is_reconnect {
             // Same call shape the native actor uses; `replay_on_reconnect`
@@ -235,6 +235,29 @@ impl KernelReducer {
             .kernel
             .publish_signed_with_correlation(signed, p_tags, correlation_id);
         self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// V-51 phase 2 — render the kernel's routing-trace projection as JSON.
+    ///
+    /// The shape is documented at
+    /// [`crate::kernel::routing_trace_dto`]: a `schema_version`-keyed object
+    /// carrying `publishes` and `subscriptions` arrays with per-URL
+    /// `lanes[]` attribution.
+    ///
+    /// Wasm-friendly read seam — the `nmp-wasm` runtime exposes this to JS
+    /// hosts (`NmpWasmRuntime::recent_routing_decisions`) so the web Chirp
+    /// shell can render the same routing inspector iOS gets via the
+    /// `nmp_app_recent_routing_decisions` FFI symbol. Native callers reach
+    /// the projection directly through [`crate::Kernel::routing_trace`].
+    ///
+    /// D6 — total: the projection always exists (`Kernel::new` constructs
+    /// it); a serialisation hiccup falls back to an empty-rings document.
+    #[must_use]
+    pub fn recent_routing_decisions_json(&self) -> String {
+        let value = crate::projection_to_json(&self.kernel.routing_trace());
+        serde_json::to_string(&value).unwrap_or_else(|_| {
+            String::from(r#"{"schema_version":1,"capacity":0,"publishes":[],"subscriptions":[]}"#)
+        })
     }
 }
 

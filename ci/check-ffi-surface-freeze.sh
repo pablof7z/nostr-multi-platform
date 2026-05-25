@@ -79,22 +79,30 @@ fi
 # Collect added and removed per-verb exports from the diff.
 # Pattern: lines starting with + or - (not ++) followed by
 # `pub extern "C" fn nmp_app_`.
-ADDED="$(git diff "${BASE_SHA}...${HEAD_REF}" -- \
-    'crates/nmp-core/src/ffi/' \
-    'crates/nmp-signer-broker/src/' \
-    'apps/chirp/nmp-app-chirp/src/' \
-    ':(exclude)crates/nmp-core/src/ffi/testing.rs' \
+# Scan roots: every crate that defines `pub extern "C" fn nmp_app_*` symbols.
+# After PR #472 the core C-ABI moved from `crates/nmp-core/src/ffi/` to its own
+# crate `crates/nmp-ffi/src/`; both paths are kept so old branches still diff
+# cleanly and any future re-introduction of an `nmp-core::ffi` module would
+# still be policed.
+SCAN_PATHS=(
+    'crates/nmp-ffi/src/'
+    'crates/nmp-core/src/ffi/'
+    'crates/nmp-signer-broker/src/'
+    'apps/chirp/nmp-app-chirp/src/'
+    'crates/nmp-marmot/src/'
+    'apps/marmot/nmp-app-marmot/src/'
+    ':(exclude)crates/nmp-core/src/ffi/testing.rs'
+    ':(exclude)crates/nmp-ffi/src/testing.rs'
+)
+
+ADDED="$(git diff "${BASE_SHA}...${HEAD_REF}" -- "${SCAN_PATHS[@]}" \
     | grep -E '^\+pub extern "C" fn nmp_app_' \
     | sed 's/^+//' \
     | grep -oE 'fn nmp_app_[a-zA-Z0-9_]+' \
     | sed 's/^fn //' \
     | sort -u || true)"
 
-REMOVED="$(git diff "${BASE_SHA}...${HEAD_REF}" -- \
-    'crates/nmp-core/src/ffi/' \
-    'crates/nmp-signer-broker/src/' \
-    'apps/chirp/nmp-app-chirp/src/' \
-    ':(exclude)crates/nmp-core/src/ffi/testing.rs' \
+REMOVED="$(git diff "${BASE_SHA}...${HEAD_REF}" -- "${SCAN_PATHS[@]}" \
     | grep -E '^\-pub extern "C" fn nmp_app_' \
     | sed 's/^-//' \
     | grep -oE 'fn nmp_app_[a-zA-Z0-9_]+' \

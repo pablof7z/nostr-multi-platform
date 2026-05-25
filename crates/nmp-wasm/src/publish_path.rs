@@ -50,7 +50,7 @@ use nmp_signers::Signer;
 #[cfg(target_arch = "wasm32")]
 use crate::protocol::{AppAction, CapabilityFailure, WorkerEvent};
 #[cfg(target_arch = "wasm32")]
-use crate::relay_driver::BrowserRelayDriver;
+use nmp_network::browser_driver::BrowserRelayDriver;
 #[cfg(target_arch = "wasm32")]
 use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 

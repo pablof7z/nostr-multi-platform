@@ -16,20 +16,32 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `nmp_signer_broker_init` /
+# `nmp_app_cancel_bunker_handshake` take `*mut NmpApp`, so this crate
+# names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
+# Step 8 phase D — V-13 Stage 2 dedupe (`docs/architecture/crate-boundaries.md`
+# §5 step 8). The broker now rides `nmp_network::Pool` for its WebSocket
+# transport: ONE readiness-driven WebSocket implementation in the workspace.
+# The prior direct `tungstenite` + `mio` + `rustls` graph is gone from
+# this crate's Cargo manifest — those crates still live on the dep tree
+# transitively (through `nmp-network`'s `native` feature) but we no
+# longer name them. The `relay_client.rs` adapter exposes the same
+# `RelayClient` trait the broker programs against; only the implementation
+# was swapped from `TungsteniteRelayClient` (in-broker mio loop) to
+# `PoolRelayClient` (Pool wrapper).
+nmp-network = { path = "../nmp-network", default-features = false, features = ["native"] }
 nmp-signers = { path = "../nmp-signers" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 rand = "0.8"
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
-# mio: OS event loop (epoll/kqueue) for non-blocking I/O. Used by
-# `relay_client::run_worker` so it can block on socket readiness OR control-
-# channel wakeups without polling (V-13 / D8: "no polling — ever").
-# Mirrors the dep posture of `nmp-core`'s `relay_worker`; V-13 Stage 1
-# (extracting a shared `nmp-relay-conn` crate) will eventually dedupe.
-mio = { version = "1", features = ["os-ext", "os-poll"] }
 
 [dev-dependencies]
 # Test-only: a synthetic relay accept loop on 127.0.0.1 for integration tests.
+# Phase D removed the direct `tungstenite` production dep; the integration
+# test layer (when added) will pull tungstenite under [dev-dependencies] if
+# it needs to spin up a loopback server. The unit tests in this crate run
+# entirely against the trait surface and do not touch the wire.

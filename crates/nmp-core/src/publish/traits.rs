@@ -98,7 +98,16 @@ impl OutboxResolver for StaticOutbox {
             Some(writes) if !writes.is_empty() => out.extend(writes.iter().cloned()),
             _ => out.extend(self.indexer_fallback.iter().cloned()),
         }
-        if p_tags.len() < super::nip65::RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
+        // Mirror `nmp_router::Nip65OutboxResolver`'s recipient-inbox fanout
+        // threshold so the bootstrap `StaticOutbox` rolls off recipient
+        // inboxes on broadcast-ish events the same way the production
+        // resolver does. Inlined (rather than re-imported from `nmp-router`)
+        // because `nmp-core` cannot depend on `nmp-router` (Layer 3 → Layer
+        // 2 would invert the dependency arrow). The canonical constant is
+        // `nmp_router::RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD`; changes
+        // there must be mirrored here.
+        const RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD: usize = 15;
+        if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
             for p in p_tags {
                 if let Some(reads) = self.p_tag_reads.get(p) {
                     out.extend(reads.iter().cloned());
@@ -127,6 +136,7 @@ impl OutboxResolver for NoopOutboxResolver {
         BTreeSet::new()
     }
 }
+
 
 // ---------------- Relay dispatcher (M8 / task #46) ----------------
 

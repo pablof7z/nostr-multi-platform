@@ -3,12 +3,29 @@ name = "nmp-nip57"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
-description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptRecord decoder (kind:9735) + ZapRequestBuilder (kind:9734) + DomainModule + ZapsView per docs/design/kind-wrappers.md §3. Zap receipts are LN-minted: decode-only."
+description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptRecord decoder (kind:9735) + ZapRequestBuilder (kind:9734) + ZapAction ActionModule + ZapsView + LNURL-pay fetcher (FetchLnurlInvoiceCommand)."
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
+# `nmp-core::ffi` in step 11-final). `register_actions` takes
+# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
+nmp-ffi = { path = "../nmp-ffi" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# LNURL-pay fetcher dependencies (V-41). The fetcher runs on
+# `std::thread::spawn` from the actor's `Protocol(...)` dispatch arm and
+# uses `ureq` for the two-leg HTTP round-trip. `bech32` decodes LUD-01
+# `lnurl1…` inputs; `nostr` mints the kind:9734 signature on the actor
+# thread (the keys come from `ProtocolCommandContext::active_local_keys`).
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+bech32 = "0.11"
+nostr = { workspace = true }
+# Diagnostic logger for the LNURL worker (matches the rest of nmp-core's
+# tracing usage). Always available — `tracing` is in the lockfile via
+# nostr already, so this adds nothing new.
+tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

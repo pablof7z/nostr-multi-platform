@@ -67,3 +67,33 @@ fn snapshot_emits_one_row_per_known_relay() {
         assert!(!interest.state_tone.is_empty());
     }
 }
+
+#[test]
+fn snapshot_emits_every_transport_url_for_same_role() {
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT, RelayRole};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connecting_url(RelayRole::Content, "wss://relay-a.test/");
+    kernel.relay_connected_url(RelayRole::Content, "wss://relay-a.test/");
+    kernel.relay_connecting_url(RelayRole::Content, "wss://relay-b.test/");
+    kernel.relay_connected_url(RelayRole::Content, "wss://relay-b.test/");
+    kernel.record_tx_to(RelayRole::Content, "wss://relay-b.test/", 128);
+
+    let snap = kernel.relay_diagnostics_snapshot();
+    let relay_a = snap
+        .relays
+        .iter()
+        .find(|row| row.relay_url == "wss://relay-a.test")
+        .expect("diagnostics must include the first content socket URL");
+    let relay_b = snap
+        .relays
+        .iter()
+        .find(|row| row.relay_url == "wss://relay-b.test")
+        .expect("diagnostics must include the second content socket URL");
+
+    assert_eq!(relay_a.role_label, "Content");
+    assert_eq!(relay_a.connection_label, "Connected");
+    assert_eq!(relay_b.role_label, "Content");
+    assert_eq!(relay_b.connection_label, "Connected");
+    assert_eq!(relay_b.bytes_tx_display.as_deref(), Some("128 B"));
+}

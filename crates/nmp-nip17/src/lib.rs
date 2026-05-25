@@ -53,19 +53,25 @@ use nmp_core::substrate::UnsignedEvent;
 
 pub mod action;
 pub mod display;
+pub mod dm_relay_cache;
 pub mod dm_relay_list;
 pub mod dm_runtime;
+pub mod dm_send;
 pub mod inbox;
+pub mod kind10050_parser;
 
 pub use action::{SendDmAction, SendDmInput};
+pub use dm_relay_cache::DmRelayCache;
 pub use dm_relay_list::{
     build_dm_relay_list_event, PublishDmRelayListAction, PublishDmRelayListInput,
 };
 pub use dm_runtime::{DmRuntimeEffect, DmRuntimeState};
+pub use dm_send::SendGiftWrappedDmCommand;
 pub use inbox::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmConversation,
     DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
+pub use kind10050_parser::Kind10050Parser;
 
 /// NIP-17 kind: a "chat message" rumor.
 const KIND_CHAT_MESSAGE: u32 = 14;
@@ -127,9 +133,38 @@ pub fn build_dm_rumor(input: &DmInput, sender_pubkey: &str) -> UnsignedEvent {
     }
 }
 
-pub fn register_actions(app: &mut nmp_core::NmpApp) {
+/// Register every NIP-17 substrate seam against `app`:
+///
+/// 1. The two [`nmp_core::substrate::ActionModule`] verbs
+///    (`nmp.nip17.send` and `nmp.nip17.publish_relay_list`).
+/// 2. The kind:10050 [`Kind10050Parser`] (V-40) — wired into the
+///    kernel's [`nmp_core::substrate::EventIngestDispatcher`] so an
+///    accepted kind:10050 writes the `DmRelayCache`.
+/// 3. The `DmRelayCache` itself (V-40) — installed as the kernel's
+///    `Arc<dyn DmInboxRelayLookup>` so the gift-wrap publish path's
+///    `recipient_dm_relays` reader + the planner's `#p`-tagged inbox
+///    routing both see the same entries this crate writes.
+///
+/// Production composition calls this once at app startup. Repeated
+/// calls re-register the parser additively (the dispatcher allows
+/// multiple parsers per kind by design); the `Arc<DmRelayCache>` is
+/// swapped each call, so callers that need a stable handle should
+/// store the cache themselves and pass it explicitly. The default
+/// path (one composition, one cache) is the common case.
+pub fn register_actions(app: &mut nmp_ffi::NmpApp) {
     app.register_action::<SendDmAction>();
     app.register_action::<PublishDmRelayListAction>();
+
+    // V-40 — install the shared `DmRelayCache` on both ends:
+    //   1. As the kernel's `Arc<dyn DmInboxRelayLookup>` (reader).
+    //   2. As the `Kind10050Parser`'s backing cache (writer).
+    let cache = std::sync::Arc::new(DmRelayCache::new());
+    let as_lookup: std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup> =
+        std::sync::Arc::clone(&cache) as _;
+    app.set_dm_inbox_relay_lookup(as_lookup);
+    let parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser> =
+        std::sync::Arc::new(Kind10050Parser::new(cache)) as _;
+    app.register_ingest_parser(10_050, parser);
 }
 
 #[cfg(test)]

@@ -74,6 +74,14 @@ class KernelModel : ViewModel() {
         }
     }
 
+    fun openTimeline() {
+        bridge.openTimeline()
+    }
+
+    fun createLocalAccount() {
+        bridge.createLocalAccount()
+    }
+
     /**
      * Decode one frame from the `update_tx` channel.
      *

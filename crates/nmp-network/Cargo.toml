@@ -1,0 +1,76 @@
+[package]
+name = "nmp-network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Layer-1 network transport: native WebSocket relay worker (tungstenite/mio/rustls) + wasm32 browser relay driver (web_sys::WebSocket), wire-transport-agnostic relay protocol primitives (backoff, keepalive, jitter, HTTP-denial classifier). Step 8 of docs/architecture/crate-boundaries.md — phases 8a (extraction), 8b (push-model `Pool`), 8c (`BrowserRelayDriver` move) shipped. `nmp-signer-broker` migration is deferred to phase 8d."
+
+[lib]
+name = "nmp_network"
+crate-type = ["rlib"]
+
+[features]
+# Native I/O layer — gates the relay_worker (tungstenite/mio/rustls).
+# The `relay_protocol` module compiles unconditionally so wasm32 callers
+# (the `browser_driver` here in this crate, and any future direct callers
+# from `nmp-wasm`) can share the same constants.
+default = ["native"]
+native = ["dep:tungstenite", "dep:mio", "dep:rustls"]
+
+[dependencies]
+# Step 8 phase A: `nmp-network` is the lowest layer of the migration ladder —
+# it MUST NOT depend on `nmp-core` (the cycle direction would be
+# `nmp-core → nmp-network → nmp-core`). The transport-layer value types
+# the worker uses live here directly: `RelayRole` (the lane discriminator),
+# `KeepaliveState` / `KeepaliveAction` (the keepalive FSM). `nmp-core`
+# re-exports `RelayRole` for downstream backward-compat
+# (`nmp_core::RelayRole` still resolves through the re-export). The
+# kernel's `RelayFrame` stays in `nmp-core`; the `tungstenite::Message →
+# RelayFrame` adapter lives there too (it bridges this crate's wire type
+# to the kernel's frame enum at the actor seam). Phase C
+# (`BrowserRelayDriver` move) preserves the same direction: the browser
+# driver takes its kernel touchpoints through an `Rc<dyn Fn>` callback
+# bag (`BrowserKernelHandlers`) constructed in `nmp-wasm`, so the driver
+# itself never names a kernel type.
+#
+# Native-only I/O deps — gated behind `native`, mirroring the old
+# nmp-core posture exactly so the move is value-preserving.
+mio = { version = "1", features = ["os-ext", "os-poll"], optional = true }
+rustls = { workspace = true, default-features = false, features = ["ring"], optional = true }
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
+
+# Step 8 phase E: pre-classify the inbound `["AUTH", <challenge>]` wire
+# frame into [`pool::RelayFrame::Auth`] so the kernel sees a typed
+# variant instead of re-discovering AUTH from raw text. `nmp-nip42-types`
+# is the dependency-free wire/type substrate (serde/serde_json only —
+# no workspace deps), purpose-built so both `nmp-core` (the FSM owner)
+# and `nmp-network` (the wire layer) share the exact parse without a
+# crate cycle. This crate only uses `parse_auth_frame` — it does NOT
+# import the FSM (`AuthGate`) or the kind:22242 builder; those live in
+# `nmp-core::subs::AuthGate` and `nmp-nip42::builder` respectively.
+nmp-nip42-types = { path = "../nmp-nip42-types" }
+serde_json = "1"
+
+# Step 8 phase C — `BrowserRelayDriver` owns the `web_sys::WebSocket`
+# lifecycle. Feature set kept minimal (mirrors what `nmp-wasm` carried
+# before the move): `WebSocket` itself for send/close, `MessageEvent` to
+# read incoming frames, `CloseEvent` for the close reason, `ErrorEvent`
+# to surface socket errors, `BinaryType` to opt into ArrayBuffer payloads,
+# and `Window` to install the reconnect-deadline `setTimeout` (no
+# `setInterval` — D8 no-polling: each tick re-arms the next deadline only
+# after the kernel has processed the inbound frame).
+#
+# All three crates are wasm32-only — gated through the `target.*.dependencies`
+# table so native builds do not see them. The corresponding module
+# (`browser_driver`) is `#[cfg(target_arch = "wasm32")]`-gated in lib.rs.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3.98"
+wasm-bindgen = "0.2.121"
+web-sys = { version = "0.3.98", features = [
+    "BinaryType",
+    "CloseEvent",
+    "ErrorEvent",
+    "MessageEvent",
+    "WebSocket",
+    "Window",
+] }

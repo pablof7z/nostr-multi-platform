@@ -3,8 +3,10 @@
 //! Split out of `mod.rs` to keep both files under the 300-LOC soft cap.
 //! `dispatch_command` resolves an [`ActorCommand`] into outbound relay
 //! messages (or `None` for shutdown); `handle_relay_event` folds a
-//! [`RelayEvent`] into the kernel + connection bookkeeping. No behavior
-//! change — pure move of the two reducers off the actor loop.
+//! [`nmp_network::pool::PoolEvent`] (phase F rename of the legacy
+//! `RelayEvent`) into the kernel + connection bookkeeping. No behavior
+//! change — the actor's per-URL bookkeeping, reconnect-replay, and
+//! startup-send gating are all preserved one-to-one across the rename.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
@@ -13,11 +15,44 @@ use std::time::Instant;
 
 use zeroize::Zeroizing;
 
-use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
+use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 use crate::kernel::Kernel;
 use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
-use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
+use nmp_network::pool::{Pool, PoolEvent, RelayFrame as PoolFrame};
+
+use crate::kernel::RelayFrame;
+
+/// Convert a [`nmp_network::pool::RelayFrame`] (the wire frame variant the
+/// pool's translator emits) into the kernel's wire-transport-agnostic
+/// [`RelayFrame`] consumed by `Kernel::handle_message`.
+///
+/// Step 8 phase F: replaces the prior `tungstenite::Message → RelayFrame`
+/// adapter — the pool already owns that conversion in its translator thread,
+/// so this adapter is now a pure variant-rename (1:1 mapping). The
+/// [`PoolFrame::Auth`] variant (phase E pre-classification) is round-tripped
+/// to `RelayFrame::Text` by reconstructing the canonical
+/// `["AUTH", <challenge>]` text frame; the kernel's existing
+/// `auth_handlers.rs` ingest path then sees an unchanged surface.
+/// `nmp-network`'s `nmp-nip42-types` parser already validated the shape on
+/// the way in, so the round-trip is structural.
+fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
+    match frame {
+        PoolFrame::Text(text) => RelayFrame::Text(text),
+        PoolFrame::Auth(challenge) => {
+            // Reconstruct the canonical NIP-42 wire shape so the kernel
+            // ingest's existing `["AUTH", ...]` parse path handles it
+            // unchanged (the wire-layer pre-classification is opportunistic;
+            // the kernel still owns the AUTH state machine).
+            let payload = serde_json::json!(["AUTH", challenge]).to_string();
+            RelayFrame::Text(payload)
+        }
+        PoolFrame::Binary(bytes) => RelayFrame::Binary(bytes),
+        PoolFrame::Ping => RelayFrame::Ping,
+        PoolFrame::Pong => RelayFrame::Pong,
+        PoolFrame::Close(reason) => RelayFrame::Close(reason),
+    }
+}
 use crate::subs::PlanCoverageHook;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
@@ -34,20 +69,22 @@ use crate::capability_socket::CapabilityCallbackSlot;
 
 /// Sync every host-readable local-key mirror to the current active account.
 ///
-/// Two parallel slots track the active account's secret material on every
-/// identity mutation:
+/// Two parallel substrate-generic slots track the active account's local
+/// signing material on every identity mutation:
 ///
 /// * `mls_local_nsec` — bech32 `nsec1…` wrapped in [`Zeroizing`] so the
 ///   previous string is wiped from the heap on overwrite.
-/// * `nip17_local_keys` — the parsed `nostr::Keys` for NIP-17 DM gift-wrap
-///   decryption. `Keys` zeroizes its own secret on drop, so no extra wrapper
-///   is needed.
+/// * `active_local_keys` — the parsed `nostr::Keys`. `Keys` zeroizes its own
+///   secret on drop, so no extra wrapper is needed.
 ///
 /// Both derive from `identity.active_keys()`, so they always change together.
-/// Each slot is locked, written, and dropped sequentially — there is no
-/// cross-slot atomicity contract (a host that races a snapshot read against
-/// an identity switch may briefly observe one slot updated and the other not;
-/// the next snapshot tick reconciles).
+/// The substrate publishes both unconditionally; non-substrate consumers
+/// (FFI-shell readers exposed via `NmpApp::active_local_keys`) decide what
+/// to do with the data (today: NIP-17 gift-wrap unsealing, NIP-57 zap
+/// receipt pubkey reads). Each slot is locked, written, and dropped
+/// sequentially — there is no cross-slot atomicity contract (a host that
+/// races a snapshot read against an identity switch may briefly observe one
+/// slot updated and the other not; the next snapshot tick reconciles).
 ///
 /// Called synchronously BEFORE `maybe_emit_after_dispatch` (and before
 /// `emit_now` on the `Start` arm) so the slots are visible to host callbacks
@@ -55,12 +92,12 @@ use crate::capability_socket::CapabilityCallbackSlot;
 fn update_local_key_slots(
     identity: &IdentityRuntime,
     nsec_slot: &MlsLocalNsecSlot,
-    nip17_keys_slot: &Nip17LocalKeysSlot,
+    keys_slot: &ActiveLocalKeysSlot,
 ) {
     if let Ok(mut guard) = nsec_slot.lock() {
         *guard = identity.active_nsec_bech32().map(Zeroizing::new);
     }
-    if let Ok(mut guard) = nip17_keys_slot.lock() {
+    if let Ok(mut guard) = keys_slot.lock() {
         *guard = identity.active_local_keys().cloned();
     }
 }
@@ -152,7 +189,14 @@ pub(super) struct ActorContext<'a> {
     pub(super) kernel: &'a mut Kernel,
     pub(super) identity: &'a mut IdentityRuntime,
     pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
-    pub(super) relay_tx: &'a Sender<RelayEvent>,
+    /// Phase F: side-map from `RelayHandle.slot()` → canonical URL so an
+    /// inbound [`PoolEvent`] (which carries the handle but not always the
+    /// URL) resolves back to `relay_controls` in O(1).
+    pub(super) slot_to_url: &'a mut HashMap<u32, CanonicalRelayUrl>,
+    /// Phase F: the push-model relay-connection pool. Cheap to clone, but the
+    /// borrow is sufficient for dispatch — the actor loop owns the master
+    /// handle for the whole process.
+    pub(super) pool: &'a Pool,
     pub(super) connected_relays: &'a mut HashSet<RelayRole>,
     pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
     pub(super) update_tx: &'a Sender<String>,
@@ -165,19 +209,25 @@ pub(super) struct ActorContext<'a> {
     pub(super) relays_ready: bool,
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
     pub(super) mls_local_nsec: &'a MlsLocalNsecSlot,
-    /// NIP-17 DM-inbox decryption key seam — the active account's local
-    /// `nostr::Keys`. Updated alongside `mls_local_nsec` at every identity
-    /// mutation. See [`update_local_key_slots`].
-    pub(super) nip17_local_keys: &'a Nip17LocalKeysSlot,
+    /// Substrate-generic active-account local-keys slot — the active
+    /// account's `nostr::Keys`, parallel in shape to `mls_local_nsec` and
+    /// written together by [`update_local_key_slots`] on every identity
+    /// mutation. The substrate names no NIP; non-substrate consumers
+    /// (today: `nmp-nip17` gift-wrap unsealing via `DmInboxProjection`,
+    /// `nmp-nip57` zap-receipt subscription) read the same `Arc` clone
+    /// through the FFI shell's `NmpApp::active_local_keys` accessor.
+    pub(super) active_local_keys: &'a ActiveLocalKeysSlot,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
     /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
     /// from the perspective of code running on the actor thread.
-    /// `dispatch.rs` arms that spawn background workers (currently only the
-    /// `FetchLnurlInvoice` LNURL-pay HTTP round-trip) clone this and hand
-    /// the clone to the worker; the worker then sends a follow-up
-    /// `ActorCommand` (e.g. `ShowToast` with the bolt11 invoice) back into
-    /// the actor loop without needing access to the `NmpApp`.
+    /// `dispatch.rs` arms that spawn background workers (the LNURL-pay
+    /// HTTP round-trip dispatched via `ActorCommand::Protocol` carries an
+    /// owned clone through `ProtocolCommandContext::command_sender_clone`)
+    /// clone this and hand the clone to the worker; the worker then sends
+    /// a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11
+    /// invoice) back into the actor loop without needing access to the
+    /// `NmpApp`.
     ///
     /// D8 — the actor never `recv`s on this sender; it only hands clones
     /// out. The matching receiver is `command_rx` in `run_actor_with_observers`.
@@ -194,6 +244,142 @@ pub(super) struct ActorContext<'a> {
     /// `None` means no handler was installed before the dispatch — the arm
     /// records a `Failed` terminal stage for the correlation id.
     pub(super) host_op_handler: &'a HostOpHandlerSlot,
+    /// V-40 — shared [`crate::substrate::EventIngestDispatcher`] slot.
+    /// Read by the `Reset` arm to re-bind the slot onto the rebuilt
+    /// kernel so per-NIP `register_actions` registrations survive a
+    /// state reset.
+    pub(super) ingest_dispatcher_slot:
+        &'a Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
+    /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. Same
+    /// `Reset`-survival contract as the ingest dispatcher slot.
+    pub(super) dm_inbox_relays_slot:
+        &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    /// V-51 phase 4 — routing-trace projection slot. Read by the `Reset`
+    /// arm to re-publish the rebuilt kernel's `routing_trace()` clone so
+    /// `NmpApp::routing_trace` keeps returning a live projection across a
+    /// state wipe.
+    pub(super) routing_trace_slot:
+        &'a Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
+    /// V-51 phase 5 — per-app substrate-routing factory slot. Re-invoked by
+    /// the `Reset` arm against the rebuilt kernel's fresh projection clone
+    /// so a production router (e.g. `nmp_router::GenericOutboxRouter`)
+    /// survives a state wipe — same contract as the ingest dispatcher /
+    /// dm-inbox-lookup / routing-trace slots above.
+    pub(super) routing_substrate_slot: &'a crate::slots::RoutingSubstrateSlot,
+    /// Spec §271 (2026-05-25) — same contract as `routing_substrate_slot`,
+    /// for the publish-side resolver. Re-applied by the `Reset` arm against
+    /// the rebuilt kernel's fresh handles so the production
+    /// `nmp_router::Nip65OutboxResolver` survives a state wipe.
+    pub(super) publish_resolver_slot: &'a crate::slots::PublishResolverSlot,
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Debt C — capability adapters for `ProtocolCommandContext`.
+//
+// The `Protocol(cmd)` arm constructs these to bridge the actor's
+// kernel + identity references into the typed capability traits the
+// substrate `ProtocolCommandContext` consumes. Lifetimes are bound to
+// the dispatch arm's stack frame; the adapters never outlive their
+// `RefCell` borrow targets.
+// ────────────────────────────────────────────────────────────────────────
+
+struct KernelClockAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+// SAFETY: the dispatch arm constructs and drops the adapter on the
+// actor thread; the `&RefCell<&mut Kernel>` reference never crosses a
+// thread boundary. The `Send + Sync` claim is needed because the
+// substrate trait carries the bound (`dyn KernelClock` lives behind
+// `&dyn` in `ProtocolCommandContext`), but the adapter is held only
+// for the dispatch arm's stack frame.
+unsafe impl<'a> Send for KernelClockAdapter<'a> {}
+unsafe impl<'a> Sync for KernelClockAdapter<'a> {}
+
+impl<'a> crate::substrate::KernelClock for KernelClockAdapter<'a> {
+    fn now_secs(&self) -> u64 {
+        self.kernel.borrow().now_secs()
+    }
+}
+
+struct LocalSignerAccessAdapter<'a> {
+    identity: &'a std::cell::RefCell<&'a IdentityRuntime>,
+}
+
+unsafe impl<'a> Send for LocalSignerAccessAdapter<'a> {}
+unsafe impl<'a> Sync for LocalSignerAccessAdapter<'a> {}
+
+impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
+    fn active_local_keys(&self) -> Option<nostr::Keys> {
+        self.identity.borrow().active_local_keys().cloned()
+    }
+    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+        self.identity.borrow().active_signer_for_seal()
+    }
+}
+
+struct ErrorSurfaceAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for ErrorSurfaceAdapter<'a> {}
+unsafe impl<'a> Sync for ErrorSurfaceAdapter<'a> {}
+
+impl<'a> crate::substrate::ErrorSurface for ErrorSurfaceAdapter<'a> {
+    fn set_last_error_toast(&self, message: Option<String>) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.set_last_error_toast(message);
+        }
+    }
+    fn record_action_failure(&self, correlation_id: String, reason: String) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.record_action_failure(correlation_id, reason);
+        }
+    }
+}
+
+struct ActionStageTrackerAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for ActionStageTrackerAdapter<'a> {}
+unsafe impl<'a> Sync for ActionStageTrackerAdapter<'a> {}
+
+impl<'a> crate::substrate::ActionStageTracker for ActionStageTrackerAdapter<'a> {
+    fn record_requested(&self, correlation_id: &str) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.record_action_stage(
+                correlation_id,
+                crate::kernel::action_stages::ActionStage::Requested,
+                None,
+            );
+        }
+    }
+}
+
+/// Debt-C-follow-up — bridge the kernel's `outbox_router` slot into the
+/// substrate [`crate::substrate::RecipientRelayLookup`] capability. NIP-57
+/// LNURL fetcher consumes this to populate the kind:9734 `relays` tag
+/// (recipient's NIP-65 write set + cold-start fallback) without naming
+/// `OutboxRouter` or the substrate `MailboxCache` directly.
+struct RecipientRelayLookupAdapter<'a> {
+    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for RecipientRelayLookupAdapter<'a> {}
+unsafe impl<'a> Sync for RecipientRelayLookupAdapter<'a> {}
+
+impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<'a> {
+    fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
+        // Kernel read; no mutation required. `try_borrow` keeps the
+        // adapter total in the presence of a re-entrant kernel borrow on
+        // the dispatch arm (defensive — production has no such cycle).
+        self.kernel
+            .try_borrow()
+            .ok()
+            .map(|k| k.recipient_publish_relays(recipient, kind))
+            .unwrap_or_default()
+    }
 }
 
 pub(super) fn dispatch_command(
@@ -217,10 +403,11 @@ pub(super) fn dispatch_command(
                 ctx.capability_callback,
                 ctx.relays_ready,
             );
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             spawn_missing_relays(
                 ctx.relay_controls,
-                ctx.relay_tx,
+                ctx.slot_to_url,
+                ctx.pool,
                 ctx.kernel,
                 ctx.next_relay_generation,
             );
@@ -296,7 +483,7 @@ pub(super) fn dispatch_command(
             // the wrapper wipe the plaintext when it drops at end of scope.
             let outbound =
                 commands::sign_in_nsec(ctx.identity, ctx.kernel, secret.as_str(), ctx.relays_ready);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -322,7 +509,7 @@ pub(super) fn dispatch_command(
                 &relays,
                 mls,
             );
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -333,7 +520,7 @@ pub(super) fn dispatch_command(
         ActorCommand::SwitchActive { identity_id } => {
             let outbound =
                 commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -343,7 +530,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::forget_account(&identity_id, ctx.capability_callback);
             session_persistence::persist_current_active_session(
                 ctx.identity,
@@ -364,7 +551,7 @@ pub(super) fn dispatch_command(
                     ctx.capability_callback,
                 );
             }
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.nip17_local_keys);
+            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -559,33 +746,12 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::SendGiftWrappedDm {
-            rumor,
-            recipient_pubkey,
-            correlation_id,
-        } => {
-            // NIP-17: seal + gift-wrap the kind:14 rumor into two kind:1059
-            // envelopes (recipient + self-copy) and publish them. The gift-wrap
-            // crypto runs here on the actor thread (D7). `created_at == 0` is
-            // re-stamped from the kernel clock inside the handler.
-            //
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            let outbound = commands::send_gift_wrapped_dm(
-                ctx.identity,
-                ctx.kernel,
-                rumor,
-                &recipient_pubkey,
-                correlation_id,
-            );
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
+        // V-39: `ActorCommand::SendGiftWrappedDm` arm deleted — the
+        // equivalent flow now dispatches `ActorCommand::Protocol(Box::new(
+        // nmp_nip17::SendGiftWrappedDmCommand { ... }))`. The protocol-
+        // command body runs in the `ActorCommand::Protocol` arm below; it
+        // reaches the active local keys, the DM-inbox cache, and the
+        // publish engine through the substrate `ProtocolCommandContext`.
         ActorCommand::RetryPublish { handle } => {
             let outbound = ctx.kernel.retry_publish_now(&handle);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -681,7 +847,8 @@ pub(super) fn dispatch_command(
             if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
                 ensure_relay_worker(
                     ctx.relay_controls,
-                    ctx.relay_tx,
+                    ctx.slot_to_url,
+                    ctx.pool,
                     ctx.kernel,
                     ctx.next_relay_generation,
                     crate::relay::RelayRole::Content,
@@ -711,7 +878,7 @@ pub(super) fn dispatch_command(
             // Removing a URL that was never present is a no-op and must NOT
             // re-publish kind:10002.
             let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
-            shutdown_relay_worker(ctx.relay_controls, &url);
+            shutdown_relay_worker(ctx.relay_controls, ctx.slot_to_url, ctx.pool, &url);
             commands::remove_relay(ctx.kernel, &url);
             let outbound = maybe_publish_relay_list_after_edit(
                 ctx.identity,
@@ -732,41 +899,15 @@ pub(super) fn dispatch_command(
         // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` — the
         // `WalletConnectCommand` / `WalletDisconnectCommand` /
         // `WalletPayInvoiceCommand` impls live in `crates/nmp-nip47`.
-        ActorCommand::FetchLnurlInvoice {
-            unsigned,
-            lnurl_or_address,
-            amount_msats,
-            correlation_id,
-        } => {
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            // The handler signs synchronously on this thread (D7) and
-            // spawns a worker for the HTTP round-trip (D8). It never
-            // returns relay outbound frames — kind:9734 goes to the
-            // LNURL callback over HTTP, not to relays (NIP-57 § Appendix C).
-            commands::handle_fetch_lnurl_invoice(
-                ctx.identity,
-                ctx.kernel,
-                ctx.command_tx_self.clone(),
-                unsigned,
-                lnurl_or_address,
-                amount_msats,
-                correlation_id,
-            );
-            // Emit promptly so a synchronous failure (no active local keys,
-            // sign failure) lands in the next snapshot tick — matches the
-            // `PublishUnsignedEventToRelays` post-dispatch emit. A success
-            // path's `ShowToast` follow-up arrives later from the worker
-            // thread and will trigger its own emit through the regular
-            // dispatch path.
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
-        }
+        //
+        // V-41 — the legacy `FetchLnurlInvoice` arm is also deleted. The LNURL
+        // fetcher now lives in `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`
+        // and dispatches through `ActorCommand::Protocol` (below). The
+        // pre-existing `Requested` stage recording (gated on
+        // `correlation_id`) and the post-dispatch `emit_now` both moved
+        // into the `Protocol(...)` arm — see
+        // `ProtocolCommandContext::record_action_stage_requested` and the
+        // emit at the bottom of that arm.
         ActorCommand::RecordActionFailure {
             correlation_id,
             reason,
@@ -831,7 +972,9 @@ pub(super) fn dispatch_command(
             //
             // Record `Requested` first so the host's spinner sees the action
             // entered the actor lane even if the handler is absent or panics
-            // (mirrors the `WalletPayInvoice` / `FetchLnurlInvoice` arms).
+            // (mirrors the `WalletPayInvoice` arm and the V-41 LNURL
+            // protocol command — see
+            // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`).
             ctx.kernel.record_action_stage(
                 &correlation_id,
                 crate::kernel::action_stages::ActionStage::Requested,
@@ -890,7 +1033,7 @@ pub(super) fn dispatch_command(
         ActorCommand::Stop => {
             *ctx.running = false;
             *ctx.startup_sent = false;
-            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             // T116/G1 — clear reconnect-replay discriminator so a subsequent
             // Start replays cleanly (every URL appears as a first-connect).
             ctx.connected_urls.clear();
@@ -898,7 +1041,7 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Reset => {
-            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             ctx.connected_urls.clear();
             // T114b — preserve the FFI-channel drop-counter handle across
             // Reset (the underlying Arc<AtomicU64> is shared with the FFI
@@ -957,6 +1100,24 @@ pub(super) fn dispatch_command(
             if let Some(handle) = relay_edit_rows_handle {
                 ctx.kernel.set_relay_edit_rows_handle(handle);
             }
+            // V-40 — re-bind the substrate `EventIngestDispatcher` slot
+            // and the `DmInboxRelayLookup` handle on the rebuilt kernel.
+            // The slots outlive the reset (shared `Arc`s with `NmpApp`);
+            // re-binding ensures the rebuilt kernel sees the same per-NIP
+            // parser registrations + DM-relay cache the registration path
+            // mutated. Mirrors the initial bind in
+            // `run_actor_with_observers`.
+            ctx.kernel
+                .set_ingest_dispatcher_slot(Arc::clone(ctx.ingest_dispatcher_slot));
+            {
+                let lookup = ctx
+                    .dm_inbox_relays_slot
+                    .lock()
+                    .ok()
+                    .map(|g| Arc::clone(&*g))
+                    .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
+                ctx.kernel.set_dm_inbox_relay_lookup(lookup);
+            }
             // D2 — re-install the coverage-gate hook on the rebuilt kernel.
             // The slot outlives the reset (shared `Arc` with `NmpApp`); reading
             // it here ensures the rebuilt lifecycle also enforces D2. Mirrors
@@ -969,12 +1130,57 @@ pub(super) fn dispatch_command(
             {
                 ctx.kernel.lifecycle_mut().set_coverage_hook(hook);
             }
+            // V-51 phase 4 — re-publish the rebuilt kernel's routing-trace
+            // projection clone into the shared slot. The previous projection
+            // was attached to the now-discarded kernel; `Reset` is a "wipe
+            // state" command and the reader contract is "the most recent
+            // routing decisions of the live kernel".
+            if let Ok(mut guard) = ctx.routing_trace_slot.lock() {
+                *guard = Some(ctx.kernel.routing_trace());
+            }
+            // V-51 phase 5 — re-apply the per-app substrate-routing factory
+            // against the rebuilt kernel. Same contract as the routing-trace
+            // re-publish above: the previous router/cache pair was discarded
+            // with the old kernel; the factory rebuilds against the fresh
+            // projection so production composition survives a state wipe.
+            if let Some(factory) = ctx
+                .routing_substrate_slot
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(Arc::clone))
+            {
+                let observer: Arc<dyn crate::substrate::RoutingTraceObserver> =
+                    ctx.kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
+                let (router, cache) = factory(observer);
+                ctx.kernel.set_routing(router, cache);
+            }
+            // Spec §271 (2026-05-25) — re-apply the per-app
+            // substrate-publish-resolver factory against the rebuilt kernel.
+            // Same contract as the routing-substrate re-apply above: the
+            // previous resolver was discarded with the old kernel; the
+            // factory rebuilds against the fresh handles so production
+            // composition survives a state wipe.
+            if let Some(factory) = ctx
+                .publish_resolver_slot
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(Arc::clone))
+            {
+                let resolver = factory(
+                    ctx.kernel.event_store_handle(),
+                    ctx.kernel.indexer_relays_handle(),
+                    ctx.kernel.local_write_relays_handle(),
+                    ctx.kernel.active_account_handle(),
+                );
+                ctx.kernel.set_publish_resolver(resolver);
+            }
             *ctx.startup_sent = false;
             if *ctx.running {
                 ctx.kernel.start();
                 spawn_missing_relays(
                     ctx.relay_controls,
-                    ctx.relay_tx,
+                    ctx.slot_to_url,
+                    ctx.pool,
                     ctx.kernel,
                     ctx.next_relay_generation,
                 );
@@ -1003,33 +1209,116 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Shutdown => {
-            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             ctx.connected_urls.clear();
             None
         }
         ActorCommand::Protocol(cmd) => {
-            // V-38: the open-seam dispatch arm. Hands the command a
-            // `ProtocolCommandContext` wired to the actor's own command
-            // channel (`send`), the live kernel handle, and an outbound
-            // sink the command body pushes relay frames into. NIP-crate
-            // runtimes (today `nmp-nip47`) consume all three.
+            // Step 1.b — the open-seam dispatch arm. Debt C replaced the
+            // prior 12-positional-closure bundle with typed capability
+            // adapters (`KernelClock`/`LocalSignerAccess`/`DmInboxLookup`/
+            // `ErrorSurface`/`ActionStageTracker`/`RecipientRelayLookup`).
+            // Each adapter borrows a `RefCell`-wrapped reference to the
+            // kernel or identity runtime; the kernel and identity types
+            // stay crate-private (D0 — NIP crates name neither). Borrows
+            // are released the moment `cmd.run` returns — the worker thread
+            // the LNURL command spawns owns its own `Sender<ActorCommand>`
+            // clone and never re-enters the context.
+            //
+            // V-38: the dispatch arm additionally attaches an `&mut Kernel`
+            // and an outbound-frame sink so NIP-crate runtimes (today
+            // `nmp-nip47`) can mutate the kernel synchronously and surface
+            // relay frames the actor drains into `send_all_outbound`
+            // without re-entering through the `send` channel.
             let tx = ctx.command_tx_self.clone();
             let send = move |c: crate::actor::ActorCommand| {
                 // D6 — disconnected sender (post-Shutdown) is a benign
                 // send-failure on the worker side; swallow as a no-op.
                 let _ = tx.send(c);
             };
+            // Snapshot the DM-inbox lookup Arc for the duration of this
+            // dispatch arm. The `Arc<dyn DmInboxRelayLookup>` is the
+            // production kind:10050 cache (`nmp_nip17::DmRelayCache`).
+            let dm_lookup = ctx.kernel.dm_inbox_relays_arc();
+            // The kernel + identity adapters share disjoint borrows of the
+            // actor context via `RefCell`. `ProtocolCommand::run` is
+            // single-threaded sync, so the inner `borrow`/`borrow_mut`
+            // calls serialize naturally.
+            //
+            // V-38: the typed capability adapters borrow `ctx.kernel` via
+            // `RefCell`; the V-38 `with_kernel` builder needs an exclusive
+            // `&mut Kernel` borrow. The adapters and the direct kernel
+            // borrow are mutually exclusive — the `with_kernel` borrow
+            // begins after the adapters drop at end-of-block. We capture
+            // the identity-runtime ref first (immutable) so it can outlive
+            // the adapter scope; the kernel borrow is rebuilt in the
+            // post-adapter block below.
+            let identity_cell = std::cell::RefCell::new(&*ctx.identity);
+            let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
+
+            let clock = KernelClockAdapter { kernel: &kernel_cell };
+            let signers = LocalSignerAccessAdapter { identity: &identity_cell };
+            let errors = ErrorSurfaceAdapter { kernel: &kernel_cell };
+            let stages = ActionStageTrackerAdapter { kernel: &kernel_cell };
+            let recipients = RecipientRelayLookupAdapter { kernel: &kernel_cell };
+
+            // A second sender clone for the worker-thread surface. Cloning
+            // a `mpsc::Sender` is cheap (atomic ref-count bump); the
+            // dispatch arm always populates this slot in production.
+            let worker_tx = ctx.command_tx_self.clone();
             let mut outbound: Vec<crate::relay::OutboundMessage> = Vec::new();
-            {
-                let mut pctx = crate::substrate::ProtocolCommandContext::new(&send)
-                    .with_kernel(ctx.kernel)
-                    .with_outbound(&mut outbound);
-                if let Err(e) = cmd.run(&mut pctx) {
-                    tracing::warn!(error = %e, "ProtocolCommand returned error");
-                    ctx.kernel
-                        .set_last_error_toast(Some(e.message().to_string()));
-                }
+            let run_err = {
+                let pctx = crate::substrate::ProtocolCommandContext::new(
+                    crate::substrate::ProtocolCommandContextParts {
+                        send: &send,
+                        command_sender: worker_tx,
+                        clock: &clock,
+                        signers: &signers,
+                        dms: &*dm_lookup,
+                        errors: &errors,
+                        stages: &stages,
+                        recipients: &recipients,
+                    },
+                )
+                .with_outbound(&mut outbound);
+                // V-38: attach the kernel handle so wallet `ProtocolCommand`
+                // bodies can drive kernel state (toast, persistent-sub
+                // register, action-terminal record) directly. The kernel
+                // borrow here is taken through the `RefCell` so the typed
+                // adapters above continue to function during `cmd.run`.
+                // Since `ProtocolCommand::run` is single-threaded sync, the
+                // adapters' `RefCell` borrows and the `with_kernel` borrow
+                // are sequenced naturally inside the command body.
+                let mut kernel_ref = kernel_cell.borrow_mut();
+                let mut pctx = pctx.with_kernel(&mut *kernel_ref);
+                let res = cmd.run(&mut pctx);
+                drop(pctx);
+                drop(kernel_ref);
+                res
+            };
+            if let Err(e) = run_err {
+                tracing::warn!(error = %e, "ProtocolCommand returned error");
             }
+            // Drop the adapter borrows before the emit so `emit_now` can
+            // re-borrow `ctx.kernel` mutably. The `kernel_cell` /
+            // `identity_cell` `RefCell` borrows are released when the
+            // adapters drop at end-of-block — explicitly drop the
+            // adapters here so the `emit_now` below sees a fully
+            // released `ctx.kernel`. The `RefCell` owners themselves are
+            // moved at function end (no explicit `drop` needed once the
+            // adapters that borrowed them are dropped).
+            drop(recipients);
+            drop(stages);
+            drop(errors);
+            drop(signers);
+            drop(clock);
+            // V-41 + V-39+V-40 + V-38 — a `ProtocolCommand` body may have
+            // mutated the kernel (the `Requested` stage write, a toast, a
+            // recorded failure) or queued follow-up `ActorCommand`s
+            // (`ShowToast` / `RecordActionFailure` / `PublishSignedEvent`).
+            // Emit promptly so the next snapshot tick carries the visible
+            // effect, mirroring the legacy `FetchLnurlInvoice` and
+            // `SendGiftWrappedDm` arms' `emit_now` precedents.
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -1057,16 +1346,36 @@ pub(super) fn dispatch_command(
     }
 }
 
+/// Resolve a [`nmp_network::pool::RelayHandle`] back to the `(URL, role)`
+/// pair the actor tracks in `relay_controls`. Returns `None` for a stale
+/// handle — the slot may have been reopened (different generation) or the
+/// caller may have already shut down the worker for this URL. Stale events
+/// are dropped silently; the pool's translator already filters out events
+/// whose slot generation no longer matches, so this is belt-and-braces.
+fn resolve_handle<'a>(
+    h: nmp_network::pool::RelayHandle,
+    relay_controls: &'a HashMap<CanonicalRelayUrl, RelayControl>,
+    slot_to_url: &'a HashMap<u32, CanonicalRelayUrl>,
+) -> Option<(&'a CanonicalRelayUrl, RelayRole)> {
+    let url = slot_to_url.get(&h.slot())?;
+    let control = relay_controls.get(url)?;
+    if control.handle.generation() != h.generation() {
+        return None;
+    }
+    Some((url, control.role))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_relay_event(
-    event: RelayEvent,
+    event: PoolEvent,
     kernel: &mut Kernel,
     // V-38: substrate-generic interceptor slot — `nmp-nip47`'s wallet
     // runtime installs itself here to peek at kind:23195 NWC responses
     // before the kernel drops them as unknown kinds.
     relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
     next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
     connected_urls: &mut HashSet<CanonicalRelayUrl>,
@@ -1076,15 +1385,29 @@ pub(super) fn handle_relay_event(
     running: bool,
 ) {
     match event {
-        RelayEvent::Connected {
-            role, relay_url, ..
-        } => {
+        // ── Opened ───────────────────────────────────────────────────────
+        // Pool→kernel handshake for "socket dial completed". Carries the
+        // URL (the only `PoolEvent` variant that does) plus the handle's
+        // generation — we look up the role from `relay_controls` keyed by
+        // the canonical URL the pool reports (already canonical, since
+        // `ensure_relay_worker` only ever hands canonical strings in).
+        PoolEvent::Opened { h, url, .. } => {
+            let canonical = CanonicalRelayUrl::parse_or_raw(&url);
+            let Some(control) = relay_controls.get(&canonical) else {
+                // No control row — stale event (worker spawned, then
+                // RemoveRelay shut down the slot before `Opened` arrived).
+                return;
+            };
+            if control.handle.generation() != h.generation() {
+                return;
+            }
+            let role = control.role;
             connected_relays.insert(role);
-            kernel.relay_connected(role);
-            // T116/G1 — reconnect-replay. The first `Connected` for a URL is
+            kernel.relay_connected_url(role, &url);
+            // T116/G1 — reconnect-replay. The first `Opened` for a URL is
             // the initial dial; the startup path (`maybe_send_startup` /
             // `kernel.startup_requests()`) emits REQs there. Every
-            // subsequent `Connected` after a `Failed`/`Closed` is a true
+            // subsequent `Opened` after a `Failed`/`Closed` is a true
             // reconnect — the kernel's `wire_subs` for that URL were
             // evicted by `relay_closed` (T133), and the relay's
             // per-connection sub-id table is fresh, so we must re-emit
@@ -1095,13 +1418,14 @@ pub(super) fn handle_relay_event(
             //
             // D7 preserved: actor reports the OS-level transition; the
             // kernel decides what to replay and rewrites `since`.
-            let is_reconnect = !connected_urls.insert(CanonicalRelayUrl::parse_or_raw(&relay_url));
+            let is_reconnect = !connected_urls.insert(canonical.clone());
             if is_reconnect && running {
-                let replay = kernel.replay_on_reconnect(role, &relay_url);
+                let replay = kernel.replay_on_reconnect(role, &url);
                 if !replay.is_empty() {
                     send_all_outbound(
                         relay_controls,
-                        relay_tx,
+                        slot_to_url,
+                        pool,
                         kernel,
                         next_relay_generation,
                         replay,
@@ -1109,11 +1433,12 @@ pub(super) fn handle_relay_event(
                 }
             }
             if running {
-                let publish_replay = kernel.mark_publish_relay_available(&relay_url);
+                let publish_replay = kernel.mark_publish_relay_available(&url);
                 if !publish_replay.is_empty() {
                     send_all_outbound(
                         relay_controls,
-                        relay_tx,
+                        slot_to_url,
+                        pool,
                         kernel,
                         next_relay_generation,
                         publish_replay,
@@ -1125,58 +1450,75 @@ pub(super) fn handle_relay_event(
                 startup_sent,
                 connected_relays,
                 relay_controls,
-                relay_tx,
+                slot_to_url,
+                pool,
                 kernel,
                 next_relay_generation,
             );
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Failed {
-            role,
-            relay_url,
-            error,
-            ..
-        } => {
+        // ── Failed ───────────────────────────────────────────────────────
+        // Pool→kernel "socket dial / mid-session failed". The pool decides
+        // whether this is permanent (HTTP 401/403 → no reconnect) or
+        // transient (transport reset → it will retry with backoff). The
+        // kernel observable is the per-URL `retrying` mark either way; the
+        // permanent-vs-transient distinction surfaces via the next
+        // `Opened` (transient) or absence thereof (permanent).
+        PoolEvent::Failed { h, error, .. } => {
+            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+                return;
+            };
+            let url = url.as_str().to_string();
             connected_relays.remove(&role);
             *startup_sent = false;
             // T105: scope the `retrying` mark to the specific socket that
             // failed — sibling sockets sharing this role lane are still live.
-            kernel.relay_failed(role, &relay_url, error);
-            kernel.mark_publish_relay_unavailable(&relay_url);
+            kernel.relay_failed(role, &url, error.message);
+            kernel.mark_publish_relay_unavailable(&url);
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Closed {
-            role, relay_url, ..
-        } => {
+        // ── Closed ───────────────────────────────────────────────────────
+        // Pool→kernel "socket torn down, no retry". Mirrors the legacy
+        // `RelayEvent::Closed` arm one-to-one.
+        PoolEvent::Closed { h, .. } => {
+            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+                return;
+            };
+            let url = url.as_str().to_string();
             connected_relays.remove(&role);
             *startup_sent = false;
             // T105: scope T133 wire-sub eviction to the closed socket's URL,
             // not the whole role lane (sibling sockets keep their subs).
-            kernel.relay_closed(role, &relay_url);
-            kernel.mark_publish_relay_unavailable(&relay_url);
+            kernel.relay_closed(role, &url);
+            kernel.mark_publish_relay_unavailable(&url);
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Message {
-            role,
-            relay_url,
-            message,
-            ..
-        } if running => {
-            // V-38: peek at the text payload BEFORE conversion so an
+        // ── Frame ────────────────────────────────────────────────────────
+        // Pool→kernel inbound wire frame. The pool's translator already
+        // converted `tungstenite::Message → RelayFrame` (and pre-classified
+        // NIP-42 AUTH frames into `RelayFrame::Auth` in phase E); we
+        // round-trip the `Auth` variant back to a `Text` frame so the
+        // kernel's existing ingest path handles AUTH unchanged.
+        PoolEvent::Frame { h, frame, .. } if running => {
+            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+                return;
+            };
+            let url_str = url.as_str().to_string();
+            // V-38: peek at the text payload BEFORE kernel ingest so an
             // installed substrate-generic relay-text interceptor (today
             // `nmp-nip47`'s NWC runtime) can decode kind:23195 responses
             // the kernel itself drops as unknown kinds. The interceptor
             // filters by relay URL internally; uninteresting frames are a
-            // single-lock no-op.
-            let raw_text = match &message {
-                tungstenite::Message::Text(s) => Some(s.clone()),
+            // single-lock no-op. D0: substrate-generic — no NIP-47 / NWC
+            // nouns in nmp-core.
+            let raw_text = match &frame {
+                PoolFrame::Text(s) => Some(s.clone()),
+                // Phase F: phase-E `RelayFrame::Auth` doesn't carry a
+                // payload an interceptor would interpret; nothing to peek.
                 _ => None,
             };
-            // V-01 Phase 1c: convert the native `tungstenite::Message` into the
-            // wire-transport-agnostic [`RelayFrame`] before crossing the kernel
-            // boundary.
-            let frame = tungstenite_message_to_relay_frame(message);
-            let mut outbound = kernel.handle_message(role, &relay_url, frame);
+            let kernel_frame = pool_frame_to_relay_frame(frame);
+            let mut outbound = kernel.handle_message(role, &url_str, kernel_frame);
             outbound.extend(kernel.pending_view_requests());
             if let Some(text) = raw_text {
                 let interceptor_handle = relay_text_interceptor
@@ -1184,19 +1526,24 @@ pub(super) fn handle_relay_event(
                     .ok()
                     .and_then(|guard| guard.as_ref().cloned());
                 if let Some(interceptor) = interceptor_handle {
-                    let extra = interceptor.on_relay_text(kernel, &relay_url, &text);
+                    let extra = interceptor.on_relay_text(kernel, &url_str, &text);
                     outbound.extend(extra);
                 }
             }
             send_all_outbound(
                 relay_controls,
-                relay_tx,
+                slot_to_url,
+                pool,
                 kernel,
                 next_relay_generation,
                 outbound,
             );
         }
-        RelayEvent::Message { .. } => {}
+        PoolEvent::Frame { .. } => {}
+        // ── Health ───────────────────────────────────────────────────────
+        // Diagnostic snapshot; the kernel doesn't act on it (per-URL health
+        // is M11). Reserved for future per-URL health-row writes.
+        PoolEvent::Health { .. } => {}
     }
 }
 

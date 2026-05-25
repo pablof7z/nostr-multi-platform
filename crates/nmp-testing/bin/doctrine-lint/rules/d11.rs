@@ -50,9 +50,10 @@
 //!
 //! The driver runs D11 on every file the rest of the doctrine-lint visits
 //! (no separate path scoping). In practice every offending callsite must
-//! live in `crates/nmp-core/src/ffi/` (that is the only place the FFI
-//! prefix is `#[no_mangle] extern "C"`-exported), so the lint only ever
-//! fires there in real code.
+//! live in `crates/nmp-ffi/src/` (after step 11-final of
+//! `docs/architecture/crate-boundaries.md` §5 extracted the FFI shell
+//! from `nmp-core::ffi`), since that is the only place the `nmp_app_*`
+//! prefix is `#[no_mangle] extern "C"`-exported.
 
 pub const ID: &str = "D11";
 

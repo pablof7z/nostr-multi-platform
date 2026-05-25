@@ -71,7 +71,7 @@ pub use nmp_signer_broker::{
 /// `app` must be a valid pointer returned by `nmp_app_new`. NULL is
 /// tolerated (silent no-op, matching every other `nmp_app_*` D6 contract).
 #[no_mangle]
-pub extern "C" fn nmp_app_notes_init(_app: *mut nmp_core::NmpApp) {
+pub extern "C" fn nmp_app_notes_init(_app: *mut nmp_ffi::NmpApp) {
     // No custom projections needed for the spike.
 }
 
@@ -89,10 +89,12 @@ mod tests {
     fn init_with_real_app_is_idempotent() {
         // The marker is empty, so repeat calls must be safe. Allocates a
         // real `NmpApp` to make sure the call site type-checks against the
-        // re-exported `NmpApp` from `nmp_core`.
-        let app = nmp_app_new();
+        // re-exported `NmpApp` from `nmp_core`. Step 11 final moved the
+        // C-ABI symbols to `nmp-ffi`; this test reaches them through that
+        // crate's public Rust path.
+        let app = nmp_ffi::nmp_app_new();
         nmp_app_notes_init(app);
         nmp_app_notes_init(app);
-        nmp_app_free(app);
+        nmp_ffi::nmp_app_free(app);
     }
 }

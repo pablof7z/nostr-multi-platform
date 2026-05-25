@@ -8,9 +8,15 @@
 //! routes every kernel publish through the engine instead.
 //!
 //! Doctrine map (canonical per `docs/product-spec/doctrine.md`):
-//! - **D3** (outbox automatic): the engine is built against
-//!   `Nip65OutboxResolver`; every `Publish` uses `PublishTarget::Auto` so the
-//!   resolver decides relays — no hardcoded URLs.
+//! - **D3** (outbox automatic): the engine is built against an
+//!   `Arc<dyn OutboxResolver>` slot (default: `NoopOutboxResolver`);
+//!   production composition (`nmp-app-template::register_defaults`) installs
+//!   the router-side `nmp_router::Nip65OutboxResolver` via
+//!   [`Kernel::set_publish_resolver`]. Every `Publish` uses
+//!   `PublishTarget::Auto` so the installed resolver decides relays — no
+//!   hardcoded URLs. With the default `NoopOutboxResolver` the engine
+//!   surfaces `NoTargets` (fail-closed), exactly the same as the
+//!   `Nip65OutboxResolver` does for an author with no kind:10002.
 //! - **D4** (single writer per fact): only the kernel mutates engine state,
 //!   only the engine mutates per-relay state. The actor holds the kernel
 //!   one-thread, so the single-writer property is preserved.
@@ -26,40 +32,36 @@
 use std::sync::Arc;
 
 use crate::publish::{
-    Nip65OutboxResolver, NoopSigner, PublishAction, PublishEngine, PublishStore, PublishTarget,
-    QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, TerminalOutcome,
+    NoopOutboxResolver, NoopSigner, OutboxResolver, PublishAction, PublishEngine, PublishStore,
+    PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, TerminalOutcome,
 };
 use crate::relay::{OutboundMessage, RelayRole};
-use crate::store::EventStore;
 use crate::substrate::SignedEvent;
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms, split_ok_message};
-use super::{ActiveAccountSlot, IndexerRelaysSlot, Kernel, LocalWriteRelaysSlot};
+use super::Kernel;
 
-/// Build the kernel's publish engine over a fresh `Nip65OutboxResolver` rooted
-/// in the shared `EventStore`. `indexer_relays` is a shared handle the kernel
-/// keeps in sync with its relay config; the resolver reads it on every publish
-/// so discovery-kind fan-out always uses current URLs.
+/// Build the kernel's publish engine with the in-crate `NoopOutboxResolver`
+/// default. Production composition (`nmp-app-template::register_defaults`)
+/// swaps in the router-side `nmp_router::Nip65OutboxResolver` via
+/// [`Kernel::set_publish_resolver`] before any publish lands — until then
+/// every `PublishTarget::Auto` resolves to an empty set and the engine emits
+/// `NoTargets` (fail-closed by default, exactly as the production
+/// `Nip65OutboxResolver` does for an uncached author).
 ///
-/// The `indexer_relays` / `local_write_relays` handles are typed slots
-/// ([`IndexerRelaysSlot`] / [`LocalWriteRelaysSlot`]) so D14 flags any
-/// future regression to bare `Arc<Mutex<Vec<String>>>` field shapes.
+/// Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved out of
+/// `nmp_core::publish::nip65` into `nmp_router` so the substrate stays
+/// NIP-neutral (D0). The kernel cannot name the router-side type (Layer 3
+/// → Layer 2 inverts the dependency arrow), so the injection flows through
+/// the `NmpApp::set_publish_resolver_factory` slot the actor reads at
+/// kernel construction time.
 pub(super) fn build_engine(
-    event_store: Arc<dyn EventStore>,
     dispatcher: Arc<QueueDispatcher>,
     publish_store: Arc<dyn PublishStore>,
-    indexer_relays: IndexerRelaysSlot,
-    local_write_relays: LocalWriteRelaysSlot,
-    active_account: ActiveAccountSlot,
 ) -> PublishEngine {
-    let resolver = Nip65OutboxResolver::with_local_relays(
-        event_store,
-        indexer_relays,
-        local_write_relays,
-        active_account,
-    );
+    let resolver: Arc<dyn OutboxResolver> = Arc::new(NoopOutboxResolver);
     PublishEngine::new(
-        Arc::new(resolver),
+        resolver,
         dispatcher as Arc<dyn RelayDispatcher>,
         publish_store,
         Arc::new(NoopSigner),

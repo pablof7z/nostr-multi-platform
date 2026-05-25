@@ -10,10 +10,11 @@ crate-type = ["staticlib", "rlib"]
 
 [features]
 # `native` gates all I/O-bound code: the C-ABI FFI layer, the actor *runtime*
-# (run_actor + dispatch + relay management + tick + LNURL worker + DM /
-# publish executors), relay_worker (tungstenite TCP), LMDB store backend, and
-# the sync HTTP client (ureq/LNURL fetcher). Enabled by default so existing
-# native consumers see no change.
+# (run_actor + dispatch + relay management + tick + DM / publish executors),
+# relay_worker (tungstenite TCP), and the LMDB store backend. Enabled by
+# default so existing native consumers see no change. V-41 — the LNURL HTTP
+# worker (`ureq`) moved to `nmp-nip57::lnurl`; `nmp-core` no longer pulls
+# `ureq`.
 #
 # Disable with `default-features = false` to compile only the pure kernel +
 # `ActorCommand` data type + substrate traits for wasm32 or other no-std-io
@@ -26,16 +27,29 @@ crate-type = ["staticlib", "rlib"]
 # gated.
 default = ["native"]
 # I/O layer — native platforms (Linux, macOS, iOS, Android).
-# Gates: tungstenite, ureq, mio, rustls, heed, nostr-database, nmp-nostr-lmdb,
-# and the chrono/clock feature (wall-clock reads via the OS).
+# Phase F (this PR) — the production actor consumes only the
+# `nmp_network::pool::Pool` push-model surface; `tungstenite` survives in
+# this manifest solely so the loopback-server test fixtures in
+# `actor::relay_mgmt::tests` can run a fake relay (`tungstenite::accept`).
+# The production kernel→transport seam speaks `nmp_network::pool::RelayFrame`
+# (the pool's translator owns the underlying `tungstenite::Message`
+# conversion).
+#
+# Gates: tungstenite (test-only fake server in `relay_mgmt::tests`), heed,
+# nostr-database, nmp-nostr-lmdb, and the chrono/clock feature.
+#
+# `nmp-network` itself is an unconditional dep (declared below) because
+# `relay.rs` re-exports `RelayRole` from there for downstream callers;
+# `nmp-network`'s wasm slice (default-features = false) compiles without
+# the tungstenite/mio/rustls graph, so the wasm32 build keeps working.
+#
+# V-41 — `ureq` moved out with the LNURL fetcher (`nmp-nip57::lnurl`).
+# Step 8 phase A — `mio`/`rustls` moved into `nmp-network` (gated by
+# `nmp-network/native`); not re-pulled here.
 native = [
     "dep:tungstenite",
-    "dep:ureq",
-    "dep:mio",
-    "dep:rustls",
-    "dep:heed",
-    "dep:nostr-database",
-    "dep:nmp-nostr-lmdb",
+    "nmp-network/native",
+    "nmp-store/lmdb-backend",
     "chrono/clock",
 ]
 # V-38: the `wallet` feature was deleted; the NIP-47 NWC wallet stack
@@ -45,16 +59,22 @@ native = [
 # step 7. The `nmp_app_wallet_*` FFI symbols stay on `nmp-core::ffi::wallet`
 # as thin shims over `dispatch_action` (no `nmp-nwc` dep at the kernel boundary).
 # Expose actor internals for live-bench harnesses and integration test binaries.
-# Never enable in production builds.
-test-support = []
-# Enable the LMDB-backed EventStore. Pulls in the NMP-local nostr-lmdb fork
-# (with env-injection seam) + heed + nostr-database. ADR-0011, ADR-0012.
-# lmdb-backend implies native (LMDB requires OS file I/O).
-lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database", "native"]
-# Re-export all FFI entry-points via Rust paths so nmp-android-ffi can call them
-# through the rlib dependency (extern "C" declarations are opaque to Rust CGU
-# compilation — the android-ffi feature is the portable fix).
-# android-ffi implies native (the FFI layer is C-ABI, native-only).
+# Never enable in production builds. Forwards to `nmp-store/test-support` so
+# `VerifiedEvent::from_raw_unchecked` (used by every store harness + the kernel
+# replay tests) is reachable through the re-exported `nmp_core::store` path.
+test-support = ["nmp-store/test-support"]
+# Enable the LMDB-backed EventStore. Forwards to nmp-store's lmdb-backend
+# feature (which pulls in the NMP-local nostr-lmdb fork, heed, and
+# nostr-database). ADR-0011, ADR-0012. lmdb-backend implies native (LMDB
+# requires OS file I/O).
+lmdb-backend = ["nmp-store/lmdb-backend", "native"]
+# Step 11 final — the `android-ffi` feature used to gate the FFI
+# re-export surface that nmp-android-ffi consumed. The whole `ffi::`
+# module moved to the standalone `nmp-ffi` crate; the JNI shim now
+# depends on `nmp-ffi` directly, so this feature is a thin alias for
+# `native` retained for downstream compatibility (the workspace still
+# has callers passing `--features android-ffi` to mean "give me the
+# native FFI graph").
 android-ffi = ["native"]
 # V6 Stage 1 — Swift `Decodable` emitter. Adds `schemars::JsonSchema` derives
 # to the projection types `nmp-codegen` reflects into Swift, and exposes the
@@ -88,25 +108,26 @@ nostr = { workspace = true, features = ["nip44", "nip59"] }
 # V-38: the `nmp-nwc` dep was deleted from `nmp-core`. NIP-47 is consumed
 # exclusively by `crates/nmp-nip47` post-V-38.
 nmp-signer-iface = { path = "../nmp-signer-iface" }
-# native-only I/O deps — optional, gated behind the `native` feature.
-# mio: OS event loop (epoll/kqueue) used by relay_worker for non-blocking I/O.
-mio = { version = "1", features = ["os-ext", "os-poll"], optional = true }
-# rustls: TLS for relay WebSocket connections (native relay_worker only).
-rustls = { workspace = true, default-features = false, features = ["ring"], optional = true }
+# Step 8 (extraction phase A): the native WebSocket relay worker
+# (`relay_worker/`) + the wire-transport-agnostic `relay_protocol`
+# constants moved to `nmp-network`. The actor consumes
+# `nmp_network::relay_worker::{RelayEvent, RelayCommand, spawn_relay_worker}`
+# under the `native` gate; `nmp-core` itself unconditionally re-exports
+# `RelayRole` and uses `relay_protocol` constants, so the dep is
+# always-on (with `default-features = false` so wasm32 stays clean).
+# `mio` / `rustls` deps moved with the worker; they no longer appear in
+# this manifest.
+nmp-network = { path = "../nmp-network", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
-# tungstenite: native WebSocket over TCP (relay_worker and actor). optional=true
-# so wasm32 builds (which use web_sys::WebSocket) compile without it.
+# tungstenite: still named here because the kernel's outbound/inbound wire
+# frame type is `tungstenite::Message` (the actor's `RelayEvent::Message`
+# arm names it, and the conversion to `RelayFrame` runs in
+# `actor::dispatch`). The native transport that *produces* these messages
+# lives in `nmp-network`; the type lives here for the kernel→transport seam.
+# optional=true so wasm32 builds (which use web_sys::WebSocket) compile
+# without it.
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
-# Sync HTTP client used by the LNURL fetcher worker spawned from the
-# `ActorCommand::FetchLnurlInvoice` arm (NIP-57 zaps, ADR-0024 minimum-viable
-# path). `tls` rides the same rustls graph the rest of nmp-core uses
-# (rustls + webpki-roots, ring crypto provider). `json` enables `Response::into_json`
-# for the LNURL-pay endpoint responses. No async runtime is introduced — the
-# worker runs on `std::thread::spawn` and sends a follow-up `ActorCommand`
-# back to the actor through a cloned `Sender<ActorCommand>` (D8: no blocking
-# on the actor thread). optional=true — native-only (wasm uses fetch() instead).
-ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 # Lightweight logging facade. Used by the NIP-17 DM send path to emit a
 # diagnostic `warn!` when the recipient's kind:10050 DM-relay list is not yet
 # cached and the send falls back to the configured Content relays — making the
@@ -122,16 +143,33 @@ zeroize = { workspace = true }
 # on each projection type the emitter reflects.
 schemars = { version = "0.8", optional = true }
 
-# LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
-# env-injection seam (ADR-0011); heed / nostr-database are the underlying
-# storage and event-encoding crates.
-nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true }
-heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }
-nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"], optional = true }
+# EventStore + DomainMigration types live in `nmp-store` (step 9 extraction).
+# nmp-core re-exports `store::*` and `substrate::{DomainMigration, MigrationTx}`
+# from this crate so existing import sites compile unchanged. The
+# `lmdb-backend` Cargo feature here forwards to `nmp-store/lmdb-backend`,
+# which is the one place the heed / nostr-database / nmp-nostr-lmdb graph
+# is pulled in.
+nmp-store = { path = "../nmp-store" }
+# LogicalInterest + subscription compiler live in `nmp-planner` (step 9
+# extraction). nmp-core re-exports `planner::*` and `stable_hash::*` from this
+# crate so existing import sites compile unchanged. nmp-planner is a Layer-2
+# foundation with NO back-edge into nmp-core — keeps the dep graph acyclic.
+nmp-planner = { path = "../nmp-planner" }
 
 [dev-dependencies]
 proptest = "1"
+# Step 8 phase A — the `outbox_perf` example installs the ring crypto
+# provider directly (it dials real relays so it needs to bootstrap rustls
+# the same way the production worker does). The runtime dep moved with
+# `relay_worker` to `nmp-network`; the example keeps a dev-only edge.
+rustls = { workspace = true, default-features = false, features = ["ring"] }
 tempfile = "3"
+# Re-pin nmp-store with the `test-support` feature so `cargo test -p nmp-core`
+# sees `VerifiedEvent::from_raw_unchecked` (used by the kernel replay tests
+# and the substrate ingest tests). Step 9 turned the formerly intra-crate
+# `cfg(test)` gate into a cross-crate dependency; dev-deps activate the
+# feature only for the test profile, so production builds never see it.
+nmp-store = { path = "../nmp-store", features = ["test-support"] }
 
 # NIP golden-tag conformance suite. Drives the (crate-private) command handlers
 # through the `test-support` facade (`nmp_core::testing::ConformanceHarness`),

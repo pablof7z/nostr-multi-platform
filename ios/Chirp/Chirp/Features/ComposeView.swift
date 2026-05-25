@@ -130,7 +130,7 @@ struct ComposeView: View {
         HStack(spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left.fill")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.tint)
+                .foregroundStyle(ChirpColor.accent)
 
             Text("Replying to a note")
                 .font(.callout)
@@ -149,7 +149,7 @@ struct ComposeView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground))
+        .background(ChirpColor.surface)
         .overlay(alignment: .bottom) {
             Divider()
         }

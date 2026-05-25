@@ -2,7 +2,8 @@
 
 The `nmp` command is what makes NMP **adoptable instead of hand-wired**: it
 scaffolds a new app and runs the codegen pipeline that produces the per-app
-FFI crate (ADR-0010).
+FFI crate (ADR-0010). It also installs app-owned source components from the
+offline NMP component registry.
 
 It ships in the `nmp-cli` crate (`crates/nmp-cli`). Install or run it:
 
@@ -92,6 +93,37 @@ the generated FFI crate, place the app under an `nmp` checkout so
 workspace members. The hand-written `<name>-core` skeleton has no such
 constraint (its `nmp-core` path is absolute).
 
+### `nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]`
+
+Copies an app-owned source component from the NMP component registry into an
+app tree and records the installed upstream baseline in `nmp.components.lock`.
+
+```sh
+nmp add component swiftui/content-minimal
+nmp add component swiftui/content-minimal --path /tmp/my-app --with example
+```
+
+- `--path` — app root to install into (default: current directory).
+- `--registry` — filesystem registry path for tests or local registry authoring
+  (default: the built-in offline registry embedded in `nmp-cli`).
+- `--with` — comma-separated optional file roles to include. Source files are
+  always installed; roles such as `example`, `doc`, `test`, and `fixture` are
+  opt-in.
+
+The initial built-in registry contains `swiftui/content-minimal`, which depends
+on `swiftui/content-core`. Installing the minimal bundle writes:
+
+```text
+Components/NostrContent/NostrContentRenderer.swift
+Components/NostrContent/NostrMinimalContentView.swift
+nmp.components.lock
+```
+
+Re-running `add component` for an already-installed component fails instead of
+overwriting app-owned files. The lock records component versions, target files,
+source paths, roles, and source hashes so `nmp update component` can later
+compute a safe source update against local app edits.
+
 ## Verification
 
 `crates/nmp-cli/tests/init.rs` is the end-to-end gate:
@@ -103,3 +135,10 @@ constraint (its `nmp-core` path is absolute).
 5. `nmp gen modules --check` → no drift (codegen is deterministic).
 
 A second test asserts invalid app names are rejected.
+
+`crates/nmp-cli/tests/component.rs` covers component installation:
+
+1. `nmp add component swiftui/content-minimal --with example`.
+2. Dependency installation for `swiftui/content-core`.
+3. Lock-file creation with installed source hashes.
+4. Duplicate and unknown-component rejection.

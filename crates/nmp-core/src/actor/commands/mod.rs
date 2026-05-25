@@ -62,8 +62,11 @@ mod conformance_support;
 // (`event_observer`, `raw_event_observer`, `lifecycle`) stay always-compiled
 // because the FFI surface and per-app crates name those types without
 // requiring the native runtime to be present.
-#[cfg(feature = "native")]
-mod dm;
+// V-39: NIP-17 DM send orchestration moved to `nmp-nip17` (see
+// `crates/nmp-nip17/src/dm_send.rs::SendGiftWrappedDmCommand`). The
+// `ActorCommand::SendGiftWrappedDm` variant + the `commands::dm` module are
+// deleted; the equivalent path now dispatches `ActorCommand::Protocol(
+// Box::new(SendGiftWrappedDmCommand { ... }))`.
 mod event_observer;
 mod identity;
 mod lifecycle;
@@ -73,15 +76,16 @@ mod raw_event_observer;
 #[cfg(feature = "native")]
 mod relays;
 mod remote_signer_for_seal;
-#[cfg(feature = "native")]
-mod zap;
-// LNURL-pay decode + URL-encode helpers split out of `zap` so the
-// orchestrator file stays under the 500-LOC file-size gate. Pure
-// functions; no I/O, no mutable state.
-#[cfg(feature = "native")]
-mod zap_lnurl;
-// V-38: the wallet command runtime moved to `crates/nmp-nip47`. `nmp-core`
-// no longer depends on `nmp-nwc`.
+// V-41 — `zap` + `zap_lnurl` moved to
+// `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` (a `ProtocolCommand`
+// dispatched via `ActorCommand::Protocol`). D0: `nmp-core` carries no
+// LNURL HTTP code or NIP-57 nouns. The original files lived at
+// `crates/nmp-core/src/actor/commands/zap.rs` + `zap_lnurl.rs`; their
+// `commands::zap::tests` module migrated to
+// `crates/nmp-nip57/src/lnurl/tests.rs`.
+// V-38 — the wallet command runtime moved to `crates/nmp-nip47`
+// (`WalletRuntime` + the three NIP-47 NWC `ProtocolCommand` impls).
+// `nmp-core` no longer depends on `nmp-nwc` and carries no NIP-47 nouns.
 // V-01 Phase 1c: every test module below exercises the native actor
 // runtime (publish / dm / relays helpers, `run_actor`, etc.). They share
 // the `native` gate with the modules they drive.
@@ -108,20 +112,32 @@ pub(super) use identity::{
 // only through `bunker_handshake_progress` / `sign_in_bunker`.
 // V-01 Phase 1c: bunker types consumed only by native FFI / actor runtime.
 #[cfg(feature = "native")]
-pub(crate) use identity::{
-    build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
-};
+pub(crate) use identity::build_nip46_onboarding_dto;
+// `new_bunker_handshake_slot` + `BunkerHandshakeSlot` reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*`. The slot type is `#[doc(hidden)] pub` (the
+// inner `BunkerHandshakeDto` likewise) so `nmp_app_new` can construct an
+// `Arc<Mutex<Option<BunkerHandshakeDto>>>` without re-implementing the slot
+// shape — but the type stays out of the public docs.
+#[cfg(feature = "native")]
+pub use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;
 // V-01 Phase 1c: lifecycle slot/registration types consumed only by native FFI / actor runtime.
+// `new_observer_slot` + `LifecycleObserverSlot` + `LifecycleObserverRegistration`
+// are reached by `nmp-ffi` through `nmp_core::__ffi_internal::*` (after the
+// step 11-final extraction).
 #[cfg(feature = "native")]
-pub(crate) use lifecycle::{
+pub use lifecycle::{
     new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,
 };
 // `pub` (not `pub(crate)`) so the test-support re-export in `lib.rs` works.
 // `commands` is crate-private (`mod commands;`), so external Rust code only
-// sees these through the gated `pub use` in lib.rs.
+// sees these through the gated `pub use` in lib.rs. The downstream re-export
+// fires under `any(test, feature = "test-support")` (top-level) or
+// `feature = "native"` (`__ffi_internal::LifecycleObserverFn`), so this gate
+// is the union: anything narrower would leave the lib.rs imports unresolved.
+#[cfg(any(test, feature = "test-support", feature = "native"))]
 pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 // T146 — kernel event observer slot. Re-exported up the actor module chain so
 // `ffi/event_observer.rs` and the per-app crate registration path (via
@@ -129,41 +145,70 @@ pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_P
 // the kernel holds for fan-out.
 // `KernelEventObserverSlot` and `notify_observers` are used by kernel/event_observer.rs
 // unconditionally. The slot constructors and registration helpers are native FFI only.
-pub(crate) use event_observer::{notify_observers, KernelEventObserverSlot};
+pub(crate) use event_observer::notify_observers;
+// `KernelEventObserverSlot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::KernelEventObserverSlot`.
+pub use event_observer::KernelEventObserverSlot;
+// `register_c_observer` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::register_c_observer`.
 #[cfg(feature = "native")]
-pub(crate) use event_observer::{
-    new_event_observer_slot, register_c_observer, register_rust_observer, unregister_observer,
-};
+pub use event_observer::register_c_observer;
+// Slot constructor + Rust-side register/unregister helpers reach `nmp-ffi`
+// through `nmp_core::__ffi_internal::*`.
+#[cfg(feature = "native")]
 pub use event_observer::{
-    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
-    KernelEventObserverRegistration,
+    new_event_observer_slot, register_rust_observer, unregister_observer,
 };
+// `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
+// are the typed observer surface re-exported unconditionally from `lib.rs`
+// (per-app Rust crates and the C-ABI wire shape). `KernelEventObserverRegistration`
+// only reaches the outside world through `lib.rs::__ffi_internal`
+// (`#[cfg(feature = "native")]`); gate it so a `--no-default-features` build
+// does not see an unused-import on the registration type.
+pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+#[cfg(feature = "native")]
+pub use event_observer::KernelEventObserverRegistration;
 // Raw signed-event tap. Parallel to the kernel-event observer slot above
 // but delivers the verbatim flat NIP-01 signed event (`sig` included),
 // kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
 // up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
 // registration path reach the same `Arc<Mutex<…>>` the kernel taps.
-#[cfg(feature = "native")]
-pub(super) use dm::send_gift_wrapped_dm;
+// V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
     follow, open_timeline, publish_note, publish_profile, publish_signed_event,
     publish_unsigned_event, publish_unsigned_event_to_relays, react,
 };
-// NIP-57 LNURL-pay handler. The dispatch arm in `actor/dispatch.rs` calls
-// this; the handler signs the kind:9734 on the actor thread and spawns a
-// worker for the HTTP round-trip (D8 — no blocking on the actor).
+// V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
+// LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`
+// variant. The replacement (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`)
+// is a `ProtocolCommand` dispatched through `ActorCommand::Protocol`;
+// `nmp-core` no longer carries the entry point.
+pub(crate) use raw_event_observer::{notify_raw_observers, raw_observers_idle_for_kind};
+// `register_c_raw_observer` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::register_c_raw_observer`. `__ffi_internal` is
+// `#[cfg(feature = "native")]`; mirror the gate so a `--no-default-features`
+// build does not see an unused re-export.
 #[cfg(feature = "native")]
-pub(super) use zap::handle_fetch_lnurl_invoice;
-pub(crate) use raw_event_observer::{
-    new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
-    register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
-    RawEventObserverSlot,
-};
+pub use raw_event_observer::register_c_raw_observer;
+// Slot constructor + Rust-side register/unregister helpers reach `nmp-ffi`
+// through `nmp_core::__ffi_internal::*` (same `native` gate). The
+// `RawEventObserverSlot` type itself is consumed unconditionally by
+// `kernel/raw_event_observer.rs` (the kernel holds an
+// `Option<RawEventObserverSlot>` field), so the slot type re-export stays
+// ungated.
+#[cfg(feature = "native")]
 pub use raw_event_observer::{
-    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-    RawEventObserverRegistration,
+    new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
 };
+pub use raw_event_observer::RawEventObserverSlot;
+// `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
+// are the typed observer surface re-exported unconditionally from `lib.rs`.
+// `RawEventObserverRegistration` reaches the outside world only through
+// `lib.rs::__ffi_internal` (`#[cfg(feature = "native")]`); gate it to match.
+pub use raw_event_observer::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
+#[cfg(feature = "native")]
+pub use raw_event_observer::RawEventObserverRegistration;
 // NIP golden-tag conformance harness — `pub` (not `pub(crate)`) so the gated
 // test-support re-export in `lib.rs` reaches the integration test outside the
 // crate. `commands` is itself crate-private, so non-test Rust code only sees
@@ -175,3 +220,5 @@ pub use conformance_support::ConformanceHarness;
 #[cfg(feature = "native")]
 pub(super) use relays::{add_relay, build_relay_list_event_from_edit_rows, remove_relay};
 // V-38: wallet runtime + status slot moved to `crates/nmp-nip47`.
+// `nmp-core` no longer has a `wallet` feature, a `wallet::` submodule, or
+// any `WalletRuntime` / `WalletStatus` / `WalletStatusSlot` re-export.

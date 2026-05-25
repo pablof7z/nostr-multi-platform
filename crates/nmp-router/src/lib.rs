@@ -20,6 +20,15 @@
 //!    (deleted) `nmp-nip65` crate at step 3. Routing owns kind:10002
 //!    end-to-end: ingest (parser → cache), routing (router reads cache),
 //!    publish (action builds the event).
+//! 5. [`Nip65OutboxResolver`] — the publish-side concrete
+//!    [`nmp_core::publish::OutboxResolver`] impl that reads kind:10002 from
+//!    an `EventStore` (crate-boundary spec §271; moved out of
+//!    `nmp-core::publish::nip65` so the substrate stays NIP-neutral per D0).
+//!    Production composition installs it via
+//!    `NmpApp::set_publish_resolver_factory` →
+//!    `Kernel::set_publish_resolver`; the kernel default is
+//!    `nmp_core::publish::NoopOutboxResolver` so a kernel without the
+//!    router-side resolver is still a clean no-op (fail-closed).
 //!
 //! Step 3 cuts the kernel over to `Arc<dyn OutboxRouter>` injection,
 //! deletes `nmp_core::kernel::outbox`, and replaces the kernel's
@@ -28,12 +37,16 @@
 
 mod cache;
 mod ingest;
+mod nip65_resolver;
 mod router;
 
 pub mod publish_relay_list;
 
 pub use cache::InMemoryMailboxCache;
 pub use ingest::Kind10002Parser;
+pub use nip65_resolver::{
+    is_discovery_kind, Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD,
+};
 pub use publish_relay_list::{
     build_relay_list_event, register_actions, PublishRelayListAction, PublishRelayListInput,
     RelayListEntry, RelayMarker,

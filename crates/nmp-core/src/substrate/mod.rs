@@ -41,8 +41,8 @@
 mod action;
 mod bounded;
 mod capability;
-mod default_routing;
-mod domain;
+mod dm_inbox_relays;
+mod empty_routing;
 mod identity;
 mod ingest;
 mod keyring;
@@ -51,6 +51,7 @@ pub mod placeholder;
 mod protocol;
 mod relay_intercept;
 mod routing;
+mod routing_trace;
 mod view;
 
 pub use action::{
@@ -58,8 +59,19 @@ pub use action::{
 };
 pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
+pub use dm_inbox_relays::{
+    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
-pub use domain::{DomainMigration, MigrationTx};
+// Step 9: the `DomainMigration` / `MigrationTx` value types passed to
+// `EventStore::run_migrations` moved with the store (they are consumed only by
+// that seam, and keeping them in `nmp-store` lets the store crate compile
+// without a back-edge into substrate). Re-exported here so the legacy
+// `nmp_core::substrate::{DomainMigration, MigrationTx}` import path is
+// unchanged.
+pub use nmp_store::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
@@ -67,18 +79,33 @@ pub use keyring::{
     MALFORMED_RESULT,
 };
 pub use placeholder::{picture_placeholder, Placeholder};
-pub use protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+pub use protocol::{
+    ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess,
+    NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
+    NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
+    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
+};
 pub use relay_intercept::{
     new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
 };
-pub use default_routing::{
-    InMemoryMailboxCache as DefaultInMemoryMailboxCache, Nip65WriteSetRouter,
-};
+// V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
+// only on `nmp-core` can name the signer-capability trait that
+// `ProtocolCommandContext::signer_for_seal` returns. Gift-wrap is the one
+// NIP crate substrate is allowed to depend on per the spec (Layer 4
+// exception); re-exporting its capability trait keeps the dep wall
+// asymmetric the way the architecture wants it.
+pub use nmp_nip59::SignerForSeal;
+pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
+#[cfg(any(test, feature = "test-support"))]
+pub use empty_routing::TestInMemoryMailboxCache;
 pub use routing::{
     AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,
     OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,
     RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, SessionKeySet,
     UserConfiguredCategory,
+};
+pub use routing_trace::{
+    truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace,
 };
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 

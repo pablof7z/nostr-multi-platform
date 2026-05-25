@@ -294,12 +294,13 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - relay_diagnostics.rs, markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10 (PRs #407-#412 — 2026-05-24)
 - doctrine-lint d11/d12/d15 (PRs #413-#415 — 2026-05-24)
 - nmp-nip29/projection/group_chat.rs (813 → 358 LOC), nmp-nip01/timeline_projection.rs (590 → 275 LOC), nmp-core/kernel/identity_state.rs (569 → 471 LOC) — third batch — 2026-05-24
+- nmp-router/src/router.rs (703 → 242 LOC), nmp-core/src/substrate/routing.rs (531 → 346 LOC), nmp-core/src/substrate/protocol.rs (745 → 519 LOC; still 19 LOC over — production split deferred) — fourth batch (PR #480) — 2026-05-25
 
 **Staged fix plan:**
 Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
 (ActorCommand closed enum analysis required — Opus review #10).
 
-### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM] — **DONE** (PR #431)
+### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM] — **DONE** (PR #431 — Stage 1; step 8 phase D — Stage 2 dedupe)
 
 **Verified:** `crates/nmp-signer-broker/src/relay_client.rs:103` calls
 `set_read_timeout(&mut socket, Duration::from_millis(100))`. The worker loop at
@@ -333,9 +334,18 @@ and the broker then depend on the same shared primitive.
   shared crate; delete the duplicated mio/readiness code in `relay_client.rs`.
   PR #431 already drains Shutdown between connect attempts as a partial
   mitigation for the residual stall.
-- **Status (2026-05-24):** PR #431 closes the polling-loop half (V-13) and the
-  auto-reconnect half (V-14a) with a self-contained mio readiness loop;
-  Stage 1 dedupe and connect-timeout remain.
+- **Status (2026-05-25):** Stage 2 dedupe shipped under step 8 phase D
+  (`docs/architecture/crate-boundaries.md` §5 step 8). `relay_client.rs` is
+  now a thin `nmp_network::Pool` adapter (`PoolRelayClient`); the duplicate
+  ~700-line mio/tungstenite readiness loop is gone, the broker's Cargo.toml
+  no longer names `tungstenite` / `mio` / `rustls` directly, and one
+  readiness-driven WebSocket implementation lives in the workspace
+  (`nmp_network::relay_worker`). The connect-timeout (Stage 1 residual) is
+  partially mitigated by `PoolRelayClient::connect`'s 10 s
+  CONNECT_BUDGET, which bounds the broker's per-URL try window so the
+  multi-relay cycle pivots within bounded time. The deeper fix (bound the
+  TCP/TLS handshake inside `nmp_network::relay_worker::open_relay_socket`)
+  still applies workspace-wide and remains open.
 - **Deadline:** before v1-A (any user sign-in via bunker hits this path).
 
 ### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
@@ -370,6 +380,13 @@ surface for "bunker connection lost" exists because the broker has no state for 
   REQ frame survives a flap. The UI-visible `BunkerConnectionState` projection
   (step b) is NOT yet wired — the host shell still gets only `"ready"` /
   `"failed"` from the handshake stage.
+- **Status (2026-05-25):** Step 8 phase D migrated the reconnect machinery
+  onto the shared `nmp_network::Pool` primitive (V-13 Stage 2 dedupe).
+  Mid-session reconnect with jittered exponential backoff now lives in
+  `nmp_network::relay_worker`; the broker's dispatcher replays installed
+  subscriptions on every fresh `PoolEvent::Opened` so REQ-survives-flap
+  is preserved end-to-end. V-14 step b (host-visible
+  `BunkerConnectionState`) is still pending and not blocked by this dedupe.
 - **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
   NIP-46 as a v1 sign-in method.
 
@@ -732,8 +749,8 @@ These are new framework affordances — they require an ADR before implementatio
 **V-37 is the actual PD-033-A blocker (review #18 finding 10):** the ADR for these
 three affordances has not been written. Until the ADR exists and the affordances are
 built, PD-033-A cannot close without re-using the Notes raw-event bypass. Either
-promote V-37 to a v1 blocker (F-08) or drop PD-033-A from the v1 exit criteria with
-a written rationale. V-45 splits sub-item (c) into its own tracked item.
+promote V-37 to a v1 blocker or drop PD-033-A from the v1 exit criteria with a
+written rationale. V-45 splits sub-item (c) into its own tracked item.
 
 ---
 
@@ -788,7 +805,16 @@ Stage 4 (delete `feature = "wallet"` from `nmp-core/Cargo.toml`).
 
 ---
 
-### V-39 · NIP-17 DM send handler + `SendGiftWrappedDm` `ActorCommand` variant in `nmp-core` [HIGH · post-v1 · staged fix required]
+### V-39 · NIP-17 DM send handler + `SendGiftWrappedDm` `ActorCommand` variant in `nmp-core` [HIGH] — **DONE** (PR #458 merged 2026-05-24, commit 852750b2)
+
+**Closed by PR #458** (combined with V-40): `SendGiftWrappedDmCommand` moved
+into `crates/nmp-nip17/src/dm_send.rs` and dispatches through the
+`ProtocolCommand` substrate seam (PR #448). `actor/commands/dm.rs` and the
+`ActorCommand::SendGiftWrappedDm` enum variant are deleted. Bunker NIP-46
+signing regressed and is tracked under V-08 (Phase 2 follow-up: add
+`SignerForSealCapability` to `ProtocolCommandContext`).
+
+#### Original violation (kept for archaeology)
 
 **Verified:** the NIP-17 gift-wrap send orchestration lives entirely in
 `nmp-core`, even though a dedicated `nmp-nip17` crate exists and already
@@ -820,7 +846,17 @@ Stage 1) + a `SignerForSealCapability` trait on the actor context.
 
 ---
 
-### V-40 · NIP-17 kind:10050 ingest + `dm_relay_lists` cache wrongly in kernel [MEDIUM · post-v1 · staged fix required]
+### V-40 · NIP-17 kind:10050 ingest + `dm_relay_lists` cache wrongly in kernel [MEDIUM] — **DONE** (PR #458 merged 2026-05-24, commit 852750b2)
+
+**Closed by PR #458** (combined with V-39): kind:10050 parser and DM-inbox
+relay cache moved into `crates/nmp-nip17/`: `Kind10050Parser` implements
+the substrate `IngestParser` trait (PR #447), `DmRelayCache` is owned by
+`nmp-nip17` and exposed back to the kernel via the substrate
+`DmInboxRelayLookup` trait so the kernel never names NIP-17 nouns. The
+old `Kernel::dm_relay_lists` field and `kernel/ingest/dm_relay_list.rs`
+are deleted.
+
+#### Original violation (kept for archaeology)
 
 **Verified:** kernel state and ingest logic for NIP-17's DM-inbox relay
 mechanism live in `nmp-core`:
@@ -860,7 +896,26 @@ kind:10050 match arm) → Stage 3 (generalise or remove
 
 ---
 
-### V-41 · NIP-57 zap LNURL handler + `FetchLnurlInvoice` `ActorCommand` variant in `nmp-core` [HIGH · post-v1 · staged fix required]
+### V-41 · NIP-57 zap LNURL handler + `FetchLnurlInvoice` `ActorCommand` variant in `nmp-core` [HIGH] — **DONE** (PR #456 merged 2026-05-24, commit c9fc728f)
+
+**Closed by PR #456**: `FetchLnurlInvoiceCommand` moved into
+`crates/nmp-nip57/src/lnurl/` and dispatches through the `ProtocolCommand`
+substrate seam (PR #448). `actor/commands/zap.rs` (429 LOC) +
+`zap_lnurl.rs` (252 LOC) deleted; `ActorCommand::FetchLnurlInvoice` enum
+variant deleted; `ureq` dropped from `nmp-core`'s deps. The
+`ZapAction` action module in `nmp-nip57` now dispatches
+`ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand{...}))`.
+
+**Caveat (carried into "make substrate honest" follow-up):** this PR
+widened `ProtocolCommandContext` from 1 to 7 positional closure args
+(`now_secs`, `author_write_relays`, `bootstrap_discovery_relays`,
+`active_local_keys`, `record_action_stage_requested`,
+`command_sender_clone`). Direct cache accessors on the context
+(`author_write_relays`, `bootstrap_discovery_relays`) are arguably
+routing concerns that should go through the router. Scheduled to be
+revisited and bundled into capability traits.
+
+#### Original violation (kept for archaeology)
 
 **Verified:** the NIP-57 LNURL-pay round-trip orchestration lives in
 `nmp-core`, even though `crates/nmp-nip57/` exists and already owns the
@@ -915,7 +970,7 @@ only as a constant — no decoder, no projection, no action module.
   client for HEIC vs JPEG, dimensions, MIME, SHA-256. Need: `imeta` tag parser + action
   for upload. Effort: ~2 days per NIP.
 
-**Recommended action:** promote NIP-51 mute list to v1-A backlog (add to F-08 or separate);
+**Recommended action:** promote NIP-51 mute list to v1-A backlog as its own item;
 add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
 
 ---
@@ -1027,7 +1082,13 @@ updated with `## Escape-hatch caveat` section listing all bypassed doctrines.
 
 ---
 
-### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [HIGH · v1 DX]
+### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [HIGH · v1 DX] — **DONE** (PR #467 merged 2026-05-24, commit a079d95f)
+
+**Closed by PR #467**: `crates/nmp-app-template/` ships `register_defaults(&mut NmpApp)` plus a `runtimes` module (DM-inbox + zap-receipts reconcilers). Chirp's `nmp-app-chirp/src/` shrank from 1003 → 456 LOC (−547, −55%) by deleting `dm_runtime.rs` and `zap_receipts_runtime.rs` and routing through the template. The integration test in `crates/nmp-app-template/tests/register_defaults.rs` constructs a real `NmpApp` and proves every canonical action namespace (`nmp.follow`, `nmp.unfollow`, `nmp.nip25.react`, `nmp.nip17.send`, `nmp.nip17.publish_relay_list`, `nmp.nip57.zap`, `nmp.nip65.publish_relay_list`) resolves through `dispatch_action`.
+
+#### Original requirement (kept for archaeology)
+
+
 
 **Evidence:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs` — 403 LOC.
 `docs/dispatch-actions.md` documents *what to call* but not *what to register first*.
@@ -1101,7 +1162,48 @@ to leave the kernel cleanly. Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
 
 ---
 
-### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH · v1 DX · pre-validation]
+### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phases 1, 2, 4, 5 DONE; phase 3 pending**
+
+**Phase 1 — substrate observer + bounded projection** ✅ PR #457 merged
+(efe72537). `RoutingTraceObserver` trait + `RoutingTraceProjection`
+bounded ring buffer (capacity 64 per stream) in `nmp-core`; both
+`nmp_router::GenericOutboxRouter` and `nmp-core`'s default router fan
+out to the observer.
+
+**Phase 2 — FFI/wasm snapshot surface** ✅ PR #476. New FFI symbol
+`nmp_app_recent_routing_decisions` (heap-owned, freed via
+`nmp_app_free_string`) returns a stable schema-versioned JSON document
+(`schema_version: 1`) listing recent publishes + subscriptions with
+per-URL lane attribution. Wasm sibling
+`NmpWasmRuntime::recent_routing_decisions()` returns the identical
+payload shape via a `wasm-bindgen` method backed by
+`KernelReducer::recent_routing_decisions_json`. JSON shape lives in
+`nmp_core::kernel::routing_trace_dto` (consumer-side renderer; substrate
+types stay free of `serde::Serialize`). `NmpCore.h` updated; CI drift
+gate passes.
+
+**Phase 4 — validation harness** ✅ PR #461 merged (b9e0fc15).
+`chirp-repl routing-trace` subcommand + `cargo test -p nmp-testing
+--test routing_trace_real_nostr -- --ignored` integration test that
+fetches pablof7z's real NIP-65 from `wss://relay.damus.io` and asserts
+`Nip65/Read` lane attribution. `scripts/validate-routing.sh` shell
+smoke.
+
+**Phase 5 — kernel-router observability cut-over** ✅ PR #462 merged
+(1dbff579). Kernel calls injected `OutboxRouter` on subscription
+dispatch sites + kind:10002 ingest; chirp wires `GenericOutboxRouter`
+via `set_routing_substrate`. **Caveat**: this is *observe-only* — the
+kernel still picks REQ relays via cache helpers. Make-substrate-honest
+follow-up promotes the router to the decision authority.
+
+**Phase 3 (Chirp inspector UI)** — not started. Pending the iOS / web
+shell consumers of the phase 2 JSON payload (a `RoutingInspectorView`
+long-press target on `ChirpEventCard` / publish-status row + a debug
+toolbar toggle on the wasm host).
+
+#### Original requirement (kept for archaeology)
+
+
 
 **Evidence (architecture-grounded):** the substrate primitive already
 exists. `nmp_core::substrate::RoutedRelaySet` (PR #449) attributes every
@@ -1196,7 +1298,52 @@ The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
-## Section 2 — In Flight
+### V-52 · Single-relay browsing — read events from one relay only, with cache origin tracking [HIGH · v1 DX]
+
+**What we want:** an app must be able to scope an interest to a single specific relay URL
+("show me what *this* relay has"). When a subscription is scoped that way:
+
+- REQs and `NEG-OPEN` (NIP-77 negentropy) are sent ONLY to that relay, never to any
+  outbox/inbox/indexer set the router would otherwise pick.
+- The cache must be queryable for events known to have originated from that specific
+  relay. We need a per-event provenance signal — for each cached event, did it (also)
+  arrive from relay X? Today's `Provenance` lane (lane 3 in `nmp-router`) already
+  carries relay-origin URLs in events' tag set, but the cache index can't be queried
+  by "events seen on relay X" as a primary lookup.
+- A scoped subscription does NOT cause an unscoped re-broadcast. The router treats
+  the relay scope as an `explicit_targets` override (similar to lane 5) and does not
+  add discovery/AppRelay fallbacks.
+
+**Why this matters:** every modern Nostr client has a "browse this relay" or "switch
+relay" affordance (relay-trawler, what's-on-this-relay debugging, single-relay reads
+for private/paid relays). Today an NMP app has no structural way to express it —
+the router always fans out via outbox/inbox.
+
+**Code-grounded surfaces to extend:**
+
+- `crates/nmp-core/src/substrate/routing.rs` — `RoutingContext` already has
+  `explicit_targets: Option<BTreeSet<Url>>`, but there is no parallel `LogicalInterest`
+  shape for the subscribe side. Add a `LogicalInterest::SingleRelay { url, inner }` or
+  an `interest.scope_relays: Option<BTreeSet<Url>>` field that the router will honour
+  in lane 5 on the subscribe path (today lane 5 is publish-only in `nmp-router`).
+- `crates/nmp-store/` — cache lookup needs a `by_relay(url)` index, OR
+  `EventStore::list_events_seen_on(relay, filter)`. The relay-origin provenance set
+  already lives in `Provenance` events; the store must expose a primary lookup by
+  any one relay URL.
+- `crates/nmp-router/src/router.rs` lane 5 — extend the `ClassRouted` lane to cover
+  the subscribe path when `interest.scope_relays.is_some()`. Today the subscribe-side
+  lane 5 is empty (see PR #483).
+- FFI: surface a `nmp.subscribe_scoped_to_relay(url, filter, ...)` action namespace
+  so apps can request it without learning the substrate types.
+- Chirp: expose this as a UI affordance — a relay picker in any timeline view that,
+  when set, runs the same view bound to a single-relay scoped subscription. The
+  routing-trace inspector (V-51) already shows the lane attribution, so this
+  surface lights up "you are looking at relay X" naturally.
+
+**Acceptance test:** a chirp-repl flow `chirp-repl browse --relay wss://relay.damus.io
+--kind 1 --limit 100` returns exactly the kind:1 events the cache has stamped with
+that relay's URL, drains REQ messages only to that relay, and never fans out to other
+relays even when the active account has a NIP-65 write set covering them.
 
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
@@ -1328,7 +1475,7 @@ must receive DMs before NIP-17 can be called done.
 a real signed kind:1059 gift-wrap through `IngestPreVerifiedEvents` → `notify_raw_event_observers`
 → `DmInboxProjection`. `nmp_app_read_projection_json("nmp.nip17.dm_inbox")` confirms the message
 appears in the snapshot. The `dm_inbox_full_round_trip_through_ffi` test passes (no longer ignored).
-The test also gates that cold-start `nip17_local_keys` seed path works without calling `Start`.
+The test also gates that cold-start `active_local_keys` seed path works without calling `Start`.
 
 **Remaining:** device-level acceptance test against live relays (product QA, not CI-gatable).
 
@@ -1414,6 +1561,35 @@ F-05b (post-v1)" so the v1 claim is scoped accurately.
 
 Completed — see V-02. Moved to `apps/marmot/nmp-app-marmot/`.
 
+### F-08 · App-owned component registry + content rendering kits [V1 DX]
+
+Promoted from the post-v1 bucket by user direction on 2026-05-25. This is the
+M16 developer-experience track for reusable source components that apps can
+install, own, customize, and update later.
+
+**Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
+
+**Status:** First implementation slice in progress: a built-in offline
+component registry, `nmp add component`, `nmp.components.lock`, dependency
+resolution, duplicate-install rejection, and the `swiftui/content-minimal`
+fixture kit.
+
+**Initial scope:**
+
+- Component manifest and lock-file model for app-owned source installation.
+- `nmp add component` and `nmp update component` over a local offline registry.
+- Optional jsrepo-compatible export after the NMP-native path works.
+- iOS SwiftUI content-rendering kits over `ContentTreeWire`.
+- Android Compose content-rendering kits with matching names and fallback
+  behavior.
+- Renderer variants such as minimal mentions, avatar mentions, rich
+  press-and-hold profile preview, compact quote cards, rich quote cards, media
+  grids, and markdown/article rendering.
+
+**Acceptance:** a clean app can install a content kit, render the shared content
+fixtures, customize one renderer in app-owned source, update the upstream kit,
+and preserve the local customization.
+
 ---
 
 ## Section 5 — Post-V1
@@ -1432,7 +1608,7 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | `nmp-codegen` full Swift bridge | Pilot (F-05) must land first to prove the pattern |
 | Second non-social app (shipped product) | PD-033-A decision needed first; the v1 spike is a thesis test, not a shipped product |
 | Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. Parity work blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
-| Nostr-aware UI component registry | Curated reusable UI primitives — components, builders, complete blocks — distributed à la NDK's `svelte/registry` (`/Users/pablofernandez/Work/NDK-nhlteu/svelte/registry`). Blocked on (a) stable snapshot projection contracts so registry components have a versioned surface to bind against, and (b) target-platform decision (SwiftUI registry vs. multi-target via UniFFI views vs. web-only via `nmp-wasm`). Naming TBD; provisional `nmp-ui-registry`. |
+| Additional Nostr-aware component packs | Content rendering moved to F-08 / M16. Post-v1 packs cover broader reusable app blocks such as account switchers, diagnostics inspectors, full thread screens, auth blocks, and non-content templates. |
 
 ---
 

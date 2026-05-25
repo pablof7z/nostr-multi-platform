@@ -17,5 +17,6 @@ path = "src/main.rs"
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 nostr = { version = "0.44", default-features = false, features = ["std"] }
 serde_json = "1.0"

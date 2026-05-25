@@ -21,7 +21,7 @@ struct ThreadNoteRow: View {
             // Accent hairline for focused note
             if isFocused {
                 Rectangle()
-                    .fill(.tint)
+                    .fill(ChirpColor.accent)
                     .frame(width: 2)
                     .cornerRadius(1)
                     .padding(.vertical, 4)
@@ -43,7 +43,7 @@ struct ThreadNoteRow: View {
             .padding(.vertical, isFocused ? 12 : 8)
             .padding(.horizontal, 16)
         }
-        .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
+        .background(isFocused ? ChirpColor.focusedBackground : ChirpColor.transparent)
     }
 
     // ── Body column (header + content + actions) ──────────────────────────
@@ -53,13 +53,15 @@ struct ThreadNoteRow: View {
     // with view builders inside the parent `HStack`.
 
     private var noteBodyContent: some View {
-        // Rust pre-resolves the NIP-18 inner-event content during projection
-        // (`Kernel::timeline_item` in `kernel/update.rs`). `repostInnerContent`
-        // is `""` for kind:1 rows and either the inner kind:1's content or
-        // `""` (D1 fallback) for kind:6 — so the view never parses event JSON
-        // (aim.md §6.9, Chirp thin-shell).
         let isRepost = item.isRepost
-        let displayContent: String = isRepost ? item.repostInnerContent : item.content
+        let context = NoteRenderContext(
+            mentionProfiles: mentionProfiles,
+            eventCards: eventCards,
+            timelineItems: timelineItems,
+            embedDepth: 0
+        )
+        let displayContent = item.renderedContent
+        let displayTree = context.contentTree(for: item, fallback: contentTree)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(item.authorDisplay)
@@ -86,14 +88,8 @@ struct ThreadNoteRow: View {
             if !displayContent.isEmpty {
                 NoteContentView(
                     content: displayContent,
-                    // contentTree was computed against the wrapper event;
-                    // it does not describe the inner note's text. Render
-                    // the inner content as plain text (D1 best-effort)
-                    // until the kernel emits a contentTree for the inner.
-                    contentTree: isRepost ? nil : contentTree,
-                    mentionProfiles: mentionProfiles,
-                    eventCards: eventCards,
-                    timelineItems: timelineItems,
+                    contentTree: displayTree,
+                    renderContext: context,
                     font: isFocused ? .body : .callout
                 )
                 .foregroundStyle(.primary)
@@ -110,7 +106,7 @@ struct ThreadNoteRow: View {
                 } label: {
                     Image(systemName: likeTapped ? "heart.fill" : "heart")
                         .font(.caption)
-                        .foregroundStyle(likeTapped ? Color.red : Color.secondary)
+                        .foregroundStyle(likeTapped ? ChirpColor.like : ChirpColor.textSecondary)
                         .scaleEffect(likeTapped ? 1.35 : 1.0)
                         .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
                 }

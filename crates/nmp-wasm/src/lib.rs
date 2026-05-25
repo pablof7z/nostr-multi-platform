@@ -6,16 +6,15 @@
 
 pub mod protocol;
 // V-01 Stage 3 — `BrowserRelayDriver`, the wasm32 transport that closes the
-// gap the Stage 2 `KernelReducer` left open. Gated to `wasm32` because it
-// depends on `web_sys::WebSocket`; building on native targets would need a
-// polyfill that adds no value (the native crate already owns the native
-// transport).
-#[cfg(target_arch = "wasm32")]
-pub mod relay_driver;
+// gap the Stage 2 `KernelReducer` left open. Step 8 phase C moved the
+// driver itself into `nmp_network::browser_driver` so both transports live
+// in `nmp-network`; this crate now consumes it (constructing the
+// `BrowserKernelHandlers` callback bag from its `KernelReducer` handle in
+// `relay_pool::build_handlers`).
 // V-01 Stage 3 — runtime-side pool helpers: spawn one driver per bootstrap
-// entry, build the shared outbound sink, tear them all down on Stop.
-// `pub(crate)` because nothing outside the crate constructs a relay pool
-// directly — the runtime owns the lifecycle.
+// entry, build the kernel-handler callback bag + outbound sink, tear them
+// all down on Stop. `pub(crate)` because nothing outside the crate
+// constructs a relay pool directly — the runtime owns the lifecycle.
 #[cfg(target_arch = "wasm32")]
 mod relay_pool;
 mod runtime;
@@ -101,6 +100,24 @@ mod bindings {
         #[wasm_bindgen]
         pub fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
             self.runtime.set_snapshot_callback(callback);
+        }
+
+        /// V-51 phase 2 — JSON snapshot of the kernel's recent routing
+        /// decisions (the bounded `RoutingTraceProjection` ring buffer).
+        ///
+        /// Mirrors the iOS FFI symbol `nmp_app_recent_routing_decisions`:
+        /// same payload shape, schema-versioned (`schema_version: 1`), so
+        /// the web Chirp shell can share the routing-inspector renderer
+        /// V-51 phase 3 paints over both surfaces.
+        ///
+        /// Pull-only — call this on demand (long-press / "show routing
+        /// trace" toggle); the runtime does not push it on every snapshot
+        /// tick. Always returns a well-formed document — empty rings
+        /// render as `{"schema_version":1,"capacity":0,"publishes":[],
+        /// "subscriptions":[]}` rather than `null` (D6).
+        #[wasm_bindgen]
+        pub fn recent_routing_decisions(&self) -> String {
+            self.runtime.recent_routing_decisions()
         }
 
         /// V-01 Stage 3c — async dispatch entrypoint for app-level write

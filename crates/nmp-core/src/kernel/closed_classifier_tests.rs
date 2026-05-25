@@ -18,7 +18,7 @@
 //! boundary, not at the per-call site.
 
 use super::*;
-use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::relay::{RelayRoleTestExt, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::RelayAuthState;
 
 fn closed_frame(sub_id: &str, reason: &str) -> String {

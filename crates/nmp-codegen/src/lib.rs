@@ -1,6 +1,7 @@
 mod ffi_gen;
 mod generate;
 mod manifest;
+mod workspace;
 // V6 Stage 1 — Swift `Decodable` emitter pilot. Consumes the JSON document
 // `nmp-core --features codegen-schema --bin dump_projection_schemas` writes,
 // emits one Swift file with one struct per pilot type. See

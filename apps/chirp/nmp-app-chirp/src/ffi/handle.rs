@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use nmp_core::{KernelEventObserverId, NmpApp};
+use nmp_core::KernelEventObserverId;
+use nmp_ffi::NmpApp;
 use nmp_nip01::ModularTimelineProjection;
 
 /// Opaque handle returned by [`super::nmp_app_chirp_register`]. Boxed on the heap

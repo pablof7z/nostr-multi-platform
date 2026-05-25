@@ -1,0 +1,20 @@
+[package]
+name = "nmp-planner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Subscription compiler: LogicalInterest, mailbox cache, lattice merge rules, per-relay plan projection. Extracted from nmp-core in step 9 of the crate-boundary migration."
+
+[lib]
+name = "nmp_planner"
+path = "src/lib.rs"
+
+[dependencies]
+# nmp-planner is a Layer-2 foundation crate (per the crate-boundary spec): it
+# must NOT depend on nmp-core. The `stable_hash` helper that previously lived
+# in `nmp-core::stable_hash` moved into this crate at extraction time —
+# nmp-core now re-exports it from `nmp_planner::stable_hash` so existing
+# `use nmp_core::stable_hash::stable_hash64` paths keep working without
+# creating a circular dependency.
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

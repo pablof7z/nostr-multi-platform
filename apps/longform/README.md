@@ -112,7 +112,7 @@ The non-test total exceeds the 300-line budget set in the spike spec, but the
 overage is **doc comments explaining the framework-thesis findings**, not
 logic. The actual code is 152 lines — well under half the budget — and the
 fixture app's `src/` is in the same neighborhood (~300 LOC across 8 files for
-a more elaborate shell with actions, plus `crates/fixture-todo-core/src/lib.rs`
+a more elaborate shell with actions, plus `apps/fixture/fixture-todo-core/src/lib.rs`
 at ~470 lines).
 
 A truly minimal version (no inline doc, no unit tests, just-the-wiring) would

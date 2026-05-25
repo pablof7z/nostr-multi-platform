@@ -14,6 +14,46 @@
 - Do not open completed work as a draft pull request. If the work is ready and validated, open it as ready for review. Use draft PRs only when explicitly asked or when the work is intentionally incomplete.
 - After opening the PR, clean up the agent-owned worktree before completing the task.
 
+### Test scope — local vs. CI vs. merge
+
+When validating your own work locally, **scope `cargo test` to the crates
+you touched** — not the whole workspace. Examples:
+
+- Touched only `crates/nmp-nip17/`? Run `cargo test -p nmp-nip17` and
+  the obvious downstream consumers (`cargo test -p nmp-app-chirp`,
+  `cargo test -p nmp-core --lib nip17` for substrate-side coverage).
+- Touched a substrate seam in `crates/nmp-core/src/substrate/`? Run
+  `cargo test -p nmp-core --lib substrate` plus every Layer-4 crate
+  that imports the seam (`grep -l 'use nmp_core::substrate' crates/`).
+- Touched the kernel? Run `cargo test -p nmp-core --lib kernel` and
+  the binding crates (`cargo test -p nmp-wasm`, `cargo test -p nmp-ffi`
+  if either exists).
+
+`cargo test --workspace` is reserved for the merging agent (the
+supervisor running this conversation) and CI. A workspace-wide run can
+take 10+ minutes; with multiple agents sharing a cargo target
+directory it serializes the build queue and starves every other
+worktree. The supervisor enforces full-suite + cross-target coverage
+at merge time (see `docs/architecture/crate-boundaries.md` discussion
+of soundness gates).
+
+**Always-on local gates** — these are fast and catch the silent
+classes of failure that scoped tests miss:
+
+- `cargo test -p nmp-testing --test doctrine_lint_smoke` — the D-rule
+  gates (D0 substrate purity, D15 host-closure guards, D11 one-door,
+  file-size, etc.) trip silently in plain `cargo test -p <your-crate>`
+  runs.
+- `cargo build --workspace` (compile-only, fast) if you renamed a
+  public symbol, moved a module, changed a Cargo.toml dep path, or
+  added a workspace member.
+
+If you cannot tell whether your change is scope-localized — for
+example, you removed a public API from `nmp-core` and don't know
+every importer — run `cargo build --workspace` and search the
+compile errors for the touched symbol. The compile pass is much
+faster than the test pass and surfaces the same blast radius.
+
 ## Planning discipline — three canonical files, no duplicates
 
 This repository has exactly **three canonical planning/status files**. Every plan, todo, roadmap, milestone, violation, decision, and in-flight task lives in one of them. Scattered notes, ad-hoc `TODO.md` / `NOTES.md` / `ROADMAP.md` / `PLAN-foo.md` files, parallel planning docs, and inline `// TODO:` annotations used as a substitute for tracking are **forbidden**.

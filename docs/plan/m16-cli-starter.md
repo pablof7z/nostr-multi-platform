@@ -9,6 +9,9 @@
 **Subsystem deliverables.**
 
 - `nmp init`, `nmp add module`, `nmp gen modules`, `nmp doctor`, `nmp upgrade` commands.
+- `nmp add component` and `nmp update component` for app-owned native UI source
+  components. First track: iOS SwiftUI + Android Compose content rendering.
+  Detailed plan: [`m16-component-registry.md`](m16-component-registry.md).
 - A minimal **starter app** (distinct from the proof/Twitter app) implementing only: login + timeline + compose + profile. Stays under the platform LOC budgets from spec §3.2. (DMs not included — NIP-17 is post-v1.)
 - Recipe book in `docs/recipes/`: one recipe per common app shape (timeline-only viewer, kind-filtered explorer, long-form reader, etc.).
 - NIP support matrix in `docs/nips.md`.
@@ -18,5 +21,7 @@
 
 - §3 success criteria of the spec reproducible from published docs alone, no insider knowledge.
 - One external developer (or an LLM agent with no prior context) succeeds at building a small custom app from the starter + recipes in ≤ 2 hours.
+- A clean app can install a content-rendering kit, customize one renderer, run
+  an update, and preserve the local customization.
 
 **Runnable artifact.** Public `nmp init` flow. Report in `docs/perf/m16/dx.md`.

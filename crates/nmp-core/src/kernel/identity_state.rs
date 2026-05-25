@@ -22,10 +22,19 @@ use serde::Serialize;
 /// accidental bare `Arc<Mutex<Option<String>>>` proliferation and lets D14's
 /// lint catch shape regressions at the declaration site rather than silently at
 /// every call site.
-pub(crate) type ActiveAccountSlot = Arc<Mutex<Option<String>>>;
+///
+/// `pub` (widened from `pub(crate)` 2026-05-25, spec §271): re-exported
+/// through `crate::slots` so `nmp-router::Nip65OutboxResolver` can name the
+/// slot type. The slot is opaque (no public mutator) so widening visibility
+/// does not invert the D4 sole-writer invariant — the actor side stays the
+/// only writer; external readers `lock()` + read `.clone()`.
+pub type ActiveAccountSlot = Arc<Mutex<Option<String>>>;
 
 /// Construct a fresh, empty [`ActiveAccountSlot`].
-pub(crate) fn new_active_account_slot() -> ActiveAccountSlot {
+///
+/// `pub` (widened from `pub(crate)` 2026-05-25, spec §271): re-exported
+/// through `crate::slots` for `nmp-router::Nip65OutboxResolver` composition.
+pub fn new_active_account_slot() -> ActiveAccountSlot {
     Arc::new(Mutex::new(None))
 }
 
@@ -160,6 +169,26 @@ impl RelayEditRow {
             role_label,
             role_tint,
         }
+    }
+
+    /// Borrow the relay URL string.
+    ///
+    /// Read-only accessor so external readers (the `nmp-ffi` shell, per-app
+    /// crates) can iterate the relay-edit projection without naming the
+    /// crate-private `url` field directly. The actor is the sole writer
+    /// (D4); no setter exists.
+    #[must_use]
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// Borrow the relay role string (canonicalised — `read`, `write`,
+    /// `both`, `indexer`, or a composite like `both,indexer`).
+    ///
+    /// Read-only accessor; same reasoning as [`Self::url`].
+    #[must_use]
+    pub fn role(&self) -> &str {
+        &self.role
     }
 }
 

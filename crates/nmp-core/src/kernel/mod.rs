@@ -78,6 +78,30 @@ mod publish_terminal_status_tests;
 // derivations the three iOS diagnostics views used to do client-side. See
 // the module doc for the bible references.
 mod relay_diagnostics;
+mod relay_transport;
+// V-51 phase 1 — bounded ring-buffer projection of recent routing decisions
+// fed by the `RoutingTraceObserver` substrate seam. Constructed by
+// `Kernel::new` and held as `Arc<RoutingTraceProjection>` so the same
+// allocation is shared with whichever `OutboxRouter` impl the kernel
+// installs (the router stores `Arc<dyn RoutingTraceObserver>` — the
+// projection is the only concrete impl).
+//
+// V-51 phase 4 (validation harness) needs the projection type reachable
+// from `nmp-testing` and the chirp-repl, so the module is `pub` and the
+// three projection types it owns (`RoutingTraceProjection`,
+// `PublishTraceEntry`, `SubscriptionTraceEntry`) are re-exported below.
+// This is not "widening the substrate" (substrate is `crate::substrate`,
+// which carries the producer-side trait `RoutingTraceObserver`); the
+// projection is the consumer-side observability primitive, naturally
+// belongs to the kernel, and is the Rust-level read door the FFI surface
+// (phase 2 proper) and the validation harness (phase 4) both consume.
+pub mod routing_trace;
+// V-51 phase 2 — JSON DTO renderer for the routing-trace projection. Pure
+// consumer-side helper: walks `RoutingTraceProjection::snapshot_*` and
+// produces a stable `serde_json::Value` the FFI / wasm snapshot surfaces
+// hand back to Swift / TypeScript callers. Does NOT widen the substrate
+// (`RoutingSource` et al. stay free of `serde::Serialize`).
+pub mod routing_trace_dto;
 // Typed slot wrappers for relay-shaped actor-owned caches. The bare
 // `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
 // publish resolver and `NmpApp` move behind named types here so D14 can flag
@@ -114,7 +138,7 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
-mod nip17_dm_inbox_routing_tests;
+mod dm_inbox_routing_tests;
 #[cfg(test)]
 mod perf_tests;
 #[cfg(test)]
@@ -123,6 +147,8 @@ mod timeline_perf_tests;
 mod timeline_order_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
+#[cfg(test)]
+mod test_router;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -180,7 +206,10 @@ use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, ev
 // already `#[cfg(feature = "native")]`, so the re-export is gated too.
 #[cfg(feature = "native")]
 use nostr::{format_timestamp, now_hms};
-pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
+// `is_hex_id` / `is_hex_pubkey` reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` (the FFI surface uses them to validate
+// `*const c_char` arguments for `open_thread` / `open_author` etc.).
+pub use nostr::{is_hex_id, is_hex_pubkey};
 
 /// Decode a 64-char lowercase/uppercase-hex pubkey into the store's
 /// `[u8; 32]` `PubKey`. Returns `None` on any malformed input — callers
@@ -200,18 +229,25 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
-use auth::Nip42DriverState;
+use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
 use clock::{Clock, SystemClock};
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
+// `default_registry` / `ActionRegistry` are reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` (the FFI surface owns the
+// `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
-pub(crate) use action_registry::{default_registry, ActionRegistry};
+pub use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    account_avatar_color_hex, account_avatar_initials, account_npub_short,
-    new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry,
-    RelayAckOutcome, SettingsHubSummary,
+    account_avatar_color_hex, account_avatar_initials, account_npub_short, AccountSummary,
+    PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
 };
+// Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
+// re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`
+// (spec §271) constructs slots through these. Direct consumers in nmp-core
+// continue to import through `crate::kernel::{...}`.
+pub use identity_state::{new_active_account_slot, ActiveAccountSlot};
 // V6 Stage 1 — Swift codegen pilot. The four projection types below are
 // `pub(crate) struct`s in `types` (widened from `pub(super)` so the
 // re-export can lift them out of `kernel`); the `codegen-schema` build
@@ -254,9 +290,13 @@ pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 // `SnapshotProjectionSlot` is a Kernel struct field type (always-compiled);
 // `new_snapshot_projection_slot` is only called from native-only callers.
-pub(crate) use snapshot_registry::SnapshotProjectionSlot;
+// `SnapshotProjectionSlot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::SnapshotProjectionSlot` (the NmpApp struct
+// field type); `new_snapshot_projection_slot` is called once from
+// `nmp_app_new`.
+pub use snapshot_registry::SnapshotProjectionSlot;
 #[cfg(feature = "native")]
-pub(crate) use snapshot_registry::new_snapshot_projection_slot;
+pub use snapshot_registry::new_snapshot_projection_slot;
 // Typed slot wrappers + constructors. `RelayEditRowsSlot` /
 // `RelayEditRowList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via
@@ -266,22 +306,40 @@ pub(crate) use snapshot_registry::new_snapshot_projection_slot;
 // caller names them directly (the resolver constructs slots via the
 // `new_*_slot()` helpers and reads through `as_slice()`).
 pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
-pub(crate) use relay_projection::{
+// Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
+// surface them — `nmp-router::Nip65OutboxResolver` (spec §271) constructs
+// resolver slots with handles shared by the kernel actor's reducer. Direct
+// in-crate consumers continue to import through `crate::kernel::{...}`.
+pub use relay_projection::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-// `new_relay_edit_rows_slot` is only called from native actor / FFI code.
+// `new_relay_edit_rows_slot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::new_relay_edit_rows_slot` (called once from
+// `nmp_app_new` to construct the slot the actor and the per-app crate
+// share).
 #[cfg(feature = "native")]
-pub(crate) use relay_projection::new_relay_edit_rows_slot;
-pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
+pub use relay_projection::new_relay_edit_rows_slot;
+// `LifecyclePhase` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::LifecyclePhase` (the C-ABI lifecycle
+// background / foreground entry points construct it before sending the
+// `ActorCommand::LifecycleEvent`).
+pub use lifecycle::LifecyclePhase;
+pub(crate) use lifecycle::LifecycleTransition;
 // D0: NIP-47 NWC is an app noun. `WalletStatus` no longer lives in the kernel
 // — it moved to the wallet command runtime (`actor::commands::wallet`) and is
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
 // `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
+use relay_transport::RelayTransportMap;
 use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
 use crate::substrate::{
-    DefaultInMemoryMailboxCache, MailboxCache, Nip65WriteSetRouter, OutboxRouter, ParsedRelayList,
+    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher,
+    MailboxCache, OutboxRouter, ParsedRelayList,
 };
+#[cfg(any(test, feature = "test-support"))]
+use crate::substrate::TestInMemoryMailboxCache;
+#[cfg(not(any(test, feature = "test-support")))]
+use crate::substrate::EmptyMailboxCache;
 use crate::util::sort_dedup;
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
@@ -346,6 +404,7 @@ pub struct Kernel {
     /// [`TimingMilestones`].
     timing: TimingMilestones,
     relays: HashMap<RelayRole, RelayHealth>,
+    transport_relays: RelayTransportMap,
     profiles: HashMap<String, Profile>,
     /// Locally-authored kind:0 publish intents that have not necessarily
     /// round-tripped from a relay yet. Kept separate from `profiles` so
@@ -384,43 +443,86 @@ pub struct Kernel {
     /// `docs/architecture/crate-boundaries.md` (V-50). Replaces the
     /// pre-step-3 `HashMap<String, AuthorRelayList>` so the kernel and
     /// the injected [`OutboxRouter`] read from one source of truth.
-    /// Default: `nmp_core::substrate::DefaultInMemoryMailboxCache`.
-    /// Production composition (apps that depend on `nmp-router`) is
-    /// expected to inject `nmp_router::InMemoryMailboxCache` via
-    /// [`Kernel::with_routing`].
+    /// Default: `EmptyMailboxCache` in production (substrate-honest debt
+    /// B, 2026-05-24); `TestInMemoryMailboxCache` under
+    /// `cfg(any(test, feature = "test-support"))`. Production composition
+    /// (apps that depend on `nmp-router`) injects
+    /// `nmp_router::InMemoryMailboxCache` via [`Kernel::set_routing`]
+    /// (driven by [`crate::NmpApp::set_routing_substrate`]) before any
+    /// kind:10002 is ingested.
     ///
     /// The kind:10002 ingest path (`ingest::relay_list::ingest_relay_list`)
-    /// is the single writer of this cache. Helpers
-    /// `author_write_relays`, `author_indexer_relays`,
-    /// `recipient_read_relays`, and the planner-side adapter
-    /// `KernelMailboxes` all read through this handle.
+    /// is the single writer of this cache. The `mailbox_cache` is read
+    /// by the `outbox_router` slot (per-route lane 1 lookup) and by the
+    /// `KernelMailboxes` planner-side adapter; the kernel's REQ-construction
+    /// sites never read it directly — they call the router
+    /// (`Kernel::route_subscription_relays` /
+    /// `route_outbox_subscription_relays` /
+    /// `partition_ids_via_router` in `kernel/mailboxes.rs`).
     mailbox_cache: Arc<dyn MailboxCache>,
     /// Substrate outbox router — step 3 of
     /// `docs/architecture/crate-boundaries.md` §3.2. The kernel holds
     /// this as `Arc<dyn OutboxRouter>` (per the spec) so a competing
     /// routing algorithm is a single-line swap at composition time.
-    /// Default: `nmp_core::substrate::Nip65WriteSetRouter` (NIP-65
-    /// write set on publish, read set on subscribe, AppRelay fallback,
-    /// blocked-relay post-filter). Production composition is expected
-    /// to inject `nmp_router::GenericOutboxRouter` via
-    /// [`Kernel::with_routing`].
+    /// Default: [`crate::substrate::EmptyOutboxRouter`] (every call
+    /// returns `Unroutable` — substrate-honest debt B, 2026-05-24).
+    /// Production composition injects `nmp_router::GenericOutboxRouter`
+    /// via [`Kernel::set_routing`] (driven by
+    /// [`crate::NmpApp::set_routing_substrate`]) before any routing
+    /// decision is requested.
     ///
-    /// Wired but not yet consulted from every code path — kernel
-    /// helpers `author_write_relays` / `recipient_read_relays` / etc.
-    /// are cache-read helpers with bootstrap-fallback policy (they
-    /// return `Vec<String>` with bootstrap seed on miss, not
-    /// `RoutedRelaySet`); they read through `mailbox_cache` directly.
-    /// Follow-on steps wire actual `route_publish` / `route_subscription`
-    /// call sites.
+    /// **Debt A**: the router is the live decision authority for every
+    /// kernel-driven REQ. `kernel/requests/profile.rs` (`author_requests`,
+    /// `profile_claim_request`, `pending_profile_claim_requests`,
+    /// `firehose_requests`) and `kernel/requests/thread.rs`
+    /// (`maybe_open_thread_hydration`) call through the router helpers
+    /// in `kernel/mailboxes.rs`; the bootstrap discovery seed flows
+    /// through the substrate seam at
+    /// `RoutingContext::session_keys::app_relays` (lane 7 fallback).
     outbox_router: Arc<dyn OutboxRouter>,
-    /// NIP-17 kind:10050 DM-relay lists, keyed by author pubkey (hex). Each
-    /// value is the deduped, canonicalized set of DM-inbox relay URLs the
-    /// author declared. Populated by `ingest_dm_relay_list`; read by
-    /// `recipient_dm_relays` to pin kind:1059 gift-wrap envelopes to their
-    /// receiver's DM-inbox relays (NIP-17 § 2). Deliberately distinct from
-    /// `author_relay_lists` (kind:10002) — DM routing must not leak onto the
-    /// public NIP-65 mailbox.
-    dm_relay_lists: HashMap<String, Vec<String>>,
+    /// V-51 phase 1 — bounded ring-buffer projection of recent routing
+    /// decisions. Constructed once in `Kernel::with_optional_publish_store_and_path`
+    /// and threaded into production composition via the
+    /// `RoutingSubstrateSlot` factory (`with_trace_observer`). The default
+    /// [`crate::substrate::EmptyOutboxRouter`] never produces a decision
+    /// so the ring stays empty until a real router is installed.
+    /// Read by the FFI surface in phase 2 (`recent_routing_decisions`
+    /// snapshot field).
+    routing_trace: Arc<routing_trace::RoutingTraceProjection>,
+    /// Substrate DM-inbox relay lookup — V-40 of
+    /// `docs/architecture/crate-boundaries.md`. The kernel reads this when
+    /// it needs a receiver's DM-inbox relay set; the concrete cache (NIP-17
+    /// kind:10050) lives in the `nmp-nip17` crate behind this trait so the
+    /// kernel never names the NIP-17 noun (D0). Default:
+    /// `EmptyDmInboxRelayLookup` (cold-start; every lookup returns `None`,
+    /// the fail-closed contract the gift-wrap publish path expects). Apps
+    /// that need DM routing inject `nmp_nip17::DmRelayCache` via
+    /// [`Kernel::set_dm_inbox_relay_lookup`] — the same `Arc` is
+    /// simultaneously the writer side fed by `nmp_nip17::Kind10050Parser`
+    /// (registered with `ingest_dispatcher`).
+    dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
+    /// Substrate `IngestParser` registry — V-40 of
+    /// `docs/architecture/crate-boundaries.md`. Per-NIP crates register a
+    /// parser for the kinds they own (NIP-17 kind:10050, future NIP-51
+    /// list kinds, …) so the kernel never pattern-matches NIP kind numbers
+    /// directly. The kernel's wildcard ingest arm fans every accepted
+    /// `Inserted | Replaced` event through this dispatcher before the
+    /// `KernelEventObserver`s fire. Empty by default — a kernel with no
+    /// registrations is a zero-cost no-op (the dispatcher's own contract).
+    ///
+    /// Held behind an `Arc<RwLock<…>>` slot so `NmpApp::register_ingest_parser`
+    /// can mutate the registry without crossing the actor boundary — the same
+    /// slot pattern `host_op_handler`, `event_observers`, and the snapshot
+    /// projection registry use.
+    ingest_dispatcher: Arc<std::sync::RwLock<EventIngestDispatcher>>,
+    /// Test-only handle to the [`crate::substrate::TestDmInboxRelayCache`]
+    /// installed by [`Kernel::test_dm_relay_cache`]. Production composition
+    /// never installs one of these — `nmp_nip17::DmRelayCache` is the
+    /// production impl behind `dm_inbox_relays`. Tests inside `nmp-core` use
+    /// this typed handle to seed entries without depending on `nmp-nip17`
+    /// (a downstream crate cycle the doctrine forbids).
+    #[cfg(any(test, feature = "test-support"))]
+    test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
     timeline_authors: BTreeSet<String>,
     /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
@@ -473,7 +575,7 @@ pub struct Kernel {
     /// M5+M2+M8 wiring: per-relay NIP-42 driver state. One entry per
     /// `RelayRole`. Default `NotRequired`; an inbound `AUTH` frame transitions
     /// to `ChallengeReceived` and triggers signer invocation.
-    nip42_drivers: HashMap<RelayRole, Nip42DriverState>,
+    auth_drivers: HashMap<RelayRole, AuthDriverState>,
     /// M5+M2+M8 wiring: subscription lifecycle. Today the kernel uses ONLY
     /// `handle_auth_state_change` (diagnostic state fan-in to `AuthGate`); the
     /// compile / registry / wire-diff machinery stays dormant because the
@@ -800,25 +902,118 @@ impl Kernel {
     /// `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>` onto the
     /// kernel. Production composition (apps that depend on
     /// `nmp-router`) calls this after `Kernel::new` /
-    /// `Kernel::with_storage_path` to swap the kernel-internal
-    /// `Nip65WriteSetRouter` + `DefaultInMemoryMailboxCache` defaults
-    /// for `nmp_router::GenericOutboxRouter` +
-    /// `nmp_router::InMemoryMailboxCache` (the architectural homes for
-    /// the production impls). The kernel itself cannot depend on
-    /// `nmp-router` (Layer 3 → Layer 2 would invert the dependency
-    /// arrow), so injection is mandatory for the production swap.
+    /// `Kernel::with_storage_path` to swap the
+    /// [`crate::substrate::EmptyOutboxRouter`] +
+    /// [`crate::substrate::EmptyMailboxCache`] defaults (substrate-honest
+    /// debt B, 2026-05-24) for `nmp_router::GenericOutboxRouter` +
+    /// `nmp_router::InMemoryMailboxCache`. The kernel itself cannot
+    /// depend on `nmp-router` (Layer 3 → Layer 2 would invert the
+    /// dependency arrow), so injection is mandatory for the production
+    /// swap.
     ///
     /// MUST be called BEFORE any kind:10002 event is ingested — the
     /// caches are independent stores, not a write-through pair, so a
     /// swap after ingest would lose the cached entries.
-    #[allow(dead_code)]
-    pub(crate) fn set_routing(
+    ///
+    /// Widened from `pub(crate)` to `pub` (V-51 phase 5): production
+    /// composition (`nmp-app-chirp`) now drives this through the
+    /// `NmpApp::set_routing_substrate` slot the actor's kernel
+    /// constructor reads. Apps that want a competing router
+    /// (`nmp_router::GenericOutboxRouter`, or a future Layer-2 impl)
+    /// inject through that slot; the actor calls this method after
+    /// `Kernel::with_storage_path` returns, threading the kernel's
+    /// `RoutingTraceProjection` through the supplied router's
+    /// `with_trace_observer` so the trace ring keeps populating across
+    /// the swap.
+    pub fn set_routing(
         &mut self,
         router: Arc<dyn OutboxRouter>,
         cache: Arc<dyn MailboxCache>,
     ) {
         self.outbox_router = router;
         self.mailbox_cache = cache;
+    }
+
+    /// Install a router-side publish-resolver implementation on the
+    /// kernel's `PublishEngine`.
+    ///
+    /// Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in `nmp-router`,
+    /// not `nmp-core`. The kernel constructs `PublishEngine` with the
+    /// in-crate `NoopOutboxResolver` default (every `PublishTarget::Auto`
+    /// resolves to an empty set → `PublishEngineError::NoTargets`,
+    /// fail-closed). Production composition
+    /// (`nmp-app-template::register_defaults` → the
+    /// `NmpApp::set_publish_resolver_factory` slot the actor reads at
+    /// kernel construction) calls this method right after
+    /// [`Self::set_routing`] to install
+    /// `nmp_router::Nip65OutboxResolver::with_local_relays(...)` over the
+    /// kernel-owned [`event_store_handle`](Self::event_store_handle) /
+    /// [`indexer_relays_handle`](Self::indexer_relays_handle) /
+    /// [`local_write_relays_handle`](Self::local_write_relays_handle) /
+    /// [`active_account_handle`](Self::active_account_handle) slots.
+    ///
+    /// MUST be called BEFORE any publish lands. Swapping mid-publish leaves
+    /// the in-flight engine state inconsistent with the resolver decisions
+    /// that produced it.
+    pub fn set_publish_resolver(&mut self, resolver: Arc<dyn crate::publish::OutboxResolver>) {
+        self.publish_engine.set_outbox(resolver);
+    }
+
+    /// Borrow the kernel's `EventStore` handle.
+    ///
+    /// Returned as a cloned `Arc<dyn EventStore>` (the kernel uses `Arc` so
+    /// the resolver can share the same store without a second copy). Used
+    /// by the `set_publish_resolver_factory` composition site to construct
+    /// `nmp_router::Nip65OutboxResolver::with_local_relays(store, ...)`
+    /// over the same store the kernel reads kind:10002 from. Spec §271
+    /// (2026-05-25).
+    #[must_use]
+    pub fn event_store_handle(&self) -> Arc<dyn EventStore> {
+        Arc::clone(&self.store)
+    }
+
+    /// Borrow the kernel's indexer-relays slot.
+    ///
+    /// The actor pushes the configured indexer URL list into this slot on
+    /// every relay-config mutation (D4 sole-writer); router-side resolvers
+    /// (`nmp_router::Nip65OutboxResolver`) read through it without crossing
+    /// the kernel boundary. Spec §271 (2026-05-25).
+    #[must_use]
+    pub fn indexer_relays_handle(&self) -> IndexerRelaysSlot {
+        Arc::clone(&self.indexer_relays_handle)
+    }
+
+    /// Borrow the kernel's local-write-relays slot. See
+    /// [`Self::indexer_relays_handle`] for the threading model.
+    #[must_use]
+    pub fn local_write_relays_handle(&self) -> LocalWriteRelaysSlot {
+        Arc::clone(&self.local_write_relays_handle)
+    }
+
+    /// Borrow the kernel's active-account-pubkey slot. See
+    /// [`Self::indexer_relays_handle`] for the threading model.
+    #[must_use]
+    pub fn active_account_handle(&self) -> ActiveAccountSlot {
+        Arc::clone(&self.active_account_handle)
+    }
+
+    /// V-51 phase 1 — borrow the kernel's routing-trace projection.
+    ///
+    /// Returns an `Arc<RoutingTraceProjection>` so a host that swaps in a
+    /// production router (`nmp_router::GenericOutboxRouter`) via
+    /// [`Self::set_routing`] can pass the same projection through the
+    /// router's `with_trace_observer` builder, and so phase 2's FFI snapshot
+    /// surface can read the rings without holding a `&Kernel` borrow.
+    ///
+    /// V-51 phase 4 widens this from `pub(crate)` to `pub`: the validation
+    /// harness (`nmp-testing`) and the chirp-repl `routing-trace`
+    /// subcommand need to read the projection through a held `&Kernel`
+    /// reference, and `NmpApp` publishes one clone into a shared slot at
+    /// actor startup so callers can read it without holding the kernel
+    /// directly.
+    #[must_use]
+    pub fn routing_trace(&self) -> Arc<routing_trace::RoutingTraceProjection> {
+        Arc::clone(&self.routing_trace)
     }
 
     /// Construct a Kernel with an externally-supplied publish store. Used by
@@ -870,13 +1065,20 @@ impl Kernel {
         let indexer_relays_handle: IndexerRelaysSlot = new_indexer_relays_slot();
         let local_write_relays_handle: LocalWriteRelaysSlot = new_local_write_relays_slot();
         let active_account_handle: ActiveAccountSlot = new_active_account_slot();
+        // Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in
+        // `nmp-router`, not `nmp-core`. The engine is built with the
+        // in-crate `NoopOutboxResolver` default; production composition
+        // (`nmp-app-template::register_defaults` → the
+        // `set_publish_resolver_factory` slot the actor reads at
+        // construction) swaps in the router-side resolver via
+        // [`Kernel::set_publish_resolver`]. The `indexer_relays_handle`,
+        // `local_write_relays_handle`, and `active_account_handle` slots
+        // are still kernel-owned (the actor is the sole writer per D4) and
+        // are surfaced through the kernel accessors below so the
+        // router-side resolver constructor can wire them in.
         let publish_engine = publish_engine::build_engine(
-            Arc::clone(&store),
             Arc::clone(&publish_dispatcher),
             Arc::clone(&publish_store),
-            Arc::clone(&indexer_relays_handle),
-            Arc::clone(&local_write_relays_handle),
-            Arc::clone(&active_account_handle),
         );
 
         // T129 — install the store-backed watermark resolver on the
@@ -927,6 +1129,60 @@ impl Kernel {
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
 
+        // V-51 phase 1 — construct the routing-trace projection. The kernel
+        // hands this to production composition (via `routing_trace()` →
+        // `RoutingSubstrateSlot` factory → `GenericOutboxRouter::with_trace_observer`)
+        // so every routing decision the production router makes populates
+        // the ring buffer the FFI snapshot surface + `chirp-repl routing-trace`
+        // read from.
+        //
+        // Substrate-honest debt B (2026-05-24): the kernel's default
+        // `outbox_router` slot used to hold an in-crate router that
+        // duplicated `nmp_router::GenericOutboxRouter`'s algorithm
+        // byte-for-byte (`nmp-core` could not depend on `nmp-router` so the
+        // only way to keep a routing default was to copy the algorithm). The
+        // duplicate is deleted: the default is now `EmptyOutboxRouter`
+        // (always returns `Unroutable`). Every production composition
+        // installs a real router via `NmpApp::set_routing_substrate` before
+        // the kernel issues any routing decision; tests that exercise real
+        // routing call `Kernel::set_routing` directly. The default `mailbox_cache`
+        // is similarly `EmptyMailboxCache` in production and a
+        // `TestInMemoryMailboxCache` under `cfg(any(test, feature = "test-support"))`
+        // so the dozens of in-tree kind:10002 ingest tests keep working
+        // without each one having to inject `nmp_router::InMemoryMailboxCache`
+        // from a downstream crate (which `nmp-core` cannot depend on —
+        // layering).
+        let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::new());
+        let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
+
+        // Spec §271 (2026-05-25): under `cfg(test)` / `feature="test-support"`
+        // the kernel auto-installs the in-crate `TestKind10002OutboxResolver`
+        // (a minimal kind:10002 reader) so the dozens of in-tree publish
+        // tests (`publish_engine_tests`, `outbox_tests`, `action_failure_tests`,
+        // `publish_terminal_status_tests`, `eose_ok_notice_ingest_tests`,
+        // `actor::commands::tests`, `kernel::test_support::seed_kind10002_for_test`
+        // consumers) keep working without each test calling
+        // `Kernel::set_publish_resolver` manually. Production builds use the
+        // `NoopOutboxResolver` default the engine was built with above; the
+        // production composition site (`nmp-app-template::register_defaults`)
+        // installs the full router-side `nmp_router::Nip65OutboxResolver`
+        // via `NmpApp::set_publish_resolver_factory` →
+        // `Kernel::set_publish_resolver` (D0 — `nmp-core` does not name
+        // `nmp-router` in its production graph; a dev-dep on `nmp-router`
+        // would form a feature-incompatible cycle with `nmp-router`'s own
+        // dep on `nmp-core`).
+        #[cfg(any(test, feature = "test-support"))]
+        let test_publish_resolver: Arc<dyn crate::publish::OutboxResolver> = Arc::new(
+            crate::publish::TestKind10002OutboxResolver::new(Arc::clone(&store)).with_local_relays(
+                Arc::clone(&local_write_relays_handle),
+                Arc::clone(&active_account_handle),
+            ),
+        );
+        #[cfg(any(test, feature = "test-support"))]
+        let mut publish_engine = publish_engine;
+        #[cfg(any(test, feature = "test-support"))]
+        publish_engine.set_outbox(test_publish_resolver);
+
         Self {
             store,
             clock: Arc::new(SystemClock),
@@ -937,6 +1193,7 @@ impl Kernel {
                 .into_iter()
                 .map(|role| (role, RelayHealth::default()))
                 .collect(),
+            transport_relays: RelayTransportMap::default(),
             profiles: HashMap::new(),
             local_profile_intents,
             events: HashMap::new(),
@@ -949,9 +1206,16 @@ impl Kernel {
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             seed_contacts: HashMap::new(),
-            mailbox_cache: Arc::new(DefaultInMemoryMailboxCache::new()),
-            outbox_router: Arc::new(Nip65WriteSetRouter::new()),
-            dm_relay_lists: HashMap::new(),
+            #[cfg(any(test, feature = "test-support"))]
+            mailbox_cache: Arc::new(TestInMemoryMailboxCache::new()),
+            #[cfg(not(any(test, feature = "test-support")))]
+            mailbox_cache: Arc::new(EmptyMailboxCache::new()),
+            outbox_router,
+            routing_trace,
+            dm_inbox_relays: empty_dm_inbox_relay_lookup(),
+            ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
+            #[cfg(any(test, feature = "test-support"))]
+            test_dm_inbox_cache: None,
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
@@ -969,9 +1233,9 @@ impl Kernel {
             max_events_per_update: 0,
             changed_since_emit: true,
             logs: VecDeque::new(),
-            nip42_drivers: RelayRole::all()
+            auth_drivers: RelayRole::all()
                 .into_iter()
-                .map(|role| (role, Nip42DriverState::new()))
+                .map(|role| (role, AuthDriverState::new()))
                 .collect(),
             lifecycle,
             unknown_ids: UnknownIds::new(),
@@ -1506,6 +1770,73 @@ impl Kernel {
     #[allow(dead_code)] // Reserved for follow-on wiring of actual routing call sites.
     pub(crate) fn outbox_router(&self) -> &dyn OutboxRouter {
         &*self.outbox_router
+    }
+
+    /// Inject the DM-inbox relay lookup (V-40 composition seam). Production
+    /// composition (apps that depend on `nmp-nip17`) calls this after
+    /// `Kernel::new` to install the shared `Arc<DmRelayCache>` so the
+    /// kernel's `recipient_dm_relays` reader + the planner-side
+    /// `KernelMailboxes` adapter both see the same kind:10050 entries the
+    /// kind:10050 ingest parser writes. Default is
+    /// [`crate::substrate::EmptyDmInboxRelayLookup`] (every lookup returns
+    /// `None`, the fail-closed cold-start contract).
+    ///
+    /// MUST be called BEFORE the first kind:10050 event is ingested — the
+    /// caches are independent stores, not a write-through pair, so a swap
+    /// after ingest would lose cached entries.
+    pub(crate) fn set_dm_inbox_relay_lookup(&mut self, lookup: Arc<dyn DmInboxRelayLookup>) {
+        self.dm_inbox_relays = lookup;
+    }
+
+    /// Replace the kernel's [`EventIngestDispatcher`] slot with `slot`.
+    /// Composition-time wiring path — the actor calls this with the
+    /// `Arc<RwLock<EventIngestDispatcher>>` slot owned by `NmpApp` so
+    /// `NmpApp::register_ingest_parser` and the kernel share one
+    /// dispatcher.
+    ///
+    /// MUST be called BEFORE the first event is ingested.
+    pub(crate) fn set_ingest_dispatcher_slot(
+        &mut self,
+        slot: Arc<std::sync::RwLock<EventIngestDispatcher>>,
+    ) {
+        self.ingest_dispatcher = slot;
+    }
+
+    /// Shared handle to the injected `Arc<dyn DmInboxRelayLookup>`. Used by
+    /// the planner-side `KernelMailboxes` adapter so the planner reads the
+    /// same DM-inbox relay entries the gift-wrap publish path reads.
+    pub(crate) fn dm_inbox_relays_arc(&self) -> Arc<dyn DmInboxRelayLookup> {
+        Arc::clone(&self.dm_inbox_relays)
+    }
+
+    /// Register a [`crate::substrate::IngestParser`] for `kind` against the
+    /// kernel's shared [`EventIngestDispatcher`] slot. Composition-time
+    /// wiring path — `NmpApp::register_ingest_parser` calls this through
+    /// a kernel handle shared with the actor; the slot pattern matches
+    /// the rest of the substrate's host-extension seams.
+    ///
+    /// D6 — a poisoned dispatcher lock degrades to a no-op (the
+    /// registration is dropped; the kernel keeps its current set).
+    /// MUST be called before the first event is ingested.
+    #[allow(dead_code)] // Wired through `NmpApp` at composition time.
+    pub(crate) fn register_ingest_parser(
+        &self,
+        kind: u32,
+        parser: Arc<dyn crate::substrate::IngestParser>,
+    ) {
+        if let Ok(mut d) = self.ingest_dispatcher.write() {
+            d.register_kind(kind, parser);
+        }
+    }
+
+    /// Shared handle to the kernel's [`EventIngestDispatcher`] slot. Used
+    /// by the actor / kernel ingest path to dispatch a verified event to
+    /// every registered parser; used by the FFI composition seam to
+    /// install fresh parsers.
+    pub(crate) fn ingest_dispatcher_slot(
+        &self,
+    ) -> Arc<std::sync::RwLock<EventIngestDispatcher>> {
+        Arc::clone(&self.ingest_dispatcher)
     }
 }
 

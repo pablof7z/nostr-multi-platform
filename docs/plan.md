@@ -1,9 +1,10 @@
 # Build & Validation Plan
 
-> Single overarching plan for shipping NMP v1. Reconciled 2026-05-23 against HEAD `20a3794f`.
+> Single overarching plan for shipping NMP v1. Reconciled 2026-05-25 against HEAD `cc10148f` (post step 8 phase F — actor cut-over to Pool).
 >
 > **Sources of truth:**
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
+> - **Architectural migration spec** — [`docs/architecture/crate-boundaries.md`](architecture/crate-boundaries.md) (12-step crate-boundary plan; §5 is the migration order).
 > - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (work currently on a branch).
 > - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
 > - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-14-review-product-honesty.md`](perf/codex-reviews/opus-direction-14-review-product-honesty.md).
@@ -14,7 +15,18 @@
 
 ## TL;DR — one screen
 
-**What works on master** (≈136k LOC, 28 crates): kernel substrate · LMDB persistence · NIP-65 outbox routing · NIP-77 negentropy · NIP-42 relay auth · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47) · NIP-57 zaps · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check`.
+**Architecture migration (2026-05-24 + 2026-05-25, 31 PRs merged).** The 12-step crate-boundary plan in `docs/architecture/crate-boundaries.md` is structurally **~90% complete**. Steps 1 (substrate seams), 2 (`nmp-router`), 3 (kernel cut-over), 4 (V-41 LNURL), 5+6 (V-39+V-40 NIP-17), 8 phases A/B/C/E/F (extraction, Pool API, BrowserRelayDriver, NIP-42 split, actor cut-over), 9 (`nmp-store`+`nmp-planner`), 10 (`nmp-app-template`; Chirp −547 LOC), 11 partial+final (chirp-* moved, `nmp-ffi` extracted) ✅ merged. Substrate-honest debts A (router decides), B (delete `default_routing.rs`), C (`ProtocolCommandContext` capability traits), D (RwLock panics), V-08 (bunker DM send) ✅ merged. V-51 routing observability phases 1+2+4+5 ✅ merged. Step 7 (V-38 NWC) ⚠ PR #460 sitting deprioritized. Step 8 phase D (broker `Pool` dedupe) 🟡 PR #477 in CI. Remaining: step 8 phase D merge; V-51 phase 3 (iOS Chirp inspector UI — Swift). Step 12 (`nmp-marmot` return to `crates/`) 🟡 PR open — Path B (per-app FFI sanctioned per ADR-0025 update 2026-05-23; bespoke `nmp_marmot_dispatch` write-side already retired in PR 3 2026-05-23).
+
+**Live validation works.** `cargo test -p nmp-testing --test routing_trace_real_nostr -- --ignored` fetches pablof7z's real NIP-65 from `wss://relay.damus.io`, hands it to `nmp_router::GenericOutboxRouter::route_subscription`, asserts the resolved set (`r.f7z.io`, `relay.damus.io`, `relay.primal.net`) is attributed to `Nip65/Read` lane with zero `AppRelay/Fallback` leak. `scripts/validate-routing.sh` drives chirp-repl end-to-end. The kernel **actually consumes** the router's output for live REQ-relay selection (PR #462 + PR #468 cut-over; observe-only → decision authority).
+
+**Known partial state** (honest about what's not yet clean):
+- `Nip65OutboxResolver` (279 LOC publish-side NIP-65 algorithm) still sits in `crates/nmp-core/src/publish/nip65/` — spec §271 forbids it; should move into `nmp-router`.
+- V-08 bunker DM is wired (seam restored, test un-ignored) but the regression test runs against a `StubRemoteSigner`, not a live NIP-46 bunker.
+- `fixture-todo-core` is still in `crates/` because `nmp-codegen`'s `path = "../../../crates/{}"` hardcode hasn't been generalized — step 11 final closed but `fixture-todo-core` is the lone exception.
+- `crates/nmp-core/src/wallet/` (311 LOC) + the `wallet` Cargo feature still in `nmp-core` — V-38 deprioritized.
+- Substrate D0 noun leaks in `nmp-core` (4 items flagged 2026-05-25, closed by this PR): `Kernel::nip42_drivers` / `Nip42DriverState` renamed to `auth_drivers` / `AuthDriverState`; `RelayStatus::nip77_negentropy` / `RelayHealth::nip77_probe_state` / `Kernel::set_nip77_probe_state` renamed to `negentropy_probe` / `negentropy_probe_state` / `set_negentropy_probe_state`; `kernel/nip17_dm_inbox_routing_tests.rs` renamed to `kernel/dm_inbox_routing_tests.rs`; the `#[allow(unused_imports)]` cluster in `actor/mod.rs` replaced with structural `#[cfg(...)]` gates.
+
+**What works on master** (~140k LOC, 33 crates): kernel substrate (`nmp-core`, mostly NIP-clean post-migration) · LMDB persistence (`nmp-store`) · planner (`nmp-planner`) · single-algorithm router (`nmp-router`) with NIP-65 outbox + Indexer (discovery kinds) + AppRelay fallback + blocked-relay filter + `explicit_targets` override seam · push-model `Pool` with generational `RelayHandle` + `PoolEvent` channel in `nmp-network` · routing-trace observability projection (FFI + wasm) · NIP-77 negentropy · NIP-42 relay auth (wire/FSM split across `nmp-network` + `nmp-nip42` + `nmp-core::subs::AuthGate`) · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47, still in `nmp-core` — V-38 deprioritized) · NIP-57 zaps (LNURL fetcher in `nmp-nip57`) · NIP-17 DMs (full stack in `nmp-nip17`, bunker NIP-46 sealing seamed) · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check` · chirp-repl `routing-trace` subcommand + `scripts/validate-routing.sh` end-to-end smoke · `nmp_app_recent_routing_decisions` FFI + wasm surface for iOS/web inspectors.
 
 **What does not work yet** (v1 blockers):
 1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool (Stage 3, PR #375), NIP-07 signer + async snapshot push (Stage 3b, PR #378), publish-path wire + multi-role bootstrap (Stage 3c, PR #385 — merged 2026-05-24). **Only F-01 IndexedDB persistence remains v1-blocking.** No persistent chirp-web features may be added until F-01 lands.
@@ -84,7 +96,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
 | M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stages 2–3c all merged (PR #372/#375/#378/#385); **F-01 IndexedDB is the sole remaining v1-blocking item** |
-| M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
+| M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not; component-registry/content-kit plan added in [`plan/m16-component-registry.md`](plan/m16-component-registry.md) |
 | M17 v1 release | pending | ❌ Pending |
 
 Detail per milestone lives in [`docs/plan/m*.md`](plan/). The fresh codebase inventory and divergence analysis live in [`docs/plan/status.md`](plan/status.md).
@@ -157,6 +169,7 @@ Where to look for detail:
 - [`docs/plan/scope-adjustments-2026-05-18.md`](plan/scope-adjustments-2026-05-18.md) — historical scope changes
 - [`docs/plan/post-v1.md`](plan/post-v1.md) — deferred work detail
 - [`docs/plan/marmot-mls.md`](plan/marmot-mls.md) — Marmot/MLS detail
+- [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md) — app-owned component registry and native content kits
 - [`docs/plan/m0-fixture.md`](plan/m0-fixture.md) – [`m17-release.md`](plan/m17-release.md) — per-milestone detail
 - [`docs/architecture-audit/`](architecture-audit/) — 2026-05-23 13-agent audit, PD-033-C plan, codegen plan
 - [`docs/perf/codex-reviews/`](perf/codex-reviews/) — post-merge codex reviews + opus direction reviews

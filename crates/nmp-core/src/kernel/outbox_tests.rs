@@ -351,7 +351,7 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
     //   * each BOOTSTRAP_DISCOVERY_RELAYS seed receives a REQ carrying [id_C]
     //     (the cold-start fallback for an author with no resolved write set).
     // No REQ leaves on a relay that does not own the id it carries.
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
     install_relay_list(&kernel, ALICE, &["wss://relay1/"], &[], &[]);
     install_relay_list(&kernel, BOB, &["wss://relay2/"], &[], &[]);
@@ -496,7 +496,7 @@ fn hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap() {
     // interest. With an active account whose kind:10002 declares read
     // relays, `open_firehose_tag` must fan out exactly onto those read
     // relays, never onto the bootstrap discovery seed.
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
     // ALICE is the active account. Her NIP-65 declares two read relays
     // (one pure read marker, one shared "both" marker) and a write relay

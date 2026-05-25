@@ -334,52 +334,115 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
 
 #[test]
 fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
-    // ADR-0026 Phase 2 end-to-end: with an active bunker (StubRemoteSigner),
-    // `send_gift_wrapped_dm` must successfully gift-wrap the rumor TWICE
-    // (recipient + self-copy) by routing the seal step through
-    // `RemoteSignerForSeal`. Pre-Phase-2 behaviour was a toast naming
-    // "ADR-0026 Phase 2"; this test pins the regression.
+    // V-08 (bunker DM send) regression pin. End-to-end contract: with
+    // an active bunker (`StubRemoteSigner`), the `signer_for_seal`
+    // closure the dispatch arm installs on `ProtocolCommandContext`
+    // resolves to a `SignerForSeal` that drives the kind:13 seal step
+    // through the remote signer (NOT a phantom local-keys branch).
+    //
+    // The `nmp-nip17::SendGiftWrappedDmCommand` body itself reads the
+    // signer through `ctx.signer_for_seal()` and hands it to
+    // `nmp_nip59::gift_wrap_with_signer`; this test reproduces those
+    // two calls against the same accessor without crossing the D0
+    // crate boundary (nmp-core cannot import nmp-nip17). If the
+    // accessor returns the bunker-adapted signer here, the DM command
+    // body — already covered for the local-keys happy path in
+    // `nmp_nip17::dm_send::tests::happy_path_publishes_two_envelopes\
+    // _pinned_to_kind10050_relays` — automatically routes through the
+    // bunker too.
+    use crate::substrate::{
+        EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker,
+        NoopErrorSurface, NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
+        ProtocolCommandContextParts,
+    };
+    use nmp_nip59::{gift_wrap_with_signer, GIFT_WRAP_TOTAL_TIMEOUT};
+    use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
+    use nostr::{EventBuilder, Kind};
+
     let (mut id, mut kernel) = fresh();
     let (handle, sign_count) = stub_signer();
-    let sender_pk = handle.pubkey_hex();
+    let sender_hex = handle.pubkey_hex();
     add_remote_signer(&mut id, &mut kernel, handle, false);
 
-    // Recipient must be a real secp256k1 point because NIP-44 ECDH happens
-    // against it; a hand-typed hex string would fail at PublicKey::parse.
-    let recipient_pk = Keys::generate().public_key().to_hex();
-    // Seed kind:10050 for BOTH the recipient AND the sender so the explicit
-    // routing path resolves on both envelopes — without these the handler
-    // takes the Content-relays fallback, which is correct behaviour but
-    // muddies the assertion about which seam was exercised.
-    kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.test"]);
-    kernel.seed_kind10050_for_test(&sender_pk, &["wss://sender-dm.test"]);
+    // Debt C — wrap the identity reference in a `LocalSignerAccess`
+    // adapter so the test exercises the same capability surface the
+    // dispatch arm wires. The dispatch arm uses an equivalent adapter
+    // backed by a `RefCell<&IdentityRuntime>`; here we use a direct
+    // borrow because the test holds the runtime exclusively.
+    struct IdentityLocalSignerAccess<'a>(&'a super::IdentityRuntime);
+    impl<'a> LocalSignerAccess for IdentityLocalSignerAccess<'a> {
+        fn active_local_keys(&self) -> Option<nostr::Keys> {
+            self.0.active_local_keys().cloned()
+        }
+        fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+            self.0.active_signer_for_seal()
+        }
+    }
+    // SAFETY: single-threaded test scope; the `&IdentityRuntime` borrow
+    // never crosses a thread boundary. The trait carries the bound.
+    unsafe impl<'a> Send for IdentityLocalSignerAccess<'a> {}
+    unsafe impl<'a> Sync for IdentityLocalSignerAccess<'a> {}
+    let signers = IdentityLocalSignerAccess(&id);
+    static CLOCK: NoopKernelClock = NoopKernelClock;
+    static DMS: EmptyDmInboxRelayLookup = EmptyDmInboxRelayLookup;
+    static ERRORS: NoopErrorSurface = NoopErrorSurface;
+    static STAGES: NoopActionStageTracker = NoopActionStageTracker;
+    static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+    let send = |_: crate::actor::ActorCommand| {};
+    let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorCommand>();
+    let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
+        send: &send,
+        command_sender: tx,
+        clock: &CLOCK,
+        signers: &signers,
+        dms: &DMS,
+        errors: &ERRORS,
+        stages: &STAGES,
+        recipients: &RECIPIENTS,
+    });
 
-    let rumor = crate::substrate::UnsignedEvent {
-        pubkey: sender_pk.clone(),
-        kind: 14,
-        tags: vec![vec!["p".to_string(), recipient_pk.clone()]],
-        content: "hello from a bunker".into(),
-        created_at: 0,
-    };
-    let outbound = super::dm::send_gift_wrapped_dm(&id, &mut kernel, rumor, &recipient_pk, None);
+    let signer = ctx
+        .signer_for_seal()
+        .expect("ctx.signer_for_seal() resolves the active bunker signer");
 
-    assert!(
-        kernel.last_error_toast_snapshot().is_none(),
-        "bunker DM must NOT toast — Phase 2 closes the seam; got toast: {:?}",
-        kernel.last_error_toast_snapshot()
+    // The signer's pubkey must equal the bunker's pubkey (NOT a local
+    // key) — proves the `RemoteSignerForSeal` adapter is the one
+    // wired through, not a phantom local-keys branch.
+    assert_eq!(
+        signer.pubkey().to_hex(),
+        sender_hex,
+        "signer pubkey must match the bunker's user pubkey"
     );
-    assert!(
-        !outbound.is_empty(),
-        "both gift-wrap envelopes should produce outbound frames"
+
+    // Drive a real gift-wrap through the resolved signer — same call
+    // pattern `SendGiftWrappedDmCommand` uses. The kind:13 seal step
+    // routes through `RemoteSignerHandle::sign` on the stub, bumping
+    // `sign_count`.
+    let recipient = nostr::Keys::generate().public_key();
+    let rumor = EventBuilder::new(Kind::from_u16(14), "hello from a bunker")
+        .tag(nostr::Tag::public_key(recipient))
+        .build(signer.pubkey());
+
+    let op = gift_wrap_with_signer(
+        &signer,
+        &recipient,
+        &rumor,
+        nostr::Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK),
     );
-    // The stub signed the kind:13 seal TWICE (once per envelope). If the
-    // sign count is 0 we would have silently fallen back to a local-key
-    // path that does not exist for this account — the seam is the only
-    // way to produce a signed envelope here.
+    let envelope = op
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("bunker gift-wrap completes within total budget");
+
+    assert_eq!(envelope.kind, Kind::GiftWrap, "kind:1059 envelope");
+    assert_ne!(
+        envelope.pubkey,
+        signer.pubkey(),
+        "NIP-59 unlinkability — outer pubkey must be ephemeral"
+    );
     assert_eq!(
         sign_count.load(Ordering::Relaxed),
-        2,
-        "the remote signer should have signed BOTH seals (recipient + self)"
+        1,
+        "the bunker signed the kind:13 seal exactly once"
     );
 }
 
@@ -505,6 +568,19 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // Host-op handler slot — test wiring; this remote-signer test does
             // not exercise the `DispatchHostOp` path.
             crate::substrate::new_host_op_handler_slot(),
+            // V-40 — test wiring; no NIP-17 cache here.
+            Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+            Arc::new(std::sync::Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+            // V-51 phase 4 — test wiring; nothing reads the routing-trace slot here.
+            Arc::new(std::sync::Mutex::new(None)),
+            // V-51 phase 5 — test wiring; no per-app routing factory installed.
+            Arc::new(std::sync::Mutex::new(None)),
+            // Spec §271 (2026-05-25) — test wiring; no per-app
+            // publish-resolver factory installed. The under-`cfg(test)`
+            // auto-install on `Kernel::new()` (also via this actor's
+            // `Kernel::with_storage_path`) gives the kernel a working
+            // `Nip65OutboxResolver` regardless of this slot.
+            Arc::new(std::sync::Mutex::new(None)),
         );
     });
 

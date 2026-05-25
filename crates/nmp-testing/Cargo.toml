@@ -10,15 +10,25 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final. The `ffi-stress` harness binary
+# reaches the symbols through here.
+nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
 paste = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
+# V-51 phase 4 validation harness — `routing_trace_real_nostr` test
+# constructs `GenericOutboxRouter` + `InMemoryMailboxCache` + the
+# `Kind10002Parser` directly to seed the cache from a live kind:10002
+# fetch, then observes via a kernel-side `RoutingTraceProjection`.
+nmp-router = { path = "../nmp-router" }
 nmp-signers = { path = "../nmp-signers" }
 nmp-signer-broker = { path = "../nmp-signer-broker" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
@@ -31,7 +41,7 @@ tungstenite = { version = "0.24", default-features = false, features = ["handsha
 # nmp-marmot drives MarmotService; test-utils gates new_unencrypted / new_in_memory.
 # mdk-core exposes MessageProcessingResult + NostrGroupConfigData + GroupId for assertions.
 # tempfile provides ephemeral SQLite paths for state-fork (post-compromise test).
-nmp-marmot = { path = "../../apps/marmot/nmp-app-marmot" }
+nmp-marmot = { path = "../nmp-marmot" }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 tempfile = "3"
@@ -124,3 +134,14 @@ path = "tests/marmot_key_package_rotation.rs"
 [[test]]
 name = "marmot_perf"
 path = "tests/marmot_perf.rs"
+
+# V-51 phase 4 — routing-trace real-relay validation harness. Constructs
+# `GenericOutboxRouter` + `InMemoryMailboxCache` + `RoutingTraceProjection`
+# directly, seeds the cache from a live kind:10002 fetched from a real
+# Nostr relay (pablof7z's published NIP-65), routes a subscription, and
+# asserts lane attribution (`Nip65/Read`, no `AppRelay/Fallback`).
+# All tests `#[ignore]` by default; run explicitly:
+#   cargo test --ignored -p nmp-testing --test routing_trace_real_nostr -- --nocapture
+[[test]]
+name = "routing_trace_real_nostr"
+path = "tests/routing_trace_real_nostr.rs"

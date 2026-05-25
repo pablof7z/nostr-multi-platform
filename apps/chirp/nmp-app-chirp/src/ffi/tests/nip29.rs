@@ -5,10 +5,11 @@
 use std::ffi::CString;
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::{nmp_app_free, nmp_app_new, ActorCommand};
+use nmp_core::ActorCommand;
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
-    DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction, JoinGroupInput,
-    PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
+    CreatePublicGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
+    JoinGroupInput, PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
 };
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
@@ -75,15 +76,19 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
         previous_event_id_prefixes: vec![],
         reply_to_event_id: None,
     };
-    let cmds = run_module_execute::<PostChatMessageAction>(input)
-        .expect("well-formed chat message");
+    let cmds =
+        run_module_execute::<PostChatMessageAction>(input).expect("well-formed chat message");
     let cmd = cmds
         .into_iter()
         .next()
         .expect("post-chat-message executor must send at least one command");
 
     match cmd {
-        ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+        ActorCommand::PublishUnsignedEventToRelays {
+            event,
+            relays,
+            correlation_id,
+        } => {
             // Pinned to EXACTLY the group's host relay — never the
             // author's NIP-65 outbox.
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -101,13 +106,16 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
             // `pubkey` is a placeholder — the actor derives it at sign time.
             assert!(event.pubkey.is_empty());
             // correlation_id threads through from the executor.
-            assert!(correlation_id.is_some(), "correlation_id must be threaded through");
+            assert!(
+                correlation_id.is_some(),
+                "correlation_id must be threaded through"
+            );
         }
         other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
     }
 }
 
-/// THE GROUP-CHAT CATALOG WIRING PROOF: each of the 2 NIP-29 group-chat
+/// THE GROUP-CHAT CATALOG WIRING PROOF: each NIP-29 group-chat/create
 /// namespaces `register_nip29_actions` wires is reachable through the
 /// generic `dispatch_action` path. A well-formed body yields a 32-hex
 /// `correlation_id` (BOTH the typed module validator AND the executor are
@@ -123,9 +131,9 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
     assert!(!handle.is_null());
 
     let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
-    // Each of the 2 group-chat namespaces, with a well-formed body for its
-    // typed `<Input>`.
-    let cases: [(&str, String); 2] = [
+    // Each chat/create namespace, with a well-formed body for its typed
+    // `<Input>`.
+    let cases: [(&str, String); 3] = [
         (
             PostChatMessageAction::NAMESPACE,
             format!(r#"{{"group":{group},"content":"hi"}}"#),
@@ -133,6 +141,10 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
         (
             ReactInGroupAction::NAMESPACE,
             format!(r#"{{"group":{group},"target_event_id":"deadbeef","content":"+"}}"#),
+        ),
+        (
+            CreatePublicGroupAction::NAMESPACE,
+            format!(r#"{{"group":{group},"name":"Rust Nostr"}}"#),
         ),
     ];
 
@@ -213,8 +225,8 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     let input = DiscoverGroupsInput {
         relay_url: "wss://groups.example.com".to_string(),
     };
-    let cmds = run_module_execute::<DiscoverGroupsAction>(input)
-        .expect("well-formed discover input");
+    let cmds =
+        run_module_execute::<DiscoverGroupsAction>(input).expect("well-formed discover input");
 
     assert_eq!(
         cmds.len(),
@@ -315,7 +327,11 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
         .next()
         .expect("join executor must send at least one command");
     match cmd {
-        ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+        ActorCommand::PublishUnsignedEventToRelays {
+            event,
+            relays,
+            correlation_id,
+        } => {
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
             assert_eq!(event.kind, 9021);
             assert!(event
@@ -328,7 +344,10 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
                 .any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
             assert_eq!(event.content, "please");
             // correlation_id threads through from the executor.
-            assert!(correlation_id.is_some(), "correlation_id must be threaded through");
+            assert!(
+                correlation_id.is_some(),
+                "correlation_id must be threaded through"
+            );
         }
         other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
     }
@@ -374,10 +393,9 @@ fn register_group_discovery_null_and_empty_input_are_silent_noops() {
 /// inside the function and the registration silently no-ops (D6).
 #[test]
 fn register_group_chat_group_id_wire_shape_matches_serde() {
-    let parsed: GroupId = serde_json::from_str(
-        r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
-    )
-    .expect("documented group_id_json shape must deserialize to GroupId");
+    let parsed: GroupId =
+        serde_json::from_str(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
+            .expect("documented group_id_json shape must deserialize to GroupId");
     assert_eq!(parsed.host_relay_url, "wss://groups.example.com");
     assert_eq!(parsed.local_id, "room");
 
@@ -400,8 +418,7 @@ fn register_group_chat_group_id_wire_shape_matches_serde() {
 fn register_group_chat_runs_for_well_formed_group() {
     let app = nmp_app_new();
     let group =
-        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
-            .unwrap();
+        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#).unwrap();
     // Must register both halves (observer + snapshot projection) without
     // panicking across the FFI boundary.
     nmp_app_chirp_register_group_chat(app, group.as_ptr());
@@ -462,8 +479,7 @@ fn register_group_chat_is_idempotent_on_re_invoke() {
 #[test]
 fn register_group_chat_null_and_malformed_input_are_silent_noops() {
     let group =
-        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
-            .unwrap();
+        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#).unwrap();
     // Null app — must not dereference.
     nmp_app_chirp_register_group_chat(std::ptr::null_mut(), group.as_ptr());
 

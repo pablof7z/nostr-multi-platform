@@ -53,32 +53,50 @@ use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackS
 #[cfg(feature = "native")]
 use commands::IdentityRuntime;
 // V-38: the wallet runtime + status slot moved to `crates/nmp-nip47`.
+// `nmp-core` no longer has a `wallet` feature, a `WalletRuntime` use, or any
+// `WalletStatusSlot` / `new_wallet_status_slot` / `WalletStatus` re-export.
 // `KernelEventObserverSlot` and `notify_observers` are consumed by `kernel/event_observer.rs`
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
-pub(crate) use commands::{notify_observers, KernelEventObserverSlot};
+pub(crate) use commands::notify_observers;
+// `KernelEventObserverSlot`, the slot constructors, registration helpers,
+// and lifecycle observer types are reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` — promoted to `pub` for the extracted
+// crate; `register_c_observer` stays `pub(crate)` because the C-ABI bridge
+// is in `nmp-ffi` and goes through `register_rust_observer` for the typed
+// path.
+pub use commands::KernelEventObserverSlot;
 #[cfg(feature = "native")]
-pub(crate) use commands::{
-    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, register_c_observer,
-    register_rust_observer, unregister_observer, LifecycleObserverRegistration, LifecycleObserverSlot,
+pub use commands::{
+    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot,
+    register_rust_observer, unregister_observer, LifecycleObserverSlot,
 };
+// `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
+// through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
+// `nmp-ffi/src/event_observer.rs` + `lifecycle.rs` can drive the slot.
+#[cfg(feature = "native")]
+pub use commands::{register_c_observer, LifecycleObserverRegistration};
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
 // `"bunker_handshake"` snapshot-projection closure.
 // V-01 Phase 1c: bunker types are native actor / FFI only.
 #[cfg(feature = "native")]
-pub(crate) use commands::{
-    build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
-};
+pub(crate) use commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
+// `nmp-ffi`'s `nmp_app_new` constructs the bunker-handshake slot before
+// handing it to the actor; promoted to `pub` for the extracted crate.
+#[cfg(feature = "native")]
+pub use commands::new_bunker_handshake_slot;
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
 // see these only via the gated `pub use actor::{...}` in lib.rs. The
-// constants are unused inside the crate (FFI consumers read them through
-// the test-support facade), so allow-unused keeps a plain `cargo build`
-// clean.
-#[allow(unused_imports)]
+// `lib.rs` re-export fires in two places: the test-only top-level
+// (`#[cfg(any(test, feature = "test-support"))]`) and `__ffi_internal`
+// (`#[cfg(feature = "native")]`). Mirror the union of those gates so the
+// `pub use` is unused only in a build that consumes neither — wasm32-only
+// (`--no-default-features`) without test-support.
+#[cfg(any(test, feature = "test-support", feature = "native"))]
 pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 // T146 — re-export the kernel event observer types so external Rust callers
 // (per-app crates such as `nmp-app-chirp`) can implement and register
@@ -86,26 +104,46 @@ pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PH
 // `lib.rs`. The FFI shape (`KernelEventObserverFn` /
 // `KernelEventObserverRegistration` / `KernelEventObserverId`) is also
 // surfaced so Swift / Kotlin bindings can use the C-ABI channel.
-#[allow(unused_imports)]
-pub use commands::{
-    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
-    KernelEventObserverRegistration,
-};
+// `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
+// are re-exported unconditionally from `lib.rs` (the typed observer surface
+// for per-app Rust crates and the FFI wire-shape). `KernelEventObserverRegistration`
+// only reaches the outside world through `lib.rs::__ffi_internal`, which is
+// `#[cfg(feature = "native")]`; gate the registration type re-export to match.
+pub use commands::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+#[cfg(feature = "native")]
+pub use commands::KernelEventObserverRegistration;
 // Raw signed-event tap — re-export the slot helpers (crate-private) so
 // `ffi/raw_event_tap.rs` and the actor entry point reach the shared slot,
 // and the public wire shapes so per-app Rust crates + Swift / Kotlin
-// bindings can register a verbatim signed-event observer.
-#[allow(unused_imports)]
-pub(crate) use commands::{
-    new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
-    register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
-    RawEventObserverSlot,
-};
-#[allow(unused_imports)]
+// bindings can register a verbatim signed-event observer. The two notify
+// helpers are consumed by `kernel/raw_event_observer.rs` whenever the
+// `RawEventObserverSlot` field exists — which is unconditional today, so
+// the re-export needs no gate.
+pub(crate) use commands::{notify_raw_observers, raw_observers_idle_for_kind};
+// `register_c_raw_observer` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::register_c_raw_observer` (the C-ABI bridge
+// in `nmp-ffi/src/raw_event_tap.rs`). `__ffi_internal` is `#[cfg(feature =
+// "native")]`, so without `native` this `pub use` has no downstream consumer.
+#[cfg(feature = "native")]
+pub use commands::register_c_raw_observer;
+// Slot constructors / registration helpers reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*`; same `native` gate. The `RawEventObserverSlot`
+// type itself is consumed unconditionally by `kernel/raw_event_observer.rs`
+// (the kernel holds an `Option<RawEventObserverSlot>` field — see `kernel/mod.rs`
+// line 731), so it stays ungated.
+#[cfg(feature = "native")]
 pub use commands::{
-    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-    RawEventObserverRegistration,
+    new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
 };
+pub use commands::RawEventObserverSlot;
+// `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
+// are re-exported unconditionally from `lib.rs` (the typed observer surface
+// for per-app Rust crates and the FFI wire-shape). `RawEventObserverRegistration`
+// only reaches the outside world through `lib.rs::__ffi_internal`, which is
+// `#[cfg(feature = "native")]`; gate that one re-export to match.
+pub use commands::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
+#[cfg(feature = "native")]
+pub use commands::RawEventObserverRegistration;
 // NIP golden-tag conformance harness — re-exported up the (crate-private)
 // `actor` chain so the gated `pub use actor::ConformanceHarness` in `lib.rs`
 // reaches the `tests/nip_tag_conformance.rs` integration test. Gated on
@@ -147,8 +185,16 @@ use crate::relay::RelayRole;
 use crate::subs::PlanCoverageHook;
 #[cfg(feature = "native")]
 use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+// Step 8 phase F — actor cut-over to the push-model `Pool` API. The legacy
+// `nmp_network::relay_worker::{RelayCommand, RelayEvent, spawn_relay_worker}`
+// entry points are no longer named here; with no out-of-crate consumers
+// remaining the `relay_worker` module is `pub(crate)` inside `nmp-network`
+// (the `pool::Pool` translator wraps it internally). Every per-URL socket
+// the actor talks to is now owned by a process-wide `Pool`; the actor
+// holds a `RelayHandle` per URL in `RelayControl` and consumes `PoolEvent`s
+// on the dedicated relay-event channel below.
 #[cfg(feature = "native")]
-use crate::relay_worker::{RelayCommand, RelayEvent};
+use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayHandle};
 use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;
@@ -163,13 +209,18 @@ use std::sync::mpsc::{self, TryRecvError};
 #[cfg(feature = "native")]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
-use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot, StoragePathSlot};
+use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot, StoragePathSlot};
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
+// `has_role` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::has_role` (the FFI surface filters relay-edit
+// rows by role when computing the write-relay slice for the per-app crate's
+// MLS / NIP-17 publish path).
+pub use relay_roles::has_role;
 pub(crate) use relay_roles::{
-    canonical_relay_role, has_role, relay_role_label, relay_role_options, relay_role_tint,
+    canonical_relay_role, relay_role_label, relay_role_options, relay_role_tint,
 };
 // V6 Stage 1 — Swift codegen pilot. `RelayRoleOption` is `pub(crate)` in
 // `relay_roles`; re-exported here so `crate::codegen_schema` can hand it
@@ -179,9 +230,10 @@ pub(crate) use relay_roles::{
 // trip the unused-import lint (no in-crate consumer outside codegen_schema).
 #[cfg(feature = "codegen-schema")]
 pub(crate) use relay_roles::RelayRoleOption;
-// `nostrconnect_relay_url` is consumed by `ffi/mod.rs` (native only).
+// `nostrconnect_relay_url` is consumed by `nmp-ffi` (native only) through
+// `nmp_core::__ffi_internal::nostrconnect_relay_url`.
 #[cfg(feature = "native")]
-pub(crate) use relay_roles::nostrconnect_relay_url;
+pub use relay_roles::nostrconnect_relay_url;
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
@@ -413,51 +465,12 @@ pub enum ActorCommand {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
-    /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
-    /// envelope per recipient and one self-copy, using the active signer's
-    /// keys. Each envelope is published to *its receiver's* kind:10050 DM-inbox
-    /// relays (NIP-17 § 2) — the recipient envelope to the recipient's list,
-    /// the self-copy to the sender's own list. If either receiver's kind:10050
-    /// list is missing or empty, the handler fails closed with a toast and
-    /// emits no publish frames; kind:1059 must not fall back to generic Content
-    /// relays.
-    ///
-    /// `rumor` is the **unsigned** kind:14 chat-message event built by
-    /// `nmp_nip17::build_dm_rumor` — it is never signed or published as-is.
-    /// The actor seals + gift-wraps it (NIP-59 `gift_wrap`) into kind:1059
-    /// envelopes whose outer signatures use fresh per-envelope ephemeral keys
-    /// (the unlinkability guarantee). Two envelopes are produced: one wrapped
-    /// to `recipient_pubkey`, one wrapped to the sender's own pubkey (the
-    /// self-copy, so sent messages remain readable).
-    ///
-    /// The gift-wrap crypto runs on the actor thread (D7 — the kernel owns key
-    /// access and the wall clock). The `rumor.created_at` is re-stamped from
-    /// `kernel.now_secs()` before wrapping.
-    ///
-    /// # Phase 1 — local keys only
-    ///
-    /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` because it thin-wraps
-    /// `nostr::EventBuilder::gift_wrap(&Keys, ...)` — raw keys end-to-end. A
-    /// remote (NIP-46) signer exposes no local key, so bunker accounts cannot
-    /// use this path; the actor detects the missing key and surfaces a toast
-    /// (D6 — explicit failure, never silent, never a panic). Bunker support
-    /// requires a new `nmp_nip59::gift_wrap_with_signer` that calls
-    /// `nostr::nips::nip59::make_seal(signer, receiver, rumor)` for the
-    /// kind:13 seal step (NIP-44 via `RemoteSignerHandle::nip44_encrypt`,
-    /// ADR-0026) and mints an ephemeral key locally for the kind:1059 wrap.
-    SendGiftWrappedDm {
-        rumor: crate::substrate::UnsignedEvent,
-        recipient_pubkey: String,
-        /// Registry-minted action id when this send originates from
-        /// `nmp_app_dispatch_action` (`nmp.nip17.send`). The actor records
-        /// `ActionStage::Requested` against this id and the per-envelope
-        /// `publish_signed_event` calls thread it through to the publish
-        /// engine's `correlation_id_override`, so the kind:1059 terminal
-        /// verdict (or any pre-publish early-exit failure) lands in
-        /// `action_results` and the host spinner resolves. Non-dispatch
-        /// callers (conformance harnesses) pass `None`.
-        correlation_id: Option<String>,
-    },
+    // V-39: `SendGiftWrappedDm` variant deleted — the equivalent path now
+    // dispatches `ActorCommand::Protocol(Box::new(
+    // nmp_nip17::SendGiftWrappedDmCommand { ... }))`, which runs in
+    // `nmp-nip17` and reaches the publish engine through the substrate
+    // [`crate::substrate::ProtocolCommandContext::send`] follow-up channel
+    // (it emits a `PublishSignedEvent` follow-up per envelope).
     /// User intent from the outbox UI: retry a still-pending publish now.
     RetryPublish {
         handle: String,
@@ -521,53 +534,20 @@ pub enum ActorCommand {
     CloseThread {
         event_id: String,
     },
-    // V-38: the three `Wallet*` variants moved out. Wallet connect /
-    // disconnect / pay_invoice now route through
+    // V-38: the three `Wallet{Connect,Disconnect,PayInvoice}` variants moved
+    // out. Wallet connect / disconnect / pay_invoice now route through
     // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` with concrete
     // `WalletConnectCommand` / `WalletDisconnectCommand` /
     // `WalletPayInvoiceCommand` impls in `crates/nmp-nip47/src/protocol.rs`.
-    /// NIP-57 LNURL-pay round-trip. The actor signs `unsigned` (the kind:9734
-    /// zap request) with the active local identity, then spawns a worker
-    /// thread that completes the two-leg LNURL-pay HTTP round-trip
-    /// (well-known fetch → callback fetch) and surfaces the resulting bolt11
-    /// invoice as a [`ActorCommand::ShowToast`] follow-up.
-    ///
-    /// `lnurl_or_address` may be a lightning address (`user@domain`), a
-    /// bech32 `lnurl1…`, or a bare `https://` URL — `commands::zap` decodes
-    /// all three shapes into the LNURL-pay well-known URL per LUD-01/06/16.
-    ///
-    /// # NIP-57 wire-routing — kind:9734 NEVER reaches relays
-    ///
-    /// The signed zap request is delivered to the LNURL callback as a
-    /// `nostr=<urlencoded>` query parameter (NIP-57 § "Appendix C"). It is
-    /// NOT broadcast to Nostr relays — the receipt (kind:9735) is, and the
-    /// LN provider mints it after the invoice settles. This arm therefore
-    /// emits NO `PublishUnsignedEventToRelays` follow-up; any caller that
-    /// expects relay traffic from a zap intent has misunderstood NIP-57.
-    ///
-    /// # ADR-0026 Phase 1 — local keys only
-    ///
-    /// Bunker (NIP-46 remote-signer) accounts fail closed with a clear
-    /// toast and a `RecordActionFailure` (when a `correlation_id` was
-    /// supplied) — kind:9734 signing through a remote signer is the
-    /// follow-up parallel to the NIP-17 DM Phase-2 work.
-    ///
-    /// # ADR-0024 minimum-viable observable surface
-    ///
-    /// The bolt11 invoice is surfaced via `ShowToast`. A snapshot-projection
-    /// surface (`last_action_outcomes` per memory note #57) is the designed
-    /// follow-up; the toast is the minimum-viable observable so a host can
-    /// substring-match the `lnbc…` prefix and drive its NWC pay flow.
-    /// `correlation_id` is the registry-minted action id when this arm
-    /// originates from `dispatch_action` (`nmp.nip57.zap`); a `Failed`
-    /// terminal is recorded against it on any pre-payment failure so the
-    /// host spinner clears.
-    FetchLnurlInvoice {
-        unsigned: crate::substrate::UnsignedEvent,
-        lnurl_or_address: String,
-        amount_msats: u64,
-        correlation_id: Option<String>,
-    },
+    // `nmp-core` no longer has a `wallet` Cargo feature and no longer
+    // depends on `nmp-nwc`. D0: nmp-core names no NIP-47 / NWC nouns.
+    //
+    // V-41: the closed-enum `FetchLnurlInvoice` variant moved to
+    // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` and dispatches through
+    // [`ActorCommand::Protocol`]. `nmp-core` no longer carries any zap
+    // nouns (D0). The dispatch arm + handler are deleted; the surface a
+    // host sees is unchanged (toast + correlation_id closure remain
+    // identical).
     /// T118 / G3 — app lifecycle phase transition reported by the host shell
     /// (or any conforming consumer). The actor folds the phase into the
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
@@ -702,9 +682,10 @@ pub enum ActorCommand {
     /// D8 — `handle` runs INLINE on the actor thread (the same thread that
     /// ticks the kernel). The current MLS-state consumer's mutations are
     /// SQLite-bound and typically sub-100ms; handlers whose ops routinely
-    /// exceed that should spawn a worker internally (the
-    /// [`FetchLnurlInvoice`](Self::FetchLnurlInvoice) pattern). See the
-    /// [`crate::substrate::HostOpHandler`] rustdoc.
+    /// exceed that should spawn a worker internally (the LNURL fetcher
+    /// pattern — see `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` for the
+    /// canonical V-41 example). See the [`crate::substrate::HostOpHandler`]
+    /// rustdoc.
     DispatchHostOp {
         /// JSON-encoded action body. The handler parses this into its own
         /// typed action enum. No protocol type crosses the FFI boundary —
@@ -744,14 +725,29 @@ pub enum ActorCommand {
 /// pool key — every resolved write/read relay gets its own socket. `role`
 /// is retained so the actor can route diagnostic-bucket updates back to
 /// the kernel's lane-keyed `RelayHealth` rows until per-URL health lands (M11).
+///
+/// Phase F: `handle` is the generational [`RelayHandle`] handed back by
+/// [`Pool::ensure_open_with_role`]; outbound frames go through
+/// `pool.send(handle, WireFrame::Text(..))` and shutdown is `pool.close(handle)`.
+/// The per-actor `generation` counter is unrelated to `handle.generation()`
+/// (the pool's slot generation) — it's a strictly-monotonic stamp the actor
+/// uses to drop in-flight events from prior `ensure_open` rounds (the pool's
+/// translator already drops events whose slot-generation is stale; the
+/// actor-side check is belt-and-braces for the same observable behaviour
+/// the pre-Pool design exposed via the `RelayEvent.generation()` field).
 #[cfg(feature = "native")]
 pub(super) struct RelayControl {
+    /// Strictly-monotonic per-actor stamp assigned at `ensure_relay_worker`
+    /// time. Phase F: no longer the worker-side generation (the pool owns
+    /// that as `handle.generation()`); kept as a diagnostic field for the
+    /// FFI surface and tests that still check spawn-order monotonicity.
+    #[allow(dead_code)]
     pub(super) generation: u64,
     #[allow(dead_code)] // Diagnostic lane label; per-URL health is M11.
     pub(super) role: RelayRole,
     #[allow(dead_code)] // The URL this worker dials — the routing key in the pool.
     pub(super) relay_url: String,
-    pub(super) tx: Sender<RelayCommand>,
+    pub(super) handle: RelayHandle,
 }
 
 #[cfg(feature = "native")]
@@ -797,8 +793,10 @@ pub fn run_actor(
         // point has no FFI surface to read the slot, so it's a throwaway.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
-        // NIP-17 DM-inbox key slot — private throwaway: this backwards-compatible
-        // entry point has no FFI surface for a `DmInboxProjection` to read it.
+        // Active-account local-keys slot — private throwaway: this
+        // backwards-compatible entry point has no FFI surface for a
+        // non-substrate reader to consume it (production threads it through
+        // `nmp-ffi`'s `NmpApp::active_local_keys`).
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
@@ -815,6 +813,29 @@ pub fn run_actor(
         // would record a `Failed { reason: "no host op handler installed" }`
         // terminal — tests on this path do not enqueue such commands.
         crate::substrate::new_host_op_handler_slot(),
+        // V-40 — no `NmpApp` here, so the `IngestParser` registry + the
+        // `DmInboxRelayLookup` are both private throwaways (empty
+        // dispatcher + always-`None` lookup). Tests on this path don't
+        // exercise the gift-wrap publish gate or the kind:10050 parser
+        // — those use `run_actor_with_observers` directly with shared
+        // slots.
+        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // V-51 phase 4 — no `NmpApp` is wired through this entry, so the
+        // routing-trace slot is a private throwaway (the actor still
+        // publishes its kernel's projection into it, but nothing reads it).
+        Arc::new(Mutex::new(None)),
+        // V-51 phase 5 — no `NmpApp` here, so the routing-substrate factory
+        // slot is a private throwaway. The kernel keeps its in-crate
+        // `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`
+        // defaults (substrate-honest debt B).
+        Arc::new(Mutex::new(None)),
+        // Spec §271 (2026-05-25) — no `NmpApp` here, so the
+        // substrate-publish-resolver factory slot is a private throwaway.
+        // The kernel keeps its `NoopOutboxResolver` default; every publish
+        // through `PublishTarget::Auto` resolves to an empty set and the
+        // engine surfaces `NoTargets` (fail-closed).
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -849,7 +870,8 @@ pub fn run_actor_with_lifecycle_observer(
         // Typed slot constructor; private throwaway here.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
-        // NIP-17 DM-inbox key slot — private throwaway: no FFI surface here.
+        // Active-account local-keys slot — private throwaway: no FFI
+        // surface here for a non-substrate reader to consume it.
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
@@ -864,6 +886,16 @@ pub fn run_actor_with_lifecycle_observer(
         // `DispatchHostOp` reaching the actor on this path would record a
         // `Failed { reason: "no host op handler installed" }` terminal.
         crate::substrate::new_host_op_handler_slot(),
+        // V-40 — same private-throwaway pattern as the other slots above.
+        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // V-51 phase 4 — same private-throwaway pattern.
+        Arc::new(Mutex::new(None)),
+        // V-51 phase 5 — same private-throwaway pattern (no factory installed).
+        Arc::new(Mutex::new(None)),
+        // Spec §271 (2026-05-25) — same private-throwaway pattern for the
+        // substrate-publish-resolver factory slot (no factory installed).
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -885,12 +917,13 @@ pub fn run_actor_with_lifecycle_observer(
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
     // Self-feedback sender — a clone of `command_rx`'s upstream `Sender`,
-    // handed to dispatch arms that spawn background workers (currently the
-    // `FetchLnurlInvoice` LNURL-pay HTTP round-trip). The worker uses it to
-    // send a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11)
-    // back into this loop without needing access to the `NmpApp`. The actor
-    // itself never `recv`s on this sender — it only hands clones out via
-    // `ActorContext::command_tx_self`.
+    // handed to dispatch arms that spawn background workers (the LNURL-pay
+    // HTTP round-trip dispatched via `ActorCommand::Protocol` carries one
+    // through `ProtocolCommandContext::command_sender_clone`). The worker
+    // uses it to send a follow-up `ActorCommand` (e.g. `ShowToast` with
+    // the bolt11) back into this loop without needing access to the
+    // `NmpApp`. The actor itself never `recv`s on this sender — it only
+    // hands clones out via `ActorContext::command_tx_self`.
     command_tx_self: Sender<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
@@ -918,11 +951,15 @@ pub fn run_actor_with_observers(
     // `Arc<Mutex<Vec<…>>>` parameters here.
     relay_edit_rows: crate::kernel::RelayEditRowsSlot,
     mls_local_nsec: MlsLocalNsecSlot,
-    // NIP-17 DM-inbox decryption key seam. Shared `Arc` with the `NmpApp`:
-    // per-app crates read the slot through `NmpApp::nip17_local_keys`; this
-    // actor thread is the sole writer, updating it on every identity mutation
-    // (parallel to `mls_local_nsec`).
-    nip17_local_keys: Nip17LocalKeysSlot,
+    // Substrate-generic active-account local-keys slot. Shared `Arc` with
+    // the `NmpApp`: per-app crates read it through
+    // `NmpApp::active_local_keys` (today: `nmp-nip17` for gift-wrap
+    // unsealing, `nmp-nip57` for self-zap-receipt subscription); this
+    // actor thread is the sole writer, updating it on every identity
+    // mutation (parallel to `mls_local_nsec`). The substrate names no
+    // NIP — the slot's purpose is "the active account's local keys, when
+    // present"; what callers do with it is their concern (D0).
+    active_local_keys: ActiveLocalKeysSlot,
     capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
     // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
@@ -948,10 +985,53 @@ pub fn run_actor_with_observers(
     // `None` (the test / no-stateful-app default) makes any `DispatchHostOp`
     // arm record a `Failed` terminal stage; nothing else changes.
     host_op_handler: crate::substrate::HostOpHandlerSlot,
+    // V-40 — substrate `EventIngestDispatcher` slot. The `NmpApp` owns
+    // the writer side (`register_ingest_parser`); this actor thread
+    // binds the SAME `Arc` onto the kernel so the ingest path reads the
+    // entries the registration path wrote.
+    ingest_dispatcher_slot: Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
+    // V-40 — substrate `DmInboxRelayLookup` slot. The `NmpApp` owns the
+    // setter (`set_dm_inbox_relay_lookup`); this actor thread reads the
+    // current handle and binds it onto the kernel at construction time
+    // (and re-binds on `Reset`).
+    dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    // V-51 phase 4 — routing-trace projection slot. The `NmpApp` owns the
+    // read side (`NmpApp::routing_trace`); this actor thread is the sole
+    // writer, publishing `kernel.routing_trace()` into the slot right after
+    // kernel construction (and re-publishing on `Reset`).
+    routing_trace_slot: Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
+    // V-51 phase 5 — per-app substrate-routing factory slot. The `NmpApp`
+    // owns the writer side (`NmpApp::set_routing_substrate`); this actor
+    // thread reads the current factory after kernel construction (and on
+    // `Reset`) and applies the produced `(router, cache)` via
+    // `Kernel::set_routing`, threading the kernel's fresh trace projection
+    // through as the `RoutingTraceObserver`. `None` (the default and the
+    // production test state) leaves the kernel's in-crate defaults.
+    routing_substrate_slot: crate::slots::RoutingSubstrateSlot,
+    // Spec §271 (2026-05-25) — per-app substrate-publish-resolver factory
+    // slot. Mirrors `routing_substrate_slot`. The `NmpApp` owns the writer
+    // side (`NmpApp::set_publish_resolver_factory`); this actor thread
+    // reads the current factory after kernel construction (and on
+    // `Reset`) and applies the produced `Arc<dyn OutboxResolver>` via
+    // `Kernel::set_publish_resolver`, threading the kernel's
+    // `event_store_handle` / `indexer_relays_handle` /
+    // `local_write_relays_handle` / `active_account_handle` slots into
+    // the factory. `None` (the default and the production test state)
+    // leaves the kernel's `NoopOutboxResolver` default in place.
+    publish_resolver_slot: crate::slots::PublishResolverSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
-    let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+    //
+    // Phase F: the channel item is now [`PoolEvent`] (push-model surface from
+    // `nmp_network::pool`). The `Pool` is constructed eagerly here — it owns
+    // every per-URL worker thread and the worker→pool translator thread that
+    // rewrites `RelayEvent` into `PoolEvent`. Default `PoolConfig` (production
+    // keepalive constants, `RelayRole::Content` default lane) matches the
+    // pre-Pool actor behaviour bit-for-bit; per-URL role attribution still
+    // flows through `Pool::ensure_open_with_role` from `ensure_relay_worker`.
+    let (relay_tx, relay_rx) = mpsc::channel::<PoolEvent>();
+    let pool = Pool::new(PoolConfig::default(), relay_tx);
 
     // T114b — bind a dispatch-drops counter for diagnostic visibility. Under
     // the new dual-channel design the counter is always zero (commands cannot
@@ -984,6 +1064,70 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // V-51 phase 4 — publish the kernel's routing-trace projection clone
+    // into the shared slot so `NmpApp::routing_trace` can read it. The
+    // kernel default is `EmptyOutboxRouter` (substrate-honest debt B), so
+    // the projection stays empty until the `routing_substrate_slot`
+    // factory below installs a real router via `Kernel::set_routing` with
+    // the projection threaded in as a `RoutingTraceObserver`. D6: a
+    // poisoned slot drops the publication rather than propagate the panic
+    // — readers will see `None`, which is the cold-start state.
+    if let Ok(mut guard) = routing_trace_slot.lock() {
+        *guard = Some(kernel.routing_trace());
+    }
+    // V-51 phase 5 — apply the per-app routing-substrate factory (if any)
+    // BEFORE any kind:10002 is ingested. The factory receives the kernel's
+    // trace projection clone as the observer so the production router
+    // (e.g. `nmp_router::GenericOutboxRouter`) writes into the same
+    // projection the FFI snapshot surface and `chirp-repl routing-trace`
+    // read from. D6: a poisoned factory slot is a silent no-op (the
+    // kernel keeps its in-crate defaults).
+    if let Some(factory) = routing_substrate_slot
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(Arc::clone))
+    {
+        let observer: Arc<dyn crate::substrate::RoutingTraceObserver> =
+            kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
+        let (router, cache) = factory(observer);
+        kernel.set_routing(router, cache);
+    }
+    // Spec §271 (2026-05-25) — apply the per-app substrate-publish-resolver
+    // factory (if any) BEFORE any publish lands. Mirrors the routing factory
+    // application above: the factory receives the kernel's `EventStore` +
+    // typed slot handles (D4 sole-writer is the actor reducer, the resolver
+    // is a reader) so the produced `Nip65OutboxResolver` reads through the
+    // same shared state the actor pushes into. D6: a poisoned slot is a
+    // silent no-op (the kernel keeps its `NoopOutboxResolver` default; every
+    // publish then fails closed with `NoTargets`, exactly as the production
+    // resolver would for an uncached author).
+    if let Some(factory) = publish_resolver_slot
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(Arc::clone))
+    {
+        let resolver = factory(
+            kernel.event_store_handle(),
+            kernel.indexer_relays_handle(),
+            kernel.local_write_relays_handle(),
+            kernel.active_account_handle(),
+        );
+        kernel.set_publish_resolver(resolver);
+    }
+    // V-40 — bind the shared `EventIngestDispatcher` slot + the
+    // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
+    // The `NmpApp` owns the writer sides; this binding ensures the
+    // kernel's ingest + lookup paths see the same `Arc`s `nmp-nip17`
+    // (and any future NIP crate) installed via `register_actions`.
+    kernel.set_ingest_dispatcher_slot(Arc::clone(&ingest_dispatcher_slot));
+    {
+        let lookup = dm_inbox_relays_slot
+            .lock()
+            .ok()
+            .map(|g| Arc::clone(&*g))
+            .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
+        kernel.set_dm_inbox_relay_lookup(lookup);
+    }
     // G-S4 — bind the actor command-channel depth counter so it surfaces on
     // the diagnostic snapshot (`Metrics::actor_queue_depth`). `NmpApp::send_cmd`
     // increments it; this loop decrements per dequeued command (both recv
@@ -1082,6 +1226,14 @@ pub fn run_actor_with_observers(
     // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is
     // compiler-enforced — a raw `&str` cannot index the pool.
     let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
+    // Phase F: reverse lookup from a `RelayHandle.slot()` back to the
+    // canonical pool key. Inbound `PoolEvent`s carry the handle but not the
+    // URL on every variant (`Opened` carries it; `Frame`/`Closed`/`Failed`
+    // do not), so we maintain this side-map alongside `relay_controls` so
+    // the event dispatcher can resolve `slot → (url, role)` without an
+    // O(n) scan. Inserted by `ensure_relay_worker`, removed by
+    // `shutdown_relay_worker` / `close_relays`.
+    let mut slot_to_url: HashMap<u32, CanonicalRelayUrl> = HashMap::new();
     let mut connected_relays = HashSet::new();
     let mut connected_urls: HashSet<CanonicalRelayUrl> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
     let mut next_relay_generation = 1;
@@ -1139,7 +1291,8 @@ pub fn run_actor_with_observers(
                         kernel: &mut kernel,
                         identity: &mut identity,
                         relay_controls: &mut relay_controls,
-                        relay_tx: &relay_tx,
+                        slot_to_url: &mut slot_to_url,
+                        pool: &pool,
                         connected_relays: &mut connected_relays,
                         connected_urls: &mut connected_urls,
                         update_tx: &update_tx,
@@ -1151,12 +1304,17 @@ pub fn run_actor_with_observers(
                         relays_ready,
                         lifecycle_observer: &lifecycle_observer,
                         mls_local_nsec: &mls_local_nsec,
-                        nip17_local_keys: &nip17_local_keys,
+                        active_local_keys: &active_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
                         command_tx_self: &command_tx_self,
                         coverage_hook_slot: &coverage_hook,
                         host_op_handler: &host_op_handler,
+                        ingest_dispatcher_slot: &ingest_dispatcher_slot,
+                        dm_inbox_relays_slot: &dm_inbox_relays_slot,
+                        routing_trace_slot: &routing_trace_slot,
+                        routing_substrate_slot: &routing_substrate_slot,
+                        publish_resolver_slot: &publish_resolver_slot,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
@@ -1166,7 +1324,8 @@ pub fn run_actor_with_observers(
                         running,
                         &mut queued_publish_outbound,
                         &mut relay_controls,
-                        &relay_tx,
+                        &mut slot_to_url,
+                        &pool,
                         &mut kernel,
                         &mut next_relay_generation,
                         outbound,
@@ -1177,7 +1336,8 @@ pub fn run_actor_with_observers(
                             &mut startup_sent,
                             &connected_relays,
                             &mut relay_controls,
-                            &relay_tx,
+                            &mut slot_to_url,
+                            &pool,
                             &mut kernel,
                             &mut next_relay_generation,
                         )
@@ -1187,7 +1347,13 @@ pub fn run_actor_with_observers(
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    close_relays(&mut relay_controls, &mut connected_relays, &mut kernel);
+                    close_relays(
+                        &mut relay_controls,
+                        &mut slot_to_url,
+                        &pool,
+                        &mut connected_relays,
+                        &mut kernel,
+                    );
                     connected_urls.clear();
                     return;
                 }
@@ -1196,76 +1362,79 @@ pub fn run_actor_with_observers(
 
         // ── Relay event lane ─────────────────────────────────────────────
         // Block up to compute_wait so emit-hz is respected without busy-spin.
+        //
+        // Phase F: the inbound item is `PoolEvent` (push-model). Stale-event
+        // filtering moved into `handle_relay_event` itself — the helper
+        // resolves `RelayHandle.slot()` → `(url, role)` via the
+        // `slot_to_url` side-map and the `relay_controls` entry, dropping
+        // any handle whose generation no longer matches the slot's current
+        // generation. The pool's translator already drops events with a
+        // stale slot-generation, so this is belt-and-braces.
         let wait = command_drain.relay_wait(compute_wait(&kernel, running, last_emit, emit_hz));
         match relay_rx.recv_timeout(wait) {
             Ok(event) => {
-                // The pool is keyed by `CanonicalRelayUrl`; a relay worker is
-                // spawned with — and reports events under — its canonical key,
-                // so `parse_or_raw` round-trips to the same map entry.
-                let relay_url = CanonicalRelayUrl::parse_or_raw(event.relay_url());
-                let generation = event.generation();
-                if relay_controls
-                    .get(&relay_url)
-                    .is_none_or(|control| control.generation != generation)
-                {
-                    // Stale event from a disposed worker — ignore.
-                } else {
-                    // Reliability north star: `handle_relay_event` processes
-                    // arbitrary bytes from the network — it is the highest-risk
-                    // panic site in the actor. Wrap it in `catch_unwind` so a
-                    // panic in relay frame processing cannot kill the kernel:
-                    // the actor loop survives, logs the payload, surfaces an
-                    // error toast, and processes the next event fresh.
-                    //
-                    // `AssertUnwindSafe` is required because the closure
-                    // captures `&mut` kernel state (`HashMap`/`Mutex` interiors
-                    // are not `UnwindSafe`). This is sound here: the actor is
-                    // single-threaded, so there is no other thread that could
-                    // observe partially-mutated / poisoned state. Per D1
-                    // (best-effort rendering) the kernel tolerates partial
-                    // state — the invariant we protect is loop survival, not
-                    // per-event atomicity.
-                    //
-                    // The command drain above is deliberately NOT wrapped:
-                    // commands are internally generated, so a panic there is a
-                    // genuine bug that must stay visible.
-                    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                        handle_relay_event(
-                            event,
-                            &mut kernel,
-                            &relay_text_interceptor,
-                            &mut relay_controls,
-                            &relay_tx,
-                            &mut next_relay_generation,
-                            &mut connected_relays,
-                            &mut connected_urls,
-                            &update_tx,
-                            &mut last_emit,
-                            &mut startup_sent,
-                            running,
-                        );
-                    }));
-                    if let Err(panic_payload) = result {
-                        let msg = panic_payload
-                            .downcast_ref::<&str>()
-                            .map(std::string::ToString::to_string)
-                            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
-                            .unwrap_or_else(|| "unknown panic".to_string());
-                        kernel.log(format!("actor: relay event handler panicked: {msg}"));
-                        kernel.set_last_error_toast(Some(
-                            "relay processing error — continuing".to_string(),
-                        ));
-                        // Surface the toast on this tick rather than waiting
-                        // for the next `flush_due` — mirrors the pending-sign
-                        // error path below.
-                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                    }
+                // Reliability north star: `handle_relay_event` processes
+                // arbitrary bytes from the network — it is the highest-risk
+                // panic site in the actor. Wrap it in `catch_unwind` so a
+                // panic in relay frame processing cannot kill the kernel:
+                // the actor loop survives, logs the payload, surfaces an
+                // error toast, and processes the next event fresh.
+                //
+                // `AssertUnwindSafe` is required because the closure
+                // captures `&mut` kernel state (`HashMap`/`Mutex` interiors
+                // are not `UnwindSafe`). This is sound here: the actor is
+                // single-threaded, so there is no other thread that could
+                // observe partially-mutated / poisoned state. Per D1
+                // (best-effort rendering) the kernel tolerates partial
+                // state — the invariant we protect is loop survival, not
+                // per-event atomicity.
+                //
+                // The command drain above is deliberately NOT wrapped:
+                // commands are internally generated, so a panic there is a
+                // genuine bug that must stay visible.
+                //
+                // V-38: pass the substrate-generic `RelayTextInterceptorSlot`
+                // so an installed NIP-crate runtime (today `nmp-nip47`) can
+                // peek at text frames the kernel would otherwise drop.
+                // `nmp-core` no longer names `wallet` / `NWC` at the actor
+                // boundary (D0).
+                let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    handle_relay_event(
+                        event,
+                        &mut kernel,
+                        &relay_text_interceptor,
+                        &mut relay_controls,
+                        &mut slot_to_url,
+                        &pool,
+                        &mut next_relay_generation,
+                        &mut connected_relays,
+                        &mut connected_urls,
+                        &update_tx,
+                        &mut last_emit,
+                        &mut startup_sent,
+                        running,
+                    );
+                }));
+                if let Err(panic_payload) = result {
+                    let msg = panic_payload
+                        .downcast_ref::<&str>()
+                        .map(std::string::ToString::to_string)
+                        .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "unknown panic".to_string());
+                    kernel.log(format!("actor: relay event handler panicked: {msg}"));
+                    kernel.set_last_error_toast(Some(
+                        "relay processing error — continuing".to_string(),
+                    ));
+                    // Surface the toast on this tick rather than waiting
+                    // for the next `flush_due` — mirrors the pending-sign
+                    // error path below.
+                    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                 }
             }
             Err(_timeout_or_disconnected) => {
-                // Timeout (normal idle tick) or relay_rx disconnected (actor
-                // holds relay_tx so this can't happen in practice). Either way
-                // fall through to idle work below.
+                // Timeout (normal idle tick) or relay_rx disconnected (the
+                // pool holds the sender so this can't happen in practice).
+                // Either way fall through to idle work below.
             }
         }
 
@@ -1286,7 +1455,8 @@ pub fn run_actor_with_observers(
             if !pending.is_empty() {
                 send_all_outbound(
                     &mut relay_controls,
-                    &relay_tx,
+                    &mut slot_to_url,
+                    &pool,
                     &mut kernel,
                     &mut next_relay_generation,
                     pending,
@@ -1307,7 +1477,8 @@ pub fn run_actor_with_observers(
                 let outbound = wire_frames_to_outbound(wire_frames, &mut kernel);
                 send_all_outbound(
                     &mut relay_controls,
-                    &relay_tx,
+                    &mut slot_to_url,
+                    &pool,
                     &mut kernel,
                     &mut next_relay_generation,
                     outbound,
@@ -1333,7 +1504,8 @@ pub fn run_actor_with_observers(
             if !retry_frames.is_empty() {
                 send_all_outbound(
                     &mut relay_controls,
-                    &relay_tx,
+                    &mut slot_to_url,
+                    &pool,
                     &mut kernel,
                     &mut next_relay_generation,
                     retry_frames,
@@ -1402,7 +1574,8 @@ pub fn run_actor_with_observers(
                             running,
                             &mut queued_publish_outbound,
                             &mut relay_controls,
-                            &relay_tx,
+                            &mut slot_to_url,
+                            &pool,
                             &mut kernel,
                             &mut next_relay_generation,
                             outbound,

@@ -1,50 +1,27 @@
-use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 use crate::app::AppState;
 use crate::timeline::TimelineRow;
 use crate::ui::layout::render;
 
 #[test]
-fn renders_three_pane_skeleton_at_120_by_40() {
+fn home_tab_renders_chrome_and_compose_at_120_by_40() {
     let rendered = render_state(120, 40, AppState::default());
 
+    // Title bar still shows the app name.
     assert!(rendered.contains("chirp"));
-    assert!(rendered.contains("Feed"));
-    assert!(rendered.contains("Detail"));
-    assert!(rendered.contains("Profile"));
+    // Compose bar still rendered below the body.
     assert!(rendered.contains("Compose"));
 }
 
 #[test]
-fn renders_feed_rows_from_state() {
+fn home_tab_renders_post_author_and_content() {
     let rendered = render_state(120, 40, state_with_row());
 
-    assert!(rendered.contains("items: 1/1"));
+    // Author and body of the depth-0 post are rendered by post_list/post_detail.
     assert!(rendered.contains("alice"));
     assert!(rendered.contains("hello from nostr"));
-}
-
-#[test]
-fn basic_mode_collapses_to_feed_only_body() {
-    let mut state = state_with_row();
-    state.set_basic();
-
-    let rendered = render_state(120, 40, state);
-
-    assert!(rendered.contains("[basic]"));
-    assert!(rendered.contains("Feed"));
-    assert!(!rendered.contains("Detail"));
-    assert!(!rendered.contains("Profile"));
-}
-
-#[test]
-fn medium_width_hides_profile_before_detail() {
-    let rendered = render_state(90, 30, AppState::default());
-
-    assert!(rendered.contains("Feed"));
-    assert!(rendered.contains("Detail"));
-    assert!(!rendered.contains("Profile"));
 }
 
 #[test]
@@ -60,11 +37,9 @@ fn help_overlay_renders_keybindings() {
 }
 
 #[test]
-fn min_terminal_renders_long_names_and_count_text_without_overflow() {
+fn home_tab_handles_narrow_terminal_without_panicking() {
     let mut state = AppState::default();
-    state.status =
-        "loaded author display names and relation counts for a deliberately narrow terminal"
-            .to_string();
+    state.status = "narrow terminal smoke test".to_string();
     state.rows.push(TimelineRow {
         id: "event-with-display-counts".to_string(),
         author: "alexandria-cassandra-with-a-very-long-kind0-display-name".to_string(),
@@ -72,17 +47,16 @@ fn min_terminal_renders_long_names_and_count_text_without_overflow() {
         content: "reply 0 repost 0 like 0 -- this content should wrap inside the feed pane"
             .to_string(),
         created_at: 1,
-        depth: 3,
-        has_gap: true,
+        depth: 0,
+        has_gap: false,
         relation_counts: Default::default(),
     });
 
     let rendered = render_state(80, 24, state);
 
+    // App chrome still visible at narrow widths.
     assert!(rendered.contains("chirp"));
-    assert!(rendered.contains("Feed"));
     assert!(rendered.contains("Compose"));
-    assert!(rendered.contains("reply"));
 }
 
 fn render_state(width: u16, height: u16, state: AppState) -> String {

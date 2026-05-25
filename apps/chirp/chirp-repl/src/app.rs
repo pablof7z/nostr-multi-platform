@@ -9,7 +9,10 @@ use nmp_app_chirp::{
     nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
     nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, ChirpHandle, MarmotHandle,
 };
-use nmp_core::{
+use std::sync::Arc;
+
+use nmp_core::RoutingTraceProjection;
+use nmp_ffi::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_dispatch_action, nmp_app_free,
     nmp_app_free_string, nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread,
     nmp_app_open_timeline, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, NmpApp,
@@ -39,7 +42,7 @@ impl std::fmt::Debug for AppRuntime {
 
 impl AppRuntime {
     pub fn new() -> Self {
-        let app = nmp_core::nmp_app_new();
+        let app = nmp_ffi::nmp_app_new();
         let chirp = nmp_app_chirp_register(app, ptr::null());
         nmp_app_start(app, 30, 200, 4);
         let id = NEXT_RUNTIME_ID.fetch_add(1, Ordering::Relaxed);
@@ -213,7 +216,20 @@ impl AppRuntime {
         self.dispatch_action("nmp.nip17.send", &action)
     }
 
-    #[must_use] 
+    /// V-51 phase 4 — clone of the kernel's routing-trace projection. Returns
+    /// `None` until the actor has built the kernel (the first `ActorCommand`
+    /// after `nmp_app_new` triggers the build; the projection is published
+    /// into the slot immediately after). Once populated, the same projection
+    /// stays live for the rest of the app's lifetime.
+    #[must_use]
+    pub fn routing_trace(&self) -> Option<Arc<RoutingTraceProjection>> {
+        // SAFETY: `self.app` is non-null whenever this method is callable
+        // (the runtime ensures the app is alive for the duration of the
+        // borrow), so the deref to call the inherent method is sound.
+        unsafe { (*self.app).routing_trace() }
+    }
+
+    #[must_use]
     pub fn chirp_snapshot(&self) -> Option<Value> {
         if self.chirp.is_null() {
             return None;

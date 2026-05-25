@@ -8,11 +8,13 @@ use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
 use nmp_core::display::{avatar_color_hex, display_name_initials, format_ago_secs, short_hex};
-use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES, ViewContext};
+use nmp_core::substrate::{BoundedMessageMap, KernelEvent, ViewContext, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
+use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
 
+use crate::kinds::KIND_SHORT_NOTE;
 use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
@@ -20,7 +22,6 @@ use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
 use crate::profile_display::{
     profile_from_event, should_replace, AuthorDisplay, AuthorDisplaySource, ProfileDisplay,
 };
-use crate::try_from_kernel_event;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
@@ -37,54 +38,29 @@ pub struct TimelineEventCard {
     /// clock. Delegates to [`nmp_core::display::format_ago_secs`] (V-33) —
     /// the canonical `Xs/Xm/Xh/Xd ago` dialect every NMP surface speaks.
     pub created_at_display: String,
-    /// V-27 thin-shell: two-char uppercase initials for the avatar tile,
-    /// derived from `author_pubkey`. Mirrors the `pubkey_initials` helper
-    /// deleted from `ModularBlockView.swift`.
+    /// Two-character uppercase initials for avatar renderers.
     pub author_avatar_initials: String,
-    /// V-27 thin-shell: deterministic 6-hex avatar background colour
-    /// (uppercase, no `#` prefix). Delegates to the canonical
-    /// [`nmp_core::display::avatar_color_hex`] (V-33) so the same author
-    /// renders with the same tint across every NMP surface (DMs, NIP-29
-    /// group chat, the modular timeline, the Accounts toolbar, Marmot rows).
+    /// Deterministic 6-hex avatar background colour (uppercase, no `#`
+    /// prefix). Delegates to [`nmp_core::display::avatar_color_hex`] so the
+    /// same author renders with the same tint across NMP surfaces.
     pub author_avatar_color: String,
-    /// V-27 thin-shell: abbreviated hex pubkey for the Twitter-style
-    /// secondary-identifier slot (the "@handle" caption beneath the display
-    /// name). `<first 8>…<last 8>` — same algorithm as
-    /// `nmp_core::display::short_hex` so DMs, NIP-29 rows, and the modular
-    /// timeline speak the same dialect. Replaces the `displayPubkey` helper
-    /// deleted from `ModularBlockView.swift` (the old Swift helper used
-    /// `<first 6>…<last 4>`; aligning to the cross-surface algorithm shifts
-    /// that abbreviation by two characters).
+    /// Abbreviated hex pubkey (`<first 8>…<last 8>`) for secondary identity
+    /// captions. Delegates to [`nmp_core::display::short_hex`] so every
+    /// consumer speaks the same display dialect.
     pub author_pubkey_short: String,
-    /// V-27 thin-shell: flat mirror of `author_display.name` so Swift can
-    /// bind a single string without decoding the nested `AuthorDisplay`
-    /// struct. Synthetic-from-card rows in `ModularBlockView.swift` use
-    /// this as the display-name fallback when no `TimelineItem` is loaded.
+    /// Flat mirror of `author_display.name` for renderers that want a simple
+    /// display-name field without decoding the nested `AuthorDisplay` object.
     pub author_display_name: String,
-    /// V-28 thin-shell: abbreviated event id (`<first 8>…<last 8>`) used by
-    /// the synthetic `TimelineItem` builder in `ModularBlockView.swift` to
-    /// populate `TimelineItem.short_id` (and by any host surface that wants a
-    /// compact monospaced reference to this event). Mirrors the
-    /// `author_pubkey_short` field above — same `nmp_core::display::short_hex`
-    /// algorithm works on any hex string. Required because Swift must NEVER slice the
-    /// raw 64-char `id` to compute an abbreviation (V-28, aim.md §6.9).
+    /// Abbreviated event id (`<first 8>…<last 8>`) for host surfaces that want
+    /// a compact monospaced reference to this event.
     pub short_id: String,
-    /// V-32 thin-shell: author's profile picture URL. Mirrors
-    /// `AuthorDisplay.picture_url` — when a kind:0 profile is loaded this is
-    /// the parsed `picture` URL; otherwise it is the
-    /// `identicon:<first16-hex>` placeholder produced by
-    /// `nmp_core::substrate::picture_placeholder`. The synthetic
-    /// `TimelineItem` builder in `ModularBlockView.swift` binds this directly
-    /// instead of recomputing the placeholder in Swift (which used a shorter
-    /// `<first 8>` prefix — deliberate alignment to the cross-surface
-    /// `picture_placeholder` algorithm, NOT a regression).
+    /// Author's profile picture URL. Mirrors `AuthorDisplay.picture_url`:
+    /// kind:0 `picture` when available, otherwise the canonical
+    /// `identicon:<first16-hex>` placeholder.
     pub author_picture_url: String,
-    /// V-32 thin-shell: first 180 Unicode scalars of `content`, used by the
-    /// synthetic `TimelineItem` builder in `ModularBlockView.swift` so Swift
-    /// never calls `String(card.content.prefix(180))`. No ellipsis appended —
-    /// matches the prior Swift call-site exactly. Scalar-based (`chars()`)
-    /// rather than grapheme-cluster-based; for Nostr text this is
-    /// indistinguishable in practice.
+    /// First 180 Unicode scalars of render content, no ellipsis appended.
+    /// Scalar-based (`chars()`) rather than grapheme-cluster-based; for Nostr
+    /// text this is indistinguishable in practice.
     pub content_preview: String,
 }
 
@@ -94,8 +70,14 @@ impl TimelineEventCard {
         profile: Option<&ProfileDisplay>,
         relation_counts: NoteRelationCounts,
     ) -> Self {
-        let content_tree =
-            tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
+        let render_payload = RenderPayload::from_event(event);
+        let content_tree = tokenize_with_kind(
+            &render_payload.content,
+            &render_payload.tags,
+            RenderMode::Auto,
+            render_payload.kind,
+        )
+        .to_wire();
         let author_display = AuthorDisplay::from_profile(&event.author, profile);
         let author_display_name = author_display.name.clone();
         // V-32 thin-shell: reuse the picture URL `AuthorDisplay::from_profile`
@@ -116,7 +98,7 @@ impl TimelineEventCard {
             author_display,
             kind: event.kind,
             created_at: event.created_at,
-            content: event.content.clone(),
+            content: render_payload.content,
             content_tree,
             relation_counts,
             created_at_display: format_ago_secs(now_unix_secs(), event.created_at),
@@ -129,11 +111,48 @@ impl TimelineEventCard {
             // generic over any hex string, so we reuse it on `event.id`.
             short_id: short_hex(&event.id),
             author_picture_url,
-            // V-32 thin-shell: scalar-based truncation matches the prior
-            // Swift `String(card.content.prefix(180))` call-site verbatim.
-            content_preview: content_preview(&event.content, 180),
+            content_preview: content_preview(&render_payload.preview_source, 180),
         }
     }
+}
+
+struct RenderPayload {
+    content: String,
+    preview_source: String,
+    tags: Vec<Vec<String>>,
+    kind: u32,
+}
+
+impl RenderPayload {
+    fn from_event(event: &KernelEvent) -> Self {
+        if let Some(repost) = try_from_repost_event(event) {
+            if let Some(inner) = repost.embedded_event {
+                return Self {
+                    preview_source: inner.content.clone(),
+                    content: inner.content,
+                    tags: inner.tags,
+                    kind: inner.kind,
+                };
+            }
+            return Self {
+                content: String::new(),
+                preview_source: String::new(),
+                tags: Vec::new(),
+                kind: KIND_SHORT_NOTE,
+            };
+        }
+
+        Self {
+            content: event.content.clone(),
+            preview_source: event.content.clone(),
+            tags: event.tags.clone(),
+            kind: event.kind,
+        }
+    }
+}
+
+fn has_render_card(event: &KernelEvent) -> bool {
+    crate::try_from_kernel_event(event).is_some() || try_from_repost_event(event).is_some()
 }
 
 // ── V-27 thin-shell display helpers ───────────────────────────────────────
@@ -149,11 +168,7 @@ fn now_unix_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// V-32 thin-shell: first `n` Unicode scalars of `content`, no ellipsis.
-/// Replaces the Swift `String(card.content.prefix(180))` call-site in
-/// `ModularBlockView.swift`'s synthetic-item builder. Scalar-based (`chars()`)
-/// rather than grapheme-cluster-based — for the short Nostr-text inputs this
-/// preview targets the two are indistinguishable in practice.
+/// First `n` Unicode scalars of `content`, no ellipsis.
 fn content_preview(content: &str, n: usize) -> String {
     content.chars().take(n).collect()
 }
@@ -165,7 +180,7 @@ pub struct ModularTimelineSnapshot {
 }
 
 impl ModularTimelineSnapshot {
-    #[must_use] 
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             blocks: Vec::new(),
@@ -232,7 +247,7 @@ impl KernelEventObserver for ModularTimelineProjection {
         for target in changed_relation_targets {
             inner.refresh_relation_counts(&target);
         }
-        if try_from_kernel_event(event).is_some() {
+        if has_render_card(event) {
             let profile = inner.profiles.get(&event.author).cloned();
             let relation_counts = inner.relations.counts_for(&event.id);
             inner.cards.insert(
@@ -240,7 +255,8 @@ impl KernelEventObserver for ModularTimelineProjection {
                 TimelineEventCard::from_event(event, profile.as_ref(), relation_counts),
             );
         }
-        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event); // delta unused — projection takes snapshots directly
+        let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
+        // delta unused — projection takes snapshots directly
     }
 }
 
@@ -250,8 +266,9 @@ impl Inner {
         for card in self.cards.values_mut() {
             if card.author_pubkey == author {
                 card.author_display = AuthorDisplay::from_profile(author, profile);
-                // V-27 thin-shell: keep the flat mirror in sync so Swift
-                // sees the profile-loaded display name on the next snapshot.
+                // V-27 thin-shell: keep the flat mirror in sync so host
+                // renderers see the profile-loaded display name on the next
+                // snapshot.
                 card.author_display_name = card.author_display.name.clone();
                 // V-32 thin-shell: same rationale for the picture URL —
                 // when a kind:0 arrives after the note, the card's
@@ -268,7 +285,6 @@ impl Inner {
         }
     }
 }
-
 
 #[cfg(test)]
 #[path = "timeline_projection/tests.rs"]

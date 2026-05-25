@@ -19,5 +19,8 @@ crate-type = ["rlib", "cdylib"]
 # No `test-support` workaround needed — the framework finding recorded in
 # `apps/longform/README.md` is now resolved.
 nmp-core = { path = "../../../crates/nmp-core" }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

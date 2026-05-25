@@ -1,171 +1,364 @@
-//! NIP-65 cache-read helpers + planner-side [`MailboxCache`] adapter.
+//! Router-driven REQ-relay resolution + planner-side [`MailboxCache`] adapter.
 //!
-//! Step 3 of `docs/architecture/crate-boundaries.md` (V-50) cuts the
-//! kernel over to `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>`.
-//! This file is the post-step-3 home of the survivors of the deleted
-//! `kernel/outbox.rs`:
+//! # V-50 / V-51 status
 //!
-//! - `author_write_relays` / `author_indexer_relays` /
-//!   `recipient_read_relays` — cache-read helpers with bootstrap
-//!   fallback policy. Read through [`Kernel::mailbox_cache`] (the
-//!   substrate [`MailboxCache`] handle, which step 3 made the single
-//!   source of truth for kind:10002 data); apply the kernel's
-//!   bootstrap-discovery / indexer-seed fallback when the cache misses.
-//!   Not routing decisions in the new model — those flow through
-//!   [`crate::substrate::OutboxRouter`]. These helpers wrap "cache hit
-//!   with fallback to the kernel-owned bootstrap seed" because the
-//!   kernel owns the role-to-URL mapping (`RelayEditRow`); a Layer-2
-//!   router doesn't.
-//! - `recipient_dm_relays` — NIP-17 kind:10050 cache reader (still
-//!   uses the bespoke `dm_relay_lists` HashMap; V-40 will move this to
-//!   `nmp-nip17`).
-//! - `partition_ids_by_author_write_relays` — thread-hydration outbox
-//!   path. Wraps `author_write_relays`.
-//! - [`KernelMailboxes`] — the planner-side adapter that bridges the
-//!   substrate [`crate::substrate::MailboxCache`] to the planner's own
-//!   `MailboxCache` trait (different shape: separate read/write/both
-//!   fields plus `dm_inbox_relays`). Both traits coexist until step 9
-//!   extracts the planner.
+//! Step 3 of `docs/architecture/crate-boundaries.md` cut the kernel over to
+//! `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>` for *storage* but left
+//! the kernel's REQ-construction sites reading the cache directly via
+//! `author_write_relays` / `recipient_read_relays` / `author_indexer_relays`.
+//! V-51 phase 5 (PR #462) added an observe-only `observe_subscription_through_router`
+//! shim that fired the router for the trace projection but dropped the
+//! routed set on the floor.
+//!
+//! **Debt A** (this commit) lifts the kernel's REQ-construction sites
+//! onto the router as the live decision authority:
+//!
+//! * The substrate seam for the cold-start bootstrap seed is
+//!   [`RoutingContext::session_keys::app_relays`] — the kernel populates it
+//!   with the appropriate bootstrap list at each call site, and the router's
+//!   existing lane 7 ([`crate::substrate::RoutingSource::AppRelay`] with
+//!   [`crate::substrate::AppRelayMode::Fallback`]) handles "no NIP-65 cached"
+//!   by falling back to that list. No new substrate field is required — the
+//!   router's lane-1 → lane-7 algorithm already expresses the kernel's
+//!   cold-start contract.
+//! * Per-call helpers below ([`Kernel::route_subscription_relays`] and
+//!   [`Kernel::partition_ids_via_router`]) construct the
+//!   [`RoutingContext`], invoke `route_subscription` through the kernel's
+//!   `outbox_router` slot, and return the routed URL set. The router's
+//!   trace observer fires automatically on the success path — the
+//!   `observe_subscription_through_router` half-step is gone.
+//! * The DM-inbox lookup ([`Kernel::recipient_dm_relays`]) stays — it reads
+//!   the injected [`DmInboxRelayLookup`] handle (V-40); the kernel does
+//!   not know the wire shape of a kind:10050 event and the router does not
+//!   consult the DM-inbox cache. The gift-wrap publish path
+//!   (`nmp-nip17`) wires kind:10050 relays through `explicit_targets`.
+//! * The [`KernelMailboxes`] adapter is unchanged — it bridges the
+//!   substrate [`SubstrateMailboxCache`] + [`DmInboxRelayLookup`] handles
+//!   to the planner's [`PlannerMailboxCache`] trait.
+//!
+//! # Discovery direction
+//!
+//! Profile-claim REQs (kind:0) and NIP-65 relay-list probes (kind:10002)
+//! are *discovery-direction* reads: the cold-start seed must be the
+//! indexer-only relay set (the shared content relay must never see those
+//! probes, per `kernel/mailboxes.rs::author_indexer_relays` historical
+//! semantics). The router does not yet implement lane 6 (Indexer
+//! eligibility — `Nip65WriteSetRouter` carries the TODO); until it does,
+//! the kernel selects the bootstrap seed per call site:
+//!
+//! * Content-direction (kind:1/6 timeline, hashtag firehose, thread
+//!   hydration): `app_relays = bootstrap_discovery_relays()`
+//!   (indexer + content seeds combined — same as
+//!   [`Kernel::bootstrap_discovery_relays`]).
+//! * Indexer-direction (kind:0 / kind:10002 / contacts probes):
+//!   `app_relays = bootstrap_urls_for_role(Indexer)` only.
+//!
+//! Selecting the right seed at the call site is a kernel-level concern
+//! (the kernel owns `relay_edit_rows`); routing the seeded interest is a
+//! router concern (lane 7 fires when lane 1 returned nothing). The seam
+//! between them is the `app_relays` slot — exactly the shape the
+//! substrate trait already exposes.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::Kernel;
-use crate::planner::{MailboxCache as PlannerMailboxCache, MailboxSnapshot, Pubkey};
-use crate::relay::RelayRole;
-use crate::substrate::MailboxCache as SubstrateMailboxCache;
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+    MailboxCache as PlannerMailboxCache, MailboxSnapshot, Pubkey,
+};
+use crate::substrate::{
+    BlockedRelaySet, DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache, RoutingContext,
+    SessionKeySet, UnsignedEvent,
+};
 use crate::util::sort_dedup;
 
 impl Kernel {
-    /// Resolve a single author's NIP-65 write relays (write + both markers).
+    /// Resolve a pubkey's DM-inbox relays through the substrate
+    /// [`DmInboxRelayLookup`] handle.
     ///
-    /// Reads through the injected substrate [`MailboxCache`]. Cold-start:
-    /// no cached kind:10002 ⇒ the [`Kernel::bootstrap_discovery_relays`]
-    /// seed (discovery interest only, per D3).
-    pub(crate) fn author_write_relays(&self, author: &str) -> Vec<String> {
-        match self.mailbox_cache().snapshot(&author.to_string()) {
-            Some(parsed) if !parsed.write.is_empty() || !parsed.both.is_empty() => {
-                let mut out: Vec<String> =
-                    parsed.write.iter().chain(parsed.both.iter()).cloned().collect();
-                sort_dedup(&mut out);
-                out
-            }
-            _ => self.bootstrap_discovery_relays(),
-        }
-    }
-
-    /// Resolve a single author's relays for **discovery** fetches (kind:0/3/10002).
+    /// The concrete cache (NIP-17 kind:10050) lives in `nmp-nip17` and is
+    /// injected at composition time via
+    /// [`Kernel::set_dm_inbox_relay_lookup`] (V-40); the kernel never names
+    /// the NIP-17 wire shape (D0).
     ///
-    /// Cold-start: no cached kind:10002 ⇒ ONLY `INDEXER_RELAY_URL`.
-    /// Unlike `author_write_relays`, the shared content relay is never
-    /// included — profile-claim REQs must not go there. NIP-65 known:
-    /// returns the author's declared write relays (they published kind:0
-    /// there, so that is the right place to read it back).
-    pub(crate) fn author_indexer_relays(&self, author: &str) -> Vec<String> {
-        match self.mailbox_cache().snapshot(&author.to_string()) {
-            Some(parsed) if !parsed.write.is_empty() || !parsed.both.is_empty() => {
-                let mut out: Vec<String> =
-                    parsed.write.iter().chain(parsed.both.iter()).cloned().collect();
-                sort_dedup(&mut out);
-                out
-            }
-            _ => self.bootstrap_urls_for_role(RelayRole::Indexer),
-        }
-    }
-
-    /// Resolve a single recipient's NIP-65 **read** relays (inbox direction —
-    /// the relays a `#p`-tagged pubkey reads, where notifications/DMs land).
-    ///
-    /// Cold-start: no cached kind:10002 ⇒ the bootstrap discovery seed.
-    ///
-    /// T122 / codex R2: also serves the active account's hashtag firehose —
-    /// the user is the recipient of their own hashtag interest, so the
-    /// routing destination is their declared read relays.
-    pub(crate) fn recipient_read_relays(&self, recipient: &str) -> Vec<String> {
-        match self.mailbox_cache().snapshot(&recipient.to_string()) {
-            Some(parsed) if !parsed.read.is_empty() || !parsed.both.is_empty() => {
-                let mut out: Vec<String> =
-                    parsed.read.iter().chain(parsed.both.iter()).cloned().collect();
-                sort_dedup(&mut out);
-                out
-            }
-            _ => self.bootstrap_discovery_relays(),
-        }
-    }
-
-    /// Resolve a pubkey's NIP-17 **DM inbox** relays (the kind:10050 list).
-    ///
-    /// NIP-17 § 2: a kind:1059 gift-wrap MUST be published to the
-    /// recipient's kind:10050 DM-relay list — a relay set that is
-    /// *deliberately distinct* from the kind:10002 (NIP-65) generic
-    /// mailbox. kind:10050 carries `["relay", <url>]` tags (note:
-    /// `relay`, not the `r` marker NIP-65 uses), letting a user route
-    /// private messages to a privacy-focused relay that is not in their
-    /// public read set. Collapsing the two would silently leak DM
-    /// routing onto public relays.
-    ///
-    /// This reads the **live** kind:10050 cache (`self.dm_relay_lists`),
-    /// populated by `ingest_dm_relay_list`. The DM send path
-    /// (`commands::send_gift_wrapped_dm`) consults this method to pin
-    /// each kind:1059 envelope to its receiver's DM-inbox relays.
-    ///
-    /// Returns `None` when no kind:10050 list is known for `pubkey` —
-    /// either the pubkey has never published a kind:10050, or it
-    /// published one carrying no `relay` tags (an empty list, which
-    /// `ingest_dm_relay_list` treats as the author clearing their DM
-    /// relays and so removes the cache entry). In both cases the send
-    /// path must fail closed: a kind:1059 envelope is only safe to
-    /// publish to a receiver's explicit kind:10050 DM-inbox relays,
-    /// never to generic Content relays.
-    ///
-    /// V-40 (step 6 of the crate-boundary migration) moves this cache
-    /// to `nmp-nip17`; the kernel field `dm_relay_lists` and this
-    /// method go with it.
+    /// Returns `None` when no list is known for `pubkey` — by trait
+    /// contract this collapses both the "never published" and "published
+    /// an empty list" branches, so the gift-wrap publish path fails
+    /// closed in both cases (the contract NIP-17 § 2 requires). The
+    /// router never sees this — DM gift-wrap routes via
+    /// `explicit_targets` in `nmp-nip17::dm_send`.
     pub(crate) fn recipient_dm_relays(&self, pubkey: &str) -> Option<Vec<String>> {
-        let relays = self.dm_relay_lists.get(pubkey)?;
-        // A cached entry is never stored empty — `ingest_dm_relay_list`
-        // removes the entry on an empty kind:10050 rather than caching a
-        // `Vec::new()`. The guard here is belt-and-suspenders so a
-        // future caller that seeds the map directly cannot return an
-        // empty `Some(Vec)` that callers would treat as "route to no
-        // relays".
-        if relays.is_empty() {
-            None
-        } else {
-            Some(relays.clone())
+        self.dm_inbox_relays_arc().dm_inbox_relays(pubkey)
+    }
+
+}
+
+// ─── Router-driven REQ-relay resolution (Debt A) ─────────────────────────────
+//
+// These helpers replace the pre-Debt-A `author_write_relays` /
+// `recipient_read_relays` / `author_indexer_relays` /
+// `partition_ids_by_author_write_relays` cache-read helpers as the
+// kernel's REQ-construction surface. The kernel's `outbox_router` slot
+// is the live decision authority for every kernel-driven REQ; the
+// returned URL set is consumed by the call sites in
+// `requests/profile.rs` and `requests/thread.rs`.
+
+/// Discriminator for the cold-start bootstrap seed passed into
+/// `app_relays` at the [`RoutingContext`] construction site.
+///
+/// `Discovery` is the combined indexer + content seed (used for
+/// content-direction REQs: timeline kind:1/6, hashtag firehose, thread
+/// hydration). `IndexerOnly` is the indexer-lane seed (used for
+/// discovery-direction REQs: kind:0 profile claims, kind:10002 NIP-65
+/// probes). The router's lane 7 fires identically in both cases — only
+/// the cold-start URL set differs.
+#[derive(Clone, Copy)]
+pub(crate) enum BootstrapSeed {
+    /// Indexer + content seeds combined (matches the historical
+    /// [`Kernel::bootstrap_discovery_relays`] output).
+    Discovery,
+    /// Indexer seeds only — discovery-direction kind:0 / kind:10002 probes
+    /// MUST NOT leak onto the shared content relay (cf. the pre-Debt-A
+    /// `author_indexer_relays` `INDEXER_RELAY_URL`-only fallback contract).
+    IndexerOnly,
+}
+
+impl Kernel {
+    /// Resolve the kernel's cold-start bootstrap seed for a given
+    /// direction. Returns the URL set the kernel passes through
+    /// [`SessionKeySet::app_relays`] for the lane 7 fallback.
+    pub(crate) fn bootstrap_seed_urls(&self, seed: BootstrapSeed) -> Vec<String> {
+        match seed {
+            BootstrapSeed::Discovery => self.bootstrap_discovery_relays(),
+            BootstrapSeed::IndexerOnly => {
+                self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer)
+            }
         }
     }
 
-    /// Partition `ids` by their **original-event author's** NIP-65 write
-    /// relays — the thread hydration outbox path (T121, codex R1).
+    /// Build a [`RoutingContext`] from the kernel's substrate state and
+    /// the supplied bookkeeping references. The lifetime of the returned
+    /// context is tied to the borrows in `app_relays` / `indexer_relays`
+    /// / `blocked` — callers stack-allocate all three then drop the
+    /// context before the next kernel-mutating call.
     ///
-    /// For each id, look up the cached event in `self.events`. If found,
-    /// route the id to every relay in the author's resolved write set.
-    /// If the id is not in the local store (i.e. we have no record of
-    /// who wrote it), route it to every bootstrap-discovery seed — the
-    /// cold-start discovery path: that's the only socket we can ask
-    /// "who wrote this id?" on without violating D3.
+    /// `indexer_relays` is the operator-configured indexer URL set the
+    /// router consults for spec §3.1 lane 6 (discovery-kind always-on
+    /// stacking). It must be populated for kind:0 / kind:3 / kind:
+    /// 10000–19999 routing to defeat the kind:10002 self-sealing loop
+    /// (V-50); production wires it from
+    /// `Kernel::bootstrap_urls_for_role(RelayRole::Indexer)`.
+    pub(crate) fn build_routing_context<'a>(
+        &'a self,
+        app_relays: &'a [String],
+        indexer_relays: &'a [String],
+        blocked: &'a BlockedRelaySet,
+    ) -> RoutingContext<'a> {
+        RoutingContext {
+            active_account: self.active_account.as_ref(),
+            session_keys: SessionKeySet {
+                app_relays,
+                indexer_relays,
+                ..SessionKeySet::default()
+            },
+            mailbox_cache: &*self.mailbox_cache,
+            blocked_relays: blocked,
+            explicit_targets: None,
+        }
+    }
+
+    /// Route a one-shot subscription for the given authors + kinds
+    /// through the kernel's `outbox_router` and return the resolved
+    /// URL set (sorted + deduped). The router's trace observer fires
+    /// on success.
     ///
-    /// D3 (outbox automatic): reply threads should not depend on
-    /// bootstrap relays carrying the conversation — the original
-    /// author's write relays are the canonical home of both their own
-    /// event and (heuristically) the kind:1/6 replies that reference it
-    /// via `#e`. Reply authors of course write to *their own* relays;
-    /// routing reply-fetch to the root author's relays is a deliberate
-    /// compromise: it converges on whichever relays already serve the
-    /// thread context rather than fanning to every participant. See
-    /// codex review R1 of T105 keystone for the rationale.
+    /// `seed` selects the cold-start bootstrap URL set passed via
+    /// [`SessionKeySet::app_relays`] — the router's lane 7 fires when
+    /// lane 1 (NIP-65 cache) returns nothing.
     ///
-    /// Empty input yields an empty map (caller emits nothing).
-    pub(crate) fn partition_ids_by_author_write_relays(
+    /// `interest_id` is the stable [`InterestId`] the trace projection
+    /// surfaces (`chirp-repl routing-trace`, the iOS inspector); each
+    /// call site derives a `stable_hash64` over its sub-id seed so a
+    /// re-dispatch maps to the same row.
+    ///
+    /// On `RoutingError::Unroutable` (no cache hit, no AppRelay seed):
+    /// returns an empty vec. The kernel's caller emits no REQ in that
+    /// case — the failure surfaces via the trace projection's absence
+    /// of a row, exactly the same observability shape the pre-Debt-A
+    /// observer recorded.
+    pub(crate) fn route_subscription_relays(
+        &self,
+        interest_id: u64,
+        authors: &[&str],
+        kinds: &[u32],
+        seed: BootstrapSeed,
+    ) -> Vec<String> {
+        let shape = InterestShape {
+            authors: authors.iter().map(|s| (*s).to_string()).collect(),
+            kinds: kinds.iter().copied().collect(),
+            ..InterestShape::default()
+        };
+        let interest = LogicalInterest {
+            id: InterestId(interest_id),
+            scope: InterestScope::Global,
+            shape,
+            hints: vec![],
+            lifecycle: InterestLifecycle::OneShot,
+        };
+        let app_relays = self.bootstrap_seed_urls(seed);
+        // V-50: indexer URLs feed router lane 6 (always-on for discovery
+        // kinds). Cheap to populate unconditionally — the router only
+        // consults the slice when `is_discovery_kind` matches.
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let blocked = BlockedRelaySet::new();
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
+        match self.outbox_router.route_subscription(&interest, &ctx) {
+            Ok(routed) => {
+                let mut out: Vec<String> = routed.urls().cloned().collect();
+                sort_dedup(&mut out);
+                out
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Outbox-direction subscription resolution — route a single author's
+    /// **write** set through the kernel's `outbox_router.route_publish`
+    /// (with a synthetic [`UnsignedEvent`] carrying the author + the
+    /// first of `kinds` as the kind discriminant). Returns the resolved
+    /// URL set (sorted + deduped). The router's trace observer fires
+    /// on success.
+    ///
+    /// The router's `route_subscription` shape resolves authors against
+    /// the **read** lane (the inbox direction — "subscribe where the
+    /// recipient reads"). Several kernel REQ-construction sites are
+    /// *outbox-direction* instead: they fetch events from where the
+    /// author *publishes*, not from where the recipient reads.
+    /// Examples:
+    ///
+    /// * `author_requests::author_requests` — kind:1/6 author notes: the
+    ///   author published those to their write relays (T105 outbox).
+    /// * `author_requests::profile_claim_request` — kind:0 profile: the
+    ///   author published their kind:0 to their write relays (D3 outbox
+    ///   discovery).
+    /// * `author_requests::author_requests` — kind:10002 NIP-65 probe:
+    ///   the author published their kind:10002 to their write relays.
+    ///
+    /// For these the kernel calls `route_publish` with a synthetic event
+    /// carrying the author's pubkey + the relevant kind so lane 1
+    /// returns the *write* set. The actual event content / tags are
+    /// immaterial — the router only reads `pubkey` and (in future
+    /// lane 6) `kind`. `seed` selects the cold-start bootstrap URL set
+    /// passed via `app_relays` (lane 7).
+    ///
+    /// `interest_id` is the stable [`InterestId`] the trace projection
+    /// surfaces. Because the underlying call is `route_publish` the
+    /// trace projection records a publish entry rather than a
+    /// subscription entry — that is the semantically honest record
+    /// ("the kernel asked the router 'where would `kind` from `author`
+    /// land?'"). The kernel still emits a REQ on the resolved relays;
+    /// the publish-trace classification refers to the *resolution
+    /// algorithm*, not the wire frame.
+    pub(crate) fn route_outbox_subscription_relays(
+        &self,
+        interest_id: u64,
+        author: &str,
+        kind: u32,
+        seed: BootstrapSeed,
+    ) -> Vec<String> {
+        let synthetic = UnsignedEvent {
+            pubkey: author.to_string(),
+            kind,
+            tags: vec![],
+            content: String::new(),
+            // `interest_id` is hashed from kernel-stable inputs; reusing
+            // it as the synthetic `created_at` keeps the call deterministic
+            // (the router doesn't read `created_at`, but logging /
+            // tracing might).
+            created_at: interest_id,
+        };
+        let app_relays = self.bootstrap_seed_urls(seed);
+        // V-50: see `route_subscription_relays` comment — indexer URLs
+        // populate lane 6 for discovery kinds. Outbox-direction
+        // kind:10002 / kind:0 fetches need this too: the synthetic
+        // event's `kind` field drives the lane check.
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let blocked = BlockedRelaySet::new();
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
+        match self.outbox_router.route_publish(&synthetic, &ctx) {
+            Ok(routed) => {
+                let mut out: Vec<String> = routed.urls().cloned().collect();
+                sort_dedup(&mut out);
+                out
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Partition `ids` by the original-event author's NIP-65 write
+    /// relays through the kernel's `outbox_router`. Used by thread
+    /// hydration (`maybe_open_thread_hydration`): each id is looked up
+    /// in `self.events`; if the author is found, a synthetic
+    /// [`UnsignedEvent`] is constructed (kind 1 — the kind threads
+    /// canonically carry) and the kernel's `outbox_router.route_publish`
+    /// is invoked so lane 1 (NIP-65 write set) resolves the author's
+    /// outbox relays. If the id is unknown (no event in the local
+    /// store) the bootstrap discovery seed serves the cold-start
+    /// lookup — the only socket we can ask "who wrote this id?" on
+    /// without violating D3.
+    ///
+    /// T121 / codex R1: thread hydration is the named exception to the
+    /// read-set algorithm — reply authors of course write to *their
+    /// own* relays, but routing reply-fetch to the root author's relays
+    /// is a deliberate compromise: it converges on whichever relays
+    /// already serve the thread context rather than fanning to every
+    /// participant. The router's `route_publish` shape (NIP-65 write
+    /// set) is the right tool for this — we feed a synthetic kind:1
+    /// `UnsignedEvent` per author to drive the publish-direction lane.
+    ///
+    /// Each id is added to every relay the router returns for its author.
+    /// Empty input yields an empty map (caller emits nothing). The
+    /// returned map keys are deterministic ([`BTreeMap`]) so plan-id
+    /// stability is preserved (D8).
+    pub(crate) fn partition_ids_via_router(
         &self,
         ids: &[String],
     ) -> BTreeMap<String, Vec<String>> {
         let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let bootstrap_app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let blocked = BlockedRelaySet::new();
         for id in ids {
             let relays = match self.events.get(id) {
-                Some(event) => self.author_write_relays(&event.author),
-                None => self.bootstrap_discovery_relays(),
+                Some(event) => {
+                    let synthetic = UnsignedEvent {
+                        pubkey: event.author.clone(),
+                        kind: 1,
+                        tags: vec![],
+                        content: String::new(),
+                        created_at: event.created_at,
+                    };
+                    let ctx = self.build_routing_context(
+                        &bootstrap_app_relays,
+                        &indexer_relays,
+                        &blocked,
+                    );
+                    match self.outbox_router.route_publish(&synthetic, &ctx) {
+                        Ok(routed) => {
+                            let mut out: Vec<String> = routed.urls().cloned().collect();
+                            sort_dedup(&mut out);
+                            out
+                        }
+                        // `Unroutable` means the author has no NIP-65 AND
+                        // no AppRelay seed was given (we passed the
+                        // discovery seed, so this branch is unreachable
+                        // in production — defensive vec to keep the loop
+                        // total).
+                        Err(_) => Vec::new(),
+                    }
+                }
+                None => bootstrap_app_relays.clone(),
             };
             for relay in relays {
                 by_relay.entry(relay).or_default().push(id.clone());
@@ -177,14 +370,54 @@ impl Kernel {
         }
         by_relay
     }
+
+    /// Resolve the relay URLs a downstream publisher (NIP-57 LN provider,
+    /// etc.) should publish a `kind`-typed event authored by `recipient`
+    /// to, via the kernel's `outbox_router` slot. Drives the router with a
+    /// synthetic publish-direction [`UnsignedEvent`] so lane 1 returns the
+    /// recipient's NIP-65 write set; lane 6 stacks the indexer URLs when
+    /// `kind` is a discovery kind; lane 7 fires the Discovery cold-start
+    /// seed when neither earlier lane resolved anything.
+    ///
+    /// This is the substrate seam the [`crate::substrate::RecipientRelayLookup`]
+    /// capability is wired through. The Debt-C-follow-up replaced the
+    /// pre-Debt-C `author_write_relays` bare cache accessor that
+    /// `nmp-nip57::lnurl::inject_recipient_relays` consumed — the routing
+    /// decision now belongs to the router, not a cache read.
+    ///
+    /// Returns an empty `Vec` on `RoutingError::Unroutable` (no NIP-65
+    /// cache hit, no AppRelay seed) — caller (the LNURL fetcher) decides
+    /// whether to surface an empty `relays` tag or fall back further.
+    pub(crate) fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
+        let synthetic = UnsignedEvent {
+            pubkey: recipient.to_string(),
+            kind,
+            tags: vec![],
+            content: String::new(),
+            created_at: 0,
+        };
+        let app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
+        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let blocked = BlockedRelaySet::new();
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
+        match self.outbox_router.route_publish(&synthetic, &ctx) {
+            Ok(routed) => {
+                let mut out: Vec<String> = routed.urls().cloned().collect();
+                sort_dedup(&mut out);
+                out
+            }
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 // ─── KernelMailboxes adapter (T132) ──────────────────────────────────────────
 
 /// Adapter — present the substrate [`SubstrateMailboxCache`] (NIP-65
 /// kind:10002, owned by the kernel via `mailbox_cache`) plus the
-/// kernel's bespoke `dm_relay_lists` HashMap (NIP-17 kind:10050) as a
-/// planner-side [`PlannerMailboxCache`].
+/// substrate [`DmInboxRelayLookup`] handle (DM-inbox relays — NIP-17
+/// kind:10050 in practice, but unnamed at this seam) as a planner-side
+/// [`PlannerMailboxCache`].
 ///
 /// Two traits, one bridge. The planner trait pre-dates the substrate
 /// trait introduced in step 1.c / 1.d, and uses a different shape
@@ -193,27 +426,26 @@ impl Kernel {
 /// traits collapse into one then; until then this adapter is the
 /// translation layer.
 ///
-/// Lifetime: holds an `Arc` clone of the substrate cache (cheap — the
-/// cache is `Arc<dyn …>` already) plus a borrow of the kernel's
-/// `dm_relay_lists` HashMap. The adapter is built per
+/// Lifetime: holds an `Arc` clone of each substrate handle (cheap — both
+/// are already `Arc<dyn …>`). The adapter is built per
 /// `drain_lifecycle_tick` call and dropped at the end of that call.
-pub(crate) struct KernelMailboxes<'a> {
+pub(crate) struct KernelMailboxes {
     inner: Arc<dyn SubstrateMailboxCache>,
-    dm_relays: &'a HashMap<String, Vec<String>>,
+    dm_lookup: Arc<dyn DmInboxRelayLookup>,
 }
 
-impl<'a> KernelMailboxes<'a> {
+impl KernelMailboxes {
     /// Constructor is kernel-private — outside callers obtain a view
     /// through [`Kernel::drain_lifecycle_tick`].
     pub(super) fn new(
         inner: Arc<dyn SubstrateMailboxCache>,
-        dm_relays: &'a HashMap<String, Vec<String>>,
+        dm_lookup: Arc<dyn DmInboxRelayLookup>,
     ) -> Self {
-        Self { inner, dm_relays }
+        Self { inner, dm_lookup }
     }
 }
 
-impl PlannerMailboxCache for KernelMailboxes<'_> {
+impl PlannerMailboxCache for KernelMailboxes {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot> {
         self.inner.snapshot(pubkey).map(|p| MailboxSnapshot {
             write_relays: p.write,
@@ -223,10 +455,7 @@ impl PlannerMailboxCache for KernelMailboxes<'_> {
     }
 
     fn dm_inbox_relays(&self, pubkey: &Pubkey) -> Option<Vec<String>> {
-        self.dm_relays
-            .get(pubkey)
-            .filter(|relays| !relays.is_empty())
-            .cloned()
+        self.dm_lookup.dm_inbox_relays(pubkey)
     }
 
     fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)> {

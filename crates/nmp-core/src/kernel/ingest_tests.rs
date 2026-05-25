@@ -1,22 +1,29 @@
-//! Unit tests for the kernel ingest handlers `ingest_relay_list` (kind:10002,
-//! NIP-65) and `ingest_contacts` (kind:3) in `kernel/ingest/`.
+//! Unit tests for the kernel ingest handler `ingest_contacts` (kind:3) in
+//! `kernel/ingest/`.
 //!
 //! ## Scope vs. the existing `tests.rs` regression suite
 //!
-//! `kernel/tests.rs` already covers stale re-delivery (D4 supersession) for
-//! both kinds by driving events through `inject_replaceable_event` (store +
-//! ingest). These tests are orthogonal: they call the `ingest_relay_list` /
-//! `ingest_contacts` methods *directly* — the kernel methods invoked AFTER
-//! `verify_and_persist` confirms an `Inserted | Replaced`. No store round-trip,
-//! no signing: the ingest methods consume a `NostrEvent` (the post-JSON-decode
-//! shape) and the contract under test is purely the cache + lifecycle mutation
-//! those methods perform.
+//! `kernel/tests.rs` already covers stale re-delivery (D4 supersession) by
+//! driving events through `inject_replaceable_event` (store + ingest). These
+//! tests are orthogonal: they call the `ingest_contacts` method *directly* —
+//! the kernel method invoked AFTER `verify_and_persist` confirms an
+//! `Inserted | Replaced`. No store round-trip, no signing: the ingest method
+//! consumes a `NostrEvent` (the post-JSON-decode shape) and the contract
+//! under test is purely the cache + lifecycle mutation that method performs.
 //!
 //! `NostrEvent` is `pub(super)` within `kernel`, so this file (declared as
 //! `#[cfg(test)] mod ingest_tests;` in `kernel/mod.rs`) constructs it directly
 //! — that is the minimal, deterministic fixture for a unit test of these
-//! handlers. Real Schnorr signing is unnecessary because neither ingest method
-//! re-verifies; the `sig` field is never read past `verify_and_persist`.
+//! handlers. Real Schnorr signing is unnecessary because the ingest method
+//! does not re-verify; the `sig` field is never read past `verify_and_persist`.
+//!
+//! Pre-2026-05-25 this file also exercised `ingest_relay_list` (kind:10002,
+//! NIP-65) directly. That kernel-side method was deleted alongside the
+//! `10002 =>` arm in `kernel/ingest/mod.rs` when the substrate
+//! `nmp_router::Kind10002Parser` became the production writer. Equivalent
+//! coverage now lives in `crates/nmp-router/src/ingest.rs` (`parse_event` /
+//! `IngestParser::parse`); the empty-list-removes-known-entry semantics
+//! moved with it.
 
 use super::nostr::NostrEvent;
 use super::*;
@@ -47,6 +54,10 @@ fn make_event(id: &str, pubkey: &str, created_at: u64, kind: u32, tags: Vec<Vec<
 }
 
 /// A single NIP-65 `r` tag: `["r", url]` or `["r", url, marker]`.
+///
+/// Retained for the commented-out V-40 migration block below (the live
+/// equivalent now lives in `crates/nmp-router/src/ingest.rs`).
+#[allow(dead_code)]
 fn r_tag(url: &str, marker: Option<&str>) -> Vec<String> {
     match marker {
         Some(m) => vec!["r".to_string(), url.to_string(), m.to_string()],
@@ -60,131 +71,44 @@ fn p_tag(pubkey: &str) -> Vec<String> {
 }
 
 /// A single NIP-17 kind:10050 `relay` tag: `["relay", url]`.
+///
+/// Retained for the commented-out V-40 migration block below (the live
+/// equivalent now lives in `crates/nmp-nip17/src/kind10050_parser.rs`).
+#[allow(dead_code)]
 fn relay_tag(url: &str) -> Vec<String> {
     vec!["relay".to_string(), url.to_string()]
 }
 
-// ─── ingest_relay_list (kind:10002) ──────────────────────────────────────────
+// ─── kind:10002 NIP-65 relay list (2026-05-25: moved to nmp-router) ─────────
+//
+// The kernel no longer parses kind:10002 directly — the substrate
+// `IngestParser` registry fans the event to `nmp_router::Kind10002Parser`,
+// which owns the `InMemoryMailboxCache`. Equivalent unit tests for the
+// parser live in `crates/nmp-router/src/ingest.rs`.
+//
+// The kernel-side wildcard ingest arm's `Kernel::on_mailbox_changed`
+// observer (the kind-agnostic seam that fires the recompile trigger after
+// the substrate cache mutates) is exercised end-to-end by the kind:10002
+// integration tests in `crates/nmp-core/src/kernel/outbox_tests.rs` and
+// `t140_m1_retirement_tests.rs` — both drive kind:10002 events through
+// `inject_replaceable_event`, which mirrors the production substrate
+// path post-2026-05-25 (cache mutation + `Nip65Arrived` enqueue).
 
-/// A non-empty NIP-65 relay list is parsed into `author_relay_lists` under the
-/// event author's pubkey, with the read/write/both buckets split by marker.
-#[test]
-fn ingest_relay_list_stores_non_empty_list() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+// ─── kind:10050 DM-relay list (V-40: moved to nmp-nip17) ────────────────────
+//
+// The kernel no longer parses kind:10050 directly — the substrate
+// `IngestParser` registry fans the event to `nmp-nip17::Kind10050Parser`,
+// which owns the `DmRelayCache`. Tests for that parser live in
+// `crates/nmp-nip17/src/kind10050_parser.rs`. The kernel-side surface kept
+// here is just the `recipient_dm_relays` lookup that reads through the
+// injected `DmInboxRelayLookup` handle — exercised by the
+// `recipient_dm_relays_none_for_uncached_pubkey` test below.
 
-    let event = make_event(
-        "0000000000000000000000000000000000000000000000000000000000000001",
-        AUTHOR,
-        1_000,
-        10002,
-        vec![
-            r_tag("wss://read.example/", Some("read")),
-            r_tag("wss://write.example/", Some("write")),
-            r_tag("wss://both.example/", None),
-        ],
-    );
-    kernel.ingest_relay_list(event);
-
-    let stored = kernel
-        .mailbox_cache()
-        .snapshot(&AUTHOR.to_string())
-        .expect("a non-empty kind:10002 must store an entry under the author pubkey");
-    // The substrate cache does not carry `created_at` / `event_id`
-    // (the store enforces supersession; the cache is the projection of
-    // the winning event's tags only — step 3 collapsed the
-    // pre-step-3 belt-and-suspenders mirror).
-    assert_eq!(stored.read, vec!["wss://read.example/"]);
-    assert_eq!(stored.write, vec!["wss://write.example/"]);
-    assert_eq!(stored.both, vec!["wss://both.example/"]);
-
-    // A1: storing a fresh mailbox fans a `Nip65Arrived` recompile trigger so
-    // the M2 subscription compiler re-routes the author on the next tick.
-    assert_eq!(
-        kernel.lifecycle.pending_trigger_count(),
-        1,
-        "storing a non-empty NIP-65 list must enqueue exactly one recompile trigger",
-    );
-}
-
-/// An empty kind:10002 for an author with NO cached relay list is a true
-/// no-op: no entry is created and no recompile trigger is enqueued (there is
-/// no stale plan to fix).
-#[test]
-fn ingest_relay_list_empty_for_unknown_author_is_noop() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    // No `r` tags at all → all three relay buckets parse empty.
-    let event = make_event(
-        "0000000000000000000000000000000000000000000000000000000000000002",
-        AUTHOR,
-        1_000,
-        10002,
-        Vec::new(),
-    );
-    kernel.ingest_relay_list(event);
-
-    assert!(
-        !kernel.mailbox_cache().known(&AUTHOR.to_string()),
-        "an empty NIP-65 list for an unknown author must NOT create a cache entry",
-    );
-    assert_eq!(
-        kernel.lifecycle.pending_trigger_count(),
-        0,
-        "an empty NIP-65 list for an unknown author must not enqueue a recompile trigger",
-    );
-}
-
-/// An empty kind:10002 for an author who DOES have a cached relay list clears
-/// the stale entry (the author explicitly emptied their NIP-65 metadata) and
-/// fans a `Nip65Arrived` trigger so the now-stale M2 plan is recompiled.
-#[test]
-fn ingest_relay_list_empty_for_known_author_clears_entry_and_triggers_recompile() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    // Seed a non-empty list first.
-    let seed = make_event(
-        "0000000000000000000000000000000000000000000000000000000000000001",
-        AUTHOR,
-        1_000,
-        10002,
-        vec![r_tag("wss://write.example/", Some("write"))],
-    );
-    kernel.ingest_relay_list(seed);
-    assert!(
-        kernel.mailbox_cache().known(&AUTHOR.to_string()),
-        "precondition: the seed list must be cached",
-    );
-    // Drain the seed's trigger so the assertion below isolates the clear path.
-    let _ = kernel.drain_lifecycle_tick();
-    assert_eq!(
-        kernel.lifecycle.pending_trigger_count(),
-        0,
-        "precondition: inbox drained before the clear",
-    );
-
-    // A newer (higher `created_at`) empty kind:10002 → author cleared NIP-65.
-    let clear = make_event(
-        "0000000000000000000000000000000000000000000000000000000000000003",
-        AUTHOR,
-        2_000,
-        10002,
-        Vec::new(),
-    );
-    kernel.ingest_relay_list(clear);
-
-    assert!(
-        !kernel.mailbox_cache().known(&AUTHOR.to_string()),
-        "an empty NIP-65 list for a known author must REMOVE the stale cache entry",
-    );
-    assert_eq!(
-        kernel.lifecycle.pending_trigger_count(),
-        1,
-        "clearing a cached NIP-65 list must enqueue a recompile trigger so the \
-         M2 plan is re-routed off the now-stale relays",
-    );
-}
-
-// ─── ingest_dm_relay_list (kind:10050, NIP-17) ───────────────────────────────
+/*
+The pre-V-40 unit tests below exercised `ingest_dm_relay_list` directly.
+After V-40 the kernel no longer has that method; the equivalent coverage
+lives in `crates/nmp-nip17/src/kind10050_parser.rs` (`parse_event` /
+`IngestParser::parse`). Kept commented out to make the migration visible:
 
 /// A non-empty kind:10050 DM-relay list is parsed into `dm_relay_lists` under
 /// the event author's pubkey. kind:10050 has no read/write/both markers —
@@ -390,6 +314,7 @@ fn ingest_dm_relay_list_replaces_cached_list() {
         "the newer kind:10050 must replace the cached DM-relay list",
     );
 }
+*/
 
 /// `recipient_dm_relays` returns `None` for a pubkey with no kind:10050 — the
 /// genuinely-missing case the DM send path treats as not ready.
@@ -685,7 +610,7 @@ fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
 
 #[test]
 fn ingest_timeline_event_queues_missing_author_profile_request() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let keys = ::nostr::Keys::generate();
     let note = signed_note(&keys, "profile me", 1_700_000_000);
     let author = note.pubkey.clone();

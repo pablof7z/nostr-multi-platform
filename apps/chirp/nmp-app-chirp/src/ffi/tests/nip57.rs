@@ -1,6 +1,6 @@
 //! NIP-57 zap dispatch proof.
 
-use nmp_core::{nmp_app_free, nmp_app_new};
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister};
 use super::helpers::dispatch;
@@ -14,10 +14,12 @@ use super::helpers::dispatch;
 /// This is the migration proof that ADR-0024's minimum-viable LNURL path
 /// (no `HttpCapability` substrate) is live end-to-end: dispatch reaches
 /// `ZapAction::execute`, which builds the unsigned kind:9734 and enqueues
-/// `ActorCommand::FetchLnurlInvoice` for the actor's spawned worker to
-/// complete. The test asserts only the dispatch half (correlation_id
-/// minted, executor returned `Ok`); the HTTP round-trip itself requires
-/// a live LN provider and is exercised end-to-end through the iOS shell.
+/// `ActorCommand::Protocol(FetchLnurlInvoiceCommand{...})` (V-41) for the
+/// actor's `Protocol(...)` arm to drive. The protocol command signs on
+/// the actor thread and spawns a worker for the HTTP round-trip. The
+/// test asserts only the dispatch half (correlation_id minted, executor
+/// returned `Ok`); the HTTP round-trip itself requires a live LN provider
+/// and is exercised end-to-end through the iOS shell.
 #[test]
 fn nip57_zap_dispatches_through_action_registry() {
     let app = nmp_app_new();

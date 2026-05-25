@@ -1,0 +1,51 @@
+[package]
+name = "nmp-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C-ABI surface for iOS / macOS / desktop and Android JNI shim. Hosts every `#[no_mangle] extern \"C\" fn nmp_app_*` symbol the platform shells link against, the opaque `NmpApp` handle that owns the actor thread + observer slots, and the `catch_unwind` guard wrappers. Extracted from `nmp-core::ffi` in step 11-final of `docs/architecture/crate-boundaries.md` §5 so substrate (`nmp-core`) cannot accidentally grow a C-ABI surface."
+
+[lib]
+name = "nmp_ffi"
+# Same crate-types as nmp-core had: `staticlib` for iOS / Android cdylib /
+# desktop archives; `rlib` so Rust-side consumers (the per-app crates, the
+# Android JNI shim, integration test binaries) reach the symbols through
+# normal Rust paths without re-declaring `extern "C"` blocks.
+crate-type = ["staticlib", "rlib"]
+
+[features]
+# Same feature gating posture as nmp-core's old `ffi` module: the C-ABI
+# surface is native-only (wasm uses wasm-bindgen, not C-ABI), so the entire
+# crate is gated behind `native`. Enabled by default so existing native
+# consumers see no change. Disable with `default-features = false` to keep
+# the dependency graph (mainly nmp-core) at its wasm-clean slice.
+default = ["native"]
+native = ["nmp-core/native"]
+# V-38: the `wallet` feature was deleted along with `nmp-core/wallet`.
+# `nmp_app_wallet_*` C symbols are now unconditional thin shims that route
+# through `nmp_app_dispatch_action("nmp.wallet.*", ...)` — the host
+# (per-app crate) is responsible for registering the modules from
+# `nmp-nip47` and installing the wallet runtime. The C-ABI surface stays
+# stable for the iOS / Android shells; without an installed runtime, the
+# shims fail closed via the dispatch-action `Failed` terminal.
+# Live-bench / integration-test injectors (`nmp_app_inject_*`,
+# `nmp_app_ack_action_stage`, `nmp_app_read_projection_json`). Forwards
+# to nmp-core's `test-support` feature so the harness types compile.
+test-support = ["nmp-core/test-support", "native"]
+# Re-export deltas the Android JNI shim consumes (currently inert — the
+# native feature already exposes every Rust-path symbol the JNI shim
+# names; the feature is retained for parity with the previous nmp-core
+# feature posture). `android-ffi` implies `native`.
+android-ffi = ["native"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nostr = { workspace = true, features = ["nip44", "nip59"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+# `nmp-core/test-support` exposes the helpers the in-crate ffi tests reach
+# for (e.g. `VerifiedEvent::from_raw_unchecked`, `ConformanceHarness`).
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

@@ -8,14 +8,43 @@
 use super::super::{Kernel, RelayRole, Instant, CanonicalRelayUrl, truncate};
 
 impl Kernel {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn relay_connecting(&mut self, role: RelayRole) {
-        let relay = self.relay_mut(role);
-        relay.connection = "connecting".to_string();
-        self.changed_since_emit = true;
-        self.log(format!("connecting {} relay {}", role.key(), self.bootstrap_urls_for_role(role).first().cloned().unwrap_or_default()));
+        let relay_url = self
+            .bootstrap_urls_for_role(role)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        self.relay_connecting_url(role, &relay_url);
     }
 
+    pub(crate) fn relay_connecting_url(&mut self, role: RelayRole, relay_url: &str) {
+        let relay = self.relay_mut(role);
+        relay.connection = "connecting".to_string();
+        self.mark_transport_connecting(role, relay_url);
+        self.changed_since_emit = true;
+        self.log(format!("connecting {} relay {}", role.key(), relay_url));
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn relay_connected(&mut self, role: RelayRole) {
+        self.mark_lane_connected(role);
+        self.log(format!("{} relay connected", role.key()));
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
+            driver.reset_on_disconnect();
+        }
+    }
+
+    pub(crate) fn relay_connected_url(&mut self, role: RelayRole, relay_url: &str) {
+        self.mark_lane_connected(role);
+        self.mark_transport_connected(role, relay_url);
+        self.log(format!("{} relay connected ({relay_url})", role.key()));
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
+            driver.reset_on_disconnect();
+        }
+    }
+
+    fn mark_lane_connected(&mut self, role: RelayRole) {
         let relay = self.relay_mut(role);
         relay.connection = "connected".to_string();
         relay.connected_at = Some(Instant::now());
@@ -31,12 +60,6 @@ impl Kernel {
         relay.denied = false;
         relay.last_close_reason = None;
         self.changed_since_emit = true;
-        self.log(format!("{} relay connected", role.key()));
-        // M5+M2+M8 wiring: on reconnect the NIP-42 driver resets — the relay
-        // will re-send a fresh AUTH challenge if it still requires auth.
-        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
-            driver.reset_on_disconnect();
-        }
     }
 
     /// A transport socket for `role` failed (transient — backoff + retry).
@@ -49,6 +72,7 @@ impl Kernel {
     /// a lane-level diagnostic surface, not per-URL until M11).
     pub(crate) fn relay_failed(&mut self, role: RelayRole, relay_url: &str, error: String) {
         let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.mark_transport_failed(role, canonical.as_str(), error.clone());
         let relay = self.relay_mut(role);
         relay.connection = "backing_off".to_string();
         relay.last_error = Some(truncate(&error, 160));
@@ -83,6 +107,7 @@ impl Kernel {
     /// drain (Stop / Reset / Shutdown) use [`Self::relay_closed_all`].
     pub(crate) fn relay_closed(&mut self, role: RelayRole, relay_url: &str) {
         let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.mark_transport_closed(role, canonical.as_str());
         let relay = self.relay_mut(role);
         relay.connection = "closed".to_string();
         relay.auth = "not_required".to_string();
@@ -94,7 +119,7 @@ impl Kernel {
         // lane are untouched — their subs are still live.
         self.wire.subs.retain(|_key, sub| sub.relay_url != canonical);
         self.changed_since_emit = true;
-        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
         // Profile batch REQs for the legacy profile-requests pipeline are NOT
@@ -127,9 +152,10 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.connection = "closed".to_string();
         relay.auth = "not_required".to_string();
+        self.mark_transport_role_closed(role);
         self.wire.subs.retain(|_key, sub| sub.role != role);
         self.changed_since_emit = true;
-        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
     }

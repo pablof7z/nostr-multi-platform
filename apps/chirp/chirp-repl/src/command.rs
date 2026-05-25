@@ -27,6 +27,10 @@ pub enum Command {
     MlsSend(String, String),
     MlsMessages(String),
     RawReq(String),
+    /// V-51 phase 4 — peek under the hood: dump the kernel's routing-trace
+    /// ring buffers (recent publish + subscription routing decisions, each
+    /// with kind, author, resolved URLs, lane attribution).
+    RoutingTrace,
     Quit,
     Noop,
 }
@@ -105,6 +109,9 @@ pub fn parse(line: &str) -> Result<Command, String> {
         }
         "mls-messages" => one(rest, "mls-messages <group_id_hex>").map(Command::MlsMessages),
         "raw-req" => text(rest, "raw-req <json-filter>").map(Command::RawReq),
+        "routing-trace" | "route-trace" | "routing" => {
+            no_args(rest, Command::RoutingTrace, "routing-trace")
+        }
         "quit" | "exit" => Ok(Command::Quit),
         other => Err(format!("unknown command '{other}' (try help)")),
     }
@@ -219,6 +226,14 @@ mod tests {
             parse("mls-send abc hello mls").unwrap(),
             Command::MlsSend("abc".into(), "hello mls".into())
         );
+    }
+
+    #[test]
+    fn parses_routing_trace_aliases() {
+        assert_eq!(parse("routing-trace").unwrap(), Command::RoutingTrace);
+        assert_eq!(parse("route-trace").unwrap(), Command::RoutingTrace);
+        assert_eq!(parse("routing").unwrap(), Command::RoutingTrace);
+        assert!(parse("routing-trace extra-arg").is_err());
     }
 
     #[test]

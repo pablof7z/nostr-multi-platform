@@ -41,10 +41,14 @@
 //! In every file outside `crates/nmp-marmot/`, the literal token
 //! `mls_local_nsec` triggers D13. Comment lines, the per-line
 //! `// doctrine-allow: D13 — reason` opt-out, and `nmp-testing` (this
-//! rule's host) are exempt. The `crates/nmp-core/src/ffi/` and
-//! `crates/nmp-core/src/actor/` trees are exempt too: those define the
-//! slot itself and wire it into the actor — they don't *read* it; the
-//! lint's intent is "no remote callers may dereference this field."
+//! rule's host) are exempt. The `crates/nmp-ffi/` tree (the C-ABI
+//! shell that owns the `NmpApp::mls_local_nsec` accessor),
+//! `crates/nmp-core/src/slots.rs` (where the slot alias + constructor
+//! moved after the step 11-final FFI extraction), and the
+//! `crates/nmp-core/src/actor/` tree are exempt too: those define
+//! the slot, wire it into the actor, and expose it across the C
+//! ABI — they don't *read* it as raw key material; the lint's intent
+//! is "no remote callers may dereference this field."
 //!
 //! ## Scope
 //!
@@ -106,7 +110,11 @@ pub fn file_in_part_a_default(path: &Path) -> bool {
 /// ADR-25 raw-key slot." Carve-outs:
 ///   - `crates/nmp-marmot/` — the legitimate ADR-25 consumer.
 ///   - `crates/nmp-testing/` — this rule's own host + fixtures.
-///   - `crates/nmp-core/src/ffi/` — defines the slot.
+///   - `crates/nmp-ffi/` — owns the `NmpApp::mls_local_nsec` C-ABI
+///     accessor (extracted from `nmp-core::ffi` in step 11-final).
+///   - `crates/nmp-core/src/slots.rs` — the slot alias + constructor
+///     moved here when the FFI shell extracted; the file declares the
+///     type, doesn't dereference it.
 ///   - `crates/nmp-core/src/actor/` — wires the slot into the actor.
 pub fn file_in_part_b_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
@@ -121,11 +129,13 @@ pub fn file_in_part_b_scope(path: &Path) -> bool {
     let is_marmot = s.contains("/crates/nmp-marmot/") || s.starts_with("crates/nmp-marmot/");
     let is_testing =
         s.contains("/crates/nmp-testing/") || s.starts_with("crates/nmp-testing/");
-    let is_core_ffi = s.contains("/crates/nmp-core/src/ffi/")
-        || s.starts_with("crates/nmp-core/src/ffi/");
+    let is_ffi_crate =
+        s.contains("/crates/nmp-ffi/") || s.starts_with("crates/nmp-ffi/");
+    let is_core_slots = s.contains("/crates/nmp-core/src/slots.rs")
+        || s.starts_with("crates/nmp-core/src/slots.rs");
     let is_core_actor = s.contains("/crates/nmp-core/src/actor/")
         || s.starts_with("crates/nmp-core/src/actor/");
-    !(is_marmot || is_testing || is_core_ffi || is_core_actor)
+    !(is_marmot || is_testing || is_ffi_crate || is_core_slots || is_core_actor)
 }
 
 /// Per-line Part-A check. Caller has already established that the file is
@@ -327,12 +337,19 @@ mod tests {
     }
 
     #[test]
-    fn part_b_scope_excludes_nmp_core_ffi_and_actor() {
-        // The slot itself (ffi/) and the actor wiring (actor/) need to
-        // pass `mls_local_nsec` around by name; they're not the
-        // "remote caller dereferencing the field" target of Part B.
+    fn part_b_scope_excludes_nmp_ffi_slots_and_actor() {
+        // Step 11 final extraction moved the C-ABI shell from
+        // `crates/nmp-core/src/ffi/` to the standalone `crates/nmp-ffi/`
+        // crate, and the slot alias + constructor (formerly inside
+        // `ffi/mod.rs`) to `crates/nmp-core/src/slots.rs`. The actor
+        // wiring stayed in `crates/nmp-core/src/actor/`. All three pass
+        // `mls_local_nsec` around by name; they're not the "remote
+        // caller dereferencing the field" target of Part B.
         assert!(!file_in_part_b_scope(&PathBuf::from(
-            "crates/nmp-core/src/ffi/mod.rs"
+            "crates/nmp-ffi/src/lib.rs"
+        )));
+        assert!(!file_in_part_b_scope(&PathBuf::from(
+            "crates/nmp-core/src/slots.rs"
         )));
         assert!(!file_in_part_b_scope(&PathBuf::from(
             "crates/nmp-core/src/actor/dispatch.rs"

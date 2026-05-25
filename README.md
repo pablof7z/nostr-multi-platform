@@ -103,8 +103,8 @@
 | `docs/design/` | Per-subsystem design docs — subscription compilation, LMDB schema, FFI hardening, framework-magic, NIP-29 crate. |
 | `docs/research/` | Reverse-engineering notes on NDK + Applesauce — outbox, kind:3 auto-tracking, signers, gotchas, missing-features deltas. |
 | `docs/perf/` | Empirical measurements + heartbeats + codex reviews + debt inventories. |
-| `crates/` | `nmp-core` (substrate), `nmp-codegen` (per-app FFI crate generator), `nmp-testing` (mock relay, harnesses, scenarios), `fixture-todo-core` (non-Nostr extension-module proof). |
-| `apps/` | Generated per-app crates for active proofs (`apps/fixture/nmp-app-fixture`, `apps/chirp/nmp-app-chirp`). |
+| `crates/` | `nmp-core` (substrate), `nmp-codegen` (per-app FFI crate generator), `nmp-testing` (mock relay, harnesses, scenarios). |
+| `apps/` | Generated per-app crates for active proofs (`apps/fixture/nmp-app-fixture`, `apps/chirp/nmp-app-chirp`); also app-specific support crates such as `apps/fixture/fixture-todo-core` (non-Nostr extension-module proof). |
 | `ios/Chirp` | Production Nostr client and full NMP showcase. Former NmpStress diagnostics and NmpPulse smoke coverage now live here. |
 | `web/chirp` | Chirp web proof package. Build, preview, and static deploy commands live in [`web/chirp/README.md`](web/chirp/README.md). |
 | `AGENTS.md` | Rules: file-size limit 300 LOC soft / 500 hard. |

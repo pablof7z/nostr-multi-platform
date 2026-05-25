@@ -38,7 +38,7 @@ struct NoteContentView: View {
             if let contentTree {
                 richBody(contentTree)
             } else {
-                legacyBody
+                plainBody
             }
         }
         .fullScreenCover(item: $tappedImage) { item in
@@ -70,22 +70,11 @@ struct NoteContentView: View {
         }
     }
 
-    private var legacyBody: some View {
-        let groups = tokenGroups(NoteToken.tokenize(content))
-        return VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                switch group {
-                case .inline(let toks):
-                    toks.reduce(Text("")) { acc, t in acc + t.inlineText() }
-                        .font(font)
-                case .image(let url):
-                    imageView(url)
-                case .video(let url):
-                    videoPlaceholder(url)
-                }
-            }
-        }
+    private var plainBody: some View {
+        Text(content)
+            .font(font)
     }
+
     private func inlineText(_ index: UInt32, in tree: ContentTreeWire) -> Text {
         if index == UInt32.max { return Text("\n") }
         guard let n = node(index, in: tree) else { return Text("") }
@@ -94,13 +83,13 @@ struct NoteContentView: View {
             return Text(value)
         case .mention(let uri):
             let label = renderContext.mentionLabel(for: uri.primaryId)
-            return Text("@\(label)").foregroundStyle(Color.accentColor).bold()
+            return Text("@\(label)").foregroundStyle(ChirpColor.link).bold()
         case .eventRef(let uri):
-            return Text("↩ \(shortEntity(uri.primaryId))").foregroundStyle(Color.accentColor).bold()
+            return Text("↩ \(shortEntity(uri.primaryId))").foregroundStyle(ChirpColor.link).bold()
         case .hashtag(let tag):
-            return Text("#\(tag)").foregroundStyle(Color.accentColor).bold()
+            return Text("#\(tag)").foregroundStyle(ChirpColor.link).bold()
         case .url(let value):
-            return Text(value).foregroundStyle(Color.accentColor)
+            return Text(value).foregroundStyle(ChirpColor.link)
         case .emoji(let shortcode, _):
             return Text(":\(shortcode):")
         case .emphasis(let children):
@@ -131,9 +120,8 @@ struct NoteContentView: View {
                 }
             }
         case .video, .audio:
-            // Audio routes to the video placeholder for now (preserves
-            // pre-thin-shell behaviour: anything non-image got the play
-            // overlay). Dedicated audio UX is deferred.
+            // Audio and video share the same compact media row until the
+            // content-tree media renderer grows separate audio controls.
             if let first = urls.first.flatMap(URL.init(string:)) {
                 videoPlaceholder(first)
             }
@@ -160,7 +148,7 @@ struct NoteContentView: View {
                 .buttonStyle(.plain)
             case .empty:
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.secondary.opacity(0.12))
+                    .fill(ChirpColor.secondaryFill)
                     .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 120)
             default:
                 EmptyView()
@@ -189,96 +177,6 @@ struct NoteContentView: View {
         guard i >= 0, i < tree.nodes.count else { return nil }
         return tree.nodes[i]
     }
-
-    private enum TokenGroup {
-        case inline([NoteToken])
-        case image(URL)
-        case video(URL)
-    }
-
-    private func tokenGroups(_ tokens: [NoteToken]) -> [TokenGroup] {
-        var groups: [TokenGroup] = []
-        var run: [NoteToken] = []
-
-        func flush() {
-            if !run.isEmpty {
-                let allWhitespace = run.allSatisfy {
-                    if case .text(let s) = $0 { return s.allSatisfy(\.isWhitespace) }
-                    return false
-                }
-                if !allWhitespace { groups.append(.inline(run)) }
-                run = []
-            }
-        }
-
-        for token in tokens {
-            switch token {
-            case .image(let url): flush(); groups.append(.image(url))
-            case .video(let url): flush(); groups.append(.video(url))
-            default: run.append(token)
-            }
-        }
-        flush()
-        return groups
-    }
-}
-
-enum NoteToken {
-    case text(String)
-    case hashtag(String)
-    case url(String)
-    case mention(String)
-    case image(URL)
-    case video(URL)
-
-    func inlineText() -> Text {
-        switch self {
-        case .text(let s): return Text(s)
-        case .hashtag(let tag): return Text("#\(tag)").foregroundStyle(Color.accentColor).bold()
-        case .url(let u): return Text(u).foregroundStyle(Color.accentColor)
-        case .mention(let bech32):
-            return Text("@\(bech32.prefix(10))…").foregroundStyle(Color.accentColor).bold()
-        case .image, .video: return Text("")
-        }
-    }
-
-    static func tokenize(_ content: String) -> [NoteToken] {
-        let pattern = /nostr:[a-z0-9]+|https?:\/\/\S+|#[a-zA-Z]\w*/
-        var tokens: [NoteToken] = []
-        var lastEnd = content.startIndex
-
-        for match in content.matches(of: pattern) {
-            if match.range.lowerBound > lastEnd {
-                tokens.append(.text(String(content[lastEnd..<match.range.lowerBound])))
-            }
-            let raw = String(match.output)
-            if raw.hasPrefix("nostr:") {
-                tokens.append(.mention(String(raw.dropFirst(6))))
-            } else if raw.hasPrefix("#") {
-                tokens.append(.hashtag(String(raw.dropFirst())))
-            } else if let url = URL(string: raw), url.scheme?.hasPrefix("http") == true {
-                let ext = url.pathExtension.lowercased()
-                if imageExtensions.contains(ext) {
-                    tokens.append(.image(url))
-                } else if videoExtensions.contains(ext) {
-                    tokens.append(.video(url))
-                } else {
-                    tokens.append(.url(raw))
-                }
-            } else {
-                tokens.append(.text(raw))
-            }
-            lastEnd = match.range.upperBound
-        }
-
-        if lastEnd < content.endIndex {
-            tokens.append(.text(String(content[lastEnd...])))
-        }
-        return tokens
-    }
-
-    private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg", "heic"]
-    private static let videoExtensions: Set<String> = ["mp4", "mov", "webm", "m4v", "mkv"]
 }
 
 private struct FullScreenImageViewer: View {
@@ -287,7 +185,7 @@ private struct FullScreenImageViewer: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
+            ChirpColor.mediaBackdrop.ignoresSafeArea()
             AsyncImage(url: url) { phase in
                 if let img = phase.image {
                     img.resizable()
@@ -302,7 +200,7 @@ private struct FullScreenImageViewer: View {
                     }
                     .foregroundStyle(.secondary)
                 } else {
-                    ProgressView().tint(.white)
+                    ProgressView().tint(ChirpColor.mediaForeground)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -313,7 +211,7 @@ private struct FullScreenImageViewer: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title)
                     .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color(.systemGray3).opacity(0.7))
+                    .foregroundStyle(ChirpColor.mediaForeground, ChirpColor.mediaSecondaryForeground)
                     .padding(20)
             }
         }

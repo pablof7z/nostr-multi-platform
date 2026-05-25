@@ -197,8 +197,8 @@ private struct DiscoveredGroupRow: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(
-                        isJoined ? Color.secondary.opacity(0.2) : Color.accentColor)
-                    .foregroundStyle(isJoined ? Color.secondary : Color.white)
+                        isJoined ? ChirpColor.controlDisabledBackground : ChirpColor.accent)
+                    .foregroundStyle(isJoined ? ChirpColor.textSecondary : ChirpColor.emphasisForeground)
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)

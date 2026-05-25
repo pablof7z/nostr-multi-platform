@@ -7,49 +7,112 @@ pub mod bunker_hook;
 // to consume. Off by default — shipped artifacts never link `schemars`.
 #[cfg(feature = "codegen-schema")]
 pub mod codegen_schema;
-mod capability_socket;
+// Promoted from `mod capability_socket` so `nmp-ffi` can reach
+// `dispatch_capability` / `new_capability_callback_slot` /
+// `CapabilityCallbackSlot` through `nmp_core::__ffi_internal::*`. The
+// socket is the substrate of the capability-callback seam; nothing in it
+// names an app or protocol noun.
+#[doc(hidden)]
+pub mod capability_socket;
 // V-33: shared display-string helpers (bech32 abbreviation, avatar tint
 // djb2, relative-time bucketing) — canonical home for the cross-surface
 // formatting primitives every NIP crate / kernel module / host-app
 // projection previously duplicated.
 pub mod display;
-// ffi: C-ABI entry points for Swift/Kotlin native shells.
-// Gated on `native` — wasm32 uses wasm-bindgen, not C-ABI.
-#[cfg(feature = "native")]
-mod ffi;
+// Step 11 final — the C-ABI surface that used to live in `mod ffi;` now lives
+// in the standalone `nmp-ffi` crate (`docs/architecture/crate-boundaries.md`
+// §5 step 11-final). The substrate types the FFI marshals are re-exported
+// through the public surface below + the `__ffi_internal` module so the
+// extracted crate can name them through normal Rust paths.
+//
+// `mod ffi;` is gone — `pub use ffi::*` at the bottom of this file is gone
+// too — consumers reach the symbols through `nmp_ffi::*` directly.
 // ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
 // because actor/commands/* use it on the native side (also actor is always
-// compiled until Phase 1c decoupling). If actor is gated in a future PR,
-// ffi_guard can be folded into the native gate alongside it.
-mod ffi_guard;
-mod keepalive;
+// compiled until Phase 1c decoupling). Promoted from `mod ffi_guard` to
+// `pub mod ffi_guard` so the extracted `nmp-ffi` crate can reach
+// `guard_ffi_callback` through a normal Rust path. The guard is substrate-
+// grade (no app or protocol nouns); making it public is a layer-shape
+// concession, not a noun leak.
+#[doc(hidden)]
+pub mod ffi_guard;
+// Step 8 phase A — the keepalive FSM moved with the relay worker to
+// `nmp-network::keepalive`. It's purely transport-internal; `nmp-core`
+// no longer re-exports it.
 mod kernel;
 mod kernel_action;
 mod kernel_reducer;
 pub mod nip19;
 pub mod nip21;
-pub mod planner;
+/// Subscription compiler.
+///
+/// Step 9 of the crate-boundary migration extracted the implementation into
+/// the standalone [`nmp_planner`] crate. This module re-exports the public
+/// surface so existing `use nmp_core::planner::*` import sites compile
+/// unchanged.
+pub mod planner {
+    pub use nmp_planner::compiler::{
+        CompileContext, EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot,
+        SubscriptionCompiler,
+    };
+    pub use nmp_planner::interest::{
+        HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+        NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
+    };
+    pub use nmp_planner::lattice::{merge, MergeOutcome};
+    pub use nmp_planner::plan::{
+        canonical_filter_hash, CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape,
+        UserConfiguredCategory,
+    };
+    pub use nmp_planner::selection::apply_selection;
+
+    // A small number of in-tree call sites reach into the submodule
+    // namespaces directly (`nmp_core::planner::compiler::*`,
+    // `nmp_core::planner::interest::*`, etc.). Re-expose those module
+    // paths so the migration is a pure compile-only no-op.
+    pub use nmp_planner::{compiler, interest, lattice, plan, selection};
+}
 pub mod publish;
 mod relay;
-// V-01 Stage 3: wire-transport-agnostic relay protocol primitives — backoff
-// constants, keepalive thresholds, jitter, and HTTP-denial classification.
-// Always-compiled so the wasm32 `BrowserRelayDriver` in `nmp-wasm` can reuse
-// the exact same constants the native `relay_worker` does without depending on
-// `tungstenite`/`mio`/`rustls`.
-pub mod relay_protocol;
-// V-38 deleted `nmp-core::wallet`: the NIP-47 wallet runtime + the
+// Step 8 phase A — `relay_protocol` and `relay_worker` moved to
+// `nmp-network`. They are re-imported here only through the (gated) actor
+// runtime path; the public re-exports below preserve the prior
+// `nmp_core::relay_protocol::*` surface (no-op for downstream crates that
+// imported through the old path — they should migrate to `nmp_network`).
+//
+// V-38: the `wallet` module is gone — the NIP-47 wallet runtime + the
 // `nmp.wallet.pay_invoice` `ActionModule` moved to `crates/nmp-nip47`. The
-// kernel no longer depends on `nmp-nwc`. See `docs/architecture/crate-boundaries.md`
+// kernel no longer depends on `nmp-nwc`, and `nmp-core` no longer has a
+// `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
 // §5 step 7 for the migration brief.
-// V-01 Phase 1c: the WebSocket relay worker is the native I/O layer.
-// Gated behind `native` (matches the `tungstenite`/`mio`/`rustls` dep gate
-// in Cargo.toml). The kernel speaks [`crate::kernel::RelayFrame`] instead of
-// `tungstenite::Message` so it compiles without this module.
-#[cfg(feature = "native")]
-mod relay_worker;
 pub mod remote_signer;
-pub mod stable_hash;
-pub mod store;
+/// Deterministic 64-bit hash helper — the seed for every plan-id,
+/// interest-id, and content-addressed projection key.
+///
+/// Moved into [`nmp_planner::stable_hash`] in step 9 of the crate-boundary
+/// migration (the planner is the only foundation crate that *cannot* depend
+/// on `nmp-core`). This module is a thin re-export so `use
+/// nmp_core::stable_hash::stable_hash64` import sites compile unchanged.
+pub mod stable_hash {
+    pub use nmp_planner::stable_hash::*;
+}
+/// Event-storage abstraction.
+///
+/// Step 9 of the crate-boundary migration extracted the implementation into
+/// the standalone [`nmp_store`] crate. This module is a thin re-export so
+/// existing `use nmp_core::store::*` import sites compile unchanged. The
+/// substrate-side `DomainMigration` / `MigrationTx` types moved with the
+/// store; they are re-exported through both `nmp_core::store::*` (via
+/// `nmp_store`'s root) and `nmp_core::substrate::*` (legacy path).
+pub mod store {
+    pub use nmp_store::*;
+}
+// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`)
+// and the actor runtime (`crate::actor`) both reach into. Used to live in
+// `crate::ffi::mod.rs` (private); promoted here so the actor module (a
+// crate-private module) can still name them after the FFI extraction.
+// `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
+pub mod slots;
 pub mod subs;
 pub mod substrate;
 pub mod tags;
@@ -61,24 +124,44 @@ pub use app::{
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
-#[cfg(feature = "native")]
-pub use ffi::NmpApp;
+// Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
+// moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
+// no longer exposes `ffi::*` at all.
 pub use kernel::{read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
 pub use kernel::AuthSignerFn;
+// V-51 phase 4 (validation harness) — the projection's three public types
+// reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
+// is the bounded ring-buffer the kernel hands to production composition
+// (via `routing_trace()` → `set_routing_substrate` factory →
+// `GenericOutboxRouter::with_trace_observer`); `PublishTraceEntry` /
+// `SubscriptionTraceEntry` are the entry shapes the `snapshot_*` accessors
+// return. See `kernel::routing_trace` module doc.
+pub use kernel::routing_trace::{
+    PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
+    DEFAULT_ROUTING_TRACE_CAPACITY,
+};
+// V-51 phase 2 — JSON DTO renderer. Consumer-side helper: turns a
+// projection snapshot into a Swift/wasm-friendly JSON value the FFI symbol
+// (`nmp_app_recent_routing_decisions`) and the wasm runtime
+// (`recent_routing_decisions`) both ship to their respective hosts.
+pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VERSION};
 // V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
-// Promoted to the public surface so the wasm32 `BrowserRelayDriver` in
-// `nmp-wasm` can construct frames from `web_sys::MessageEvent` / `CloseEvent`.
+// Promoted to the public surface so the wasm32 `BrowserRelayDriver` (lives
+// in `nmp-network::browser_driver` as of step 8 phase C) can be bridged from
+// `web_sys::MessageEvent` / `CloseEvent` through the
+// `nmp-wasm::relay_pool::build_handlers` callback bag.
 // Substrate-grade (D0): no app/protocol nouns.
 pub use kernel::RelayFrame;
 pub use kernel_reducer::KernelReducer;
 pub use relay::canonical_relay_url;
 // V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
 // kernel produces and any transport (native `relay_worker`, wasm
-// `BrowserRelayDriver`) consumes. Fields stay `pub(crate)` so the kernel
-// remains the single writer; external callers read via accessors.
+// `BrowserRelayDriver` — both in `nmp-network` as of step 8 phase C) consumes.
+// Fields stay `pub(crate)` so the kernel remains the single writer; external
+// callers read via accessors.
 pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
@@ -94,68 +177,15 @@ pub use update_envelope::{
 pub use actor::ActorCommand;
 pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 
-// Re-export the FFI entry-points so any native (non-WASM) Rust-side crate
-// — including third-party app crates such as `nmp-app-fixture` and any
-// future `nmp-app-*` — can call them directly via the Rust rlib dependency,
-// without an `extern "C"` block. The symbols remain `#[no_mangle]` on the
-// ffi:: side and are still reachable from Swift/C unchanged.
+// Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
+// re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
+// Consumers that previously named the symbols through `nmp_core::` should
+// migrate to `nmp_ffi::*`. The `NmpApp` opaque handle moved with the
+// symbols. See `docs/architecture/crate-boundaries.md` §5 step 11-final.
 //
-// One door per capability: `nmp_app_publish_signed_event`,
-// `nmp_app_publish_signed_event_to`, and `nmp_app_publish_unsigned_event`
-// were deleted — every user/app-authored event-producing publish now goes
-// through `nmp_app_dispatch_action` under the `nmp.publish` namespace.
-// `nmp_app_retry_publish` / `nmp_app_cancel_publish` survive as the
-// publish-lifecycle control plane (no event production; the D11 lint
-// whitelists them).
-//
-// Gated on `native` (the default feature) so wasm32 (`--no-default-features`)
-// continues to compile without these symbols. The `android-ffi` and
-// `test-support` features both already imply `native`, so they inherit this
-// surface; the deltas they add are the small blocks below.
-#[cfg(feature = "native")]
-pub use ffi::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile, nmp_app_close_author,
-    nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account, nmp_app_dispatch_action,
-    nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string, nmp_app_lifecycle_background,
-    nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
-    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_open_uri, nmp_app_register_event_observer,
-    nmp_app_register_raw_event_observer, nmp_app_release_profile, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_set_capability_callback,
-    nmp_app_set_lifecycle_callback, nmp_app_set_storage_path, nmp_app_set_update_callback,
-    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
-    nmp_app_switch_active, nmp_app_unregister_event_observer, nmp_app_unregister_raw_event_observer,
-};
-
-// test-support delta: live-bench harnesses and integration test binaries need
-// a few extra entry points that production app crates do not — pre-verified
-// event injection (used by the S3/S4/S5 throughput harnesses), per-action
-// stage acks (used by action-FSM tests), and read-side projection JSON dumps
-// (used to assert reducer output without going through the snapshot
-// callback). Kept gated on test-support so they don't pollute the
-// production-app re-export surface.
-//
-// `test-support` implies the `native` superset above (it requires `native`
-// in practice — every symbol below lives in `ffi::`, and `ffi::` is gated on
-// `native`). The 32 overlap symbols are exposed through the `native` block.
-#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
-pub use ffi::{
-    nmp_app_ack_action_stage, nmp_app_inject_pre_verified_events,
-    nmp_app_inject_signed_event_json, nmp_app_inject_signed_events, nmp_app_read_projection_json,
-};
-
-// android-ffi delta: `nmp_app_remove_account`, `nmp_app_signin_bunker`,
-// `nmp_app_stop`, and `nmp_app_switch_active` were historically gated here.
-// They are lifecycle essentials every native app needs (iOS included) and
-// are now included unconditionally in the `native` block above. The
-// android-ffi feature is retained for the wallet delta below but carries no
-// lifecycle symbols of its own.
-
-// V-38: the `nmp_app_wallet_*` FFI symbols stay in `nmp-core::ffi::wallet`
-// as thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`
-// (dispatch_action). The actual wallet runtime lives in `crates/nmp-nip47`;
-// the shims MUST NOT reach back into wallet state.
-#[cfg(feature = "native")]
-pub use ffi::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
+// V-38: the `nmp_app_wallet_*` FFI symbols moved to `nmp-ffi::wallet` as
+// thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`
+// (dispatch_action). The actual wallet runtime lives in `crates/nmp-nip47`.
 
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests
 // (the `LifecycleObserverFn` is a plain `extern "C" fn` shape) and the
@@ -184,6 +214,53 @@ pub use actor::{
 pub use actor::{
     KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
 };
+
+// ── Step 11 final — `nmp-ffi` re-export surface ────────────────────────────
+//
+// The standalone `nmp-ffi` crate (extracted from `nmp-core::ffi`) reaches
+// these symbols through `nmp_core::__ffi_internal::*`. The module is
+// `#[doc(hidden)]` — no app crate or library consumer should import it; the
+// only legitimate consumer is `nmp-ffi`. Adding a new item here is a layer-
+// shape concession (the substrate item was previously crate-private), not a
+// public API addition.
+//
+// Why the special module rather than promoting each item to `pub` at the
+// crate root: keeps the public surface area visibly identical to before the
+// extraction, and gives `cargo doc` users a single place to spot "this is
+// an extraction seam, not a real API".
+// Gated on `feature = "native"` because the re-exports below pull in
+// `run_actor_with_observers` and friends from `crate::actor`, which are
+// themselves `#[cfg(feature = "native")]`. The wasm32 build
+// (`--no-default-features`) has no actor thread and no FFI shell consuming
+// this module.
+#[cfg(feature = "native")]
+#[doc(hidden)]
+pub mod __ffi_internal {
+    pub use crate::actor::{
+        has_role, new_bunker_handshake_slot, new_event_observer_slot,
+        new_lifecycle_observer_slot, new_raw_event_observer_slot, nostrconnect_relay_url,
+        register_c_observer, register_c_raw_observer, register_rust_observer,
+        register_rust_raw_observer, run_actor_with_observers, unregister_observer,
+        unregister_raw_observer, KernelEventObserverRegistration, KernelEventObserverSlot,
+        LifecycleObserverFn, LifecycleObserverRegistration, LifecycleObserverSlot,
+        RawEventObserverRegistration, RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
+        LIFECYCLE_PHASE_FOREGROUND,
+    };
+    // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
+    // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
+    // registers it via `nmp_app_register_snapshot_projection("wallet", …)`.
+    pub use crate::app::KernelAction;
+    pub use crate::capability_socket::{
+        capability_error_envelope, dispatch_capability, new_capability_callback_slot,
+        CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
+    };
+    pub use crate::kernel::{
+        default_registry, is_hex_id, is_hex_pubkey, new_relay_edit_rows_slot,
+        new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
+        SnapshotProjectionSlot,
+    };
+    pub use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+}
 
 /// Test-support facade: gives live-bench binaries access to the actor
 /// internals without exposing domain nouns in the stable `nmp-core` API.

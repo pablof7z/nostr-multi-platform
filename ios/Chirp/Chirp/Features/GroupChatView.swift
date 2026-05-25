@@ -152,7 +152,7 @@ struct GroupChatView: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 30))
                     .foregroundStyle(
-                        trimmedDraft.isEmpty ? Color.secondary : Color.accentColor)
+                        trimmedDraft.isEmpty ? ChirpColor.textSecondary : ChirpColor.accent)
             }
             .buttonStyle(.plain)
             .disabled(trimmedDraft.isEmpty)
