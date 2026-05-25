@@ -34,7 +34,7 @@ impl Kernel {
         self.log(format!("{} relay connected", role.key()));
         // M5+M2+M8 wiring: on reconnect the NIP-42 driver resets — the relay
         // will re-send a fresh AUTH challenge if it still requires auth.
-        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
     }
@@ -94,7 +94,7 @@ impl Kernel {
         // lane are untouched — their subs are still live.
         self.wire.subs.retain(|_key, sub| sub.relay_url != canonical);
         self.changed_since_emit = true;
-        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
         // Profile batch REQs for the legacy profile-requests pipeline are NOT
@@ -129,7 +129,7 @@ impl Kernel {
         relay.auth = "not_required".to_string();
         self.wire.subs.retain(|_key, sub| sub.role != role);
         self.changed_since_emit = true;
-        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+        if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
     }

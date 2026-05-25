@@ -123,14 +123,14 @@ pub(crate) fn validate_signed_for(signed: &SignedEvent, challenge: &str) -> Resu
 /// `NotRequired`; an inbound AUTH transitions to `ChallengeReceived` and the
 /// caller invokes the signer.
 #[derive(Clone, Debug)]
-pub(crate) struct Nip42DriverState {
+pub(crate) struct AuthDriverState {
     pub state: RelayAuthState,
     pub pending_challenge: Option<String>,
     /// Event id of the in-flight kind:22242. Cleared on OK match or reset.
     pub pending_event_id: Option<String>,
 }
 
-impl Default for Nip42DriverState {
+impl Default for AuthDriverState {
     fn default() -> Self {
         Self {
             state: RelayAuthState::NotRequired,
@@ -140,7 +140,7 @@ impl Default for Nip42DriverState {
     }
 }
 
-impl Nip42DriverState {
+impl AuthDriverState {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn driver_records_dispatch_only_with_pending_challenge() {
-        let mut d = Nip42DriverState::new();
+        let mut d = AuthDriverState::new();
         assert!(!d.record_dispatch("evt1".into()));
         d.on_auth_frame("c1".into());
         assert!(d.record_dispatch("evt1".into()));
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn driver_correlates_ok_against_pending_event_id() {
-        let mut d = Nip42DriverState::new();
+        let mut d = AuthDriverState::new();
         d.on_auth_frame("c1".into());
         d.record_dispatch("evt1".into());
         let unrelated = OkFrame {
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn driver_failed_on_rejection() {
-        let mut d = Nip42DriverState::new();
+        let mut d = AuthDriverState::new();
         d.on_auth_frame("c1".into());
         d.record_dispatch("evt1".into());
         let rejected = OkFrame {

@@ -68,7 +68,7 @@ pub(super) fn wire_frames_to_outbound(
 impl Kernel {
     /// M5+M2+M8 wiring: handle an `["AUTH", <challenge>]` frame from a relay.
     ///
-    /// Transitions the per-relay `Nip42DriverState` to `ChallengeReceived`,
+    /// Transitions the per-relay `AuthDriverState` to `ChallengeReceived`,
     /// fans the new state through the lifecycle's `AuthGate`, then (when an
     /// auth-signer is bound) builds and signs the kind:22242 event,
     /// transitioning to `Authenticating` and emitting the
@@ -98,14 +98,14 @@ impl Kernel {
             return Vec::new();
         };
 
-        let driver = self.nip42_drivers.entry(role).or_default();
+        let driver = self.auth_drivers.entry(role).or_default();
         driver.on_auth_frame(challenge.clone());
 
         // T148: fan `ChallengeReceived` into the lifecycle's per-URL AuthGate
         // using the DELIVERING relay URL, not the lane's bootstrap host. Pre-
         // T148 this stamped `role.url()` which mis-keyed the AuthGate's pending
         // buffer and the post-Authenticated flush never targeted the right
-        // socket. The kernel-side `nip42_drivers` map is still per-role (one
+        // socket. The kernel-side `auth_drivers` map is still per-role (one
         // socket per lane today; per-URL split is a separate, larger change).
         let relay_url = delivering_relay_url.to_string();
         let _paused = self
@@ -154,7 +154,7 @@ impl Kernel {
                         "AUTH signer returned invalid event for {}: {reason}",
                         role.key()
                     ));
-                    let driver = self.nip42_drivers.entry(role).or_default();
+                    let driver = self.auth_drivers.entry(role).or_default();
                     driver.record_signer_failure();
                     let _ = self
                         .lifecycle
@@ -166,7 +166,7 @@ impl Kernel {
                     return Vec::new();
                 }
                 let event_id = signed.id.clone();
-                let driver = self.nip42_drivers.entry(role).or_default();
+                let driver = self.auth_drivers.entry(role).or_default();
                 if !driver.record_dispatch(event_id.clone()) {
                     return Vec::new();
                 }
@@ -204,7 +204,7 @@ impl Kernel {
             }
             Err(reason) => {
                 self.log(format!("AUTH signer failed for {}: {reason}", role.key()));
-                let driver = self.nip42_drivers.entry(role).or_default();
+                let driver = self.auth_drivers.entry(role).or_default();
                 driver.record_signer_failure();
                 let _ = self
                     .lifecycle
@@ -236,7 +236,7 @@ impl Kernel {
         let Some(ok) = parse_ok_frame(array) else {
             return Vec::new();
         };
-        let driver = self.nip42_drivers.entry(role).or_default();
+        let driver = self.auth_drivers.entry(role).or_default();
         let Some(new_state) = driver.on_ok_frame(&ok) else {
             return Vec::new();
         };

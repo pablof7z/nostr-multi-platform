@@ -302,7 +302,7 @@ pub(crate) struct RelayStatus {
     pub(super) relay_url: String,
     pub(super) connection: String,
     pub(super) auth: String,
-    pub(super) nip77_negentropy: String,
+    pub(super) negentropy_probe: String,
     pub(super) active_wire_subscriptions: usize,
     pub(super) reconnect_count: u32,
     pub(super) last_connected_at_ms: Option<u128>,
@@ -498,14 +498,17 @@ pub(super) struct RelayHealth {
     /// T120 (G8 / G11): the diagnostic key of the most recently classified
     /// NIP-01 CLOSED reason. `None` until the first classified frame arrives.
     pub(super) last_close_reason: Option<String>,
-    /// T112 — NIP-77 negentropy probe state for this relay, as a diagnostic
+    /// T112 — negentropy probe state for this relay, as a diagnostic
     /// string key (`"unknown"` | `"probing"` | `"supported"` | `"unsupported"`).
-    /// Stored as a plain string so `nmp-core` does not depend on any
-    /// shell-side probe-state type (D0 — no cycle). Updated by the
-    /// actor/observer layer via `Kernel::set_nip77_probe_state` whenever the
-    /// NIP-77 capability probe transitions; see `status.rs` for the
-    /// projection into `RelayStatus::nip77_negentropy`.
-    pub(super) nip77_probe_state: String,
+    /// Negentropy is a generic relay-side reconciliation capability; its
+    /// concrete NIP binding lives in a downstream protocol crate, so this
+    /// substrate field stays NIP-agnostic. Stored as a plain string so
+    /// `nmp-core` does not depend on any shell-side probe-state type (D0 —
+    /// no cycle). Updated by the actor/observer layer via
+    /// `Kernel::set_negentropy_probe_state` whenever the capability probe
+    /// transitions; see `status.rs` for the projection into
+    /// `RelayStatus::negentropy_probe`.
+    pub(super) negentropy_probe_state: String,
 }
 
 impl Default for RelayHealth {
@@ -522,7 +525,7 @@ impl Default for RelayHealth {
             auth: "not_required".to_string(),
             denied: false,
             last_close_reason: None,
-            nip77_probe_state: "unknown".to_string(),
+            negentropy_probe_state: "unknown".to_string(),
         }
     }
 }

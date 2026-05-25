@@ -110,10 +110,12 @@ pub use commands::new_bunker_handshake_slot;
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
 // see these only via the gated `pub use actor::{...}` in lib.rs. The
-// constants are unused inside the crate (FFI consumers read them through
-// the test-support facade), so allow-unused keeps a plain `cargo build`
-// clean.
-#[allow(unused_imports)]
+// `lib.rs` re-export fires in two places: the test-only top-level
+// (`#[cfg(any(test, feature = "test-support"))]`) and `__ffi_internal`
+// (`#[cfg(feature = "native")]`). Mirror the union of those gates so the
+// `pub use` is unused only in a build that consumes neither — wasm32-only
+// (`--no-default-features`) without test-support.
+#[cfg(any(test, feature = "test-support", feature = "native"))]
 pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 // T146 — re-export the kernel event observer types so external Rust callers
 // (per-app crates such as `nmp-app-chirp`) can implement and register
@@ -121,35 +123,46 @@ pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PH
 // `lib.rs`. The FFI shape (`KernelEventObserverFn` /
 // `KernelEventObserverRegistration` / `KernelEventObserverId`) is also
 // surfaced so Swift / Kotlin bindings can use the C-ABI channel.
-#[allow(unused_imports)]
-pub use commands::{
-    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
-    KernelEventObserverRegistration,
-};
+// `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
+// are re-exported unconditionally from `lib.rs` (the typed observer surface
+// for per-app Rust crates and the FFI wire-shape). `KernelEventObserverRegistration`
+// only reaches the outside world through `lib.rs::__ffi_internal`, which is
+// `#[cfg(feature = "native")]`; gate the registration type re-export to match.
+pub use commands::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+#[cfg(feature = "native")]
+pub use commands::KernelEventObserverRegistration;
 // Raw signed-event tap — re-export the slot helpers (crate-private) so
 // `ffi/raw_event_tap.rs` and the actor entry point reach the shared slot,
 // and the public wire shapes so per-app Rust crates + Swift / Kotlin
-// bindings can register a verbatim signed-event observer.
-#[allow(unused_imports)]
+// bindings can register a verbatim signed-event observer. The two notify
+// helpers are consumed by `kernel/raw_event_observer.rs` whenever the
+// `RawEventObserverSlot` field exists — which is unconditional today, so
+// the re-export needs no gate.
 pub(crate) use commands::{notify_raw_observers, raw_observers_idle_for_kind};
 // `register_c_raw_observer` reaches `nmp-ffi` through
 // `nmp_core::__ffi_internal::register_c_raw_observer` (the C-ABI bridge
-// in `nmp-ffi/src/raw_event_tap.rs`).
-#[allow(unused_imports)]
+// in `nmp-ffi/src/raw_event_tap.rs`). `__ffi_internal` is `#[cfg(feature =
+// "native")]`, so without `native` this `pub use` has no downstream consumer.
+#[cfg(feature = "native")]
 pub use commands::register_c_raw_observer;
-// Slot constructors / registration helpers / the slot type itself reach
-// `nmp-ffi` through `nmp_core::__ffi_internal::*`; promoted to `pub` for
-// the extracted crate.
-#[allow(unused_imports)]
+// Slot constructors / registration helpers reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*`; same `native` gate. The `RawEventObserverSlot`
+// type itself is consumed unconditionally by `kernel/raw_event_observer.rs`
+// (the kernel holds an `Option<RawEventObserverSlot>` field — see `kernel/mod.rs`
+// line 731), so it stays ungated.
+#[cfg(feature = "native")]
 pub use commands::{
     new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
-    RawEventObserverSlot,
 };
-#[allow(unused_imports)]
-pub use commands::{
-    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-    RawEventObserverRegistration,
-};
+pub use commands::RawEventObserverSlot;
+// `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
+// are re-exported unconditionally from `lib.rs` (the typed observer surface
+// for per-app Rust crates and the FFI wire-shape). `RawEventObserverRegistration`
+// only reaches the outside world through `lib.rs::__ffi_internal`, which is
+// `#[cfg(feature = "native")]`; gate that one re-export to match.
+pub use commands::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
+#[cfg(feature = "native")]
+pub use commands::RawEventObserverRegistration;
 // NIP golden-tag conformance harness — re-exported up the (crate-private)
 // `actor` chain so the gated `pub use actor::ConformanceHarness` in `lib.rs`
 // reaches the `tests/nip_tag_conformance.rs` integration test. Gated on

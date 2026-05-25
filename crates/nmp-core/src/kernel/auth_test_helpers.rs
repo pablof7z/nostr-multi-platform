@@ -43,7 +43,7 @@ pub(super) fn ok_frame(event_id: &str, accepted: bool, reason: &str) -> String {
 
 pub(super) fn auth_state_of(kernel: &Kernel, role: RelayRole) -> crate::subs::RelayAuthState {
     kernel
-        .nip42_drivers
+        .auth_drivers
         .get(&role)
         .map(|d| d.state.clone())
         .unwrap_or(crate::subs::RelayAuthState::NotRequired)

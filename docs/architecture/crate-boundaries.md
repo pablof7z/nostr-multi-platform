@@ -60,7 +60,24 @@
 
 **Known partial-state items remaining (not promises, just facts):**
 
-(none — router lanes 2/3/4/5 closed 2026-05-25; see commit log.)
+- Substrate D0 noun leaks in `nmp-core` flagged by the 2026-05-25 review and
+  closed in PR (this commit):
+  - `Kernel::nip42_drivers` field + `Nip42DriverState` type renamed to
+    `auth_drivers` / `AuthDriverState` (NIP-42 was leaking; the substrate
+    vocabulary is "auth").
+  - `RelayStatus::nip77_negentropy` + `RelayHealth::nip77_probe_state` +
+    `Kernel::set_nip77_probe_state` renamed to `negentropy_probe` /
+    `negentropy_probe_state` / `set_negentropy_probe_state` (negentropy is
+    a generic relay-side reconciliation primitive; the NIP-77 binding lives
+    in a downstream protocol crate).
+  - `kernel/nip17_dm_inbox_routing_tests.rs` renamed to
+    `kernel/dm_inbox_routing_tests.rs` (the asserted invariant is the
+    kernel's generic preference of `DmInboxRelayLookup` over the NIP-65
+    read-relay list — NIP-17 is just the concrete production binding).
+  - `#[allow(unused_imports)]` cluster in `actor/mod.rs` (lines 116, 124,
+    133, 138, 143, 148) replaced with structural `#[cfg(...)]` gates that
+    mirror the downstream consumer's gate (`__ffi_internal` uses `native`;
+    the test-support surface uses `any(test, feature = "test-support")`).
 
 **Ghost crates this spec still names that do not yet exist on master:**
 `nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-proto`. (`nmp-marmot` is no
