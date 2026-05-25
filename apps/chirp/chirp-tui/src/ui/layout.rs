@@ -42,6 +42,11 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState) {
 }
 
 fn render_welcome(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(4), Constraint::Length(3)])
+        .split(area);
+
     let lines = vec![
         Line::from(""),
         Line::from(""),
@@ -55,12 +60,15 @@ fn render_welcome(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "n  new account    ?  help    q  quit",
+            "n  import account    ?  help    q  quit",
             Style::default().fg(DIM_TEXT),
         )),
     ];
     let welcome = Paragraph::new(lines).alignment(Alignment::Center);
-    frame.render_widget(welcome, area);
+    frame.render_widget(welcome, rows[0]);
+
+    // Render input bar at bottom when n is pressed.
+    render_compose(frame, rows[1], state);
 
     if state.show_help {
         help::render_with_state(frame, area, state);

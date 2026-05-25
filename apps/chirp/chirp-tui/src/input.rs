@@ -16,6 +16,14 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
 
     match state.mode {
         Mode::Compose => {
+            // q always quits; ? always toggles help even while composing.
+            if key.code == KeyCode::Char('q') {
+                return InputFlow::Quit;
+            }
+            if key.code == KeyCode::Char('?') {
+                state.toggle_help();
+                return InputFlow::Continue;
+            }
             handle_compose_key(state, runtime, key);
             return InputFlow::Continue;
         }
@@ -334,6 +342,10 @@ fn count_replies_for_selected(state: &AppState) -> usize {
 }
 
 fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
+    if state.features.accounts.is_empty() {
+        state.start_input_bar("nsec or bunker URI", false, "nsec");
+        return;
+    }
     match state.tab {
         FeatureTab::Home => state.start_compose(),
         FeatureTab::Chats => state.start_input_bar("New DM to", false, "dm-npub"),
