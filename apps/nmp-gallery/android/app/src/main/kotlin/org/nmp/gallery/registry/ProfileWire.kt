@@ -18,9 +18,9 @@ data class ProfileWire(
     @SerialName("picture_url") val pictureUrl: String? = null,
     @SerialName("nip05") val nip05: String? = null,
     /** Full bech32 `npub1…` string. Use for copy / share. */
-    @SerialName("npub") val npub: String,
+    @SerialName("npub") val npub: String = "",
     /** Rust-truncated npub (e.g. `npub1abcd…wxyz`). Display only. */
-    @SerialName("npub_short") val npubShort: String,
+    @SerialName("npub_short") val npubShort: String = if (npub.length > 16) npub.take(8) + "…" + npub.takeLast(8) else npub,
 ) {
     /** Stable display label: `displayName` if set, else `npubShort`. */
     val display: String get() = displayName?.takeIf { it.isNotEmpty() } ?: npubShort

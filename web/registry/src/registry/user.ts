@@ -59,7 +59,7 @@ export const userComponents: Component[] = [
           { source: "compose/user-avatar/ProfileWire.kt", target: "Components/NostrUser/ProfileWire.kt", role: "source", content: profileWireKotlin },
           { source: "compose/user-avatar/NostrAvatar.kt", target: "Components/NostrUser/NostrAvatar.kt", role: "source", content: nostrAvatarKotlin },
         ],
-        screenshots: [],
+        screenshots: ["user-avatar-kotlin-preview.png"],
         customization: [
           "Edit `IDENTICON_PALETTE` in `NostrAvatar.kt` to match your brand colors.",
           "Replace `SubcomposeAsyncImage` with Glide or a custom Painter — the identicon fallback composables don't depend on Coil.",
@@ -111,7 +111,7 @@ export const userComponents: Component[] = [
         files: [
           { source: "compose/user-name/NostrProfileName.kt", target: "Components/NostrUser/NostrProfileName.kt", role: "source", content: nostrProfileNameKotlin },
         ],
-        screenshots: [],
+        screenshots: ["user-name-kotlin-preview.png"],
         customization: [
           "Pass any `TextStyle` and `Color` — no hardcoded styling. Use `MaterialTheme.typography.titleMedium` for headers and `bodySmall` for secondary rows.",
         ],
@@ -160,7 +160,7 @@ export const userComponents: Component[] = [
         files: [
           { source: "compose/user-nip05/NostrNip05Badge.kt", target: "Components/NostrUser/NostrNip05Badge.kt", role: "source", content: nostrNip05BadgeKotlin },
         ],
-        screenshots: [],
+        screenshots: ["user-nip05-kotlin-preview.png"],
         customization: [
           "`NostrNip05Badge(profile)` returns early when nip05 is absent; `NostrNip05Badge(nip05)` renders unconditionally when you've already validated the value.",
           "`_@domain` identifiers (root-domain NIP-05) automatically render as just `domain` — no extra handling needed.",
@@ -210,7 +210,7 @@ export const userComponents: Component[] = [
         files: [
           { source: "compose/user-npub/NostrNpubChip.kt", target: "Components/NostrUser/NostrNpubChip.kt", role: "source", content: nostrNpubChipKotlin },
         ],
-        screenshots: [],
+        screenshots: ["user-npub-kotlin-preview.png"],
         customization: [
           "`npub` and `npubShort` must come from the kernel projection — never format them in Kotlin.",
           "Uses `ClipboardManager` directly; no permission required on API 32 and below.",
@@ -263,7 +263,7 @@ export const userComponents: Component[] = [
         files: [
           { source: "compose/user-card/NostrUserCard.kt", target: "Components/NostrUser/NostrUserCard.kt", role: "source", content: nostrUserCardKotlin },
         ],
-        screenshots: [],
+        screenshots: ["user-card-kotlin-preview.png"],
         customization: [
           "Set `avatarSize` to `32.dp` for dense list rows and `64.dp` for profile headers.",
           "The `onTap` callback receives the raw pubkey — push your own NavController route from there.",
