@@ -88,7 +88,7 @@ impl Kernel {
     /// `nmp-core` does not name any shell-side probe types (D0); the caller
     /// owns the translation from its probe-state enum to the key string.
     #[allow(dead_code)] // Wired in by actor observer once the shell's CapabilityCache is plumbed
-    pub(crate) fn set_negentropy_probe_state(&mut self, role: RelayRole, state_key: &str) {
+    pub fn set_negentropy_probe_state(&mut self, role: RelayRole, state_key: &str) {
         self.relay_mut(role).negentropy_probe_state = state_key.to_string();
     }
 

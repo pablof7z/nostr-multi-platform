@@ -387,6 +387,10 @@ pub struct NmpApp {
     /// `run_actor_with_observers` as an `Option`) so the per-app registration
     /// pattern mirrors `storage_path` and the other pre-start slots.
     coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
+    /// Outbound planner REQ interceptor slot. Protocol crates install this
+    /// before start when they can replace selected raw REQs with a more
+    /// efficient sync protocol and fall back to raw REQ when they decline.
+    req_frame_interceptor: nmp_core::substrate::ReqFrameInterceptorSlot,
     /// Host-installed host-op handler slot — the substrate-generic seam app
     /// crates use to expose stateful, host-owned operations through the
     /// generic `dispatch_action` path without `nmp-core` ever naming the
@@ -646,6 +650,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // straight to raw REQ, preserving legacy behaviour.
     let coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>> = Arc::new(Mutex::new(None));
     let actor_coverage_hook = Arc::clone(&coverage_hook);
+    let req_frame_interceptor = nmp_core::substrate::new_req_frame_interceptor_slot();
+    let actor_req_frame_interceptor = Arc::clone(&req_frame_interceptor);
     // Substrate-generic host-op handler slot — the actor's `DispatchHostOp`
     // dispatch arm reads from this clone. The per-app crate (today
     // `nmp-app-marmot`) writes through `NmpApp::set_host_op_handler` before
@@ -732,6 +738,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // pipeline enforces D2 ("negentropy before REQ") via the
                 // per-app crate's policy closure.
                 actor_coverage_hook,
+                actor_req_frame_interceptor,
                 // The actor's clone of the host-op handler slot — read by the
                 // `DispatchHostOp` dispatch arm. `None` (no stateful app bound)
                 // makes any such command record a `Failed` terminal stage;
@@ -832,6 +839,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // `nmp_app_start`; the actor reads its clone after kernel
         // construction and installs the hook on `SubscriptionLifecycle`.
         coverage_hook,
+        req_frame_interceptor,
         // The `NmpApp`'s clone of the host-op handler slot. Written by the
         // per-app crate (today `nmp-app-marmot`) via
         // [`NmpApp::set_host_op_handler`] before `nmp_app_start`; the actor
@@ -995,6 +1003,20 @@ impl NmpApp {
         }
     }
 
+    /// Install the outbound planner REQ interceptor.
+    ///
+    /// MUST be called before `nmp_app_start`. The actor reads this slot at
+    /// kernel construction and after `Reset`; absent means every planner REQ
+    /// follows the raw NIP-01 path.
+    pub fn set_req_frame_interceptor(
+        &self,
+        interceptor: std::sync::Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
+    ) {
+        if let Ok(mut slot) = self.req_frame_interceptor.lock() {
+            *slot = Some(interceptor);
+        }
+    }
+
     /// Install the substrate-generic [`nmp_core::substrate::HostOpHandler`].
     ///
     /// The handler is the bridge between an [`nmp_core::substrate::ActionModule`]
@@ -1045,7 +1067,22 @@ impl NmpApp {
         interceptor: std::sync::Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
     ) {
         if let Ok(mut slot) = self.relay_text_interceptor.lock() {
-            *slot = Some(interceptor);
+            slot.clear();
+            slot.push(interceptor);
+        }
+    }
+
+    /// Add a relay-text interceptor without removing existing ones.
+    ///
+    /// Protocol runtimes installed by different composition layers can share
+    /// the same inbound frame stream. Each runtime filters the frames it owns
+    /// and returns an empty vector for the rest.
+    pub fn add_relay_text_interceptor(
+        &self,
+        interceptor: std::sync::Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
+    ) {
+        if let Ok(mut slot) = self.relay_text_interceptor.lock() {
+            slot.push(interceptor);
         }
     }
 

@@ -7,6 +7,7 @@
 use crate::kernel::Kernel;
 use crate::relay::{canonical_relay_url, OutboundMessage, RelayRole};
 use crate::subs::WireFrame;
+use crate::substrate::ReqFrameContext;
 
 /// Convert planner `WireFrame`s to actor `OutboundMessage`s for the relay pool.
 ///
@@ -45,38 +46,59 @@ pub(super) fn wire_frames_to_outbound(
     kernel: &mut Kernel,
 ) -> Vec<OutboundMessage> {
     kernel.register_planner_wire_frames(&frames);
-    frames
-        .into_iter()
-        .map(|f| {
-            let (relay_url, text) = match f {
-                WireFrame::Req {
-                    relay_url,
-                    sub_id,
-                    filter_json,
-                    ..
-                } => {
-                    let text = format!(r#"["REQ","{sub_id}",{filter_json}]"#);
-                    (relay_url, text)
-                }
-                WireFrame::Close { relay_url, sub_id } => {
-                    let text = format!(r#"["CLOSE","{sub_id}"]"#);
-                    (relay_url, text)
-                }
-            };
-            // Canonicalize once. A URL that does not parse as ws/wss falls
-            // back to the raw string (no panic) — the same fail-open contract
-            // `send_outbound` and `register_planner_wire_frames` use.
-            let relay_url = canonical_relay_url(&relay_url).unwrap_or(relay_url);
-            let role = kernel
-                .role_for_relay_url(&relay_url)
-                .unwrap_or(RelayRole::Content);
-            OutboundMessage {
-                role,
+    let mut outbound = Vec::with_capacity(frames.len());
+    for frame in frames {
+        match frame {
+            WireFrame::Req {
                 relay_url,
-                text,
+                sub_id,
+                filter_json,
+                interest_id,
+                lifecycle,
+            } => {
+                // Canonicalize once. A URL that does not parse as ws/wss falls
+                // back to the raw string (no panic) — the same fail-open contract
+                // `send_outbound` and `register_planner_wire_frames` use.
+                let relay_url = canonical_relay_url(&relay_url).unwrap_or(relay_url);
+                let role = kernel
+                    .role_for_relay_url(&relay_url)
+                    .unwrap_or(RelayRole::Content);
+                let ctx = ReqFrameContext {
+                    role,
+                    relay_url: relay_url.clone(),
+                    sub_id: sub_id.clone(),
+                    filter_json: filter_json.clone(),
+                    interest_id,
+                    lifecycle,
+                };
+                if let Some(interceptor) = kernel.lifecycle_mut().req_frame_interceptor() {
+                    if let Some(replacement) = interceptor.intercept_req(kernel, &ctx) {
+                        outbound.extend(replacement);
+                        continue;
+                    }
+                }
+                let text = format!(r#"["REQ","{sub_id}",{filter_json}]"#);
+                outbound.push(OutboundMessage {
+                    role,
+                    relay_url,
+                    text,
+                });
             }
-        })
-        .collect()
+            WireFrame::Close { relay_url, sub_id } => {
+                let relay_url = canonical_relay_url(&relay_url).unwrap_or(relay_url);
+                let role = kernel
+                    .role_for_relay_url(&relay_url)
+                    .unwrap_or(RelayRole::Content);
+                let text = format!(r#"["CLOSE","{sub_id}"]"#);
+                outbound.push(OutboundMessage {
+                    role,
+                    relay_url,
+                    text,
+                });
+            }
+        }
+    }
+    outbound
 }
 
 #[cfg(test)]
@@ -84,7 +106,29 @@ mod tests {
     use super::wire_frames_to_outbound;
     use crate::kernel::Kernel;
     use crate::planner::{InterestId, InterestLifecycle};
+    use crate::relay::{OutboundMessage, RelayRole};
     use crate::subs::WireFrame;
+    use crate::substrate::{ReqFrameContext, ReqFrameInterceptor};
+    use std::sync::{Arc, Mutex};
+
+    struct TestReqInterceptor {
+        seen: Mutex<Option<ReqFrameContext>>,
+    }
+
+    impl ReqFrameInterceptor for TestReqInterceptor {
+        fn intercept_req(
+            &self,
+            _kernel: &mut Kernel,
+            ctx: &ReqFrameContext,
+        ) -> Option<Vec<OutboundMessage>> {
+            *self.seen.lock().expect("seen lock") = Some(ctx.clone());
+            Some(vec![OutboundMessage::new(
+                ctx.role,
+                ctx.relay_url.clone(),
+                r#"["NEG-OPEN","sub-intercept",{},"60aa"]"#.to_string(),
+            )])
+        }
+    }
 
     /// T-relay-url-normalize regression — a `WireFrame` carrying a non-canonical
     /// `relay_url` (uppercase scheme + empty-path trailing slash, exactly what
@@ -162,6 +206,53 @@ mod tests {
             sub["filter_summary"].as_str(),
             Some(filter_json),
             "subscription diagnostics must expose the exact REQ filter JSON"
+        );
+    }
+
+    #[test]
+    fn req_interceptor_can_replace_raw_req_after_registration() {
+        let mut kernel = Kernel::new(50);
+        let interceptor = Arc::new(TestReqInterceptor {
+            seen: Mutex::new(None),
+        });
+        kernel
+            .lifecycle_mut()
+            .set_req_frame_interceptor(interceptor.clone());
+
+        let frames = vec![WireFrame::Req {
+            relay_url: "WSS://R.Ex/".to_string(),
+            sub_id: "sub-intercept".to_string(),
+            filter_json: r#"{"authors":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"kinds":[3,10000]}"#.to_string(),
+            interest_id: InterestId(7),
+            lifecycle: InterestLifecycle::OneShot,
+        }];
+
+        let outbound = wire_frames_to_outbound(frames, &mut kernel);
+        assert_eq!(outbound.len(), 1);
+        assert_eq!(outbound[0].role, RelayRole::Content);
+        assert_eq!(outbound[0].relay_url, "wss://r.ex");
+        assert!(outbound[0].text.starts_with(r#"["NEG-OPEN","#));
+
+        let seen = interceptor
+            .seen
+            .lock()
+            .expect("seen lock")
+            .clone()
+            .expect("interceptor called");
+        assert_eq!(seen.relay_url, "wss://r.ex");
+        assert_eq!(seen.sub_id, "sub-intercept");
+        assert_eq!(seen.interest_id, InterestId(7));
+        assert_eq!(seen.lifecycle, InterestLifecycle::OneShot);
+
+        let update = kernel.make_update(true);
+        let payload: serde_json::Value = serde_json::from_str(&update).expect("kernel update JSON");
+        assert!(
+            payload["wire_subscriptions"]
+                .as_array()
+                .expect("wireSubscriptions array")
+                .iter()
+                .any(|row| row["wire_id"] == "sub-intercept"),
+            "intercepted REQs stay registered so fallback/id REQs can close on EOSE"
         );
     }
 }

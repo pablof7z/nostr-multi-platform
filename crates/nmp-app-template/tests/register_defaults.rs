@@ -9,7 +9,10 @@
 
 use std::ffi::{CStr, CString};
 
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
+use nmp_ffi::{
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new,
+    nmp_app_read_projection_json,
+};
 
 /// All action namespaces [`nmp_app_template::register_defaults`] is
 /// contracted to register.
@@ -87,13 +90,40 @@ fn register_defaults_is_repeatable_for_routing_and_runtime_slots() {
     nmp_app_free(app);
 }
 
+#[test]
+fn register_defaults_wires_wot_bootstrap_projection() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    nmp_app_template::register_defaults(unsafe { &mut *app });
+
+    let key = CString::new("nmp.wot.bootstrap").unwrap();
+    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    assert!(
+        !raw.is_null(),
+        "WOT bootstrap projection was not registered"
+    );
+    let json = unsafe { CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned();
+    nmp_app_free_string(raw);
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("projection JSON");
+
+    assert_eq!(parsed["active_pubkey"], serde_json::Value::Null);
+    assert_eq!(parsed["bootstrap_requested"], false);
+
+    nmp_app_free(app);
+}
+
 fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
     let ns_c = CString::new(namespace).unwrap();
     let json_c = CString::new(action_json).unwrap();
     let raw = nmp_app_dispatch_action(app, ns_c.as_ptr(), json_c.as_ptr());
     assert!(!raw.is_null(), "dispatch returned null for `{namespace}`");
     // SAFETY: `raw` is a fresh non-null C string owned by `nmp-core`.
-    let s = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
+    let s = unsafe { CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned();
     nmp_app_free_string(raw);
     s
 }

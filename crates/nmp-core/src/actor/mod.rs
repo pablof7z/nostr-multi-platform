@@ -814,6 +814,7 @@ pub fn run_actor(
         // point, so the coverage-gate hook slot is a private throwaway
         // (`None`); the lifecycle keeps its default `coverage_hook: None`.
         Arc::new(Mutex::new(None)),
+        crate::substrate::new_req_frame_interceptor_slot(),
         // Host-op handler slot — no `NmpApp` is wired through this
         // backwards-compatible entry point, so the handler slot is a private
         // throwaway. Any `DispatchHostOp` command reaching the actor here
@@ -889,6 +890,7 @@ pub fn run_actor_with_lifecycle_observer(
         // point, so the coverage-gate hook slot is a private throwaway
         // (`None`); the lifecycle keeps its default `coverage_hook: None`.
         Arc::new(Mutex::new(None)),
+        crate::substrate::new_req_frame_interceptor_slot(),
         // Host-op handler slot — private throwaway here (no FFI surface). A
         // `DispatchHostOp` reaching the actor on this path would record a
         // `Failed { reason: "no host op handler installed" }` terminal.
@@ -983,6 +985,10 @@ pub fn run_actor_with_observers(
     // `nmp_app_start`; read here once after kernel construction and installed
     // on `SubscriptionLifecycle`. Re-installed by the `Reset` dispatch arm.
     coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
+    // Outbound planner REQ interceptor slot. Set by protocol/app composition
+    // before `nmp_app_start`; read here once after kernel construction and
+    // re-installed by the `Reset` dispatch arm.
+    req_frame_interceptor: crate::substrate::ReqFrameInterceptorSlot,
     // Substrate-generic host-op handler slot. Set by an app crate (today
     // `nmp-app-marmot`) before `nmp_app_start` via
     // `NmpApp::set_host_op_handler`. Read by the `DispatchHostOp` dispatch arm
@@ -1148,6 +1154,9 @@ pub fn run_actor_with_observers(
     // `coverage_hook: None` leaves every plan straight to raw REQ.
     if let Some(hook) = coverage_hook.lock().ok().and_then(|g| g.clone()) {
         kernel.lifecycle_mut().set_coverage_hook(hook);
+    }
+    if let Some(interceptor) = req_frame_interceptor.lock().ok().and_then(|g| g.clone()) {
+        kernel.lifecycle_mut().set_req_frame_interceptor(interceptor);
     }
     // T146 — bind the shared kernel event observer slot. The kernel calls
     // `notify_event_observers` after every `EventStore::insert` returning
@@ -1342,6 +1351,7 @@ pub fn run_actor_with_observers(
                         pending_signs: &mut pending_signs,
                         command_tx_self: &command_tx_self,
                         coverage_hook_slot: &coverage_hook,
+                        req_frame_interceptor_slot: &req_frame_interceptor,
                         host_op_handler: &host_op_handler,
                         ingest_dispatcher_slot: &ingest_dispatcher_slot,
                         dm_inbox_relays_slot: &dm_inbox_relays_slot,

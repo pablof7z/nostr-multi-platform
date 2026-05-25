@@ -43,6 +43,16 @@ impl Kernel {
             .collect()
     }
 
+    /// Mark a protocol-rewritten planner sub complete without waiting for an
+    /// `EOSE`. Used by sync protocols that determine no follow-up NIP-01 `REQ`
+    /// is necessary.
+    pub fn complete_rewritten_wire_sub(&mut self, relay_url: &str, sub_id: &str) {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.unregister_persistent_sub(key.as_str(), sub_id);
+        self.wire.subs.remove(&(key, sub_id.to_string()));
+        self.changed_since_emit = true;
+    }
+
     pub(crate) fn pending_view_requests(&mut self) -> Vec<OutboundMessage> {
         let mut requests = Vec::new();
         while let Some(message) = self.deferred_outbound.pop_front() {

@@ -155,8 +155,10 @@ to it; delete the hand-rolled path.
   real CI test. 5/5 coverage-hook tests pass.
 
 The backstop closure enforces `max_relay_connections = 30` cap (redundant with
-`apply_selection`'s built-in cap — proves seam wired). Full negentropy steering (the
-original D2 intent) is a future follow-up once negentropy relay infra is available.
+`apply_selection`'s built-in cap — proves seam wired). Client-side NIP-77 steering
+now handles eligible large one-shot author/kind REQs through `nmp-nip77`; non-exact
+filters, tailing subscriptions, and relays that reject negentropy fall back to raw
+REQs.
 The reusable gate now counts author × kind fanout per filter (`2 kinds × 25 authors`
 and `3 kinds × 20 authors` both qualify at the default threshold of 50) and still
 requires known relay support before choosing reconciliation.

@@ -49,6 +49,7 @@ mod keyring;
 mod host_op_handler;
 pub mod placeholder;
 mod protocol;
+mod req_intercept;
 mod relay_intercept;
 mod routing;
 mod routing_trace;
@@ -84,6 +85,10 @@ pub use protocol::{
     NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
     NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
     ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
+};
+pub use req_intercept::{
+    new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor,
+    ReqFrameInterceptorSlot,
 };
 pub use relay_intercept::{
     new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
