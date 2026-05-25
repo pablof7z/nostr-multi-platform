@@ -9,8 +9,15 @@
  */
 
 import contentCoreSwift from "../../../crates/nmp-cli/registry/swiftui/content-core/NostrContentRenderer.swift?raw";
+import contentCoreWireSwift from "../../../crates/nmp-cli/registry/swiftui/content-core/ContentTreeWire.swift?raw";
 import contentMinimalSwift from "../../../crates/nmp-cli/registry/swiftui/content-minimal/NostrMinimalContentView.swift?raw";
 import contentMinimalPreviewSwift from "../../../crates/nmp-cli/registry/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift?raw";
+import contentViewSwift from "../../../crates/nmp-cli/registry/swiftui/content-view/NostrContentView.swift?raw";
+import contentGroupingSwift from "../../../crates/nmp-cli/registry/swiftui/content-view/NostrContentGrouping.swift?raw";
+import contentViewPreviewSwift from "../../../crates/nmp-cli/registry/swiftui/content-view/Examples/NostrContentViewPreview.swift?raw";
+import mentionChipSwift from "../../../crates/nmp-cli/registry/swiftui/content-mention-chip/NostrMentionChip.swift?raw";
+import quoteCardSwift from "../../../crates/nmp-cli/registry/swiftui/content-quote-card/NostrQuoteCard.swift?raw";
+import mediaGridSwift from "../../../crates/nmp-cli/registry/swiftui/content-media-grid/NostrMediaGrid.swift?raw";
 
 export type ComponentFile = {
   /** Source path in the registry tree (where `nmp add component` reads from). */
@@ -64,6 +71,12 @@ export const COMPONENTS: Component[] = [
         target: "Components/NostrContent/NostrContentRenderer.swift",
         role: "source",
         content: contentCoreSwift,
+      },
+      {
+        source: "swiftui/content-core/ContentTreeWire.swift",
+        target: "Components/NostrContent/ContentTreeWire.swift",
+        role: "source",
+        content: contentCoreWireSwift,
       },
     ],
     screenshots: ["content-core-preview.png"],
@@ -125,10 +138,21 @@ export const COMPONENTS: Component[] = [
         source: "swiftui/content-view/NostrContentView.swift",
         target: "Components/NostrContent/NostrContentView.swift",
         role: "source",
-        content: null,
+        content: contentViewSwift,
+      },
+      {
+        source: "swiftui/content-view/NostrContentGrouping.swift",
+        target: "Components/NostrContent/NostrContentGrouping.swift",
+        role: "source",
+        content: contentGroupingSwift,
+      },
+      {
+        source: "swiftui/content-view/Examples/NostrContentViewPreview.swift",
+        target: "Components/NostrContent/Examples/NostrContentViewPreview.swift",
+        role: "example",
+        content: contentViewPreviewSwift,
       },
     ],
-    inFlight: true,
     screenshots: ["content-view-preview.png"],
     customization: [
       "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content`. Each tree node maps to a sub-component you installed alongside it, so customizing the look usually means editing the sub-component file rather than this dispatcher.",
@@ -149,10 +173,9 @@ export const COMPONENTS: Component[] = [
         source: "swiftui/content-mention-chip/NostrMentionChip.swift",
         target: "Components/NostrContent/NostrMentionChip.swift",
         role: "source",
-        content: null,
+        content: mentionChipSwift,
       },
     ],
-    inFlight: true,
     screenshots: ["content-mention-chip-preview.png"],
     customization: [
       "Includes a tiny avatar loader fallback. Replace the `AsyncImage` with your own image cache if you already have one (Kingfisher, Nuke, etc).",
@@ -173,10 +196,9 @@ export const COMPONENTS: Component[] = [
         source: "swiftui/content-quote-card/NostrQuoteCard.swift",
         target: "Components/NostrContent/NostrQuoteCard.swift",
         role: "source",
-        content: null,
+        content: quoteCardSwift,
       },
     ],
-    inFlight: true,
     screenshots: ["content-quote-card-preview.png"],
     customization: [
       "Renders a `ContentTreeWire` recursively, so a quoted note that itself contains quotes renders correctly to whatever depth your app chooses to allow (the renderer caps recursion at three levels by default).",
@@ -197,10 +219,9 @@ export const COMPONENTS: Component[] = [
         source: "swiftui/content-media-grid/NostrMediaGrid.swift",
         target: "Components/NostrContent/NostrMediaGrid.swift",
         role: "source",
-        content: null,
+        content: mediaGridSwift,
       },
     ],
-    inFlight: true,
     screenshots: ["content-media-grid-preview.png"],
     customization: [
       "Grid layout is computed from the count: 1 item = full-width 16:9, 2 = side-by-side, 3 = one-large + two-stacked, 4 = 2x2.",
