@@ -175,18 +175,23 @@ private fun NoteRow(
 ) {
     val item = items[eventId]
     val card = cards[eventId]
-    val content = item?.contentPreview?.ifEmpty { item.content } ?: card?.content
+    val content = item?.contentPreview?.ifEmpty { item.content }
+        ?: card?.contentPreview?.ifEmpty { card.content }
     if (content == null) {
         MissingEventRow(eventId)
         return
     }
     val author = item?.authorDisplay?.nonEmptyOrNull()
-        ?: card?.authorPubkey?.take(12)?.let { "$it…" }
+        ?: card?.authorDisplayName?.nonEmptyOrNull()
+        ?: card?.authorPubkeyShort?.nonEmptyOrNull()
         ?: "unknown"
     val initials = item?.authorAvatarInitials?.nonEmptyOrNull()
+        ?: card?.authorAvatarInitials?.nonEmptyOrNull()
         ?: author.take(2).uppercase()
-    val color = item?.authorAvatarColor.orEmpty()
+    val color = item?.authorAvatarColor?.nonEmptyOrNull()
+        ?: card?.authorAvatarColor.orEmpty()
     val subtitle = item?.createdAtDisplay?.nonEmptyOrNull()
+        ?: card?.createdAtDisplay?.nonEmptyOrNull()
         ?: card?.let { "kind ${it.kind}" }
         ?: ""
 
@@ -207,7 +212,7 @@ private fun NoteRow(
             }
         }
         Spacer(Modifier.size(6.dp))
-        NostrRichText(content = content)
+        NostrRichText(content = content, contentTree = card?.contentTree)
     }
 }
 
