@@ -22,10 +22,10 @@ import os.log
 //     `unregister` — the group's messages surface on every kernel snapshot
 //     under the `projections` key `"nmp.nip29.group_chat"` (decoded by
 //     `SnapshotProjections.groupChat` in `KernelBridge.swift`).
-//   • Single-screen scope: per the FFI contract, calling it twice
-//     overwrites the snapshot key and leaks the older event observer for
-//     the life of the `app`. Chirp registers exactly one group per run, so
-//     `GroupChatStore.registerOnce` guards against a re-register.
+//   • Single-screen scope: per the FFI contract, calling it twice replaces
+//     the singleton observer. `GroupChatStore.registerOnce` guards against
+//     duplicate registration by the same store; `KernelModel` creates a new
+//     store when the selected public group changes.
 //
 // ── Write side ────────────────────────────────────────────────────────────
 //
@@ -69,9 +69,9 @@ extension KernelHandle {
     /// logged no-op; the Rust side likewise no-ops on a null / malformed
     /// argument.
     ///
-    /// Single-screen scope: per the FFI contract, a second call overwrites
-    /// the snapshot key and leaks the prior observer. `GroupChatStore`
-    /// guards re-registration; this method itself is not idempotent.
+    /// Single-screen scope: per the FFI contract, a second call replaces
+    /// the singleton observer and overwrites the snapshot key. A store still
+    /// registers only once; selecting a different group creates a new store.
     func registerGroupChat(groupId: GroupId) {
         guard
             let data = try? JSONSerialization.data(withJSONObject: groupId.jsonObject),
@@ -192,7 +192,7 @@ final class GroupChatStore: ObservableObject {
 
     private unowned let kernel: KernelHandle
     /// Guards against a second `nmp_app_chirp_register_group_chat` call —
-    /// the FFI has single-screen scope and a re-register leaks an observer.
+    /// one store represents one selected group.
     private var registered = false
 
     /// Construct a store for `groupId` and wire its read projection into
@@ -206,7 +206,7 @@ final class GroupChatStore: ObservableObject {
 
     /// Register the read projection exactly once. Re-entry is a no-op so a
     /// `KernelModel` reset that re-pushes snapshots cannot double-register
-    /// (the FFI contract: a second call leaks the prior observer).
+    /// the same selected group.
     private func registerOnce() {
         guard !registered else { return }
         registered = true

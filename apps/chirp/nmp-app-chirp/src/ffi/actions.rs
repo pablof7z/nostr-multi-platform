@@ -38,12 +38,12 @@ use nmp_ffi::NmpApp;
 /// `nmp-core` learning any NIP-29 group nouns (D0).
 ///
 /// Namespaces: `nmp.nip29.post_chat_message`, `nmp.nip29.react_in_group`,
-/// `nmp.nip29.discover`, `nmp.nip29.join`.
+/// `nmp.nip29.create_public_group`, `nmp.nip29.discover`,
+/// `nmp.nip29.join`.
 ///
-/// SCOPE: NIP-29 v1 ships chat (3 actions), discovery, and join. The
-/// admin / membership (9000-9009) and artifact / discussion executors
-/// are deliberately out of scope — Marmot MLS covers private groups;
-/// group administration UI is not planned for this milestone.
+/// SCOPE: NIP-29 v1 ships public group creation, chat, discovery, and join.
+/// The remaining admin / membership and artifact / discussion executors
+/// are deliberately out of scope for this milestone.
 pub(super) fn register_nip29_actions(app: &mut NmpApp) {
     nmp_nip29::register_actions(app);
 }
