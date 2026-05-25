@@ -1145,13 +1145,26 @@ to leave the kernel cleanly. Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
 
 ---
 
-### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phases 1, 4, 5 DONE; phases 2, 3 pending**
+### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phases 1, 2, 4, 5 DONE; phase 3 pending**
 
 **Phase 1 — substrate observer + bounded projection** ✅ PR #457 merged
 (efe72537). `RoutingTraceObserver` trait + `RoutingTraceProjection`
 bounded ring buffer (capacity 64 per stream) in `nmp-core`; both
 `nmp_router::GenericOutboxRouter` and `nmp-core`'s default router fan
 out to the observer.
+
+**Phase 2 — FFI/wasm snapshot surface** ✅ branch
+`feat/v51-routing-trace-ffi-wasm-snapshot` (this PR). New FFI symbol
+`nmp_app_recent_routing_decisions` (heap-owned, freed via
+`nmp_app_free_string`) returns a stable schema-versioned JSON document
+(`schema_version: 1`) listing recent publishes + subscriptions with
+per-URL lane attribution. Wasm sibling
+`NmpWasmRuntime::recent_routing_decisions()` returns the identical
+payload shape via a `wasm-bindgen` method backed by
+`KernelReducer::recent_routing_decisions_json`. JSON shape lives in
+`nmp_core::kernel::routing_trace_dto` (consumer-side renderer; substrate
+types stay free of `serde::Serialize`). `NmpCore.h` updated; CI drift
+gate passes.
 
 **Phase 4 — validation harness** ✅ PR #461 merged (b9e0fc15).
 `chirp-repl routing-trace` subcommand + `cargo test -p nmp-testing
@@ -1167,8 +1180,10 @@ via `set_routing_substrate`. **Caveat**: this is *observe-only* — the
 kernel still picks REQ relays via cache helpers. Make-substrate-honest
 follow-up promotes the router to the decision authority.
 
-**Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI)** — not
-started.
+**Phase 3 (Chirp inspector UI)** — not started. Pending the iOS / web
+shell consumers of the phase 2 JSON payload (a `RoutingInspectorView`
+long-press target on `ChirpEventCard` / publish-status row + a debug
+toolbar toggle on the wasm host).
 
 #### Original requirement (kept for archaeology)
 

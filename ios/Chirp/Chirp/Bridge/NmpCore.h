@@ -237,6 +237,39 @@ void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver 
 void nmp_app_ack_action_stage(void *app, const char *correlation_id);
 typedef const char *(*NmpSnapshotProjector)(void);
 void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
+
+// ── V-51 phase 2 — routing-trace snapshot accessor ───────────────────────
+//
+// Return a heap-owned NUL-terminated JSON snapshot of the kernel's recent
+// routing decisions (the bounded ring-buffer projection
+// `RoutingTraceProjection`). The caller MUST release the returned pointer
+// via `nmp_app_free_string`.
+//
+// Payload shape (stable, schema-versioned — schema_version=1):
+//
+//   {
+//     "schema_version": 1,
+//     "capacity": 64,
+//     "publishes":     [ { at_ms, kind, author, event_id_short,
+//                          explicit_targets_set,
+//                          urls: [ {url, lanes: [...]} ] } ],
+//     "subscriptions": [ { at_ms, interest_id, kinds, authors_count,
+//                          explicit_targets_set,
+//                          urls: [...] } ]
+//   }
+//
+// Each `lanes[]` entry is a `{ "kind": "Nip65", "direction": "Write" }`-
+// style object whose discriminant matches the chirp-repl pretty-printer's
+// grammar (`Nip65/Write`, `ClassRouted/<class>/<via>`, etc.) — the JSON
+// and the human-readable form never drift.
+//
+// D6: never returns NULL for a non-NULL app — a kernel that hasn't yet
+// constructed its projection, a poisoned slot, or a serialisation failure
+// all collapse to a well-formed empty-rings payload
+// (`{"schema_version":1,"capacity":0,"publishes":[],"subscriptions":[]}`).
+// A NULL `app` is also handled — returns the same empty-rings payload.
+char *nmp_app_recent_routing_decisions(void *app);
+
 void nmp_app_free_string(char *ptr);
 // PR-F deleted `nmp_app_publish_unsigned_event` — use
 // `nmp_app_dispatch_action(app, "nmp.publish", action_json)` instead.

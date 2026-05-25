@@ -32,7 +32,7 @@ The crate-boundary spec lives at
 | 11 final (`nmp-ffi` extraction) | ⏳ in flight (subagent) |
 | 12 (return `nmp-marmot` from `apps/` to `crates/`) | ❌ not started |
 
-Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phases 2 (FFI/wasm snapshot surface) + 3 (Chirp inspector UI) not started.
+Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring buffer), 4 (validation harness against pablof7z's real NIP-65), 5 (kernel-router observability cut-over) ✅ merged. Phase 2 (FFI/wasm snapshot surface) ⏳ in flight (branch `feat/v51-routing-trace-ffi-wasm-snapshot`). Phase 3 (Chirp inspector UI) not started.
 
 **Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C (`ProtocolCommandContext` capability-trait bundling, currently 12 accessors with `#[allow(clippy::too_many_arguments)]`) ❌ not started.
 
@@ -44,6 +44,7 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 - 2026-05-24 — feat(nmp-network): step 8 phase C — move `BrowserRelayDriver` from `nmp-wasm/src/relay_driver.rs` into `nmp-network/src/browser_driver.rs` (gated `#[cfg(target_arch = "wasm32")]`). Driver's kernel touchpoints abstracted behind `BrowserKernelHandlers` (`Rc<dyn Fn>` callback bag) so the layering invariant (`nmp-network` does not depend on `nmp-core`) holds. `nmp-wasm::relay_pool::build_handlers` is the single construction site. — branch `feat/nmp-network-step-8-phase-c-browser-driver-move`.
 - 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
 - 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
+- 2026-05-25 — feat(nmp-core/nmp-ffi/nmp-wasm): V-51 phase 2 — routing-trace FFI + wasm snapshot surface. New FFI symbol `nmp_app_recent_routing_decisions` + wasm `NmpWasmRuntime::recent_routing_decisions()`; consumer-side JSON renderer in `nmp_core::kernel::routing_trace_dto` keeps substrate types free of `serde::Serialize`. `NmpCore.h` updated; CI drift gate green. Branch `feat/v51-routing-trace-ffi-wasm-snapshot`.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

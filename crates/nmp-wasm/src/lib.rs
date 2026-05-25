@@ -102,6 +102,24 @@ mod bindings {
             self.runtime.set_snapshot_callback(callback);
         }
 
+        /// V-51 phase 2 — JSON snapshot of the kernel's recent routing
+        /// decisions (the bounded `RoutingTraceProjection` ring buffer).
+        ///
+        /// Mirrors the iOS FFI symbol `nmp_app_recent_routing_decisions`:
+        /// same payload shape, schema-versioned (`schema_version: 1`), so
+        /// the web Chirp shell can share the routing-inspector renderer
+        /// V-51 phase 3 paints over both surfaces.
+        ///
+        /// Pull-only — call this on demand (long-press / "show routing
+        /// trace" toggle); the runtime does not push it on every snapshot
+        /// tick. Always returns a well-formed document — empty rings
+        /// render as `{"schema_version":1,"capacity":0,"publishes":[],
+        /// "subscriptions":[]}` rather than `null` (D6).
+        #[wasm_bindgen]
+        pub fn recent_routing_decisions(&self) -> String {
+            self.runtime.recent_routing_decisions()
+        }
+
         /// V-01 Stage 3c — async dispatch entrypoint for app-level write
         /// actions that need an installed signer.
         ///

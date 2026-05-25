@@ -95,6 +95,12 @@ mod relay_diagnostics;
 // belongs to the kernel, and is the Rust-level read door the FFI surface
 // (phase 2 proper) and the validation harness (phase 4) both consume.
 pub mod routing_trace;
+// V-51 phase 2 — JSON DTO renderer for the routing-trace projection. Pure
+// consumer-side helper: walks `RoutingTraceProjection::snapshot_*` and
+// produces a stable `serde_json::Value` the FFI / wasm snapshot surfaces
+// hand back to Swift / TypeScript callers. Does NOT widen the substrate
+// (`RoutingSource` et al. stay free of `serde::Serialize`).
+pub mod routing_trace_dto;
 // Typed slot wrappers for relay-shaped actor-owned caches. The bare
 // `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
 // publish resolver and `NmpApp` move behind named types here so D14 can flag
