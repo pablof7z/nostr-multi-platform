@@ -11,6 +11,7 @@ struct NoteContentView: View {
     let renderContext: NoteRenderContext
     var font: Font = .body
 
+    @EnvironmentObject private var router: ChirpRouter
     @State private var tappedImage: TappedImage?
 
     init(
@@ -27,8 +28,7 @@ struct NoteContentView: View {
         self.renderContext = renderContext ?? NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: eventCards,
-            timelineItems: timelineItems,
-            embedDepth: 0
+            timelineItems: timelineItems
         )
         self.font = font
     }
@@ -48,26 +48,13 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private func richBody(_ tree: ContentTreeWire) -> some View {
-        let groups = noteContentGroups(tree)
-        if groups.isEmpty {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                    switch group {
-                    case .inline(let nodes):
-                        nodes.reduce(Text("")) { acc, node in
-                            acc + inlineText(node, in: tree)
-                        }
-                        .font(font)
-                    case .media(let urls, let kind):
-                        mediaView(urls: urls, kind: kind)
-                    case .eventRef(let uri):
-                        eventReferenceView(uri)
-                    }
-                }
-            }
-        }
+        NostrContentView(
+            tree: tree,
+            font: font,
+            mentionLabel: { uri in renderContext.mentionLabel(for: uri.primaryId) },
+            quoteCardProvider: quoteCardModel(for:)
+        )
+        .nostrContentRenderer(chirpContentRenderer)
     }
 
     private var plainBody: some View {
@@ -75,115 +62,63 @@ struct NoteContentView: View {
             .font(font)
     }
 
-    private func inlineText(_ index: UInt32, in tree: ContentTreeWire) -> Text {
-        if index == UInt32.max { return Text("\n") }
-        guard let n = node(index, in: tree) else { return Text("") }
-        switch n {
-        case .text(let value):
-            return Text(value)
-        case .mention(let uri):
-            let label = renderContext.mentionLabel(for: uri.primaryId)
-            return Text("@\(label)").foregroundStyle(ChirpColor.link).bold()
-        case .eventRef(let uri):
-            return Text("↩ \(shortEntity(uri.primaryId))").foregroundStyle(ChirpColor.link).bold()
-        case .hashtag(let tag):
-            return Text("#\(tag)").foregroundStyle(ChirpColor.link).bold()
-        case .url(let value):
-            return Text(value).foregroundStyle(ChirpColor.link)
-        case .emoji(let shortcode, _):
-            return Text(":\(shortcode):")
-        case .emphasis(let children):
-            return children.reduce(Text("")) { $0 + inlineText($1, in: tree).italic() }
-        case .strong(let children):
-            return children.reduce(Text("")) { $0 + inlineText($1, in: tree).bold() }
-        case .inlineCode(let value):
-            return Text(value).font(.system(.body, design: .monospaced))
-        case .softBreak:
-            return Text(" ")
-        case .hardBreak:
-            return Text("\n")
-        case .paragraph(let children), .heading(_, let children):
-            return children.reduce(Text("")) { $0 + inlineText($1, in: tree) }
-        case .blockQuote(let children):
-            return children.reduce(Text("")) { $0 + inlineText($1, in: tree) }
-        case .link(let children, _):
-            return children.reduce(Text("")) { $0 + inlineText($1, in: tree) }
-        case .invoice:
-            return Text("⚡ invoice").foregroundStyle(ChirpColor.link)
-        case .image(let alt, _, _):
-            return Text(alt.isEmpty ? "[image]" : "[\(alt)]").foregroundStyle(.secondary)
-        case .media, .codeBlock, .list, .rule, .placeholder(_):
-            return Text("")
+    private var chirpContentRenderer: NostrContentRenderer {
+        NostrContentRenderer(
+            textColor: .primary,
+            secondaryTextColor: .secondary,
+            mentionColor: ChirpColor.link,
+            hashtagColor: ChirpColor.link,
+            linkColor: ChirpColor.link,
+            quoteBorderColor: ChirpColor.hairline.opacity(0.55),
+            quoteBackgroundColor: ChirpColor.surface.opacity(0.75),
+            codeBackgroundColor: ChirpColor.secondaryFill,
+            placeholderColor: .secondary,
+            callbacks: NostrContentCallbacks(
+                onImageTap: { url in tappedImage = TappedImage(url: url) },
+                onEventRefTap: { eventID in router.push(.thread(eventID: eventID)) }
+            )
+        )
+    }
+
+    private func quoteCardModel(for uri: NostrWireUri) -> NostrQuoteCardModel? {
+        let eventID = uri.primaryId
+        if let card = renderContext.eventCards[eventID] {
+            return NostrQuoteCardModel(
+                id: card.id,
+                unresolvedUri: uri.uri,
+                authorPubkey: card.authorPubkey,
+                authorDisplayName: card.authorDisplayName,
+                authorAvatarUrl: httpImageURL(card.authorPictureUrl),
+                content: card.contentPreview.isEmpty ? card.content : card.contentPreview,
+                createdAtDisplay: card.createdAt.relativeTimeFromUnixSeconds
+            )
         }
-    }
 
-    @ViewBuilder
-    private func mediaView(urls: [String], kind: MediaKind) -> some View {
-        switch kind {
-        case .image:
-            let imageURLs = urls.compactMap(URL.init(string:))
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(imageURLs.enumerated()), id: \.offset) { _, url in
-                    imageView(url)
-                }
-            }
-        case .video, .audio:
-            // Audio and video share the same compact media row until the
-            // content-tree media renderer grows separate audio controls.
-            if let first = urls.first.flatMap(URL.init(string:)) {
-                videoPlaceholder(first)
-            }
+        if let item = renderContext.timelineItems[eventID] {
+            return NostrQuoteCardModel(
+                id: item.id,
+                unresolvedUri: uri.uri,
+                authorPubkey: item.authorPubkey,
+                authorDisplayName: renderContext.mentionLabel(for: item.authorPubkey),
+                authorAvatarUrl: httpImageURL(item.authorPictureUrl),
+                content: item.contentPreview.isEmpty ? item.renderedContent : item.contentPreview,
+                createdAtDisplay: item.createdAt.relativeTimeFromUnixSeconds
+            )
         }
+
+        return nil
     }
 
-    private func eventReferenceView(_ uri: WireNostrUri) -> some View {
-        EmbeddedNostrEventCard(uri: uri, context: renderContext)
-    }
-
-    private func imageView(_ url: URL) -> some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let img):
-                Button {
-                    tappedImage = TappedImage(url: url)
-                } label: {
-                    img.resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: 300)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .fadeIn()
-                }
-                .buttonStyle(.plain)
-            case .empty:
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(ChirpColor.secondaryFill)
-                    .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 120)
-            default:
-                EmptyView()
-            }
+    private func httpImageURL(_ value: String?) -> URL? {
+        guard
+            let value,
+            let url = URL(string: value),
+            let scheme = url.scheme?.lowercased(),
+            ["http", "https"].contains(scheme)
+        else {
+            return nil
         }
-    }
-
-    private func videoPlaceholder(_ url: URL) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "play.rectangle.fill")
-                .font(.title2)
-                .foregroundStyle(.primary)
-            Text(url.lastPathComponent)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func node(_ index: UInt32, in tree: ContentTreeWire) -> ContentWireNode? {
-        let i = Int(index)
-        guard i >= 0, i < tree.nodes.count else { return nil }
-        return tree.nodes[i]
+        return url
     }
 }
 

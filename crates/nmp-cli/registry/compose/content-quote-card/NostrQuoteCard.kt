@@ -108,6 +108,7 @@ public fun NostrQuoteCard(
         NostrQuoteCardVariant.Missing -> MissingBody(
             model = model,
             modifier = modifier,
+            onTap = onTap ?: defaultTap,
         )
     }
 }
@@ -222,7 +223,11 @@ private fun RichBody(
 }
 
 @Composable
-private fun MissingBody(model: NostrQuoteCardModel, modifier: Modifier) {
+private fun MissingBody(
+    model: NostrQuoteCardModel,
+    modifier: Modifier,
+    onTap: () -> Unit,
+) {
     val renderer = LocalNostrContentRenderer.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -232,6 +237,8 @@ private fun MissingBody(model: NostrQuoteCardModel, modifier: Modifier) {
             .clip(RoundedCornerShape(8.dp))
             .background(renderer.quoteBackgroundColor)
             .border(0.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
+            .clickable { onTap() }
+            .semantics { contentDescription = "Open quoted post" }
             .padding(10.dp),
     ) {
         Icon(

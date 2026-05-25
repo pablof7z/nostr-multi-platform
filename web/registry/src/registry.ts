@@ -6,8 +6,10 @@
  * platforms. The ComponentPage renders a platform switcher that drives
  * which code files and screenshots are shown.
  *
- * This is the SINGLE SOURCE OF TRUTH the site renders. It is hand-mirrored
- * from `crates/nmp-cli/registry/registry.toml` (the CLI's manifest).
+ * Install-critical metadata is mirrored from the CLI manifest at
+ * `crates/nmp-cli/registry/registry.toml`. The nmp-cli integration tests
+ * compare install ids, platform versions, dependencies, and file mappings so
+ * this showcase cannot drift from the offline registry apps actually install.
  */
 
 import contentCoreSwift from "../../../crates/nmp-cli/registry/swiftui/content-core/NostrContentRenderer.swift?raw";
@@ -52,6 +54,8 @@ export type PlatformImpl = {
   status: "stable" | "soon";
   /** CLI install identifier, e.g. `swiftui/content-core`. */
   installId: string;
+  /** CLI manifest version for this platform implementation. */
+  version: string;
   /** Component slugs this impl depends on (same platform implied). */
   dependencies: string[];
   files: ComponentFile[];
@@ -65,6 +69,7 @@ export type Component = {
   routeId: string;
   version: string;
   description: string;
+  inFlight?: boolean;
   platforms: Partial<Record<Platform, PlatformImpl>>;
 };
 
@@ -72,13 +77,14 @@ export const COMPONENTS: Component[] = [
   {
     slug: "content-core",
     routeId: "content-core",
-    version: "0.1.0",
+    version: "0.2.0",
     description:
       "Shared renderer configuration + ContentTreeWire wire type for app-owned Nostr content components.",
     platforms: {
       swiftui: {
         status: "stable",
         installId: "swiftui/content-core",
+        version: "0.2.0",
         dependencies: [],
         longDescription:
           "`NostrContentRenderer` is the small environment-injected struct every content component reads to pick colors and tap callbacks. Install it once; every other content component on this page picks it up automatically.",
@@ -106,6 +112,7 @@ export const COMPONENTS: Component[] = [
       compose: {
         status: "stable",
         installId: "compose/content-core",
+        version: "0.1.0",
         dependencies: [],
         longDescription:
           "`NostrContentRenderer` is the small CompositionLocal-injected data class every content component reads to pick colors and tap callbacks. Install it once; every other Compose content component on this page picks it up automatically.",
@@ -142,6 +149,7 @@ export const COMPONENTS: Component[] = [
       swiftui: {
         status: "stable",
         installId: "swiftui/content-minimal",
+        version: "0.1.0",
         dependencies: ["content-core"],
         longDescription:
           "A flow-layout view that walks an array of `NostrContentRun` values and renders text, mentions, hashtags, and links inline. The simplest component that gets you a working timeline cell.",
@@ -171,19 +179,18 @@ export const COMPONENTS: Component[] = [
   {
     slug: "content-view",
     routeId: "content-view",
-    version: "0.1.0",
+    version: "0.1.1",
     description:
       "Full ContentTreeWire renderer. Stitches text runs, mentions, quote cards, and media grids into one view.",
     platforms: {
       swiftui: {
         status: "stable",
         installId: "swiftui/content-view",
+        version: "0.1.1",
         dependencies: [
           "content-core",
-          "content-minimal",
-          "content-mention-chip",
-          "content-quote-card",
           "content-media-grid",
+          "content-quote-card",
         ],
         files: [
           {
@@ -214,6 +221,7 @@ export const COMPONENTS: Component[] = [
       compose: {
         status: "stable",
         installId: "compose/content-view",
+        version: "0.1.0",
         dependencies: ["content-core", "content-media-grid", "content-quote-card"],
         files: [
           {
@@ -247,6 +255,7 @@ export const COMPONENTS: Component[] = [
       swiftui: {
         status: "stable",
         installId: "swiftui/content-mention-chip",
+        version: "0.1.0",
         dependencies: ["content-core"],
         files: [
           {
@@ -265,6 +274,7 @@ export const COMPONENTS: Component[] = [
       compose: {
         status: "stable",
         installId: "compose/content-mention-chip",
+        version: "0.1.0",
         dependencies: ["content-core"],
         files: [
           {
@@ -285,14 +295,15 @@ export const COMPONENTS: Component[] = [
   {
     slug: "content-quote-card",
     routeId: "content-quote-card",
-    version: "0.1.0",
+    version: "0.1.1",
     description:
       "Quoted-note card — author header, content preview, subtle border. Drops into any feed.",
     platforms: {
       swiftui: {
         status: "stable",
         installId: "swiftui/content-quote-card",
-        dependencies: ["content-core", "content-minimal"],
+        version: "0.1.1",
+        dependencies: ["content-core"],
         files: [
           {
             source: "swiftui/content-quote-card/NostrQuoteCard.swift",
@@ -303,13 +314,14 @@ export const COMPONENTS: Component[] = [
         ],
         screenshots: ["content-quote-card-swiftui-preview.png"],
         customization: [
-          "Renders a `ContentTreeWire` recursively, so a quoted note that itself contains quotes renders correctly to whatever depth your app chooses to allow (the renderer caps recursion at three levels by default).",
+          "Renders a hydrated `NostrQuoteCardModel`; apps resolve quoted events from their own state and pass preview text, author display data, and optional media thumbnails.",
           "Adjust the border, corner radius, and padding directly in the source file — they're literals, not configuration knobs, so they merge cleanly on `nmp update`.",
         ],
       },
       compose: {
         status: "stable",
         installId: "compose/content-quote-card",
+        version: "0.1.1",
         dependencies: ["content-core"],
         files: [
           {
@@ -337,6 +349,7 @@ export const COMPONENTS: Component[] = [
       swiftui: {
         status: "stable",
         installId: "swiftui/content-media-grid",
+        version: "0.1.0",
         dependencies: ["content-core"],
         files: [
           {
@@ -355,6 +368,7 @@ export const COMPONENTS: Component[] = [
       compose: {
         status: "stable",
         installId: "compose/content-media-grid",
+        version: "0.1.0",
         dependencies: ["content-core"],
         files: [
           {
@@ -382,6 +396,7 @@ export const COMPONENTS: Component[] = [
       swiftui: {
         status: "stable",
         installId: "swiftui/login-block",
+        version: "0.1.0",
         dependencies: ["content-core"],
         longDescription:
           "`NostrLoginBlock` probes the device for installed Nostr signer apps (Amber, Primal, nostrconnect-compatible) via `UIApplication.canOpenURL` and surfaces each one as a tappable card. If no signers are found it shows only the manual key entry option with an install hint. Detection happens lazily in `.task {}` — never at module load — so `UIApplication.shared` is always fully active when the probe runs.",
@@ -404,6 +419,14 @@ export const COMPONENTS: Component[] = [
     },
   },
 ];
+
+export const COMPONENT_GROUPS = PLATFORM_ORDER.map((platform) => ({
+  label: PLATFORM_LABELS[platform],
+  status: COMPONENTS.some((component) => component.platforms[platform]?.status === "stable")
+    ? "stable"
+    : "soon",
+  components: COMPONENTS.filter((component) => component.platforms[platform]),
+}));
 
 export function findComponent(routeId: string): Component | undefined {
   return COMPONENTS.find((c) => c.routeId === routeId);

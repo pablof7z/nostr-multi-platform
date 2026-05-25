@@ -110,8 +110,8 @@ nmp add component swiftui/content-minimal --path /tmp/my-app --with example
   always installed; roles such as `example`, `doc`, `test`, and `fixture` are
   opt-in.
 
-The initial built-in registry contains `swiftui/content-minimal`, which depends
-on `swiftui/content-core`. Installing the minimal bundle writes:
+The built-in registry ships installable SwiftUI and Compose content kits. The
+minimal SwiftUI bundle depends on `swiftui/content-core` and writes:
 
 ```text
 Components/NostrContent/NostrContentRenderer.swift
@@ -123,6 +123,32 @@ Re-running `add component` for an already-installed component fails instead of
 overwriting app-owned files. The lock records component versions, target files,
 source paths, roles, and source hashes so `nmp update component` can later
 compute a safe source update against local app edits.
+
+The full content renderers are:
+
+```sh
+nmp add component swiftui/content-view
+nmp add component compose/content-view
+```
+
+Each full renderer installs the platform `content-core` wire mirror, media
+grid, quote card, grouping logic, and main `NostrContentView` dispatcher.
+
+Component contract:
+
+- `crates/nmp-cli/registry/registry.toml` is the install authority. Showcase
+  pages and docs may add copy, but ids, versions, targets, dependencies, and
+  file mappings must mirror the CLI manifest.
+- Content components are copied source owned by the app after install. They
+  are not linked framework packages.
+- Rust owns content structure through `nmp-content` / `ContentTreeWire`.
+  Native code decodes and renders that tree.
+- Components are pure renderers. They do not fetch, retry, cache, route, or
+  decide policy. Apps hydrate display models such as `NostrQuoteCardModel`
+  from their own state.
+- User actions leave components through `NostrContentCallbacks` /
+  `LocalNostrContentRenderer`; the embedding app decides navigation and OS
+  capability execution.
 
 ## Verification
 

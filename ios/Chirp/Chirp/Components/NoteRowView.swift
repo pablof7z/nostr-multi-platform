@@ -138,8 +138,7 @@ struct NoteRowView: View {
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: eventCards,
-            timelineItems: timelineItems,
-            embedDepth: 0
+            timelineItems: timelineItems
         )
         let text = item.renderedContent
         let tree = context.contentTree(for: item, fallback: contentTree)

@@ -545,6 +545,35 @@ pre,
 
 /* Dep list + misc ----------------------------------------------------- */
 
+.platform-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+}
+.platform-switcher__button {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+}
+.platform-switcher__button[data-active="true"] {
+  color: var(--fg);
+  border-color: var(--type);
+  box-shadow: inset 0 0 0 1px var(--type);
+}
+.platform-switcher__button small {
+  color: var(--fg-subtle);
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
 .dep-list {
   list-style: none;
   padding: 0;

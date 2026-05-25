@@ -140,8 +140,7 @@ struct ModularBlockView: View {
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: cards,
-            timelineItems: items,
-            embedDepth: 0
+            timelineItems: items
         )
 
         return Button {

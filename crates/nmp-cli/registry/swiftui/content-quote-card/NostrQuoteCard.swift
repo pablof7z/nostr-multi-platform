@@ -154,28 +154,26 @@ public struct NostrQuoteCard: View {
     }
 
     private var missingBody: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.bubble")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(renderer.placeholderColor)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Content unavailable")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(renderer.textColor)
-                if let uri = model.unresolvedUri, !uri.isEmpty {
-                    Text(uri)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(renderer.secondaryTextColor)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+        cardButton {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.bubble")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(renderer.placeholderColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Content unavailable")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(renderer.textColor)
+                    if let uri = model.unresolvedUri, !uri.isEmpty {
+                        Text(uri)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(renderer.secondaryTextColor)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(renderer.quoteBackgroundColor, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(border)
     }
 
     // MARK: helpers

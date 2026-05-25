@@ -57,8 +57,7 @@ struct ThreadNoteRow: View {
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: eventCards,
-            timelineItems: timelineItems,
-            embedDepth: 0
+            timelineItems: timelineItems
         )
         let displayContent = item.renderedContent
         let displayTree = context.contentTree(for: item, fallback: contentTree)

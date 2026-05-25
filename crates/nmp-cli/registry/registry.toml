@@ -60,7 +60,7 @@ role = "source"
 
 [[components]]
 id = "swiftui/content-quote-card"
-version = "0.1.0"
+version = "0.1.1"
 target = "swiftui"
 description = "Reusable quote/embed card with collapsed, compact, rich, and missing variants."
 dependencies = ["swiftui/content-core"]
@@ -72,7 +72,7 @@ role = "source"
 
 [[components]]
 id = "swiftui/content-view"
-version = "0.1.0"
+version = "0.1.1"
 target = "swiftui"
 description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
 dependencies = [
@@ -158,7 +158,7 @@ role = "source"
 
 [[components]]
 id = "compose/content-quote-card"
-version = "0.1.0"
+version = "0.1.1"
 target = "compose"
 description = "Reusable Compose quote/embed card with collapsed, compact, rich, and missing variants."
 dependencies = ["compose/content-core"]
