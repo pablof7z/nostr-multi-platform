@@ -445,16 +445,13 @@ fn fake_dms() -> Vec<DmConversation> {
 fn fmt_sats(sats: u32) -> String {
     let s = sats.to_string();
     let bytes = s.as_bytes();
-    let mut out = String::with_capacity(s.len() + s.len() / 3);
-    let first_group = bytes.len() % 3;
+    let len = bytes.len();
+    let mut out = String::with_capacity(len + len / 3);
     for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && i != first_group && (i - first_group).is_multiple_of(3) {
+        if i > 0 && (len - i) % 3 == 0 {
             out.push(',');
         }
         out.push(*b as char);
-    }
-    if first_group == 0 && !s.is_empty() {
-        // Above loop already handled it via `i != first_group` guard.
     }
     out
 }
