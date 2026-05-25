@@ -1590,6 +1590,17 @@ fixture kit.
 fixtures, customize one renderer in app-owned source, update the upstream kit,
 and preserve the local customization.
 
+**Progress (2026-05-25):** M16-C1 step "freeze the content fixtures / wire
+contract" landed — `crates/nmp-content-fixtures/fixtures/wire/<id>.json`
+holds 38 committed `ContentTreeWire` JSON golden files covering text
+(`S-T01..S-T10`), mentions (`S-M01..S-M03`), quotes (`S-M04..S-M09`), lists
+(`S-A03..S-A05`), media (`S-MD01..S-MD03`), links (`S-L01..S-L03`),
+hashtags (`S-H01..S-H03`), and fallback edge cases (`S-E01..S-E07`).
+Regenerate via `cargo run -p nmp-content-fixtures --bin build-wire-fixtures`;
+drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
+(byte-exact pin + orphan-file guard). iOS and Android decoders consume this
+exact byte set as the M16 cross-platform wire-contract truth.
+
 ---
 
 ## Section 5 — Post-V1

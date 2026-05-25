@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "hello "
+    },
+    {
+      "kind": "mention",
+      "uri": {
+        "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+        "kind": "profile",
+        "primary_id": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "relays": [],
+        "author": null,
+        "event_kind": null
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

@@ -10,6 +10,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/swiftui/content-core/NostrContentRenderer.swift"),
     ),
     (
+        "swiftui/content-core/ContentTreeWire.swift",
+        include_str!("../../registry/swiftui/content-core/ContentTreeWire.swift"),
+    ),
+    (
         "swiftui/content-minimal/NostrMinimalContentView.swift",
         include_str!("../../registry/swiftui/content-minimal/NostrMinimalContentView.swift"),
     ),
@@ -18,6 +22,30 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!(
             "../../registry/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift"
         ),
+    ),
+    (
+        "swiftui/content-mention-chip/NostrMentionChip.swift",
+        include_str!("../../registry/swiftui/content-mention-chip/NostrMentionChip.swift"),
+    ),
+    (
+        "swiftui/content-media-grid/NostrMediaGrid.swift",
+        include_str!("../../registry/swiftui/content-media-grid/NostrMediaGrid.swift"),
+    ),
+    (
+        "swiftui/content-quote-card/NostrQuoteCard.swift",
+        include_str!("../../registry/swiftui/content-quote-card/NostrQuoteCard.swift"),
+    ),
+    (
+        "swiftui/content-view/NostrContentView.swift",
+        include_str!("../../registry/swiftui/content-view/NostrContentView.swift"),
+    ),
+    (
+        "swiftui/content-view/NostrContentGrouping.swift",
+        include_str!("../../registry/swiftui/content-view/NostrContentGrouping.swift"),
+    ),
+    (
+        "swiftui/content-view/Examples/NostrContentViewPreview.swift",
+        include_str!("../../registry/swiftui/content-view/Examples/NostrContentViewPreview.swift"),
     ),
 ];
 

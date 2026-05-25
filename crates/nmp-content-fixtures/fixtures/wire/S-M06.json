@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "see "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
+        "kind": "event",
+        "primary_id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
+        "relays": [],
+        "author": null,
+        "event_kind": null
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

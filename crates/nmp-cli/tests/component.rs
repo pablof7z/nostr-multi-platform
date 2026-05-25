@@ -1,43 +1,16 @@
 //! End-to-end coverage for `nmp add component`.
+//!
+//! The happy path (builtin registry, single-component install with deps and
+//! optional roles) lives at the top; the edge-case block at the bottom
+//! exercises the seams that the happy path can't reach — custom filesystem
+//! registries, dependency ordering in the lock, target-file collisions, and
+//! the atomicity gate that keeps a failed install from leaving a partial
+//! lock entry behind.
 
+mod helpers;
+
+use helpers::{nmp, TempDir};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-const NMP: &str = env!("CARGO_BIN_EXE_nmp");
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let mut path = std::env::temp_dir();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        path.push(format!("nmp-cli-component-{tag}-{nanos}"));
-        fs::create_dir_all(&path).unwrap();
-        TempDir(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn nmp(cwd: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(NMP)
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .expect("run nmp")
-}
 
 #[test]
 fn add_component_installs_dependencies_optional_roles_and_lock() {
@@ -102,63 +75,382 @@ fn add_component_rejects_unknown_component() {
     assert!(stderr.contains("unknown component"), "{stderr}");
 }
 
+// -----------------------------------------------------------------------------
+// Edge-case coverage
+// -----------------------------------------------------------------------------
+
+/// A custom filesystem registry pointed to via `--registry` must take
+/// precedence over the builtin and install its declared files unchanged.
+///
+/// This is the load-bearing test for the `--registry` flag: without it, a
+/// user wiring up an in-house registry has no integration coverage that the
+/// CLI ever consults the on-disk manifest.
 #[test]
-fn add_component_skips_already_installed_dependencies() {
-    // Regression: installing a component whose transitive dep is already
-    // installed must succeed (the dep is skipped silently) — only the
-    // explicitly-requested target may produce an "already installed" error.
-    let tmp = TempDir::new("skip-installed-dep");
+fn add_component_with_filesystem_registry() {
+    let tmp = TempDir::new("fs-registry");
+    let app = tmp.path().join("app");
+    fs::create_dir_all(&app).unwrap();
 
-    // 1. Install the dep on its own.
-    let first = nmp(tmp.path(), &["add", "component", "swiftui/content-core"]);
+    // Write a registry root with one component + one file. Use a registry_id
+    // (`fs-test-registry`) that is distinct from both the builtin
+    // (`nmp-local`) and the shared helper (`test-registry`) so the lock
+    // assertion below can only pass if the CLI read THIS manifest.
+    let registry_dir = tmp.path().join("registry");
+    fs::create_dir_all(registry_dir.join("widget")).unwrap();
+
+    fs::write(
+        registry_dir.join("registry.toml"),
+        "schema_version = 1\n\
+         registry_id = \"fs-test-registry\"\n\
+         \n\
+         [[components]]\n\
+         id = \"widget/custom\"\n\
+         version = \"0.1.0\"\n\
+         target = \"swiftui\"\n\
+         description = \"custom\"\n\
+         \n\
+         [[components.files]]\n\
+         source = \"widget/custom/Renderer.swift\"\n\
+         target = \"Components/Custom/Renderer.swift\"\n\
+         role = \"source\"\n",
+    )
+    .unwrap();
+    let upstream_content = "// custom registry source v1\n";
+    fs::create_dir_all(registry_dir.join("widget/custom")).unwrap();
+    fs::write(
+        registry_dir.join("widget/custom/Renderer.swift"),
+        upstream_content,
+    )
+    .unwrap();
+
+    let out = nmp(
+        &app,
+        &[
+            "add",
+            "component",
+            "widget/custom",
+            "--registry",
+            registry_dir.to_str().unwrap(),
+        ],
+    );
     assert!(
-        first.status.success(),
-        "first install failed: {}",
-        String::from_utf8_lossy(&first.stderr)
+        out.status.success(),
+        "install from fs registry failed: {}",
+        String::from_utf8_lossy(&out.stderr)
     );
-    let core_path = tmp
-        .path()
-        .join("Components/NostrContent/NostrContentRenderer.swift");
-    assert!(core_path.exists());
 
-    // 2. Drop a sentinel into the installed file. If the second invocation
-    //    were to re-install content-core (either by rewriting it or by
-    //    tripping the "target file already exists" guard), this sentinel
-    //    would be lost or the command would fail.
-    let sentinel = "// SENTINEL — must survive content-minimal install\n";
-    fs::write(&core_path, sentinel).unwrap();
+    let installed = app.join("Components/Custom/Renderer.swift");
+    assert_eq!(fs::read_to_string(&installed).unwrap(), upstream_content);
 
-    // 3. Install the dependent component. content-core is already installed,
-    //    so the resolver returns [content-core, content-minimal]; only
-    //    content-minimal should actually be written.
-    let second = nmp(tmp.path(), &["add", "component", "swiftui/content-minimal"]);
+    let lock = fs::read_to_string(app.join("nmp.components.lock")).unwrap();
     assert!(
-        second.status.success(),
-        "second install failed: {}",
-        String::from_utf8_lossy(&second.stderr)
+        lock.contains("registry = \"fs-test-registry\""),
+        "lock should pin registry id: {lock}"
+    );
+    assert!(lock.contains("id = \"widget/custom\""), "{lock}");
+}
+
+#[test]
+fn add_component_installs_content_core_with_wire_mirror() {
+    let tmp = TempDir::new("content-core");
+
+    let out = nmp(tmp.path(), &["add", "component", "swiftui/content-core"]);
+    assert!(
+        out.status.success(),
+        "nmp add component swiftui/content-core failed: {}",
+        String::from_utf8_lossy(&out.stderr)
     );
 
-    // 4. The dep's file is untouched (sentinel survived).
-    let core_contents = fs::read_to_string(&core_path).unwrap();
-    assert_eq!(
-        core_contents, sentinel,
-        "content-core was re-installed even though it was already present"
-    );
-
-    // 5. The requested component's files were installed.
     assert!(tmp
         .path()
-        .join("Components/NostrContent/NostrMinimalContentView.swift")
+        .join("Components/NostrContent/NostrContentRenderer.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/ContentTreeWire.swift")
         .exists());
 
-    // 6. The lock file has both components recorded.
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
-    assert!(
-        lock.contains("id = \"swiftui/content-core\""),
-        "lock missing content-core: {lock}"
+    assert!(lock.contains("id = \"swiftui/content-core\""));
+    assert!(lock.contains("version = \"0.2.0\""));
+    assert!(lock.contains("ContentTreeWire.swift"));
+}
+
+#[test]
+fn add_component_installs_content_mention_chip() {
+    let tmp = TempDir::new("mention-chip");
+
+    let out = nmp(
+        tmp.path(),
+        &["add", "component", "swiftui/content-mention-chip"],
     );
     assert!(
-        lock.contains("id = \"swiftui/content-minimal\""),
-        "lock missing content-minimal: {lock}"
+        out.status.success(),
+        "nmp add component swiftui/content-mention-chip failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrMentionChip.swift")
+        .exists());
+    // Dependency was pulled in.
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/ContentTreeWire.swift")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"swiftui/content-core\""));
+    assert!(lock.contains("id = \"swiftui/content-mention-chip\""));
+}
+
+#[test]
+fn add_component_installs_content_media_grid() {
+    let tmp = TempDir::new("media-grid");
+
+    let out = nmp(
+        tmp.path(),
+        &["add", "component", "swiftui/content-media-grid"],
+    );
+    assert!(
+        out.status.success(),
+        "nmp add component swiftui/content-media-grid failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrMediaGrid.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.swift")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"swiftui/content-media-grid\""));
+}
+
+#[test]
+fn add_component_installs_content_quote_card() {
+    let tmp = TempDir::new("quote-card");
+
+    let out = nmp(
+        tmp.path(),
+        &["add", "component", "swiftui/content-quote-card"],
+    );
+    assert!(
+        out.status.success(),
+        "nmp add component swiftui/content-quote-card failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrQuoteCard.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.swift")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"swiftui/content-quote-card\""));
+}
+
+#[test]
+fn add_component_installs_content_view_with_transitive_deps() {
+    let tmp = TempDir::new("content-view");
+
+    let out = nmp(
+        tmp.path(),
+        &["add", "component", "swiftui/content-view", "--with", "example"],
+    );
+    assert!(
+        out.status.success(),
+        "nmp add component swiftui/content-view failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Direct sources.
+    assert!(tmp.path().join("Components/NostrContent/NostrContentView.swift").exists());
+    assert!(tmp.path().join("Components/NostrContent/NostrContentGrouping.swift").exists());
+    assert!(tmp.path().join("Components/NostrContent/Examples/NostrContentViewPreview.swift").exists());
+
+    // Transitive deps pulled by resolver.
+    assert!(tmp.path().join("Components/NostrContent/NostrContentRenderer.swift").exists());
+    assert!(tmp.path().join("Components/NostrContent/ContentTreeWire.swift").exists());
+    assert!(tmp.path().join("Components/NostrContent/NostrMediaGrid.swift").exists());
+    assert!(tmp.path().join("Components/NostrContent/NostrQuoteCard.swift").exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"swiftui/content-core\""));
+    assert!(lock.contains("id = \"swiftui/content-media-grid\""));
+    assert!(lock.contains("id = \"swiftui/content-quote-card\""));
+    assert!(lock.contains("id = \"swiftui/content-view\""));
+    assert!(lock.contains("role = \"example\""));
+    assert!(lock.contains("source_sha256 = \""));
+}
+
+/// Installing a component must lock its transitive dependencies BEFORE the
+/// requested component itself.
+#[test]
+fn add_component_dependency_order() {
+    let tmp = TempDir::new("dep-order");
+    let out = nmp(tmp.path(), &["add", "component", "swiftui/content-minimal"]);
+    assert!(
+        out.status.success(),
+        "nmp add component swiftui/content-minimal failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    let core_pos = lock.find("id = \"swiftui/content-core\"").expect("content-core must be locked");
+    let minimal_pos = lock.find("id = \"swiftui/content-minimal\"").expect("content-minimal must be locked");
+    assert!(
+        core_pos < minimal_pos,
+        "content-core must appear before content-minimal: core@{core_pos}, minimal@{minimal_pos}"
+    );
+}
+
+/// The previous toy `swiftui/content-minimal` must remain installable so apps
+/// that adopted it keep working.
+#[test]
+fn add_component_keeps_content_minimal_installable() {
+    let tmp = TempDir::new("content-minimal-still-works");
+
+    let out = nmp(tmp.path(), &["add", "component", "swiftui/content-minimal"]);
+    assert!(
+        out.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    let core_pos = lock
+        .find("id = \"swiftui/content-core\"")
+        .expect("content-core must be locked");
+    let minimal_pos = lock
+        .find("id = \"swiftui/content-minimal\"")
+        .expect("content-minimal must be locked");
+    assert!(
+        core_pos < minimal_pos,
+        "content-core must appear before content-minimal in the lock — got core@{core_pos}, minimal@{minimal_pos}\n{lock}"
+    );
+}
+
+/// `nmp add component` is install-only — it never claims authority to
+/// overwrite a file the user already authored. Pre-creating any of the
+/// component's target paths must abort the install with a clear error so the
+/// user can either move the existing file out of the way or skip the install.
+#[test]
+#[test]
+fn add_component_rejects_preexisting_target_file() {
+    let tmp = TempDir::new("preexisting");
+    let target_dir = tmp.path().join("Components/NostrContent");
+    fs::create_dir_all(&target_dir).unwrap();
+    fs::write(
+        target_dir.join("NostrContentRenderer.swift"),
+        "// my own file, don't touch\n",
+    )
+    .unwrap();
+
+    let out = nmp(tmp.path(), &["add", "component", "swiftui/content-core"]);
+    assert!(
+        !out.status.success(),
+        "install must fail when target exists"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("already exists"),
+        "expected `already exists` in stderr, got: {stderr}"
+    );
+
+    // The user's file is untouched.
+    assert_eq!(
+        fs::read_to_string(target_dir.join("NostrContentRenderer.swift")).unwrap(),
+        "// my own file, don't touch\n"
+    );
+    // And the lock never came into being, since plan_files runs before any
+    // write.
+    assert!(
+        !tmp.path().join("nmp.components.lock").exists(),
+        "lock must not be written when install aborts"
+    );
+}
+
+/// If any source file declared in the registry manifest is missing on disk,
+/// the install must fail BEFORE writing anything — no partial lock entry, no
+/// half-installed file tree. `plan_files` reads every source first and only
+/// then calls `write_files` / `write_lock_entries`, so this test is the
+/// regression gate for that ordering.
+#[test]
+fn lock_file_survives_partial_install() {
+    let tmp = TempDir::new("partial");
+    let app = tmp.path().join("app");
+    fs::create_dir_all(&app).unwrap();
+
+    // Hand-write a registry that names two files but only ships one on disk.
+    let registry_dir = tmp.path().join("registry");
+    fs::create_dir_all(registry_dir.join("widget/broken")).unwrap();
+    fs::write(
+        registry_dir.join("registry.toml"),
+        "schema_version = 1\n\
+         registry_id = \"broken-registry\"\n\
+         \n\
+         [[components]]\n\
+         id = \"widget/broken\"\n\
+         version = \"0.1.0\"\n\
+         target = \"swiftui\"\n\
+         description = \"broken\"\n\
+         \n\
+         [[components.files]]\n\
+         source = \"widget/broken/A.swift\"\n\
+         target = \"A.swift\"\n\
+         role = \"source\"\n\
+         \n\
+         [[components.files]]\n\
+         source = \"widget/broken/MISSING.swift\"\n\
+         target = \"MISSING.swift\"\n\
+         role = \"source\"\n",
+    )
+    .unwrap();
+    fs::write(
+        registry_dir.join("widget/broken/A.swift"),
+        "// upstream A\n",
+    )
+    .unwrap();
+    // widget/broken/MISSING.swift intentionally not written.
+
+    let out = nmp(
+        &app,
+        &[
+            "add",
+            "component",
+            "widget/broken",
+            "--registry",
+            registry_dir.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "install with missing source must fail"
+    );
+
+    // No partial install on disk:
+    assert!(!app.join("A.swift").exists(), "A.swift must not be written");
+    assert!(
+        !app.join("MISSING.swift").exists(),
+        "MISSING.swift must not be written"
+    );
+    // No lock file at all — plan failed before write_lock_entries:
+    assert!(
+        !app.join("nmp.components.lock").exists(),
+        "lock must not be written when planning fails"
     );
 }

@@ -2,43 +2,10 @@
 //! `cargo check`s green, and `nmp gen modules` must succeed and be
 //! deterministic on it.
 
-use std::fs;
-use std::path::{Path, PathBuf};
+mod helpers;
+
+use helpers::{nmp, TempDir};
 use std::process::Command;
-
-const NMP: &str = env!("CARGO_BIN_EXE_nmp");
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let mut path = std::env::temp_dir();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        path.push(format!("nmp-cli-{tag}-{nanos}"));
-        fs::create_dir_all(&path).unwrap();
-        TempDir(path)
-    }
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn nmp(cwd: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(NMP)
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .expect("run nmp")
-}
 
 #[test]
 fn init_scaffold_compiles_and_gen_is_deterministic() {

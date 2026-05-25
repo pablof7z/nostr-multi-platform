@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "Spec lives at "
+    },
+    {
+      "kind": "url",
+      "url": "https://github.com/nostr-protocol/nips"
+    },
+    {
+      "kind": "text",
+      "text": " read it"
+    }
+  ],
+  "roots": [
+    0,
+    1,
+    2
+  ],
+  "mode": "Plain"
+}

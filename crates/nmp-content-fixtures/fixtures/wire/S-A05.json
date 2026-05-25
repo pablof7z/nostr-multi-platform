@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "caro's relays "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
+        "kind": "event",
+        "primary_id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+        "relays": [
+          "wss://relay.nmp.test"
+        ],
+        "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "event_kind": 10002
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}
