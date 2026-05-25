@@ -1,25 +1,26 @@
 import { For, Show, createSignal } from "solid-js";
+import { Platform, PLATFORM_LABELS } from "../registry";
 
 type Props = {
   componentId: string;
-  /** Variant filenames under `/screenshots/`. */
   variants: string[];
+  platform: Platform;
 };
 
-/**
- * Renders a row of screenshot tiles. Tiles fall back to a dashed
- * placeholder when the image fails to load (404 from `/screenshots/...`).
- */
 export default function Screenshots(props: Props) {
   return (
     <div class="screenshots" role="list">
       <Show
         when={props.variants.length > 0}
-        fallback={<PlaceholderTile id={props.componentId} />}
+        fallback={<PlaceholderTile id={props.componentId} platform={props.platform} />}
       >
         <For each={props.variants}>
           {(variant) => (
-            <ScreenshotTile id={props.componentId} src={`/screenshots/${variant}`} />
+            <DeviceMockup
+              id={props.componentId}
+              src={`/screenshots/${variant}`}
+              platform={props.platform}
+            />
           )}
         </For>
       </Show>
@@ -27,32 +28,40 @@ export default function Screenshots(props: Props) {
   );
 }
 
-function ScreenshotTile(props: { id: string; src: string }) {
+function DeviceMockup(props: { id: string; src: string; platform: Platform }) {
   const [failed, setFailed] = createSignal(false);
 
   return (
-    <div class="screenshot" role="listitem">
-      {failed() ? (
-        <PlaceholderTile id={props.id} />
-      ) : (
-        <img
-          src={props.src}
-          alt={`${props.id} preview`}
-          loading="lazy"
-          onError={() => setFailed(true)}
-        />
-      )}
+    <div class="device-mockup" role="listitem">
+      <div class="device-mockup__island" />
+      <div class="device-mockup__screen">
+        {failed() ? (
+          <PlaceholderTile id={props.id} platform={props.platform} />
+        ) : (
+          <img
+            src={props.src}
+            alt={`${props.id} ${PLATFORM_LABELS[props.platform]} preview`}
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
+        )}
+      </div>
+      <div class="device-mockup__home" />
     </div>
   );
 }
 
-function PlaceholderTile(props: { id: string }) {
+function PlaceholderTile(props: { id: string; platform: Platform }) {
   return (
-    <div class="screenshot screenshot--placeholder" role="listitem">
+    <div class="device-mockup__placeholder">
       <div>
-        Screenshot — build and run <code>NmpGallery</code> to generate
+        No screenshot yet for <strong>{PLATFORM_LABELS[props.platform]}</strong>
         <br />
-        <span style="opacity: 0.6">({props.id})</span>
+        Build and run <code>NmpGallery</code> to generate
+        <br />
+        <span style="opacity: 0.5; font-size: 0.75em">
+          {props.id} · {props.platform}
+        </span>
       </div>
     </div>
   );
