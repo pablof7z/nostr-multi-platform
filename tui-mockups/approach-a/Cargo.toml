@@ -1,0 +1,20 @@
+# Standalone TUI mockup — Approach A: "Wide Feed + Right Panel".
+#
+# This is intentionally a self-contained Cargo project (note the empty
+# `[workspace]` table below). It lives inside the repo tree for convenience
+# but is *not* part of the main `nmp-*` Cargo workspace at the repo root.
+# Declaring `[workspace]` here prevents the root workspace from auto-absorbing
+# this crate during dependency resolution, keeping its build state isolated.
+#
+# 100% hardcoded fake data — no network, no nmp-* deps. Demo only.
+[package]
+name = "chirp-tui-approach-a"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Isolate this crate from the repo's main workspace.
+[workspace]
