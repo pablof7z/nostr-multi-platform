@@ -80,7 +80,7 @@ use nmp_core::substrate::{
 use nmp_core::ActorCommand;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
-pub use pay::{looks_like_bolt11, lnurl_to_well_known_url, url_encode_query};
+pub use pay::{looks_like_bolt11, lnurl_to_well_known_url, url_encode_query, url_to_bech32_lnurl};
 
 /// LNURL-pay total budget for the two-leg HTTP round-trip
 /// (well-known fetch + callback fetch). Conservative — keeps a stuck
@@ -153,6 +153,12 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // kind:9735 receipt (NIP-57 § "Appendix F"): the correct answer is
         // the RECIPIENT's NIP-65 write list, which only the kernel knows.
         inject_recipient_relays(ctx, &mut unsigned);
+
+        // NIP-57 SHOULD — the `lnurl` tag carries the bech32-encoded
+        // well-known URL so the LN provider (e.g. Primal) can associate
+        // the payment with the right Nostr account and mint the kind:9735
+        // receipt. Pure computation — no I/O, safe on the actor thread.
+        inject_lnurl_tag(&lnurl_or_address, &mut unsigned);
 
         // ADR-0026 Phase 1 — local keys only. Bunker accounts have no local
         // secret material so the kind:9734 signature cannot be minted on this
@@ -277,6 +283,35 @@ pub(crate) fn inject_recipient_relays(
     unsigned.tags.push(row);
 }
 
+/// NIP-57 SHOULD — inject the `lnurl` tag (bech32-encoded well-known URL)
+/// into the kind:9734 zap request when no `lnurl` tag is already present.
+///
+/// Primal and most LNURL servers require this tag to associate the LN
+/// payment with the right Nostr account and mint the kind:9735 zap receipt.
+/// Without it the bolt11 is paid but no receipt is published.
+///
+/// Pure computation (no I/O): safe to call on the actor thread.
+pub(crate) fn inject_lnurl_tag(lnurl_or_address: &str, unsigned: &mut UnsignedEvent) {
+    // Skip if the caller already provided an lnurl tag (non-empty value).
+    if unsigned
+        .tags
+        .iter()
+        .any(|t| t.first().is_some_and(|k| k == "lnurl") && t.len() > 1)
+    {
+        return;
+    }
+    // Resolve to the https well-known URL, then encode as bech32.
+    // Errors are silently ignored — the zap proceeds without the tag
+    // (degraded: receipt may not be published by some providers).
+    let Ok(well_known) = lnurl_to_well_known_url(lnurl_or_address) else {
+        return;
+    };
+    let Ok(bech32_lnurl) = pay::url_to_bech32_lnurl(&well_known) else {
+        return;
+    };
+    unsigned.tags.push(vec!["lnurl".to_string(), bech32_lnurl]);
+}
+
 /// NIP-57 kind:9735 zap receipt — the kind the LN provider mints after
 /// the invoice settles. We use it as the synthetic publish-direction
 /// kind when asking the router "where would the recipient publish a
@@ -375,14 +410,24 @@ pub fn fetch_lnurl_invoice_blocking(
     // Leg 2: callback fetch. NIP-57 § "Appendix C" — append `amount` (msats)
     // and the URL-encoded signed kind:9734 as `nostr`. The response carries
     // the bolt11 in the `pr` field.
+    //
+    // NIP-57 Appendix B also specifies a `lnurl=<bech32>` query parameter
+    // so the LN provider can associate the payment with the right Nostr
+    // account and publish the kind:9735 receipt. Primal requires this.
     if !callback.starts_with("https://") {
         return Err(format!(
             "LNURL callback URL is not https:// (got: {callback})"
         ));
     }
     let separator = if callback.contains('?') { '&' } else { '?' };
+    // Encode the well-known URL as bech32 for the `lnurl=` callback param.
+    // If encoding fails we still attempt the request — some providers omit
+    // the check, and failing silently here is preferable to aborting the zap.
+    let lnurl_param = pay::url_to_bech32_lnurl(&well_known_url)
+        .map(|b| format!("&lnurl={}", url_encode_query(&b)))
+        .unwrap_or_default();
     let callback_url = format!(
-        "{callback}{separator}amount={amount_msats}&nostr={}",
+        "{callback}{separator}amount={amount_msats}&nostr={}{lnurl_param}",
         url_encode_query(signed_zap_request_json),
     );
     let callback_response = http_get_json(&callback_url)?;
@@ -461,10 +506,14 @@ pub fn fetch_bolt11_for_zap(
     relays: &[String],
     comment: Option<&str>,
 ) -> Result<String, String> {
+    // NIP-57: the `lnurl` tag must be bech32-encoded (LUD-01), NOT the raw
+    // lightning address. Resolve → well-known URL → bech32 before building.
+    let well_known_url = lnurl_to_well_known_url(lnurl_or_address)?;
+    let bech32_lnurl = pay::url_to_bech32_lnurl(&well_known_url)?;
     let mut builder = crate::build::ZapRequest::to_pubkey(recipient_pubkey)
         .amount_msats(amount_msats)
         .relays(relays.to_vec())
-        .lnurl(lnurl_or_address);
+        .lnurl(&bech32_lnurl);
     if let Some(c) = comment {
         builder = builder.comment(c);
     }

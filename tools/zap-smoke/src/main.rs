@@ -174,7 +174,7 @@ fn run(nwc_uri: &str, address: &str, sats: u64, comment: &str) -> Result<(), Str
                 println!();
                 println!("[+] Checking for kind:9735 zap receipt ...");
                 let recipient_pk = recipient_pubkey.clone();
-                match wait_for_zap_receipt("wss://relay.primal.net", &recipient_pk, Duration::from_secs(90)) {
+                match wait_for_zap_receipt("wss://relay.primal.net", &recipient_pk, &bolt11, Duration::from_secs(90)) {
                     Ok(receipt_id) => println!("  kind:9735 receipt found! id={}", &receipt_id[..receipt_id.len().min(16)]),
                     Err(e) => println!("  WARNING: kind:9735 not seen on relay.primal.net within 90s: {e}"),
                 }
@@ -267,16 +267,18 @@ fn fetch_bolt11_verbose(
     comment: Option<&str>,
 ) -> Result<(String, String), String> {
     use nmp_nip57::build::ZapRequest;
-    use nmp_nip57::{sign_zap_request, lnurl::{lnurl_to_well_known_url, url_encode_query}};
+    use nmp_nip57::{sign_zap_request, lnurl::{lnurl_to_well_known_url, url_encode_query, url_to_bech32_lnurl}};
     use std::io::Read as _;
 
-    // Build + sign kind:9734 — include the `lnurl` tag so the LNURL server
-    // (Primal) can associate the payment with the right account and publish
-    // the kind:9735 zap receipt (NIP-57 SHOULD).
+    // NIP-57: the `lnurl` tag must be bech32-encoded per LUD-01, NOT the raw
+    // lightning address. Resolve to well-known URL first, then bech32-encode.
+    let well_known_url = lnurl_to_well_known_url(lnurl_or_address)?;
+    let bech32_lnurl = url_to_bech32_lnurl(&well_known_url)?;
+
     let mut builder = ZapRequest::to_pubkey(recipient_pubkey)
         .amount_msats(amount_msats)
         .relays(relays.to_vec())
-        .lnurl(lnurl_or_address);
+        .lnurl(&bech32_lnurl);
     if let Some(c) = comment {
         builder = builder.comment(c);
     }
@@ -287,7 +289,6 @@ fn fetch_bolt11_verbose(
     let signed_json = sign_zap_request(keys, &unsigned)?;
 
     println!("  kind:9734 event:");
-    // Pretty-print the event JSON
     if let Ok(v) = serde_json::from_str::<Value>(&signed_json) {
         let pk = v["pubkey"].as_str().unwrap_or("");
         println!("    kind   : {}", v["kind"]);
@@ -297,7 +298,6 @@ fn fetch_bolt11_verbose(
     }
 
     // Leg 1
-    let well_known_url = lnurl_to_well_known_url(lnurl_or_address)?;
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(10)).build();
     let wk_resp: Value = agent.get(&well_known_url).call()
         .map_err(|e| format!("LNURL leg1 {well_known_url}: {e}"))?
@@ -308,14 +308,18 @@ fn fetch_bolt11_verbose(
     println!("    minSendable : {}", wk_resp["minSendable"]);
     println!("    maxSendable : {}", wk_resp["maxSendable"]);
 
+    // Leg 2 — NIP-57 Appendix B: include `lnurl=<bech32>` so the server can
+    // associate the payment with the right Nostr profile and mint kind:9735.
     let callback = wk_resp["callback"].as_str()
         .ok_or("LNURL missing callback")?;
     let sep = if callback.contains('?') { '&' } else { '?' };
-    let callback_url = format!("{callback}{sep}amount={amount_msats}&nostr={}",
-        url_encode_query(&signed_json));
-    println!("  callback url (first 120): {}…", &callback_url[..callback_url.len().min(120)]);
+    let callback_url = format!(
+        "{callback}{sep}amount={amount_msats}&nostr={}&lnurl={}",
+        url_encode_query(&signed_json),
+        url_encode_query(&bech32_lnurl),
+    );
+    println!("  callback url (first 160): {}…", &callback_url[..callback_url.len().min(160)]);
 
-    // Leg 2
     let mut body = Vec::new();
     agent.get(&callback_url).call()
         .map_err(|e| format!("LNURL leg2: {e}"))?
@@ -339,15 +343,19 @@ fn fetch_bolt11_verbose(
     Ok((bolt11, signed_json))
 }
 
-/// Subscribe to kind:9735 zap receipts on `relay_url` filtered by the
-/// recipient's pubkey (`#p` tag). Returns the event id on the first receipt
-/// found; errors after `timeout` with no match.
+/// Subscribe to kind:9735 zap receipts on `relay_url` for the given
+/// recipient and bolt11. Returns the event id when a receipt whose `bolt11`
+/// tag matches `expected_bolt11` is found; errors after `timeout`.
+///
+/// Correlates on the `bolt11` tag so we catch OUR receipt and not an
+/// unrelated zap to the same recipient (who may receive many zaps).
 ///
 /// Looks back 30 seconds (clock-skew buffer) in case the server minted the
 /// receipt before we connected.
 fn wait_for_zap_receipt(
     relay_url: &str,
     recipient_pubkey_hex: &str,
+    expected_bolt11: &str,
     timeout: Duration,
 ) -> Result<String, String> {
     let (mut ws, _) = tungstenite::connect(relay_url)
@@ -374,7 +382,7 @@ fn wait_for_zap_receipt(
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err(format!("no kind:9735 seen within {}s", timeout.as_secs()));
+            return Err(format!("no matching kind:9735 seen within {}s", timeout.as_secs()));
         }
         match ws.read() {
             Ok(Message::Text(text)) => {
@@ -385,16 +393,33 @@ fn wait_for_zap_receipt(
                 if v.get(0).and_then(Value::as_str) == Some("EVENT") {
                     if let Some(event) = v.get(2) {
                         let kind = event.get("kind").and_then(Value::as_u64).unwrap_or(0);
-                        if kind == 9735 {
-                            let id = event
-                                .get("id")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string();
-                            println!("  full receipt: {}",
-                                serde_json::to_string(event).unwrap_or_default());
-                            return Ok(id);
+                        if kind != 9735 {
+                            continue;
                         }
+                        // Correlate on the `bolt11` tag — must match the
+                        // invoice we paid, not any receipt for this recipient.
+                        let tags = event.get("tags").and_then(Value::as_array);
+                        let receipt_bolt11 = tags
+                            .and_then(|ts| {
+                                ts.iter().find(|t| {
+                                    t.get(0).and_then(Value::as_str) == Some("bolt11")
+                                })
+                            })
+                            .and_then(|t| t.get(1))
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        if receipt_bolt11 != expected_bolt11 {
+                            println!("  (kind:9735 for recipient but different bolt11 — skipping)");
+                            continue;
+                        }
+                        let id = event
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        println!("  full receipt: {}",
+                            serde_json::to_string(event).unwrap_or_default());
+                        return Ok(id);
                     }
                 }
             }
