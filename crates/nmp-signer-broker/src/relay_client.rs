@@ -259,11 +259,15 @@ impl RelayClient for PoolRelayClient {
     }
 
     fn shutdown(&self) {
-        // Pool::shutdown sends RelayCommand::Shutdown to each worker;
-        // when the workers exit they drop their event senders; the
-        // translator then sees Disconnected and drops the public events
-        // channel; our dispatcher then exits its recv loop. No polling,
-        // no parallel shutdown signal needed.
+        // Pool::shutdown signals every worker AND swaps the public
+        // events sender for a dead channel. The dead-channel swap is
+        // load-bearing: we still own `self.pool` while joining the
+        // dispatcher below, so the original `PoolInner.events` sender
+        // would otherwise stay alive (held by the inner `Arc<Mutex<_>>`)
+        // and the dispatcher's `pool_events_rx.recv()` would block
+        // indefinitely. With the swap, the original sender drops at
+        // shutdown time and `recv()` resolves naturally — no parallel
+        // shutdown signal, no polling.
         self.pool.shutdown();
         if let Ok(mut guard) = self.dispatcher.lock() {
             if let Some(handle) = guard.take() {

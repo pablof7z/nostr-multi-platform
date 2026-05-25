@@ -308,6 +308,35 @@ fn close_emits_closed_event() {
     let _ = server_handle.join();
 }
 
+/// Regression for the `nmp-signer-broker` bunker-signing deadlock that
+/// shipped briefly in PR #477: `Pool::shutdown` MUST drop the public
+/// events sender, not just the worker-event sender. The bunker broker's
+/// `PoolRelayClient::shutdown` holds the `Pool` while joining a
+/// dispatcher thread that blocks on `events_rx.recv()`; if `shutdown`
+/// only dropped the worker channel, the events sender stays alive on
+/// `PoolInner.events` (kept by the `Pool`'s inner `Arc<Mutex<_>>`) and
+/// the dispatcher's `recv` blocks forever. The pre-fix symptom was
+/// the `nip46_bunker_signing` integration test hanging on teardown.
+#[test]
+fn shutdown_drops_public_events_sender_for_consumer_join() {
+    let (events_tx, events_rx) = mpsc::channel();
+    let pool = Pool::new(PoolConfig::default(), events_tx);
+    // Hold the pool alive AFTER shutdown — this mirrors the broker:
+    // `PoolRelayClient::shutdown` calls `pool.shutdown()` and then
+    // joins its dispatcher while still owning the `Pool`.
+    pool.shutdown();
+    // The receiver MUST observe disconnection even though `pool` is
+    // still in scope. A `recv()` here would block forever without the
+    // events-sender swap inside `PoolInner::shutdown`.
+    match events_rx.recv() {
+        Err(_) => {}
+        Ok(ev) => panic!("expected Disconnected after shutdown, got {ev:?}"),
+    }
+    // Keep `pool` alive until past the assertion so the compiler
+    // can't move-drop it early.
+    drop(pool);
+}
+
 /// Helper: spin `events.recv` until either a matching event arrives or
 /// `budget` elapses.
 fn recv_until<F>(
