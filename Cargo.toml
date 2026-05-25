@@ -39,6 +39,7 @@ members = [
     "crates/nmp-signers",
     "crates/nmp-testing",
     "crates/nmp-threading",
+    "crates/nmp-wot",
     "crates/nmp-desktop",
     "crates/nmp-wasm",
     "tools/zap-smoke",

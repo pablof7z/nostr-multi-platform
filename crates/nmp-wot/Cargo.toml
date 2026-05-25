@@ -1,0 +1,9 @@
+[package]
+name = "nmp-wot"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "Client-side Nostr Web-of-Trust scoring over local follow and public mute-list signals."
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
