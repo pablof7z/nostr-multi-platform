@@ -463,7 +463,8 @@ pub fn fetch_bolt11_for_zap(
 ) -> Result<String, String> {
     let mut builder = crate::build::ZapRequest::to_pubkey(recipient_pubkey)
         .amount_msats(amount_msats)
-        .relays(relays.to_vec());
+        .relays(relays.to_vec())
+        .lnurl(lnurl_or_address);
     if let Some(c) = comment {
         builder = builder.comment(c);
     }
