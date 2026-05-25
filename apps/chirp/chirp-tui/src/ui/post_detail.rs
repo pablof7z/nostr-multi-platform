@@ -12,6 +12,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{AppState, Pane};
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
+use crate::ui::nostr_content::nostr_content_view::NostrContentView;
 use crate::ui::colors::{
     ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, HEART, REPLY_COLOR, REPOST,
     SELECTED_BG, author_color, fmt_count, format_age,

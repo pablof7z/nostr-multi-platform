@@ -1,3 +1,4 @@
+pub mod nostr_content;
 pub mod chats;
 pub mod colors;
 pub mod feature_panels;
