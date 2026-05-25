@@ -76,10 +76,11 @@ export default function GetStarted() {
       </p>
       <InstallCommand command="nmp update component swiftui/content-view" />
       <p>
-        Under the hood this is a structural three-way merge. Edits that
-        don't touch upstream lines are preserved automatically; conflicts
-        surface as <code class="inline-code">.orig</code> files you resolve
-        the same way you'd resolve a git merge.
+        Files you haven't touched are updated silently. Files with local
+        edits are compared against their install-time SHA-256 baseline. If
+        the file changed upstream and you changed it locally, the CLI reports{" "}
+        <code class="inline-code">conflict: path — local edits preserved</code>{" "}
+        and skips that file so you can merge the upstream changes manually.
       </p>
 
       <hr class="section-divider" />
