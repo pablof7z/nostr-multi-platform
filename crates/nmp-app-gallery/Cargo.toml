@@ -20,12 +20,11 @@ default = ["native"]
 # symbols are native-only (wasm uses wasm-bindgen, not C-ABI), so the
 # entire crate is gated behind `native`. Enabled by default.
 native = ["nmp-ffi/native"]
-# `android-ffi` re-exports deltas the Android JNI shim consumes — today
-# this is inert (the `native` feature already exposes every Rust-path
-# symbol the JNI shim would name), retained for parity with the rest of
-# the NMP `*-ffi` crates. `android-ffi` implies `native` because the
-# JNI shim is itself a native consumer.
-android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native"]
+# `android-ffi` enables the JNI shim surface consumed by
+# `org.nmp.gallery.bridge.KernelBridge`. Implies `native` (the shim is a
+# native consumer). Activates the `jni` dependency so the symbols are
+# only pulled in when building the Android .so.
+android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
 
 [dependencies]
 # Substrate seam — `nmp_app_*` C-ABI symbol bodies live here. Re-exported
@@ -39,6 +38,8 @@ nmp-ffi = { path = "../nmp-ffi", default-features = false }
 # one-line forward to this call — that is the whole point of the crate.
 nmp-app-template = { path = "../nmp-app-template" }
 serde_json = { workspace = true }
+# JNI surface for the Android shell — only active under `android-ffi`.
+jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
 # Test-support gates expose `nmp_app_new` / `nmp_app_free` so the

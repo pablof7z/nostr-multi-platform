@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
@@ -21,16 +23,10 @@ import org.nmp.gallery.registry.ProfileWire
  * drains the kernel's push-callback channel via `nextUpdate`, and
  * republishes the decoded profile slice as a [StateFlow] for Compose.
  *
- * D5/D8 reminder: the kernel is the single source of truth. This class
- * holds NO cached state beyond the latest decoded snapshot. Profile data
- * arrives ONLY via the push callback (mirrors `KernelModel` in
- * `android/app/.../KernelModel.kt`); `nativeGallerySnapshot` returns a
- * status envelope only and is not used here for profile reads.
- *
- * Wire format: every frame is the standard tagged envelope
- *   `{"t":"snapshot","v":{ ..., "profiles": { "<hex>": <ProfileWire>, ... } }}`
- * Anything else (e.g. `t=panic`) is dropped (D7 — actor death is signalled
- * separately and is not a Kotlin concern).
+ * D5/D8: the kernel is the single source of truth. Profile data arrives via
+ * the push callback only. Wire format mirrors the iOS gallery: the demo
+ * author is loaded via `open_author`; its data arrives in
+ * `projections.author_view.profile` (a `ProfileCard` struct).
  */
 class GalleryModel : ViewModel() {
 
@@ -50,8 +46,10 @@ class GalleryModel : ViewModel() {
         bridge.galleryRegister()
         bridge.start(eventsPerSec = 0, visibleLimit = 80, emitHz = 4)
         startPolling()
-        // Claim the demo profile (jack) so the kernel batches a kind:0 fetch.
-        bridge.claimProfile(DEMO_PUBKEY, CONSUMER_ID)
+        // Open the author view for the demo pubkey (jack). Mirrors the iOS
+        // gallery which uses open_author rather than claim_profile so the
+        // profile data flows through projections.author_view.profile.
+        bridge.openAuthor(DEMO_PUBKEY)
     }
 
     /**
@@ -66,10 +64,6 @@ class GalleryModel : ViewModel() {
         bridge.releaseProfile(pubkey, consumerId)
     }
 
-    /**
-     * Pass-through to the kernel action seam; the response JSON envelope is
-     * returned verbatim (or null on transport failure).
-     */
     fun dispatchAction(action: String, payload: String): String? =
         bridge.dispatchAction(action, payload)
 
@@ -83,28 +77,55 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Decode one frame from the kernel's push-callback channel. The envelope
-     * is `{"t":"snapshot","v":<obj>}`. Non-snapshot frames are dropped; the
-     * snapshot body's `profiles` field (if present) merges into the live map.
+     * Decode one frame. Envelope: `{"t":"snapshot","v":<KernelSnapshot>}`.
+     * Profile is assembled from `projections.author_view.profile` (primary)
+     * and `projections.mention_profiles` (secondary), mirroring the iOS
+     * GallerySnapshot decoder.
      */
     private fun applyFrame(raw: String) {
         val outer = runCatching { json.parseToJsonElement(raw).jsonObject }
             .getOrNull() ?: return
-        val tag = outer["t"]?.jsonPrimitive?.content
-        if (tag != "snapshot") return
-        val inner = outer["v"]?.jsonObject ?: return
-        val snapshot = runCatching {
-            json.decodeFromJsonElement<GallerySnapshot>(inner)
-        }.getOrNull() ?: return
-        val profiles = snapshot.profiles ?: return
-        if (profiles.isEmpty()) return
-        _profileMap.value = _profileMap.value + profiles
+        if (outer["t"]?.jsonPrimitive?.content != "snapshot") return
+        val v = (outer["v"] as? JsonObject) ?: return
+        val projections = (v["projections"] as? JsonObject) ?: return
+
+        val assembled = mutableMapOf<String, ProfileWire>()
+
+        // Primary: projections.author_view.profile (ProfileCard shape)
+        (projections["author_view"] as? JsonObject)?.let { av ->
+            val pubkey = av["pubkey"]?.jsonPrimitive?.content ?: return@let
+            val profileEl = av["profile"] as? JsonObject ?: return@let
+            val card = runCatching {
+                json.decodeFromJsonElement<ProfileCard>(profileEl)
+            }.getOrNull() ?: return@let
+            assembled[pubkey] = card.toProfileWire(pubkey)
+        }
+
+        // Secondary: projections.mention_profiles (display_name + picture_url only)
+        (projections["mention_profiles"] as? JsonObject)?.let { mentions ->
+            for ((pubkey, el) in mentions) {
+                if (assembled.containsKey(pubkey)) continue
+                val mp = runCatching {
+                    json.decodeFromJsonElement<MentionProfilePayload>(el)
+                }.getOrNull() ?: continue
+                assembled[pubkey] = ProfileWire(
+                    pubkey = pubkey,
+                    displayName = mp.displayName,
+                    pictureUrl = mp.pictureUrl,
+                    npub = "",
+                    npubShort = pubkey.take(8) + "…" + pubkey.takeLast(8),
+                )
+            }
+        }
+
+        if (assembled.isNotEmpty()) {
+            _profileMap.value = _profileMap.value + assembled
+        }
     }
 
     override fun onCleared() {
         pollJob?.cancel()
         pollJob = null
-        bridge.releaseProfile(DEMO_PUBKEY, CONSUMER_ID)
         bridge.stop()
         bridge.free()
         super.onCleared()
@@ -115,20 +136,40 @@ class GalleryModel : ViewModel() {
         const val DEMO_PUBKEY: String =
             "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
 
-        /** Stable consumer id under which this app holds profile claims. */
         const val CONSUMER_ID: String = "nmp-gallery"
     }
 }
 
 /**
- * Minimal decode shape for the snapshot body the gallery cares about.
- * Anything beyond `profiles` is ignored (`Json.ignoreUnknownKeys`).
- *
- * Contract: `profiles` is a JSON object keyed by hex pubkey whose values
- * decode as [ProfileWire]. This matches the kernel-side projection emitted
- * by `nmp-app-gallery` (the Rust crate built in a parallel agent).
+ * Wire shape of `projections.author_view.profile` — the kernel's ProfileCard.
+ * `npub_short` is not emitted by the kernel; we derive it from `npub`.
  */
 @Serializable
-private data class GallerySnapshot(
-    val profiles: Map<String, ProfileWire>? = null,
+private data class ProfileCard(
+    @SerialName("pubkey") val pubkey: String = "",
+    @SerialName("npub") val npub: String = "",
+    @SerialName("display_name") val displayName: String? = null,
+    @SerialName("picture_url") val pictureUrl: String? = null,
+    @SerialName("nip05") val nip05: String? = null,
+    @SerialName("about") val about: String? = null,
+) {
+    fun toProfileWire(overridePubkey: String): ProfileWire {
+        val pk = overridePubkey.ifEmpty { pubkey }
+        val short = if (npub.length > 16) npub.take(8) + "…" + npub.takeLast(8) else npub
+        return ProfileWire(
+            pubkey = pk,
+            displayName = displayName?.takeIf { it.isNotEmpty() },
+            about = about?.takeIf { it.isNotEmpty() },
+            pictureUrl = pictureUrl?.takeIf { it.isNotEmpty() },
+            nip05 = nip05?.takeIf { it.isNotEmpty() },
+            npub = npub,
+            npubShort = short,
+        )
+    }
+}
+
+@Serializable
+private data class MentionProfilePayload(
+    @SerialName("display_name") val displayName: String? = null,
+    @SerialName("picture_url") val pictureUrl: String? = null,
 )

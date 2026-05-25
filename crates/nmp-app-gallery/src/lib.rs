@@ -62,6 +62,12 @@
 //! only. No `nmp-nip*`, no `nmp-app-chirp`, no `nmp-marmot`, no
 //! `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
 
+// JNI shim for the Android shell — `Java_org_nmp_gallery_bridge_KernelBridge_*`
+// symbols that `KernelBridge.kt` binds via `System.loadLibrary`. Only compiled
+// when building with the `android-ffi` feature (cargo ndk build).
+#[cfg(feature = "android-ffi")]
+mod android;
+
 // Re-export every C-ABI symbol the platform shells need. As with
 // `apps/notes/nmp-app-notes/src/lib.rs`, the glob is what causes rustc to
 // pull each `#[no_mangle]` body into the CGU that ends up inside
