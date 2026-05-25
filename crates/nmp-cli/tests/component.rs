@@ -101,3 +101,64 @@ fn add_component_rejects_unknown_component() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("unknown component"), "{stderr}");
 }
+
+#[test]
+fn add_component_skips_already_installed_dependencies() {
+    // Regression: installing a component whose transitive dep is already
+    // installed must succeed (the dep is skipped silently) — only the
+    // explicitly-requested target may produce an "already installed" error.
+    let tmp = TempDir::new("skip-installed-dep");
+
+    // 1. Install the dep on its own.
+    let first = nmp(tmp.path(), &["add", "component", "swiftui/content-core"]);
+    assert!(
+        first.status.success(),
+        "first install failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let core_path = tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.swift");
+    assert!(core_path.exists());
+
+    // 2. Drop a sentinel into the installed file. If the second invocation
+    //    were to re-install content-core (either by rewriting it or by
+    //    tripping the "target file already exists" guard), this sentinel
+    //    would be lost or the command would fail.
+    let sentinel = "// SENTINEL — must survive content-minimal install\n";
+    fs::write(&core_path, sentinel).unwrap();
+
+    // 3. Install the dependent component. content-core is already installed,
+    //    so the resolver returns [content-core, content-minimal]; only
+    //    content-minimal should actually be written.
+    let second = nmp(tmp.path(), &["add", "component", "swiftui/content-minimal"]);
+    assert!(
+        second.status.success(),
+        "second install failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    // 4. The dep's file is untouched (sentinel survived).
+    let core_contents = fs::read_to_string(&core_path).unwrap();
+    assert_eq!(
+        core_contents, sentinel,
+        "content-core was re-installed even though it was already present"
+    );
+
+    // 5. The requested component's files were installed.
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrMinimalContentView.swift")
+        .exists());
+
+    // 6. The lock file has both components recorded.
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(
+        lock.contains("id = \"swiftui/content-core\""),
+        "lock missing content-core: {lock}"
+    );
+    assert!(
+        lock.contains("id = \"swiftui/content-minimal\""),
+        "lock missing content-minimal: {lock}"
+    );
+}
