@@ -1,0 +1,18 @@
+{
+  "name": "compose-user-nip05",
+  "type": "registry:ui",
+  "title": "User Nip05 (Compose)",
+  "description": "Compose NIP-05 verified handle badge with domain display.",
+  "dependencies": [],
+  "registryDependencies": [
+    "compose-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/compose/user-nip05/NostrNip05Badge.kt",
+      "type": "registry:ui",
+      "target": "Components/NostrUser/NostrNip05Badge.kt",
+      "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.size\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.material.icons.Icons\nimport androidx.compose.material.icons.filled.Verified\nimport androidx.compose.material3.Icon\nimport androidx.compose.material3.LocalContentColor\nimport androidx.compose.material3.MaterialTheme\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.text.style.TextOverflow\nimport androidx.compose.ui.unit.dp\n\n/**\n * NIP-05 verified identity badge — verified icon + identifier string.\n *\n * Renders nothing when `profile.nip05` is null or empty.\n *\n * Depends on `compose/user-core` for [ProfileWire].\n */\n@Composable\nfun NostrNip05Badge(\n    profile: ProfileWire,\n    modifier: Modifier = Modifier,\n) {\n    val nip05 = profile.nip05?.takeIf { it.isNotEmpty() } ?: return\n    NostrNip05Badge(nip05 = nip05, modifier = modifier)\n}\n\n@Composable\nfun NostrNip05Badge(\n    nip05: String,\n    modifier: Modifier = Modifier,\n) {\n    Row(\n        verticalAlignment = Alignment.CenterVertically,\n        modifier = modifier.semantics(mergeDescendants = true) {\n            contentDescription = \"Verified: $nip05\"\n        },\n    ) {\n        Icon(\n            imageVector = Icons.Filled.Verified,\n            contentDescription = null,\n            tint = MaterialTheme.colorScheme.primary,\n            modifier = Modifier.size(14.dp),\n        )\n        Spacer(Modifier.width(4.dp))\n        Text(\n            text = nip05,\n            style = MaterialTheme.typography.bodySmall,\n            color = LocalContentColor.current.copy(alpha = 0.65f),\n            maxLines = 1,\n            overflow = TextOverflow.Ellipsis,\n        )\n    }\n}\n"
+    }
+  ]
+}

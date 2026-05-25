@@ -1,0 +1,18 @@
+{
+  "name": "compose-user-name",
+  "type": "registry:ui",
+  "title": "User Name (Compose)",
+  "description": "Compose display-name label with petname and NIP-05 fallback chain.",
+  "dependencies": [],
+  "registryDependencies": [
+    "compose-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/compose/user-name/NostrProfileName.kt",
+      "type": "registry:ui",
+      "target": "Components/NostrUser/NostrProfileName.kt",
+      "content": "package org.nmp.registry\n\nimport androidx.compose.material3.LocalTextStyle\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.semantics.contentDescription\nimport androidx.compose.ui.semantics.semantics\nimport androidx.compose.ui.text.TextStyle\nimport androidx.compose.ui.text.font.FontWeight\nimport androidx.compose.ui.text.style.TextOverflow\n\n/**\n * Inline display-name text for a Nostr profile.\n *\n * Shows `displayName` when set; falls back to `npubShort`\n * (always Rust-formatted — never reformat in Kotlin).\n *\n * Depends on `compose/user-core` for [ProfileWire].\n */\n@Composable\nfun NostrProfileName(\n    profile: ProfileWire,\n    modifier: Modifier = Modifier,\n    style: TextStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.SemiBold),\n    color: Color = Color.Unspecified,\n) {\n    val label = profile.display\n    Text(\n        text = label,\n        style = style,\n        color = color,\n        maxLines = 1,\n        overflow = TextOverflow.Ellipsis,\n        modifier = modifier.semantics { contentDescription = \"Display name: $label\" },\n    )\n}\n"
+    }
+  ]
+}
