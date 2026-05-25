@@ -640,4 +640,54 @@ mod tests {
         assert_eq!(payload, Some(("hi".to_string(), None)));
         assert_eq!(state.mode, Mode::Normal);
     }
+
+    // `parse_last_error_toast` is the seam the zap auto-pay watches; pin
+    // every shape it must handle so a future snapshot envelope change
+    // fails loudly.
+
+    #[test]
+    fn parse_last_error_toast_unwraps_snapshot_envelope() {
+        let payload = serde_json::json!({
+            "t": "snapshot",
+            "v": { "last_error_toast": "Zap invoice: lnbcDEAD" }
+        })
+        .to_string();
+        assert_eq!(
+            parse_last_error_toast(&payload),
+            Some("Zap invoice: lnbcDEAD".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_last_error_toast_reads_bare_snapshot() {
+        let payload = serde_json::json!({
+            "last_error_toast": "Zap failed: bunker signing not yet supported"
+        })
+        .to_string();
+        assert_eq!(
+            parse_last_error_toast(&payload),
+            Some("Zap failed: bunker signing not yet supported".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_last_error_toast_returns_none_when_missing() {
+        let payload = serde_json::json!({ "t": "snapshot", "v": {} }).to_string();
+        assert_eq!(parse_last_error_toast(&payload), None);
+    }
+
+    #[test]
+    fn parse_last_error_toast_returns_none_for_empty_string() {
+        let payload = serde_json::json!({
+            "t": "snapshot",
+            "v": { "last_error_toast": "" }
+        })
+        .to_string();
+        assert_eq!(parse_last_error_toast(&payload), None);
+    }
+
+    #[test]
+    fn parse_last_error_toast_returns_none_for_invalid_json() {
+        assert_eq!(parse_last_error_toast("not json"), None);
+    }
 }
