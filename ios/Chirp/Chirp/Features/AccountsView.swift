@@ -64,6 +64,7 @@ private struct AccountRowView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.displayName.isEmpty ? "Identity" : account.displayName)
+                        .foregroundStyle(ChirpColor.textPrimary)
                         .lineLimit(1)
                     // V-24 thin-shell — `npubShort` is pre-formatted in Rust
                     // (`AccountSummary.npub_short`); no Swift-side abbreviation.
@@ -81,10 +82,11 @@ private struct AccountRowView: View {
 
                 if account.isActive {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(ChirpColor.success)
                 }
             }
         }
+        .buttonStyle(.plain)
         .accessibilityIdentifier(account.isActive ? "account-row-active" : "account-row-\(account.id)")
         .accessibilityValue(account.npub)
     }
@@ -294,7 +296,7 @@ private struct BunkerHandshakeProgress: View {
                     Image(systemName: isFailed
                           ? "exclamationmark.triangle.fill"
                           : "checkmark.circle.fill")
-                        .foregroundStyle(isFailed ? .red : .green)
+                        .foregroundStyle(isFailed ? ChirpColor.danger : ChirpColor.success)
                 } else {
                     ProgressView()
                         .controlSize(.small)
@@ -307,7 +309,7 @@ private struct BunkerHandshakeProgress: View {
             if let message = handshake.message, !message.isEmpty {
                 Text(message)
                     .font(.caption)
-                    .foregroundStyle(isFailed ? .red : .secondary)
+                    .foregroundStyle(isFailed ? ChirpColor.danger : ChirpColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

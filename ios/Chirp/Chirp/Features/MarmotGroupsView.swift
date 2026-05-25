@@ -56,7 +56,7 @@ struct GroupsView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "envelope.badge.fill")
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(ChirpColor.accent)
                                 Text(invitesLabel)
                                     .font(.callout.weight(.medium))
                                 Spacer()
@@ -295,7 +295,7 @@ struct NewGroupSheet: View {
                     Section {
                         Text(errorMessage)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(ChirpColor.danger)
                     }
                 }
 

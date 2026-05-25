@@ -21,7 +21,7 @@ struct ThreadNoteRow: View {
             // Accent hairline for focused note
             if isFocused {
                 Rectangle()
-                    .fill(.tint)
+                    .fill(ChirpColor.accent)
                     .frame(width: 2)
                     .cornerRadius(1)
                     .padding(.vertical, 4)
@@ -43,7 +43,7 @@ struct ThreadNoteRow: View {
             .padding(.vertical, isFocused ? 12 : 8)
             .padding(.horizontal, 16)
         }
-        .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
+        .background(isFocused ? ChirpColor.focusedBackground : ChirpColor.transparent)
     }
 
     // ── Body column (header + content + actions) ──────────────────────────
@@ -110,7 +110,7 @@ struct ThreadNoteRow: View {
                 } label: {
                     Image(systemName: likeTapped ? "heart.fill" : "heart")
                         .font(.caption)
-                        .foregroundStyle(likeTapped ? Color.red : Color.secondary)
+                        .foregroundStyle(likeTapped ? ChirpColor.like : ChirpColor.textSecondary)
                         .scaleEffect(likeTapped ? 1.35 : 1.0)
                         .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
                 }

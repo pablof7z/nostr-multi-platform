@@ -207,7 +207,7 @@ struct EmbeddedNostrEventCard: View {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(ChirpColor.link)
                     .frame(width: 24, height: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -232,7 +232,7 @@ struct EmbeddedNostrEventCard: View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: systemImage)
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ChirpColor.link)
                 .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -254,10 +254,10 @@ private extension View {
         self
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground).opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+            .background(ChirpColor.surface.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(.separator).opacity(0.55), lineWidth: 0.5)
+                    .stroke(ChirpColor.hairline.opacity(0.55), lineWidth: 0.5)
             )
     }
 }

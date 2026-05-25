@@ -58,7 +58,7 @@ struct MarmotInviteSheet: View {
                     Section {
                         Text(errorMessage)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(ChirpColor.danger)
                     }
                 }
 

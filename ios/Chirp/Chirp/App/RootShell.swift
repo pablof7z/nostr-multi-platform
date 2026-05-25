@@ -118,21 +118,21 @@ struct RootShell: View {
     // in-process is unsafe because the kernel's event store, MLS DB, and
     // NIP-77 watermarks are in an unknown state after a panic.
     //
-    // The banner is full-width red, non-dismissible (no tap-to-clear gesture
-    // — the flag is a stuck-at-true latch in `KernelModel`), and offers a
-    // single "Relaunch" button that calls `exit(0)`. `exit(0)` on iOS is
-    // the canonical "force the user back to the home screen" — the OS will
-    // re-spawn the app on the next launch with a fresh `NmpApp`.
+    // The banner is full-width danger, non-dismissible (no tap-to-clear
+    // gesture — the flag is a stuck-at-true latch in `KernelModel`), and
+    // offers a single "Relaunch" button that calls `exit(0)`. `exit(0)` on
+    // iOS is the canonical "force the user back to the home screen" — the OS
+    // will re-spawn the app on the next launch with a fresh `NmpApp`.
     @ViewBuilder
     private var kernelDeadBanner: some View {
         if model.kernelIsDead {
             VStack(alignment: .leading, spacing: ChirpSpace.s) {
                 Text("Background service stopped")
                     .font(ChirpFont.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ChirpColor.emphasisForeground)
                 Text("Please relaunch the app to recover.")
                     .font(ChirpFont.callout)
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(ChirpColor.emphasisForeground.opacity(0.92))
                 Button {
                     // exit(0) is the iOS-canonical "force-quit": the OS
                     // tears the process down and the user re-launches
@@ -144,15 +144,15 @@ struct RootShell: View {
                         .font(ChirpFont.callout.weight(.semibold))
                         .padding(.horizontal, ChirpSpace.l)
                         .padding(.vertical, ChirpSpace.s)
-                        .background(.white, in: Capsule())
-                        .foregroundStyle(Color.red)
+                        .background(ChirpColor.emphasisForeground, in: Capsule())
+                        .foregroundStyle(ChirpColor.danger)
                 }
                 .accessibilityIdentifier("kernel-dead-relaunch-button")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, ChirpSpace.l)
             .padding(.vertical, ChirpSpace.m)
-            .background(Color.red.opacity(0.9))
+            .background(ChirpColor.errorBannerBackground)
             .accessibilityIdentifier("kernel-dead-banner")
         }
     }

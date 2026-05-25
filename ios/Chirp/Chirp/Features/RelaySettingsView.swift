@@ -30,7 +30,7 @@ struct RelaySettingsView: View {
                         subtitle: "Tap + to add a relay."
                     )
                     .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(ChirpColor.transparent)
                     .listRowSeparator(.hidden)
                 }
             } else {
@@ -46,7 +46,7 @@ struct RelaySettingsView: View {
                                     Label("Remove", systemImage: "trash")
                                 }
                             }
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(ChirpColor.transparent)
                             .listRowSeparator(.hidden)
                     }
                 } header: {
@@ -59,11 +59,11 @@ struct RelaySettingsView: View {
                 Text("Advertises your relays as DM inbox so others can reach you via NIP-17.")
                     .font(.system(.footnote, design: .rounded))
                     .foregroundStyle(ChirpColor.textSecondary)
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(ChirpColor.transparent)
                     .listRowSeparator(.hidden)
 
                 dmInboxPublishRow
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(ChirpColor.transparent)
                     .listRowSeparator(.hidden)
             } header: {
                 ChirpSectionHeader(title: "DM inbox")
@@ -117,7 +117,7 @@ struct RelaySettingsView: View {
                 VStack(alignment: .leading, spacing: ChirpSpace.xs) {
                     Text("Publish failed")
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(Color.red)
+                        .foregroundStyle(ChirpColor.danger)
                     if !reason.isEmpty {
                         Text(reason)
                             .font(.system(.footnote, design: .rounded))
@@ -311,7 +311,7 @@ private struct RelayEditSheet: View {
 private func relayRoleTint(_ tint: String) -> Color {
     switch tint {
     case "info":
-        return .cyan
+        return ChirpColor.network
     case "success":
         return ChirpColor.positive
     case "neutral":
