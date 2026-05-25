@@ -23,6 +23,10 @@ crate-type = ["staticlib", "rlib"]
 # The `justfile` iOS build targets pass `--features marmot` explicitly so the
 # Chirp iOS shell still links all `nmp_marmot_*` symbols.
 default = ["wallet", "lmdb-backend"]
+# V-38: the `wallet` feature now activates the `nmp-nip47` optional dep
+# (the kernel itself no longer carries NIP-47 nouns). Chirp re-exports
+# it under the same name so callers (chirp-tui, the iOS shell) keep their
+# existing `features = ["wallet"]` spelling.
 # Marmot (MLS-over-Nostr) projection. Activates the `nmp-marmot` dependency
 # AND its `ffi` feature, which compiles the C-ABI shell
 # (`crates/nmp-marmot/src/ffi.rs` + siblings) and the `nmp_marmot_*` symbols.
@@ -32,11 +36,11 @@ default = ["wallet", "lmdb-backend"]
 # `ffi` feature (no need to duplicate them here).
 # Deferred post-v1; off in a no-default-features build.
 marmot = ["dep:nmp-marmot", "nmp-marmot/ffi"]
-# NIP-47 Nostr Wallet Connect. Forwards to `nmp-ffi/wallet` (which itself
-# forwards to `nmp-core/wallet`) so the kernel compiles the
-# `nmp_app_wallet_*` FFI symbols the iOS shell links + nmp-ffi sees the
-# matching `wallet_status` slot the actor signature requires.
-wallet = ["nmp-ffi/wallet", "nmp-core/wallet"]
+# NIP-47 Nostr Wallet Connect. V-38: forwards to the new `nmp-nip47` optional
+# dep (the kernel itself no longer carries NIP-47 nouns; `nmp-ffi`'s wallet
+# shims are now unconditional and route through dispatch_action to
+# `nmp-nip47`).
+wallet = ["dep:nmp-nip47"]
 # Persistent local cache / publish-intent ledger for offline-first Chirp.
 lmdb-backend = ["nmp-core/lmdb-backend"]
 
@@ -81,6 +85,9 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # `nmp.nip57.zap` action module + kind:9734 builder + LNURL fetcher are
 # wired by `nmp-app-template::register_defaults` (transitively).
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
+# V-38: NIP-47 NWC wallet stack moved out of `nmp-core`. Optional + gated
+# behind the `wallet` feature so the default-off build excludes it.
+nmp-nip47 = { path = "../../../crates/nmp-nip47", optional = true }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). Layer-4 NIP crate that lives at
 # `crates/nmp-marmot/` (step 12 — returned from `apps/marmot/` after the

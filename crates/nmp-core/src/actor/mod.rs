@@ -52,28 +52,9 @@ mod tick;
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
 #[cfg(feature = "native")]
 use commands::IdentityRuntime;
-// D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
-#[cfg(feature = "wallet")]
-use commands::WalletRuntime;
-// D0: NIP-47 NWC is an app noun — the wallet-status slot is re-exported so the
-// `ffi` module can build it, hand one clone to the actor, and capture the
-// other in the `"wallet"` snapshot-projection closure.
-// `new_wallet_status_slot` is reached by `nmp-ffi` through
-// `nmp_core::__ffi_internal::new_wallet_status_slot` (the slot construction
-// happens in `nmp_app_new`, before the actor thread spawns).
-#[cfg(feature = "wallet")]
-pub use commands::new_wallet_status_slot;
-// `WalletStatusSlot` reaches `nmp-ffi` through
-// `nmp_core::__ffi_internal::WalletStatusSlot` — the FFI shell's
-// `nmp_app_new` constructs the slot and the `"wallet"` snapshot
-// projection captures one clone. `#[doc(hidden)] pub` posture.
-#[cfg(feature = "wallet")]
-pub use commands::WalletStatusSlot;
-// `WalletStatus` itself only crosses the module boundary for the
-// snapshot-projection test, which constructs a status value to drive the
-// `"wallet"` projection through `make_update`.
-#[cfg(all(test, feature = "wallet"))]
-pub(crate) use commands::WalletStatus;
+// V-38: the wallet runtime + status slot moved to `crates/nmp-nip47`.
+// `nmp-core` no longer has a `wallet` feature, a `WalletRuntime` use, or any
+// `WalletStatusSlot` / `new_wallet_status_slot` / `WalletStatus` re-export.
 // `KernelEventObserverSlot` and `notify_observers` are consumed by `kernel/event_observer.rs`
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
@@ -553,44 +534,14 @@ pub enum ActorCommand {
     CloseThread {
         event_id: String,
     },
-    /// NIP-47 wallet connect — parse the `nostr+walletconnect://` URI, subscribe
-    /// for kind:23195 responses, and send get_info + get_balance requests.
-    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
-    #[cfg(feature = "wallet")]
-    WalletConnect {
-        uri: String,
-    },
-    /// NIP-47 wallet disconnect — close the subscription and clear state.
-    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
-    #[cfg(feature = "wallet")]
-    WalletDisconnect,
-    /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
-    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
-    ///
-    /// `correlation_id` is the registry-minted action id assigned by
-    /// `nmp_app_dispatch_action` under namespace `nmp.wallet.pay_invoice`
-    /// (`WalletPayInvoiceModule`, see `crates/nmp-core/src/wallet/action.rs`).
-    /// Today every FFI path produces `Some(_)`: the C-ABI symbol
-    /// `nmp_app_wallet_pay_invoice` is a thin wrapper that routes through
-    /// the action seam (V3 — `dispatch_action` is the sole user-write seam).
-    /// `None` remains in the type for actor-internal call sites that
-    /// auto-dispatch a payment without a host spinner to close (see the
-    /// `commands/zap.rs` LNURL → pay_invoice chain).
-    ///
-    /// The wallet runtime stores `event_id → correlation_id` in its
-    /// per-connection `pending_payments` map when the kind:23194 request
-    /// is built, then drains it in `handle_nwc_text` on the matching
-    /// kind:23195 response and routes the outcome to
-    /// [`Kernel::record_action_success`] (preimage returned) or
-    /// [`Kernel::record_action_failure`] (`error` object) so the host
-    /// spinner keyed on the dispatch return value can be cleared. `None`
-    /// is a no-op on the response side — nothing is waiting on an id.
-    #[cfg(feature = "wallet")]
-    WalletPayInvoice {
-        bolt11: String,
-        amount_msats: Option<u64>,
-        correlation_id: Option<String>,
-    },
+    // V-38: the three `Wallet{Connect,Disconnect,PayInvoice}` variants moved
+    // out. Wallet connect / disconnect / pay_invoice now route through
+    // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` with concrete
+    // `WalletConnectCommand` / `WalletDisconnectCommand` /
+    // `WalletPayInvoiceCommand` impls in `crates/nmp-nip47/src/protocol.rs`.
+    // `nmp-core` no longer has a `wallet` Cargo feature and no longer
+    // depends on `nmp-nwc`. D0: nmp-core names no NIP-47 / NWC nouns.
+    //
     // V-41: the closed-enum `FetchLnurlInvoice` variant moved to
     // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` and dispatches through
     // [`ActorCommand::Protocol`]. `nmp-core` no longer carries any zap
@@ -831,11 +782,9 @@ pub fn run_actor(
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
         crate::kernel::new_snapshot_projection_slot(),
-        // D0: NIP-47 NWC is an app noun — this backwards-compatible entry
-        // point has no FFI surface to register the `"wallet"` projection, so
-        // the slot is a private throwaway (no host reads it).
-        #[cfg(feature = "wallet")]
-        new_wallet_status_slot(),
+        // V-38: the wallet runtime + status slot moved to `nmp-nip47`. The
+        // actor only carries a substrate-generic relay-text interceptor slot.
+        crate::substrate::new_relay_text_interceptor_slot(),
         // D0: NIP-46 remote signing is an app noun — likewise a private
         // throwaway bunker-handshake slot (no FFI surface to register the
         // `"bunker_handshake"` projection here).
@@ -912,10 +861,9 @@ pub fn run_actor_with_lifecycle_observer(
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
         crate::kernel::new_snapshot_projection_slot(),
-        // D0: NIP-47 NWC is an app noun — no FFI surface here to register the
-        // `"wallet"` projection, so the slot is a private throwaway.
-        #[cfg(feature = "wallet")]
-        new_wallet_status_slot(),
+        // V-38: wallet moved to `nmp-nip47`; backwards-compat shim threads a
+        // throwaway substrate relay-text interceptor slot.
+        crate::substrate::new_relay_text_interceptor_slot(),
         // D0: NIP-46 remote signing is an app noun — private throwaway
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
@@ -987,12 +935,12 @@ pub fn run_actor_with_observers(
     // the kernel so `make_update` reads the same registry without crossing
     // FFI on each tick.
     snapshot_projections: crate::kernel::SnapshotProjectionSlot,
-    // D0: NIP-47 NWC is an app noun — the shared wallet-status slot. One `Arc`
-    // clone is captured by the `"wallet"` snapshot-projection closure on the
-    // `NmpApp`; this one is handed to the actor's `WalletRuntime`, which is the
-    // sole writer (D4). Gated behind the `wallet` feature so the
-    // protocol-neutral build carries no NWC plumbing.
-    #[cfg(feature = "wallet")] wallet_status: WalletStatusSlot,
+    // V-38: substrate-generic relay-text interceptor slot. Replaces the
+    // pre-V-38 `wallet_status: WalletStatusSlot` parameter. NIP-crate
+    // runtimes (`nmp-nip47`) install themselves here at host init; the
+    // actor calls `interceptor.on_relay_text(...)` for every inbound text
+    // frame. `None` (the default) is a no-op.
+    relay_text_interceptor: crate::substrate::RelayTextInterceptorSlot,
     // D0: NIP-46 remote signing is an app noun — the shared bunker-handshake
     // slot. One `Arc` clone is captured by the built-in `"bunker_handshake"`
     // snapshot-projection closure on the `NmpApp`; this one is handed to the
@@ -1269,11 +1217,10 @@ pub fn run_actor_with_observers(
     // projection registered above reads the same `Arc<Mutex<…>>` clone on
     // every tick.
     let mut identity = IdentityRuntime::new(bunker_handshake);
-    // D4: the wallet runtime is the sole writer of the shared wallet-status
-    // slot. The `"wallet"` snapshot projection (registered on `NmpApp`) reads
-    // the same `Arc<Mutex<…>>` clone on every tick.
-    #[cfg(feature = "wallet")]
-    let mut wallet = WalletRuntime::new(wallet_status);
+    // V-38: the wallet runtime moved to `nmp-nip47`. The actor no longer
+    // owns it; the substrate relay-text interceptor slot
+    // (`relay_text_interceptor`) is the only seam the actor calls for NIP-47
+    // NWC behavior.
     // T105: URL-keyed transport pool. One socket per resolved relay URL;
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
     // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is
@@ -1343,8 +1290,6 @@ pub fn run_actor_with_observers(
                     let mut ctx = ActorContext {
                         kernel: &mut kernel,
                         identity: &mut identity,
-                        #[cfg(feature = "wallet")]
-                        wallet: &mut wallet,
                         relay_controls: &mut relay_controls,
                         slot_to_url: &mut slot_to_url,
                         pool: &pool,
@@ -1447,12 +1392,17 @@ pub fn run_actor_with_observers(
                 // The command drain above is deliberately NOT wrapped:
                 // commands are internally generated, so a panic there is a
                 // genuine bug that must stay visible.
+                //
+                // V-38: pass the substrate-generic `RelayTextInterceptorSlot`
+                // so an installed NIP-crate runtime (today `nmp-nip47`) can
+                // peek at text frames the kernel would otherwise drop.
+                // `nmp-core` no longer names `wallet` / `NWC` at the actor
+                // boundary (D0).
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
                     handle_relay_event(
                         event,
                         &mut kernel,
-                        #[cfg(feature = "wallet")]
-                        &mut wallet,
+                        &relay_text_interceptor,
                         &mut relay_controls,
                         &mut slot_to_url,
                         &pool,

@@ -29,19 +29,10 @@ fn default_registry_has_publish_module() {
     assert!(!registry.contains("nmp.nope"));
 }
 
-/// Under `feature = "wallet"`, `default_registry` registers the
-/// `WalletPayInvoiceModule` so `nmp_app_dispatch_action(..., "nmp.wallet.pay_invoice", ...)`
-/// succeeds out of the box (V3 — the C-ABI wrapper
-/// `nmp_app_wallet_pay_invoice` routes through this seam).
-#[cfg(feature = "wallet")]
-#[test]
-fn default_registry_has_wallet_pay_invoice_module_under_feature() {
-    let registry = default_registry();
-    assert!(
-        registry.contains("nmp.wallet.pay_invoice"),
-        "feature = \"wallet\" must register the wallet pay_invoice ActionModule"
-    );
-}
+// V-38: the `nmp.wallet.pay_invoice` registration test moved to `nmp-nip47`
+// (the crate that now owns `WalletPayInvoiceModule`). `default_registry`
+// post-V-38 no longer registers it — host apps register the module
+// themselves from `nmp-nip47`.
 
 #[test]
 fn start_publish_note_action_returns_correlation_id() {

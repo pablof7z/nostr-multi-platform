@@ -56,9 +56,6 @@ fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
 use crate::subs::PlanCoverageHook;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
-// D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
-#[cfg(feature = "wallet")]
-use super::commands::WalletRuntime;
 use crate::kernel_action::dispatch_kernel_action;
 use super::pending_sign::PendingSign;
 use super::relay_mgmt::{
@@ -191,9 +188,6 @@ fn maybe_publish_relay_list_after_edit(
 pub(super) struct ActorContext<'a> {
     pub(super) kernel: &'a mut Kernel,
     pub(super) identity: &'a mut IdentityRuntime,
-    // D0: NIP-47 NWC is an app noun — only present with the `wallet` feature.
-    #[cfg(feature = "wallet")]
-    pub(super) wallet: &'a mut WalletRuntime,
     pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
     /// Phase F: side-map from `RelayHandle.slot()` → canonical URL so an
     /// inbound [`PoolEvent`] (which carries the handle but not always the
@@ -900,48 +894,17 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        #[cfg(feature = "wallet")]
-        ActorCommand::WalletConnect { uri } => {
-            let outbound = commands::wallet_connect(ctx.wallet, ctx.kernel, &uri);
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        #[cfg(feature = "wallet")]
-        ActorCommand::WalletDisconnect => {
-            let outbound = commands::wallet_disconnect(ctx.wallet, ctx.kernel);
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        #[cfg(feature = "wallet")]
-        ActorCommand::WalletPayInvoice {
-            bolt11,
-            amount_msats,
-            correlation_id,
-        } => {
-            // Terminal Accepted/Failed arrives later via handle_nwc_text
-            // when the wallet's kind:23195 response settles.
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            let outbound = commands::wallet_pay_invoice(
-                ctx.wallet,
-                ctx.kernel,
-                &bolt11,
-                amount_msats,
-                correlation_id,
-            );
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        // V-41 — the legacy `FetchLnurlInvoice` arm is deleted. The LNURL
+        // V-38: `ActorCommand::Wallet{Connect,Disconnect,PayInvoice}`
+        // variants were deleted. Wallet ops now route through
+        // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` — the
+        // `WalletConnectCommand` / `WalletDisconnectCommand` /
+        // `WalletPayInvoiceCommand` impls live in `crates/nmp-nip47`.
+        //
+        // V-41 — the legacy `FetchLnurlInvoice` arm is also deleted. The LNURL
         // fetcher now lives in `nmp_nip57::lnurl::FetchLnurlInvoiceCommand`
         // and dispatches through `ActorCommand::Protocol` (below). The
         // pre-existing `Requested` stage recording (gated on
-        // `correlation_id`) and the post-dispatch `emit_now` both move
+        // `correlation_id`) and the post-dispatch `emit_now` both moved
         // into the `Protocol(...)` arm — see
         // `ProtocolCommandContext::record_action_stage_requested` and the
         // emit at the bottom of that arm.
@@ -1251,17 +1214,22 @@ pub(super) fn dispatch_command(
             None
         }
         ActorCommand::Protocol(cmd) => {
-            // Step 1.b — the open-seam dispatch arm. Debt C (this revision)
-            // replaced the prior 12-positional-closure bundle with five
-            // typed capability adapters
-            // (`KernelClock`/`LocalSignerAccess`/`DmInboxLookup`/
-            // `ErrorSurface`/`ActionStageTracker`). Each adapter borrows a
-            // `RefCell`-wrapped reference to the kernel or identity runtime;
-            // the kernel and identity types stay crate-private (D0 — NIP
-            // crates name neither). Borrows are released the moment
-            // `cmd.run` returns — the worker thread the LNURL command spawns
-            // owns its own `Sender<ActorCommand>` clone and never re-enters
-            // the context.
+            // Step 1.b — the open-seam dispatch arm. Debt C replaced the
+            // prior 12-positional-closure bundle with typed capability
+            // adapters (`KernelClock`/`LocalSignerAccess`/`DmInboxLookup`/
+            // `ErrorSurface`/`ActionStageTracker`/`RecipientRelayLookup`).
+            // Each adapter borrows a `RefCell`-wrapped reference to the
+            // kernel or identity runtime; the kernel and identity types
+            // stay crate-private (D0 — NIP crates name neither). Borrows
+            // are released the moment `cmd.run` returns — the worker thread
+            // the LNURL command spawns owns its own `Sender<ActorCommand>`
+            // clone and never re-enters the context.
+            //
+            // V-38: the dispatch arm additionally attaches an `&mut Kernel`
+            // and an outbound-frame sink so NIP-crate runtimes (today
+            // `nmp-nip47`) can mutate the kernel synchronously and surface
+            // relay frames the actor drains into `send_all_outbound`
+            // without re-entering through the `send` channel.
             let tx = ctx.command_tx_self.clone();
             let send = move |c: crate::actor::ActorCommand| {
                 // D6 — disconnected sender (post-Shutdown) is a benign
@@ -1276,8 +1244,17 @@ pub(super) fn dispatch_command(
             // actor context via `RefCell`. `ProtocolCommand::run` is
             // single-threaded sync, so the inner `borrow`/`borrow_mut`
             // calls serialize naturally.
-            let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
+            //
+            // V-38: the typed capability adapters borrow `ctx.kernel` via
+            // `RefCell`; the V-38 `with_kernel` builder needs an exclusive
+            // `&mut Kernel` borrow. The adapters and the direct kernel
+            // borrow are mutually exclusive — the `with_kernel` borrow
+            // begins after the adapters drop at end-of-block. We capture
+            // the identity-runtime ref first (immutable) so it can outlive
+            // the adapter scope; the kernel borrow is rebuilt in the
+            // post-adapter block below.
             let identity_cell = std::cell::RefCell::new(&*ctx.identity);
+            let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
 
             let clock = KernelClockAdapter { kernel: &kernel_cell };
             let signers = LocalSignerAccessAdapter { identity: &identity_cell };
@@ -1289,42 +1266,61 @@ pub(super) fn dispatch_command(
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
             // dispatch arm always populates this slot in production.
             let worker_tx = ctx.command_tx_self.clone();
-            let mut pctx = crate::substrate::ProtocolCommandContext::new(
-                crate::substrate::ProtocolCommandContextParts {
-                    send: &send,
-                    command_sender: worker_tx,
-                    clock: &clock,
-                    signers: &signers,
-                    dms: &*dm_lookup,
-                    errors: &errors,
-                    stages: &stages,
-                    recipients: &recipients,
-                },
-            );
-            if let Err(e) = cmd.run(&mut pctx) {
+            let mut outbound: Vec<crate::relay::OutboundMessage> = Vec::new();
+            let run_err = {
+                let pctx = crate::substrate::ProtocolCommandContext::new(
+                    crate::substrate::ProtocolCommandContextParts {
+                        send: &send,
+                        command_sender: worker_tx,
+                        clock: &clock,
+                        signers: &signers,
+                        dms: &*dm_lookup,
+                        errors: &errors,
+                        stages: &stages,
+                        recipients: &recipients,
+                    },
+                )
+                .with_outbound(&mut outbound);
+                // V-38: attach the kernel handle so wallet `ProtocolCommand`
+                // bodies can drive kernel state (toast, persistent-sub
+                // register, action-terminal record) directly. The kernel
+                // borrow here is taken through the `RefCell` so the typed
+                // adapters above continue to function during `cmd.run`.
+                // Since `ProtocolCommand::run` is single-threaded sync, the
+                // adapters' `RefCell` borrows and the `with_kernel` borrow
+                // are sequenced naturally inside the command body.
+                let mut kernel_ref = kernel_cell.borrow_mut();
+                let mut pctx = pctx.with_kernel(&mut *kernel_ref);
+                let res = cmd.run(&mut pctx);
+                drop(pctx);
+                drop(kernel_ref);
+                res
+            };
+            if let Err(e) = run_err {
                 tracing::warn!(error = %e, "ProtocolCommand returned error");
             }
-            // Drop the context (and the adapter borrows) before the emit so
-            // `emit_now` can re-borrow `ctx.kernel` mutably. The
-            // `kernel_cell` / `identity_cell` `RefCell` borrows are
-            // released when the adapters drop at end-of-block — explicitly
-            // drop the adapters here so the `emit_now` below sees a fully
-            // released `ctx.kernel`.
-            drop(pctx);
+            // Drop the adapter borrows before the emit so `emit_now` can
+            // re-borrow `ctx.kernel` mutably. The `kernel_cell` /
+            // `identity_cell` `RefCell` borrows are released when the
+            // adapters drop at end-of-block — explicitly drop the
+            // adapters here so the `emit_now` below sees a fully
+            // released `ctx.kernel`. The `RefCell` owners themselves are
+            // moved at function end (no explicit `drop` needed once the
+            // adapters that borrowed them are dropped).
             drop(recipients);
             drop(stages);
             drop(errors);
             drop(signers);
             drop(clock);
-            // V-41 + V-39+V-40 — a `ProtocolCommand` body may have mutated
-            // the kernel (the `Requested` stage write, a toast, a recorded
-            // failure) or queued follow-up `ActorCommand`s
+            // V-41 + V-39+V-40 + V-38 — a `ProtocolCommand` body may have
+            // mutated the kernel (the `Requested` stage write, a toast, a
+            // recorded failure) or queued follow-up `ActorCommand`s
             // (`ShowToast` / `RecordActionFailure` / `PublishSignedEvent`).
             // Emit promptly so the next snapshot tick carries the visible
             // effect, mirroring the legacy `FetchLnurlInvoice` and
             // `SendGiftWrappedDm` arms' `emit_now` precedents.
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
+            Some(outbound)
         }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::IngestPreVerifiedEvents(events) => {
@@ -1373,7 +1369,10 @@ fn resolve_handle<'a>(
 pub(super) fn handle_relay_event(
     event: PoolEvent,
     kernel: &mut Kernel,
-    #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
+    // V-38: substrate-generic interceptor slot — `nmp-nip47`'s wallet
+    // runtime installs itself here to peek at kind:23195 NWC responses
+    // before the kernel drops them as unknown kinds.
+    relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
     pool: &Pool,
@@ -1505,29 +1504,31 @@ pub(super) fn handle_relay_event(
                 return;
             };
             let url_str = url.as_str().to_string();
-            // NWC relay intercept: peek at text frames from the wallet relay
-            // for kind:23195 responses before passing to kernel.handle_message.
-            // The kernel silently drops unknown kinds, so letting it see wallet
-            // events too is harmless; we just need to decrypt them first.
-            // D0: gated behind the `wallet` feature — NWC is an app noun.
-            #[cfg(feature = "wallet")]
-            let wallet_text = if wallet.is_nwc_relay(&url_str) {
-                match &frame {
-                    PoolFrame::Text(s) => Some(s.clone()),
-                    // Phase F: phase-E `RelayFrame::Auth` doesn't carry a
-                    // payload an NWC relay would interpret; nothing to peek.
-                    _ => None,
-                }
-            } else {
-                None
+            // V-38: peek at the text payload BEFORE kernel ingest so an
+            // installed substrate-generic relay-text interceptor (today
+            // `nmp-nip47`'s NWC runtime) can decode kind:23195 responses
+            // the kernel itself drops as unknown kinds. The interceptor
+            // filters by relay URL internally; uninteresting frames are a
+            // single-lock no-op. D0: substrate-generic — no NIP-47 / NWC
+            // nouns in nmp-core.
+            let raw_text = match &frame {
+                PoolFrame::Text(s) => Some(s.clone()),
+                // Phase F: phase-E `RelayFrame::Auth` doesn't carry a
+                // payload an interceptor would interpret; nothing to peek.
+                _ => None,
             };
             let kernel_frame = pool_frame_to_relay_frame(frame);
             let mut outbound = kernel.handle_message(role, &url_str, kernel_frame);
             outbound.extend(kernel.pending_view_requests());
-            #[cfg(feature = "wallet")]
-            if let Some(text) = wallet_text {
-                let wallet_out = commands::handle_nwc_text(wallet, &text, kernel);
-                outbound.extend(wallet_out);
+            if let Some(text) = raw_text {
+                let interceptor_handle = relay_text_interceptor
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.as_ref().cloned());
+                if let Some(interceptor) = interceptor_handle {
+                    let extra = interceptor.on_relay_text(kernel, &url_str, &text);
+                    outbound.extend(extra);
+                }
             }
             send_all_outbound(
                 relay_controls,

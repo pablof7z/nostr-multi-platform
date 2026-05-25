@@ -84,6 +84,11 @@ pub(crate) const JB55_PUBKEY: &str =
 // keep compiling unchanged. The test-only `bootstrap_url()` / `url()`
 // helpers live here as a private extension trait — they reference the
 // `BOOTSTRAP_DISCOVERY_RELAYS` constants which are nmp-core-only.
+//
+// V-38: the `Wallet` variant on `nmp_network::RelayRole` is constructed by
+// `nmp-nip47`'s wallet runtime through `Kernel::set_relay_auth_signer(
+// RelayRole::Wallet, ...)`. Substrate-grade — `nmp-network` carries no
+// app/protocol nouns even though the variant name reads "Wallet".
 pub use nmp_network::RelayRole;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -130,6 +135,18 @@ pub struct OutboundMessage {
 }
 
 impl OutboundMessage {
+    /// Construct an outbound message destined for `relay_url` over `role`.
+    ///
+    /// `pub` so NIP-crate runtimes (`nmp-nip47` post-V-38) running on the
+    /// actor thread can build outbound REQ / EVENT / CLOSE frames the
+    /// dispatch arm forwards to the relay worker. The transport is opaque to
+    /// this constructor — every frame must already be a valid NIP-01 wire
+    /// JSON string.
+    #[must_use]
+    pub fn new(role: RelayRole, relay_url: String, text: String) -> Self {
+        Self { role, relay_url, text }
+    }
+
     /// Diagnostics lane the frame belongs to. Forwarded by the WASM driver
     /// when reporting back through [`crate::KernelReducer::handle_relay_frame`]
     /// for any reply the kernel emits (e.g. AUTH responses).

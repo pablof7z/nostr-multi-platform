@@ -1,21 +1,7 @@
 //! Test-support facade for the NIP golden-tag conformance suite.
 //!
-//! The command handlers that build per-kind tag structures (`publish_note`,
-//! `react`, `follow`, `publish_unsigned_event`, `create_account`,
-//! `wallet_connect`) are all `pub(crate)` — unreachable from an integration
-//! test in `tests/`. The kernel test-support seed helpers
-//! (`seed_kind10002_for_test`, `seed_kind1_for_reply_test`,
-//! `inject_replaceable_event`) are likewise `pub(crate)`.
-//!
-//! Rather than widen the visibility of those internals (which would leak the
-//! `Kernel` / `IdentityRuntime` / `OutboundMessage` types into the public
-//! surface), this module provides a single high-level [`ConformanceHarness`].
-//! It owns the actor-local runtime trio `(IdentityRuntime, Kernel,
-//! WalletRuntime)` and exposes only what the conformance table needs: drive a
-//! command, get back the emitted `["EVENT", {...}]` JSON object.
-//!
-//! Gated on `cfg(any(test, feature = "test-support"))` — never compiled into a
-//! production build, never part of the FFI surface (D0).
+//! V-38: the wallet runtime moved to `nmp-nip47`. The harness no longer
+//! drives `wallet_connect` — that test moved to `crates/nmp-nip47/tests/`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,13 +15,10 @@ use crate::publish::{InMemoryPublishStore, PublishStore, PublishTarget};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
 use crate::substrate::UnsignedEvent;
 
-#[cfg(feature = "wallet")]
-use super::wallet::{wallet_connect, WalletRuntime};
-
-/// A real `Kernel` + `IdentityRuntime` (+ `WalletRuntime`) driven by the
-/// actual command handlers — no mocks. Each `emit_*` method runs a command and
-/// returns the outbound `EVENT` JSON object the kernel placed on the wire, so a
-/// conformance test can assert on its `tags` array.
+/// A real `Kernel` + `IdentityRuntime` driven by the actual command
+/// handlers — no mocks. Each `emit_*` method runs a command and returns the
+/// emitted `["EVENT", {...}]` JSON object so a conformance test can assert
+/// on the `tags` array.
 pub struct ConformanceHarness {
     identity: IdentityRuntime,
     kernel: Kernel,
@@ -45,8 +28,6 @@ pub struct ConformanceHarness {
     /// `publish_signed` without surfacing the outbound frame to the caller
     /// (kind:0 / kind:10002 emitted by `create_account`).
     publish_store: Arc<InMemoryPublishStore>,
-    #[cfg(feature = "wallet")]
-    wallet: WalletRuntime,
 }
 
 impl Default for ConformanceHarness {
@@ -70,10 +51,6 @@ impl ConformanceHarness {
                 Arc::clone(&publish_store) as Arc<dyn PublishStore>,
             ),
             publish_store,
-            // D0: NIP-47 NWC is an app noun — the conformance harness wires a
-            // private throwaway wallet-status slot (no host reads it).
-            #[cfg(feature = "wallet")]
-            wallet: WalletRuntime::new(super::new_wallet_status_slot()),
         }
     }
 
@@ -211,15 +188,6 @@ impl ConformanceHarness {
         );
     }
 
-    /// Drive NIP-47 `wallet_connect` with `uri`. The handler emits a kind:23194
-    /// `get_info` / `get_balance` request pair as outbound EVENT frames (plus a
-    /// REQ subscription). Returns every kind:23194 `EVENT` JSON object emitted.
-    #[cfg(feature = "wallet")]
-    pub fn emit_wallet_connect(&mut self, uri: &str) -> Vec<Value> {
-        let outbound = wallet_connect(&mut self.wallet, &mut self.kernel, uri);
-        event_jsons_of_kind(&outbound, 23194)
-    }
-
     /// The published event of `kind` reconstructed as an `EVENT`-style JSON
     /// object (`id`/`pubkey`/`kind`/`tags`/`content`), read back from the
     /// kernel's publish store. Used for the kinds `create_account` routes
@@ -254,17 +222,6 @@ fn last_event_json(outbound: &[OutboundMessage]) -> Value {
         .find(|m| m.text.starts_with("[\"EVENT\""))
         .expect("expected at least one outbound EVENT frame");
     parse_event_frame(&frame.text)
-}
-
-/// Every `["EVENT", {...}]` frame of `kind` among the outbound messages.
-#[cfg(feature = "wallet")]
-fn event_jsons_of_kind(outbound: &[OutboundMessage], kind: u64) -> Vec<Value> {
-    outbound
-        .iter()
-        .filter(|m| m.text.starts_with("[\"EVENT\""))
-        .map(|m| parse_event_frame(&m.text))
-        .filter(|ev| ev.get("kind").and_then(Value::as_u64) == Some(kind))
-        .collect()
 }
 
 /// Parse a `["EVENT", <event>]` wire frame into the inner event object.

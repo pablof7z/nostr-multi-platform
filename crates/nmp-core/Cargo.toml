@@ -52,12 +52,12 @@ native = [
     "nmp-store/lmdb-backend",
     "chrono/clock",
 ]
-# NIP-47 Nostr Wallet Connect support. Gates the `nmp-nwc` protocol dependency,
-# the `WalletStatus` snapshot projection, the `WalletRuntime` actor command arm,
-# and the `nmp_app_wallet_*` FFI symbols. D0: nmp-core never *owns* an app noun;
-# wallet state is opt-in protocol glue, not part of the protocol-neutral kernel.
-# wallet requires native (NWC relay connection uses the actor thread).
-wallet = ["dep:nmp-nwc", "native"]
+# V-38: the `wallet` feature was deleted; the NIP-47 NWC wallet stack
+# (runtime + action modules + status projection) moved to `crates/nmp-nip47`.
+# The kernel no longer depends on `nmp-nwc`; that edge inverted to
+# `nmp-nip47 → nmp-nwc`. See `docs/architecture/crate-boundaries.md` §5
+# step 7. The `nmp_app_wallet_*` FFI symbols stay on `nmp-core::ffi::wallet`
+# as thin shims over `dispatch_action` (no `nmp-nwc` dep at the kernel boundary).
 # Expose actor internals for live-bench harnesses and integration test binaries.
 # Never enable in production builds. Forwards to `nmp-store/test-support` so
 # `VerifiedEvent::from_raw_unchecked` (used by every store harness + the kernel
@@ -105,9 +105,8 @@ nmp-nip42-types = { path = "../nmp-nip42-types" }
 # its own crate docs) and stays kernel-agnostic — the dependency is one-way.
 nmp-nip59 = { path = "../nmp-nip59" }
 nostr = { workspace = true, features = ["nip44", "nip59"] }
-# NIP-47 NWC protocol crate. Optional + feature-gated (`wallet`): D0 says the
-# kernel never owns app nouns, so `nmp-core` must compile without it.
-nmp-nwc = { path = "../nmp-nwc", optional = true }
+# V-38: the `nmp-nwc` dep was deleted from `nmp-core`. NIP-47 is consumed
+# exclusively by `crates/nmp-nip47` post-V-38.
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Step 8 (extraction phase A): the native WebSocket relay worker
 # (`relay_worker/`) + the wire-transport-agnostic `relay_protocol`

@@ -302,7 +302,7 @@ impl super::Kernel {
     /// `set_error_toast_with_category` call shadowing it (iOS would branch on
     /// a category that no longer matches the visible toast). Callers that
     /// *know* the error class should use `set_error_toast_with_category`.
-    pub(crate) fn set_last_error_toast(&mut self, toast: Option<String>) {
+    pub fn set_last_error_toast(&mut self, toast: Option<String>) {
         if self.last_error_toast != toast || self.last_error_category.is_some() {
             self.last_error_toast = toast;
             self.last_error_category = None;

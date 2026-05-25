@@ -33,6 +33,8 @@
 //!   poisoning, or serialization failure.
 
 pub mod ffi;
+#[cfg(feature = "wallet")]
+mod wallet_runtime;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,

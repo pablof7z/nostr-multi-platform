@@ -49,6 +49,7 @@ mod keyring;
 mod host_op_handler;
 pub mod placeholder;
 mod protocol;
+mod relay_intercept;
 mod routing;
 mod routing_trace;
 mod view;
@@ -83,6 +84,9 @@ pub use protocol::{
     NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
     NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
     ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
+};
+pub use relay_intercept::{
+    new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
 };
 // V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
 // only on `nmp-core` can name the signer-capability trait that

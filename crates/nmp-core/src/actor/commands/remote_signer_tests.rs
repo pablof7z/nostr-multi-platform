@@ -553,8 +553,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             crate::actor::new_event_observer_slot(),
             crate::actor::new_raw_event_observer_slot(),
             snapshot_projections,
-            #[cfg(feature = "wallet")]
-            crate::actor::new_wallet_status_slot(),
+            // V-38: substrate-generic relay-text interceptor slot.
+            crate::substrate::new_relay_text_interceptor_slot(),
             bunker_slot,
             // Typed slot constructor.
             crate::kernel::new_relay_edit_rows_slot(),

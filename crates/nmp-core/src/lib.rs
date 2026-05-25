@@ -79,12 +79,12 @@ mod relay;
 // runtime path; the public re-exports below preserve the prior
 // `nmp_core::relay_protocol::*` surface (no-op for downstream crates that
 // imported through the old path — they should migrate to `nmp_network`).
-// D0: NIP-47 NWC is an app noun — the `wallet` module is gated behind the
-// `wallet` Cargo feature. Hosts the `nmp.wallet.pay_invoice` `ActionModule`
-// that closes the V3 dispatch-action bypass (`ffi::wallet::nmp_app_wallet_pay_invoice`
-// used to send `ActorCommand::WalletPayInvoice` directly).
-#[cfg(feature = "wallet")]
-pub mod wallet;
+//
+// V-38: the `wallet` module is gone — the NIP-47 wallet runtime + the
+// `nmp.wallet.pay_invoice` `ActionModule` moved to `crates/nmp-nip47`. The
+// kernel no longer depends on `nmp-nwc`, and `nmp-core` no longer has a
+// `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
+// §5 step 7 for the migration brief.
 pub mod remote_signer;
 /// Deterministic 64-bit hash helper — the seed for every plan-id,
 /// interest-id, and content-addressed projection key.
@@ -124,7 +124,14 @@ pub use app::{
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
-pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+// Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
+// moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
+// no longer exposes `ffi::*` at all.
+pub use kernel::{read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+// V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
+// `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
+// Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
+pub use kernel::AuthSignerFn;
 // V-51 phase 4 (validation harness) — the projection's three public types
 // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
 // is the bounded ring-buffer the kernel hands to production composition
@@ -175,6 +182,10 @@ pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 // Consumers that previously named the symbols through `nmp_core::` should
 // migrate to `nmp_ffi::*`. The `NmpApp` opaque handle moved with the
 // symbols. See `docs/architecture/crate-boundaries.md` §5 step 11-final.
+//
+// V-38: the `nmp_app_wallet_*` FFI symbols moved to `nmp-ffi::wallet` as
+// thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`
+// (dispatch_action). The actual wallet runtime lives in `crates/nmp-nip47`.
 
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests
 // (the `LifecycleObserverFn` is a plain `extern "C" fn` shape) and the
@@ -235,8 +246,9 @@ pub mod __ffi_internal {
         RawEventObserverRegistration, RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
         LIFECYCLE_PHASE_FOREGROUND,
     };
-    #[cfg(feature = "wallet")]
-    pub use crate::actor::{new_wallet_status_slot, WalletStatusSlot};
+    // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
+    // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
+    // registers it via `nmp_app_register_snapshot_projection("wallet", …)`.
     pub use crate::app::KernelAction;
     pub use crate::capability_socket::{
         capability_error_envelope, dispatch_capability, new_capability_callback_slot,

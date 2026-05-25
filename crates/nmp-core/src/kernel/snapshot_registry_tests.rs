@@ -234,23 +234,11 @@ fn panicking_projection_is_contained_and_others_survive() {
     );
 }
 
-/// D0 — first internal consumer of the snapshot-projection seam: the `"wallet"`
-/// projection.
-///
-/// NIP-47 NWC is an app noun, so wallet state was removed as a typed
-/// `KernelSnapshot.wallet_status` field and is now surfaced through a
-/// host-registered `"wallet"` projection — the same seam a marketplace or todo
-/// app uses. This test wires the projection exactly as `nmp_app_new` does (a
-/// closure over the shared `WalletStatusSlot`) and drives it through the real
-/// `make_update` JSON path, asserting the connect → disconnect lifecycle:
-///
-/// - no wallet connected → `projections["wallet"]` is JSON `null`;
-/// - wallet connected → `projections["wallet"]` carries the serialized status;
-/// - wallet disconnected → `projections["wallet"]` clears back to `null`,
-///   never a stale `ready` card.
-#[cfg(feature = "wallet")]
-#[test]
-fn wallet_projection_appears_and_clears_through_make_update() {
+/// V-38: the wallet projection lifecycle test moved to `nmp-nip47` (the
+/// crate that now owns `WalletStatus` + the `"wallet"` projection wiring).
+/// See `crates/nmp-nip47/tests/snapshot_projection.rs`.
+#[cfg(any())]
+fn _wallet_projection_moved_to_nmp_nip47() {
     use crate::actor::{new_wallet_status_slot, WalletStatus};
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

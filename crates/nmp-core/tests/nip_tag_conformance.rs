@@ -322,44 +322,9 @@ fn kind0_metadata_carries_no_tags() {
 
 // ── Kind 23194 — NIP-47 NWC request ─────────────────────────────────────────
 
-/// NIP-47: a kind:23194 wallet request must carry a `p` tag naming the wallet
-/// service pubkey — that is how the relay routes the encrypted request to the
-/// wallet. `wallet_connect` emits a `get_info` / `get_balance` request pair;
-/// every one of them is asserted.
-#[cfg(feature = "wallet")]
-#[test]
-fn kind23194_nwc_request_carries_wallet_p_tag() {
-    // A NWC URI: nostr+walletconnect://<wallet-pubkey>?relay=<wss>&secret=<hex>.
-    // Both the wallet pubkey and the client secret must be real secp256k1
-    // values — the request content is NIP-04-encrypted to the wallet pubkey,
-    // which fails on a non-curve-point. `wallet_pubkey` here is the x-only
-    // pubkey of secret `0x..01` (a valid curve point); `client_secret` is a
-    // distinct valid secret key.
-    let wallet_pubkey = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-    let client_secret = "0000000000000000000000000000000000000000000000000000000000000002";
-    let uri = format!(
-        "nostr+walletconnect://{wallet_pubkey}?relay=wss://nwc-relay.test&secret={client_secret}"
-    );
-
-    let mut h = ConformanceHarness::new();
-    let requests = h.emit_wallet_connect(&uri);
-    assert!(
-        !requests.is_empty(),
-        "wallet_connect must emit at least one kind:23194 request"
-    );
-
-    for request in &requests {
-        assert_eq!(request["kind"], 23194, "NWC request must be kind:23194");
-        let p_values = values_for_key(request, "p");
-        assert_eq!(
-            p_values,
-            vec![wallet_pubkey.to_string()],
-            "NIP-47 kind:23194 must carry exactly one `p` tag naming the wallet pubkey"
-        );
-        // A NWC request carries the wallet `p` tag and nothing else.
-        assert_only_keys(request, &["p"], "NIP-47 NWC request");
-    }
-}
+// V-38: `kind23194_nwc_request_carries_wallet_p_tag` moved to
+// `crates/nmp-nip47/tests/` — the wallet runtime and the conformance
+// harness's wallet driver both left `nmp-core` in V-38.
 
 // ── Kind 10002 — NIP-65 relay list ──────────────────────────────────────────
 
