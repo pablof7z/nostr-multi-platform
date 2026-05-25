@@ -47,6 +47,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         "swiftui/content-view/Examples/NostrContentViewPreview.swift",
         include_str!("../../registry/swiftui/content-view/Examples/NostrContentViewPreview.swift"),
     ),
+    (
+        "swiftui/login-block/NostrLoginBlock.swift",
+        include_str!("../../registry/swiftui/login-block/NostrLoginBlock.swift"),
+    ),
     // Compose (M16-C4)
     (
         "compose/content-core/NostrContentRenderer.kt",
