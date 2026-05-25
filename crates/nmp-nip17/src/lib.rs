@@ -52,7 +52,6 @@
 use nmp_core::substrate::UnsignedEvent;
 
 pub mod action;
-pub mod display;
 pub mod dm_relay_cache;
 pub mod dm_relay_list;
 pub mod dm_runtime;
