@@ -40,6 +40,16 @@ status:
   `_group_messages`, `_string_free`, `_unregister`) are read-side /
   stateful-handle lifecycle — they are NOT a `dispatch_action`
   violation; they are kernel-shaped observer/projection registrations.
+* **Step 12 (2026-05-25).** With PR 3 landed and the surviving FFI
+  cluster sanctioned as kernel-shaped per-app FFI (the same pattern
+  Chirp's `nmp_app_chirp_*` cluster uses), the `nmp-marmot` crate
+  returned from `apps/marmot/nmp-app-marmot/` to `crates/nmp-marmot/`
+  (`docs/architecture/crate-boundaries.md` step 12, Path B). The
+  raw-nsec slot below is unchanged; the D13 part-B path-scope check
+  in `crates/nmp-testing/bin/doctrine-lint/rules/d13.rs` already
+  exempts `crates/nmp-marmot/`, so the per-line
+  `// doctrine-allow: D13` opt-out at the `mls_local_nsec()` call
+  site was removed in the relocation.
 
 The original `mls_local_nsec` raw-nsec slot (the *secondary*
 ADR-0025 exception) is unaffected by this retirement: it is a
