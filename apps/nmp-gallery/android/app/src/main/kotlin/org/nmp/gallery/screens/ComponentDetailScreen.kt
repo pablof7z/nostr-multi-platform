@@ -52,7 +52,7 @@ fun ComponentDetailScreen(
         ) {
             when (section.id) {
                 "user" -> UserComponentPage(model = model, componentId = component.id)
-                "content" -> ContentComponentPage(componentId = component.id)
+                "content" -> ContentComponentPage(model = model, componentId = component.id)
                 else -> Text("Unknown section: ${section.id}")
             }
         }

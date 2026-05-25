@@ -13,6 +13,7 @@
 		0637A1696092C8775547F3BB /* ContentTreeWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94444DA5ACC2E7B1F880665C /* ContentTreeWire.swift */; };
 		0CF4C06BB3CFF2587C788BF1 /* NostrQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9256608B19032CA625722F /* NostrQuoteCard.swift */; };
 		20DDB9992ED10F9F4EC89648 /* NostrNpubChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */; };
+		328AFCD8867E60202F152596 /* RelayComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4EB3843AF142754F973865 /* RelayComponentPages.swift */; };
 		4E04939850D1F5920F4C7DFF /* NostrAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */; };
 		4F5290134DE6177279101B4A /* NostrMentionChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFF9A2206748816172F8E00 /* NostrMentionChip.swift */; };
 		5134A56E7710BF1650E143F4 /* NostrContentGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70093462B21EFEE184D5AB6D /* NostrContentGrouping.swift */; };
@@ -33,6 +34,7 @@
 		E1DF9EAE22735120704CBF16 /* GalleryKernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8178DFF99C0D4CD59A662BEF /* GalleryKernelBridge.swift */; };
 		EE497ADFA69269C53C369539 /* GalleryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE182FEFD5F2DAA789D2993 /* GalleryModel.swift */; };
 		EFEF89C5235140656F9E248B /* UserComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F4D3AF10C138FD275465E9 /* UserComponentPages.swift */; };
+		9D61D09D600012DA72DC1EED /* NostrRelayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97F06A5FE454EE4F4D22E03 /* NostrRelayList.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,7 +65,9 @@
 		C6102E81F7EF3C37BED7D66D /* NmpGalleryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NmpGalleryApp.swift; sourceTree = "<group>"; };
 		E0840B3061A60EE899BADEB1 /* NostrNip05Badge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrNip05Badge.swift; sourceTree = "<group>"; };
 		E2F4D3AF10C138FD275465E9 /* UserComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserComponentPages.swift; sourceTree = "<group>"; };
+		A97F06A5FE454EE4F4D22E03 /* NostrRelayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrRelayList.swift; sourceTree = "<group>"; };
 		E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWire.swift; sourceTree = "<group>"; };
+		EA4EB3843AF142754F973865 /* RelayComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayComponentPages.swift; sourceTree = "<group>"; };
 		F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrAvatar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -89,6 +93,7 @@
 			children = (
 				603752C0D6DEB2C4CDA84CEC /* ContentComponentPages.swift */,
 				853208E9878618BC9FB930B6 /* RegistrySection.swift */,
+				EA4EB3843AF142754F973865 /* RelayComponentPages.swift */,
 				E2F4D3AF10C138FD275465E9 /* UserComponentPages.swift */,
 			);
 			path = Gallery;
@@ -129,6 +134,7 @@
 				A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */,
 				178F68FA938F19E5CC76902B /* NostrProfileName.swift */,
 				6F9256608B19032CA625722F /* NostrQuoteCard.swift */,
+				A97F06A5FE454EE4F4D22E03 /* NostrRelayList.swift */,
 				837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */,
 				E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */,
 			);
@@ -239,9 +245,11 @@
 				20DDB9992ED10F9F4EC89648 /* NostrNpubChip.swift in Sources */,
 				91F5C25A561E0C6055DB8EB7 /* NostrProfileName.swift in Sources */,
 				0CF4C06BB3CFF2587C788BF1 /* NostrQuoteCard.swift in Sources */,
+				9D61D09D600012DA72DC1EED /* NostrRelayList.swift in Sources */,
 				9D9087C9F1760A51C0B0FDBA /* NostrUserCard.swift in Sources */,
 				BAC8BCD4BF99A624C0AEAEBE /* ProfileWire.swift in Sources */,
 				5BE3D6D2819725E8A9725BCC /* RegistrySection.swift in Sources */,
+				328AFCD8867E60202F152596 /* RelayComponentPages.swift in Sources */,
 				9879ED595B26E60D623D2111 /* SectionListView.swift in Sources */,
 				EFEF89C5235140656F9E248B /* UserComponentPages.swift in Sources */,
 			);

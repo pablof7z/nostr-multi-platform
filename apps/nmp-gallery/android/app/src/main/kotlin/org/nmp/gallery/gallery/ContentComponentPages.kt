@@ -8,8 +8,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.registry.ContentTreeWire
 import org.nmp.gallery.registry.LocalNostrContentRenderer
 import org.nmp.gallery.registry.MediaKind
@@ -20,20 +24,21 @@ import org.nmp.gallery.registry.NostrMentionChip
 import org.nmp.gallery.registry.NostrQuoteCard
 import org.nmp.gallery.registry.NostrQuoteCardModel
 import org.nmp.gallery.registry.NostrQuoteCardVariant
+import org.nmp.gallery.registry.ProfileWire
 import org.nmp.gallery.registry.WireNode
 import org.nmp.gallery.registry.WireNostrUri
 import org.nmp.gallery.registry.WireNostrUriKind
+import org.nmp.gallery.registry.defaultMentionLabel
 
-/**
- * Content-component demos. These do not require relay data — the demo
- * payloads are constructed in-process so the gallery can showcase
- * `ContentTreeWire` / `NostrQuoteCardModel` shapes deterministically.
- *
- * The [LocalNostrContentRenderer] is themed against Material so the
- * component output matches the surrounding chrome.
- */
 @Composable
-fun ContentComponentPage(componentId: String) {
+fun ContentComponentPage(model: GalleryModel, componentId: String) {
+    val profileMap by model.profileMap.collectAsState()
+
+    LaunchedEffect(Unit) {
+        model.claimProfile(DEMO_PUBKEY, GalleryModel.CONSUMER_ID)
+        model.claimProfile(DEMO_OTHER_PUBKEY, GalleryModel.CONSUMER_ID)
+    }
+
     val renderer = NostrContentRenderer(
         textColor = MaterialTheme.colorScheme.onSurface,
         secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -41,6 +46,12 @@ fun ContentComponentPage(componentId: String) {
         hashtagColor = MaterialTheme.colorScheme.tertiary,
         linkColor = MaterialTheme.colorScheme.primary,
     )
+
+    val mentionLabel: (WireNostrUri) -> String = { uri ->
+        profileMap[uri.primaryId]?.displayName
+            ?: defaultMentionLabel(uri)
+    }
+
     CompositionLocalProvider(LocalNostrContentRenderer provides renderer) {
         Column(
             modifier = Modifier
@@ -53,46 +64,68 @@ fun ContentComponentPage(componentId: String) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            ContentComponentBody(componentId = componentId)
+            ContentComponentBody(
+                componentId = componentId,
+                profileMap = profileMap,
+                mentionLabel = mentionLabel,
+            )
         }
     }
 }
 
 @Composable
-private fun ContentComponentBody(componentId: String) {
+private fun ContentComponentBody(
+    componentId: String,
+    profileMap: Map<String, ProfileWire>,
+    mentionLabel: (WireNostrUri) -> String,
+) {
     when (componentId) {
-        "content-core" -> ContentCoreDemo()
-        "content-view" -> ContentViewDemo()
-        "content-mention-chip" -> MentionChipDemo()
+        "content-core" -> ContentCoreDemo(mentionLabel)
+        "content-view" -> ContentViewDemo(mentionLabel)
+        "content-mention-chip" -> MentionChipDemo(profileMap)
         "content-minimal" -> MinimalContentDemo()
         "content-media-grid" -> MediaGridDemo()
-        "content-quote-card" -> QuoteCardDemo()
+        "content-quote-card" -> QuoteCardDemo(profileMap)
         else -> Text("Unknown content component: $componentId")
     }
 }
 
 @Composable
-private fun ContentCoreDemo() {
-    NostrContentView(tree = demoTextTree())
+private fun ContentCoreDemo(mentionLabel: (WireNostrUri) -> String) {
+    NostrContentView(tree = demoTextTree(), mentionLabel = mentionLabel)
 }
 
 @Composable
-private fun ContentViewDemo() {
-    NostrContentView(tree = demoRichTree())
+private fun ContentViewDemo(mentionLabel: (WireNostrUri) -> String) {
+    NostrContentView(tree = demoRichTree(), mentionLabel = mentionLabel)
 }
 
 @Composable
-private fun MentionChipDemo() {
+private fun MentionChipDemo(profileMap: Map<String, ProfileWire>) {
+    val primary = profileMap[DEMO_PUBKEY]
+    val other = profileMap[DEMO_OTHER_PUBKEY]
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Live kernel-resolved profile", style = MaterialTheme.typography.bodySmall)
         NostrMentionChip(
-            pubkey = DEMO_JACK,
-            displayName = "jack",
-            avatarUrl = null,
+            pubkey = DEMO_PUBKEY,
+            displayName = primary?.displayName,
+            avatarUrl = primary?.pictureUrl,
         )
+        Text("Second profile (resolved)", style = MaterialTheme.typography.bodySmall)
         NostrMentionChip(
-            pubkey = DEMO_OTHER,
-            displayName = "satoshi",
-            avatarUrl = null,
+            pubkey = DEMO_OTHER_PUBKEY,
+            displayName = other?.displayName,
+            avatarUrl = other?.pictureUrl,
+        )
+        Text("Identicon fallback (unknown pubkey)", style = MaterialTheme.typography.bodySmall)
+        NostrMentionChip(
+            pubkey = "deadbeefcafebabedeadbeefcafebabe",
+            displayName = null,
+        )
+        Text("No avatar variant", style = MaterialTheme.typography.bodySmall)
+        NostrMentionChip(
+            pubkey = DEMO_PUBKEY,
+            displayName = primary?.displayName,
             showsAvatar = false,
         )
     }
@@ -100,8 +133,6 @@ private fun MentionChipDemo() {
 
 @Composable
 private fun MinimalContentDemo() {
-    // No standalone minimal renderer in the current registry — fall back to
-    // the standard content view with a short, single-paragraph tree.
     NostrContentView(tree = demoShortTree())
 }
 
@@ -118,21 +149,22 @@ private fun MediaGridDemo() {
 }
 
 @Composable
-private fun QuoteCardDemo() {
-    val model = NostrQuoteCardModel(
+private fun QuoteCardDemo(profileMap: Map<String, ProfileWire>) {
+    val profile = profileMap[DEMO_PUBKEY]
+    val quoteModel = NostrQuoteCardModel(
         id = "demo-event-1",
-        authorPubkey = DEMO_JACK,
-        authorDisplayName = "jack",
+        authorPubkey = DEMO_PUBKEY,
+        authorDisplayName = profile?.displayName,
         content = "Bitcoin solves this. We're early.",
         createdAtDisplay = "2026-05-25",
     )
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Rich", style = MaterialTheme.typography.bodySmall)
-        NostrQuoteCard(model = model, variant = NostrQuoteCardVariant.Rich)
+        NostrQuoteCard(model = quoteModel, variant = NostrQuoteCardVariant.Rich)
         Text("Compact", style = MaterialTheme.typography.bodySmall)
-        NostrQuoteCard(model = model, variant = NostrQuoteCardVariant.Compact)
+        NostrQuoteCard(model = quoteModel, variant = NostrQuoteCardVariant.Compact)
         Text("Collapsed", style = MaterialTheme.typography.bodySmall)
-        NostrQuoteCard(model = model, variant = NostrQuoteCardVariant.Collapsed)
+        NostrQuoteCard(model = quoteModel, variant = NostrQuoteCardVariant.Collapsed)
         Text("Missing", style = MaterialTheme.typography.bodySmall)
         NostrQuoteCard(
             model = NostrQuoteCardModel.Missing.copy(unresolvedUri = "nostr:nevent1…"),
@@ -166,9 +198,9 @@ private fun demoRichTree(): ContentTreeWire {
         // 1
         WireNode.Mention(
             uri = WireNostrUri(
-                uri = "nostr:npub1demo",
+                uri = "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
                 kind = WireNostrUriKind.Profile,
-                primaryId = DEMO_JACK,
+                primaryId = DEMO_PUBKEY,
             ),
         ),
         // 2
@@ -192,10 +224,10 @@ private fun demoRichTree(): ContentTreeWire {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-private const val DEMO_JACK =
-    "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
+private const val DEMO_PUBKEY = GalleryModel.DEMO_PUBKEY
 
-private const val DEMO_OTHER =
+// jb55 (William Casarin)
+private const val DEMO_OTHER_PUBKEY =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
 
 private const val SAMPLE_IMAGE_1 = "https://picsum.photos/seed/nmp1/640/360"
@@ -203,12 +235,11 @@ private const val SAMPLE_IMAGE_2 = "https://picsum.photos/seed/nmp2/640/360"
 private const val SAMPLE_IMAGE_3 = "https://picsum.photos/seed/nmp3/640/360"
 
 private fun labelFor(componentId: String): String = when (componentId) {
-    "content-core" -> "ContentTreeWire (synthetic tree)"
-    "content-view" -> "NostrContentView (synthetic rich tree)"
-    "content-mention-chip" -> "NostrMentionChip (synthetic)"
-    "content-minimal" -> "NostrMinimalContentView (synthetic)"
-    "content-media-grid" -> "NostrMediaGrid (synthetic)"
-    "content-quote-card" -> "NostrQuoteCard (synthetic)"
+    "content-core" -> "ContentTreeWire (flat arena)"
+    "content-view" -> "NostrContentView — live mention resolution"
+    "content-mention-chip" -> "NostrMentionChip — kernel-resolved profiles"
+    "content-minimal" -> "NostrMinimalContentView"
+    "content-media-grid" -> "NostrMediaGrid"
+    "content-quote-card" -> "NostrQuoteCard — kernel-resolved author"
     else -> componentId
 }
-

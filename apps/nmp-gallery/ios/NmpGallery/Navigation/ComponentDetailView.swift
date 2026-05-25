@@ -37,6 +37,9 @@ struct ComponentDetailView: View {
     @ViewBuilder
     private var pageBody: some View {
         switch component.id {
+        // Relay pages — static sample data; no kernel connection needed.
+        case "relay-list":
+            RelayListPage()
         // User pages — never block on relay data. `bestEffortProfile`
         // returns a placeholder `ProfileWire` (identicon + truncated npub)
         // before kind:0 arrives; the registry components degrade gracefully

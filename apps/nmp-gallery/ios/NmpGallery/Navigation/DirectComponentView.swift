@@ -64,6 +64,8 @@ struct DirectComponentView: View {
             ContentMediaGridPage()
         case "content-quote-card":
             ContentQuoteCardPage()
+        case "relay-list":
+            RelayListPage()
         default:
             Text("Unknown component: \(component.id)")
                 .foregroundStyle(.secondary)

@@ -6,20 +6,28 @@ struct SectionListView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        List(selection: $selection) {
-            ForEach(REGISTRY_SECTIONS) { section in
-                if sizeClass == .regular {
-                    NavigationLink(value: section) {
-                        sectionRow(section)
-                    }
-                } else {
+        if sizeClass == .regular {
+            // iPad split view: List(selection:) drives the middle column
+            List(selection: $selection) {
+                ForEach(REGISTRY_SECTIONS) { section in
                     NavigationLink(value: section) {
                         sectionRow(section)
                     }
                 }
             }
+            .listStyle(.sidebar)
+        } else {
+            // iPhone stack: NavigationLink(value:) pushes to GalleryNavigation's
+            // .navigationDestination(for: RegistrySection.self) handler
+            List {
+                ForEach(REGISTRY_SECTIONS) { section in
+                    NavigationLink(value: section) {
+                        sectionRow(section)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
         }
-        .listStyle(.sidebar)
     }
 
     private func sectionRow(_ section: RegistrySection) -> some View {

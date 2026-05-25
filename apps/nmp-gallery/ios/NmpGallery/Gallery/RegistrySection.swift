@@ -23,6 +23,12 @@ struct RegistryComponent: Identifiable, Hashable {
 /// Authoritative catalog of gallery components. Driven by the SwiftUI
 /// registry layout under `crates/nmp-cli/registry/swiftui/`.
 let REGISTRY_SECTIONS: [RegistrySection] = [
+    RegistrySection(id: "relay", label: "Relay", components: [
+        RegistryComponent(
+            id: "relay-list",
+            label: "NostrRelayList",
+            description: "Relay URLs with role badges and connection status dots"),
+    ]),
     RegistrySection(id: "user", label: "User", components: [
         RegistryComponent(
             id: "user-avatar",
