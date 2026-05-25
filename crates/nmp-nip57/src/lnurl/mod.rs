@@ -59,15 +59,15 @@
 //!    spinner-closing `RecordActionSuccess` / `RecordActionFailure` when a
 //!    `correlation_id` was supplied).
 //!
-//! # NWC auto-pay handoff — wallet feature only on `nmp-core`
+//! # NWC auto-pay handoff (V-43)
 //!
-//! The legacy handler chained `WalletPayInvoice` onto the success leg when
-//! `nmp-core/wallet` was on. V-41 deliberately does NOT carry that
-//! cross-NIP coupling: the wallet pay step is a follow-up dispatch the host
-//! kicks off after observing the bolt11 in the `ShowToast` (mirrors the
-//! ADR-0024 "minimum-viable observable" path). When V-43 lands (zap-pay
-//! chain), the wallet handoff becomes a multi-step `dispatch_action`
-//! contract rather than a hard-coded `Sender::send` from this worker.
+//! After the bolt11 is fetched, the worker checks `nmp_nip47::active_wallet_runtime()`.
+//! If a wallet runtime is installed, it dispatches `WalletPayInvoiceCommand`
+//! carrying the bolt11 and the zap's `correlation_id`. The kind:23195 NWC
+//! response handler then closes the action stage — success or failure — so
+//! the host's spinner resolves only when the payment is confirmed by the
+//! wallet, not merely when the invoice is fetched. If no wallet is installed
+//! the action records a `Failed` terminal immediately with a descriptive reason.
 
 mod pay;
 
@@ -217,11 +217,36 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                 &signed_json,
             ) {
                 Ok(bolt11) => {
-                    let message = format!("Zap invoice: {bolt11}");
-                    let _ = worker_tx.send(ActorCommand::ShowToast { message });
-                    if let Some(cid) = correlation_id {
-                        let _ = worker_tx
-                            .send(ActorCommand::RecordActionSuccess { correlation_id: cid });
+                    // V-43: hand the bolt11 to the NWC wallet so it pays the
+                    // invoice. The correlation_id threads through so the
+                    // kind:23195 response handler closes the `nmp.nip57.zap`
+                    // action stage — success or failure — on wallet confirmation.
+                    // If no wallet runtime is installed, fail the action so the
+                    // host spinner resolves with a clear reason instead of hanging.
+                    match nmp_nip47::active_wallet_runtime() {
+                        Some(runtime) => {
+                            let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
+                                nmp_nip47::WalletPayInvoiceCommand {
+                                    bolt11,
+                                    amount_msats: None, // bolt11 carries the amount
+                                    correlation_id,
+                                    runtime,
+                                },
+                            )));
+                        }
+                        None => {
+                            let reason =
+                                "zap: no wallet connected — connect a NWC wallet first".to_string();
+                            let _ = worker_tx.send(ActorCommand::ShowToast {
+                                message: reason.clone(),
+                            });
+                            if let Some(cid) = correlation_id {
+                                let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                                    correlation_id: cid,
+                                    reason,
+                                });
+                            }
+                        }
                     }
                 }
                 Err(reason) => {
