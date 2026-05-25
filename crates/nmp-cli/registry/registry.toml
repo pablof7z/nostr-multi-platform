@@ -1,0 +1,30 @@
+schema_version = 1
+registry_id = "nmp-local"
+
+[[components]]
+id = "swiftui/content-core"
+version = "0.1.0"
+target = "swiftui"
+description = "Shared SwiftUI renderer configuration for app-owned Nostr content components."
+
+[[components.files]]
+source = "swiftui/content-core/NostrContentRenderer.swift"
+target = "Components/NostrContent/NostrContentRenderer.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-minimal"
+version = "0.1.0"
+target = "swiftui"
+description = "Minimal SwiftUI Nostr content renderer with inline text, mentions, links, and hashtags."
+dependencies = ["swiftui/content-core"]
+
+[[components.files]]
+source = "swiftui/content-minimal/NostrMinimalContentView.swift"
+target = "Components/NostrContent/NostrMinimalContentView.swift"
+role = "source"
+
+[[components.files]]
+source = "swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift"
+target = "Components/NostrContent/Examples/NostrMinimalContentPreview.swift"
+role = "example"
