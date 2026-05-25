@@ -552,22 +552,12 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
     let event = kernel.events.get(C13_ID).expect("event must be in cache");
     let item_no_profile = kernel.timeline_item(event);
 
-    // author_picture_url is a String (not Option) and never empty (D1).
-    assert!(
-        !item_no_profile.author_picture_url.is_empty(),
-        "D1 violation: author_picture_url must never be empty before kind:0"
-    );
-    assert!(
-        item_no_profile.author_picture_url.starts_with("identicon:"),
-        "placeholder must be an identicon URI, got: {}",
-        item_no_profile.author_picture_url
-    );
+    // aim.md §2 — no identicon placeholder substituted in NMP.
+    // `author_picture_url` is `None` until kind:0 arrives.
     assert_eq!(
-        item_no_profile.author_picture_url,
-        picture_placeholder(C13_PK),
-        "placeholder must be deterministic"
+        item_no_profile.author_picture_url, None,
+        "aim.md §2: picture_url must be None before kind:0 (presentation owns the fallback)"
     );
-    assert_eq!(item_no_profile.author_avatar_source, "placeholder");
 
     // ── Phase 2: inject kind:0 with a real picture URL ───────────────────────
     let picture = "https://example.com/avatar.png";
@@ -582,36 +572,30 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
         picture_url: Some(picture.to_string()),
         nip05: String::new(),
         about: String::new(),
-        avatar_initials: "c1".to_string(),
-        avatar_color: avatar_color_hex(C13_PK),
         lnurl: None,
     });
 
     let event_after = kernel.events.get(C13_ID).expect("event must still be in cache");
     let item_with_profile = kernel.timeline_item(event_after);
 
-    // After kind:0 arrives, the real picture URL replaces the placeholder.
+    // After kind:0 arrives, the real picture URL surfaces verbatim.
     assert_eq!(
-        item_with_profile.author_picture_url, picture,
-        "D1 refinement: picture_url must update to kind:0 URL in place"
+        item_with_profile.author_picture_url.as_deref(),
+        Some(picture),
+        "picture_url updates to kind:0 URL in place"
     );
-    assert_eq!(item_with_profile.author_avatar_source, "kind0");
     // The item id is unchanged — refinement is in-place.
     assert_eq!(item_with_profile.id, item_no_profile.id);
 }
 
-/// ADR-0017 — `author_avatar_source` must track the *actual* picture-url
-/// selection, not merely whether a kind:0 profile exists.
-///
-/// A profile that arrived with no picture (empty/absent `picture_url`) still
-/// emits the deterministic identicon placeholder, so the discriminator must be
-/// `"placeholder"`, never `"kind0"`.  Same invariant for `ProfileCard.source`.
-///
-/// Design: `docs/product-spec/overview-and-dx.md` §1.5 (D1), ADR-0017.
+/// aim.md §2 — a profile that arrived with no picture (empty/absent
+/// `picture_url`) surfaces `None` for `author_picture_url` /
+/// `ProfileCard::picture_url`. Presentation layers choose the
+/// missing-picture rendering (identicon, initials tile, etc.); NMP no
+/// longer substitutes a placeholder URI.
 #[test]
-fn d1_avatar_source_reflects_picture_selection_not_profile_presence() {
+fn picture_url_is_none_when_profile_omits_picture() {
     use crate::store::VerifiedEvent;
-    use crate::substrate::placeholder::picture_placeholder;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
@@ -631,9 +615,6 @@ fn d1_avatar_source_reflects_picture_selection_not_profile_presence() {
     );
     kernel.sort_timeline_deferred();
 
-    // Profile present but carrying NO picture (None) — and a second probe with
-    // an explicit empty string — must both fall back to the identicon and be
-    // reported as `placeholder`, not `kind0`.
     for picture in [None, Some(String::new())] {
         kernel.profiles.insert(C13_PK.to_string(), Profile {
             event_id: C13_KIND0_ID.to_string(),
@@ -642,32 +623,20 @@ fn d1_avatar_source_reflects_picture_selection_not_profile_presence() {
             picture_url: picture.clone(),
             nip05: String::new(),
             about: String::new(),
-            avatar_initials: "c1".to_string(),
-            avatar_color: avatar_color_hex(C13_PK),
             lnurl: None,
         });
 
         let event = kernel.events.get(C13_ID).expect("event must be in cache");
         let item = kernel.timeline_item(event);
         assert_eq!(
-            item.author_picture_url,
-            picture_placeholder(C13_PK),
-            "profile without picture must emit the identicon placeholder ({picture:?})"
-        );
-        assert_eq!(
-            item.author_avatar_source, "placeholder",
-            "ADR-0017: source must reflect placeholder selection, not kind:0 presence ({picture:?})"
+            item.author_picture_url, None,
+            "profile without picture must surface None ({picture:?})"
         );
 
         let card = kernel.profile_card_for(C13_PK, None, "about");
         assert_eq!(
-            card.picture_url,
-            picture_placeholder(C13_PK),
-            "ProfileCard without picture must emit the identicon placeholder ({picture:?})"
-        );
-        assert_eq!(
-            card.source, "placeholder",
-            "ADR-0017: ProfileCard.source must reflect placeholder selection ({picture:?})"
+            card.picture_url, None,
+            "ProfileCard without picture must surface None ({picture:?})"
         );
     }
 }
@@ -849,53 +818,40 @@ fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
 /// so it was implicitly reactive; the Rust-owned field must match that
 /// behaviour or the iOS toolbar avatar visibly drifts from the display name.
 #[test]
-fn v26_accounts_enriched_recomputes_avatar_initials_when_kind0_lands() {
+fn accounts_enriched_populates_display_name_when_kind0_lands() {
     use ::nostr::{PublicKey, ToBech32};
 
-    // Picks a hex pubkey whose npub bech32 body starts with two clearly
-    // different characters than the kind:0 display name's initials so a
-    // failure stands out.
     let pubkey_hex = JB55_PUBKEY.to_string();
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Seed the accounts projection with a placeholder summary: empty display
-    // name forces `account_avatar_initials` to take the npub-body fallback,
-    // mirroring the cold-start state of `actor::commands::identity`'s
-    // `sync_accounts_from_identity` before kind:0 arrives.
     let npub = PublicKey::from_hex(&pubkey_hex)
         .expect("valid hex pubkey")
         .to_bech32()
         .expect("npub encode");
-    let placeholder_initials = identity_state::account_avatar_initials("", &npub);
-    let placeholder_color = identity_state::account_avatar_color_hex(&pubkey_hex);
     let placeholder = identity_state::AccountSummary {
         id: pubkey_hex.clone(),
         npub: npub.clone(),
-        npub_short: identity_state::account_npub_short(&npub),
-        display_name: String::new(),
+        display_name: None,
         signer_kind: "local".to_string(),
         status: "active".to_string(),
         signer_label: "nsec".to_string(),
         signer_is_remote: false,
         is_active: true,
         picture_url: None,
-        avatar_initials: placeholder_initials.clone(),
-        avatar_color_hex: placeholder_color.clone(),
     };
     kernel.set_accounts(vec![placeholder], Some(pubkey_hex.clone()));
 
     // Pre-condition: with no kind:0 cached, `accounts_enriched` returns the
-    // placeholder verbatim — initials still derived from the npub body.
+    // placeholder verbatim — display_name still `None`.
     let before = kernel.accounts_enriched();
     assert_eq!(before.len(), 1);
     assert_eq!(
-        before[0].avatar_initials, placeholder_initials,
-        "no kind:0 → initials must stay on the npub-body fallback"
+        before[0].display_name, None,
+        "no kind:0 → display_name must stay None"
     );
 
-    // Now land a kind:0 with a real display name. The enrichment branch in
-    // `accounts_enriched` overwrites `display_name`; V-26 contract: it must
-    // also recompute `avatar_initials` so the avatar tracks the new name.
+    // Land a kind:0 with a real display name. The enrichment branch in
+    // `accounts_enriched` populates `display_name` from the cache.
     kernel.profiles.insert(pubkey_hex.clone(), Profile {
         event_id: "kind0-event".to_string(),
         created_at: 2_000,
@@ -903,23 +859,15 @@ fn v26_accounts_enriched_recomputes_avatar_initials_when_kind0_lands() {
         picture_url: Some("https://example.com/pic.png".to_string()),
         nip05: String::new(),
         about: String::new(),
-        avatar_initials: "AS".to_string(),
-        avatar_color: avatar_color_hex(&pubkey_hex),
         lnurl: None,
     });
 
     let after = kernel.accounts_enriched();
     assert_eq!(after.len(), 1);
-    assert_eq!(after[0].display_name, "Alice Smith");
+    assert_eq!(after[0].display_name.as_deref(), Some("Alice Smith"));
     assert_eq!(
-        after[0].avatar_initials, "AS",
-        "V-26: avatar_initials must follow display_name after kind:0 enrichment"
-    );
-    // `avatar_color_hex` is derived from the immutable hex pubkey — it must
-    // NOT change across enrichment (the same author keeps the same tint).
-    assert_eq!(
-        after[0].avatar_color_hex, placeholder_color,
-        "avatar_color_hex is pubkey-derived; kind:0 must not change the tint"
+        after[0].picture_url.as_deref(),
+        Some("https://example.com/pic.png")
     );
 }
 

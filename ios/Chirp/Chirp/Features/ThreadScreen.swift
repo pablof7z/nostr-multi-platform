@@ -96,11 +96,9 @@ struct ThreadScreen: View {
                             model.react(targetEventID: item.id, reaction: "❤")
                         },
                         onReply: {
-                            // V-28 thin-shell: carry the kernel-pre-formatted
-                            // `<first 8>…<last 8>` abbreviation through to
-                            // `ComposeView`'s reply banner so the view layer
-                            // never slices the raw 64-char id.
-                            replyTargetID = ReplyTarget(eventID: item.id, shortID: item.shortId)
+                            // ADR-0032: shell-side abbreviation of the raw
+                            // event id for ComposeView's reply banner.
+                            replyTargetID = ReplyTarget(eventID: item.id, shortID: item.id.shortHex)
                         }
                     )
                     .id(item.id)

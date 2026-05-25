@@ -99,7 +99,7 @@ struct GroupChatView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Replying to \(replyTarget.authorDisplay)")
+                    Text("Replying to \(replyTarget.pubkey.shortHex)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(replyTarget.content)
@@ -192,18 +192,18 @@ private struct GroupChatMessageRow: View {
         HStack(alignment: .top, spacing: 8) {
             ChirpAvatar(
                 url: nil,
-                initials: message.authorInitials,
-                colorHex: message.authorColorHex,
+                initials: message.pubkey.displayInitials,
+                colorHex: message.pubkey.pubkeyColorHex,
                 size: 36
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(message.authorDisplay)
+                    Text(message.pubkey.shortHex)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(message.createdAtDisplay)
+                    Text(message.createdAt.relativeTimeFromUnixSeconds)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()

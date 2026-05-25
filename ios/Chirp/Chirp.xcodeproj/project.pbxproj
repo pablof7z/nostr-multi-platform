@@ -18,6 +18,7 @@
 		2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */; };
 		264D1D98B65C87B09A9AC85D /* NewGroupSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9225E6F8027D8931C383148 /* NewGroupSheet.swift */; };
 		28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */; };
+		37038D088FA1F94AFFDD21D1 /* PubkeyFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC963A1B34A470A8E542854 /* PubkeyFormatting.swift */; };
 		39AD0535EF5E1619F46F3FFE /* GroupChatDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80CA160BF8239675560E695A /* GroupChatDecodeTests.swift */; };
 		475E4D5C5C2AB5E7EC579915 /* MarmotGroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C41D2993559ABD9B5468DE /* MarmotGroupChatView.swift */; };
 		4A7A67B2FEBC3B7EABC7238C /* ModularBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A34B7B420737B321187E2F /* ModularBlockView.swift */; };
@@ -104,6 +105,7 @@
 		31F55FC6A139DA43D434DBF9 /* RootShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootShell.swift; sourceTree = "<group>"; };
 		3808C5C6482C44109C442925 /* KernelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelModel.swift; sourceTree = "<group>"; };
 		3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+Components.swift"; sourceTree = "<group>"; };
+		3BC963A1B34A470A8E542854 /* PubkeyFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PubkeyFormatting.swift; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
 		64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicGroupBridge.swift; sourceTree = "<group>"; };
@@ -266,6 +268,14 @@
 			path = ChirpTests;
 			sourceTree = "<group>";
 		};
+		5A5C6F72F82CF10173F596D3 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				3BC963A1B34A470A8E542854 /* PubkeyFormatting.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
 		715349A5CCFD688F835ADDB2 /* Chirp */ = {
 			isa = PBXGroup;
 			children = (
@@ -275,6 +285,7 @@
 				94AC26CAF70F8ED6F9C77EC0 /* Bridge */,
 				4BC153F89735632FD1ECAEB0 /* Capabilities */,
 				21C2FF737AA55A6EDBADB276 /* Components */,
+				5A5C6F72F82CF10173F596D3 /* Extensions */,
 				3BB04B1733F26E5EA2649335 /* Features */,
 				32B5905F69FD6EE892022E18 /* Theme */,
 			);
@@ -491,6 +502,7 @@
 				82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */,
 				EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */,
 				072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */,
+				37038D088FA1F94AFFDD21D1 /* PubkeyFormatting.swift in Sources */,
 				9376A1F186AFC42A2D7BCDA4 /* PublicGroupBridge.swift in Sources */,
 				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
 				B6D3716BDDDD6ECC762599C3 /* RelaySettingsView.swift in Sources */,

@@ -436,11 +436,10 @@ pub extern "C" fn nmp_marmot_group_messages(
     let Some(gid_hex) = c_str_opt(group_id_hex) else {
         return to_c_string("[]");
     };
-    let now = now_secs();
     let rows = handle
         .projection
         .with_inner(|h| {
-            crate::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE, now)
+            crate::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE)
         })
         .unwrap_or_default();
     match serde_json::to_string(&rows) {

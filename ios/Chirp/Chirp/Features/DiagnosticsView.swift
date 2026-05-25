@@ -264,7 +264,7 @@ struct DiagnosticsView: View {
                 HStack {
                     Text("Display")
                     Spacer()
-                    Text(account.displayName.isEmpty ? "—" : account.displayName)
+                    Text(account.displayName?.isEmpty == false ? account.displayName! : "—")
                         .font(.callout)
                 }
                 HStack {

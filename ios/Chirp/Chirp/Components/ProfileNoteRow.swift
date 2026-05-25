@@ -25,8 +25,8 @@ struct ProfileNoteRow: View {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
                         url: item.authorPictureUrl,
-                        initials: item.authorAvatarInitials,
-                        colorHex: item.authorAvatarColor,
+                        initials: item.authorPubkey.displayInitials,
+                        colorHex: item.authorPubkey.pubkeyColorHex,
                         size: 40
                     )
                 }
@@ -34,12 +34,12 @@ struct ProfileNoteRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text(item.authorDisplay)
+                        Text(item.authorPubkey.shortHex)
                             .font(.headline)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer()
-                        Text(item.createdAtDisplay)
+                        Text(item.createdAt.relativeTimeFromUnixSeconds)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

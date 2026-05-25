@@ -132,11 +132,10 @@ struct ModularBlockView: View {
     private func moduleRow(id: String, isLast: Bool) -> some View {
         let item = items[id]
         let card = cards[id]
-        // V-27 thin-shell: the secondary monospaced caption is the abbreviated
-        // hex pubkey shipped by Rust on the card. Falls back to "" when there
-        // is no card (no abbreviated form exists for an item-only row; the
-        // dual-identity row collapses to just the primary display name).
-        let display = card?.authorPubkeyShort ?? ""
+        // ADR-0032: presentation layer derives the secondary monospaced
+        // pubkey label from the raw hex pubkey it already has on hand.
+        let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+        let display = pubkey.shortHex
         let content = displayContent(item: item, card: card)
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
@@ -179,15 +178,16 @@ struct ModularBlockView: View {
     /// the inter-row gap without disturbing the parent layout.
     private func avatarColumn(item: TimelineItem?, card: ChirpEventCard?, isLast: Bool) -> some View {
         let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
-        // V-27 thin-shell: initials and colour come from Rust (`TimelineItem`
-        // for the kernel's visible-items row, `ChirpEventCard` for the
-        // synthetic-from-card row). The `"?"` / `"888888"` final fallbacks
-        // only fire when both lookups miss — i.e., a row that wasn't shipped
-        // by either projection, which the renderer should not surface anyway.
+        // ADR-0032: initials and avatar tint are derived locally from the
+        // raw pubkey hex via `PubkeyFormatting.swift`. Picture URL falls
+        // back to the identicon URI when no kind:0 has arrived.
+        let pictureUrl = item?.authorPictureUrl
+            ?? card?.authorPictureUrl
+            ?? "identicon:\(pubkey.prefix(16))"
         return ChirpAvatar(
-            url: item?.authorPictureUrl ?? "identicon:\(pubkey.prefix(8))",
-            initials: item?.authorAvatarInitials ?? card?.authorAvatarInitials ?? "?",
-            colorHex: item?.authorAvatarColor ?? card?.authorAvatarColor ?? "888888",
+            url: pictureUrl,
+            initials: pubkey.displayInitials,
+            colorHex: pubkey.pubkeyColorHex,
             size: ModuleLayout.avatarSize
         )
         .overlay(alignment: .bottom) {
@@ -221,10 +221,11 @@ struct ModularBlockView: View {
 
             Spacer(minLength: 0)
 
-            // V-27 thin-shell: both `TimelineItem` and `ChirpEventCard` now
-            // carry `createdAtDisplay` computed in Rust.
-            if let ts = item?.createdAtDisplay ?? card?.createdAtDisplay {
-                Text(ts)
+            // ADR-0032: both `TimelineItem` and `ChirpEventCard` ship the
+            // raw `created_at` (Unix seconds); the presentation layer
+            // formats the relative-time label.
+            if let createdAt = item?.createdAt ?? card?.createdAt {
+                Text(createdAt.relativeTimeFromUnixSeconds)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -261,8 +262,12 @@ struct ModularBlockView: View {
     }
 
     private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
-        if let item, !item.authorDisplay.isEmpty { return item.authorDisplay }
-        return card?.authorDisplayName ?? "Unknown"
+        // ADR-0032: kind:0 metadata is now `Optional<String>` on the wire.
+        // Presentation layer chooses the fallback: card's kind:0 name when
+        // present, otherwise the abbreviated hex pubkey.
+        if let name = card?.authorDisplayName, !name.isEmpty { return name }
+        let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+        return pubkey.isEmpty ? "Unknown" : pubkey.shortHex
     }
 
     private func displayContent(item: TimelineItem?, card: ChirpEventCard?) -> String {
@@ -282,66 +287,28 @@ struct ModularBlockView: View {
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
-        // `isRepost` / `navTargetId` / `repostInnerContent` are computed by
-        // Rust on real timeline rows; synthetic embedded-card items are not
-        // surfaced through the repost rendering path (they back the inline
-        // `EmbeddedNostrEventCard`, not a row), so we feed neutral defaults
-        // that match the Rust fallback for kind:1 — no inner-event parsing
-        // here either.
-        //
-        // V6 Stage 3 partial (F-05): `TimelineItem` is now generated. The
-        // three formerly-optional fallbacks (`authorPictureUrl`, etc.) are
-        // non-optional in the generated shape, so the synthetic builder
-        // provides explicit fallbacks here instead of relying on the
-        // hand-written struct's `decodeIfPresent ??` defaults. Mirrors the
-        // Rust `identicon:<prefix>` placeholder contract (D1).
-        // V-27 thin-shell: all formerly-Swift display strings now come from
-        // Rust on the card (`createdAtDisplay`, `authorAvatarColor`,
-        // `authorAvatarInitials`, `authorDisplayName`). The four helpers
-        // (`defaultInitials`, `defaultColor`, `displayPubkey`, `relativeTime`)
-        // are deleted.
+        // ADR-0032: `TimelineItem` now carries raw protocol data only —
+        // display formatting is the presentation layer's responsibility.
+        // `isRepost` / `navTargetId` / `repostInnerContent` keep their
+        // neutral kind:1 defaults; synthetic-from-card rows are not
+        // surfaced through the repost rendering path.
         TimelineItem(
-            authorAvatarColor: item?.authorAvatarColor ?? card.authorAvatarColor,
-            authorAvatarInitials: item?.authorAvatarInitials ?? card.authorAvatarInitials,
-            // `authorAvatarSource` was never decoded by the hand-written
-            // struct; for a synthetic card we mirror the Rust placeholder
-            // discriminator (`"kind0"` when the source item already carried
-            // a kind:0-backed avatar, `"placeholder"` otherwise).
-            authorAvatarSource: item?.authorAvatarSource ?? "placeholder",
-            authorDisplay: item?.authorDisplay ?? card.authorDisplayName,
             // Inherit lnurl from the cached TimelineItem when present so a
             // synthetic-from-card row still exposes the zap affordance.
             // `nil` for cards without a backing item is correct — the row
             // hides the zap button (no lnurl known yet).
             authorLnurl: item?.authorLnurl,
-            // V-32 thin-shell: Rust ships `author_picture_url` on the card —
-            // it is either the kind:0 `picture` URL or the cross-surface
-            // `identicon:<first 16>` placeholder from
-            // `nmp_core::substrate::picture_placeholder`. The old Swift
-            // fallback constructed `identicon:<first 8>`; the move to the
-            // 16-char `picture_placeholder` prefix is a deliberate alignment
-            // (same precedent as V-27's avatar-colour algorithm fix).
             authorPictureUrl: item?.authorPictureUrl ?? card.authorPictureUrl,
             authorPubkey: card.authorPubkey,
-            // V-28 thin-shell: bind the Rust-pre-formatted abbreviation
-            // verbatim from the backing item when present, else from the
-            // card's V-28 field. Never slice the raw pubkey in Swift.
-            authorPubkeyShort: item?.authorPubkeyShort ?? card.authorPubkeyShort,
             content: card.content,
-            // V-32 thin-shell: Rust ships the first 180 chars of content as
-            // `content_preview` on the card so this synthetic builder no
-            // longer slices the raw `content` string in Swift.
             contentPreview: card.contentPreview,
-            createdAtDisplay: card.createdAtDisplay,
+            createdAt: card.createdAt,
             id: card.id,
             isRepost: false,
             kind: card.kind,
             navTargetId: card.id,
             relayCount: 0,
-            repostInnerContent: "",
-            // V-28 thin-shell: same precedence — backing item's `shortId`
-            // wins, falling back to the card's Rust-pre-formatted field.
-            shortId: item?.shortId ?? card.shortId
+            repostInnerContent: ""
         )
     }
 

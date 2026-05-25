@@ -216,9 +216,18 @@ fn dm_from(projections: &Value) -> Vec<DmConversationLine> {
         .flatten()
         .map(|row| {
             let messages = messages_from(Some(row));
+            let peer_pubkey = first_nonempty(row, &["peer_pubkey", "peerPubkey"]);
+            // TUI is the presentation layer — backend ships raw hex
+            // (aim.md §2). Abbreviate locally for the conversation row
+            // header.
+            let peer_display = if peer_pubkey.is_empty() {
+                String::new()
+            } else {
+                nmp_core::display::short_npub(&peer_pubkey)
+            };
             DmConversationLine {
-                peer_pubkey: first_nonempty(row, &["peer_pubkey", "peerPubkey"]),
-                peer_display: first_nonempty(row, &["peer_short_npub", "peerShortNpub"]),
+                peer_pubkey,
+                peer_display,
                 latest: messages
                     .last()
                     .map(|m| m.content.clone())
@@ -275,16 +284,27 @@ fn profile_from(value: Option<&Value>) -> Option<ProfileLine> {
         return None;
     }
     let profile = value.get("profile").unwrap_or(value);
+    let pubkey = {
+        let outer = first_nonempty(value, &["pubkey"]);
+        if outer.is_empty() {
+            string_field(profile, "pubkey")
+        } else {
+            outer
+        }
+    };
+    // aim.md §2: ProfileCard ships `display_name: Option<String>` (None
+    // when no kind:0); the TUI is the presentation layer, so when
+    // display_name is null we fall back to abbreviating the raw hex
+    // pubkey ourselves.
+    let display = first_nonempty(profile, &["display_name", "displayName"]);
+    let display = if display.is_empty() && !pubkey.is_empty() {
+        nmp_core::display::short_npub(&pubkey)
+    } else {
+        display
+    };
     Some(ProfileLine {
-        pubkey: {
-            let outer = first_nonempty(value, &["pubkey"]);
-            if outer.is_empty() {
-                string_field(profile, "pubkey")
-            } else {
-                outer
-            }
-        },
-        display: string_field(profile, "display"),
+        pubkey,
+        display,
         about: string_field(profile, "about"),
         note_count: first_nonempty(value, &["note_count_display", "noteCountDisplay"]),
         action_label: value

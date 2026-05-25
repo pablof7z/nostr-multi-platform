@@ -122,13 +122,10 @@ public struct WireSubscriptionStatus: Decodable, Equatable, Identifiable, Sendab
 // MARK: - AccountSummary
 // Source: nmp_core::kernel::identity_state::AccountSummary
 public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
-    public let avatarColorHex: String
-    public let avatarInitials: String
-    public let displayName: String
+    public let displayName: String?
     public let id: String
     public let isActive: Bool
     public let npub: String
-    public let npubShort: String
     public let pictureUrl: String?
     public let signerIsRemote: Bool
     public let signerKind: String
@@ -161,24 +158,18 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
 // MARK: - TimelineItem
 // Source: nmp_core::kernel::types::TimelineItem
 public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendable {
-    public let authorAvatarColor: String
-    public let authorAvatarInitials: String
-    public let authorAvatarSource: String
-    public let authorDisplay: String
     public let authorLnurl: String?
-    public let authorPictureUrl: String
+    public let authorPictureUrl: String?
     public let authorPubkey: String
-    public let authorPubkeyShort: String
     public let content: String
     public let contentPreview: String
-    public let createdAtDisplay: String
+    public let createdAt: UInt64
     public let id: String
     public let isRepost: Bool
     public let kind: UInt32
     public let navTargetId: String
     public let relayCount: UInt32
     public let repostInnerContent: String
-    public let shortId: String
 }
 
 // MARK: - SnapshotProjections

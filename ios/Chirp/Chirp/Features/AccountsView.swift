@@ -57,18 +57,17 @@ private struct AccountRowView: View {
             HStack {
                 ChirpAvatar(
                     url: account.pictureUrl,
-                    initials: account.avatarInitials,
-                    colorHex: account.avatarColorHex,
+                    initials: (account.displayName ?? account.id).displayInitials,
+                    colorHex: account.id.pubkeyColorHex,
                     size: 48
                 )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.displayName.isEmpty ? "Identity" : account.displayName)
+                    Text(account.displayName?.isEmpty == false ? account.displayName! : "Identity")
                         .foregroundStyle(ChirpColor.textPrimary)
                         .lineLimit(1)
-                    // V-24 thin-shell — `npubShort` is pre-formatted in Rust
-                    // (`AccountSummary.npub_short`); no Swift-side abbreviation.
-                    Text(account.npubShort)
+                    // ADR-0032 — shell-side bech32 abbreviation.
+                    Text(account.npub.shortHex)
                         .font(.footnote.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

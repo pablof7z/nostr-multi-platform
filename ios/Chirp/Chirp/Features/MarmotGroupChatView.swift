@@ -57,7 +57,8 @@ struct MarmotGroupChatView: View {
         }
         .sheet(isPresented: $showMembers) {
             MarmotMembersSheet(
-                members: liveGroup.membersDisplay,
+                // ADR-0032: shell-side abbreviation of the raw hex pubkeys.
+                members: liveGroup.members.map { $0.shortHex },
                 onDone: { showMembers = false }
             )
         }
@@ -181,7 +182,8 @@ struct MarmotGroupChatView: View {
                 Button {
                     showMembers = true
                 } label: {
-                    Text(liveGroup.memberCountDisplay)
+                    // ADR-0032: pluralisation lives in the presentation layer.
+                    Text("\(liveGroup.memberCount) \(liveGroup.memberCount == 1 ? "member" : "members")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -216,9 +218,10 @@ struct MarmotGroupChatView: View {
 
 // ── Message row (NoteRow idiom) ───────────────────────────────────────────
 //
-// Every label here is rendered verbatim from `MarmotMessage`. The Rust
-// projection pre-computes the abbreviated npub, the 2-char initials, the
-// 6-hex avatar tint, and the relative-time stamp.
+// ADR-0032: `MarmotMessage` carries the raw sender pubkey (hex) and the
+// raw `created_at` timestamp. This row derives the abbreviated pubkey
+// label, the 2-char initials, the avatar tint, and the relative-time
+// stamp locally via `PubkeyFormatting.swift`.
 
 private struct MarmotMessageRow: View {
     let message: MarmotMessage
@@ -227,18 +230,18 @@ private struct MarmotMessageRow: View {
         HStack(alignment: .top, spacing: 8) {
             ChirpAvatar(
                 url: nil,
-                initials: message.senderInitials,
-                colorHex: message.senderColorHex,
+                initials: message.senderPubkeyHex.displayInitials,
+                colorHex: message.senderPubkeyHex.pubkeyColorHex,
                 size: 36
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(message.senderShort)
+                    Text(message.senderPubkeyHex.shortHex)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(message.createdAtDisplay)
+                    Text(message.createdAt.relativeTimeFromUnixSeconds)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()

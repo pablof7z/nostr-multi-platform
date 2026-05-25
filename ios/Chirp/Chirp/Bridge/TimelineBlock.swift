@@ -155,6 +155,16 @@ enum ThreadPointer: Decodable, Equatable {
 /// payload `nmp-app-chirp` ships so blocks are self-renderable when an id
 /// is not in the kernel's visible-items window (e.g., an ancestor that
 /// arrived before its child took the row).
+/// ADR-0032: Rust ships raw protocol data only. Display fields are
+/// derived by the presentation layer:
+///   • `createdAtDisplay`        → `createdAt.relativeTimeFromUnixSeconds`
+///   • `authorAvatarInitials`    → `authorPubkey.displayInitials`
+///   • `authorAvatarColor`       → `authorPubkey.pubkeyColorHex`
+///   • `authorPubkeyShort`/`shortId` → `authorPubkey.shortHex` / `id.shortHex`
+///
+/// `authorDisplayName` and `authorPictureUrl` are `Optional<String>` —
+/// `nil` when no kind:0 has arrived. View code falls back via
+/// `authorPubkey.shortHex` / identicon URI.
 struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     let id: String
     let authorPubkey: String
@@ -162,43 +172,16 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     let createdAt: UInt64
     let content: String
     let contentTree: ContentTreeWire?
-    /// V-27 thin-shell: relative "Xs ago" string computed in Rust at
-    /// snapshot construction. Replaces the iOS `relativeTime(card:)` helper.
-    let createdAtDisplay: String
-    /// V-27 thin-shell: two-char uppercase avatar initials from
-    /// `author_pubkey`. Replaces the iOS `defaultInitials(pubkey:)` helper.
-    let authorAvatarInitials: String
-    /// V-27 thin-shell: deterministic 6-hex avatar background colour
-    /// (uppercase, no `#`). Same djb2 algorithm as DM and NIP-29 surfaces so
-    /// every author renders with the same tint across the app. Replaces the
-    /// iOS `defaultColor(pubkey:)` helper (which used a different algorithm
-    /// and produced inconsistent tints across surfaces).
-    let authorAvatarColor: String
-    /// V-27 thin-shell: abbreviated hex pubkey (`<first 8>…<last 8>`) for
-    /// the Twitter-style secondary-identifier slot. Replaces the iOS
-    /// `displayPubkey(item:card:)` helper (which used 6/4 abbreviation —
-    /// the move to the cross-surface 8/8 algorithm shifts the abbreviation
-    /// by two characters; deliberate consistency fix, not a regression).
-    let authorPubkeyShort: String
-    /// V-27 thin-shell: flat mirror of `author_display.name` so Swift can
-    /// bind a single string without decoding the nested `AuthorDisplay`
-    /// struct. Used by `syntheticItem` as the display-name fallback.
-    let authorDisplayName: String
-    /// V-28 thin-shell: abbreviated event id (`<first 8>…<last 8>`) computed
-    /// in Rust. Used by `syntheticItem` to populate `TimelineItem.shortId`
-    /// without slicing the raw 64-char `id` in Swift (aim.md §6.9).
-    let shortId: String
-    /// V-32 thin-shell: author's profile picture URL — either the parsed
-    /// kind:0 `picture` field or the `identicon:<first 16-hex>` placeholder
-    /// from `nmp_core::substrate::picture_placeholder`. Replaces the
-    /// `identicon:\(card.authorPubkey.prefix(8))` string interpolation in
-    /// `ModularBlockView.swift`'s `syntheticItem` builder (the prefix shifts
-    /// from 8→16 hex chars — deliberate alignment with the cross-surface
-    /// `picture_placeholder` algorithm, NOT a regression).
-    let authorPictureUrl: String
-    /// V-32 thin-shell: first 180 Unicode scalars of `content`, no ellipsis.
-    /// Replaces the `String(card.content.prefix(180))` call-site in
-    /// `ModularBlockView.swift`'s `syntheticItem` builder.
+    /// Flat mirror of `author_display.name` for renderers that want a
+    /// simple display-name field without decoding the nested
+    /// `AuthorDisplay` object. `nil` when no kind:0 has arrived.
+    let authorDisplayName: String?
+    /// Author's profile picture URL from kind:0. `nil` when no kind:0 has
+    /// arrived or the metadata omits `picture` — presentation layer
+    /// chooses a placeholder strategy.
+    let authorPictureUrl: String?
+    /// First 180 Unicode scalars of `content`, no ellipsis. Used by the
+    /// `syntheticItem` builder in `ModularBlockView`.
     let contentPreview: String
 
     private enum CodingKeys: String, CodingKey {
@@ -208,12 +191,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         case createdAt = "created_at"
         case content
         case contentTree = "content_tree"
-        case createdAtDisplay = "created_at_display"
-        case authorAvatarInitials = "author_avatar_initials"
-        case authorAvatarColor = "author_avatar_color"
-        case authorPubkeyShort = "author_pubkey_short"
         case authorDisplayName = "author_display_name"
-        case shortId = "short_id"
         case authorPictureUrl = "author_picture_url"
         case contentPreview = "content_preview"
     }

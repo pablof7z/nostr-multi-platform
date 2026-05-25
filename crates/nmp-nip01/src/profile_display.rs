@@ -1,61 +1,64 @@
-use nmp_core::display::short_npub;
 use nmp_core::nip19::encode_npub;
-use nmp_core::substrate::{picture_placeholder, KernelEvent};
+use nmp_core::substrate::KernelEvent;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuthorDisplaySource {
-    Kind0,
-    Npub,
-}
-
+/// Author display metadata derived from a kind:0 profile event.
+///
+/// Per aim.md §2 (NMP is a data framework; backend ships raw protocol
+/// data, presentation layers own formatting), every field that can be
+/// absent in kind:0 is modelled as `Option<String>` — the host shell
+/// chooses how to render the missing case (typically by formatting
+/// `author_pubkey` itself).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AuthorDisplay {
-    pub name: String,
-    pub npub: String,
-    pub picture_url: String,
-    pub source: AuthorDisplaySource,
+    /// Display name from kind:0 (`display_name` / `displayName` / `name`).
+    /// `None` when no kind:0 has arrived yet for this author — presentation
+    /// layer falls back to formatting the raw pubkey itself.
+    pub name: Option<String>,
+    /// Bech32 `npub1…` encoding of the author pubkey. Pubkey-deterministic;
+    /// retained for shells that lack a bech32 encoder. `None` only if the
+    /// raw hex cannot be parsed (D6 fallback). Not derived from kind:0.
+    pub npub: Option<String>,
+    /// `picture` URL from kind:0. `None` when no kind:0 has arrived yet,
+    /// or when the kind:0 omits the `picture` field — presentation layer
+    /// chooses a placeholder/identicon strategy.
+    pub picture_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProfileDisplay {
-    pub display: String,
+    /// `display_name` / `displayName` / `name` from kind:0, or `None`
+    /// when none of those fields are present in the parsed metadata.
+    pub display: Option<String>,
     pub picture_url: Option<String>,
     pub created_at: u64,
     pub event_id: String,
 }
 
 impl AuthorDisplay {
-    #[must_use] 
+    /// The "no kind:0 yet" shape — name and picture_url are absent. The
+    /// bech32 `npub` is pubkey-deterministic so it is always derivable.
+    #[must_use]
     pub fn fallback(pubkey: &str) -> Self {
-        let npub = encode_npub(pubkey).unwrap_or_else(|_| short_key(pubkey));
         Self {
-            name: short_npub(pubkey),
-            npub,
-            picture_url: picture_placeholder(pubkey),
-            source: AuthorDisplaySource::Npub,
+            name: None,
+            npub: encode_npub(pubkey).ok(),
+            picture_url: None,
         }
     }
 
-    #[must_use] 
+    /// Build from an optional `ProfileDisplay` (the kind:0 cache entry).
+    /// When `profile` is `None` or carries only absent fields, the
+    /// corresponding `AuthorDisplay` field is `None` and the host shell
+    /// renders its own fallback.
+    #[must_use]
     pub fn from_profile(pubkey: &str, profile: Option<&ProfileDisplay>) -> Self {
-        let Some(profile) = profile else {
-            return Self::fallback(pubkey);
-        };
-        let fallback = Self::fallback(pubkey);
-        let picture_url = profile
-            .picture_url
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .unwrap_or(fallback.picture_url.as_str())
-            .to_string();
-        Self {
-            name: profile.display.clone(),
-            npub: fallback.npub,
-            picture_url,
-            source: AuthorDisplaySource::Kind0,
+        let mut card = Self::fallback(pubkey);
+        if let Some(profile) = profile {
+            card.name = profile.display.clone();
+            card.picture_url = profile.picture_url.clone();
         }
+        card
     }
 }
 
@@ -67,8 +70,7 @@ pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
     let parsed: serde_json::Value = serde_json::from_str(&event.content).ok()?;
     let display = string_field(&parsed, "display_name")
         .or_else(|| string_field(&parsed, "displayName"))
-        .or_else(|| string_field(&parsed, "name"))
-        .unwrap_or_else(|| AuthorDisplay::fallback(&event.author).name);
+        .or_else(|| string_field(&parsed, "name"));
     let picture_url = string_field(&parsed, "picture").filter(|value| value.starts_with("http"));
     Some(ProfileDisplay {
         display,
@@ -97,14 +99,6 @@ fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn short_key(value: &str) -> String {
-    if value.len() <= 12 {
-        value.to_string()
-    } else {
-        format!("{}...{}", &value[..8], &value[value.len() - 4..])
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,7 +124,7 @@ mod tests {
         ))
         .expect("profile");
 
-        assert_eq!(profile.display, "Alice A.");
+        assert_eq!(profile.display.as_deref(), Some("Alice A."));
         assert_eq!(
             profile.picture_url.as_deref(),
             Some("https://example.com/a.png")
@@ -138,15 +132,28 @@ mod tests {
     }
 
     #[test]
+    fn kind0_profile_with_no_name_yields_none() {
+        let profile = profile_from_event(&event(
+            0,
+            r#"{"about":"hello"}"#,
+            7,
+            "b",
+        ))
+        .expect("profile");
+        assert_eq!(profile.display, None);
+        assert_eq!(profile.picture_url, None);
+    }
+
+    #[test]
     fn replacement_uses_created_at_then_event_id() {
         let old = ProfileDisplay {
-            display: "old".to_string(),
+            display: Some("old".to_string()),
             picture_url: None,
             created_at: 10,
             event_id: "b".to_string(),
         };
         let tie_winner = ProfileDisplay {
-            display: "new".to_string(),
+            display: Some("new".to_string()),
             picture_url: None,
             created_at: 10,
             event_id: "a".to_string(),

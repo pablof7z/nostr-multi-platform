@@ -51,9 +51,9 @@
 //!   rumor. Nothing panics across the actor boundary.
 //! * **D7** — an incoming rumor's `created_at` was stamped by the *sender*;
 //!   it is the real send time, not the `0` "kernel please stamp me" sentinel
-//!   the outbound builder uses. It is stored verbatim. The `created_at_display`
-//!   relative-time label is (re)computed at every snapshot tick against
-//!   `SystemTime::now()` so it stays fresh as time advances.
+//!   the outbound builder uses. It is stored verbatim. Presentation layers
+//!   format the timestamp for display (aim.md §2 — NMP sends raw Unix
+//!   seconds, shells own date formatting).
 //!
 //! # Spec
 //!
@@ -61,7 +61,6 @@
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
@@ -71,8 +70,6 @@ use nmp_core::{KindFilter, RawEventObserver};
 use nmp_nip59::KIND_GIFT_WRAP;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
-
-use crate::display;
 
 /// NIP-17 kind:14 chat-message rumor — the only inner kind this inbox keeps.
 const KIND_CHAT_MESSAGE: u16 = 14;
@@ -94,20 +91,10 @@ pub struct DmMessage {
     pub content: String,
     /// Unix seconds — the rumor's own `created_at`, stamped by the sender
     /// (D7: a received message's timestamp is real, not the `0` sentinel).
+    /// Presentation layer formats this for display (aim.md §2: NMP is a
+    /// data framework; backend sends raw timestamps, shells own
+    /// formatting).
     pub created_at: u64,
-    /// Pre-formatted abbreviated relative-time label for `created_at`
-    /// (e.g. `"3s ago"`, `"12m ago"`, `"5h ago"`, `"2d ago"`). Computed in
-    /// Rust at snapshot time via [`display::format_ago_secs`] so the host
-    /// shell never reaches for `RelativeDateTimeFormatter` or any other
-    /// date-formatting API (V-20 thin-shell fix — aim.md §2: display
-    /// formatting is Rust-owned).
-    ///
-    /// Computed against the snapshot's wall-clock "now" (read once per
-    /// `snapshot()` call); stored as the empty string in the ingest-time
-    /// `DmMessage` and overwritten on every snapshot so the label is always
-    /// fresh on render — never stale across ticks.
-    #[serde(default)]
-    pub created_at_display: String,
     /// When the rumor carries a NIP-10 `["e", <id>, _, "reply"]` marker, the
     /// id of the message this one replies to.
     pub reply_to: Option<String>,
@@ -126,25 +113,17 @@ pub struct DmMessage {
 }
 
 /// One DM thread — every message exchanged with a single peer.
+///
+/// Carries only the raw protocol identifier for the peer. Presentation layers
+/// own all formatting: bech32 encoding (`npub1…`), abbreviation, avatar
+/// initials, avatar tint colour, and any join against a profile cache for
+/// the peer's display name / picture — see aim.md §2 (NMP is a data
+/// framework; projection and snapshot code sends raw data only).
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DmConversation {
-    /// The OTHER party in the thread (hex pubkey) — never the local user.
+    /// The OTHER party in the thread (hex pubkey, 64 chars) — never the
+    /// local user.
     pub peer_pubkey: String,
-    /// Bech32-encoded `npub1…` form of `peer_pubkey`. Computed in Rust at
-    /// snapshot time so the host shell never does bech32 encoding (thin-shell
-    /// rule). Falls back to the raw hex on parse error (D6).
-    pub peer_npub: String,
-    /// Abbreviated bech32: first 10 chars + `"…"` + last 6 chars of the npub.
-    /// Ready for display in conversation rows and headers — no Swift-side
-    /// truncation needed.
-    pub peer_short_npub: String,
-    /// Two-char uppercase initials for the avatar tile — derived from the
-    /// first 2 characters of the bech32 body (the part after `"npub1"`).
-    pub peer_avatar_initials: String,
-    /// Deterministic 6-hex colour for the avatar background (uppercase, no
-    /// `#` prefix). Same djb2 algorithm as Marmot so tints are consistent
-    /// across surfaces.
-    pub peer_avatar_color: String,
     /// Messages in this thread, ordered chronologically — **oldest first,
     /// newest last**. This is the natural render order of a chat log so the
     /// host shell never re-sorts or reverses (thin-shell rule). The
@@ -241,15 +220,6 @@ impl DmInboxProjection {
     /// unsealing through the remote signer RPC.
     #[must_use]
     pub fn snapshot(&self) -> DmInboxSnapshot {
-        self.snapshot_at(now_unix_secs())
-    }
-
-    /// Snapshot the inbox against a caller-supplied wall-clock "now" (Unix
-    /// seconds). Exposed so tests can pin the clock and assert on the
-    /// `created_at_display` relative-time labels deterministically. Production
-    /// callers should use [`Self::snapshot`], which reads `SystemTime::now()`.
-    #[must_use]
-    pub fn snapshot_at(&self, now_secs: u64) -> DmInboxSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return DmInboxSnapshot::empty();
         };
@@ -268,14 +238,11 @@ impl DmInboxProjection {
             .unwrap_or(false);
 
         // Group messages by conversation peer. Each message is cloned out of
-        // the bounded store; the `created_at_display` field is (re)computed
-        // here against `now_secs` so it never goes stale across ticks
-        // (V-20 thin-shell fix — host renders the label verbatim).
+        // the bounded store; messages carry only raw protocol data
+        // (aim.md §2 — presentation layer formats timestamps and pubkeys).
         let mut by_peer: BTreeMap<String, Vec<DmMessage>> = BTreeMap::new();
         for (peer, msg) in messages.values() {
-            let mut msg = msg.clone();
-            msg.created_at_display = display::format_ago_secs(now_secs, msg.created_at);
-            by_peer.entry(peer.clone()).or_default().push(msg);
+            by_peer.entry(peer.clone()).or_default().push(msg.clone());
         }
 
         let mut conversations: Vec<DmConversation> = by_peer
@@ -291,12 +258,7 @@ impl DmInboxProjection {
                         .cmp(&b.created_at)
                         .then_with(|| a.id.cmp(&b.id))
                 });
-                let peer_npub = display::to_npub(&peer_pubkey);
                 DmConversation {
-                    peer_npub: peer_npub.clone(),
-                    peer_short_npub: display::short_npub(&peer_pubkey),
-                    peer_avatar_initials: display::avatar_initials(&peer_npub),
-                    peer_avatar_color: display::avatar_color_hex(&peer_pubkey),
                     peer_pubkey,
                     messages: msgs,
                 }
@@ -401,11 +363,6 @@ impl DmInboxProjection {
             content: rumor.content.clone(),
             // D7: the rumor's `created_at` is the sender's real send time.
             created_at: rumor.created_at.as_secs(),
-            // The relative-time label is (re)computed at every snapshot tick
-            // against the snapshot's `now_secs` (V-20). Stored as the empty
-            // string at ingest so the field cannot leak a stale value if a
-            // code path ever reads the bounded store directly.
-            created_at_display: String::new(),
             reply_to: first_reply_e_tag(rumor),
             is_outgoing,
             source_relays: source_relays_from(source_relay_url),
@@ -519,20 +476,6 @@ fn merge_source_relay(relays: &mut Vec<String>, source_relay_url: Option<&str>) 
     if !relays.iter().any(|existing| existing == source) {
         relays.push(source.to_string());
     }
-}
-
-/// Wall-clock "now" in Unix seconds — the time source the production
-/// [`DmInboxProjection::snapshot`] path uses to fill `created_at_display`.
-///
-/// D6: a clock that pre-dates the Unix epoch (impossible on any sane device)
-/// degrades to `0`, which [`display::format_ago_secs`] renders as `"now"`.
-/// Tests pin the clock via [`DmInboxProjection::snapshot_at`] instead of
-/// reaching for this helper.
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

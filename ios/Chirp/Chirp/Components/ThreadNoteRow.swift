@@ -31,8 +31,8 @@ struct ThreadNoteRow: View {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
                         url: item.authorPictureUrl,
-                        initials: item.authorAvatarInitials,
-                        colorHex: item.authorAvatarColor,
+                        initials: item.authorPubkey.displayInitials,
+                        colorHex: item.authorPubkey.pubkeyColorHex,
                         size: isFocused ? 46 : 38
                     )
                 }
@@ -64,13 +64,13 @@ struct ThreadNoteRow: View {
         let displayTree = context.contentTree(for: item, fallback: contentTree)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text(item.authorDisplay)
+                Text(item.authorPubkey.shortHex)
                     .font(isFocused ? .headline : .callout)
                     .fontWeight(isFocused ? .semibold : .regular)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer()
-                Text(item.createdAtDisplay)
+                Text(item.createdAt.relativeTimeFromUnixSeconds)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

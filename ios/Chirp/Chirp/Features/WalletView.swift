@@ -86,8 +86,8 @@ struct WalletView: View {
                     .foregroundStyle(ChirpColor.zap)
                     .symbolRenderingMode(.hierarchical)
 
-                if let display = status.balanceSatsDisplay {
-                    Text("\(display) sats")
+                if let sats = status.balanceSats {
+                    Text("\(sats.formatted(.number)) sats")
                         .font(.largeTitle.weight(.bold))
                 } else {
                     Text(status.status == "connecting" ? "Fetching balance…" : "— sats")
@@ -95,7 +95,7 @@ struct WalletView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text(status.walletNpubShort)
+                Text(status.walletPubkeyHex.shortHex)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

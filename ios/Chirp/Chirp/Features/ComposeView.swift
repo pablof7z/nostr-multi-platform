@@ -81,8 +81,8 @@ struct ComposeView: View {
         if let account = currentAccount {
             ChirpAvatar(
                 url: account.pictureUrl,
-                initials: account.avatarInitials,
-                colorHex: account.avatarColorHex,
+                initials: (account.displayName ?? account.id).displayInitials,
+                colorHex: account.id.pubkeyColorHex,
                 size: 42
             )
         } else {

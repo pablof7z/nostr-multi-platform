@@ -164,9 +164,17 @@ function dmFrom(projections: Record<string, unknown>): DmConversationLine[] {
   return array(inbox?.conversations).map((value) => {
     const row = objectRecord(value) ?? {};
     const messages = messagesFrom(row);
+    // aim.md §2: backend ships raw hex peer_pubkey; the presentation
+    // layer abbreviates locally. Falls back to the raw hex when
+    // shorter than 16 chars.
+    const peerPubkey = first(row, "peer_pubkey", "peerPubkey");
+    const peerDisplay =
+      peerPubkey.length >= 16
+        ? `${peerPubkey.slice(0, 8)}…${peerPubkey.slice(-8)}`
+        : peerPubkey;
     return {
-      peerPubkey: first(row, "peer_pubkey", "peerPubkey"),
-      peerDisplay: first(row, "peer_short_npub", "peerShortNpub", "peer_display"),
+      peerPubkey,
+      peerDisplay,
       latest: messages.length > 0 ? messages[messages.length - 1].content : "",
       messages,
     };
@@ -203,11 +211,15 @@ function groupsFrom(projections: Record<string, unknown>): GroupLine[] {
 }
 
 function cardFromChirpEvent(card: ChirpEventCard): TimelineItem {
+  // aim.md §2 — display_name is the kind:0 value (may be null until
+  // kind:0 arrives). The card's nested `author_display` object's
+  // `name` field is now `Option<String>`, surfaced as JSON null when
+  // absent — the optional chain handles both shapes.
   const authorDisplay = card.author_display ?? card.authorDisplay;
   return {
     id: card.id,
     authorPubkey: card.author_pubkey ?? card.authorPubkey,
-    displayName: authorDisplay?.name,
+    displayName: authorDisplay?.name ?? undefined,
     content: card.content,
     createdAt: card.created_at ?? card.createdAt,
     relationCounts: card.relation_counts ?? card.relationCounts,
@@ -221,9 +233,16 @@ function profileFrom(value: unknown): ProfileLine | undefined {
   }
   const profile = objectRecord(wrapper.profile) ?? wrapper;
   const action = objectRecord(wrapper.primary_action ?? wrapper.primaryAction);
+  const pubkey = first(wrapper, "pubkey") || str(profile.pubkey);
+  // aim.md §2 — ProfileCard now ships display_name as Option<String>
+  // (null when no kind:0). The web shell formats its own fallback
+  // (raw hex abbreviation) at display time.
+  const displayName = first(profile, "display_name", "displayName");
+  const display =
+    displayName || (pubkey.length >= 16 ? `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}` : pubkey);
   return {
-    pubkey: first(wrapper, "pubkey") || str(profile.pubkey),
-    display: str(profile.display),
+    pubkey,
+    display,
     about: str(profile.about),
     noteCount: first(wrapper, "note_count_display", "noteCountDisplay"),
     actionLabel: str(action?.label),

@@ -36,34 +36,20 @@ final class GroupChatDecodeTests: XCTestCase {
     /// kernel renames the key, update `CodingKeys.groupChat`'s raw value to
     /// the post-`.convertFromSnakeCase` form of the new key.
     func testGroupChatProjectionKeyDecodes() throws {
-        // `created_at_display` is the V-22 thin-shell field — the Rust
-        // projection (re)computes it on every snapshot tick via
-        // `nmp_nip29::projection::group_chat::format_ago_secs` so the host
-        // view binds it directly and never reaches for
-        // `RelativeDateTimeFormatter`.
-        //
-        // `author_display` / `author_initials` / `author_color_hex` are the
-        // V-25 thin-shell fields — pure functions of the event author,
-        // computed in `nmp_nip29::projection::group_chat` at ingest. The
-        // view binds them directly and never slices the hex string itself.
-        //
-        // `group_initials` is the V-29 thin-shell field — derived in Rust
-        // from `GroupId::local_id` and bound to the `PublicGroupRow` avatar
-        // tile so Swift never slices the local-id string itself.
+        // ADR-0032: the Rust `GroupChatMessage` projection now carries only
+        // raw protocol data — `id`, `pubkey` (hex), `content`, `created_at`
+        // (Unix seconds), and `kind`. Display strings (relative-time labels,
+        // abbreviated pubkeys, avatar initials / tints) are derived by the
+        // presentation layer (`PubkeyFormatting.swift`).
         let json = """
         {
           "nmp.nip29.group_chat": {
             "messages": [
               { "id": "e1", "pubkey": "ab12", "content": "hello",
-                "created_at": 200, "created_at_display": "5s ago",
-                "author_display": "ab12", "author_initials": "AB",
-                "author_color_hex": "93E7AB", "kind": 9 },
+                "created_at": 200, "kind": 9 },
               { "id": "e0", "pubkey": "cd34", "content": "earlier",
-                "created_at": 100, "created_at_display": "2m ago",
-                "author_display": "cd34", "author_initials": "CD",
-                "author_color_hex": "950933", "kind": 11 }
-            ],
-            "group_initials": "RU"
+                "created_at": 100, "kind": 11 }
+            ]
           }
         }
         """
@@ -73,27 +59,16 @@ final class GroupChatDecodeTests: XCTestCase {
         let chat = try XCTUnwrap(projections.groupChat,
             "nmp.nip29.group_chat must decode onto SnapshotProjections.groupChat")
         XCTAssertEqual(chat.messages.count, 2)
-        // V-29: `group_initials` lands verbatim on the camelCase
-        // `groupInitials` property via `.convertFromSnakeCase`.
-        XCTAssertEqual(chat.groupInitials, "RU")
         // Order is preserved verbatim from the JSON — the Rust projection
         // already emits newest-first; Swift does not re-sort.
         XCTAssertEqual(chat.messages[0].id, "e1")
         XCTAssertEqual(chat.messages[0].pubkey, "ab12")
         XCTAssertEqual(chat.messages[0].content, "hello")
         XCTAssertEqual(chat.messages[0].createdAt, 200)
-        XCTAssertEqual(chat.messages[0].createdAtDisplay, "5s ago")
         XCTAssertEqual(chat.messages[0].kind, 9)
-        // V-25: the three author display fields land verbatim on the
-        // camelCase Swift properties via `.convertFromSnakeCase`.
-        XCTAssertEqual(chat.messages[0].authorDisplay, "ab12")
-        XCTAssertEqual(chat.messages[0].authorInitials, "AB")
-        XCTAssertEqual(chat.messages[0].authorColorHex, "93E7AB")
-        XCTAssertEqual(chat.messages[1].createdAtDisplay, "2m ago")
+        XCTAssertEqual(chat.messages[1].createdAt, 100)
         XCTAssertEqual(chat.messages[1].kind, 11)
-        XCTAssertEqual(chat.messages[1].authorDisplay, "cd34")
-        XCTAssertEqual(chat.messages[1].authorInitials, "CD")
-        XCTAssertEqual(chat.messages[1].authorColorHex, "950933")
+        XCTAssertEqual(chat.messages[1].pubkey, "cd34")
     }
 
     /// A snapshot with no `nip29.group_chat` key leaves `groupChat` nil and
@@ -111,14 +86,12 @@ final class GroupChatDecodeTests: XCTestCase {
 
     /// A registered-but-empty projection decodes to an empty message list,
     /// not nil — the state a freshly-wired group reports before any event.
-    /// `group_initials` is `"?"` here because this fixture mirrors the
-    /// `GroupChatSnapshot::empty()` D6 fallback shape from Rust (poisoned
-    /// lock — no `local_id` reachable). A live projection's empty-messages
-    /// snapshot would carry the real per-group label; see the round-trip
-    /// integration test in `nmp-nip29/tests/group_chat_round_trip.rs`.
+    /// ADR-0032: `group_initials` is no longer emitted by Rust (the
+    /// presentation layer derives the avatar tile label from
+    /// `GroupId.localId`).
     func testEmptyGroupChatProjectionDecodes() throws {
         let json = """
-        { "nmp.nip29.group_chat": { "messages": [], "group_initials": "?" } }
+        { "nmp.nip29.group_chat": { "messages": [] } }
         """
         let projections = try snapshotDecoder().decode(
             SnapshotProjections.self, from: Data(json.utf8))

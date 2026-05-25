@@ -7,7 +7,6 @@
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
-use nmp_core::display::{avatar_color_hex, display_name_initials, format_ago_secs, short_hex};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, ViewContext, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use nmp_nip18::try_from_kernel_event as try_from_repost_event;
@@ -20,9 +19,14 @@ use crate::meta_timeline::{
 };
 use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
 use crate::profile_display::{
-    profile_from_event, should_replace, AuthorDisplay, AuthorDisplaySource, ProfileDisplay,
+    profile_from_event, should_replace, AuthorDisplay, ProfileDisplay,
 };
 
+/// One render-ready event card surfaced through the modular timeline
+/// projection. Carries raw protocol data only — pubkeys as hex,
+/// timestamps as Unix seconds, display name/picture as `Option<String>`
+/// (None when no kind:0 has arrived). Presentation layers own all
+/// formatting decisions (aim.md §2).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
     pub id: String,
@@ -33,34 +37,19 @@ pub struct TimelineEventCard {
     pub content: String,
     pub content_tree: ContentTreeWire,
     pub relation_counts: NoteRelationCounts,
-    /// V-27 thin-shell: relative "X ago" string for `created_at`. Computed in
-    /// Rust at snapshot construction so the host shell never reaches for a
-    /// clock. Delegates to [`nmp_core::display::format_ago_secs`] (V-33) —
-    /// the canonical `Xs/Xm/Xh/Xd ago` dialect every NMP surface speaks.
-    pub created_at_display: String,
-    /// Two-character uppercase initials for avatar renderers.
-    pub author_avatar_initials: String,
-    /// Deterministic 6-hex avatar background colour (uppercase, no `#`
-    /// prefix). Delegates to [`nmp_core::display::avatar_color_hex`] so the
-    /// same author renders with the same tint across NMP surfaces.
-    pub author_avatar_color: String,
-    /// Abbreviated hex pubkey (`<first 8>…<last 8>`) for secondary identity
-    /// captions. Delegates to [`nmp_core::display::short_hex`] so every
-    /// consumer speaks the same display dialect.
-    pub author_pubkey_short: String,
-    /// Flat mirror of `author_display.name` for renderers that want a simple
-    /// display-name field without decoding the nested `AuthorDisplay` object.
-    pub author_display_name: String,
-    /// Abbreviated event id (`<first 8>…<last 8>`) for host surfaces that want
-    /// a compact monospaced reference to this event.
-    pub short_id: String,
-    /// Author's profile picture URL. Mirrors `AuthorDisplay.picture_url`:
-    /// kind:0 `picture` when available, otherwise the canonical
-    /// `identicon:<first16-hex>` placeholder.
-    pub author_picture_url: String,
+    /// Flat mirror of `author_display.name` for renderers that want a
+    /// simple display-name field without decoding the nested
+    /// `AuthorDisplay` object. `None` when no kind:0 has arrived yet for
+    /// this author — presentation layer falls back to formatting
+    /// `author_pubkey` itself.
+    pub author_display_name: Option<String>,
+    /// Author's profile picture URL from kind:0. `None` when no kind:0
+    /// has arrived, or the kind:0 omits `picture` — presentation layer
+    /// chooses a placeholder/identicon strategy.
+    pub author_picture_url: Option<String>,
     /// First 180 Unicode scalars of render content, no ellipsis appended.
-    /// Scalar-based (`chars()`) rather than grapheme-cluster-based; for Nostr
-    /// text this is indistinguishable in practice.
+    /// Scalar-based (`chars()`) rather than grapheme-cluster-based; for
+    /// Nostr text this is indistinguishable in practice.
     pub content_preview: String,
 }
 
@@ -80,18 +69,7 @@ impl TimelineEventCard {
         .to_wire();
         let author_display = AuthorDisplay::from_profile(&event.author, profile);
         let author_display_name = author_display.name.clone();
-        // V-32 thin-shell: reuse the picture URL `AuthorDisplay::from_profile`
-        // already resolved (kind:0 `picture` field or `picture_placeholder`
-        // fallback). One source of truth for avatar resolution; do NOT
-        // recompute the identicon prefix here.
         let author_picture_url = author_display.picture_url.clone();
-        // V-34 thin-shell: initials from the display name, not raw hex chars.
-        // Extracted before the struct literal moves `author_display`. Matches
-        // `TimelineItem.author_avatar_initials`: ".." until Kind0 lands.
-        let author_avatar_initials = match author_display.source {
-            AuthorDisplaySource::Kind0 => display_name_initials(&author_display.name),
-            AuthorDisplaySource::Npub => "..".to_string(),
-        };
         Self {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
@@ -101,15 +79,7 @@ impl TimelineEventCard {
             content: render_payload.content,
             content_tree,
             relation_counts,
-            created_at_display: format_ago_secs(now_unix_secs(), event.created_at),
-            author_avatar_initials,
-            author_avatar_color: avatar_color_hex(&event.author),
-            author_pubkey_short: short_hex(&event.author),
             author_display_name,
-            // V-28 thin-shell: same `<first 8>…<last 8>` abbreviation
-            // algorithm `author_pubkey_short` uses — `pubkey_display` is
-            // generic over any hex string, so we reuse it on `event.id`.
-            short_id: short_hex(&event.id),
             author_picture_url,
             content_preview: content_preview(&render_payload.preview_source, 180),
         }
@@ -153,19 +123,6 @@ impl RenderPayload {
 
 fn has_render_card(event: &KernelEvent) -> bool {
     crate::try_from_kernel_event(event).is_some() || try_from_repost_event(event).is_some()
-}
-
-// ── V-27 thin-shell display helpers ───────────────────────────────────────
-//
-// All cross-surface display helpers are imported from [`nmp_core::display`]
-// (V-33): `format_ago_secs`, `avatar_color_hex`, `display_name_initials`,
-// and now `short_hex` (`<first-8>…<last-8>` for raw hex IDs).
-
-fn now_unix_secs() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
 }
 
 /// First `n` Unicode scalars of `content`, no ellipsis.
