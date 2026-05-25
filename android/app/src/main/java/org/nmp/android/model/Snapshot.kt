@@ -1,13 +1,14 @@
 package org.nmp.android.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Decoded shape of the kernel JSON snapshot — a strict subset of the iOS
+ * Decoded shape of the kernel JSON snapshot — Android peer of iOS
  * `KernelUpdate` (see `ios/Chirp/.../KernelBridge.swift`). Every field is
- * nullable / defaulted so an older or trimmed kernel build still decodes and
- * the model keeps its prior value (D1: best-effort, fail-closed). Property
- * names are camelCase; JSON is snake_case via `JsonNamingStrategy.SnakeCase`.
+ * nullable / defaulted so an older or trimmed kernel build still decodes
+ * (D1: best-effort, fail-closed). Property names are camelCase; JSON is
+ * snake_case via `JsonNamingStrategy.SnakeCase`.
  *
  * NO derived state lives here — this is a verbatim mirror (D8).
  */
@@ -16,11 +17,24 @@ data class KernelUpdate(
     val rev: Long = 0,
     val running: Boolean = false,
     val relayUrl: String = "",
-    val testNpub: String = "",
-    val items: List<TimelineItem> = emptyList(),
+    @SerialName("items") val legacyItems: List<TimelineItem> = emptyList(),
     val modularTimeline: ChirpTimelineSnapshot = ChirpTimelineSnapshot(),
     val metrics: KernelMetricsLite? = null,
     val relayStatuses: List<RelayStatus> = emptyList(),
+    val lastErrorToast: String? = null,
+    val projections: SnapshotProjections? = null,
+) {
+    val items: List<TimelineItem>
+        get() = projections?.timeline ?: legacyItems
+
+    val activeAccount: String
+        get() = projections?.activeAccount.orEmpty()
+}
+
+@Serializable
+data class SnapshotProjections(
+    @SerialName("active_account") val activeAccount: String? = null,
+    val timeline: List<TimelineItem> = emptyList(),
 )
 
 @Serializable

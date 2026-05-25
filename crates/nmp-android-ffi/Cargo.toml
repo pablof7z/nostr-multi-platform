@@ -24,4 +24,6 @@ nmp-ffi = { path = "../nmp-ffi", features = ["android-ffi"] }
 # Android registers the same Chirp modular timeline observer as iOS, but keeps
 # deferred post-v1 surfaces (Marmot/wallet) out of the Android .so.
 nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false }
+# Reference-client relay bootstrap shared with the TUI/REPL Chirp surfaces.
+nmp-chirp-config = { path = "../../apps/chirp/nmp-chirp-config" }
 jni = "0.21"

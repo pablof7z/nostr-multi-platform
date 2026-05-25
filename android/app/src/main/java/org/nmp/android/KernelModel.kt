@@ -74,6 +74,10 @@ class KernelModel : ViewModel() {
         }
     }
 
+    fun openTimeline() {
+        bridge.openTimeline()
+    }
+
     /**
      * Decode one frame from the `update_tx` channel.
      *

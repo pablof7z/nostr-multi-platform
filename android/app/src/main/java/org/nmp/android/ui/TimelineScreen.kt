@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +41,11 @@ import org.nmp.android.model.TimelineItem
  */
 @Composable
 fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
+    LaunchedEffect(model) {
+        model.openTimeline()
+    }
     val s by model.state.collectAsStateWithLifecycle()
+    val snapshotCount by model.snapshotCount.collectAsStateWithLifecycle()
     val itemLookup = s.items.associateBy { it.id }
     val cardLookup = s.modularTimeline.cards.associateBy { it.id }
     val blocks = if (s.modularTimeline.blocks.isNotEmpty()) {
@@ -56,13 +61,13 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         ) {
             Text("Chirp", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "rev ${s.rev} · ${s.modularTimeline.blocks.size} blocks",
+                "rev ${s.rev} · ${blocks.size} blocks",
                 style = MaterialTheme.typography.labelSmall,
             )
         }
         HorizontalDivider()
         if (blocks.isEmpty()) {
-            Placeholder(s.testNpub)
+            Placeholder(s.activeAccount, snapshotCount > 0, s.lastErrorToast)
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
@@ -75,19 +80,29 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Placeholder(testNpub: String) {
+private fun Placeholder(activeAccount: String, hasSnapshot: Boolean, lastErrorToast: String?) {
+    val message = lastErrorToast?.nonEmptyOrNull()
+        ?: if (hasSnapshot) "No timeline events yet" else "Starting kernel…"
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
-            Spacer(Modifier.size(16.dp))
-            Text("Waiting for kernel snapshot…")
-            Spacer(Modifier.size(8.dp))
+            if (!hasSnapshot) {
+                CircularProgressIndicator()
+                Spacer(Modifier.size(16.dp))
+            }
             Text(
-                "Bootstrap pubkey: $testNpub",
-                style = MaterialTheme.typography.bodySmall,
+                message,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
+            if (activeAccount.isNotEmpty()) {
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    "Active account: $activeAccount",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            }
         }
     }
 }

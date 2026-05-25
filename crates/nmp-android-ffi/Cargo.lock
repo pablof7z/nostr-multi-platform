@@ -853,6 +853,7 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-core",
  "nmp-ffi",
 ]
@@ -891,6 +892,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "nmp-chirp-config"
+version = "0.1.0"
 
 [[package]]
 name = "nmp-content"

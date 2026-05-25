@@ -26,6 +26,10 @@ class KernelBridge {
         if (handle != 0L) nativeStop(handle)
     }
 
+    fun openTimeline() {
+        if (handle != 0L) nativeOpenTimeline(handle)
+    }
+
     /** Blocking (≤250 ms) drain of the kernel snapshot channel; null on idle. */
     fun nextUpdate(): String? = if (handle != 0L) nativeNextUpdate(handle) else null
 
@@ -48,6 +52,7 @@ class KernelBridge {
 
     private external fun nativeNew(): Long
     private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
+    private external fun nativeOpenTimeline(handle: Long)
     private external fun nativeStop(handle: Long)
     private external fun nativeNextUpdate(handle: Long): String?
     private external fun nativeChirpSnapshot(handle: Long): String?

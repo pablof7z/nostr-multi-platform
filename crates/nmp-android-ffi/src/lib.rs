@@ -18,7 +18,7 @@
 //! `nmp_ffi::nmp_app_new()` (enabled by the `android-ffi` feature) is the
 //! portable fix that makes rustc include the bodies.
 
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
@@ -31,7 +31,8 @@ use nmp_app_chirp::{
     nmp_app_chirp_unregister, ChirpHandle,
 };
 use nmp_ffi::{
-    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_open_timeline,
+    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -92,6 +93,18 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
 ) {
     if let Some(s) = session_ref(handle) {
         nmp_app_start(s.app, 0, visible_limit as u32, emit_hz as u32);
+        seed_chirp_reference_relays(s.app);
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_ref(handle) {
+        nmp_app_open_timeline(s.app);
     }
 }
 
@@ -183,5 +196,17 @@ pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
         // SAFETY: non-zero handles are live `Session` pointers from nativeNew
         // until nativeFree; Kotlin never calls after free.
         Some(unsafe { &*(handle as *const Session) })
+    }
+}
+
+fn seed_chirp_reference_relays(app: *mut NmpApp) {
+    for entry in nmp_chirp_config::chirp_default_relay_bootstrap() {
+        let Ok(url) = CString::new(entry.url) else {
+            continue;
+        };
+        let Ok(role) = CString::new(entry.role) else {
+            continue;
+        };
+        nmp_app_add_relay(app, url.as_ptr(), role.as_ptr());
     }
 }
