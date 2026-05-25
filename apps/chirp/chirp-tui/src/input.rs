@@ -14,6 +14,11 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         return InputFlow::Quit;
     }
 
+    if matches!(state.mode, Mode::Palette { .. }) {
+        handle_palette_key(state, runtime, key);
+        return InputFlow::Continue;
+    }
+
     if state.mode == Mode::Compose {
         handle_compose_key(state, runtime, key);
         return InputFlow::Continue;
@@ -25,6 +30,7 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
 
     match key.code {
         KeyCode::Char('q') => return InputFlow::Quit,
+        KeyCode::Char('/') if state.mode == Mode::Normal => state.open_palette(),
         KeyCode::Char('?') => state.toggle_help(),
         KeyCode::Char(':') => state.start_command(),
         KeyCode::Tab => state.next_tab(),
@@ -156,6 +162,7 @@ fn open_selected_author(state: &mut AppState, runtime: &AppRuntime) {
         state.status = "select a note before opening a profile".to_string();
         return;
     };
+    state.profile_pubkey = row.author_pubkey.clone();
     match runtime.open_author(&row.author_pubkey) {
         Ok(()) => {
             state.focus(Pane::Profile);
@@ -192,6 +199,77 @@ fn follow_selected(state: &mut AppState, runtime: &AppRuntime, add: bool) {
             state.track_action(correlation_id, &format!("unfollow {}", row.author))
         }
         Err(error) => state.status = format!("follow action failed: {error}"),
+    }
+}
+
+fn handle_palette_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
+    let actions = crate::ui::palette::actions_for_state(state);
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => state.close_palette(),
+        KeyCode::Char('j') | KeyCode::Down => {
+            if let Mode::Palette { ref mut cursor } = state.mode {
+                *cursor = (*cursor + 1).min(actions.len().saturating_sub(1));
+            }
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            if let Mode::Palette { ref mut cursor } = state.mode {
+                *cursor = cursor.saturating_sub(1);
+            }
+        }
+        KeyCode::Enter => {
+            let cursor = if let Mode::Palette { cursor } = state.mode {
+                cursor
+            } else {
+                0
+            };
+            if let Some(&action) = actions.get(cursor) {
+                dispatch_palette_action(action, state, runtime);
+            }
+            state.close_palette();
+        }
+        _ => {}
+    }
+}
+
+fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRuntime) {
+    let (note_id, author_pubkey) =
+        if state.focused == Pane::Detail && state.detail_cursor > 0 {
+            let reply_idx = state.selected.saturating_add(state.detail_cursor);
+            if let Some(row) = state.rows.get(reply_idx) {
+                (row.id.clone(), row.author_pubkey.clone())
+            } else {
+                return;
+            }
+        } else if let Some(row) = state.selected_row().cloned() {
+            (row.id.clone(), row.author_pubkey.clone())
+        } else {
+            return;
+        };
+
+    match action {
+        "View profile" => {
+            state.profile_pubkey = author_pubkey.clone();
+            if runtime.open_author(&author_pubkey).is_ok() {
+                state.focus(Pane::Profile);
+                state.status = "opened profile".to_string();
+            }
+        }
+        "React \u{2665}" => match runtime.react(&note_id, "+") {
+            Ok(cid) => state.track_action(cid, "reaction"),
+            Err(e) => state.status = format!("react failed: {e}"),
+        },
+        "Follow" => match runtime.follow(&author_pubkey, true) {
+            Ok(cid) => state.track_action(cid, "follow"),
+            Err(e) => state.status = format!("follow failed: {e}"),
+        },
+        "Unfollow" => match runtime.follow(&author_pubkey, false) {
+            Ok(cid) => state.track_action(cid, "unfollow"),
+            Err(e) => state.status = format!("unfollow failed: {e}"),
+        },
+        "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
+        "Reply" => state.start_reply(),
+        "Zap" => state.status = "Connect wallet first (:wallet connect \u{2026})".to_string(),
+        _ => {}
     }
 }
 
