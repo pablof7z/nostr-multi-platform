@@ -44,7 +44,7 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 - 2026-05-24 — feat(nmp-network): step 8 phase C — move `BrowserRelayDriver` from `nmp-wasm/src/relay_driver.rs` into `nmp-network/src/browser_driver.rs` (gated `#[cfg(target_arch = "wasm32")]`). Driver's kernel touchpoints abstracted behind `BrowserKernelHandlers` (`Rc<dyn Fn>` callback bag) so the layering invariant (`nmp-network` does not depend on `nmp-core`) holds. `nmp-wasm::relay_pool::build_handlers` is the single construction site. — branch `feat/nmp-network-step-8-phase-c-browser-driver-move`.
 - 2026-05-24 — feat(nmp-ffi): step 11 final — extract `nmp-core::ffi` to a sibling crate — subagent in flight.
 - 2026-05-24 — docs(plan): post-merge reconciliation pass — branch `worktree-docs-postmerge-reconcile` (this branch).
-- 2026-05-25 — feat(nmp-core/nmp-ffi/nmp-wasm): V-51 phase 2 — routing-trace FFI + wasm snapshot surface. New FFI symbol `nmp_app_recent_routing_decisions` + wasm `NmpWasmRuntime::recent_routing_decisions()`; consumer-side JSON renderer in `nmp_core::kernel::routing_trace_dto` keeps substrate types free of `serde::Serialize`. `NmpCore.h` updated; CI drift gate green. Branch `feat/v51-routing-trace-ffi-wasm-snapshot`.
+- 2026-05-25 — feat(nmp-core/nmp-ffi/nmp-wasm): V-51 phase 2 — routing-trace FFI + wasm snapshot surface — PR #476. New FFI symbol `nmp_app_recent_routing_decisions` + wasm `NmpWasmRuntime::recent_routing_decisions()`; consumer-side JSON renderer in `nmp_core::kernel::routing_trace_dto` keeps substrate types free of `serde::Serialize`. `NmpCore.h` updated; CI drift gate green.
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 

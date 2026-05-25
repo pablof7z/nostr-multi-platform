@@ -1153,8 +1153,7 @@ bounded ring buffer (capacity 64 per stream) in `nmp-core`; both
 `nmp_router::GenericOutboxRouter` and `nmp-core`'s default router fan
 out to the observer.
 
-**Phase 2 — FFI/wasm snapshot surface** ✅ branch
-`feat/v51-routing-trace-ffi-wasm-snapshot` (this PR). New FFI symbol
+**Phase 2 — FFI/wasm snapshot surface** ✅ PR #476. New FFI symbol
 `nmp_app_recent_routing_decisions` (heap-owned, freed via
 `nmp_app_free_string`) returns a stable schema-versioned JSON document
 (`schema_version: 1`) listing recent publishes + subscriptions with
