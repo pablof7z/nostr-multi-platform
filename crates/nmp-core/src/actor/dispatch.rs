@@ -272,6 +272,11 @@ pub(super) struct ActorContext<'a> {
     /// survives a state wipe — same contract as the ingest dispatcher /
     /// dm-inbox-lookup / routing-trace slots above.
     pub(super) routing_substrate_slot: &'a crate::slots::RoutingSubstrateSlot,
+    /// Spec §271 (2026-05-25) — same contract as `routing_substrate_slot`,
+    /// for the publish-side resolver. Re-applied by the `Reset` arm against
+    /// the rebuilt kernel's fresh handles so the production
+    /// `nmp_router::Nip65OutboxResolver` survives a state wipe.
+    pub(super) publish_resolver_slot: &'a crate::slots::PublishResolverSlot,
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -1185,6 +1190,26 @@ pub(super) fn dispatch_command(
                     ctx.kernel.routing_trace() as Arc<dyn crate::substrate::RoutingTraceObserver>;
                 let (router, cache) = factory(observer);
                 ctx.kernel.set_routing(router, cache);
+            }
+            // Spec §271 (2026-05-25) — re-apply the per-app
+            // substrate-publish-resolver factory against the rebuilt kernel.
+            // Same contract as the routing-substrate re-apply above: the
+            // previous resolver was discarded with the old kernel; the
+            // factory rebuilds against the fresh handles so production
+            // composition survives a state wipe.
+            if let Some(factory) = ctx
+                .publish_resolver_slot
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(Arc::clone))
+            {
+                let resolver = factory(
+                    ctx.kernel.event_store_handle(),
+                    ctx.kernel.indexer_relays_handle(),
+                    ctx.kernel.local_write_relays_handle(),
+                    ctx.kernel.active_account_handle(),
+                );
+                ctx.kernel.set_publish_resolver(resolver);
             }
             *ctx.startup_sent = false;
             if *ctx.running {

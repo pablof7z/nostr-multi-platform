@@ -17,7 +17,7 @@ The crate-boundary spec lives at
 |---|---|
 | 1 (substrate seams: IngestParser, ProtocolCommand, OutboxRouter, MailboxCache) | ✅ merged |
 | 2 (`nmp-router` crate) | ✅ merged |
-| 3 (kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65`) | ✅ merged |
+| 3 (kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65`) | ✅ merged; spec §271 follow-up (`Nip65OutboxResolver` → `nmp-router`) in flight on `move-nip65-resolver-to-router` |
 | 4 (V-41 LNURL → `nmp-nip57`) | ✅ merged |
 | 5 (V-39 DM send → `nmp-nip17`) | ✅ merged |
 | 6 (V-40 kind:10050 + `DmRelayCache` → `nmp-nip17`) | ✅ merged |
@@ -39,6 +39,8 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 **Substrate-honest debts** — D ✅ merged (RwLock panics, #465). A ⏳ in PR #468 (router becomes decision authority — **needs kind:10002 self-seal fix before merge**, see "Active" below). B ✅ done — `default_routing.rs` (484 LOC duplicate of `nmp_router::GenericOutboxRouter` + `nmp_router::InMemoryMailboxCache`) deleted; kernel defaults to `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`; production composition's existing `set_routing_substrate` factory unchanged. C (`ProtocolCommandContext` capability-trait bundling, currently 12 accessors with `#[allow(clippy::too_many_arguments)]`) ❌ not started.
 
 ## Active
+
+- 2026-05-25 — refactor(nmp-router): spec §271 follow-up — move `Nip65OutboxResolver` out of `crates/nmp-core/src/publish/nip65/` into `crates/nmp-router/src/nip65_resolver.rs` (closes the structural debt the Opus reviewer flagged on step 3). The publish-side `OutboxResolver` trait stays in `nmp_core::publish::traits` (substrate seam); the in-crate kernel default is now `NoopOutboxResolver` (fail-closed). Production composition (`nmp-app-template::register_defaults`) installs the router-side resolver via a new `NmpApp::set_publish_resolver_factory` slot the actor reads at kernel construction (mirrors `set_routing_substrate` exactly, incl. `Reset` re-apply). New kernel accessors `event_store_handle()` / `indexer_relays_handle()` / `local_write_relays_handle()` / `active_account_handle()` thread the actor-owned slots into the factory. In-tree nmp-core tests auto-install a stripped-down `TestKind10002OutboxResolver` (publish/test_resolver.rs, 183 LOC) under `cfg(any(test, feature="test-support"))` — pulling `nmp-router` as a dev-dep would form a feature-incompatible cycle. — branch `move-nip65-resolver-to-router`.
 
 - 2026-05-25 — refactor(nmp-core): eliminate `Nip17LocalKeysSlot` plumbing (V-39 §substrate-purity). Renamed the NIP-17-named slot type to substrate-generic `ActiveLocalKeysSlot`; dropped the NIP-17 noun from `ActorContext`, `run_actor_with_observers`, and all dispatch-arm writer call sites. `nmp-ffi` exposes the same `Arc<Mutex<Option<nostr::Keys>>>` through a renamed `NmpApp::active_local_keys()` accessor (was `nip17_local_keys()`); consumers in `nmp-app-template` (`DmInboxProjection` registration, NIP-57 zap-receipt runtime) and `apps/chirp/nmp-app-chirp/tests/dm_inbox_round_trip.rs` updated to match. The substrate now names no NIP at the active-local-keys seam (D0). — branch `refactor/eliminate-nip17-local-keys-slot`.
 

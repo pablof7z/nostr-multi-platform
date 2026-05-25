@@ -139,9 +139,10 @@ use nmp_core::__ffi_internal::{
 use nmp_core::__ffi_internal::new_wallet_status_slot;
 use nmp_core::slots::{
     new_active_local_keys_slot, new_dm_inbox_observer_id_slot, new_mls_local_nsec_slot,
-    new_routing_substrate_slot, new_routing_trace_slot, new_singleton_event_observer_id_slot,
-    new_storage_path_slot, ActiveLocalKeysSlot, DmInboxObserverIdSlot, MlsLocalNsecSlot,
-    RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
+    new_publish_resolver_slot, new_routing_substrate_slot, new_routing_trace_slot,
+    new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveLocalKeysSlot,
+    DmInboxObserverIdSlot, MlsLocalNsecSlot, PublishResolverSlot, RoutingSubstrateSlot,
+    RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::{
@@ -313,6 +314,18 @@ pub struct NmpApp {
     /// `TestInMemoryMailboxCache` defaults in place (substrate-honest
     /// debt B, 2026-05-24).
     routing_substrate: RoutingSubstrateSlot,
+    /// Spec §271 (2026-05-25) — per-app substrate-publish-resolver
+    /// factory slot. The per-app crate (today:
+    /// `nmp_app_template::register_defaults`) writes a closure here via
+    /// [`Self::set_publish_resolver_factory`]; the actor reads it after
+    /// kernel construction (and again after `Reset`) and invokes
+    /// [`crate::kernel::Kernel::set_publish_resolver`] with the produced
+    /// `Arc<dyn nmp_core::publish::OutboxResolver>`. `None` (the default)
+    /// leaves the kernel's `NoopOutboxResolver` default in place — every
+    /// publish through `PublishTarget::Auto` then surfaces `NoTargets`
+    /// (fail-closed). Mirrors `routing_substrate` exactly so the actor
+    /// pair-applies both factories in one block.
+    publish_resolver: PublishResolverSlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
@@ -595,6 +608,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `Kernel::set_routing`.
     let routing_substrate: RoutingSubstrateSlot = new_routing_substrate_slot();
     let actor_routing_substrate = Arc::clone(&routing_substrate);
+    // Spec §271 (2026-05-25) — substrate-publish-resolver factory slot.
+    // Default `None`; the per-app crate installs a closure via
+    // `set_publish_resolver_factory` before `nmp_app_start`. The actor reads
+    // the slot once after kernel construction (and once per `Reset`) and
+    // applies the produced resolver via `Kernel::set_publish_resolver`.
+    let publish_resolver: PublishResolverSlot = new_publish_resolver_slot();
+    let actor_publish_resolver = Arc::clone(&publish_resolver);
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
@@ -724,6 +744,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // `Reset`); the factory builds the production router/cache
                 // pair the actor installs via `Kernel::set_routing`.
                 actor_routing_substrate,
+                // Spec §271 (2026-05-25) — the actor's clone of the
+                // substrate-publish-resolver factory slot. Read once after
+                // kernel construction (and on `Reset`); the factory builds
+                // the production resolver the actor installs via
+                // `Kernel::set_publish_resolver`. `None` leaves the
+                // kernel's `NoopOutboxResolver` default in place.
+                actor_publish_resolver,
             );
         }));
         if let Err(e) = result {
@@ -773,6 +800,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         storage_path,
         routing_trace,
         routing_substrate,
+        publish_resolver,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
@@ -1083,6 +1111,50 @@ impl NmpApp {
             + 'static,
     {
         if let Ok(mut slot) = self.routing_substrate.lock() {
+            *slot = Some(std::sync::Arc::new(factory));
+        }
+    }
+
+    /// Install the substrate-publish-resolver factory.
+    ///
+    /// Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved out of
+    /// `nmp-core::publish::nip65` into `nmp-router` (Layer 2). The kernel
+    /// constructs `PublishEngine` with the in-crate `NoopOutboxResolver`
+    /// default (fail-closed); production composition
+    /// (`nmp-app-template::register_defaults`) installs the
+    /// router-side resolver through this factory slot. The actor reads
+    /// the slot right after kernel construction (and on `Reset`) and
+    /// invokes [`crate::kernel::Kernel::set_publish_resolver`] with the
+    /// produced `Arc<dyn OutboxResolver>`.
+    ///
+    /// `factory` receives the four kernel-owned handles the router-side
+    /// `Nip65OutboxResolver` needs (`EventStore` + the indexer /
+    /// local-write / active-account slots). Production composition writes
+    /// a closure returning `Arc::new(Nip65OutboxResolver::with_local_relays(...))`
+    /// over those handles, so the resolver reads through the same shared
+    /// state the kernel actor writes to (D4 sole-writer preserved).
+    ///
+    /// MUST be called BEFORE `nmp_app_start` AND BEFORE any kind:10002
+    /// event is ingested. `D6`: a poisoned slot is a silent no-op (the
+    /// kernel keeps its `NoopOutboxResolver`; every publish then fails
+    /// closed with `NoTargets`).
+    ///
+    /// The factory is re-invoked by the `Reset` dispatch arm against the
+    /// rebuilt kernel's fresh handles so the production resolver survives
+    /// a state wipe (mirrors `set_routing_substrate`).
+    pub fn set_publish_resolver_factory<F>(&self, factory: F)
+    where
+        F: Fn(
+                std::sync::Arc<dyn nmp_core::store::EventStore>,
+                nmp_core::slots::IndexerRelaysSlot,
+                nmp_core::slots::LocalWriteRelaysSlot,
+                nmp_core::slots::ActiveAccountSlot,
+            ) -> std::sync::Arc<dyn nmp_core::publish::OutboxResolver>
+            + Send
+            + Sync
+            + 'static,
+    {
+        if let Ok(mut slot) = self.publish_resolver.lock() {
             *slot = Some(std::sync::Arc::new(factory));
         }
     }

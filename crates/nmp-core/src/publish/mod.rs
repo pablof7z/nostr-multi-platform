@@ -33,9 +33,13 @@
 mod action;
 mod engine;
 mod fs_store;
-mod nip65;
 mod state;
 mod store;
+// Spec §271 (2026-05-25) test-only NIP-65 resolver — see module docs for
+// why this lives in nmp-core rather than nmp-router. Gated on
+// `test-support` so production builds never link it.
+#[cfg(any(test, feature = "test-support"))]
+mod test_resolver;
 #[cfg(test)]
 mod tests;
 mod traits;
@@ -52,7 +56,13 @@ pub use engine::{
     TerminalOutcome, ENGINE_FAILURE_RELAY_URL,
 };
 pub use fs_store::FsPublishStore;
-pub use nip65::Nip65OutboxResolver;
+// `Nip65OutboxResolver` lives in `nmp-router` (spec §271, 2026-05-25). The
+// `OutboxResolver` trait stays here (publish-side seam); production
+// composition (`nmp-app-template::register_defaults`) installs the
+// router-side resolver via `NmpApp::set_publish_resolver_factory` →
+// `Kernel::set_publish_resolver`. The kernel default is
+// `NoopOutboxResolver` (below) so a kernel without router-side composition
+// fails closed (every publish yields `PublishEngineError::NoTargets`).
 pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
 pub use store::DomainPublishStore;
 pub use traits::{
@@ -60,6 +70,11 @@ pub use traits::{
     PublishStore, PublishStoreError, QueueDispatcher, RelayDispatcher, ReplayDispatcher, Signer,
     SignerError, StaticOutbox,
 };
+// Spec §271 (2026-05-25) test-only NIP-65 resolver. Gated on
+// `test-support` so production builds never link it; the canonical
+// production impl is `nmp_router::Nip65OutboxResolver`.
+#[cfg(any(test, feature = "test-support"))]
+pub use test_resolver::TestKind10002OutboxResolver;
 pub use view::{
     EventPublishStatus, PublishStatusSnapshot, PublishStatusSpec, PublishStatusView, RecentFailure,
     RecentSuccess,

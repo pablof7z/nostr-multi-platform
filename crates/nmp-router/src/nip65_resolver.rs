@@ -29,18 +29,27 @@
 //! D7 (capabilities report): bad-shape kind:10002 tags (missing url, non-wss)
 //! are logged via `tracing::debug!` and skipped — never crash; never return an
 //! exception across the resolver boundary.
+//!
+//! **Crate-boundary spec §271 (2026-05-25)**: this resolver lives in
+//! `nmp-router`, not `nmp-core`. The publish-side `OutboxResolver` trait
+//! stays in `nmp_core::publish::traits` so the kernel can carry an `Arc<dyn
+//! OutboxResolver>` without naming a NIP. Production composition
+//! (`nmp-app-template::register_defaults`) wires a `Nip65OutboxResolver`
+//! into the kernel via `NmpApp::set_publish_resolver_factory` →
+//! `Kernel::set_publish_resolver`. This keeps `nmp-core` protocol-neutral
+//! (D0) and reflects the fact that NIP-65 outbox resolution is the same
+//! algorithmic concern as the substrate `OutboxRouter`
+//! (`GenericOutboxRouter`, same crate).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::kernel::{
+use nmp_core::publish::{OutboxResolver, PublishTarget, RelayUrl};
+use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use crate::store::{EventStore, PubKey, StoredEvent};
-
-use super::action::{PublishTarget, RelayUrl};
-use super::traits::OutboxResolver;
+use nmp_core::store::{EventStore, PubKey, StoredEvent};
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
@@ -97,7 +106,13 @@ impl Nip65OutboxResolver {
         )
     }
 
-    pub(crate) fn with_local_relays(
+    /// Build a resolver with explicit handles for every slot the kernel
+    /// shares with it. Production composition uses this constructor so the
+    /// kernel and the resolver read the same `IndexerRelaysSlot` /
+    /// `LocalWriteRelaysSlot` / `ActiveAccountSlot` instances — the actor is
+    /// the sole writer, the resolver is a reader, D4 holds.
+    #[must_use]
+    pub fn with_local_relays(
         store: Arc<dyn EventStore>,
         indexer_relays: IndexerRelaysSlot,
         local_write_relays: LocalWriteRelaysSlot,
@@ -276,4 +291,5 @@ fn is_relay_url(url: &str) -> bool {
 }
 
 #[cfg(test)]
+#[path = "nip65_resolver/tests.rs"]
 mod tests;

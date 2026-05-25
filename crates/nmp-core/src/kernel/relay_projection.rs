@@ -1,8 +1,12 @@
 //! Typed projection slots for relay-shaped actor-owned state.
 //!
 //! Three relay-shaped fact caches sit behind typed slot wrappers:
-//! `Nip65OutboxResolver::indexer_relays`, `Nip65OutboxResolver::local_write_relays`,
-//! and `NmpApp::relay_edit_rows`. All three are actor-owned (the actor thread
+//! `nmp_router::Nip65OutboxResolver::indexer_relays`,
+//! `nmp_router::Nip65OutboxResolver::local_write_relays` (spec §271,
+//! 2026-05-25 — resolver moved out of `nmp-core::publish::nip65` into
+//! `nmp-router`; production composition wires these slots into the
+//! resolver via `NmpApp::set_publish_resolver_factory`), and
+//! `NmpApp::relay_edit_rows`. All three are actor-owned (the actor thread
 //! is the sole writer via `IdentityState::set_relay_edit_rows`). The typed
 //! wrappers make the slot's purpose visible at the declaration site.
 //!
@@ -80,13 +84,25 @@ impl RelayUrls {
 
     /// Replace the slot contents in-place. Sole-writer helper — the actor
     /// thread is the only caller (D4).
-    pub(crate) fn replace(&mut self, urls: Vec<String>) {
+    ///
+    /// `pub` (widened from `pub(crate)` 2026-05-25, spec §271): the
+    /// `nmp-router::Nip65OutboxResolver` test suite seeds the indexer /
+    /// local-write slots through this accessor. Production callers in
+    /// `nmp-core` remain on the actor thread (D4: still sole-writer by
+    /// convention).
+    pub fn replace(&mut self, urls: Vec<String>) {
         self.0 = urls;
     }
 
     /// Borrow the underlying list. Readers iterate this; never re-hand the
     /// inner `Vec` across an `await` boundary.
-    pub(crate) fn as_slice(&self) -> &[String] {
+    ///
+    /// `pub` (widened from `pub(crate)` 2026-05-25, spec §271): external
+    /// readers in `nmp-router::Nip65OutboxResolver` (the publish-side
+    /// resolver, moved out of `nmp-core::publish::nip65`) read the slot
+    /// through this accessor. The mutator (`replace`) stays `pub(crate)`
+    /// so the actor remains the sole writer per D4.
+    pub fn as_slice(&self) -> &[String] {
         &self.0
     }
 }

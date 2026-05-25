@@ -24,11 +24,18 @@
 //!    `(Arc<GenericOutboxRouter>, Arc<InMemoryMailboxCache>)` is installed
 //!    via [`NmpApp::set_routing_substrate`]. The kernel re-invokes the
 //!    factory on `Reset` so the production routing survives a state wipe.
-//! 4. **D2 coverage hook** — a [`CoverageGate`]-based hook is installed via
+//! 4. **Production publish resolver** — a factory closure that returns
+//!    `Arc<Nip65OutboxResolver>` is installed via
+//!    [`NmpApp::set_publish_resolver_factory`] (spec §271, 2026-05-25).
+//!    The kernel re-invokes the factory on `Reset` so the production
+//!    resolver survives a state wipe. Mirrors the routing factory — both
+//!    deliberately live in `nmp-router` (Layer 2) so `nmp-core` (Layer 3)
+//!    stays NIP-neutral (D0).
+//! 5. **D2 coverage hook** — a [`CoverageGate`]-based hook is installed via
 //!    [`NmpApp::set_coverage_hook`] so the production kernel enforces D2
 //!    ("negentropy before REQ") for large follow sets — backstop trim on
 //!    `max_relay_connections`.
-//! 5. **Canonical runtime controllers** — see [`runtimes`] — for the
+//! 6. **Canonical runtime controllers** — see [`runtimes`] — for the
 //!    NIP-17 DM-inbox subscription/projection and the NIP-57
 //!    self-zap-receipts subscription. These are pure host-side
 //!    reconcilers; the kernel ships zero DM/zap nouns (D0).
@@ -73,15 +80,19 @@
 //!
 //! [`NmpApp`]: nmp_core::NmpApp
 //! [`NmpApp::set_routing_substrate`]: nmp_core::NmpApp::set_routing_substrate
+//! [`NmpApp::set_publish_resolver_factory`]: nmp_core::NmpApp::set_publish_resolver_factory
 //! [`NmpApp::set_coverage_hook`]: nmp_core::NmpApp::set_coverage_hook
 //! [`CoverageGate`]: nmp_coverage_gate::CoverageGate
 
 use std::sync::Arc;
 
+use nmp_core::publish::OutboxResolver;
+use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
+use nmp_core::store::EventStore;
 use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
 use nmp_ffi::NmpApp;
 use nmp_coverage_gate::CoverageGate;
-use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache};
+use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Nip65OutboxResolver};
 
 pub mod runtimes;
 
@@ -160,6 +171,40 @@ pub fn register_defaults(app: &mut NmpApp) {
                 Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
             let cache: Arc<dyn MailboxCache> = Arc::new(InMemoryMailboxCache::new());
             (router, cache)
+        },
+    );
+
+    // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
+    //
+    // Install the production substrate-publish-resolver factory. Without
+    // this swap the kernel keeps its in-crate `NoopOutboxResolver`
+    // default — every `PublishTarget::Auto` publish then resolves to an
+    // empty relay set and the publish engine surfaces `NoTargets`
+    // (fail-closed). `nmp-core` (Layer 3) cannot depend on `nmp-router`
+    // (Layer 2), so the production resolver is injected through this
+    // factory slot.
+    //
+    // The factory receives the kernel-owned event store + the three
+    // typed slots (`IndexerRelaysSlot`, `LocalWriteRelaysSlot`,
+    // `ActiveAccountSlot`) — the actor reducer is the sole writer of
+    // those slots (D4), so the produced `Nip65OutboxResolver` reads
+    // through the same shared state the actor pushes into (e.g. local
+    // relay-row edits become visible to the resolver immediately, before
+    // the just-sent kind:10002 round-trips from a relay). The closure
+    // is re-invoked by the `Reset` dispatch arm against the rebuilt
+    // kernel's fresh handles.
+    app.set_publish_resolver_factory(
+        |store: Arc<dyn EventStore>,
+         indexer_relays: IndexerRelaysSlot,
+         local_write_relays: LocalWriteRelaysSlot,
+         active_account: ActiveAccountSlot|
+         -> Arc<dyn OutboxResolver> {
+            Arc::new(Nip65OutboxResolver::with_local_relays(
+                store,
+                indexer_relays,
+                local_write_relays,
+                active_account,
+            ))
         },
     );
 

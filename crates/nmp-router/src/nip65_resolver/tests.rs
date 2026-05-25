@@ -1,9 +1,10 @@
 //! Unit tests for `Nip65OutboxResolver`.
 //!
-//! Split from `mod.rs` to keep the implementation file under the 300 LOC
-//! soft cap (AGENTS.md). Tests cover: author writes, fail-closed on missing
-//! kind:10002, recipient `#p` reads, explicit pass-through, malformed-tag
-//! tolerance, unmarked-tag = both, invalid-hex author.
+//! Split from the implementation file to keep `nip65_resolver.rs` under the
+//! 500 LOC hand-authored ceiling (AGENTS.md). Tests cover: author writes,
+//! fail-closed on missing kind:10002, recipient `#p` reads, explicit
+//! pass-through, malformed-tag tolerance, unmarked-tag = both, invalid-hex
+//! author.
 //!
 //! T-publish-resolver-indexer (codex f81f735): the indexer-fallback tests
 //! have been updated to assert the new fail-closed semantics — an author with
@@ -13,12 +14,12 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use super::{Nip65OutboxResolver, PublishTarget, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
-use crate::kernel::{
+use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
+use nmp_core::publish::{OutboxResolver, PublishTarget};
+use nmp_core::slots::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use crate::publish::traits::OutboxResolver;
-use crate::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
 /// Test helper — typed [`IndexerRelaysSlot`] pre-populated with `urls`.
 /// Centralizes typed-slot construction so tests that need a non-empty
