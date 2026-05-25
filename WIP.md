@@ -59,6 +59,7 @@ Adjacent: **V-51 routing observability** — phases 1 (substrate observer + ring
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
 
+- 2026-05-25 — feat(nmp-router): implement lanes 2/3/4/5 — PR #483 open (0e77cf31). Closes the `// TODO §3.1 lane N` markers in `GenericOutboxRouter`; all seven `RoutingSource` lanes now fire (Hint from e/p/a/q tag position 2 + `HintSource::EventTag` interest hints; Provenance from `HintSource::Provenance` interest hints; UserConfigured from `session_keys.active_read|write` when active account is in scope; ClassRouted refines explicit-targets attribution to the right `EventClass` per `evt.kind`). Mirror in `nmp_core::kernel::test_router::TestOutboxRouter` updated lane-for-lane. 16 new tests in `crates/nmp-router/src/router/tests_lanes.rs`; 904 nmp-core + 63 nmp-router + 42 doctrine_lint pass.
 - 2026-05-24 — refactor(nmp-core/nmp-store/nmp-planner): step 9 — extract `nmp-store` and `nmp-planner` — PR #463 merged (8a3cd62b)
 - 2026-05-24 — feat(nmp-core/nmp-app-chirp): V-51 phase 5 — kernel calls injected `OutboxRouter`; chirp wires `GenericOutboxRouter` — PR #462 merged (1dbff579)
 - 2026-05-24 — feat(nmp-core/chirp-repl/nmp-testing): V-51 phase 4 — routing-trace validation harness (real-pubkey integration test PASSES against pablof7z's NIP-65) — PR #461 merged (b9e0fc15)
