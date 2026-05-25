@@ -91,6 +91,7 @@ fn left_column() -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Home tab");
+    binding(&mut lines, "Enter", "open selected thread");
     binding(&mut lines, "n", "compose new note");
     binding(&mut lines, "r", "reply to selected note");
     binding(&mut lines, "+", "react to selected note");
