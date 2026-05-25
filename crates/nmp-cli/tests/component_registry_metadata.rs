@@ -41,17 +41,28 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
         .collect::<Vec<_>>();
     cli_ids.sort();
 
-    let mut web_ids = web_component_ids();
+    let mut web_ids = web_install_ids();
     web_ids.sort();
     assert_eq!(web_ids, cli_ids, "web registry component ids drifted");
 
     for component in manifest.components {
-        let block = web_component_block(&component.id);
+        assert!(
+            component.id.starts_with(&format!("{}/", component.target)),
+            "{} id/target mismatch in CLI manifest",
+            component.id
+        );
+
+        let block = web_impl_block(&component.id);
         assert_contains(&block, &format!("version: \"{}\"", component.version));
-        assert_contains(&block, &format!("target: \"{}\"", component.target));
+        assert_contains(&block, &format!("installId: \"{}\"", component.id));
+        let expected_dependencies = component
+            .dependencies
+            .iter()
+            .map(|dependency| component_slug(dependency))
+            .collect::<Vec<_>>();
         assert_eq!(
             quoted_values(array_field(&block, "dependencies")),
-            component.dependencies,
+            expected_dependencies,
             "{} dependency mirror drifted",
             component.id
         );
@@ -65,11 +76,11 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
     }
 }
 
-fn web_component_ids() -> Vec<String> {
+fn web_install_ids() -> Vec<String> {
     let mut ids = Vec::new();
     let mut rest = WEB_REGISTRY;
-    while let Some(index) = rest.find("id: \"") {
-        let start = index + "id: \"".len();
+    while let Some(index) = rest.find("installId: \"") {
+        let start = index + "installId: \"".len();
         let after_start = &rest[start..];
         let end = after_start.find('"').unwrap();
         ids.push(after_start[..end].to_string());
@@ -78,14 +89,14 @@ fn web_component_ids() -> Vec<String> {
     ids
 }
 
-fn web_component_block(id: &str) -> String {
-    let needle = format!("id: \"{id}\"");
+fn web_impl_block(id: &str) -> String {
+    let needle = format!("installId: \"{id}\"");
     let id_index = WEB_REGISTRY
         .find(&needle)
-        .unwrap_or_else(|| panic!("web registry missing component {id}"));
+        .unwrap_or_else(|| panic!("web registry missing implementation {id}"));
     let object_start = WEB_REGISTRY[..id_index]
         .rfind('{')
-        .unwrap_or_else(|| panic!("web registry component {id} has no object start"));
+        .unwrap_or_else(|| panic!("web registry implementation {id} has no object start"));
     let slice = &WEB_REGISTRY[object_start..];
     let mut depth = 0usize;
     for (offset, ch) in slice.char_indices() {
@@ -100,7 +111,13 @@ fn web_component_block(id: &str) -> String {
             _ => {}
         }
     }
-    panic!("web registry component {id} has no object end");
+    panic!("web registry implementation {id} has no object end");
+}
+
+fn component_slug(id: &str) -> String {
+    id.split_once('/')
+        .map(|(_, slug)| slug.to_string())
+        .unwrap_or_else(|| id.to_string())
 }
 
 fn array_field<'a>(block: &'a str, field: &str) -> &'a str {

@@ -96,6 +96,18 @@ source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"
 target = "Components/NostrContent/Examples/NostrContentViewPreview.swift"
 role = "example"
 
+[[components]]
+id = "swiftui/login-block"
+version = "0.1.0"
+target = "swiftui"
+description = "Login UI with local Nostr signer detection (Amber, Primal, nostrconnect) and manual key entry fallback."
+dependencies = ["swiftui/content-core"]
+
+[[components.files]]
+source = "swiftui/login-block/NostrLoginBlock.swift"
+target = "Components/Auth/NostrLoginBlock.swift"
+role = "source"
+
 # -----------------------------------------------------------------------------
 # Android / Jetpack Compose components (M16-C4). Mirror the SwiftUI components
 # above in behavior and wire format. Install target paths mirror the SwiftUI

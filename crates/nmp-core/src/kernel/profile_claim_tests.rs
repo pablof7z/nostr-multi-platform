@@ -121,6 +121,98 @@ fn cold_start_profile_claims_go_to_indexer_relay_only() {
     }
 }
 
+/// Gap 2: after `claim_profile` fetched kind:0 against the indexer lane
+/// (cold-start, no mailbox cached yet), the arrival of a kind:10002 for that
+/// pubkey must re-queue the pubkey on `profile_requests.pending` so the next
+/// `pending_profile_claim_requests` tick re-fetches kind:0 against the
+/// freshly-known write set.
+#[test]
+fn kind10002_arrival_requeues_already_requested_profile() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let alice = hex64("a");
+
+    // Step 1: cold-start claim — alice is queued in `pending`, then flushed
+    // through `pending_profile_claim_requests`. After flush alice sits in
+    // `requested` (the inflight set).
+    let _ = kernel.claim_profile(alice.clone(), "view-0".to_string(), false);
+    let _ = kernel.pending_profile_claim_requests();
+    assert!(
+        kernel.profile_requests_requested_for_test().contains(&alice),
+        "post-flush, alice must be in `requested`"
+    );
+    assert!(
+        !kernel.profile_requests_pending_for_test().contains(&alice),
+        "post-flush, alice must not still be in `pending`"
+    );
+
+    // Step 2: kind:10002 arrives for alice (production path: substrate parser
+    // mutates the cache; this helper substitutes the same effect AND calls
+    // `refresh_profile_after_mailbox` to mirror `on_mailbox_changed`).
+    let outcome = kernel
+        .inject_replaceable_event(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+            &alice,
+            1_000,
+            10002,
+            vec![vec![
+                "r".to_string(),
+                "wss://alice-write.example/".to_string(),
+                "write".to_string(),
+            ]],
+            "wss://seed.relay/",
+            1_000_000,
+        )
+        .expect("inject kind:10002 must succeed");
+    assert!(matches!(
+        outcome,
+        crate::store::InsertOutcome::Inserted { .. }
+            | crate::store::InsertOutcome::Replaced { .. }
+    ));
+
+    // Post-mailbox alice must be back in `pending` and out of `requested`.
+    assert!(
+        !kernel.profile_requests_requested_for_test().contains(&alice),
+        "after kind:10002, alice must leave `requested`"
+    );
+    assert!(
+        kernel.profile_requests_pending_for_test().contains(&alice),
+        "after kind:10002, alice must be re-queued in `pending`"
+    );
+
+    // Step 3: the next `pending_profile_claim_requests` tick must emit a
+    // kind:0 REQ targeting alice's declared write relay (NOT the indexer).
+    let msgs = kernel.pending_profile_claim_requests();
+    let reqs: Vec<&OutboundMessage> = msgs
+        .iter()
+        .filter(|m| m.text.starts_with("[\"REQ\""))
+        .collect();
+    let relay_urls: Vec<&str> = reqs.iter().map(|m| m.relay_url.as_str()).collect();
+    assert!(
+        relay_urls.iter().any(|u| *u == "wss://alice-write.example/"),
+        "post-refresh kind:0 REQ must route to alice's NIP-65 write relay; got {relay_urls:?}"
+    );
+}
+
+/// `refresh_profile_after_mailbox` is a no-op for a pubkey that was never
+/// claimed — moving an unknown pubkey into `pending` would issue a fetch the
+/// host never asked for.
+#[test]
+fn refresh_profile_after_mailbox_is_noop_for_unclaimed_pubkey() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let bob = hex64("b");
+
+    kernel.refresh_profile_after_mailbox(&bob);
+
+    assert!(
+        !kernel.profile_requests_pending_for_test().contains(&bob),
+        "unclaimed pubkey must not enter `pending`"
+    );
+    assert!(
+        !kernel.profile_requests_requested_for_test().contains(&bob),
+        "unclaimed pubkey must not enter `requested`"
+    );
+}
+
 /// Known-NIP-65 authors: profile claims use their declared write relays, NOT the indexer.
 #[test]
 fn known_nip65_profile_claims_use_declared_write_relays() {

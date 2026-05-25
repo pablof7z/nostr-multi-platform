@@ -1601,6 +1601,24 @@ drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
 (byte-exact pin + orphan-file guard). iOS and Android decoders consume this
 exact byte set as the M16 cross-platform wire-contract truth.
 
+### F-09 · Event relay provenance UI — "received from" view [V1 DX · all platforms]
+
+Show the user which relays delivered a given event. The data is already tracked: `EventStore::provenance_for(event_id)` (`crates/nmp-store/src/events.rs:288`) returns `Vec<ProvenanceEntry>` with `relay_url`, `first_seen_ms`, `last_seen_ms`, and a `primary: bool` flag (up to 32 relays per event, persisted in LMDB).
+
+**Required work:**
+
+1. **Expose provenance in the projection** — `TimelineItem` already carries `relay_count: u32`. Add a `relay_provenance: Vec<String>` field (list of relay URLs) to `TimelineItem` and `TimelineEventCard`. Populate from `store.provenance_for(&event.id)` in `Kernel::timeline_item` (`crates/nmp-core/src/kernel/update.rs:464`). Keep `relay_count` as the cheap badge signal; `relay_provenance` is the detail payload. Consider making it opt-in via a projection flag to avoid bloating every timeline row snapshot.
+
+2. **iOS Chirp** — long-press or info sheet on any note row opens a "Received from" list showing relay URLs with first-seen timestamps. Tapping a relay URL copies it or navigates to relay diagnostics.
+
+3. **Android Chirp** — same UX as iOS: bottom sheet or dialog on long-press.
+
+4. **chirp-tui** — `?` key or dedicated pane shows relay provenance for the selected event. Already has `DiagnosticsView` precedent.
+
+5. **chirp-web** — tooltip or expandable row section.
+
+**Note:** `relay_count: u32` is already on `TimelineItem` and rendered in iOS (`NoteRowView`). Step 1 is the only Rust change; steps 2–5 are pure presentation work per platform.
+
 ---
 
 ## Section 5 — Post-V1

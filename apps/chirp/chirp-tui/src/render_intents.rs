@@ -42,6 +42,19 @@ fn intents_for_rows(rows: &[TimelineRow]) -> BTreeSet<RenderIntent> {
                 event_id: row.id.clone(),
             });
         }
+        // Demand-driven kind:0 fetch for every NIP-21 profile mention
+        // appearing inside this row's content. The `BTreeSet` dedupes the
+        // case where the same pubkey is both the row author AND a content
+        // mention (one claim, not two), and the case where the same pubkey
+        // is mentioned in multiple rows on screen. Empty `mention_pubkeys`
+        // (no content tree, no mentions) is a zero-cost no-op.
+        for pubkey in &row.mention_pubkeys {
+            if !pubkey.is_empty() {
+                intents.insert(RenderIntent::AuthorProfile {
+                    pubkey: pubkey.clone(),
+                });
+            }
+        }
     }
     intents
 }
@@ -51,6 +64,10 @@ mod tests {
     use super::*;
 
     fn row(id: &str, pubkey: &str) -> TimelineRow {
+        row_with_mentions(id, pubkey, Vec::new())
+    }
+
+    fn row_with_mentions(id: &str, pubkey: &str, mention_pubkeys: Vec<String>) -> TimelineRow {
         TimelineRow {
             id: id.to_string(),
             author: pubkey.to_string(),
@@ -60,6 +77,7 @@ mod tests {
             depth: 0,
             has_gap: false,
             relation_counts: Default::default(),
+            mention_pubkeys,
         }
     }
 
@@ -99,5 +117,81 @@ mod tests {
 
         assert!(diff.added.is_empty());
         assert_eq!(diff.removed.len(), 2);
+    }
+
+    #[test]
+    fn content_mentions_emit_author_profile_intents() {
+        let mut tracker = RenderIntentTracker::default();
+        let mention = "1".repeat(64);
+        let diff = tracker.sync_rows(&[row_with_mentions(
+            "n1",
+            "alice",
+            vec![mention.clone()],
+        )]);
+
+        // (1) author + note + mention = 3 distinct intents on first render.
+        assert_eq!(diff.removed, Vec::new());
+        assert_eq!(diff.added.len(), 3);
+        assert!(diff.added.contains(&RenderIntent::AuthorProfile {
+            pubkey: "alice".to_string()
+        }));
+        assert!(diff.added.contains(&RenderIntent::AuthorProfile {
+            pubkey: mention.clone(),
+        }));
+        assert!(diff.added.contains(&RenderIntent::NoteRelations {
+            event_id: "n1".to_string()
+        }));
+    }
+
+    #[test]
+    fn mention_pubkey_overlapping_with_author_dedupes_to_single_claim() {
+        let mut tracker = RenderIntentTracker::default();
+        let alice = "a".repeat(64);
+        // Row authored by alice, content mentions alice — must produce ONE
+        // AuthorProfile intent for alice, not two.
+        let diff = tracker.sync_rows(&[row_with_mentions(
+            "n1",
+            &alice,
+            vec![alice.clone()],
+        )]);
+        let alice_intents: Vec<&RenderIntent> = diff
+            .added
+            .iter()
+            .filter(|intent| {
+                matches!(intent, RenderIntent::AuthorProfile { pubkey } if pubkey == &alice)
+            })
+            .collect();
+        assert_eq!(
+            alice_intents.len(),
+            1,
+            "author and mention claims for the same pubkey must dedupe"
+        );
+    }
+
+    #[test]
+    fn dropping_a_mention_releases_only_that_pubkey() {
+        let mut tracker = RenderIntentTracker::default();
+        let m1 = "1".repeat(64);
+        let m2 = "2".repeat(64);
+        tracker.sync_rows(&[row_with_mentions(
+            "n1",
+            "alice",
+            vec![m1.clone(), m2.clone()],
+        )]);
+
+        // Second snapshot drops `m2`, keeps `m1`.
+        let diff = tracker.sync_rows(&[row_with_mentions(
+            "n1",
+            "alice",
+            vec![m1.clone()],
+        )]);
+
+        assert!(diff.removed.contains(&RenderIntent::AuthorProfile {
+            pubkey: m2,
+        }));
+        assert!(!diff.removed.contains(&RenderIntent::AuthorProfile {
+            pubkey: m1,
+        }));
+        assert!(diff.added.is_empty());
     }
 }
