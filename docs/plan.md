@@ -95,7 +95,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
 | M15 Cross-platform | pending | 🟡 Desktop + Android shells; wasm Stages 2–3c all merged (PR #372/#375/#378/#385); **F-01 IndexedDB is the sole remaining v1-blocking item** |
-| M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not |
+| M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not; component-registry/content-kit plan added in [`plan/m16-component-registry.md`](plan/m16-component-registry.md) |
 | M17 v1 release | pending | ❌ Pending |
 
 Detail per milestone lives in [`docs/plan/m*.md`](plan/). The fresh codebase inventory and divergence analysis live in [`docs/plan/status.md`](plan/status.md).
@@ -168,6 +168,7 @@ Where to look for detail:
 - [`docs/plan/scope-adjustments-2026-05-18.md`](plan/scope-adjustments-2026-05-18.md) — historical scope changes
 - [`docs/plan/post-v1.md`](plan/post-v1.md) — deferred work detail
 - [`docs/plan/marmot-mls.md`](plan/marmot-mls.md) — Marmot/MLS detail
+- [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md) — app-owned component registry and native content kits
 - [`docs/plan/m0-fixture.md`](plan/m0-fixture.md) – [`m17-release.md`](plan/m17-release.md) — per-milestone detail
 - [`docs/architecture-audit/`](architecture-audit/) — 2026-05-23 13-agent audit, PD-033-C plan, codegen plan
 - [`docs/perf/codex-reviews/`](perf/codex-reviews/) — post-merge codex reviews + opus direction reviews
