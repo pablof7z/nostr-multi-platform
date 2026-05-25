@@ -33,12 +33,12 @@ data class ChirpEventCard(
     val createdAt: Long = 0,
     val content: String = "",
     val contentTree: ContentTreeWire? = null,
-    val createdAtDisplay: String = "",
-    val authorAvatarInitials: String = "",
-    val authorAvatarColor: String = "",
-    val authorPubkeyShort: String = "",
-    val authorDisplayName: String = "",
-    val authorPictureUrl: String = "",
+    // aim.md §2 — display_name + picture_url are nullable: the
+    // backend ships JSON null when no kind:0 has arrived for this
+    // author, and the Compose layer is responsible for choosing its
+    // own fallback (typically a short-pubkey abbreviation).
+    val authorDisplayName: String? = null,
+    val authorPictureUrl: String? = null,
     val contentPreview: String = "",
 )
 

@@ -50,12 +50,13 @@ data class AccountSummary(
 @Serializable
 data class TimelineItem(
     val id: String = "",
-    val authorDisplay: String = "",
-    val authorAvatarInitials: String = "",
-    val authorAvatarColor: String = "",
+    // aim.md §2 — backend ships raw hex pubkey + Unix seconds; the
+    // Compose layer is the presentation surface and formats author
+    // display / relative-time labels at render time.
+    val authorPubkey: String = "",
     val content: String = "",
     val contentPreview: String = "",
-    val createdAtDisplay: String = "",
+    val createdAt: Long = 0,
     val relayCount: Long = 0,
 )
 

@@ -236,31 +236,31 @@ internal fun NoteRow(
         MissingEventRow(eventId)
         return
     }
-    // Demand-driven kind:0 fetch for the note author. Stable consumer-id
-    // (`note-author-<eventId>`) so two re-renders of the same row do not
-    // churn the kernel's per-pubkey claim slot. The kernel's `claim_profile`
-    // is idempotent on `(pubkey, consumer_id)`.
-    //
-    // Only `ChirpEventCard` carries the raw author pubkey in the snapshot;
-    // `TimelineItem` ships the displayable name only (snapshot.rs design).
-    // No card → no claim (cold-start, missing card metadata).
-    val authorPubkey = card?.authorPubkey.orEmpty()
+    val authorPubkey = card?.authorPubkey?.nonEmptyOrNull()
+        ?: item?.authorPubkey?.nonEmptyOrNull()
+        ?: ""
     if (authorPubkey.isNotEmpty()) {
         RememberProfileClaim(authorPubkey, "note-author-$eventId")
     }
-    val author = item?.authorDisplay?.nonEmptyOrNull()
-        ?: card?.authorDisplayName?.nonEmptyOrNull()
-        ?: card?.authorPubkeyShort?.nonEmptyOrNull()
-        ?: "unknown"
-    val initials = item?.authorAvatarInitials?.nonEmptyOrNull()
-        ?: card?.authorAvatarInitials?.nonEmptyOrNull()
-        ?: author.take(2).uppercase()
-    val color = item?.authorAvatarColor?.nonEmptyOrNull()
-        ?: card?.authorAvatarColor.orEmpty()
-    val subtitle = item?.createdAtDisplay?.nonEmptyOrNull()
-        ?: card?.createdAtDisplay?.nonEmptyOrNull()
-        ?: card?.let { "kind ${it.kind}" }
-        ?: ""
+    val shortPubkey = if (authorPubkey.length >= 16) {
+        "${authorPubkey.take(8)}…${authorPubkey.takeLast(8)}"
+    } else {
+        authorPubkey.ifEmpty { "unknown" }
+    }
+    val author = card?.authorDisplayName?.nonEmptyOrNull() ?: shortPubkey
+    val initials = author.take(2).uppercase()
+    val color = ""
+    val createdAt = item?.createdAt?.takeIf { it > 0 }
+        ?: card?.createdAt?.takeIf { it > 0 }
+    val subtitle = createdAt?.let { ts ->
+        val deltaSecs = (System.currentTimeMillis() / 1000) - ts
+        when {
+            deltaSecs < 60 -> "${deltaSecs}s ago"
+            deltaSecs < 3_600 -> "${deltaSecs / 60}m ago"
+            deltaSecs < 86_400 -> "${deltaSecs / 3_600}h ago"
+            else -> "${deltaSecs / 86_400}d ago"
+        }
+    } ?: card?.let { "kind ${it.kind}" } ?: ""
 
     val rowPadding = if (embedded) 10.dp else 12.dp
     Column(Modifier.fillMaxWidth().padding(rowPadding)) {
