@@ -59,7 +59,8 @@
 **Live validation**: `cargo test -p nmp-testing --test routing_trace_real_nostr -- --ignored --nocapture` resolves pablof7z's real NIP-65 from `wss://relay.damus.io` to his 3 declared read relays (`r.f7z.io`, `relay.damus.io`, `relay.primal.net`), all attributed to `Nip65 { direction: Read }` lane; zero `AppRelay/Fallback` leak. Chirp's composition root (`apps/chirp/nmp-app-chirp/src/ffi/register.rs`) installs `nmp_router::GenericOutboxRouter` via `Kernel::set_routing` so the kernel actually consumes the router's output for live REQ-relay selection (no longer observe-only).
 
 **Known partial-state items remaining (not promises, just facts):**
-- Router lanes 2/3/4/5 (`Hint`, `Provenance`, `UserConfigured`, `ClassRouted`) are bare `// TODO §3.1 lane N` markers in `crates/nmp-router/src/router.rs`. Only lanes 1, 6, 7 + the `explicit_targets` shortcut fire. A "why-this-relay" inspector built today (V-51 phase 3) would correctly report lanes 1/6/7 + explicit overrides but be silent on hint/provenance/UC/class-routed cases.
+
+(none — router lanes 2/3/4/5 closed 2026-05-25; see commit log.)
 
 **Ghost crates this spec still names that do not yet exist on master:**
 `nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-marmot` (lives at

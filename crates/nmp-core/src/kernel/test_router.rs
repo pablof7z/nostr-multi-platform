@@ -18,12 +18,14 @@
 //! different rmeta compilations of nmp-core). So the test-only router is
 //! kept in-crate.
 //!
-//! The lanes implemented below mirror lanes 1, 6 (discovery indexer), and 7
-//! (AppRelay fallback) of `nmp_router::GenericOutboxRouter` — the exact
-//! lanes the kernel unit tests assert on. This is an acknowledged minor
-//! algorithm duplication; Debt B's full elimination still holds for
-//! production code, where composition installs
-//! `nmp_router::GenericOutboxRouter` via
+//! The lanes implemented below mirror lanes 1, 2 (hint), 4
+//! (UserConfigured), 5 (ClassRouted attribution refinement on
+//! `explicit_targets`), 6 (discovery indexer), and 7 (AppRelay fallback)
+//! of `nmp_router::GenericOutboxRouter` — the same coverage as
+//! production routing. Lane 3 (Provenance) is subscribe-only and is
+//! also covered. This is an acknowledged minor algorithm duplication;
+//! Debt B's full elimination still holds for production code, where
+//! composition installs `nmp_router::GenericOutboxRouter` via
 //! `NmpApp::set_routing_substrate` -> `Kernel::set_routing`. Both routers
 //! flow through the same `OutboxRouter` trait seam, so the kernel hot-path
 //! is identical across test and production.
@@ -31,10 +33,11 @@
 use std::sync::Arc;
 
 use super::Kernel;
-use crate::planner::LogicalInterest;
+use crate::planner::{HintSource, LogicalInterest};
 use crate::substrate::{
-    AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
-    RoutingSource, UnsignedEvent,
+    AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, OutboxRouter,
+    RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, UnsignedEvent,
+    UserConfiguredCategory,
 };
 
 /// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
@@ -44,9 +47,66 @@ fn is_discovery_kind(kind: u32) -> bool {
     kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
 }
 
-/// Test-only [`OutboxRouter`] mirroring the subset of
-/// `nmp_router::GenericOutboxRouter` the kernel unit tests assert on
-/// (lanes 1, 6, 7). See module docs.
+/// Tag keys whose third column carries a lane-2 relay hint (mirrors
+/// `nmp_router::router::HINT_TAG_KEYS`).
+const HINT_TAG_KEYS: &[&str] = &["e", "p", "a", "q"];
+
+/// Lift relay-hint URLs from `tags` for lane 2 attribution. Returns
+/// deduped owned URLs in tag-document order; empty hint slots and
+/// non-hint tag keys are skipped.
+fn relay_hints_from_tags(tags: &[Vec<String>]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tag in tags {
+        let Some(key) = tag.first() else { continue };
+        if !HINT_TAG_KEYS.contains(&key.as_str()) {
+            continue;
+        }
+        let Some(hint) = tag.get(2) else { continue };
+        if hint.is_empty() {
+            continue;
+        }
+        if !out.iter().any(|u| u == hint) {
+            out.push(hint.clone());
+        }
+    }
+    out
+}
+
+/// Map an event kind to its [`EventClass`] for lane-5 attribution
+/// (mirrors `nmp_router::router::classify_kind`).
+fn classify_kind(kind: u32) -> EventClass {
+    match kind {
+        818 | 30_818 | 30_819 => EventClass::Wiki,
+        1234 | 31_234 => EventClass::Draft,
+        _ => EventClass::Other(String::from("explicit")),
+    }
+}
+
+/// Build the lane-5 explicit-set with the right `EventClass` for `kind`.
+fn explicit_set_for_kind(
+    urls: &[String],
+    blocked: &BlockedRelaySet,
+    kind: u32,
+) -> RoutedRelaySet {
+    let class = classify_kind(kind);
+    let mut out = RoutedRelaySet::new();
+    for url in urls {
+        if blocked.contains(url) {
+            continue;
+        }
+        out.add(
+            url.clone(),
+            RoutingSource::ClassRouted {
+                class: class.clone(),
+                via: ClassRoutingPath::Explicit,
+            },
+        );
+    }
+    out
+}
+
+/// Test-only [`OutboxRouter`] mirroring
+/// `nmp_router::GenericOutboxRouter` lane-by-lane. See module docs.
 pub(crate) struct TestOutboxRouter;
 
 impl TestOutboxRouter {
@@ -62,7 +122,8 @@ impl OutboxRouter for TestOutboxRouter {
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
         if let Some(explicit) = ctx.explicit_targets {
-            return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
+            // Lane 5 — refine the EventClass for the publish kind.
+            return Ok(explicit_set_for_kind(explicit, ctx.blocked_relays, evt.kind));
         }
         let mut out = RoutedRelaySet::new();
         // Lane 1 — author's NIP-65 write set.
@@ -72,6 +133,30 @@ impl OutboxRouter for TestOutboxRouter {
                     continue;
                 }
                 out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+            }
+        }
+        // Lane 2 — relay-hint tags on `evt` (e/p/a/q position 2).
+        for url in relay_hints_from_tags(&evt.tags) {
+            if ctx.blocked_relays.contains(&url) {
+                continue;
+            }
+            out.add(url, RoutingSource::Hint);
+        }
+        // Lane 4 — UserConfigured active-account write (only when
+        // publishing as the active account).
+        if let Some(active) = ctx.active_account {
+            if active == &evt.pubkey {
+                for url in ctx.session_keys.active_write.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(
+                        url.clone(),
+                        RoutingSource::UserConfigured(
+                            UserConfiguredCategory::ActiveAccountWrite,
+                        ),
+                    );
+                }
             }
         }
         // Lane 6 — Indexer ALWAYS-ON for discovery kinds.
@@ -107,6 +192,10 @@ impl OutboxRouter for TestOutboxRouter {
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
         if let Some(explicit) = ctx.explicit_targets {
+            // Lane 5 — no kind available on subscriptions; fall through to
+            // the substrate's generic explicit-set (attributes via
+            // `EventClass::Other("explicit")`). The generic router does the
+            // same for `route_subscription`.
             return Ok(RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays));
         }
         let mut out = RoutedRelaySet::new();
@@ -118,6 +207,38 @@ impl OutboxRouter for TestOutboxRouter {
                         continue;
                     }
                     out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
+                }
+            }
+        }
+        // Lanes 2 + 3 — relay hints on the interest.
+        for hint in &interest.hints {
+            if ctx.blocked_relays.contains(&hint.url) {
+                continue;
+            }
+            let lane = match hint.source {
+                HintSource::EventTag { .. } => RoutingSource::Hint,
+                HintSource::Provenance { .. } => RoutingSource::Provenance,
+                HintSource::UserConfigured => RoutingSource::UserConfigured(
+                    UserConfiguredCategory::Debug,
+                ),
+            };
+            out.add(hint.url.clone(), lane);
+        }
+        // Lane 4 — UserConfigured active-account read (active in scope).
+        if let Some(active) = ctx.active_account {
+            let active_in_scope = interest.shape.authors.is_empty()
+                || interest.shape.authors.contains(active);
+            if active_in_scope {
+                for url in ctx.session_keys.active_read.iter() {
+                    if ctx.blocked_relays.contains(url) {
+                        continue;
+                    }
+                    out.add(
+                        url.clone(),
+                        RoutingSource::UserConfigured(
+                            UserConfiguredCategory::ActiveAccountRead,
+                        ),
+                    );
                 }
             }
         }
