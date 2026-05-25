@@ -60,6 +60,7 @@ nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
 # module.
 nmp-app-template = { path = "../../../crates/nmp-app-template" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+nmp-nip18 = { path = "../../../crates/nmp-nip18" }
 # NIP-02 (follow list, kind:3) + NIP-25 (reactions, kind:7). Chirp registers
 # the crate's `FollowModule` / `UnfollowModule` / `ReactModule` against the
 # kernel action registry — this is the D0-clean replacement for the deleted

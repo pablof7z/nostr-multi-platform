@@ -45,8 +45,8 @@ struct ProfileNoteRow: View {
                     }
 
                     NoteContentView(
-                        content: item.content,
-                        contentTree: contentTree,
+                        content: item.renderedContent,
+                        contentTree: renderContext.contentTree(for: item, fallback: contentTree),
                         renderContext: renderContext,
                         font: .body
                     )
