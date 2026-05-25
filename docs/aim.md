@@ -61,7 +61,7 @@ The bible's reference crate layout — `rust/` for the core (cdylib + staticlib 
 
 The bible's anti-patterns must be enforced against:
 
-- Duplicated formatting logic across platforms (timestamps, display names) — Rust pre-formats into strings, native renders them.
+- Presentation formatting in the backend — Rust sends raw data: pubkeys as hex, timestamps as Unix integers, display names verbatim from kind:0 (no truncation, no fallback-npub substitution). Presentation layers (Swift, Kotlin, TypeScript, TUI) own all formatting decisions: how to truncate a pubkey, how to display a timestamp, what to show when kind:0 is absent. Rust display helpers (`short_npub`, `avatar_initials`, `avatar_color_hex`, `format_ago_secs`, etc.) are legitimate only in TUI render code, CLI output, and test fixtures — never inside projection builders, snapshot types, or FFI serialization paths.
 - Business logic in ViewState derivation — derivation should be field renames and type conversions only.
 - Navigation state leaking to native — Rust's router is the single source of truth.
 - Native-side caches of derived values — caching lives in Rust.
