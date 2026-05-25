@@ -27,3 +27,4 @@ nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = fa
 # Reference-client relay bootstrap shared with the TUI/REPL Chirp surfaces.
 nmp-chirp-config = { path = "../../apps/chirp/nmp-chirp-config" }
 jni = "0.21"
+serde_json = "1.0"

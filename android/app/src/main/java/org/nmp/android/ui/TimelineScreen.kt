@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +47,9 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     }
     val s by model.state.collectAsStateWithLifecycle()
     val snapshotCount by model.snapshotCount.collectAsStateWithLifecycle()
+    val activeAccount = s.projections
+        ?.accounts
+        ?.firstOrNull { it.id == s.activeAccount }
     val itemLookup = s.items.associateBy { it.id }
     val cardLookup = s.modularTimeline.cards.associateBy { it.id }
     val blocks = if (s.modularTimeline.blocks.isNotEmpty()) {
@@ -67,7 +71,13 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         }
         HorizontalDivider()
         if (blocks.isEmpty()) {
-            Placeholder(s.activeAccount, snapshotCount > 0, s.lastErrorToast)
+            Placeholder(
+                activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
+                hasAccount = s.activeAccount.isNotEmpty(),
+                hasSnapshot = snapshotCount > 0,
+                lastErrorToast = s.lastErrorToast,
+                onCreateAccount = { model.createLocalAccount() },
+            )
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
@@ -80,9 +90,18 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun Placeholder(activeAccount: String, hasSnapshot: Boolean, lastErrorToast: String?) {
-    val message = lastErrorToast?.nonEmptyOrNull()
-        ?: if (hasSnapshot) "No timeline events yet" else "Starting kernel…"
+private fun Placeholder(
+    activeAccountLabel: String,
+    hasAccount: Boolean,
+    hasSnapshot: Boolean,
+    lastErrorToast: String?,
+    onCreateAccount: () -> Unit,
+) {
+    val message = if (hasAccount) {
+        "No timeline events yet"
+    } else {
+        lastErrorToast?.nonEmptyOrNull() ?: if (hasSnapshot) "No active account" else "Starting kernel…"
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             if (!hasSnapshot) {
@@ -94,14 +113,19 @@ private fun Placeholder(activeAccount: String, hasSnapshot: Boolean, lastErrorTo
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
-            if (activeAccount.isNotEmpty()) {
+            if (hasAccount) {
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    "Active account: $activeAccount",
+                    "Active account: $activeAccountLabel",
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 24.dp),
                 )
+            } else if (hasSnapshot) {
+                Spacer(Modifier.size(16.dp))
+                Button(onClick = onCreateAccount) {
+                    Text("Create local account")
+                }
             }
         }
     }

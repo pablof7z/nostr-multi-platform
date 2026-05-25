@@ -22,7 +22,7 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use jni::objects::JClass;
+use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
@@ -31,8 +31,8 @@ use nmp_app_chirp::{
     nmp_app_chirp_unregister, ChirpHandle,
 };
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_open_timeline,
-    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_free, nmp_app_new,
+    nmp_app_open_timeline, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -106,6 +106,33 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
     if let Some(s) = session_ref(handle) {
         nmp_app_open_timeline(s.app);
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccount(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    display_name: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let name = env
+        .get_string(&display_name)
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "Android User".to_string());
+    let profile = serde_json::json!({ "name": name }).to_string();
+    let relays = default_chirp_relays_json();
+    let Ok(profile) = CString::new(profile) else {
+        return;
+    };
+    let Ok(relays) = CString::new(relays) else {
+        return;
+    };
+    nmp_app_create_new_account(s.app, profile.as_ptr(), relays.as_ptr(), false);
 }
 
 #[no_mangle]
@@ -209,4 +236,12 @@ fn seed_chirp_reference_relays(app: *mut NmpApp) {
         };
         nmp_app_add_relay(app, url.as_ptr(), role.as_ptr());
     }
+}
+
+fn default_chirp_relays_json() -> String {
+    let relays = nmp_chirp_config::chirp_default_relay_bootstrap()
+        .iter()
+        .map(|entry| serde_json::json!([entry.url, entry.role]))
+        .collect::<Vec<_>>();
+    serde_json::Value::Array(relays).to_string()
 }

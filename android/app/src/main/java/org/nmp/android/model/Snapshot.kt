@@ -34,7 +34,17 @@ data class KernelUpdate(
 @Serializable
 data class SnapshotProjections(
     @SerialName("active_account") val activeAccount: String? = null,
+    val accounts: List<AccountSummary> = emptyList(),
     val timeline: List<TimelineItem> = emptyList(),
+)
+
+@Serializable
+data class AccountSummary(
+    val id: String = "",
+    val npubShort: String = "",
+    val displayName: String = "",
+    val status: String = "",
+    val signerLabel: String = "",
 )
 
 @Serializable

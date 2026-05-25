@@ -856,6 +856,7 @@ dependencies = [
  "nmp-chirp-config",
  "nmp-core",
  "nmp-ffi",
+ "serde_json",
 ]
 
 [[package]]
