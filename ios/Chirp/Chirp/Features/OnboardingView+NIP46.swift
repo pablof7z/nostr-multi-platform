@@ -60,7 +60,7 @@ extension OnboardingView {
                     openSignerApp(connectURL: url)
                 } label: {
                     Label(
-                        "Open in \(signer.displayLabel)",
+                        "Login with \(signer.displayLabel)",
                         systemImage: "arrow.up.forward.app"
                     )
                     .font(ChirpFont.callout)
