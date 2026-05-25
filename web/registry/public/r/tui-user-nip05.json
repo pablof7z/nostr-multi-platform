@@ -1,0 +1,18 @@
+{
+  "name": "tui-user-nip05",
+  "type": "registry:ui",
+  "title": "User Nip05 (tui)",
+  "description": "Ratatui NIP-05 verified identity badge that renders only when an identifier is present.",
+  "dependencies": [],
+  "registryDependencies": [
+    "tui-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/tui/user-nip05/nostr_nip05_badge.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/nostr_nip05_badge.rs",
+      "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Modifier, Style},\n    text::{Line, Span},\n    widgets::{Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\n/// NIP-05 verified identity badge.\npub struct NostrNip05Badge {\n    label: String,\n    style: Style,\n}\n\nimpl NostrNip05Badge {\n    pub fn new(nip05: &str) -> Option<Self> {\n        Some(Self {\n            label: display_nip05(nip05)?,\n            style: Style::default().fg(Color::Rgb(45, 212, 191)),\n        })\n    }\n\n    pub fn from_profile(profile: &ProfileWire) -> Option<Self> {\n        Self::new(profile.nip05()?)\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n\n    pub fn line(&self) -> Line<'static> {\n        Line::from(vec![\n            Span::styled(\"✓ \", self.style.add_modifier(Modifier::BOLD)),\n            Span::styled(self.label.clone(), self.style),\n        ])\n    }\n}\n\nimpl Widget for NostrNip05Badge {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        Paragraph::new(self.line()).render(area, buf);\n    }\n}\n\nfn display_nip05(nip05: &str) -> Option<String> {\n    let trimmed = nip05.trim();\n    if trimmed.is_empty() {\n        return None;\n    }\n    match trimmed.strip_prefix(\"_@\") {\n        Some(domain) if !domain.is_empty() => Some(domain.to_string()),\n        _ => Some(trimmed.to_string()),\n    }\n}\n"
+    }
+  ]
+}

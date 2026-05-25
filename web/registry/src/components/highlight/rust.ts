@@ -1,0 +1,51 @@
+import { highlightCurlyLanguage } from "./shared";
+
+const RUST_KEYWORDS = new Set([
+  "as",
+  "async",
+  "await",
+  "break",
+  "const",
+  "continue",
+  "crate",
+  "dyn",
+  "else",
+  "enum",
+  "false",
+  "fn",
+  "for",
+  "if",
+  "impl",
+  "in",
+  "let",
+  "loop",
+  "match",
+  "mod",
+  "move",
+  "mut",
+  "pub",
+  "ref",
+  "return",
+  "Self",
+  "self",
+  "static",
+  "struct",
+  "super",
+  "trait",
+  "true",
+  "type",
+  "unsafe",
+  "use",
+  "where",
+  "while",
+]);
+
+export function highlightRust(source: string): string {
+  return highlightCurlyLanguage(source, {
+    keywords: RUST_KEYWORDS,
+    identifierStart: /[A-Za-z_]/,
+    identifierContinue: /[A-Za-z0-9_]/,
+    numberContinue: /[0-9_.]/,
+    isType: (word) => /^[A-Z][A-Za-z0-9_]*$/.test(word),
+  });
+}

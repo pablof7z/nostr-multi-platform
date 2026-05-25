@@ -16,11 +16,19 @@ export default function Screenshots(props: Props) {
       >
         <For each={props.variants}>
           {(variant) => (
-            <DeviceMockup
-              id={props.componentId}
-              src={`/screenshots/${variant}`}
-              platform={props.platform}
-            />
+            props.platform === "tui" ? (
+              <TerminalMockup
+                id={props.componentId}
+                src={`/screenshots/${variant}`}
+                platform={props.platform}
+              />
+            ) : (
+              <DeviceMockup
+                id={props.componentId}
+                src={`/screenshots/${variant}`}
+                platform={props.platform}
+              />
+            )
           )}
         </For>
       </Show>
@@ -47,6 +55,32 @@ function DeviceMockup(props: { id: string; src: string; platform: Platform }) {
         )}
       </div>
       <div class="device-mockup__home" />
+    </div>
+  );
+}
+
+function TerminalMockup(props: { id: string; src: string; platform: Platform }) {
+  const [failed, setFailed] = createSignal(false);
+
+  return (
+    <div class="terminal-mockup" role="listitem">
+      <div class="terminal-mockup__chrome">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div class="terminal-mockup__screen">
+        {failed() ? (
+          <PlaceholderTile id={props.id} platform={props.platform} />
+        ) : (
+          <img
+            src={props.src}
+            alt={`${props.id} ${PLATFORM_LABELS[props.platform]} preview`}
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
+        )}
+      </div>
     </div>
   );
 }

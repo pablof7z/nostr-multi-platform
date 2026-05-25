@@ -1,0 +1,18 @@
+{
+  "name": "tui-user-name",
+  "type": "registry:ui",
+  "title": "User Name (tui)",
+  "description": "Inline Ratatui profile display-name widget with Rust-formatted npub fallback.",
+  "dependencies": [],
+  "registryDependencies": [
+    "tui-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/tui/user-name/nostr_profile_name.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/nostr_profile_name.rs",
+      "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Modifier, Style},\n    text::{Line, Span},\n    widgets::{Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\n/// Inline profile display name with fallback to the Rust-formatted npub.\npub struct NostrProfileName<'a> {\n    profile: &'a ProfileWire,\n    style: Style,\n}\n\nimpl<'a> NostrProfileName<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            style: Style::default()\n                .fg(Color::White)\n                .add_modifier(Modifier::BOLD),\n        }\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n\n    pub fn line(&self) -> Line<'static> {\n        Line::from(Span::styled(self.profile.display().to_string(), self.style))\n    }\n}\n\nimpl Widget for NostrProfileName<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        Paragraph::new(self.line()).render(area, buf);\n    }\n}\n"
+    }
+  ]
+}

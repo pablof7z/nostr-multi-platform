@@ -1,0 +1,18 @@
+{
+  "name": "tui-user-npub",
+  "type": "registry:ui",
+  "title": "User Npub (tui)",
+  "description": "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings.",
+  "dependencies": [],
+  "registryDependencies": [
+    "tui-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/tui/user-npub/nostr_npub_chip.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/nostr_npub_chip.rs",
+      "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Style},\n    text::{Line, Span},\n    widgets::{Block, Borders, Paragraph, Widget},\n};\n\nuse super::profile_wire::ProfileWire;\n\n/// Display-only npub chip.\n///\n/// Clipboard writes are a host capability. Keep this widget pure and handle\n/// copy actions in the surrounding TUI input loop.\npub struct NostrNpubChip<'a> {\n    profile: &'a ProfileWire,\n    style: Style,\n}\n\nimpl<'a> NostrNpubChip<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            style: Style::default()\n                .fg(Color::Rgb(186, 230, 253))\n                .bg(Color::Rgb(15, 23, 42)),\n        }\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n\n    pub fn label(&self) -> String {\n        format!(\" {} \", self.profile.npub_short)\n    }\n}\n\nimpl Widget for NostrNpubChip<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        let block = Block::default()\n            .borders(Borders::ALL)\n            .border_style(self.style)\n            .style(self.style);\n        let inner = block.inner(area);\n        block.render(area, buf);\n        Paragraph::new(Line::from(Span::styled(self.label(), self.style))).render(inner, buf);\n    }\n}\n"
+    }
+  ]
+}

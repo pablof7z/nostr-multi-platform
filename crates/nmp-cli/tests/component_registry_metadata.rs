@@ -7,7 +7,11 @@
 use serde::Deserialize;
 
 const CLI_REGISTRY: &str = include_str!("../registry/registry.toml");
-const WEB_REGISTRY: &str = include_str!("../../../web/registry/src/registry.ts");
+const WEB_REGISTRY_INDEX: &str = include_str!("../../../web/registry/src/registry.ts");
+const WEB_REGISTRY_TYPES: &str = include_str!("../../../web/registry/src/registry/types.ts");
+const WEB_REGISTRY_CONTENT: &str = include_str!("../../../web/registry/src/registry/content.ts");
+const WEB_REGISTRY_USER: &str = include_str!("../../../web/registry/src/registry/user.ts");
+const WEB_REGISTRY_RELAY: &str = include_str!("../../../web/registry/src/registry/relay.ts");
 
 #[derive(Deserialize)]
 struct RegistryManifest {
@@ -34,6 +38,7 @@ struct RegistryFile {
 #[test]
 fn web_registry_install_metadata_mirrors_cli_manifest() {
     let manifest = toml::from_str::<RegistryManifest>(CLI_REGISTRY).unwrap();
+    let web_registry = web_registry_source();
     let mut cli_ids = manifest
         .components
         .iter()
@@ -41,7 +46,7 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
         .collect::<Vec<_>>();
     cli_ids.sort();
 
-    let mut web_ids = web_install_ids();
+    let mut web_ids = web_install_ids(&web_registry);
     web_ids.sort();
     assert_eq!(web_ids, cli_ids, "web registry component ids drifted");
 
@@ -52,7 +57,7 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
             component.id
         );
 
-        let block = web_impl_block(&component.id);
+        let block = web_impl_block(&web_registry, &component.id);
         assert_contains(&block, &format!("version: \"{}\"", component.version));
         assert_contains(&block, &format!("installId: \"{}\"", component.id));
         let expected_dependencies = component
@@ -76,9 +81,20 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
     }
 }
 
-fn web_install_ids() -> Vec<String> {
+fn web_registry_source() -> String {
+    [
+        WEB_REGISTRY_INDEX,
+        WEB_REGISTRY_TYPES,
+        WEB_REGISTRY_CONTENT,
+        WEB_REGISTRY_USER,
+        WEB_REGISTRY_RELAY,
+    ]
+    .join("\n")
+}
+
+fn web_install_ids(source: &str) -> Vec<String> {
     let mut ids = Vec::new();
-    let mut rest = WEB_REGISTRY;
+    let mut rest = source;
     while let Some(index) = rest.find("installId: \"") {
         let start = index + "installId: \"".len();
         let after_start = &rest[start..];
@@ -89,15 +105,15 @@ fn web_install_ids() -> Vec<String> {
     ids
 }
 
-fn web_impl_block(id: &str) -> String {
+fn web_impl_block(source: &str, id: &str) -> String {
     let needle = format!("installId: \"{id}\"");
-    let id_index = WEB_REGISTRY
+    let id_index = source
         .find(&needle)
         .unwrap_or_else(|| panic!("web registry missing implementation {id}"));
-    let object_start = WEB_REGISTRY[..id_index]
+    let object_start = source[..id_index]
         .rfind('{')
         .unwrap_or_else(|| panic!("web registry implementation {id} has no object start"));
-    let slice = &WEB_REGISTRY[object_start..];
+    let slice = &source[object_start..];
     let mut depth = 0usize;
     for (offset, ch) in slice.char_indices() {
         match ch {
