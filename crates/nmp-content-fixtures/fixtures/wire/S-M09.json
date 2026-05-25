@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "recursive pair: "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+        "kind": "address",
+        "primary_id": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+        "relays": [],
+        "author": null,
+        "event_kind": 30023
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

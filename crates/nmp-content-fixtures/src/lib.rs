@@ -32,6 +32,7 @@ pub mod embed_store;
 pub mod identities;
 pub mod project;
 pub mod scenarios;
+pub mod wire_fixtures;
 
 use dto::Bundle;
 use identities::Identities;
@@ -52,7 +53,10 @@ pub fn build_bundle() -> Bundle {
     scenarios.extend(scenarios::text::build(&ids));
     scenarios.extend(scenarios::mentions::build(&ids));
     scenarios.extend(scenarios::quotes::build(&ids));
-scenarios.extend(scenarios::lists::build(&ids));
+    scenarios.extend(scenarios::lists::build(&ids));
+    scenarios.extend(scenarios::media::build(&ids));
+    scenarios.extend(scenarios::links::build(&ids));
+    scenarios.extend(scenarios::hashtags::build(&ids));
     scenarios.extend(scenarios::edge::build(&ids));
     Bundle {
         version: BUNDLE_VERSION,
