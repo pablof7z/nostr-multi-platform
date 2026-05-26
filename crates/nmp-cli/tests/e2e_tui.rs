@@ -41,8 +41,32 @@ fn cross_platform_tui_content_view() {
             "src/components/nostr_content/nostr_quote_card.rs",
         ),
         (
+            nc.join("content_kind_registry/mod.rs"),
+            "src/components/nostr_content/content_kind_registry/mod.rs",
+        ),
+        (
+            nc.join("content_kind_registry/kind_renderer.rs"),
+            "src/components/nostr_content/content_kind_registry/kind_renderer.rs",
+        ),
+        (
+            nc.join("content_kind_registry/nostr_kind_registry.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs",
+        ),
+        (
+            nc.join("content_kind_registry/embed_chrome_container.rs"),
+            "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs",
+        ),
+        (
+            nc.join("content_kind_registry/embedded_event.rs"),
+            "src/components/nostr_content/content_kind_registry/embedded_event.rs",
+        ),
+        (
             nc.join("nostr_content_view.rs"),
             "src/components/nostr_content/nostr_content_view.rs",
+        ),
+        (
+            nc.join("nostr_content_widget.rs"),
+            "src/components/nostr_content/nostr_content_widget.rs",
         ),
     ];
     for (path, _) in &files {
@@ -52,6 +76,7 @@ fn cross_platform_tui_content_view() {
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
     for id in &[
         "tui/content-core",
+        "tui/content-kind-registry",
         "tui/content-mention-chip",
         "tui/content-media-grid",
         "tui/content-quote-card",

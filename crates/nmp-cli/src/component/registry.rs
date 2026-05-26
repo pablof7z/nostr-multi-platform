@@ -110,8 +110,32 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/tui/content-quote-card/nostr_quote_card.rs"),
     ),
     (
+        "tui/content-kind-registry/mod.rs",
+        include_str!("../../registry/tui/content-kind-registry/mod.rs"),
+    ),
+    (
+        "tui/content-kind-registry/kind_renderer.rs",
+        include_str!("../../registry/tui/content-kind-registry/kind_renderer.rs"),
+    ),
+    (
+        "tui/content-kind-registry/nostr_kind_registry.rs",
+        include_str!("../../registry/tui/content-kind-registry/nostr_kind_registry.rs"),
+    ),
+    (
+        "tui/content-kind-registry/embed_chrome_container.rs",
+        include_str!("../../registry/tui/content-kind-registry/embed_chrome_container.rs"),
+    ),
+    (
+        "tui/content-kind-registry/embedded_event.rs",
+        include_str!("../../registry/tui/content-kind-registry/embedded_event.rs"),
+    ),
+    (
         "tui/content-view/nostr_content_view.rs",
         include_str!("../../registry/tui/content-view/nostr_content_view.rs"),
+    ),
+    (
+        "tui/content-view/nostr_content_widget.rs",
+        include_str!("../../registry/tui/content-view/nostr_content_widget.rs"),
     ),
     // Ratatui user profile widgets.
     (

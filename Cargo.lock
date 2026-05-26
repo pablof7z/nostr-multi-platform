@@ -969,6 +969,7 @@ dependencies = [
  "insta",
  "nmp-app-chirp",
  "nmp-chirp-config",
+ "nmp-content",
  "nmp-core",
  "nmp-ffi",
  "nmp-nip01",

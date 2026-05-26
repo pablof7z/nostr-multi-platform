@@ -12,6 +12,9 @@
 //! - [`context::RenderContext`] — depth + visited-set recursion guard
 //! - [`embed_registry::EmbedClaimRegistry`] — per-id refcounted claim/release
 //!   (namespace `nmp.content.embed_registry`)
+//! - [`embed_projection`] — kind-dispatched `EmbedKindProjection` +
+//!   `resolve_embed_projection` (ADR-0034 / F-CR-01) — the single place that
+//!   does `match event.kind` for embedded event rendering.
 //!
 //! # Design constraints (load-bearing)
 //! - **One entry point** (`tokenize`) with a `mode` flag — never multiple
@@ -28,6 +31,7 @@
 #![warn(missing_docs)]
 
 pub mod context;
+pub mod embed_projection;
 pub mod embed_registry;
 pub mod markdown;
 pub mod mode;
@@ -38,6 +42,11 @@ mod regex_set;
 mod tokenizer;
 
 pub use context::{render_context_can_descend, RenderContext};
+pub use embed_projection::{
+    resolve_embed_projection, ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope,
+    HighlightProjection, ProfileProjection, RenderContextWire, ShortNoteProjection,
+    UnknownProjection,
+};
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
     EmbedRegistrySnapshot, EmbedTarget,

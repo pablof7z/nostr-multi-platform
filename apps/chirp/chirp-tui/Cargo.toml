@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
+nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
 # `nmp-core::ffi` in step 11-final.

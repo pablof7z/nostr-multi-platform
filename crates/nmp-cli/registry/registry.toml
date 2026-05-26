@@ -1,75 +1,62 @@
 schema_version = 1
 registry_id = "nmp-local"
-
 [[components]]
 id = "swiftui/content-core"
 version = "0.2.0"
 target = "swiftui"
 description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components."
-
 [[components.files]]
 source = "swiftui/content-core/NostrContentRenderer.swift"
 target = "Components/NostrContent/NostrContentRenderer.swift"
 role = "source"
-
 [[components.files]]
 source = "swiftui/content-core/ContentTreeWire.swift"
 target = "Components/NostrContent/ContentTreeWire.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/content-minimal"
 version = "0.1.0"
 target = "swiftui"
 description = "Minimal SwiftUI Nostr content renderer with inline text, mentions, links, and hashtags."
 dependencies = ["swiftui/content-core"]
-
 [[components.files]]
 source = "swiftui/content-minimal/NostrMinimalContentView.swift"
 target = "Components/NostrContent/NostrMinimalContentView.swift"
 role = "source"
-
 [[components.files]]
 source = "swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift"
 target = "Components/NostrContent/Examples/NostrMinimalContentPreview.swift"
 role = "example"
-
 [[components]]
 id = "swiftui/content-mention-chip"
 version = "0.1.0"
 target = "swiftui"
 description = "Tappable profile mention chip with optional avatar and identicon fallback."
 dependencies = ["swiftui/content-core"]
-
 [[components.files]]
 source = "swiftui/content-mention-chip/NostrMentionChip.swift"
 target = "Components/NostrContent/NostrMentionChip.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/content-media-grid"
 version = "0.1.0"
 target = "swiftui"
 description = "Photo-style media grid with 1/2/3/4+ layouts and +N more overlay."
 dependencies = ["swiftui/content-core"]
-
 [[components.files]]
 source = "swiftui/content-media-grid/NostrMediaGrid.swift"
 target = "Components/NostrContent/NostrMediaGrid.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/content-quote-card"
 version = "0.1.1"
 target = "swiftui"
 description = "Reusable quote/embed card with collapsed, compact, rich, and missing variants."
 dependencies = ["swiftui/content-core"]
-
 [[components.files]]
 source = "swiftui/content-quote-card/NostrQuoteCard.swift"
 target = "Components/NostrContent/NostrQuoteCard.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/content-view"
 version = "0.1.1"
@@ -80,107 +67,88 @@ dependencies = [
     "swiftui/content-media-grid",
     "swiftui/content-quote-card",
 ]
-
 [[components.files]]
 source = "swiftui/content-view/NostrContentView.swift"
 target = "Components/NostrContent/NostrContentView.swift"
 role = "source"
-
 [[components.files]]
 source = "swiftui/content-view/NostrContentGrouping.swift"
 target = "Components/NostrContent/NostrContentGrouping.swift"
 role = "source"
-
 [[components.files]]
 source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"
 target = "Components/NostrContent/Examples/NostrContentViewPreview.swift"
 role = "example"
-
 [[components]]
 id = "swiftui/login-block"
 version = "0.1.0"
 target = "swiftui"
 description = "Login UI with local Nostr signer detection (Amber, Primal, nostrconnect) and manual key entry fallback."
 dependencies = ["swiftui/content-core"]
-
 [[components.files]]
 source = "swiftui/login-block/NostrLoginBlock.swift"
 target = "Components/Auth/NostrLoginBlock.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/relay-list"
 version = "0.1.0"
 target = "swiftui"
 description = "Relay list component showing relay URLs with role badges and connection status dots."
-
 [[components.files]]
 source = "swiftui/relay-list/NostrRelayList.swift"
 target = "Components/NostrRelays/NostrRelayList.swift"
 role = "source"
-
 [[components.files]]
 source = "swiftui/relay-list/Examples/NostrRelayListPreview.swift"
 target = "Components/NostrRelays/Examples/NostrRelayListPreview.swift"
 role = "example"
-
 # -----------------------------------------------------------------------------
 # SwiftUI user profile components. `swiftui/user-avatar` owns `ProfileWire`,
 # so the smaller name / NIP-05 / npub / card components all depend on it.
 # -----------------------------------------------------------------------------
-
 [[components]]
 id = "swiftui/user-avatar"
 version = "0.1.0"
 target = "swiftui"
 description = "Circular Nostr profile avatar with remote image loading and deterministic identicon fallback."
-
 [[components.files]]
 source = "swiftui/user-avatar/ProfileWire.swift"
 target = "Components/NostrUser/ProfileWire.swift"
 role = "source"
-
 [[components.files]]
 source = "swiftui/user-avatar/NostrAvatar.swift"
 target = "Components/NostrUser/NostrAvatar.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/user-name"
 version = "0.1.0"
 target = "swiftui"
 description = "Inline SwiftUI profile display-name text with Rust-formatted npub fallback."
 dependencies = ["swiftui/user-avatar"]
-
 [[components.files]]
 source = "swiftui/user-name/NostrProfileName.swift"
 target = "Components/NostrUser/NostrProfileName.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/user-nip05"
 version = "0.1.0"
 target = "swiftui"
 description = "SwiftUI NIP-05 verified identity badge that hides itself when no identifier is present."
 dependencies = ["swiftui/user-avatar"]
-
 [[components.files]]
 source = "swiftui/user-nip05/NostrNip05Badge.swift"
 target = "Components/NostrUser/NostrNip05Badge.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/user-npub"
 version = "0.1.0"
 target = "swiftui"
 description = "SwiftUI npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard."
 dependencies = ["swiftui/user-avatar"]
-
 [[components.files]]
 source = "swiftui/user-npub/NostrNpubChip.swift"
 target = "Components/NostrUser/NostrNpubChip.swift"
 role = "source"
-
 [[components]]
 id = "swiftui/user-card"
 version = "0.1.0"
@@ -191,12 +159,10 @@ dependencies = [
     "swiftui/user-name",
     "swiftui/user-nip05",
 ]
-
 [[components.files]]
 source = "swiftui/user-card/NostrUserCard.swift"
 target = "Components/NostrUser/NostrUserCard.swift"
 role = "source"
-
 # -----------------------------------------------------------------------------
 # Android / Jetpack Compose components (M16-C4). Mirror the SwiftUI components
 # above in behavior and wire format. Install target paths mirror the SwiftUI
@@ -204,59 +170,49 @@ role = "source"
 # consistent local file tree; users on a strict Android Gradle layout can
 # move them after install.
 # -----------------------------------------------------------------------------
-
 [[components]]
 id = "compose/content-core"
 version = "0.1.0"
 target = "compose"
 description = "Shared Compose renderer configuration + ContentTreeWire kotlinx.serialization mirror for app-owned Nostr content components."
-
 [[components.files]]
 source = "compose/content-core/NostrContentRenderer.kt"
 target = "Components/NostrContent/NostrContentRenderer.kt"
 role = "source"
-
 [[components.files]]
 source = "compose/content-core/ContentTreeWire.kt"
 target = "Components/NostrContent/ContentTreeWire.kt"
 role = "source"
-
 [[components]]
 id = "compose/content-mention-chip"
 version = "0.1.0"
 target = "compose"
 description = "Tappable Compose profile mention chip with optional avatar and identicon fallback."
 dependencies = ["compose/content-core"]
-
 [[components.files]]
 source = "compose/content-mention-chip/NostrMentionChip.kt"
 target = "Components/NostrContent/NostrMentionChip.kt"
 role = "source"
-
 [[components]]
 id = "compose/content-media-grid"
 version = "0.1.0"
 target = "compose"
 description = "Compose photo-style media grid with 1/2/3/4+ layouts and +N more overlay."
 dependencies = ["compose/content-core"]
-
 [[components.files]]
 source = "compose/content-media-grid/NostrMediaGrid.kt"
 target = "Components/NostrContent/NostrMediaGrid.kt"
 role = "source"
-
 [[components]]
 id = "compose/content-quote-card"
 version = "0.1.1"
 target = "compose"
 description = "Reusable Compose quote/embed card with collapsed, compact, rich, and missing variants."
 dependencies = ["compose/content-core"]
-
 [[components.files]]
 source = "compose/content-quote-card/NostrQuoteCard.kt"
 target = "Components/NostrContent/NostrQuoteCard.kt"
 role = "source"
-
 [[components]]
 id = "compose/content-view"
 version = "0.1.0"
@@ -267,166 +223,168 @@ dependencies = [
     "compose/content-media-grid",
     "compose/content-quote-card",
 ]
-
 [[components.files]]
 source = "compose/content-view/NostrContentView.kt"
 target = "Components/NostrContent/NostrContentView.kt"
 role = "source"
-
 [[components.files]]
 source = "compose/content-view/NostrContentGrouping.kt"
 target = "Components/NostrContent/NostrContentGrouping.kt"
 role = "source"
-
 # -----------------------------------------------------------------------------
 # Ratatui content widgets. These consume the Rust-owned ContentTreeWire
 # projection and stay render-only: host apps own navigation, image protocol
 # negotiation, clipboard, and network capabilities.
 # -----------------------------------------------------------------------------
-
 [[components]]
 id = "tui/content-core"
 version = "0.1.1"
 target = "tui"
 description = "Ratatui ContentTreeWire mirror and helpers for app-owned Nostr content widgets."
-
 [[components.files]]
 source = "tui/content-core/content_tree_wire.rs"
 target = "src/components/nostr_content/content_tree_wire.rs"
 role = "source"
-
 [[components.files]]
 source = "tui/content-core/content_render_data.rs"
 target = "src/components/nostr_content/content_render_data.rs"
 role = "source"
-
 [[components.files]]
 source = "tui/content-core/ratatui_text_wrap.rs"
 target = "src/components/nostr_content/ratatui_text_wrap.rs"
 role = "source"
-
 [[components]]
 id = "tui/content-minimal"
 version = "0.1.1"
 target = "tui"
 description = "Minimal Ratatui Nostr content renderer with inline text, mentions, links, and hashtags."
 dependencies = ["tui/content-core", "tui/content-mention-chip"]
-
 [[components.files]]
 source = "tui/content-minimal/nostr_minimal_content.rs"
 target = "src/components/nostr_content/nostr_minimal_content.rs"
 role = "source"
-
 [[components]]
 id = "tui/content-mention-chip"
 version = "0.1.1"
 target = "tui"
 description = "Inline Ratatui profile mention chip for kernel-projected mention URIs."
 dependencies = ["tui/content-core"]
-
 [[components.files]]
 source = "tui/content-mention-chip/nostr_mention_chip.rs"
 target = "src/components/nostr_content/nostr_mention_chip.rs"
 role = "source"
-
 [[components]]
 id = "tui/content-media-grid"
 version = "0.1.1"
 target = "tui"
 description = "Display-only Ratatui media grid for kernel-projected URLs with optional ratatui-image protocols."
 dependencies = ["tui/content-core"]
-
 [[components.files]]
 source = "tui/content-media-grid/nostr_media_grid.rs"
 target = "src/components/nostr_content/nostr_media_grid.rs"
 role = "source"
-
 [[components]]
 id = "tui/content-quote-card"
 version = "0.1.1"
 target = "tui"
 description = "Ratatui quote/event reference card with resolved event content and optional inline media."
 dependencies = ["tui/content-core"]
-
 [[components.files]]
 source = "tui/content-quote-card/nostr_quote_card.rs"
 target = "src/components/nostr_content/nostr_quote_card.rs"
 role = "source"
-
+[[components]]
+id = "tui/content-kind-registry"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui kind-dispatch registry for embedded Nostr events, including default short-note and unknown-kind renderers."
+dependencies = ["tui/content-core"]
+[[components.files]]
+source = "tui/content-kind-registry/mod.rs"
+target = "src/components/nostr_content/content_kind_registry/mod.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/kind_renderer.rs"
+target = "src/components/nostr_content/content_kind_registry/kind_renderer.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/embed_chrome_container.rs"
+target = "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/embedded_event.rs"
+target = "src/components/nostr_content/content_kind_registry/embedded_event.rs"
+role = "source"
 [[components]]
 id = "tui/content-view"
-version = "0.1.2"
+version = "0.1.3"
 target = "tui"
 description = "Full Ratatui ContentTreeWire renderer with resolved mentions, quote cards, and inline media."
 dependencies = [
     "tui/content-core",
+    "tui/content-kind-registry",
     "tui/content-mention-chip",
     "tui/content-media-grid",
     "tui/content-quote-card",
 ]
-
 [[components.files]]
 source = "tui/content-view/nostr_content_view.rs"
 target = "src/components/nostr_content/nostr_content_view.rs"
 role = "source"
-
-
+[[components.files]]
+source = "tui/content-view/nostr_content_widget.rs"
+target = "src/components/nostr_content/nostr_content_widget.rs"
+role = "source"
 # Jetpack Compose user profile components. `compose/user-avatar` owns the shared
 # `ProfileWire` mirror for the smaller profile display components.
 # -----------------------------------------------------------------------------
-
 [[components]]
 id = "compose/user-avatar"
 version = "0.1.0"
 target = "compose"
 description = "Circular Compose Nostr profile avatar with Coil image loading and deterministic identicon fallback."
-
 [[components.files]]
 source = "compose/user-avatar/ProfileWire.kt"
 target = "Components/NostrUser/ProfileWire.kt"
 role = "source"
-
 [[components.files]]
 source = "compose/user-avatar/NostrAvatar.kt"
 target = "Components/NostrUser/NostrAvatar.kt"
 role = "source"
-
 [[components]]
 id = "compose/user-name"
 version = "0.1.0"
 target = "compose"
 description = "Inline Compose profile display-name text with Rust-formatted npub fallback."
 dependencies = ["compose/user-avatar"]
-
 [[components.files]]
 source = "compose/user-name/NostrProfileName.kt"
 target = "Components/NostrUser/NostrProfileName.kt"
 role = "source"
-
 [[components]]
 id = "compose/user-nip05"
 version = "0.1.0"
 target = "compose"
 description = "Compose NIP-05 verified identity badge that renders nothing when no identifier is present."
 dependencies = ["compose/user-avatar"]
-
 [[components.files]]
 source = "compose/user-nip05/NostrNip05Badge.kt"
 target = "Components/NostrUser/NostrNip05Badge.kt"
 role = "source"
-
 [[components]]
 id = "compose/user-npub"
 version = "0.1.0"
 target = "compose"
 description = "Compose npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard."
 dependencies = ["compose/user-avatar"]
-
 [[components.files]]
 source = "compose/user-npub/NostrNpubChip.kt"
 target = "Components/NostrUser/NostrNpubChip.kt"
 role = "source"
-
 [[components]]
 id = "compose/user-card"
 version = "0.1.0"
@@ -437,77 +395,64 @@ dependencies = [
     "compose/user-name",
     "compose/user-nip05",
 ]
-
 [[components.files]]
 source = "compose/user-card/NostrUserCard.kt"
 target = "Components/NostrUser/NostrUserCard.kt"
 role = "source"
-
 # -----------------------------------------------------------------------------
 # Ratatui user profile widgets. These are pure render widgets: host apps own
 # keyboard actions, clipboard writes, image fetching, and navigation.
 # `tui/user-core` owns the shared `ProfileWire` mirror.
 # -----------------------------------------------------------------------------
-
 [[components]]
 id = "tui/user-core"
 version = "0.1.0"
 target = "tui"
 description = "Shared Ratatui ProfileWire mirror for Rust-owned user profile projections."
-
 [[components.files]]
 source = "tui/user-core/profile_wire.rs"
 target = "src/components/nostr_user/profile_wire.rs"
 role = "source"
-
 [[components]]
 id = "tui/user-avatar"
 version = "0.1.1"
 target = "tui"
 description = "Ratatui terminal avatar image via ratatui-image, with deterministic identicon fallback."
 dependencies = ["tui/user-core"]
-
 [[components.files]]
 source = "tui/user-avatar/nostr_avatar.rs"
 target = "src/components/nostr_user/nostr_avatar.rs"
 role = "source"
-
 [[components]]
 id = "tui/user-name"
 version = "0.1.0"
 target = "tui"
 description = "Inline Ratatui profile display-name widget with Rust-formatted npub fallback."
 dependencies = ["tui/user-core"]
-
 [[components.files]]
 source = "tui/user-name/nostr_profile_name.rs"
 target = "src/components/nostr_user/nostr_profile_name.rs"
 role = "source"
-
 [[components]]
 id = "tui/user-nip05"
 version = "0.1.0"
 target = "tui"
 description = "Ratatui NIP-05 verified identity badge that renders only when an identifier is present."
 dependencies = ["tui/user-core"]
-
 [[components.files]]
 source = "tui/user-nip05/nostr_nip05_badge.rs"
 target = "src/components/nostr_user/nostr_nip05_badge.rs"
 role = "source"
-
 [[components]]
 id = "tui/user-npub"
 version = "0.1.0"
 target = "tui"
 description = "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings."
 dependencies = ["tui/user-core"]
-
 [[components.files]]
 source = "tui/user-npub/nostr_npub_chip.rs"
 target = "src/components/nostr_user/nostr_npub_chip.rs"
 role = "source"
-
 [[components]]
 id = "tui/user-card"
 version = "0.1.1"
@@ -519,7 +464,6 @@ dependencies = [
     "tui/user-name",
     "tui/user-nip05",
 ]
-
 [[components.files]]
 source = "tui/user-card/nostr_user_card.rs"
 target = "src/components/nostr_user/nostr_user_card.rs"

@@ -1,3 +1,5 @@
+#[path = "../../../../../../crates/nmp-cli/registry/tui/content-kind-registry/mod.rs"]
+pub mod content_kind_registry;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/content-core/content_render_data.rs"]
 pub mod content_render_data;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/content-core/content_tree_wire.rs"]

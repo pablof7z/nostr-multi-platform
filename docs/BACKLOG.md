@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against `origin/master` **9e36f0ec** plus PR #587 integration
+> Verified against `origin/master` **e5b3639e** plus PR #588 integration
 > (2026-05-26). Update this file in every PR that touches an item listed here.
 
 ---
@@ -1766,6 +1766,140 @@ Regenerate via `cargo run -p nmp-content-fixtures --bin build-wire-fixtures`;
 drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
 (byte-exact pin + orphan-file guard). iOS and Android decoders consume this
 exact byte set as the M16 cross-platform wire-contract truth.
+
+**Kind-dispatch sub-track (ADR-0034):** the next M16 slice is the kind-dispatched
+content rendering system. Implementation plan: [`docs/plan/m16-kind-dispatch.md`](plan/m16-kind-dispatch.md).
+Architectural decisions: [`ADR-0034`](decisions/0034-kind-dispatch-content-rendering.md).
+Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
+open item not already in Section 2. PR #588 closes F-CR-01 and F-CR-06; the next
+highest-value open item is F-CR-02, because Android must join `ContentTreeWire`
+before the Compose registry can replace the old embed card.
+
+#### F-CR-01 · Rust `EmbedKindProjection` + `EmbeddedEventEnvelope` [DONE · PR #588]
+
+New module `crates/nmp-content/src/embed_projection/`. Creates the typed envelope
+(`EmbeddedEventEnvelope`) and variant enum (`EmbedKindProjection`) that carry
+per-kind projection data across the wire to all three platforms.
+
+Variants: `ShortNote`, `Article`, `Highlight`, `Profile`, `Unknown`. The `Unknown`
+variant carries `kind: u32`, raw `tags: Vec<Vec<String>>`, `content: String`,
+`content_tree: ContentTreeWire`, and `alt_text` — enough for native kind handlers
+to extract any custom field without a Rust-side change.
+
+Also adds `RenderContextWire` (serialisable form of `nmp-content::RenderContext`)
+and `resolve_embed_projection(event, ctx)` — the single `match event.kind` dispatch
+point in the workspace. All fields follow ADR-0032 (raw protocol data, no formatted
+strings).
+
+Add golden fixture JSONs under `crates/nmp-content-fixtures/fixtures/embed/` for
+each variant. Tests in `nmp-content` pin the serde round-trip.
+
+**Dependencies:** none. **Scope:** medium. **Status:** implemented by PR #588.
+
+#### F-CR-02 · Android gallery → `ContentTreeWire` migration [PREREQUISITE · Android]
+
+Migrate `android/gallery/` off `ContentTreeDto` / `SegmentDto` / `MarkdownNodeDto`
+onto `ContentTreeWire` / `WireNode` (already the iOS + TUI wire format).
+
+- Rename `SegmentDtoView.kt` → `WireNodeView.kt`; rewrite against `WireNode` arena
+  indexing.
+- Delete `SegmentDto.kt`, `ContentTreeDto.kt`, `MarkdownNodeDto.kt`.
+- Update `EmbedEntry.rendered` field type from `ContentTreeDto?` to `ContentTreeWire?`.
+- `WireNode.EventRef` arm calls `EmbeddedEvent` composable (wired in F-CR-07).
+
+Run `./gradlew :gallery:test` to verify no regressions.
+
+**Dependencies:** F-CR-01 (envelope shape needed to scope the conversion).
+**Scope:** medium.
+
+#### F-CR-05 · iOS `NostrKindRegistry` + `EmbeddedEvent` + `EmbedChromeContainer` [HIGH · iOS]
+
+New registry component at `crates/nmp-cli/registry/swiftui/content-kind-registry/`.
+
+- `NostrKindRegistry` — `ObservableObject`, holds typed renderer slots (`ShortNote`,
+  `Article`, `Highlight`, `Profile`) plus `[UInt32: UnknownKindRenderer]` for open-ended
+  kind dispatch. `register(_:forKind:)` wires any kind number without touching core.
+- `EmbeddedEvent` — SwiftUI view, receives `EmbeddedEventEnvelope?`, consults registry,
+  wraps in `EmbedChromeContainer`.
+- `EmbedChromeContainer` — generic `<Content: View>` wrapper providing border,
+  indent, depth visual weight, and collapse placeholder. Knows nothing about content.
+- Built-in `DefaultShortNoteRenderer` and `DefaultUnknownRenderer` (promoted from
+  current `NostrQuoteCard` logic) bound via `makeDefault()`.
+- Update `NostrContentView.swift` `EventRef` arm to use `EmbeddedEvent`.
+- Deprecate (one release) `quoteCardProvider` closure API.
+
+**Dependencies:** F-CR-01. **Scope:** medium-large.
+
+#### F-CR-06 · TUI `NostrKindRegistry` + `EmbeddedEvent` widget [DONE · PR #588]
+
+New registry component at `crates/nmp-cli/registry/tui/content-kind-registry/`.
+
+- `NostrKindRegistry` — `HashMap<u32, Arc<dyn KindRenderer>>` plus typed slots;
+  `resolve(&projection)` returns the right renderer.
+- `KindRenderer` trait — `render(…, area, buf)` + `preferred_height(…, width)`.
+- `EmbeddedEvent` widget — `impl Widget`, wraps chosen renderer in
+  `EmbedChromeContainer` (left-border + indent).
+- Update `nostr_content_view.rs` `WireNode::EventRef` arm to call `EmbeddedEvent`.
+- Add default short-note and unknown renderers bound in `make_default()`. The
+  short-note renderer reuses the existing content-tree render path instead of
+  carrying a second quote-card implementation.
+
+**Dependencies:** F-CR-01. **Scope:** medium. **Status:** implemented by PR #588.
+
+#### F-CR-07 · Android `NostrKindRegistry` + `EmbeddedEvent` composable [HIGH · Android]
+
+New registry component at `crates/nmp-cli/registry/compose/content-kind-registry/`.
+
+- `NostrKindRegistry` — `CompositionLocal`, holds typed `KindRenderer` slots plus
+  `Map<Int, KindRenderer>` for open-ended dispatch.
+- `KindRenderer` — `fun interface` with `@Composable fun Render(…)`.
+- `EmbeddedEvent` — `@Composable`, receives `EmbeddedEventEnvelope?`, calls registry,
+  wraps in `EmbedChromeContainer`.
+- Delete `android/gallery/src/main/java/org/nmp/gallery/ui/EmbedCard.kt`.
+- Wire `WireNode.EventRef` in `WireNodeView.kt` to `EmbeddedEvent`.
+
+**Dependencies:** F-CR-01, F-CR-02. **Scope:** medium-large.
+
+#### F-CR-09 · `content-kind-30023` — Long-form article handler [MEDIUM · all platforms]
+
+Per-platform kind handler components that bind `EmbedKindProjection::Article` to a
+proper article preview card (title, summary, hero image, author, read-time). Derived
+from the existing `ArticlePreview` composable in Android's old `EmbedCard.kt`; new for
+iOS and TUI. Independently installable: `nmp add component swiftui/content-kind-30023`.
+
+**Dependencies:** F-CR-05, F-CR-06, F-CR-07. **Scope:** medium.
+
+#### F-CR-10 · `content-kind-9802` — NIP-84 highlight handler [SMALL · all platforms]
+
+Left-accent bar + italic highlighted text + source footer. New `crates/nmp-nip84/`
+crate for the `HighlightProjection` decoder. Independently installable.
+
+**Dependencies:** F-CR-05, F-CR-06, F-CR-07. **Scope:** small.
+
+#### F-CR-11 · `content-kind-0` — Profile card handler [SMALL · all platforms]
+
+Avatar + display name + npub chip + about preview. No new crate needed (profile data
+already in kernel projections). Independently installable.
+
+**Dependencies:** F-CR-05, F-CR-06, F-CR-07. **Scope:** small.
+
+#### F-CR-12 · Nested-embed regression fixtures + golden tests [MEDIUM · all platforms]
+
+Five fixture scenarios (one-deep article quote, cycle, depth limit, unknown kind,
+highlight) with per-platform snapshot/buffer/instrumented tests. Verifies the recursion
+guard, the `Unknown` fallback, and the article + highlight handlers end-to-end.
+
+**Dependencies:** F-CR-09, F-CR-10, F-CR-11. **Scope:** medium.
+
+#### F-CR-04 · Delete legacy embed wire-shapes (tail PR) [CLEANUP]
+
+After all registries are live and golden tests pass: delete `EmbedEntry.article`,
+`EmbedEntry.list`, `ArticleHeaderDto`, `ListDto`, `ListRowDto` from
+`nmp-content-fixtures::dto`; delete `content-quote-card` registry components on all
+three platforms; delete `ios/.../NostrQuoteCard.swift`; delete `android/.../EmbedDto.kt`
+residuals. One dedicated cleanup PR per AGENTS.md §no hacks.
+
+**Dependencies:** F-CR-12 passing on CI. **Scope:** small (deletions only).
 
 ### F-09 · Event relay provenance UI — "received from" view [V1 DX · all platforms]
 
