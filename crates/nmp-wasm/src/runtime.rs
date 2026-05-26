@@ -158,6 +158,17 @@ impl WasmRuntime {
         *self.snapshot_callback.borrow_mut() = callback;
     }
 
+    /// Hand the wasm-bindgen wrapper a borrow of the snapshot-callback slot
+    /// so the `handle_json` drain path can route `UpdateBytes` through the
+    /// same `Uint8Array` channel the relay-pool sink uses. Wasm32-only —
+    /// callers off-wasm have no `js_sys::Function` to push to.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn snapshot_callback_handle(
+        &self,
+    ) -> &Rc<RefCell<Option<js_sys::Function>>> {
+        &self.snapshot_callback
+    }
+
     /// Native test-side shim — the wasm-bindgen `NmpWasmRuntime` only
     /// exposes the `wasm32` method, but the protocol-conformance tests run
     /// on native CI and need a no-op equivalent so the test target compiles

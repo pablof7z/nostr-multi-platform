@@ -42,7 +42,7 @@ export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
   | { type: "runtime_status"; status: RuntimeStatus; correlation_id?: string }
   | { type: "action_accepted"; action_type: string; correlation_id: string }
-  | { type: "update_bytes"; bytes: Uint8Array | number[] }
+  | { type: "update_bytes"; bytes: Uint8Array }
   | {
       type: "capability_failure";
       capability: string;

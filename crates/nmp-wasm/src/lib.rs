@@ -49,8 +49,9 @@ mod bindings {
     use wasm_bindgen_futures::future_to_promise;
 
     use crate::{
-        protocol::{AppActionDispatch, WorkerRequest},
+        protocol::{AppActionDispatch, WorkerEvent, WorkerRequest},
         runtime::WasmRuntime,
+        snapshot::push_bytes_if_callback,
     };
 
     #[wasm_bindgen]
@@ -70,12 +71,30 @@ mod bindings {
         pub fn handle_json(&mut self, request: &str) -> Result<JsValue, JsValue> {
             let request: WorkerRequest =
                 serde_json::from_str(request).map_err(|err| JsValue::from_str(&err.to_string()))?;
-            let event = self
+            let events = self
                 .runtime
                 .handle(request)
                 .map_err(|err| JsValue::from_str(&err.to_string()))?;
+            // Drain UpdateBytes through the same Uint8Array channel the
+            // relay-pool sink uses, then JSON-serialize only the control
+            // events. Encoding FlatBuffers bytes as a JSON number array
+            // ~3–4×'d the payload of a 4Hz hot-path snapshot; the
+            // typed-array hop keeps the binary transport binary. The Vec
+            // is reconstructed without UpdateBytes entries so serde never
+            // sees them on this path (the variant stays Serialize for
+            // native-side diagnostics and tests).
+            let callback_handle = self.runtime.snapshot_callback_handle().clone();
+            let mut control_events: Vec<WorkerEvent> = Vec::with_capacity(events.len());
+            for event in events {
+                match event {
+                    WorkerEvent::UpdateBytes { bytes } => {
+                        push_bytes_if_callback(&callback_handle, &bytes);
+                    }
+                    other => control_events.push(other),
+                }
+            }
             Ok(JsValue::from_str(
-                &serde_json::to_string(&event)
+                &serde_json::to_string(&control_events)
                     .map_err(|err| JsValue::from_str(&err.to_string()))?,
             ))
         }
@@ -83,13 +102,18 @@ mod bindings {
         /// V-01 Stage 3b — install a JS callback the runtime invokes whenever
         /// a relay-driven kernel mutation produces a fresh snapshot.
         ///
-        /// The callback receives one string argument: the JSON-serialized
-        /// `WorkerEvent::UpdateBytes` wrapper around FlatBuffers bytes. JS hosts
-        /// install one callback at app boot; replacing the callback (calling
-        /// `set_snapshot_callback` again) atomically swaps it.
+        /// The callback receives one `Uint8Array` argument: the raw FlatBuffers
+        /// update-frame bytes. The synchronous return value of `handle_json`
+        /// stays a JSON array of control events ONLY — every `UpdateBytes`
+        /// produced inside `handle` is drained and routed through this
+        /// callback before `handle_json` returns. So a host that installs the
+        /// callback at boot sees inbound-relay-driven AND `Start`/dispatch-
+        /// driven snapshot frames on the same binary channel; pull-by-JSON
+        /// is not a thing in this design.
         ///
         /// Pass `null` (or omit the callback entirely on the JS side) to clear
-        /// the slot — the runtime then falls back to pull-only mode.
+        /// the slot — `UpdateBytes` events are then dropped on the floor on
+        /// the sync path, and the runtime falls back to pull-by-dispatch.
         ///
         /// # No polling
         ///
