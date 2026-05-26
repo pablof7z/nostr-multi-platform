@@ -81,6 +81,7 @@ mod tests {
             content_tree: None,
             content_render: Default::default(),
             mention_pubkeys,
+            repost: None,
         }
     }
 

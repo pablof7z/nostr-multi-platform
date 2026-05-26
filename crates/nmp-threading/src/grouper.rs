@@ -81,6 +81,15 @@ pub struct Grouper<R: ParentResolver> {
     /// declared but the substrate has no dynamic-deps API yet. Kept for
     /// diagnostics / a future trait extension.
     pending_ancestor_ids: BTreeSet<EventId>,
+    /// Per-target set of superseding event ids. While a target's set is
+    /// non-empty, its standalone block is suppressed from the layout — a
+    /// late-arriving target won't get its own block either. The target stays
+    /// in `by_id` so reply chains can still locate it as a parent, and so the
+    /// block can be restored if all its superseders are later removed.
+    ///
+    /// Populated by `ParentResolver::supersedes` (e.g., a NIP-18 repost names
+    /// the note it should bump in the feed).
+    superseded_by: BTreeMap<EventId, BTreeSet<EventId>>,
 }
 
 impl<R: ParentResolver> Grouper<R> {
@@ -95,6 +104,7 @@ impl<R: ParentResolver> Grouper<R> {
             orphans: BTreeMap::new(),
             orphaned: HashSet::new(),
             pending_ancestor_ids: BTreeSet::new(),
+            superseded_by: BTreeMap::new(),
         }
     }
 
@@ -120,7 +130,32 @@ impl<R: ParentResolver> Grouper<R> {
         if self.by_id.contains_key(&event.id) {
             return None;
         }
+        // Suppress events that have been preempted by a superseder. We still
+        // record the payload in `by_id` so reply chains and ancestor walks can
+        // resolve this id as a parent — only the standalone block placement
+        // is skipped.
+        if self
+            .superseded_by
+            .get(&event.id)
+            .is_some_and(|set| !set.is_empty())
+        {
+            self.by_id.insert(event.id.clone(), event.clone());
+            return None;
+        }
         self.by_id.insert(event.id.clone(), event.clone());
+
+        // Supersession: if this event supersedes a target (e.g., a repost
+        // bumping the original note), evict the target's standalone block so
+        // the superseder takes its place in the layout. Reply chains that
+        // contain the target are left untouched — the target is still useful
+        // as parent context.
+        if let Some(target) = self.resolver.supersedes(event) {
+            self.superseded_by
+                .entry(target.clone())
+                .or_default()
+                .insert(event.id.clone());
+            self.unplace_standalone(&target);
+        }
 
         // Drain any orphans waiting on this event's id; they will replay
         // after we've placed this event itself.
@@ -165,6 +200,48 @@ impl<R: ParentResolver> Grouper<R> {
             set.remove(id);
             !set.is_empty()
         });
+
+        // Supersession bookkeeping.
+        //   - if `id` was itself a target, drop its row (the surviving
+        //     superseders no longer have a target to preempt)
+        //   - if `id` was a superseder, scrub it from every set; collect
+        //     targets whose set is now empty so we can restore their blocks
+        self.superseded_by.remove(id);
+        let mut restore_candidates: Vec<EventId> = Vec::new();
+        self.superseded_by.retain(|target, set| {
+            set.remove(id);
+            if set.is_empty() {
+                restore_candidates.push(target.clone());
+                false
+            } else {
+                true
+            }
+        });
+
+        let block_delta = self.remove_id_from_blocks(id);
+
+        // Restore unsuperseded targets that still have payloads on hand.
+        let mut restored_any = false;
+        for target in restore_candidates {
+            if self.seen.contains(&target) {
+                continue;
+            }
+            let Some(event) = self.by_id.get(&target).cloned() else {
+                continue;
+            };
+            let _ = self.place_event(&event);
+            restored_any = true;
+        }
+
+        if block_delta.is_some() || restored_any {
+            self.collapse_adjacent();
+            self.sort_blocks_newest_first();
+        }
+
+        block_delta
+    }
+
+    fn remove_id_from_blocks(&mut self, id: &EventId) -> Option<GroupDelta> {
         if !self.seen.remove(id) {
             return None;
         }
@@ -203,13 +280,25 @@ impl<R: ParentResolver> Grouper<R> {
 
         if let Some(idx) = removed_idx {
             self.blocks.remove(idx);
-            self.collapse_adjacent();
-            self.sort_blocks_newest_first();
             Some(GroupDelta::BlockRemoved(idx))
         } else {
-            self.collapse_adjacent();
-            self.sort_blocks_newest_first();
             block_replaced_idx.map(GroupDelta::BlockReplaced)
+        }
+    }
+
+    /// Evict `id` from the layout when it appears as a `Standalone` block.
+    /// `Module` membership is left intact — a reposted note that's also
+    /// anchoring a reply chain stays in the chain so the reply still has
+    /// parent context. The event's payload remains in `by_id` so the block
+    /// can be restored if every superseder is later removed.
+    fn unplace_standalone(&mut self, id: &EventId) {
+        let standalone_idx = self.blocks.iter().position(|block| match block {
+            TimelineBlock::Standalone(eid) => eid == id,
+            TimelineBlock::Module { .. } => false,
+        });
+        if let Some(idx) = standalone_idx {
+            self.blocks.remove(idx);
+            self.seen.remove(id);
         }
     }
 

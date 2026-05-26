@@ -105,6 +105,36 @@ fn append_card(
     let gutter_width = 2usize;
     let content_width = pane_width.saturating_sub(gutter_width);
 
+    // Row 0 (reposts only): "↻ <reposter> reposted <age>"
+    if let Some(repost) = row.repost.as_ref() {
+        let prefix = "\u{21BA} ";
+        let prefix_len = prefix.chars().count();
+        let suffix = " reposted ";
+        let suffix_len = suffix.chars().count();
+        let repost_age = format_age(repost.repost_created_at);
+        let repost_age_len = repost_age.chars().count();
+        let name_budget = content_width
+            .saturating_sub(prefix_len)
+            .saturating_sub(suffix_len)
+            .saturating_sub(repost_age_len);
+        let (reposter_span, reposter_len) = profile_name_span(
+            &repost.author_profile,
+            Style::default().fg(DIM_TEXT).bg(row_bg),
+            name_budget,
+        );
+        let used = prefix_len + reposter_len + suffix_len + repost_age_len;
+        let pad = pad_for(content_width, used);
+        let line0 = Line::from(vec![
+            gutter_span.clone(),
+            Span::styled(prefix.to_string(), Style::default().fg(REPOST).bg(row_bg)),
+            reposter_span,
+            Span::styled(suffix.to_string(), Style::default().fg(DIM_TEXT).bg(row_bg)),
+            Span::styled(repost_age, Style::default().fg(DIM_TEXT).bg(row_bg)),
+            Span::styled(pad, Style::default().bg(row_bg)),
+        ]);
+        lines.push(line0);
+    }
+
     // Row 1: author · timestamp
     let author_style = Style::default()
         .fg(author_color(&row.author_pubkey))

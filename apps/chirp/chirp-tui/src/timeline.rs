@@ -12,6 +12,9 @@ pub struct TimelineRow {
     pub author_pubkey: String,
     pub author_profile: ProfileWire,
     pub content: String,
+    /// Timestamp shown next to the author label. For ordinary notes this is
+    /// the note's own `created_at`; for repost rows it's the *original*
+    /// note's publish time (the repost timestamp lives on `repost`).
     pub created_at: u64,
     pub depth: usize,
     pub has_gap: bool,
@@ -23,6 +26,17 @@ pub struct TimelineRow {
     /// equality holds across snapshot ticks (`RenderIntentTracker` diff-set
     /// math relies on stable orderings to avoid spurious claim churn).
     pub mention_pubkeys: Vec<String>,
+    /// `Some` when this row surfaced because of a NIP-18 repost — the
+    /// `author_*` fields above name the original note's author; this struct
+    /// names the reposter so the UI can show "↻ reposted by @<reposter>".
+    pub repost: Option<RowRepost>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowRepost {
+    pub author_pubkey: String,
+    pub author_profile: ProfileWire,
+    pub repost_created_at: u64,
 }
 
 impl TimelineRow {
@@ -76,7 +90,7 @@ impl TimelineRow {
         let author_pubkey = string_field(card, "author_pubkey");
         let author_profile = author_profile_from_card(&author_pubkey, card);
         let content = string_field(card, "content");
-        let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
+        let outer_created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
         let content_tree = card
             .get("content_tree")
             .and_then(ContentTreeWire::from_value);
@@ -85,6 +99,20 @@ impl TimelineRow {
             .map(ContentTreeWire::mentioned_pubkeys)
             .unwrap_or_default();
         let content_render = ContentRenderData::from_value(card.get("content_render"));
+        let repost = repost_from_card(card.get("reposted_by"), outer_created_at);
+        // For reposts the displayed timestamp is the original note's publish
+        // time (carried on `reposted_by.note_created_at`); the card's own
+        // `created_at` is the repost timestamp (used as the feed sort key
+        // and shown on the attribution line).
+        let created_at = repost
+            .as_ref()
+            .map(|_| {
+                card.get("reposted_by")
+                    .and_then(|r| r.get("note_created_at"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(outer_created_at)
+            })
+            .unwrap_or(outer_created_at);
         Self {
             id,
             author_pubkey,
@@ -97,8 +125,20 @@ impl TimelineRow {
             content_tree,
             content_render,
             mention_pubkeys,
+            repost,
         }
     }
+}
+
+fn repost_from_card(value: Option<&Value>, outer_created_at: u64) -> Option<RowRepost> {
+    let attribution = value?;
+    let author_pubkey = attribution.get("author_pubkey")?.as_str()?.to_string();
+    let author_profile = author_profile_from_card(&author_pubkey, attribution);
+    Some(RowRepost {
+        author_pubkey,
+        author_profile,
+        repost_created_at: outer_created_at,
+    })
 }
 
 fn author_profile_from_card(pubkey: &str, card: &Value) -> ProfileWire {
@@ -466,6 +506,59 @@ mod tests {
                 "https://example.com/quote.webp".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn repost_card_uses_inner_timestamp_and_attaches_repost_attribution() {
+        // The card represents the original note (kind:1 author, kind:1 content)
+        // but its outer `created_at` is the kind:6 repost time. The row's
+        // displayed `created_at` should be the inner note's publish time;
+        // `repost` carries the reposter + repost timestamp for the "↻ reposted
+        // by" line.
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "repost",
+                "author_pubkey": "innerinnerinnerinnerinnerinnerinnerinnerinnerinnerinnerinner1234",
+                "author_display": {"name": "calle"},
+                "created_at": 100,
+                "content": "Imagine BlueSky but with Nutzaps",
+                "reposted_by": {
+                    "author_pubkey": "reposterreposterreposterreposterreposterreposterreposterreposte",
+                    "author_display": {"name": "pablof7z"},
+                    "note_created_at": 50,
+                }
+            }]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].author_label(), "calle");
+        assert_eq!(rows[0].created_at, 50, "displayed time is the original note's");
+        let repost = rows[0].repost.as_ref().expect("repost attribution present");
+        assert_eq!(
+            repost.author_pubkey,
+            "reposterreposterreposterreposterreposterreposterreposterreposte"
+        );
+        assert_eq!(repost.author_profile.display_name.as_deref(), Some("pablof7z"));
+        assert_eq!(
+            repost.repost_created_at, 100,
+            "repost line shows the kind:6 timestamp"
+        );
+    }
+
+    #[test]
+    fn ordinary_note_has_no_repost_attribution() {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "aaaaaaaaaaaaaaaa",
+                "created_at": 1,
+                "content": "hello"
+            }]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert!(rows[0].repost.is_none());
     }
 
     #[test]

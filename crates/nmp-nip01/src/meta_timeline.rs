@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 
 use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use nmp_core::tags::parse_nip10;
-use nmp_nip18::KIND_REPOST;
+use nmp_nip18::{try_from_kernel_event as try_from_repost_event, KIND_REPOST};
 use nmp_threading::{
     GroupDelta, Grouper, ModulePolicy, ParentResolver, ThreadPointer, TimelineBlock,
 };
@@ -61,6 +61,17 @@ impl ParentResolver for Nip10Resolver {
         // is the parent's author. Return the first p-tag — callers treat
         // this as a hint, not authoritative.
         refs.mentioned_pubkeys.into_iter().next()
+    }
+
+    fn supersedes(&self, event: &KernelEvent) -> Option<String> {
+        // NIP-18: a kind:6 repost bumps the original note in the feed. The
+        // grouper evicts the target's standalone block on the way in and
+        // suppresses it if it arrives later — the note renders once, at the
+        // repost's position, attributed to the repost author.
+        if event.kind != KIND_REPOST {
+            return None;
+        }
+        try_from_repost_event(event).and_then(|record| record.target_event_id)
     }
 }
 

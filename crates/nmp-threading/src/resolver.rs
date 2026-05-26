@@ -2,9 +2,9 @@
 //!
 //! `nmp-nip01` impls it over NIP-10 markers (`Nip10Refs`). The grouper
 //! never sees kind numbers or tag conventions — it only asks "what is this
-//! event's parent / root / parent-author?".
+//! event's parent / root / parent-author / supersession-target?".
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{EventId, KernelEvent};
 
 use crate::pointer::ThreadPointer;
 
@@ -24,4 +24,17 @@ pub trait ParentResolver: Send + Sync + 'static {
     /// tags. Optional — used by UI for "X replied to Y" stitching; the
     /// grouper itself does not consult this.
     fn parent_author(&self, event: &KernelEvent) -> Option<String>;
+
+    /// Event id this event supersedes in the block layout, if any.
+    ///
+    /// Used for feed-composition rules where one event should *replace* (not
+    /// extend) another in the displayed block list — the canonical case is
+    /// a NIP-18 repost whose target note is already in the feed. The
+    /// grouper removes the named block before placing this event, so the
+    /// reposted note bumps to the new event's position and renders once.
+    ///
+    /// Default `None`: parent edges, not supersession, is the common case.
+    fn supersedes(&self, _event: &KernelEvent) -> Option<EventId> {
+        None
+    }
 }
