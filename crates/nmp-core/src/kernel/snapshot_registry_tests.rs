@@ -103,6 +103,13 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "active_account",
             // views cluster (D0)
             "author_view",
+            // generic claimed-event projection (F-CR-06 / ADR-0034):
+            // primary_id -> ClaimedEventDto for every event a renderer
+            // has called `claim_event` on and that has since arrived in
+            // the read-cache. Always present (empty `{}` is the no-claim
+            // steady state) so a host that pre-allocates the map slot
+            // never sees an absent key.
+            "claimed_events",
             "inserted",
             // derived view: per-author mention payloads scoped to the
             // open author-view items (aim.md §4.2).

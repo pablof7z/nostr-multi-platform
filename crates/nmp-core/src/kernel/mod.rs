@@ -59,6 +59,8 @@ mod nostr;
 #[cfg(test)]
 mod outbox_tests;
 #[cfg(test)]
+mod event_claim_tests;
+#[cfg(test)]
 mod profile_claim_tests;
 mod provenance;
 #[cfg(test)]
@@ -330,7 +332,7 @@ pub(crate) use lifecycle::LifecycleTransition;
 // `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
 use relay_transport::RelayTransportMap;
-use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
+use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, ClaimedEventDto, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
 use crate::substrate::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher,
     MailboxCache, OutboxRouter, ParsedRelayList,
@@ -362,6 +364,22 @@ use crate::util::sort_dedup;
 /// `MAX_CLAIMS_PER_PUBKEY` — see the audit table in `retention_tests.rs`
 /// for the per-structure rationale.
 pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
+
+/// Per-`primary_id` event-claim consumer-id retention cap.
+///
+/// Mirrors `MAX_CLAIMS_PER_PUBKEY` for the generic `claim_event` /
+/// `release_event` primitive: every `consumer_id` that asserts interest
+/// in the event identified by a `nostr:` URI is recorded in
+/// `event_claims[primary_id]: BTreeSet<consumer_id>`. Without a cap the
+/// set scales with dispatch count rather than working-set size — a D8
+/// violation symmetric with the profile-claim audit.
+///
+/// 256 matches the profile cap: every concurrent renderer surfacing a
+/// `NostrContentView`-style embed card holds its own `consumer_id`; real
+/// apps hold at most a few dozen per visible row. Drop-newest semantics:
+/// a claim attempt past the cap silently no-ops and increments
+/// `event_claim_drops_total`.
+pub(crate) const MAX_EVENT_CLAIMS_PER_KEY: usize = 256;
 
 /// Per-relay-role NIP-42 credentials. The closure signs the kind:22242 with
 /// whatever keypair is appropriate for that role (user identity for Content /
@@ -529,6 +547,35 @@ pub struct Kernel {
     /// active account's kind:3 follow set; empty until first kind:3 arrives.
     follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
     profile_claims: HashMap<String, BTreeSet<String>>,
+    /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
+    /// keyed by the same `primary_id` the snapshot's `claimed_events`
+    /// projection uses (hex64 event id for nevent/note URIs;
+    /// `kind:pubkey:d_tag` coordinate for naddr URIs).
+    ///
+    /// Driven by [`Kernel::claim_event`] / [`Kernel::release_event`]
+    /// (F-CR-06 / ADR-0034). Capped per key by
+    /// [`MAX_EVENT_CLAIMS_PER_KEY`]; overflow bumps
+    /// [`Self::event_claim_drops_total`]. Symmetric with `profile_claims`
+    /// and likewise NOT preserved across `Kernel::Reset` (claim refcounts
+    /// are view-derived; views re-claim on re-open).
+    event_claims: HashMap<String, BTreeSet<String>>,
+    /// Set of `primary_id`s for which a `OneShot + Global` interest has
+    /// already been registered with [`crate::subs::OneshotApi`] by
+    /// [`Kernel::claim_event`]. Prevents the second claimer on the same
+    /// id from registering a duplicate interest before the first EOSE
+    /// (and the `complete_unknown_oneshot` release) has fired.
+    ///
+    /// An entry is removed by [`Kernel::release_event`] when the last
+    /// consumer drops the claim — that lets a re-claim re-fetch (the
+    /// `OneshotApi` row may have been released on EOSE long ago).
+    event_claim_requested: BTreeSet<String>,
+    /// Counter for `claim_event` attempts dropped because a single
+    /// `primary_id`'s consumer set hit [`MAX_EVENT_CLAIMS_PER_KEY`].
+    /// Read-only diagnostic; mirrors `claim_drops_total` for the
+    /// profile-claim primitive. Not yet surfaced on the snapshot — the
+    /// FFI projection seam will add it alongside the existing
+    /// `claim_drops_total` in a follow-up (V-???).
+    event_claim_drops_total: u64,
     /// Profile-fetch request tracking (D0 app-domain state). See
     /// [`ProfileRequestState`].
     profile_requests: ProfileRequestState,
@@ -1219,6 +1266,9 @@ impl Kernel {
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
+            event_claims: HashMap::new(),
+            event_claim_requested: BTreeSet::new(),
+            event_claim_drops_total: 0,
             profile_requests: ProfileRequestState::default(),
             timeline_requested: false,
             contacts_deadline: None,
@@ -1443,6 +1493,31 @@ impl Kernel {
             .get(pubkey)
             .map(|consumers| consumers.len())
             .unwrap_or(0)
+    }
+
+    /// Test-only: number of consumers currently holding a `claim_event`
+    /// on `primary_id`. Mirrors `profile_claims_len_for_test`.
+    #[cfg(test)]
+    pub(crate) fn event_claims_len_for_test(&self, primary_id: &str) -> usize {
+        self.event_claims
+            .get(primary_id)
+            .map(|consumers| consumers.len())
+            .unwrap_or(0)
+    }
+
+    /// Test-only: `claim_event` requests dropped because a single
+    /// `primary_id`'s consumer set hit `MAX_EVENT_CLAIMS_PER_KEY`.
+    #[cfg(test)]
+    pub(crate) fn event_claim_drops_total_for_test(&self) -> u64 {
+        self.event_claim_drops_total
+    }
+
+    /// Test-only: `true` when `primary_id` is on the
+    /// `event_claim_requested` set (an interest has been registered with
+    /// the OneshotApi but not yet released by `complete_unknown_oneshot`).
+    #[cfg(test)]
+    pub(crate) fn event_claim_is_requested_for_test(&self, primary_id: &str) -> bool {
+        self.event_claim_requested.contains(primary_id)
     }
 
     /// T133 retention-test accessor — total `wire_subs` row count, evicted or

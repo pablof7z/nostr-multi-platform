@@ -9,6 +9,7 @@
 //! - `thread.rs`          — thread open/close/hydration
 
 mod auth_gate;
+mod event;
 mod profile;
 mod relay_lifecycle;
 mod startup;

@@ -14,9 +14,10 @@
 
 use super::{
     diff_items, event_references, first_event_ref, ratio, referenced_event_ids, root_event_id,
-    truncate, AccountSummary, AuthorViewPayload, BTreeSet, Instant, Kernel, KernelSnapshot,
-    MentionProfilePayload, Metrics, Profile, ProfileAction, ProfileCard, ProfileDispatchSpec,
-    SettingsHubSummary, StoredEvent, ThreadViewPayload, TimelineItem, DEFAULT_EMIT_HZ,
+    truncate, AccountSummary, AuthorViewPayload, BTreeSet, ClaimedEventDto, Instant, Kernel,
+    KernelSnapshot, MentionProfilePayload, Metrics, Profile, ProfileAction, ProfileCard,
+    ProfileDispatchSpec, SettingsHubSummary, StoredEvent, ThreadViewPayload, TimelineItem,
+    DEFAULT_EMIT_HZ,
 };
 use crate::update_envelope::{encode_snapshot_value, UpdateFrameBytes};
 
@@ -478,7 +479,58 @@ impl Kernel {
             serde_json::to_value(&mention_profiles)
                 .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
         );
+        // `claimed_events` projection — keyed by `primary_id` (hex64 event
+        // id for nevent/note URIs; `kind:pubkey:d_tag` coordinate for
+        // naddr URIs). Built by walking the current `event_claims` set
+        // and looking each key up against `self.events` via
+        // `lookup_for_primary_id`. Missing entries are silently absent —
+        // the host renders the URI as-is until the event arrives (D1
+        // best-effort; D8 push semantics on the next snapshot tick).
+        //
+        // BTreeMap for deterministic key ordering (snapshot diff
+        // stability across ticks); serialisation degrades to `{}` on
+        // failure, mirroring `mention_profiles`.
+        let mut claimed_events: std::collections::BTreeMap<String, ClaimedEventDto> =
+            std::collections::BTreeMap::new();
+        for key in self.event_claims.keys() {
+            if let Some(stored) = self.lookup_for_primary_id(key) {
+                claimed_events.insert(
+                    key.clone(),
+                    ClaimedEventDto::from_stored(key.clone(), stored),
+                );
+            }
+        }
+        projections.insert(
+            "claimed_events".to_string(),
+            serde_json::to_value(&claimed_events)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
+        );
         projections
+    }
+
+    /// Look up the `StoredEvent` that resolves a `claim_event`
+    /// `primary_id`. Hex-64 keys (event id form) index `self.events`
+    /// directly; coordinate keys (`kind:pubkey:d_tag`) scan
+    /// `self.events.values()` for the matching addressable triple.
+    ///
+    /// d-tags may legally contain `:` (rare but spec-allowed); the
+    /// split is bounded to the first two colons so a d-tag like
+    /// `"foo:bar"` round-trips correctly.
+    pub(super) fn lookup_for_primary_id(&self, key: &str) -> Option<&StoredEvent> {
+        if is_hex64_lower(key) {
+            return self.events.get(key);
+        }
+        let mut parts = key.splitn(3, ':');
+        let kind = parts.next().and_then(|s| s.parse::<u32>().ok())?;
+        let pubkey = parts.next()?;
+        let d_tag = parts.next()?;
+        self.events.values().find(|e| {
+            e.kind == kind
+                && e.author == pubkey
+                && e.tags
+                    .iter()
+                    .any(|t| t.len() >= 2 && t[0] == "d" && t[1] == d_tag)
+        })
     }
 
     pub(super) fn visible_items(&self) -> Vec<TimelineItem> {
@@ -904,6 +956,16 @@ mod repost_inner_tests {
 /// without a branch (host renders `Text(label)` unconditionally; an empty
 /// string collapses to a no-op). Plain English form — see aim.md §6
 /// anti-pattern #1: native must not duplicate pluralization.
+/// `true` when `s` is exactly 64 lowercase hex characters — the canonical
+/// form of a Nostr event id. Used by `lookup_for_primary_id` to choose
+/// between a direct `events.get` lookup (event-id-form `primary_id`) and
+/// the coordinate scan (`kind:pubkey:d_tag` form). Coordinate-form
+/// strings never match (kind digits ≤ 5 chars, then `:`, then a 64-hex
+/// pubkey, etc. — total length differs from 64 in every legal case).
+fn is_hex64_lower(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 fn format_previous_count_label(count: usize) -> String {
     match count {
         0 => String::new(),

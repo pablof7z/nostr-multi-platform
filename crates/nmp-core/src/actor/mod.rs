@@ -531,6 +531,22 @@ pub enum ActorCommand {
         pubkey: String,
         consumer_id: String,
     },
+    /// Refcounted event claim — drives the generic `claim_event` kernel
+    /// primitive (F-CR-06 / ADR-0034). `uri` is a `nostr:` URI
+    /// (nevent/note/naddr); profile URIs are rejected (use `ClaimProfile`).
+    /// Symmetric with `ClaimProfile` in shape and dispatch.
+    ClaimEvent {
+        uri: String,
+        consumer_id: String,
+    },
+    /// Release a previously claimed event (the same `uri` +
+    /// `consumer_id` pair). On the last consumer's release the
+    /// `event_claims[primary_id]` row is removed and
+    /// `event_claim_requested` is cleared so a re-claim can re-fetch.
+    ReleaseEvent {
+        uri: String,
+        consumer_id: String,
+    },
     CloseAuthor {
         pubkey: String,
     },
