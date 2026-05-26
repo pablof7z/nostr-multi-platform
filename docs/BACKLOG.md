@@ -54,12 +54,25 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    registration onto `nmp_core::substrate::{ActionRegistrar, AppHost}` so
    `nmp-router` and `nmp-app-template` no longer need `nmp-ffi` for reusable Rust
    registration. No P1 slices remain; the next V-57 item is P2 below.
-2. **P2 — move protocol policy back out of `nmp-core`.**
-   `crates/nmp-core/src/actor/commands/relays.rs:29-35` duplicates NIP-65 kind `10002`
-   publishing policy; `crates/nmp-core/src/actor/commands/publish.rs:16-21`, `:297-305`,
-   and `:377-389` hardcode kind `1059` gift-wrap routing policy. **Next step:** protocol
-   crates should declare publish/routing constraints as typed policy data; core should enforce
-   the abstract constraint without naming NIP kinds.
+2. **P2 — centralise Nostr kind constants in `nmp-core`.** _Direction changed
+   2026-05-27._ The original framing treated `nmp-core` naming `1059` / `10002`
+   as a D0 leak; the owner reframed this on 2026-05-27 — integer kind numbers
+   are wire-protocol data, not app/protocol *nouns*, and centralising the
+   integers in one place removes the duplication risk without growing the
+   kernel's semantic surface. `crates/nmp-core/src/actor/commands/relays.rs:29-35`
+   and `crates/nmp-core/src/actor/commands/publish.rs:16-21` no longer hold
+   local `const KIND_RELAY_LIST` / `const KIND_GIFT_WRAP` duplicates — they
+   import `KIND_RELAY_LIST` / `KIND_GIFT_WRAP` from `nmp_core::kinds` (the
+   canonical workspace registry created in this slice). The doc-prose and log
+   strings in those files no longer name `NIP-17`, kind `10050`, or `Marmot`;
+   the kind:1059 D10 guard now refers to "the author's public-relay outbox"
+   in substrate-neutral terms. **Next step:** Create `nmp_core::kinds` module
+   centralizing all Nostr kind constants; protocol crates import from it.
+   Follow-up: migrate the remaining private duplicates in `nmp-nip59` /
+   `nmp-nip17` / `nmp-nip29` / `nmp-nip57` / `nmp-marmot` / `nmp-router` /
+   `nmp-wot` to re-export from `nmp_core::kinds` once the dependency edges
+   are confirmed compatible with the boundary spec (out of scope for the
+   current slice; tracked as V-57 P2 stage 2).
 3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
    `apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses and builds
    zap input in the TUI; the host-side zap auto-pay loop was removed so Rust owns the
