@@ -74,6 +74,45 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    `Result<JsValue, JsValue>`; `crates/nmp-wasm/src/lib.rs:165-170` rejects a promise for
    invalid JSON. **Next step:** route wasm snapshots through the canonical kernel update path
    and return caller-visible failures as data envelopes.
+
+   **Implementation notes (2026-05-27):** All three violations re-verified against HEAD.
+   `crates/nmp-wasm/src/snapshot.rs:86,95` — both `build_snapshot_value` and
+   `build_snapshot_bytes` accept `_reducer: &KernelReducer` with the leading underscore;
+   the reducer is never read. The hand-built payload (`build_snapshot_payload_value`,
+   `snapshot.rs:100-122`) emits a 5-key `{schema_version, rev, running, database_name,
+   projections: {relay_diagnostics}}` object, while the canonical `KernelSnapshot` built
+   by `Kernel::make_update` (`crates/nmp-core/src/kernel/update.rs:39-260`) carries
+   ~40 fields including `metrics`, `relay_status[es]`, `logical_interests`,
+   `wire_subscriptions`, `logs`, `last_error_toast/category/planner_error`, plus the
+   13-key `projections` map (`publish_queue`, `publish_outbox`, `outbox_summary`,
+   `relay_edit_rows`, `accounts`, `active_account`, `profile`, `timeline`, `author_view`,
+   `thread_view`, `claimed_events`, `mention_profiles`, plus host-registered ones). Web
+   hosts therefore cannot consume the same `UpdateEnvelope` parser/renderer as native.
+   `crates/nmp-wasm/src/lib.rs:71` — `handle_json` returns `Result<JsValue, JsValue>` and
+   produces three distinct JS exceptions (request-deserialize at `:73`, runtime error at
+   `:77`, control-event serialize at `:98`); `lib.rs:194` — `dispatch_app_action_async`
+   rejects the Promise on invalid request_json and the doc-comment at `:160-164` calls
+   this "programmer error", which is itself the violation. **Load-bearing API gap:**
+   `Kernel::make_update` is `pub(crate)` (`update.rs:39`); routing wasm through it
+   requires a new `pub fn make_update(&mut self, running: bool) -> UpdateFrameBytes` on
+   `KernelReducer` (`crates/nmp-core/src/kernel_reducer.rs`) that delegates to it —
+   without that, the fix is just renaming the existing stub. **Concrete steps:** (1)
+   add `KernelReducer::make_update` plus a `running()`-style accessor or pass `running`
+   from `RuntimeMeta`; (2) delete `build_snapshot_value` / `build_snapshot_bytes` /
+   `build_snapshot_payload_value` and have `runtime.rs:405-408` + `relay_pool.rs` +
+   `publish_path.rs` call `reducer.make_update(meta.started)` directly; (3) introduce a
+   `WorkerEvent::Error { code, message, correlation_id }` envelope variant (already
+   exists at `protocol.rs:233-237`) and change `handle_json` to return
+   `Result<JsValue, JsValue>` only for unrecoverable JS-binding faults — surface
+   deserialize/serialize failures as `WorkerEvent::Error` in the events array; (4) in
+   `dispatch_app_action_async`, replace `Promise::reject` with a resolved Promise
+   carrying `WorkerEvent::CapabilityFailure { capability: "nmp.dispatch_app_action",
+   reason: "invalid_request_json: …", correlation_id: "" }` (no id is available
+   pre-parse, so the empty string is the honest contract); (5) keep the
+   `Uint8Array` binary transport for snapshot bytes — the canonical `make_update`
+   already returns `UpdateFrameBytes`, so `push_bytes_if_callback` works unchanged.
+   D6 rationale: matches `ffi_guard::guard_ffi_callback`'s "failures are data, not
+   host-visible exceptions" pattern on the native side.
 5. **P5 — close native update-loop and envelope discipline gaps.**
    `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
    polls for updates; `apps/nmp-gallery/nmp-app-gallery/src/android.rs:221-228` returns `null` on
