@@ -40,6 +40,14 @@ use crate::{
 /// running the gallery TUI claims THIS naddr.
 pub const ARTICLE_NADDR: &str = "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp";
 
+/// pablof7z kind:1 note "grok cli is INSANELY bad, jesus" — verified on
+/// wss://relay.primal.net via `nak req` (event id 276d69d6…).
+pub const NOTE_NEVENT: &str = "nostr:nevent1qqszwmtf6mfdeq6g62st0fnjg4grjzwutfq967awvx5zfhpzfcga0pqpzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqlxqxcq";
+
+/// pablof7z kind:9802 highlight "Vibe-coding is what brought me back to
+/// programming" — verified on wss://relay.primal.net (event id 4fb59c3c…).
+pub const HIGHLIGHT_NEVENT: &str = "nostr:nevent1qqsyldvu8s4pwha9vqqvur0ht4d2gj0e7u3kmguv9hpf0thuk5prjwspzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afq2dlzvt";
+
 pub struct GalleryData {
     pub primary_profile: ProfileWire,
     pub secondary_profile: ProfileWire,
@@ -122,14 +130,13 @@ impl GalleryData {
             &primary.pubkey,
             1,
             &format!(
-                "this is a great point {} what do you think?",
-                facts.quote_event_uri
+                "this is a great point {NOTE_NEVENT} what do you think?"
             ),
         );
         let highlight_embed_item = synth_item(
             &primary.pubkey,
             1,
-            &format!("found this interesting {}", facts.quote_event_uri),
+            &format!("found this interesting {HIGHLIGHT_NEVENT}"),
         );
 
         Ok(Self {

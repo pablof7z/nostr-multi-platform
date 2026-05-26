@@ -129,13 +129,14 @@ struct ProfileEmbedPage: View {
 
 // MARK: - Note — kind:1 short text note via nevent
 
-/// The gallery's existing MENTION_EVENT_ID (caef905a…). Matches the TUI's
-/// reproduction set so both surfaces show the same data.
+/// pablof7z kind:1 note "grok cli is INSANELY bad, jesus" — verified on
+/// wss://relay.primal.net via `nak req`. Same author as the gallery's
+/// PRIMARY_PUBKEY so the kind:0 mention resolution is reused.
 private let DEMO_NOTE_EVENT_ID =
-    "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660"
+    "276d69d6d2dc8348d2a0b7a67245503909dc5a405d7bae61a824dc224e11d784"
 
 private let DEMO_NOTE_NEVENT =
-    "nostr:nevent1qqsx2alyz6rc4y8avxy9d3keejs3rcnzxx0gevpsa5lcyp475x4nkqgpzpmhxue69uhkummnw3ezuamfdejszrthwden5te0dehhxtnvdakqyfhwden5te0wfjkccte9emxxe33xyenjwfjvgg5kgsdc"
+    "nostr:nevent1qqszwmtf6mfdeq6g62st0fnjg4grjzwutfq967awvx5zfhpzfcga0pqpzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqlxqxcq"
 
 struct NoteEmbedPage: View {
     @Environment(GalleryModel.self) private var model
@@ -177,15 +178,13 @@ struct NoteEmbedPage: View {
 
 // MARK: - Highlight — kind:9802 via nevent
 
-/// A canonical NIP-84 highlight event. If the kernel can't resolve it the
-/// renderer keeps the loading placeholder visible; the kind:9802 default
-/// renderer (overridden by HighlightEmbed) only runs once a real envelope
-/// lands in projections.claimed_events.
+/// pablof7z kind:9802 highlight "Vibe-coding is what brought me back to
+/// programming" — verified on wss://relay.primal.net via `nak req`.
 private let DEMO_HIGHLIGHT_EVENT_ID =
-    "2df88accbf264b10f47809abcf9d32b4146b035a5a197c9ff30e45ac010d5368"
+    "4fb59c3c2a175fa56000ce0df75d5aa449f9f7236da38c2dc297aefcb502393a"
 
 private let DEMO_HIGHLIGHT_NEVENT =
-    "nostr:nevent1qqstdhz9vewfjtzr685qf40e7n9dq5dvqddtgvhe8luhpyt2qzr2nfcpzpmhxue69uhkummnw3ezuamfdejszrthwden5te0dehhxtnvdakqyfhwden5te0wfjkccte9emxxe33xyenjwfjvgg5kgsdc"
+    "nostr:nevent1qqsyldvu8s4pwha9vqqvur0ht4d2gj0e7u3kmguv9hpf0thuk5prjwspzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afq2dlzvt"
 
 struct HighlightEmbedPage: View {
     @Environment(GalleryModel.self) private var model

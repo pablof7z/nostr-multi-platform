@@ -39,17 +39,16 @@ let GALLERY_PROFILE_CONSUMER_ID = "gallery"
 ///
 ///   • `wss://purplepag.es`  — canonical kind:0 / kind:10002 indexer
 ///     (`FALLBACK_INDEXER_RELAY` in `crates/nmp-core/src/relay.rs`).
-///   • `wss://relay.damus.io`, `wss://nos.lol` — redundancy so pablof7z's
-///     write relays (discovered via kind:10002) remain reachable even if one
-///     of them is throttling at the moment of the screenshot.
+///   • `wss://relay.primal.net` — primal's indexed mirror; carries pablof7z's
+///     own kind:1/9802/30023 events used by the embed showcase. Matches the
+///     TUI gallery's relay set so both surfaces resolve the same embeds.
 ///
 /// Role `"both"` lets the same socket carry inbox + outbox legs of the
 /// planner's interest set (the diagnostic lane is `RelayRole::Content`; the
 /// NIP-65 read/write split lives on the `RelayEditRow`, not on the pool key).
 let GALLERY_BOOTSTRAP_RELAYS: [String] = [
     "wss://purplepag.es",
-    "wss://relay.damus.io",
-    "wss://nos.lol",
+    "wss://relay.primal.net",
 ]
 
 /// Wire-shape of `projections.author_view.profile` — the kernel's
