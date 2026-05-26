@@ -49,7 +49,7 @@ pub use embed_projection::{
 };
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
-    EmbedRegistrySnapshot, EmbedTarget,
+    EmbedRegistrySnapshot, EmbedTarget, EventClaimSink, NoopEventClaimSink,
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};

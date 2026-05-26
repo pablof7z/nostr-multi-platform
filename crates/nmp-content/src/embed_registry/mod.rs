@@ -33,6 +33,7 @@
 //! [`claim_count`]: EmbedClaimRegistry::claim_count
 //! [`on_event_inserted`]: EmbedClaimRegistry::on_event_inserted
 
+pub mod event_claim_sink;
 mod state;
 mod target;
 mod view;
@@ -40,6 +41,7 @@ mod view;
 #[cfg(test)]
 mod tests;
 
+pub use event_claim_sink::{EventClaimSink, NoopEventClaimSink};
 pub use state::EmbedClaimState;
 pub use target::{ClaimHandle, EmbedTarget, ResolvedEvent};
 pub use view::{EmbedClaimDelta, EmbedClaimSpec, EmbedRegistrySnapshot};
