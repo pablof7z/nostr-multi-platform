@@ -33,11 +33,10 @@
 //! that need the full algorithm live in `nmp-testing/tests/real_relay_*`
 //! and use the router-side `nmp_router::Nip65OutboxResolver` directly.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::action::{PublishTarget, RelayUrl};
-use super::traits::OutboxResolver;
+use super::traits::{OutboxResolver, RelaySelectionReason, ResolvedRelay};
 use crate::store::{EventStore, PubKey};
 
 #[derive(Clone)]
@@ -127,13 +126,24 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
-    ) -> BTreeSet<RelayUrl> {
+    ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
-            return relays.iter().cloned().collect();
+            return relays
+                .iter()
+                .map(|url| ResolvedRelay {
+                    url: url.clone(),
+                    reason: RelaySelectionReason::Explicit,
+                })
+                .collect();
         }
-        let mut out: BTreeSet<RelayUrl> = BTreeSet::new();
+        let mut out: Vec<ResolvedRelay> = Vec::new();
         let (writes, _reads) = self.lookup_relays(author_pubkey);
-        out.extend(writes);
+        for url in writes {
+            out.push(ResolvedRelay {
+                url,
+                reason: RelaySelectionReason::AuthorWriteRelay,
+            });
+        }
 
         // Active-account local-write fallback (parity with the router-side
         // `Nip65OutboxResolver`). Applies only when the author IS the
@@ -141,7 +151,12 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         if out.is_empty() && self.is_active_account(author_pubkey) {
             if let Some(slot) = self.local_write_relays.as_ref() {
                 if let Ok(guard) = slot.lock() {
-                    out.extend(guard.as_slice().iter().cloned());
+                    for url in guard.as_slice().iter().cloned() {
+                        out.push(ResolvedRelay {
+                            url,
+                            reason: RelaySelectionReason::LocalConfigRelay,
+                        });
+                    }
                 }
             }
         }
@@ -153,7 +168,14 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
             for p in p_tags {
                 let (_writes, reads) = self.lookup_relays(p);
-                out.extend(reads);
+                for url in reads {
+                    out.push(ResolvedRelay {
+                        url,
+                        reason: RelaySelectionReason::RecipientInbox {
+                            pubkey: p.clone(),
+                        },
+                    });
+                }
             }
         }
         out

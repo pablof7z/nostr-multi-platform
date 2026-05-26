@@ -379,6 +379,61 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
     }
 }
 
+#[test]
+fn t128_terminal_outcome_carries_relay_reason_to_wire_json() {
+    // Regression guard for the per-relay rationale round-trip: the engine
+    // captures `relay_reasons` from the resolver at publish time and stores
+    // them on `InFlight`. `terminal_outcome_of` clones the map into
+    // `TerminalOutcome`; `classify_terminal_outcome` then threads each reason
+    // onto the corresponding `RelayAckOutcome`. Without that wiring the
+    // settled `publish_queue` row would lose the "why was this relay
+    // targeted?" string the in-flight `publish_outbox` row carries — chirp-tui
+    // and iOS both render the history pane off this exact field, so a silent
+    // drop would degrade UX with no test signal. Pin the contract here.
+    let author = "bb".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+    let signed = fake_signed("cc".repeat(32).as_str(), &author, 1, "reason roundtrip");
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
+
+    let snapshot_json = kernel.make_update_json_for_test(true);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
+    let queue = parsed
+        .get("projections")
+        .and_then(|v| v.get("publish_queue"))
+        .and_then(|v| v.as_array())
+        .expect("projections.publish_queue must be an array");
+    let entry = queue
+        .iter()
+        .find(|e| e.get("event_id").and_then(|v| v.as_str()) == Some(signed.id.as_str()))
+        .expect("our publish must be in the wire snapshot");
+    let outcomes = entry
+        .get("relay_outcomes")
+        .and_then(|v| v.as_array())
+        .expect("relay_outcomes must serialize on a terminal entry");
+    assert_eq!(outcomes.len(), 2);
+    for outcome in outcomes {
+        let reason = outcome
+            .get("relay_reason")
+            .and_then(|v| v.as_str())
+            .expect(
+                "relay_reason must be present on every per-relay outcome — Nip65OutboxResolver \
+                 emits a non-empty rationale for every write relay it returns",
+            );
+        // The NIP-65 resolver emits a stable English label for write relays;
+        // assert on the substring rather than the exact wording so the
+        // rationale copy can evolve without breaking this contract test.
+        assert!(
+            reason.to_ascii_lowercase().contains("write"),
+            "relay_reason for a NIP-65 write relay must mention write; got {reason:?}"
+        );
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Direction review #29 — `projections.action_results`.
 //

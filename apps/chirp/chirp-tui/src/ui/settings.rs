@@ -7,13 +7,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::AppState;
-use crate::feature_snapshot::{AccountLine, OutboxLine};
+use crate::feature_snapshot::AccountLine;
 use crate::snapshot::RelayRow;
-use crate::ui::shared_snapshot_lines::{action_summary, relay_lines};
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, LIST_BG, RELAY_CONNECTING,
-    RELAY_DOWN, RELAY_OK, REPOST, SELECTED_BG, ZAP, author_color,
+    ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, LIST_BG, RELAY_CONNECTING, RELAY_DOWN,
+    RELAY_OK, SELECTED_BG, ZAP, author_color,
 };
+use crate::ui::outbox;
+use crate::ui::shared_snapshot_lines::relay_lines;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let cols = Layout::default()
@@ -27,7 +28,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     render_accounts(frame, cols[0], state);
     render_relays(frame, cols[1], state);
-    render_outbox(frame, cols[2], state);
+    outbox::render_outbox(frame, cols[2], state);
 }
 
 fn render_accounts(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -203,89 +204,6 @@ fn build_relay_lines(relays: &[RelayRow], pane_width: usize) -> Vec<Line<'static
             ])
         })
         .collect()
-}
-
-fn render_outbox(frame: &mut Frame, area: Rect, state: &AppState) {
-    let block = Block::default()
-        .borders(Borders::NONE)
-        .style(Style::default().bg(DETAIL_BG))
-        .title(Span::styled(
-            " Outbox ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
-        ));
-
-    let inner = block.inner(area);
-    let pane_width = inner.width as usize;
-
-    let mut lines: Vec<Line<'static>> = Vec::new();
-
-    // Last action summary
-    let last_action = action_summary(state);
-    lines.push(Line::from(Span::styled(
-        last_action,
-        Style::default().fg(DIM_TEXT),
-    )));
-    lines.push(Line::from(""));
-
-    // Outbox summary header
-    if !state.features.outbox_summary.title.is_empty() {
-        lines.push(Line::from(Span::styled(
-            state.features.outbox_summary.title.clone(),
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from(""));
-    }
-
-    lines.push(Line::from(vec![
-        Span::styled("Follows: ", Style::default().fg(DIM_TEXT)),
-        Span::styled(
-            state.features.follow_count.to_string(),
-            Style::default().fg(BODY_TEXT),
-        ),
-    ]));
-    lines.push(Line::from(""));
-
-    if state.features.outbox.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "  No outbox items",
-            Style::default().fg(DIMMER_TEXT),
-        )));
-    } else {
-        for item in state.features.outbox.iter().take(10) {
-            append_outbox_line(&mut lines, item, pane_width);
-        }
-    }
-
-    let paragraph = Paragraph::new(lines)
-        .block(block)
-        .style(Style::default().bg(DETAIL_BG).fg(BODY_TEXT));
-    frame.render_widget(paragraph, area);
-}
-
-fn append_outbox_line(lines: &mut Vec<Line<'static>>, item: &OutboxLine, pane_width: usize) {
-    let status_color = outbox_status_color(&item.status_label);
-    let handle = truncate(&item.handle, 10);
-    let status = truncate(&item.status_label, 8);
-    let title_max = pane_width.saturating_sub(handle.chars().count() + status.chars().count() + 2);
-    let title = truncate(&item.title, title_max);
-    lines.push(Line::from(vec![
-        Span::styled(handle, Style::default().fg(DIM_TEXT)),
-        Span::raw(" "),
-        Span::styled(status, Style::default().fg(status_color)),
-        Span::raw(" "),
-        Span::styled(title, Style::default().fg(BODY_TEXT)),
-    ]));
-}
-
-fn outbox_status_color(status: &str) -> ratatui::style::Color {
-    let lower = status.to_ascii_lowercase();
-    if lower.contains("sent") || lower.contains("ok") || lower.contains("success") {
-        REPOST
-    } else if lower.contains("fail") || lower.contains("error") {
-        RELAY_DOWN
-    } else {
-        ZAP
-    }
 }
 
 fn status_dot(label: &str) -> (char, ratatui::style::Color) {

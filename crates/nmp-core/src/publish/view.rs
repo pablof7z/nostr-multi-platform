@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::action::{PublishHandle, RelayUrl};
 use super::state::PerRelayState;
+use super::traits::RelaySelectionReason;
 use crate::substrate::{ProjectionChange, ViewContext, ViewDependencies};
 
 const DEFAULT_RECENT_OK_CAP: usize = 32;
@@ -34,6 +35,16 @@ pub struct EventPublishStatus {
     pub created_at: u64,
     pub content: String,
     pub per_relay: Vec<(RelayUrl, PerRelayState)>,
+    /// Per-relay selection rationale, parallel to `per_relay` (same key set).
+    /// Carried from the publish engine through the projection so kernel snapshots
+    /// (`publish_outbox_items`) and apps can render "why was this relay targeted?"
+    /// without re-running the outbox resolver. The `Vec<RelaySelectionReason>`
+    /// shape captures the case where one canonical URL was selected for
+    /// multiple reasons (e.g. a relay that is both the author's NIP-65 write
+    /// relay AND a discovery indexer). Defaults to empty for
+    /// backwards-compatible deserialization of older payloads.
+    #[serde(default)]
+    pub relay_reasons: Vec<(RelayUrl, Vec<RelaySelectionReason>)>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

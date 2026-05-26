@@ -105,7 +105,13 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => match state.tab {
             crate::features::FeatureTab::Chats => state.chat_select_next(),
             crate::features::FeatureTab::Groups => state.group_select_next(),
-            crate::features::FeatureTab::Settings => state.settings_account_select_next(),
+            crate::features::FeatureTab::Settings => {
+                if state.outbox_selected.is_some() {
+                    outbox_select_next(state);
+                } else {
+                    state.settings_account_select_next();
+                }
+            }
             _ => {
                 state.select_next();
                 state.load_older_timeline_if_needed(runtime);
@@ -114,7 +120,13 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Up | KeyCode::Char('k') if state.focused != Pane::Detail => match state.tab {
             crate::features::FeatureTab::Chats => state.chat_select_previous(),
             crate::features::FeatureTab::Groups => state.group_select_previous(),
-            crate::features::FeatureTab::Settings => state.settings_account_select_previous(),
+            crate::features::FeatureTab::Settings => {
+                if state.outbox_selected.is_some() {
+                    outbox_select_previous(state);
+                } else {
+                    state.settings_account_select_previous();
+                }
+            }
             _ => state.select_previous(),
         },
         KeyCode::PageDown => {
@@ -131,7 +143,13 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
                 state.load_older_timeline(runtime);
             }
         }
-        KeyCode::Enter => open_selected_thread(state, runtime),
+        KeyCode::Enter => {
+            if state.tab == FeatureTab::Settings {
+                toggle_outbox_selection(state);
+            } else {
+                open_selected_thread(state, runtime);
+            }
+        }
         KeyCode::Char('p') => {
             if state.tab == FeatureTab::Wallet {
                 state.start_input_bar("bolt11 invoice", false, "bolt11");
@@ -155,7 +173,9 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('f') => follow_selected(state, runtime, true),
         KeyCode::Char('F') => follow_selected(state, runtime, false),
         KeyCode::Esc => {
-            if !state.close_help() {
+            if state.tab == FeatureTab::Settings && state.outbox_selected.is_some() {
+                state.outbox_selected = None;
+            } else if !state.close_help() {
                 state.status = "detail closed".to_string();
             }
         }
@@ -352,6 +372,41 @@ fn handle_z_key(state: &mut AppState, _runtime: &AppRuntime) {
         state.pending_zap_event_id = Some(row.id);
         state.start_input_bar("sats [comment]", false, "zap-amount");
     }
+}
+
+fn outbox_select_next(state: &mut AppState) {
+    if state.features.outbox.is_empty() {
+        state.outbox_selected = None;
+        return;
+    }
+    let max = state.features.outbox.len().saturating_sub(1);
+    state.outbox_selected = Some(
+        state
+            .outbox_selected
+            .map(|i| (i + 1).min(max))
+            .unwrap_or(0),
+    );
+}
+
+fn outbox_select_previous(state: &mut AppState) {
+    if state.features.outbox.is_empty() {
+        state.outbox_selected = None;
+        return;
+    }
+    state.outbox_selected = state.outbox_selected.map(|i| i.saturating_sub(1));
+}
+
+fn toggle_outbox_selection(state: &mut AppState) {
+    if state.features.outbox.is_empty() {
+        state.outbox_selected = None;
+        return;
+    }
+    // Enter on the Settings tab toggles the outbox detail pane:
+    // None → Some(0) enters the detail; Some(_) → None closes it.
+    state.outbox_selected = match state.outbox_selected {
+        None => Some(0),
+        Some(_) => None,
+    };
 }
 
 fn count_replies_for_selected(state: &AppState) -> usize {

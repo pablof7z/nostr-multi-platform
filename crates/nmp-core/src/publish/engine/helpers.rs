@@ -17,13 +17,6 @@ pub(super) fn canonical_relay_identity(raw: &str) -> RelayUrl {
     CanonicalRelayUrl::parse_or_raw(raw).into_string()
 }
 
-pub(super) fn canonicalize_relay_set(relays: BTreeSet<RelayUrl>) -> BTreeSet<RelayUrl> {
-    relays
-        .into_iter()
-        .map(|relay| canonical_relay_identity(&relay))
-        .collect()
-}
-
 pub(super) fn relay_url_of(ack: &RelayAck) -> RelayUrl {
     canonical_relay_identity(&ack.relay_url)
 }
@@ -184,10 +177,15 @@ pub(super) fn terminal_outcome_of(in_flight: &InFlight) -> TerminalOutcome {
             _ => {}
         }
     }
+    // Clone the captured-at-publish-time rationale map verbatim so the kernel
+    // projection can render the same "why was this relay targeted?" string the
+    // in-flight outbox shows. Keys mirror `per_relay` (the engine seeded both
+    // from the same `relay_map` in `start_publish_inner`).
     TerminalOutcome {
         event_id: in_flight.event.id.clone(),
         accepted,
         failed,
+        relay_reasons: in_flight.relay_reasons.clone(),
     }
 }
 

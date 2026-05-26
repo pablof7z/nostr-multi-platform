@@ -93,6 +93,7 @@ mod tests {
             },
             per_relay: vec![("wss://relay.test".to_string(), state)],
             pending_retries: Vec::new(),
+            relay_reasons: Vec::new(),
         }
     }
 

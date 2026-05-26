@@ -109,6 +109,12 @@ pub(crate) struct AccountSummary {
 pub(crate) struct PublishQueueEntry {
     pub(crate) event_id: String,
     pub(crate) kind: u32,
+    /// Pre-formatted English label for `kind` (e.g. `"Note"`, `"Reaction"`).
+    /// Mirrors the in-flight `PublishOutboxItem.title` so apps render a
+    /// consistent kind label across the active outbox and the settled
+    /// history pane. Owned by the kernel — apps render verbatim and never
+    /// reimplement a kind→label mapping (RMP bible commandment #4).
+    pub(crate) title: String,
     pub(crate) target_relays: usize,
     pub(crate) status: String,
     /// Per-relay terminal outcomes, in insertion order. Empty while
@@ -127,6 +133,15 @@ pub(crate) struct RelayAckOutcome {
     /// Empty for `"ok"`; carries the engine's give-up reason for `"failed"`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub(crate) message: String,
+    /// Per-relay selection rationale captured at publish time (e.g.
+    /// `"NIP-65 write relay"`, `"Inbox relay for npub1abc…"`). Mirrors the
+    /// in-flight `publish_outbox` field so the settled `publish_queue`
+    /// projection can render the same "why was this relay targeted?" string
+    /// after the publish has completed. Empty when the engine had no
+    /// rationale for the relay (e.g. older serialised rows resumed from
+    /// store).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) relay_reason: String,
 }
 
 /// One relay row the UI's Accounts screen edits. Mirrors the kernel's

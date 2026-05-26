@@ -6,7 +6,7 @@
 //! intentionally minimal; richer surfaces ship inside the milestones that
 //! own them.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,48 @@ use serde::{Deserialize, Serialize};
 use super::action::{PublishHandle, PublishTarget, RelayUrl};
 use super::state::{PerRelayState, RelayAck};
 use crate::substrate::SignedEvent;
+
+/// Structured reason a relay was added to a publish set.
+///
+/// Display-free — human-readable formatting happens only at the kernel
+/// projection boundary (`crate::kernel::publish_outbox::format_relay_reason`).
+/// Keeping the internal pipeline typed means the resolver never owns
+/// English strings, persistence stores a stable enum payload, and tests
+/// assert against variants instead of fragile reason strings.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum RelaySelectionReason {
+    /// Relay listed as a `write` (or unmarked) entry in the author's NIP-65
+    /// kind:10002 — the canonical write target.
+    AuthorWriteRelay,
+    /// Active account has no kind:10002 yet; the relay was pulled from local
+    /// app configuration as a write fallback.
+    LocalConfigRelay,
+    /// Discovery indexer fan-out for replaceable / profile / contacts kinds
+    /// (kind:0, kind:3, kind:10000–19999). Carries the originating kind so
+    /// the projection can render it diagnostically.
+    DiscoveryIndexer { kind: u32 },
+    /// Recipient inbox relay pulled from a `#p`-tagged author's kind:10002
+    /// read list. Carries the recipient hex pubkey so the projection can
+    /// short-format it (e.g. `Inbox relay for npub1abc…`).
+    RecipientInbox { pubkey: String },
+    /// Caller passed `PublishTarget::Explicit { relays }` — the user or app
+    /// chose this relay directly.
+    Explicit,
+}
+
+/// A relay URL paired with the structured reason it was selected.
+///
+/// Returned from [`OutboxResolver::resolve`]. The same canonical URL may appear
+/// more than once with different reasons (e.g. a relay that is both the
+/// author's NIP-65 write relay and a discovery indexer). The publish engine
+/// deduplicates by canonical URL and collects distinct reasons into a
+/// `Vec<RelaySelectionReason>` per URL; the kernel projection formats each
+/// reason into a single English string at the wire boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedRelay {
+    pub url: RelayUrl,
+    pub reason: RelaySelectionReason,
+}
 
 // ---------------- Signer (M6 / task #43) ----------------
 
@@ -64,13 +106,17 @@ impl Signer for NoopSigner {
 /// fan out to configured indexers; non-discovery kinds fail closed when the
 /// author has no published or local write relay list.
 pub trait OutboxResolver: Send + Sync {
+    /// Resolve the publish target to a list of relays, each annotated with the
+    /// human-readable reason it was selected. The returned `Vec` may contain
+    /// the same canonical URL more than once with different reasons — the
+    /// engine deduplicates and merges reasons at the call site.
     fn resolve(
         &self,
         author_pubkey: &str,
         p_tags: &[String],
         target: &PublishTarget,
         kind: u32,
-    ) -> BTreeSet<RelayUrl>;
+    ) -> Vec<ResolvedRelay>;
 }
 
 /// Test/bootstrap resolver — pure data, no I/O. The kernel uses this when
@@ -89,14 +135,37 @@ impl OutboxResolver for StaticOutbox {
         p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
-    ) -> BTreeSet<RelayUrl> {
+    ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
-            return relays.iter().cloned().collect();
+            return relays
+                .iter()
+                .map(|url| ResolvedRelay {
+                    url: url.clone(),
+                    reason: RelaySelectionReason::Explicit,
+                })
+                .collect();
         }
-        let mut out = BTreeSet::new();
+        let mut out: Vec<ResolvedRelay> = Vec::new();
         match self.author_writes.get(author) {
-            Some(writes) if !writes.is_empty() => out.extend(writes.iter().cloned()),
-            _ => out.extend(self.indexer_fallback.iter().cloned()),
+            Some(writes) if !writes.is_empty() => {
+                for url in writes {
+                    out.push(ResolvedRelay {
+                        url: url.clone(),
+                        reason: RelaySelectionReason::AuthorWriteRelay,
+                    });
+                }
+            }
+            _ => {
+                // Indexer fallback for a static stub is closest in spirit to
+                // the production `LocalConfigRelay` lane — the relay didn't
+                // come from a NIP-65 list, it came from a configured set.
+                for url in &self.indexer_fallback {
+                    out.push(ResolvedRelay {
+                        url: url.clone(),
+                        reason: RelaySelectionReason::LocalConfigRelay,
+                    });
+                }
+            }
         }
         // Mirror `nmp_router::Nip65OutboxResolver`'s recipient-inbox fanout
         // threshold so the bootstrap `StaticOutbox` rolls off recipient
@@ -110,7 +179,14 @@ impl OutboxResolver for StaticOutbox {
         if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
             for p in p_tags {
                 if let Some(reads) = self.p_tag_reads.get(p) {
-                    out.extend(reads.iter().cloned());
+                    for url in reads {
+                        out.push(ResolvedRelay {
+                            url: url.clone(),
+                            reason: RelaySelectionReason::RecipientInbox {
+                                pubkey: p.clone(),
+                            },
+                        });
+                    }
                 }
             }
         }
@@ -129,11 +205,17 @@ impl OutboxResolver for NoopOutboxResolver {
         _p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
-    ) -> BTreeSet<RelayUrl> {
+    ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
-            return relays.iter().cloned().collect();
+            return relays
+                .iter()
+                .map(|url| ResolvedRelay {
+                    url: url.clone(),
+                    reason: RelaySelectionReason::Explicit,
+                })
+                .collect();
         }
-        BTreeSet::new()
+        Vec::new()
     }
 }
 
@@ -274,6 +356,18 @@ pub struct PublishRecord {
     /// keep deserialising.
     #[serde(default)]
     pub pending_retries: Vec<(RelayUrl, u64)>,
+    /// Per-relay selection rationale (`relay_url → [reason]`). Persisted at
+    /// publish time so the structured "why was this relay targeted?" payload
+    /// survives kernel restart and is available to the snapshot projection
+    /// without re-running the outbox resolver. The `Vec<RelaySelectionReason>`
+    /// shape captures the case where one canonical URL was selected for
+    /// multiple reasons (e.g. a relay that is both the author's NIP-65 write
+    /// relay AND a discovery indexer). Defaults to empty so older serialised
+    /// rows keep deserialising; in that case the relay rows project with an
+    /// empty `relay_reason` (the projection's `skip_serializing_if =
+    /// "String::is_empty"` keeps the JSON shape).
+    #[serde(default)]
+    pub relay_reasons: Vec<(RelayUrl, Vec<RelaySelectionReason>)>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

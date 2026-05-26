@@ -94,23 +94,31 @@ struct OutboxRelayRow: View {
     let relay: PublishOutboxRelay
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-            Text(relay.relayUrl)
-                .font(.caption.monospaced())
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
-            // `attemptLabel` is "" when attempt == 0 — no `if attempt > 0`.
-            Text(relay.attemptLabel)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
-            Text(relay.statusLabel)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(statusColor)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                Text(relay.relayUrl)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+                // `attemptLabel` is "" when attempt == 0 — no `if attempt > 0`.
+                Text(relay.attemptLabel)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(relay.statusLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(statusColor)
+            }
+            if !relay.relayReason.isEmpty {
+                Text(relay.relayReason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 16)
+            }
         }
         .accessibilityElement(children: .combine)
     }

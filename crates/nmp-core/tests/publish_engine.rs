@@ -359,6 +359,7 @@ fn publish_store_persists_event_for_resume_round_trip() {
         event: event.clone(),
         per_relay: vec![("wss://r1".to_string(), PerRelayState::Pending)],
         pending_retries: Vec::new(),
+        relay_reasons: Vec::new(),
     };
     store.upsert(&record).unwrap();
     let loaded = store.load_pending().unwrap();
@@ -397,12 +398,14 @@ fn static_outbox_falls_back_to_indexer_when_author_has_no_writes() {
         ..StaticOutbox::default()
     };
     let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1);
+    let resolved_urls: std::collections::BTreeSet<String> =
+        resolved.iter().map(|r| r.url.clone()).collect();
     assert_eq!(
-        resolved,
+        resolved_urls,
         ["wss://indexer-1", "wss://indexer-2"]
             .iter()
             .map(|s| s.to_string())
-            .collect(),
+            .collect::<std::collections::BTreeSet<_>>(),
         "author with 0 write relays falls back to the indexer set"
     );
 }
@@ -420,10 +423,12 @@ fn static_outbox_uses_author_writes_and_skips_indexer_fallback() {
     );
     outbox.indexer_fallback = vec!["wss://indexer-fallback".to_string()];
     let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1);
-    assert!(resolved.contains("wss://alice-1"));
-    assert!(resolved.contains("wss://alice-2"));
+    let resolved_urls: std::collections::BTreeSet<&str> =
+        resolved.iter().map(|r| r.url.as_str()).collect();
+    assert!(resolved_urls.contains("wss://alice-1"));
+    assert!(resolved_urls.contains("wss://alice-2"));
     assert!(
-        !resolved.contains("wss://indexer-fallback"),
+        !resolved_urls.contains("wss://indexer-fallback"),
         "indexer fallback must NOT be used when the author has write relays"
     );
     assert_eq!(resolved.len(), 2, "exactly the author's write relays");
