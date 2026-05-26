@@ -80,6 +80,54 @@ source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"
 target = "Components/NostrContent/Examples/NostrContentViewPreview.swift"
 role = "example"
 [[components]]
+id = "swiftui/content-kind-registry"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI kind-dispatch registry for embedded Nostr events, including the embed chrome container and embedded-event view."
+dependencies = [
+    "swiftui/content-core",
+    "swiftui/user-avatar",
+]
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbedKindProjection.swift"
+target = "Components/NostrContent/EmbedKindProjection.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbedChromeContainer.swift"
+target = "Components/NostrContent/EmbedChromeContainer.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/NostrKindRegistry.swift"
+target = "Components/NostrContent/NostrKindRegistry.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbeddedEvent.swift"
+target = "Components/NostrContent/EmbeddedEvent.swift"
+role = "source"
+[[components]]
+id = "swiftui/content-kind-30023"
+version = "0.1.0"
+target = "swiftui"
+description = "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author chip."
+dependencies = [
+    "swiftui/content-kind-registry",
+    "swiftui/user-avatar",
+]
+[[components.files]]
+source = "swiftui/content-kind-30023/ArticleEmbed.swift"
+target = "Components/NostrContent/ArticleEmbed.swift"
+role = "source"
+[[components]]
+id = "swiftui/content-kind-9802"
+version = "0.1.0"
+target = "swiftui"
+description = "Highlight (NIP-84, kind:9802) embed renderer — pull-quote, optional context line, source footer."
+dependencies = ["swiftui/content-kind-registry"]
+[[components.files]]
+source = "swiftui/content-kind-9802/HighlightEmbed.swift"
+target = "Components/NostrContent/HighlightEmbed.swift"
+role = "source"
+[[components]]
 id = "swiftui/login-block"
 version = "0.1.0"
 target = "swiftui"
