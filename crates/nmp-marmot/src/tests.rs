@@ -72,7 +72,7 @@ fn marmot_full_round_trip_create_giftwrap_join_message() {
 
     // Alice NIP-59 gift-wraps the Welcome to Bob (real nmp_nip59 path).
     let gift = alice
-        .wrap_welcome(&bob_keys.public_key(), bob_welcome_rumor, None)
+        .wrap_welcome(&bob_keys.public_key(), bob_welcome_rumor)
         .expect("alice gift-wraps welcome");
     assert_eq!(gift.kind, Kind::GiftWrap);
 
@@ -220,7 +220,7 @@ fn bootstrap_pair(admin: &Actor, joiner: &Actor) -> mdk_core::prelude::GroupId {
     let rumor = pending.welcome_rumors[0].clone();
     let gift = admin
         .service
-        .wrap_welcome(&joiner.pubkey(), rumor, None)
+        .wrap_welcome(&joiner.pubkey(), rumor)
         .expect("admin gift-wraps welcome");
     pending.commit().expect("admin merges create commit");
 
@@ -280,7 +280,7 @@ fn add_members_grows_group_and_both_views_converge() {
     let carol_rumor = pending.welcome_rumors[0].clone();
     let carol_gift = alice
         .service
-        .wrap_welcome(&carol.pubkey(), carol_rumor, None)
+        .wrap_welcome(&carol.pubkey(), carol_rumor)
         .expect("alice gift-wraps carol welcome");
     pending.commit().expect("alice merges add commit");
 
@@ -425,7 +425,7 @@ fn decline_welcome_leaves_group_inactive_for_invitee() {
     let rumor = pending.welcome_rumors[0].clone();
     let gift = alice
         .service
-        .wrap_welcome(&bob.pubkey(), rumor, None)
+        .wrap_welcome(&bob.pubkey(), rumor)
         .expect("alice gift-wraps");
     pending.commit().unwrap();
 

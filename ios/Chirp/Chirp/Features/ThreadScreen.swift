@@ -56,7 +56,7 @@ struct ThreadScreen: View {
             ChirpPlaceholder(
                 systemImage: "bubble.left.and.bubble.right",
                 title: "Loading thread…",
-                subtitle: "Fetching notes from the relay network."
+                subtitle: "Notes will appear here soon."
             )
             .frame(maxHeight: 320)
         }

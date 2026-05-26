@@ -412,7 +412,7 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
         .expect("alice creates group");
     let welcome_rumor = pending.welcome_rumors[0].clone();
     let gift = alice
-        .wrap_welcome(&bob_keys.public_key(), welcome_rumor, None)
+        .wrap_welcome(&bob_keys.public_key(), welcome_rumor)
         .expect("alice gift-wraps welcome to bob");
     pending.commit().expect("alice merges create commit");
     let gift_json = gift.as_json();

@@ -36,7 +36,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use mdk_core::key_packages::KeyPackageEventData;
 use mdk_core::prelude::{
@@ -408,14 +408,22 @@ impl MarmotService {
     /// Gift-wrap a kind:444 Welcome rumor for one invitee (NIP-59 kind:1059).
     /// `receiver` is the invitee's Nostr pubkey. The returned signed kind:1059
     /// event is published to the invitee's NIP-65 inbox relays.
+    ///
+    /// Goes through the ADR-0026 `SignerForSeal` seam
+    /// (`nmp_nip59::gift_wrap_with_signer`) — `nostr::Keys` has a blanket
+    /// `SignerForSeal` impl that resolves every `SignerOp` synchronously, so
+    /// for the local-keys path this call is sync end-to-end and `wait`
+    /// returns immediately without spawning the driver thread.
     pub fn wrap_welcome(
         &self,
         receiver: &PublicKey,
         welcome_rumor: UnsignedEvent,
-        expiration: Option<nostr::Timestamp>,
     ) -> Result<Event> {
-        nmp_nip59::gift_wrap(&self.keys, receiver, welcome_rumor, expiration)
-            .map_err(MarmotError::from)
+        let signer: Arc<dyn nmp_nip59::SignerForSeal> = Arc::new(self.keys.clone());
+        let tweaked = nostr::Timestamp::tweaked(nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK);
+        nmp_nip59::gift_wrap_with_signer(&signer, receiver, &welcome_rumor, tweaked)
+            .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
+            .map_err(|e| MarmotError::GiftWrap(e.to_string()))
     }
 
     /// Receiver side: unwrap an incoming kind:1059 gift-wrap, then

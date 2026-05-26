@@ -68,7 +68,7 @@ fn key_package_rotation_after_welcome_consumption() {
     let group_id = group.mls_group_id.clone();
     let bob_rumor = pending.welcome_rumors[0].clone();
     let gift = alice
-        .wrap_welcome(&bob_keys.public_key(), bob_rumor, None)
+        .wrap_welcome(&bob_keys.public_key(), bob_rumor)
         .expect("gift wrap");
     pending.commit().expect("alice merge create");
 

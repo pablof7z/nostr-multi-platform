@@ -23,9 +23,9 @@
 //! |                   | (kind:22242) is built when the relay sends its own AUTH |
 //! |                   | challenge — we do NOT synthesize a pseudo-challenge     |
 //! |                   | from CLOSED (would violate NIP-42 replay protection).   |
-//! | `rate-limited:`   | Stamp `last_error`, record `last_close_reason`. The     |
-//! |                   | reconnect worker reads `last_close_reason` to choose    |
-//! |                   | backoff posture (wiring lands with the reconnect task). |
+//! | `rate-limited:`   | Stamp `last_error`, record `last_close_reason`.         |
+//! |                   | TODO: wire to reconnect-worker backoff logic (currently |
+//! |                   | the transport backoff is blind to rate-limiting).       |
 //! | `restricted:`     | Set `relay.denied = true`. Reconnect/REQ machinery      |
 //! | `blocked:`        | treats `denied` as offline-for-this-client; recovery is |
 //! | `shadowbanned:`   | a fresh socket only (relay edit / re-pay).              |
@@ -143,10 +143,11 @@ impl Kernel {
         ));
     }
 
-    /// `rate-limited:` — record the classification so the reconnect worker
-    /// can choose backoff posture. We deliberately do NOT mutate any
-    /// reconnect-backoff state here: that machinery is owned by the
-    /// transport worker (G4 territory) and reads `last_close_reason`.
+    /// `rate-limited:` — record the classification for diagnostic purposes.
+    /// We deliberately do NOT mutate any reconnect-backoff state here: that
+    /// machinery is owned by the transport worker (G4 territory).
+    // TODO: wire last_close_reason to the reconnect worker's backoff logic
+    // (currently the transport backoff is blind to rate-limiting).
     fn on_closed_rate_limited(&mut self, role: RelayRole, sub_id: &str, raw: &str) {
         let relay = self.relay_mut(role);
         relay.last_close_reason = Some(CloseReason::RateLimited.as_key().to_string());

@@ -150,7 +150,7 @@ impl WalletRuntime {
 ///
 /// Returns outbound messages: a REQ subscription for kind:23195 and an
 /// initial `get_info` + `get_balance` request to the NWC relay.
-pub fn wallet_connect(
+pub(crate) fn wallet_connect(
     wallet: &mut WalletRuntime,
     kernel: &mut Kernel,
     uri: &str,

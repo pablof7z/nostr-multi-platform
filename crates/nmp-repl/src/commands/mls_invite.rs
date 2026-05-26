@@ -83,7 +83,7 @@ pub fn run(session: &mut Session, group_hex: String, npub: String) -> Result<()>
     // `add_members` produces ONE welcome per added member. We added a
     // single peer here so there is exactly one rumor; wrap it for `invitee`.
     let welcome_rumor = welcome_rumors[0].clone();
-    let gift_wrap = match guard.wrap_welcome(&invitee, welcome_rumor, None) {
+    let gift_wrap = match guard.wrap_welcome(&invitee, welcome_rumor) {
         Ok(ev) => ev,
         Err(e) => {
             // Clear on the failure path (mdk-api §7.7) — we did not publish.

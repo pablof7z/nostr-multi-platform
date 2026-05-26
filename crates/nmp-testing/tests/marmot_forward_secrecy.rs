@@ -61,7 +61,7 @@ fn add_carol_to_group(
 
     // Gift-wrap the welcome.
     let gift = alice
-        .wrap_welcome(&carol_keys.public_key(), carol_rumor, None)
+        .wrap_welcome(&carol_keys.public_key(), carol_rumor)
         .expect("alice gift-wraps carol welcome");
 
     // Commit the add.

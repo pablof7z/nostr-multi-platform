@@ -45,6 +45,6 @@ pub use protocol::{
 };
 pub use runtime::{
     active_wallet_runtime, handle_nwc_text, install_wallet_runtime, new_wallet_runtime_handle,
-    wallet_connect, wallet_disconnect, wallet_pay_invoice, WalletRuntime, WalletRuntimeHandle,
+    wallet_disconnect, wallet_pay_invoice, WalletRuntime, WalletRuntimeHandle,
 };
 pub use status::{format_sats_display, new_wallet_status_slot, WalletStatus, WalletStatusSlot};

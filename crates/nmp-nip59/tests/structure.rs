@@ -4,8 +4,19 @@
 //! kind:1059 event — recipient `p`-tag, ephemeral signer, randomised
 //! `created_at` — and by exercising content edge cases through the
 //! wrap/unwrap round-trip (empty content, special characters, newlines).
+//!
+//! Migration note: post-`pub(crate)` tightening of `gift_wrap`, these
+//! tests go through `gift_wrap_with_signer` via the synchronous `Keys`
+//! blanket impl. The randomised-timestamp tweak that the legacy
+//! `EventBuilder::gift_wrap` applied internally is now the caller's
+//! responsibility — the `wrap` helper below passes
+//! `Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK)` to preserve test
+//! semantics 1:1.
 
-use nmp_nip59::{gift_wrap, unwrap_gift_wrap};
+use std::sync::Arc;
+
+use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind, Timestamp, UnsignedEvent};
 
 /// A rumor whose `created_at` is pinned far outside the now±2-day window so
@@ -19,14 +30,23 @@ fn pinned_rumor(author: &Keys, content: &str) -> UnsignedEvent {
         .build(author.public_key())
 }
 
+/// Test-only shorthand. The blanket `SignerForSeal` impl on `Keys`
+/// resolves every step synchronously; `.wait` returns immediately.
+fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
+    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
+    let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+    gift_wrap_with_signer(&signer, receiver, rumor, tweaked)
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift_wrap_with_signer should succeed")
+}
+
 #[test]
 fn gift_wrap_outer_event_is_kind_1059() {
     let alice = Keys::generate();
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "structural check");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     assert_eq!(
         wrapped.kind,
@@ -42,8 +62,7 @@ fn gift_wrap_carries_recipient_p_tag() {
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "p-tag check");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     // Exactly one `p`-tag, and it must address Bob.
     let p_tags: Vec<&Tag> = wrapped
@@ -66,8 +85,7 @@ fn gift_wrap_p_tag_is_recipient_not_sender() {
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "not-sender check");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     let addressed_pubkey = wrapped
         .tags
@@ -96,8 +114,7 @@ fn gift_wrap_signed_by_ephemeral_key() {
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "ephemeral check");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     assert_ne!(
         wrapped.pubkey,
@@ -127,8 +144,7 @@ fn gift_wrap_created_at_is_randomised_not_rumor_timestamp() {
     let rumor = pinned_rumor(&alice, "timestamp check");
 
     let before = Timestamp::now().as_secs();
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let after = Timestamp::now().as_secs();
 
     let wrapped_ts = wrapped.created_at.as_secs();
@@ -162,8 +178,7 @@ fn gift_wrap_round_trip_empty_content() {
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), None)
-        .expect("gift_wrap of empty content should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped =
         unwrap_gift_wrap(&bob, &wrapped).expect("unwrap of empty content should succeed");
 
@@ -184,8 +199,7 @@ fn gift_wrap_round_trip_special_characters_and_newlines() {
     let tricky = "line1\nline2\t\"quoted\"\\backslash\r\nüñîçødé 🎁🔐 \0 end";
     let rumor = pinned_rumor(&alice, tricky);
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), None)
-        .expect("gift_wrap of special content should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped =
         unwrap_gift_wrap(&bob, &wrapped).expect("unwrap of special content should succeed");
 
@@ -203,8 +217,7 @@ fn gift_wrap_round_trip_large_content() {
     let large = "A".repeat(16 * 1024);
     let rumor = pinned_rumor(&alice, &large);
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap of large content should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped =
         unwrap_gift_wrap(&bob, &wrapped).expect("unwrap of large content should succeed");
 
@@ -223,8 +236,7 @@ fn gift_wrap_preserves_non_default_rumor_kind() {
         .custom_created_at(Timestamp::from(RUMOR_SENTINEL_TS))
         .build(alice.public_key());
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap of kind:444 should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped = unwrap_gift_wrap(&bob, &wrapped).expect("unwrap should succeed");
 
     assert_eq!(

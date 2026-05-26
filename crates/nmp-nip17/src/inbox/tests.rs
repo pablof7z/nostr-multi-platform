@@ -1,8 +1,26 @@
 use super::*;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
+/// Wrap `rumor` for `receiver` via the ADR-0026 `SignerForSeal` seam. The
+/// blanket `SignerForSeal` impl on `nostr::Keys` resolves every `SignerOp`
+/// synchronously, so `.wait` returns immediately without spawning a driver.
+fn gift_wrap_test(
+    sender: &Keys,
+    receiver: &nostr::PublicKey,
+    rumor: nostr::UnsignedEvent,
+) -> Event {
+    let signer: std::sync::Arc<dyn nmp_nip59::SignerForSeal> =
+        std::sync::Arc::new(sender.clone());
+    // Tests pass deterministic timestamps via the rumor; reuse it for the
+    // seal/wrap envelope so the test-stable ordering survives migration.
+    let created_at = rumor.created_at;
+    nmp_nip59::gift_wrap_with_signer(&signer, receiver, &rumor, created_at)
+        .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift wrap succeeds")
+}
+
 /// Build a signed kind:1059 gift-wrap envelope carrying a kind:14 rumor
-/// from `sender` to `receiver`, mirroring `nmp_nip59::gift_wrap`.
+/// from `sender` to `receiver`, mirroring NIP-59 §2.
 fn gift_wrapped_dm(
     sender: &Keys,
     receiver: &nostr::PublicKey,
@@ -27,7 +45,7 @@ fn gift_wrapped_dm(
         .tags(tags)
         .custom_created_at(Timestamp::from(created_at))
         .build(sender.public_key());
-    nmp_nip59::gift_wrap(sender, receiver, rumor, None).expect("gift wrap succeeds")
+    gift_wrap_test(sender, receiver, rumor)
 }
 
 /// A projection bound to `keys` as the active local account.
@@ -138,7 +156,7 @@ fn self_copy_files_under_the_recipient_peer() {
             .tags(vec![Tag::public_key(alice.public_key())])
             .custom_created_at(Timestamp::from(500))
             .build(bob.public_key());
-        nmp_nip59::gift_wrap(&bob, &bob.public_key(), rumor, None).expect("self-copy gift wrap")
+        gift_wrap_test(&bob, &bob.public_key(), rumor)
     };
     assert!(inbox.ingest_gift_wrap(&self_copy.as_json(), None));
 
@@ -176,7 +194,7 @@ fn sent_and_received_share_one_conversation() {
             .tags(vec![Tag::public_key(alice.public_key())])
             .custom_created_at(Timestamp::from(200))
             .build(bob.public_key());
-        nmp_nip59::gift_wrap(&bob, &bob.public_key(), rumor, None).expect("self-copy gift wrap")
+        gift_wrap_test(&bob, &bob.public_key(), rumor)
     };
     inbox.ingest_gift_wrap(&sent.as_json(), None);
 

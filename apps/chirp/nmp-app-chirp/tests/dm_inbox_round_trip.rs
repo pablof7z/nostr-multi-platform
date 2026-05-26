@@ -40,7 +40,7 @@ use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 /// carrying a kind:14 chat-message rumor with `content`. Mirrors the
 /// `gift_wrapped_dm` helper in `crates/nmp-nip17/src/inbox.rs` tests so
 /// the test fixtures here go through the same production primitive
-/// (`nmp_nip59::gift_wrap`) the actor would use.
+/// (`nmp_nip59::gift_wrap_with_signer`) the actor uses.
 fn gift_wrapped_dm(
     sender: &Keys,
     receiver: &nostr::PublicKey,
@@ -52,7 +52,11 @@ fn gift_wrapped_dm(
         .tags(tags)
         .custom_created_at(Timestamp::from(created_at))
         .build(sender.public_key());
-    nmp_nip59::gift_wrap(sender, receiver, rumor, None).expect("gift wrap succeeds")
+    let signer: std::sync::Arc<dyn nmp_nip59::SignerForSeal> =
+        std::sync::Arc::new(sender.clone());
+    nmp_nip59::gift_wrap_with_signer(&signer, receiver, &rumor, Timestamp::from(created_at))
+        .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift wrap succeeds")
 }
 
 /// THE NIP-17 DM INBOX SLOT-BINDING PROOF: register the DM inbox through the
@@ -277,7 +281,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
     *unsafe { (*app).active_local_keys() }.lock().unwrap() = Some(bob.clone());
 
     // Build the gift-wrap envelope (kind:1059) from Alice to Bob through the
-    // exact production primitive (`nmp_nip59::gift_wrap`).
+    // exact production primitive (`nmp_nip59::gift_wrap_with_signer`).
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "round-trip", 100);
     let envelope_json = nostr::JsonUtil::as_json(&envelope);
 

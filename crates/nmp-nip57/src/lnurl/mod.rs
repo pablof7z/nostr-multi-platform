@@ -416,7 +416,7 @@ pub fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<String,
 /// Two-leg LNURL-pay HTTP round-trip. Runs on the spawned worker thread —
 /// blocking I/O is acceptable here precisely because we are NOT on the
 /// actor thread. Also usable from standalone tools (see `fetch_bolt11_for_zap`).
-pub fn fetch_lnurl_invoice_blocking(
+pub(crate) fn fetch_lnurl_invoice_blocking(
     lnurl_or_address: &str,
     amount_msats: u64,
     signed_zap_request_json: &str,
@@ -555,7 +555,8 @@ fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
 ///
 /// Signs the kind:9734 zap request with `keys`, does the two-leg LNURL-pay
 /// round-trip, and returns the bolt11 invoice string on success.
-pub fn fetch_bolt11_for_zap(
+#[allow(dead_code)] // Reference impl retained for the zap-smoke tool's docs.
+pub(crate) fn fetch_bolt11_for_zap(
     keys: &Keys,
     lnurl_or_address: &str,
     amount_msats: u64,
