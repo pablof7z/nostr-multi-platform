@@ -1102,9 +1102,10 @@ pub(crate) fn remove_account(
     Vec::new()
 }
 
-/// Broker → actor: register a fully-handshaken remote signer (e.g. completed
-/// NIP-46 bunker handshake). Becomes active if no account was active; pushes
-/// a snapshot update + timeline retarget so the UI swaps immediately.
+/// Broker adapter → actor: register a fully-handshaken remote signer (e.g.
+/// completed NIP-46 bunker handshake). Becomes active if no account was
+/// active; pushes a snapshot update + timeline retarget so the UI swaps
+/// immediately.
 pub(crate) fn add_remote_signer(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
@@ -1116,8 +1117,8 @@ pub(crate) fn add_remote_signer(
     retarget_timeline(identity, kernel, relays_ready)
 }
 
-/// Broker → actor: latest NIP-46 handshake progress. Stage `"idle"` clears
-/// the projection; everything else replaces it.
+/// Broker adapter → actor: latest NIP-46 handshake progress. Stage `"idle"`
+/// clears the projection; everything else replaces it.
 ///
 /// D0: the handshake state is an app noun, so it is written to the shared
 /// [`BunkerHandshakeSlot`] (read by the `"bunker_handshake"` snapshot
@@ -1149,9 +1150,8 @@ pub(crate) fn sign_in_bunker(identity: &IdentityRuntime, kernel: &mut Kernel, ur
     // so the host sign-in flow renders progress immediately, then hand
     // the URI to the registered broker. The broker drives the connect /
     // get_public_key dance on its own thread and reports progress via
-    // `BunkerHandshakeProgress` + `AddRemoteSigner`. D0 stays clean —
-    // `nmp-signers` is still NOT imported in `nmp-core`; the broker crate
-    // (`nmp-signer-broker`) is the only place that links both sides.
+    // `BunkerHandshakeProgress` + `AddRemoteSigner`. D0 stays clean:
+    // `nmp-core` imports neither the broker crate nor `nmp-signers`.
     if parse_bunker_remote(uri).is_none() {
         kernel.set_last_error_toast(Some(
             "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…".to_string(),
@@ -1222,4 +1222,3 @@ fn parse_bunker_remote(uri: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "identity/nip46_onboarding_tests.rs"]
 mod nip46_onboarding_tests;
-

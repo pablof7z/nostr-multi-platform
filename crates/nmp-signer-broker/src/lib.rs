@@ -1,26 +1,27 @@
 //! # nmp-signer-broker
 //!
-//! Stage 4 of the NIP-46 wiring: this crate bridges `nmp-core` (kernel actor)
-//! and `nmp-signers` (concrete `Nip46Signer` + handle types). It is the only
-//! crate that depends on both — doctrine **D0** forbids `nmp-core` from
-//! importing `nmp-signers`, so the broker lives outside `nmp-core` and
-//! reaches back through the `nmp-core::bunker_hook` indirection.
+//! App-neutral NIP-46 bunker transport and handshake coordinator.
+//!
+//! This crate owns the reusable wire work: dialing bunker relays, running the
+//! `connect` / `get_public_key` handshake, restoring persisted NIP-46
+//! sessions, and carrying steady-state RPC traffic for `Nip46Signer`. It does
+//! not know about `NmpApp`, C FFI, or actor commands. Host composition installs
+//! a [`BrokerEventHandler`] and translates [`BrokerEvent`] values into its own
+//! lifecycle.
 //!
 //! ## Responsibilities
 //!
 //! 1. **Handshake**: parse a `bunker://` URI, dial the first relay, run the
 //!    `connect` + `get_public_key` RPC dance, learn the user's pubkey.
-//! 2. **Hand-off**: once the user pubkey is known, construct a fully-connected
-//!    `Nip46Signer` and ship it to the actor via
-//!    [`nmp_core::ActorCommand::AddRemoteSigner`]. The actor will then route
-//!    every `sign_active` call through the signer for the active account.
+//! 2. **Hand-off**: once the user pubkey is known, construct a fully connected
+//!    `Nip46Signer` and emit [`BrokerEvent::SignerReady`].
 //! 3. **Steady-state transport**: implements [`nmp_signer_iface::Nip46Transport`]
 //!    so the `Nip46Signer` can publish kind:24133 RPCs after handshake. The
 //!    same persistent relay subscription routes inbound responses back to
 //!    `Nip46Signer::resolve_response`.
-//! 4. **Progress reporting**: emits [`nmp_core::ActorCommand::BunkerHandshakeProgress`]
-//!    snapshots (`"connecting"` → `"awaiting_pubkey"` → `"ready"`, or
-//!    `"failed"` on error) so the host UI can render live feedback.
+//! 4. **Progress reporting**: emits [`BrokerEvent::Progress`] updates
+//!    (`"connecting"` → `"awaiting_pubkey"` → `"ready"`, or `"failed"` on
+//!    error) so the host UI can render live feedback.
 //!    `"ready"` is the terminal success stage; no `"idle"` follow-up is
 //!    emitted — once the new `signer_kind == "nip46"` account appears in the
 //!    kernel snapshot, the host can dismiss its progress UI on its own
@@ -31,8 +32,8 @@
 //!
 //! Each call to [`BunkerBroker::start_handshake`] spawns a worker thread that
 //! owns the WebSocket and drives the protocol top-down. The actor thread is
-//! never blocked: progress and the eventual `AddRemoteSigner` arrive through
-//! `std::sync::mpsc::Sender` (cheap clone of the actor's command sender).
+//! never blocked: progress and the eventual signer-ready event arrive through
+//! the callback supplied by the host adapter.
 //!
 //! ## Cancellation
 //!
@@ -43,28 +44,22 @@
 //!
 //! ## D0 invariant
 //!
-//! Nothing in `nmp-core` imports anything from this crate. The wiring is via
-//! the `bunker_hook` indirection: `nmp_signer_broker_init` calls
-//! `nmp_core::register_bunker_hook(...)` with a closure that captures the
-//! broker. The closure pushes work onto a worker thread and returns
-//! immediately — the actor thread continues running.
+//! Nothing in this crate imports `nmp-core` or `nmp-ffi`. The C/actor adapter
+//! lives in `nmp-ffi`: it registers the kernel's bunker hook, owns the
+//! process-global broker, and translates [`BrokerEvent`] into actor commands.
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
-// `unsafe_code` is allowed only in the `ffi` module via a scoped override
-// (the `*mut NmpApp` C ABI cannot be `unsafe` at the Rust level).
 #![allow(clippy::module_name_repetitions)]
 
 pub mod broker;
-pub mod ffi;
+pub mod events;
 pub mod handshake;
 pub mod relay_client;
 pub mod transport;
-pub(crate) mod uri_encode;
+mod uri_encode;
 
 pub use broker::BunkerBroker;
-pub use ffi::{
-    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
-    nmp_signer_broker_init,
-};
+pub use events::{BrokerEvent, BrokerEventHandler};
 pub use transport::BrokerTransport;
+pub use uri_encode::percent_encode_query_value;

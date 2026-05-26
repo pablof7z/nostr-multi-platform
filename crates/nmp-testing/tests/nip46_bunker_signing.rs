@@ -1,15 +1,16 @@
 //! T119 — NIP-46 bunker signing **on the wire** end-to-end.
 //!
 //! Locks down the full chain that was wired up across the
-//! `nmp-signer-iface` → `nmp-signers` → `nmp-signer-broker` → `nmp-core`
-//! stack but had no integration coverage prior to HB54:
+//! `nmp-signer-iface` → `nmp-signers` → app-neutral `nmp-signer-broker` →
+//! app/actor adapter stack but had no integration coverage prior to HB54:
 //!
 //! 1. A `bunker://` URI is dispatched at the broker.
 //! 2. The broker dials a real WebSocket relay (here our `MockBunkerRelay`
 //!    on `127.0.0.1`), runs the `connect` + `get_public_key` handshake.
-//! 3. The broker constructs a `Nip46Signer`, packages it as
-//!    `Box<dyn RemoteSignerHandle>`, and posts `AddRemoteSigner` to the
-//!    actor sender — the same sender NmpApp would hold.
+//! 3. The broker constructs a `Nip46Signer` and emits `SignerReady`; the
+//!    test adapter packages it as `Box<dyn RemoteSignerHandle>` and posts
+//!    `AddRemoteSigner` to the actor sender — the same translation NmpApp
+//!    composition performs.
 //! 4. The test plays the actor's role: receives `AddRemoteSigner`, slots
 //!    the handle into a fresh `IdentityRuntime`, drives `sign_active`.
 //! 5. The signer's `sign()` enqueues a `sign_event` RPC; the broker's
@@ -44,10 +45,10 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use nmp_core::{ActorCommand, RemoteSignerHandle};
-use nmp_signer_broker::BunkerBroker;
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
 
+use crate::common::broker_adapter::broker_for_actor;
 use crate::common::mock_bunker_relay::MockBunkerRelay;
 
 /// Spin up the mock, hand the broker a `bunker://<bunker-pubkey>?relay=ws://…`
@@ -79,7 +80,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     // `BunkerHandshakeProgress` events here (we ignore them) and one
     // `AddRemoteSigner` once the handshake completes.
     let (actor_tx, actor_rx) = mpsc::channel::<ActorCommand>();
-    let broker = BunkerBroker::new(actor_tx);
+    let broker = broker_for_actor(actor_tx);
 
     // ── Drive the handshake ────────────────────────────────────────────
     broker.start_handshake(bunker_uri);
@@ -178,9 +179,10 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         })
         .expect("send Start");
 
-    // Wire the broker against the actor sender exactly like
-    // `nmp_signer_broker_init` does on Chirp startup, then deliver the URI.
-    let broker = BunkerBroker::new(cmd_tx.clone());
+    // Wire the broker through the same event-to-actor-command translation
+    // that `nmp_signer_broker_init` installs on Chirp startup, then deliver
+    // the URI.
+    let broker = broker_for_actor(cmd_tx.clone());
     broker.start_handshake(bunker_uri);
 
     // Wait for the actor's snapshot to confirm the nip46 account is active.

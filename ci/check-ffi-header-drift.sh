@@ -7,13 +7,12 @@
 # static archives the Chirp shell links. This script extracts both symbol sets
 # and fails (exit 1) on any mismatch in either direction.
 #
-# SCOPE — the header is a SUPERSET spanning three Rust static archives, so the
-# gate scans all three FFI roots (each is read-only — only NmpCore.h, the
-# nmp-core ffi/ dir, and ci/ are ever modified by the accompanying change):
+# SCOPE — the header is a SUPERSET spanning the native Rust FFI surfaces, so
+# the gate scans the native FFI roots:
 #
-#   1. crates/nmp-core/src/ffi/            -> libnmp_core.a        (the kernel)
-#   2. crates/nmp-signer-broker/src/ffi.rs -> libnmp_signer_broker.a (NIP-46)
-#   3. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
+#   1. crates/nmp-ffi/src/                -> shared C-ABI symbols, including
+#      the NIP-46 broker adapter
+#   2. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
 #      crates/nmp-marmot/src/ffi.rs +
 #      crates/nmp-marmot/src/identity.rs +
 #      crates/nmp-marmot/src/fetch.rs -> libnmp_app_chirp.a
@@ -28,25 +27,15 @@
 # `#![cfg(...test...)]` inner attribute, so a directory scan would mis-include
 # it. New non-test FFI files MUST be appended to `FFI_FILE_ROOTS` below.
 #
-# Doctrine D0 forbids `nmp-core` depending on app/protocol crates, so the
-# broker and chirp glue live in their own archives — but every `nmp_app_*`
-# symbol they export is still in the Chirp link and still belongs in the
-# header. Scanning only nmp-core would false-flag those ~14 symbols as drift.
+# Doctrine D0 forbids reusable transport crates depending on app/core lifecycle
+# glue, so the NIP-46 broker's C/actor adapter now lives in `nmp-ffi` while the
+# app-neutral broker remains in `nmp-signer-broker`.
 #
 # AUDITOR NOTE — do NOT verify this header against a single archive.
-# A `nm -gU libnmp_app_chirp.a` over just the Chirp glue archive WILL report
-# header symbols as "missing", because the Chirp link is the UNION of three
-# archives. Symbols genuinely absent from `libnmp_app_chirp.a` but present and
-# correct in the build include (verified 2026-05-20):
-#   - nmp_app_set_storage_path            -> libnmp_core.a
-#   - nmp_signer_broker_init              -> libnmp_signer_broker.a
-#   - nmp_app_cancel_bunker_handshake     -> libnmp_signer_broker.a
-#   - nmp_app_nostrconnect_uri            -> libnmp_signer_broker.a
-#   - nmp_broker_free_string              -> libnmp_signer_broker.a
-# Each is exported from its own crate's `staticlib` and reaches the Chirp
-# binary via that archive's link line. The authoritative drift check is this
-# script (source-of-truth = the three FFI roots below), NOT a per-archive `nm`.
-# To audit at the binary level, `nm -gU` ALL THREE archives and union the sets.
+# A `nm -gU libnmp_app_chirp.a` over just the Chirp glue archive can report
+# header symbols as "missing" when they are pulled from another native FFI
+# archive. The authoritative drift check is this script (source-of-truth =
+# the FFI roots below), NOT a per-archive `nm`.
 #
 # What counts as a PRODUCTION symbol:
 #   - Any `#[no_mangle] pub extern "C" fn nmp_app_*` defined in one of the
@@ -54,8 +43,8 @@
 #   - ... EXCEPT files that are test-only. A file is test-only when its first
 #     non-blank, non-comment line is a file-level inner attribute
 #     `#![cfg(...)]` whose predicate mentions `test` (covers both `test` and
-#     `test-support`). `crates/nmp-core/src/ffi/testing.rs` carries exactly
-#     such an attribute.
+#     `test-support`). `crates/nmp-ffi/src/testing.rs` carries exactly such an
+#     attribute.
 #
 # Why a file-level cfg and not `#[cfg(test)]` per fn: the test-only injectors
 # live in a module gated at the `mod testing;` declaration site in `ffi/mod.rs`.
@@ -72,8 +61,8 @@
 # as `nmp_signer_broker_init` / `nmp_broker_free_string` are out of scope by
 # construction (different prefix) and are not gated by this script. This is a
 # DELIBERATE scope decision, not an oversight: those symbols are stable, few,
-# and owned by `nmp-signer-broker`; gating them here would couple this script
-# to a second prefix family. They are still declared in NmpCore.h (correctly)
+# and owned by `nmp-ffi`; gating them here would couple this script to a
+# second prefix family. They are still declared in NmpCore.h (correctly)
 # — auditors should not "fix" this script to chase them.
 #
 # Exit codes: 0 = in sync, 1 = drift detected (or usage error).
@@ -96,7 +85,6 @@ FFI_DIR_ROOTS=(
     "${REPO_ROOT}/crates/nmp-ffi/src"
 )
 FFI_FILE_ROOTS=(
-    "${REPO_ROOT}/crates/nmp-signer-broker/src/ffi.rs"
     # Chirp per-app FFI was split into a ffi/ sub-module directory (V-09).
     # Listed explicitly (not a directory scan) so ffi/tests.rs is excluded —
     # it has no file-level #![cfg(test)] and would pass is_test_only_file() as
@@ -221,7 +209,7 @@ if [[ "${DRIFT}" -ne 0 ]]; then
     echo "" >&2
     echo "Fix: add/remove the symbols above so NmpCore.h matches the Rust FFI." >&2
     echo "Test-only injectors (a file-level #![cfg(...test...)], e.g." >&2
-    echo "crates/nmp-core/src/ffi/testing.rs) are intentionally excluded — they" >&2
+    echo "crates/nmp-ffi/src/testing.rs) are intentionally excluded — they" >&2
     echo "must NOT appear in the header." >&2
     exit 1
 fi

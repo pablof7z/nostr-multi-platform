@@ -3,24 +3,13 @@ name = "nmp-signer-broker"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Bunker (NIP-46) handshake + transport broker bridging nmp-core and nmp-signers."
+description = "App-neutral bunker (NIP-46) handshake + transport broker."
 
 [lib]
 name = "nmp_signer_broker"
-# Static lib so iOS can link `-lnmp_signer_broker` alongside `-lnmp_core`. The
-# crate's `#[no_mangle] extern "C"` symbols (`nmp_signer_broker_init`,
-# `nmp_app_cancel_bunker_handshake`) need to land in a separate archive
-# because doctrine D0 forbids `nmp-core -> nmp-signer-broker`, so we cannot
-# re-export them through `libnmp_core.a` the way `android-ffi` does.
-crate-type = ["staticlib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
-# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
-# `nmp-core::ffi` in step 11-final). `nmp_signer_broker_init` /
-# `nmp_app_cancel_bunker_handshake` take `*mut NmpApp`, so this crate
-# names the handle through `nmp-ffi`.
-nmp-ffi = { path = "../nmp-ffi" }
 # Step 8 phase D — V-13 Stage 2 dedupe (`docs/architecture/crate-boundaries.md`
 # §5 step 8). The broker now rides `nmp_network::Pool` for its WebSocket
 # transport: ONE readiness-driven WebSocket implementation in the workspace.

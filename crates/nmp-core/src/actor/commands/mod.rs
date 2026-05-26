@@ -12,7 +12,7 @@
 //! seam (`Kernel::bind_auth_signer`). `RemoteSignerHandle` is defined in
 //! `crate::remote_signer` so the actor uses signers without importing the
 //! `nmp-signers` crate; concrete impls live in `nmp-signers` and reach the
-//! actor through the broker (below). Full `AccountManager` integration is
+//! actor through app/FFI composition. Full `AccountManager` integration is
 //! M14 (`UniFFI`), when the FFI surface can move to a crate that may depend
 //! on both `nmp-core` and `nmp-signers`.
 //!
@@ -20,9 +20,10 @@
 //!
 //! Doctrine D0 still forbids `nmp-core -> nmp-signers`, so the NIP-46
 //! handshake (kind:24133 relay subscription, `connect/get_public_key` RPCs)
-//! lives in a separate broker crate that depends on BOTH `nmp-core` and
-//! `nmp-signers`. The actor's role is purely to host the `Box<dyn
-//! RemoteSignerHandle>` once the broker has completed the handshake:
+//! lives in a separate app-neutral broker crate. The app/FFI adapter
+//! translates completed broker outcomes into actor commands. The actor's role
+//! is purely to host the `Box<dyn RemoteSignerHandle>` once the broker has
+//! completed the handshake:
 //!
 //! - `ActorCommand::SignInBunker { uri }` — actor shape-validates the URI
 //!   and seeds the identity runtime's bunker-handshake slot with
@@ -30,9 +31,10 @@
 //!   relay client. D0: NIP-46 remote signing is an app noun, so handshake
 //!   state is NOT a typed `KernelSnapshot` field — it is surfaced through the
 //!   built-in `"bunker_handshake"` snapshot projection.
-//! - `ActorCommand::BunkerHandshakeProgress { stage, message }` — broker
-//!   pushes progress (`"connecting"` → `"awaiting_pubkey"` → `"ready"` /
-//!   `"failed"`); the actor reflects it into the bunker-handshake slot the
+//! - `ActorCommand::BunkerHandshakeProgress { stage, message }` — the adapter
+//!   pushes broker progress (`"connecting"` → `"awaiting_pubkey"` →
+//!   `"ready"` / `"failed"`); the actor reflects it into the
+//!   bunker-handshake slot the
 //!   `"bunker_handshake"` projection reads.
 //! - `ActorCommand::AddRemoteSigner { handle }` — once the handshake
 //!   completes (the broker has the user's pubkey from `get_public_key`),

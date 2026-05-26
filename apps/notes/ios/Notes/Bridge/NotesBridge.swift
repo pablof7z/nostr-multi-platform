@@ -4,7 +4,7 @@ import Observation
 
 /// Thin Swift wrapper over `libnmp_app_notes.a`. Every method delegates to
 /// generic substrate symbols already exported by `nmp-core` +
-/// `nmp-signer-broker` — no Notes-specific protocol logic lives here.
+/// `nmp-ffi` — no Notes-specific protocol logic lives here.
 @Observable
 final class NotesBridge {
     private let raw: UnsafeMutableRawPointer

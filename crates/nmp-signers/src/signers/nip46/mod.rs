@@ -38,10 +38,10 @@ use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nostr::{Keys, PublicKey, SecretKey};
 use zeroize::Zeroizing;
 
-use crate::bunker::{parse_bunker_uri, BunkerParseError, BunkerUri};
 use super::payload::{Nip46Payload, SignerPayload};
 use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
 use super::SignerOp;
+use crate::bunker::{parse_bunker_uri, BunkerParseError, BunkerUri};
 
 // `Nip46Rpc` and `Nip46Transport` are defined in the leaf
 // [`nmp_signer_iface`] crate so the kernel side can refer to them
@@ -135,7 +135,10 @@ impl std::fmt::Debug for Nip46Signer {
         f.debug_struct("Nip46Signer")
             .field("remote_user_pubkey", &self.remote_user_pubkey.to_hex())
             .field("relays", &self.uri.relays)
-            .field("pending_count", &self.pending.lock().map(|m| m.len()).unwrap_or(0))
+            .field(
+                "pending_count",
+                &self.pending.lock().map(|m| m.len()).unwrap_or(0),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -149,18 +152,15 @@ impl Nip46Signer {
         p: &Nip46Payload,
         transport: Arc<T>,
     ) -> Result<Self, SignerError> {
-        let remote_user_pubkey_hex = p
-            .cached_remote_user_pubkey_hex
-            .as_deref()
-            .ok_or_else(|| {
+        let remote_user_pubkey_hex =
+            p.cached_remote_user_pubkey_hex.as_deref().ok_or_else(|| {
                 SignerError::NotReady(
                     "nip46 payload has no cached remote user pubkey; re-handshake required"
                         .to_string(),
                 )
             })?;
-        let remote_user_pubkey = PublicKey::from_hex(remote_user_pubkey_hex).map_err(|e| {
-            SignerError::Backend(format!("invalid cached remote pubkey: {e}"))
-        })?;
+        let remote_user_pubkey = PublicKey::from_hex(remote_user_pubkey_hex)
+            .map_err(|e| SignerError::Backend(format!("invalid cached remote pubkey: {e}")))?;
         let local_sk = SecretKey::from_hex(p.local_secret_hex.as_str())
             .map_err(|e| SignerError::Backend(format!("invalid local secret: {e}")))?;
         let uri = BunkerUri {
@@ -193,6 +193,38 @@ impl Nip46Signer {
         }
     }
 
+    /// Ingest a decoded NIP-46 RPC response envelope.
+    ///
+    /// The broker transport owns relay decryption; this method owns signer
+    /// correlation. Malformed input is dropped silently so a bad relay frame
+    /// degrades into the originating operation's normal timeout.
+    pub fn ingest_rpc_response(&self, response_json: &str) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(response_json) else {
+            return;
+        };
+
+        let Some(id) = v.get("id").and_then(|x| x.as_str()) else {
+            return;
+        };
+
+        // Prefer an explicit non-null `error` over `result`. Some bunkers
+        // include both fields (`error` set, `result` empty) per NIP-46.
+        if let Some(err_val) = v.get("error") {
+            if !err_val.is_null() {
+                let msg = err_val
+                    .as_str()
+                    .map_or_else(|| err_val.to_string(), str::to_string);
+                self.resolve_response(id, Err(SignerError::Rejected(msg)));
+                return;
+            }
+        }
+
+        // No usable `result` — drop and let the pending op time out.
+        if let Some(result) = v.get("result").and_then(|x| x.as_str()) {
+            self.resolve_response(id, Ok(result.to_string()));
+        }
+    }
+
     /// Resolve every in-flight RPC with an error. Called when the signer
     /// session ends (e.g. account removal) so blocked `SignerOp::wait` callers
     /// fail immediately instead of hanging until the sign timeout elapses.
@@ -216,16 +248,12 @@ impl Nip46Signer {
 
     fn enqueue(&self, method: &str, params_json: &str) -> SignerOp<String> {
         let id = generate_request_id();
-        let body_json = format!(
-            r#"{{"id":"{id}","method":"{method}","params":{params_json}}}"#,
-        );
+        let body_json = format!(r#"{{"id":"{id}","method":"{method}","params":{params_json}}}"#,);
         let (tx, rx) = mpsc::channel();
         if let Ok(mut pending) = self.pending.lock() {
             pending.insert(id.clone(), tx);
         } else {
-            return SignerOp::err(SignerError::Backend(
-                "pending map poisoned".to_string(),
-            ));
+            return SignerOp::err(SignerError::Backend("pending map poisoned".to_string()));
         }
         let rpc = Nip46Rpc {
             id: id.clone(),
@@ -273,9 +301,7 @@ impl Signer for Nip46Signer {
         let params_json = match serde_json::to_string(&unsigned) {
             Ok(s) => format!("[{s}]"),
             Err(e) => {
-                return SignerOp::err(SignerError::Backend(format!(
-                    "serialize unsigned: {e}"
-                )))
+                return SignerOp::err(SignerError::Backend(format!("serialize unsigned: {e}")))
             }
         };
         let raw_op = self.enqueue("sign_event", &params_json);

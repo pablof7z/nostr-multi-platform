@@ -21,6 +21,15 @@ crate-type = ["staticlib", "rlib"]
 # the dependency graph (mainly nmp-core) at its wasm-clean slice.
 default = ["native"]
 native = ["nmp-core/native"]
+# Optional NIP-46 broker adapter. App composition crates that export the
+# bunker/nostrconnect C symbols enable this; protocol crates that depend on
+# `NmpApp` for registration keep the broker graph out of their default build.
+signer-broker = [
+    "native",
+    "dep:nmp-signer-broker",
+    "dep:nmp-signer-iface",
+    "dep:nmp-signers",
+]
 # V-38: the `wallet` feature was deleted along with `nmp-core/wallet`.
 # `nmp_app_wallet_*` C symbols are now unconditional thin shims that route
 # through `nmp_app_dispatch_action("nmp.wallet.*", ...)` — the host
@@ -40,6 +49,9 @@ android-ffi = ["native"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
+nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
+nmp-signers = { path = "../nmp-signers", optional = true }
 nostr = { workspace = true, features = ["nip44", "nip59"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }

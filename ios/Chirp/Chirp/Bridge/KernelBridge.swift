@@ -34,9 +34,8 @@ final class KernelHandle {
         // Stage 4 of NIP-46 wiring: initialise the bunker broker before any
         // `signInBunker(...)` dispatch can reach the actor. The broker
         // registers a hook with `nmp-core` that drives the NIP-46 connect /
-        // get_public_key handshake on a worker thread, then ships the
-        // resulting signer back via `AddRemoteSigner`. D0 stays clean — the
-        // broker is a separate static lib (`libnmp_signer_broker.a`).
+        // get_public_key handshake on a worker thread, then translates the
+        // broker's signer-ready event into `AddRemoteSigner`.
         nmp_signer_broker_init(raw)
         // T146 — register the modular timeline projection on the kernel
         // event observer slot. See `Bridge/ModularTimelineBridge.swift`.

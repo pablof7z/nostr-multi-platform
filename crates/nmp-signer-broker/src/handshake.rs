@@ -69,7 +69,7 @@ impl std::error::Error for HandshakeError {}
 #[derive(Debug, Clone)]
 pub struct HandshakeOutcome {
     /// The user's pubkey, returned by `get_public_key`. This is what
-    /// `RemoteSignerHandle::pubkey_hex` will report to the actor.
+    /// the completed signer reports to the host adapter.
     pub user_pubkey_hex: String,
 }
 
@@ -79,7 +79,7 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Build the REQ frame the broker uses to subscribe to inbound responses
 /// addressed to `local_pubkey_hex`.
-#[must_use] 
+#[must_use]
 pub fn build_req_frame(sub_id: &str, local_pubkey_hex: &str) -> String {
     let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -103,7 +103,7 @@ pub fn build_req_frame(sub_id: &str, local_pubkey_hex: &str) -> String {
 /// success.
 ///
 /// `progress` is an `&mut dyn FnMut(&str, Option<&str>)` so the broker can
-/// publish progress events to the actor. The handshake itself emits two
+/// publish progress events to the host adapter. The handshake itself emits two
 /// transitions: `"connecting"` (before `connect`) and `"awaiting_pubkey"`
 /// (before `get_public_key`). The final `"ready"` is emitted by the broker
 /// after constructing the signer.
@@ -302,8 +302,7 @@ fn await_response(
         }
         if let Some(err) = rpc.get("error") {
             if !err.is_null() {
-                let msg = err
-                    .as_str().map_or_else(|| err.to_string(), str::to_string);
+                let msg = err.as_str().map_or_else(|| err.to_string(), str::to_string);
                 return Err(HandshakeError::BunkerError(msg));
             }
         }
@@ -324,7 +323,7 @@ pub struct NostrConnectOutcome {
     /// inbound `connect` frame). Needed to construct the `BrokerTransport`.
     pub signer_pubkey_hex: String,
     /// The user pubkey returned by `get_public_key` — what
-    /// `RemoteSignerHandle::pubkey_hex` will report to the actor.
+    /// the completed signer reports to the host adapter.
     pub user_pubkey_hex: String,
 }
 
@@ -377,10 +376,9 @@ pub fn run_nostrconnect_handshake(
     )
     .map_err(|e| HandshakeError::Protocol(format!("nip44 encrypt ack: {e}")))?;
     let ack_event = EventBuilder::new(Kind::from_u16(24133), ack_ciphertext)
-        .tags(vec![
-            Tag::parse(["p", &signer_pubkey])
-                .map_err(|e| HandshakeError::Protocol(format!("tag parse: {e}")))?,
-        ])
+        .tags(vec![Tag::parse(["p", &signer_pubkey]).map_err(|e| {
+            HandshakeError::Protocol(format!("tag parse: {e}"))
+        })?])
         .custom_created_at(Timestamp::from(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -396,7 +394,10 @@ pub fn run_nostrconnect_handshake(
         .map_err(|e| HandshakeError::Transport(e.to_string()))?;
 
     // Step 3 — send get_public_key to the signer.
-    progress("awaiting_pubkey", Some("Awaiting user confirmation in signer app"));
+    progress(
+        "awaiting_pubkey",
+        Some("Awaiting user confirmation in signer app"),
+    );
     let gpk_id = new_request_id();
     publish_rpc(
         relay,
@@ -451,9 +452,7 @@ fn await_nostrconnect_connect(
         let remaining = deadline
             .checked_duration_since(std::time::Instant::now())
             .ok_or_else(|| {
-                HandshakeError::Timeout(
-                    "no connect frame from signer within timeout".to_string(),
-                )
+                HandshakeError::Timeout("no connect frame from signer within timeout".to_string())
             })?;
         let wait = remaining.min(Duration::from_millis(200));
         let event = match inbound_rx.recv_timeout(wait) {
@@ -477,14 +476,17 @@ fn await_nostrconnect_connect(
         {
             continue;
         }
-        let Ok(signer_pk) = nostr::PublicKey::from_hex(&signer_pubkey_hex) else { continue };
+        let Ok(signer_pk) = nostr::PublicKey::from_hex(&signer_pubkey_hex) else {
+            continue;
+        };
 
         let Some(ciphertext) = event.get("content").and_then(|v| v.as_str()) else {
             continue;
         };
 
         // Decrypt with local_keys.secret + signer_pk.
-        let Ok(plaintext) = nip44::decrypt(local_keys.secret_key(), &signer_pk, ciphertext.as_bytes())
+        let Ok(plaintext) =
+            nip44::decrypt(local_keys.secret_key(), &signer_pk, ciphertext.as_bytes())
         else {
             continue; // not for us or malformed — skip.
         };
@@ -504,13 +506,12 @@ fn await_nostrconnect_connect(
             None => continue,
         };
 
-        let Some(params) = rpc.get("params").and_then(|v| v.as_array()) else { continue };
+        let Some(params) = rpc.get("params").and_then(|v| v.as_array()) else {
+            continue;
+        };
 
         // params[1] must match expected_secret.
-        let received_secret = params
-            .get(1)
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let received_secret = params.get(1).and_then(|v| v.as_str()).unwrap_or("");
         if received_secret != expected_secret {
             // Wrong secret — reject with a definitive error (D-NO-HACK).
             return Err(HandshakeError::BunkerError(format!(

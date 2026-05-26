@@ -43,9 +43,9 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use nmp_core::ActorCommand;
-use nmp_signer_broker::BunkerBroker;
 use nostr::Keys;
 
+use crate::common::broker_adapter::broker_for_actor;
 use crate::common::mock_nostrconnect_signer::MockNostrConnectSigner;
 
 /// Happy-path nostrconnect:// handshake: signer connects with correct secret,
@@ -60,7 +60,7 @@ fn nostrconnect_happy_path_emits_add_remote_signer() {
         .expect("mock nostrconnect signer must spawn on 127.0.0.1");
 
     let (actor_tx, actor_rx) = mpsc::channel::<ActorCommand>();
-    let broker = BunkerBroker::new(actor_tx);
+    let broker = broker_for_actor(actor_tx);
 
     // ── Generate URI + start listening ───────────────────────────────────
     // `start_nostrconnect_handshake` returns the URI synchronously and spawns
@@ -101,7 +101,7 @@ fn nostrconnect_wrong_secret_fails_handshake() {
         .expect("mock nostrconnect signer must spawn");
 
     let (actor_tx, actor_rx) = mpsc::channel::<ActorCommand>();
-    let broker = BunkerBroker::new(actor_tx);
+    let broker = broker_for_actor(actor_tx);
 
     let relay_url = mock.ws_url();
     let uri = broker.start_nostrconnect_handshake(relay_url);
@@ -133,10 +133,7 @@ fn nostrconnect_wrong_secret_fails_handshake() {
         }
     }
 
-    assert!(
-        saw_failed,
-        "broker must emit stage=failed for wrong secret"
-    );
+    assert!(saw_failed, "broker must emit stage=failed for wrong secret");
     assert!(
         !saw_add_remote,
         "broker must NOT emit AddRemoteSigner for wrong secret"

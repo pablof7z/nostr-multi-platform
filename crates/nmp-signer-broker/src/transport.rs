@@ -8,9 +8,9 @@
 //! plugged in. This module is that impl for the production kernel.
 //!
 //! Inbound responses are routed back to the signer via
-//! `Nip46Signer::deliver_rpc_response`. The broker owns the only
-//! `Arc<Nip46Signer>` for the active session; the relay client's event
-//! callback walks through `BrokerTransport` to reach it.
+//! `Nip46Signer::ingest_rpc_response`. The broker owns the session
+//! `Arc<Nip46Signer>`; the relay client's event callback walks through
+//! `BrokerTransport` to reach it.
 
 use std::sync::{Arc, Mutex, Weak};
 
@@ -28,9 +28,8 @@ pub struct BrokerTransport {
     relay: Arc<dyn RelayClient>,
     local_keys: Keys,
     remote_pubkey: PublicKey,
-    /// The signer we feed inbound responses to. `Weak` because the signer's
-    /// strong owner is the actor (via `Box<dyn RemoteSignerHandle>`); we
-    /// must not extend its lifetime here.
+    /// The signer we feed inbound responses to. `Weak` so the transport does
+    /// not extend the host adapter's signer lifetime.
     signer: Mutex<Weak<Nip46Signer>>,
 }
 
@@ -70,7 +69,8 @@ impl BrokerTransport {
 
     /// Inbound dispatch: called for every kind:24133 event delivered by the
     /// relay client. Decrypts the content, parses the JSON-RPC envelope,
-    /// and forwards `{id, result | error}` to `Nip46Signer::deliver_rpc_response`.
+    /// and forwards `{id, result | error}` to
+    /// `Nip46Signer::ingest_rpc_response`.
     ///
     /// Public so the broker's relay subscription callback can call this
     /// directly. Idempotent — safe to invoke from multiple frames.
@@ -86,8 +86,7 @@ impl BrokerTransport {
         // If the signer has been dropped (account removed, app shutting
         // down) the dispatch is a no-op.
         let Some(signer) = signer_arc else { return };
-        use nmp_core::RemoteSignerHandle;
-        signer.deliver_rpc_response(&plaintext);
+        signer.ingest_rpc_response(&plaintext);
     }
 }
 
@@ -191,8 +190,11 @@ mod tests {
         }
         let local = Keys::generate();
         let remote = Keys::generate().public_key();
-        let transport =
-            BrokerTransport::new(Arc::new(FailingRelay) as Arc<dyn RelayClient>, local, remote);
+        let transport = BrokerTransport::new(
+            Arc::new(FailingRelay) as Arc<dyn RelayClient>,
+            local,
+            remote,
+        );
         let rpc = Nip46Rpc {
             id: "abc".to_string(),
             body_json: r#"{"id":"abc"}"#.to_string(),
@@ -200,7 +202,9 @@ mod tests {
             relays: vec!["wss://example.com".to_string()],
             remote_pubkey_hex: remote.to_hex(),
         };
-        let err = transport.send_rpc(rpc).expect_err("failing relay must error");
+        let err = transport
+            .send_rpc(rpc)
+            .expect_err("failing relay must error");
         assert!(matches!(err, SignerError::Backend(_)));
     }
 

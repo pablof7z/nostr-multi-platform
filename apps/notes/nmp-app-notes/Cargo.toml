@@ -5,10 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 # Second-app stateful spike: a minimal NIP-01 note client (read kind:1,
-# publish kind:1, sign-in via nsec or NIP-46 bunker) built ONLY on the
-# substrate seams already exported by `nmp-core` + `nmp-signer-broker`. No
-# Chirp dependency, no protocol-crate dependency, no bespoke `#[no_mangle]`
-# C-ABI symbols beyond `nmp_app_notes_init` (a marker, not a protocol seam).
+# publish kind:1, sign-in via nsec or NIP-46 bunker) built on the substrate
+# seams exported by `nmp-core` + `nmp-ffi`. No Chirp dependency, no
+# protocol-crate dependency, no bespoke `#[no_mangle]` C-ABI symbols beyond
+# `nmp_app_notes_init` (a marker, not a protocol seam).
 #
 # This crate exists to **confirm the framework thesis for stateful apps** —
 # the Longform spike already proved the read-only path; this proves write +
@@ -20,9 +20,4 @@ crate-type = ["staticlib", "rlib"]
 nmp-core = { path = "../../../crates/nmp-core" }
 # C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
 # `nmp-core::ffi` in step 11-final.
-nmp-ffi = { path = "../../../crates/nmp-ffi" }
-# NIP-46 signer broker. Re-exports `nmp_signer_broker_init`,
-# `nmp_app_nostrconnect_uri`, `nmp_app_cancel_bunker_handshake`, and
-# `nmp_broker_free_string` — the bunker sign-in surface the iOS shell needs.
-# Lives outside `nmp-core` because doctrine D0 forbids `nmp-core -> nmp-signers`.
-nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["signer-broker"] }

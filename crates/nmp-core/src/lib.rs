@@ -169,11 +169,11 @@ pub use update_envelope::{
     SNAPSHOT_SCHEMA_VERSION,
 };
 
-// Stage 4 of NIP-46 wiring: `nmp-signer-broker` (the crate that bridges
-// `nmp-core` and `nmp-signers`) needs to construct `ActorCommand` values to
-// push `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor. The
-// `actor` module is crate-private so this re-export is the only path. The
-// enum variants themselves are already `pub`.
+// Stage 4 of NIP-46 wiring: app/FFI composition translates app-neutral
+// broker events into actor commands. The `actor` module is crate-private so
+// this re-export is the only Rust-side path for adapters that need to push
+// `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor. The enum
+// variants themselves are already `pub`.
 pub use actor::ActorCommand;
 pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 

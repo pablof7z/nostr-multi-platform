@@ -5,9 +5,9 @@
 //
 // The Notes shell links exactly ONE Rust archive (`libnmp_app_notes.a`)
 // produced by the `nmp-app-notes` crate. That archive aggregates
-// `nmp-core` (the kernel substrate) and `nmp-signer-broker` (the NIP-46
-// bunker bridge) — both already exposing every C symbol declared in
-// `NmpCore.h` via `#[no_mangle] extern "C"`.
+// `nmp-core` (the kernel substrate) and `nmp-ffi` (the native C-ABI adapter)
+// already exposing every C symbol declared in `NmpCore.h` via
+// `#[no_mangle] extern "C"`.
 //
 // NOTE — the only Notes-specific symbol is `nmp_app_notes_init`, an
 // app-registration marker; it carries no protocol logic. Declared below.
