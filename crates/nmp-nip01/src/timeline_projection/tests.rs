@@ -118,6 +118,7 @@ fn window_snapshot_pages_blocks_with_stable_cursor() {
         vec!["new", "mid"]
     );
     let page = first.page.expect("window snapshots carry page metadata");
+    assert!(first.metrics.is_some(), "window snapshots carry metrics");
     assert!(page.has_more);
     assert_eq!(page.total_blocks, 3);
     assert_eq!(

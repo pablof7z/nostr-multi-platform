@@ -150,9 +150,16 @@ pub(crate) fn block_window_cursor(
     block: &TimelineBlock,
     cards: &BoundedMessageMap<String, TimelineEventCard>,
 ) -> TimelineWindowCursor {
+    let event_ids = block_event_ids(block);
+    debug_assert!(
+        !event_ids.is_empty(),
+        "timeline blocks should always carry at least one event id"
+    );
     let mut best: Option<TimelineWindowCursor> = None;
-    for id in block_event_ids(block) {
+    for id in event_ids {
         let cursor = TimelineWindowCursor {
+            // The card cache is bounded. If a block outlives its card, keep a
+            // stable cursor from the id and push it behind timestamped cards.
             created_at: cards.get(&id).map_or(0, |card| card.created_at),
             id,
         };

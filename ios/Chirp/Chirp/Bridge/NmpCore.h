@@ -321,10 +321,10 @@ void nmp_broker_free_string(char *ptr);
 // 2. On each render tick (or after an update arrives), call
 //    `nmp_app_chirp_snapshot_window(handle, request_json)` to get a
 //    nul-terminated JSON string
-//    `{ "blocks": [...], "cards": [...], "page": {...} }`. `request_json`
-//    is `{ "limit": N, "cursor": { "created_at": T, "id": E } }`; cursor
-//    may be omitted/null for the newest window. The shell owns the pointer
-//    until it calls `nmp_app_chirp_snapshot_free(ptr)`.
+//    `{ "blocks": [...], "cards": [...], "page": {...}, "metrics": {...} }`.
+//    `request_json` is `{ "limit": N, "cursor": { "created_at": T, "id": E } }`;
+//    cursor may be omitted/null for the newest window. The shell owns the
+//    pointer until it calls `nmp_app_chirp_snapshot_free(ptr)`.
 // 3. On teardown, call `nmp_app_chirp_unregister(handle)` BEFORE
 //    `nmp_app_free(app)`.
 //
@@ -335,6 +335,8 @@ void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
 char *nmp_app_chirp_snapshot(void *handle);
 char *nmp_app_chirp_snapshot_window(void *handle, const char *request_json_or_null);
+uint32_t nmp_app_chirp_default_window_limit(void);
+uint32_t nmp_app_chirp_max_window_limit(void);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
 

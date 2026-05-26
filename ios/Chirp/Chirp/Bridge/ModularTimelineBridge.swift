@@ -21,6 +21,11 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────
 
 extension KernelHandle {
+    enum ChirpTimelineWindowLimits {
+        static var defaultLimit: UInt32 { nmp_app_chirp_default_window_limit() }
+        static var maxLimit: UInt32 { nmp_app_chirp_max_window_limit() }
+    }
+
     /// Register the Chirp modular timeline projection on the kernel event
     /// observer slot. Viewer pubkey is `nil` on cold boot — `signInNsec`
     /// etc. retarget the projection once an account becomes active

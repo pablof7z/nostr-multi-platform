@@ -3,7 +3,7 @@
 
 use std::ffi::{c_char, CStr, CString};
 
-use nmp_nip01::TimelineWindowRequest;
+use nmp_nip01::{TimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT};
 
 use super::handle::ChirpHandle;
 
@@ -49,6 +49,19 @@ pub extern "C" fn nmp_app_chirp_snapshot_window(
     // `nmp_app_chirp_register` and not yet freed.
     let handle = unsafe { &*handle };
     snapshot_to_c_string(&handle.projection.snapshot_window(request))
+}
+
+/// Rust-owned default modular timeline window size. Exported so thin
+/// shells do not mirror protocol/app constants.
+#[no_mangle]
+pub extern "C" fn nmp_app_chirp_default_window_limit() -> u32 {
+    DEFAULT_TIMELINE_WINDOW_LIMIT as u32
+}
+
+/// Rust-owned modular timeline window cap.
+#[no_mangle]
+pub extern "C" fn nmp_app_chirp_max_window_limit() -> u32 {
+    MAX_TIMELINE_WINDOW_LIMIT as u32
 }
 
 fn snapshot_to_c_string(snapshot: &nmp_nip01::ModularTimelineSnapshot) -> *mut c_char {

@@ -38,8 +38,9 @@ pub mod ffi;
 mod wallet_runtime;
 
 pub use ffi::{
-    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_snapshot_window, nmp_app_chirp_unregister, ChirpHandle,
+    nmp_app_chirp_default_window_limit, nmp_app_chirp_max_window_limit, nmp_app_chirp_register,
+    nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_snapshot_window,
+    nmp_app_chirp_unregister, ChirpHandle,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
@@ -49,6 +50,7 @@ pub use nmp_nip01::{
     ModularTimelineProjection as ChirpModularTimeline,
     ModularTimelineSnapshot as ChirpTimelineSnapshot, TimelineEventCard as ChirpEventCard,
     TimelineWindowCursor as ChirpTimelineWindowCursor,
+    TimelineWindowMetrics as ChirpTimelineWindowMetrics,
     TimelineWindowPage as ChirpTimelineWindowPage,
     TimelineWindowRequest as ChirpTimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT,
     MAX_TIMELINE_WINDOW_LIMIT,

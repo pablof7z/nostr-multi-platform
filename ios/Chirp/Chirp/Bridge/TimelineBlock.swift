@@ -5,7 +5,7 @@ import Foundation
 // metadata `nmp_app_chirp` ships alongside the blocks.
 //
 // Wire shape produced by `nmp_app_chirp_snapshot_window(handle, request)`:
-//   { "blocks": [TimelineBlock], "cards": [ChirpEventCard], "page": ... }
+//   { "blocks": [TimelineBlock], "cards": [ChirpEventCard], "page": ..., "metrics": ... }
 //
 // `TimelineBlock` is a tagged enum on the Rust side (serde default
 // representation). The two variants are:

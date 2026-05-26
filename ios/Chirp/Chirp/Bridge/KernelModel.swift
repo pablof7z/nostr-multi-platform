@@ -56,7 +56,7 @@ final class KernelModel: ObservableObject {
     /// an action-lifecycle signal — a lifecycle failure surfaces through
     /// `actionLifecycle.recentTerminal[.failed(reason)]` from the projection.
     @Published private(set) var lastDispatchError: String?
-    @Published var visibleLimit: UInt32 = 80
+    @Published var visibleLimit: UInt32 = KernelHandle.ChirpTimelineWindowLimits.defaultLimit
     @Published var emitHz: UInt32 = 4
 
     /// D7 actor-death surface — flips to `true` exactly once when the Rust
@@ -312,7 +312,10 @@ final class KernelModel: ObservableObject {
 
     func loadOlderTimeline() {
         guard modularTimeline.page?.hasMore == true else { return }
-        let nextLimit = min(visibleLimit + 80, 500)
+        let step = KernelHandle.ChirpTimelineWindowLimits.defaultLimit
+        let cap = KernelHandle.ChirpTimelineWindowLimits.maxLimit
+        let stepped = visibleLimit.addingReportingOverflow(step)
+        let nextLimit = min(stepped.overflow ? UInt32.max : stepped.partialValue, cap)
         guard nextLimit != visibleLimit else { return }
         visibleLimit = nextLimit
         applyConfiguration()

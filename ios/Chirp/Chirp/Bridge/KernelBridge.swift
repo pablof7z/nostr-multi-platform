@@ -106,7 +106,10 @@ final class KernelHandle {
         nmp_app_is_alive(raw) == 1
     }
 
-    func start(visibleLimit: UInt32 = 80, emitHz: UInt32 = 4) {
+    func start(
+        visibleLimit: UInt32 = nmp_app_chirp_default_window_limit(),
+        emitHz: UInt32 = 4
+    ) {
         nmp_app_start(raw, 0, visibleLimit, emitHz)
     }
 

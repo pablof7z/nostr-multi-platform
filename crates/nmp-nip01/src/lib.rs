@@ -40,8 +40,8 @@ pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInteres
 pub use profile_display::AuthorDisplay;
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,
-    TimelineWindowPage, TimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT,
-    MAX_TIMELINE_WINDOW_LIMIT,
+    TimelineWindowMetrics, TimelineWindowPage, TimelineWindowRequest,
+    DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT,
 };
 pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,

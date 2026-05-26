@@ -20,6 +20,9 @@
 //!   pointer until it calls `nmp_app_chirp_snapshot_free`.
 //! - [`nmp_app_chirp_snapshot_window`] — serialize a bounded cursor window of
 //!   the timeline for render shells that should not pull the full feed.
+//! - [`nmp_app_chirp_default_window_limit`] /
+//!   [`nmp_app_chirp_max_window_limit`] — Rust-owned window sizing constants
+//!   for native render shells.
 //! - [`nmp_app_chirp_snapshot_free`] — companion deallocator for the snapshot
 //!   string.
 //! - [`nmp_app_chirp_unregister`] — drop the observer registration and free
@@ -70,6 +73,6 @@ pub use register::{
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
 pub use snapshot::{
-    nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_snapshot_window,
-    nmp_app_chirp_unregister,
+    nmp_app_chirp_default_window_limit, nmp_app_chirp_max_window_limit, nmp_app_chirp_snapshot,
+    nmp_app_chirp_snapshot_free, nmp_app_chirp_snapshot_window, nmp_app_chirp_unregister,
 };

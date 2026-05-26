@@ -87,6 +87,8 @@ struct HomeFeedView: View {
                 model.zap(targetEventID: eventID, authorPubkey: pubkey, lnurl: lnurl)
             },
             onLoadMore: { cursor in
+                // Rust clears `nextCursor` once no older page can be served,
+                // including at the window cap, so this cannot retry-spin.
                 guard lastLoadMoreCursor != cursor else { return }
                 lastLoadMoreCursor = cursor
                 model.loadOlderTimeline()

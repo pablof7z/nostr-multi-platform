@@ -14,8 +14,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_snapshot_window, nmp_app_chirp_unregister, ChirpTimelineSnapshot,
+    nmp_app_chirp_default_window_limit, nmp_app_chirp_max_window_limit, nmp_app_chirp_register,
+    nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_snapshot_window,
+    nmp_app_chirp_unregister, ChirpTimelineSnapshot, DEFAULT_TIMELINE_WINDOW_LIMIT,
+    MAX_TIMELINE_WINDOW_LIMIT,
 };
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
@@ -168,10 +170,23 @@ fn window_snapshot_returns_bounded_newest_blocks() {
     assert!(matches!(&snap.blocks[0], TimelineBlock::Standalone(id) if id == &new_id));
     assert_eq!(snap.cards.len(), 1);
     let page = snap.page.expect("window snapshot carries page metadata");
+    assert!(snap.metrics.is_some(), "window snapshot carries metrics");
     assert!(page.has_more);
     assert_eq!(page.total_blocks, 2);
     assert_eq!(page.next_cursor.expect("cursor").id, new_id);
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
+}
+
+#[test]
+fn window_limit_accessors_match_rust_constants() {
+    assert_eq!(
+        nmp_app_chirp_default_window_limit(),
+        DEFAULT_TIMELINE_WINDOW_LIMIT as u32
+    );
+    assert_eq!(
+        nmp_app_chirp_max_window_limit(),
+        MAX_TIMELINE_WINDOW_LIMIT as u32
+    );
 }

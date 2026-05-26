@@ -4,7 +4,7 @@
 //! shells also need the per-event render metadata in the same pushed snapshot,
 //! so this projection owns the generic card cache beside the view state.
 
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{collections::BTreeMap, sync::Mutex, time::Instant};
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, ViewContext, MAX_PROJECTION_MESSAGES};
@@ -219,6 +219,8 @@ pub struct ModularTimelineSnapshot {
     pub cards: Vec<TimelineEventCard>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<TimelineWindowPage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<TimelineWindowMetrics>,
 }
 
 impl ModularTimelineSnapshot {
@@ -228,8 +230,14 @@ impl ModularTimelineSnapshot {
             blocks: Vec::new(),
             cards: Vec::new(),
             page: None,
+            metrics: None,
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TimelineWindowMetrics {
+    pub make_window_us: u64,
 }
 
 pub struct ModularTimelineProjection {
@@ -268,11 +276,13 @@ impl ModularTimelineProjection {
             blocks,
             cards: inner.cards.values().cloned().collect(),
             page: None,
+            metrics: None,
         }
     }
 
     #[must_use]
     pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
+        let make_window_start = Instant::now();
         let Ok(inner) = self.inner.lock() else {
             return ModularTimelineSnapshot::empty();
         };
@@ -303,6 +313,12 @@ impl ModularTimelineProjection {
                 next_cursor,
                 has_more,
                 total_blocks,
+            }),
+            metrics: Some(TimelineWindowMetrics {
+                make_window_us: make_window_start
+                    .elapsed()
+                    .as_micros()
+                    .min(u64::MAX as u128) as u64,
             }),
         }
     }
