@@ -127,6 +127,15 @@ pub(crate) struct RelayAckOutcome {
     /// Empty for `"ok"`; carries the engine's give-up reason for `"failed"`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub(crate) message: String,
+    /// Per-relay selection rationale captured at publish time (e.g.
+    /// `"NIP-65 write relay"`, `"Inbox relay for npub1abc…"`). Mirrors the
+    /// in-flight `publish_outbox` field so the settled `publish_queue`
+    /// projection can render the same "why was this relay targeted?" string
+    /// after the publish has completed. Empty when the engine had no
+    /// rationale for the relay (e.g. older serialised rows resumed from
+    /// store).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) relay_reason: String,
 }
 
 /// One relay row the UI's Accounts screen edits. Mirrors the kernel's

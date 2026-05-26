@@ -7,7 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::AppState;
-use crate::feature_snapshot::{AccountLine, OutboxLine, OutboxRelayLine};
+use crate::feature_snapshot::{
+    AccountLine, HistoryRelayLine, OutboxLine, OutboxRelayLine, PublishHistoryLine,
+};
 use crate::snapshot::RelayRow;
 use crate::ui::colors::{
     ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, LIST_BG, RELAY_CONNECTING,
@@ -276,10 +278,140 @@ fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected:
         }
     }
 
+    // Settled publish history — read-only list rendered below the active
+    // outbox. Skipped entirely when the queue is empty so an empty section
+    // header doesn't clutter the pane.
+    if !state.features.history.is_empty() {
+        append_history_section(&mut lines, &state.features.history, pane_width);
+    }
+
     let paragraph = Paragraph::new(lines)
         .block(block)
         .style(Style::default().bg(DETAIL_BG).fg(BODY_TEXT));
     frame.render_widget(paragraph, area);
+}
+
+/// Render the "Published" history section: a dim divider header followed by
+/// one block per settled publish (title + status on the header line, per-relay
+/// dot/url/reason rows underneath). History items are NOT selectable — j/k
+/// navigation is reserved for the active in-flight outbox above.
+fn append_history_section(
+    lines: &mut Vec<Line<'static>>,
+    history: &[PublishHistoryLine],
+    pane_width: usize,
+) {
+    // Separator line so the eye registers history as a distinct block from
+    // the active outbox above. Render the bar/title in dim so the active
+    // list stays visually dominant.
+    lines.push(Line::from(""));
+    let header = build_section_header("Published", pane_width);
+    lines.push(Line::from(Span::styled(
+        header,
+        Style::default().fg(DIM_TEXT),
+    )));
+    for item in history {
+        append_history_item(lines, item, pane_width);
+    }
+}
+
+/// `"── Published ──────────"` — a unicode box-drawing divider that scales
+/// with the pane width. Falls back to a plain ASCII underline at very narrow
+/// widths so the header never overflows.
+fn build_section_header(title: &str, pane_width: usize) -> String {
+    let title_with_pad = format!(" {title} ");
+    let title_len = title_with_pad.chars().count();
+    if pane_width <= title_len + 4 {
+        return title_with_pad.trim().to_string();
+    }
+    let leading = 2usize;
+    let trailing = pane_width.saturating_sub(title_len + leading);
+    let mut out = String::with_capacity(pane_width);
+    for _ in 0..leading {
+        out.push('\u{2500}');
+    }
+    out.push_str(&title_with_pad);
+    for _ in 0..trailing {
+        out.push('\u{2500}');
+    }
+    out
+}
+
+fn append_history_item(
+    lines: &mut Vec<Line<'static>>,
+    item: &PublishHistoryLine,
+    pane_width: usize,
+) {
+    let status_color = history_status_color(&item.status);
+    let status = truncate(&item.status, 8);
+    let status_len = status.chars().count();
+    // Two-space gutter mirrors `append_outbox_line` for visual alignment with
+    // the active outbox above (no cursor on history rows — they're read-only).
+    let title_max = pane_width.saturating_sub(2 + status_len + 1);
+    let title = truncate(&item.title, title_max);
+    let title_len = title.chars().count();
+    let pad_len = pane_width
+        .saturating_sub(2 + title_len + status_len)
+        .max(1);
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            title,
+            Style::default().fg(BODY_TEXT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" ".repeat(pad_len), Style::default()),
+        Span::styled(status, Style::default().fg(status_color)),
+    ]));
+    for relay in &item.relays {
+        append_history_relay_line(lines, relay, pane_width);
+    }
+    lines.push(Line::from(""));
+}
+
+fn append_history_relay_line(
+    lines: &mut Vec<Line<'static>>,
+    relay: &HistoryRelayLine,
+    pane_width: usize,
+) {
+    let (dot, dot_color) = history_relay_status_dot(&relay.status);
+    // Indent under the title row. `pane_width - 4` leaves room for the indent
+    // + dot + space at the start of the line.
+    let inner_width = pane_width.saturating_sub(4);
+    let url = truncate(&relay.relay_url, inner_width);
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(format!("{dot} "), Style::default().fg(dot_color)),
+        Span::styled(url, Style::default().fg(BODY_TEXT)),
+    ]));
+    if !relay.relay_reason.is_empty() {
+        let reason = truncate(&relay.relay_reason, pane_width.saturating_sub(6));
+        lines.push(Line::from(vec![
+            Span::raw("      "),
+            Span::styled(reason, Style::default().fg(DIM_TEXT)),
+        ]));
+    }
+    if !relay.message.is_empty() {
+        let message = truncate(&relay.message, pane_width.saturating_sub(6));
+        lines.push(Line::from(vec![
+            Span::raw("      "),
+            Span::styled(message, Style::default().fg(DIMMER_TEXT)),
+        ]));
+    }
+}
+
+fn history_status_color(status: &str) -> ratatui::style::Color {
+    match status {
+        "ok" => REPOST,
+        "failed" => RELAY_DOWN,
+        _ => DIM_TEXT,
+    }
+}
+
+fn history_relay_status_dot(status: &str) -> (char, ratatui::style::Color) {
+    match status {
+        "ok" => ('\u{2713}', RELAY_OK),
+        "failed" => ('\u{2717}', RELAY_DOWN),
+        _ => ('\u{25cc}', RELAY_CONNECTING),
+    }
 }
 
 fn render_outbox_detail(frame: &mut Frame, area: Rect, item: &OutboxLine) {

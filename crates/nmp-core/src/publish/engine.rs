@@ -109,11 +109,20 @@ pub(super) struct InFlight {
 /// the `(relay_url, reason)` pairs from `FailedAfterRetries`. Mixed publishes
 /// (at least one Ok + at least one `FailedAfterRetries`) are reported here with
 /// both lists populated — the kernel decides what status string to surface.
+///
+/// `relay_reasons` carries the per-relay selection rationale captured at
+/// publish time (mirrors `InFlight.relay_reasons`). Threaded through so the
+/// settled `publish_queue` projection can render the same "why was this
+/// relay targeted?" string the in-flight `publish_outbox` projection shows
+/// — without that the relay row goes dim the moment the publish completes.
+/// Keys mirror the union of `accepted` and `failed` for terminally-settled
+/// rows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalOutcome {
     pub event_id: String,
     pub accepted: Vec<RelayUrl>,
     pub failed: Vec<(RelayUrl, String)>,
+    pub relay_reasons: BTreeMap<RelayUrl, String>,
 }
 
 /// Direction review #29: one terminal action result the engine records into

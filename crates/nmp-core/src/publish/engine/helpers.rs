@@ -177,10 +177,15 @@ pub(super) fn terminal_outcome_of(in_flight: &InFlight) -> TerminalOutcome {
             _ => {}
         }
     }
+    // Clone the captured-at-publish-time rationale map verbatim so the kernel
+    // projection can render the same "why was this relay targeted?" string the
+    // in-flight outbox shows. Keys mirror `per_relay` (the engine seeded both
+    // from the same `relay_map` in `start_publish_inner`).
     TerminalOutcome {
         event_id: in_flight.event.id.clone(),
         accepted,
         failed,
+        relay_reasons: in_flight.relay_reasons.clone(),
     }
 }
 

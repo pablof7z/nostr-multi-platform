@@ -563,17 +563,33 @@ fn classify_terminal_outcome(
 ) -> (&'static str, Vec<super::RelayAckOutcome>) {
     let mut outcomes = Vec::with_capacity(outcome.accepted.len() + outcome.failed.len());
     for url in &outcome.accepted {
+        // Look up the per-relay rationale captured at publish time so the
+        // settled queue entry carries the same "why was this relay targeted?"
+        // string the in-flight outbox shows. Missing entries fall back to
+        // empty (older serialised rows / resumes never wrote the map).
+        let relay_reason = outcome
+            .relay_reasons
+            .get(url)
+            .cloned()
+            .unwrap_or_default();
         outcomes.push(super::RelayAckOutcome {
             relay_url: url.clone(),
             status: "ok".to_string(),
             message: String::new(),
+            relay_reason,
         });
     }
     for (url, reason) in &outcome.failed {
+        let relay_reason = outcome
+            .relay_reasons
+            .get(url)
+            .cloned()
+            .unwrap_or_default();
         outcomes.push(super::RelayAckOutcome {
             relay_url: url.clone(),
             status: "failed".to_string(),
             message: reason.clone(),
+            relay_reason,
         });
     }
     let status = if outcome.accepted.is_empty() {

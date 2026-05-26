@@ -8,6 +8,11 @@ pub struct FeatureSnapshot {
     pub active_account: String,
     pub outbox: Vec<OutboxLine>,
     pub outbox_summary: SummaryLine,
+    /// Settled publish history projected from `projections.publish_queue`.
+    /// Read-only — the in-flight `outbox` field carries the active rows.
+    /// Newest-first; capped at 20 entries (the kernel additionally caps
+    /// `publish_queue` at 16, so this is effectively "the whole window").
+    pub history: Vec<PublishHistoryLine>,
     pub relay_edit_rows: Vec<RelayEditLine>,
     pub wallet: WalletLine,
     pub dm_conversations: Vec<DmConversationLine>,
@@ -51,6 +56,7 @@ impl FeatureSnapshot {
             active_account: string_field(projections, "active_account"),
             outbox: outbox_from(projections),
             outbox_summary: summary_from(projections.get("outbox_summary")),
+            history: publish_history_from(projections),
             relay_edit_rows: relay_edit_rows_from(projections),
             wallet: wallet_from(projections.get("wallet")),
             dm_conversations: dm_from(projections),
@@ -67,6 +73,7 @@ impl FeatureSnapshot {
     pub fn is_empty(&self) -> bool {
         self.accounts.is_empty()
             && self.outbox.is_empty()
+            && self.history.is_empty()
             && self.relay_edit_rows.is_empty()
             && self.wallet.status.is_empty()
             && self.dm_conversations.is_empty()
@@ -99,6 +106,32 @@ pub struct OutboxRelayLine {
     pub relay_url: String,
     pub status_label: String,
     pub reason: String,
+    pub message: String,
+}
+
+/// One settled publish row projected from `projections.publish_queue`.
+/// Read-only history — the in-flight `OutboxLine` carries the active rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PublishHistoryLine {
+    pub event_id: String,
+    /// Pre-formatted kind label (e.g. `"Note"`, `"Reaction"`).
+    pub title: String,
+    /// Terminal status reported by the kernel: `"ok"` or `"failed"`.
+    pub status: String,
+    pub relays: Vec<HistoryRelayLine>,
+}
+
+/// One relay's verdict on a settled publish. Mirrors the kernel's
+/// `RelayAckOutcome` shape one-to-one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HistoryRelayLine {
+    pub relay_url: String,
+    /// `"ok"` for an accepted relay, `"failed"` otherwise.
+    pub status: String,
+    /// Per-relay selection rationale captured at publish time (e.g.
+    /// `"NIP-65 write relay"`). Empty for older serialised rows.
+    pub relay_reason: String,
+    /// Failure reason for `"failed"` rows; empty for `"ok"`.
     pub message: String,
 }
 
@@ -198,6 +231,70 @@ fn outbox_from(projections: &Value) -> Vec<OutboxLine> {
             relays: relay_lines_from(row),
         })
         .collect()
+}
+
+/// Parse `projections.publish_queue` into a newest-first history list.
+///
+/// Skips rows still in flight (`status == "accepted_locally"` and no
+/// `relay_outcomes`) so the active outbox and the history pane never duplicate
+/// the same publish. Caps at 20 rows; the kernel additionally caps the queue
+/// at 16, so this is effectively "the whole window".
+fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLine> {
+    let Some(rows) = projections.get("publish_queue").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    rows.iter()
+        .rev() // kernel appends, so reverse gives newest-first
+        .filter(|row| {
+            // Only render terminally-settled rows. `accepted_locally` is the
+            // in-flight status — those rows already show in the active outbox
+            // pane; rendering them in history too would duplicate.
+            let status = row
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            status == "ok" || status == "failed"
+        })
+        .take(20)
+        .map(|row| {
+            let kind = row.get("kind").and_then(Value::as_u64).unwrap_or(1) as u32;
+            let relays = row
+                .get("relay_outcomes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|r| HistoryRelayLine {
+                    relay_url: string_field(r, "relay_url"),
+                    status: string_field(r, "status"),
+                    relay_reason: string_field(r, "relay_reason"),
+                    message: string_field(r, "message"),
+                })
+                .collect();
+            PublishHistoryLine {
+                event_id: string_field(row, "event_id"),
+                title: publish_kind_label(kind),
+                status: string_field(row, "status"),
+                relays,
+            }
+        })
+        .collect()
+}
+
+/// English label for a published event kind. Mirrors the closed set in
+/// `nmp_core::kernel::publish_outbox::publish_event_title` (which feeds the
+/// in-flight `OutboxLine.title`) but extends it with reposts (kind 6) which
+/// the publish-queue history can also see. Falls back to `kind:N` for any
+/// unrecognised kind so the history row stays render-stable.
+fn publish_kind_label(kind: u32) -> String {
+    match kind {
+        0 => "Profile".to_string(),
+        1 => "Note".to_string(),
+        3 => "Contact list".to_string(),
+        6 => "Repost".to_string(),
+        7 => "Reaction".to_string(),
+        10002 => "Relay list".to_string(),
+        _ => format!("kind:{kind}"),
+    }
 }
 
 fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
