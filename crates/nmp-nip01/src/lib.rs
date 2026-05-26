@@ -27,6 +27,7 @@ mod note_relations;
 mod profile_display;
 pub mod timeline_projection;
 pub mod view;
+pub mod visible_relations;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
@@ -43,6 +44,12 @@ pub use timeline_projection::{
 pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
+};
+pub use visible_relations::{
+    register_visible_note_relation_actions, visible_note_relations_identity,
+    visible_note_relations_interest, visible_note_relations_interest_id,
+    VisibleNoteRelationsAction, VisibleNoteRelationsModule, VISIBLE_NOTE_RELATIONS_LIMIT,
+    VISIBLE_NOTE_RELATIONS_NAMESPACE,
 };
 
 // NOTE: `nmp-nip01` exposes its view types (`RepliesView`, `ThreadView`,

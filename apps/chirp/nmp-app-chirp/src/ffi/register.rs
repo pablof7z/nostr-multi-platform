@@ -64,6 +64,13 @@ pub extern "C" fn nmp_app_chirp_register(
     // at this point.
     register_nip29_actions(unsafe { &mut *app });
 
+    // Visible timeline rows claim their relation streams through the same
+    // dispatch_action door as all other app verbs. The action module lives
+    // in nmp-nip01 because the subscription shape is reusable by any note app.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_nip29_actions`.
+    nmp_nip01::register_visible_note_relation_actions(unsafe { &mut *app });
+
     // V-38: register the NIP-47 wallet stack (action modules + runtime
     // installation + status projection) when the `wallet` feature is on.
     // The crate `nmp-nip47` owns the runtime, the three connect / disconnect
@@ -76,7 +83,6 @@ pub extern "C" fn nmp_app_chirp_register(
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     #[cfg(feature = "wallet")]
     crate::wallet_runtime::register_nip47_wallet(unsafe { &mut *app });
-
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
@@ -99,8 +105,8 @@ pub extern "C" fn nmp_app_chirp_register(
     // Chirp registration. The `ModularTimelineProjection` below remains the
     // single fatal-on-failure observer (its absence breaks the timeline).
     let zaps_proj = Arc::new(nmp_nip57::ZapsAggregateProjection::new());
-    let zaps_observer_id = app_ref
-        .register_event_observer(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
+    let zaps_observer_id =
+        app_ref.register_event_observer(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
     if zaps_observer_id.0 != 0 {
         app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
     }

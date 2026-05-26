@@ -716,6 +716,16 @@ pub enum ActorCommand {
     /// Withdraw a previously registered logical interest by id and trigger a
     /// recompile. Generic lifecycle counterpart to [`PushInterest`].
     WithdrawInterest(crate::planner::InterestId),
+    /// Attach one owner to a logical interest using the registry's
+    /// `(owner, key, scope)` identity. Multiple owners sharing the same key
+    /// keep one live subscription until the last owner is dropped.
+    EnsureInterest {
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+    },
+    /// Detach one owner from a logical interest registered through
+    /// [`EnsureInterest`](Self::EnsureInterest).
+    DropInterestOwner(crate::subs::SubIdentity),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

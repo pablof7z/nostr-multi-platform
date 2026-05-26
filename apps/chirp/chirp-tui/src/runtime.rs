@@ -5,8 +5,8 @@ use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
-    nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, nmp_signer_broker_init, ChirpHandle,
+    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
+    nmp_app_chirp_unregister, nmp_marmot_unregister, nmp_signer_broker_init, ChirpHandle,
     MarmotHandle,
 };
 use nmp_ffi::{
@@ -20,8 +20,7 @@ use crate::bridge::{self, NmpEvent, NmpUpdateBridge};
 use crate::Result;
 
 const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
-const RELATION_COUNT_CLAIMS_UNAVAILABLE: &str =
-    "relation-count render claims are not available in nmp-core yet";
+const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
 
 pub struct AppRuntime {
     app: *mut NmpApp,
@@ -91,13 +90,11 @@ impl AppRuntime {
     }
 
     pub fn claim_visible_note_relation_counts(&self, event_id: &str) -> Result<()> {
-        validate_hex64("event id", event_id)?;
-        Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
+        self.dispatch_visible_note_relations("claim", event_id)
     }
 
     pub fn release_visible_note_relation_counts(&self, event_id: &str) -> Result<()> {
-        validate_hex64("event id", event_id)?;
-        Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
+        self.dispatch_visible_note_relations("release", event_id)
     }
 
     pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String> {
@@ -119,11 +116,7 @@ impl AppRuntime {
 
     pub fn follow(&self, pubkey: &str, add: bool) -> Result<String> {
         let action = json!({ "pubkey": pubkey }).to_string();
-        let namespace = if add {
-            "nmp.follow"
-        } else {
-            "nmp.unfollow"
-        };
+        let namespace = if add { "nmp.follow" } else { "nmp.unfollow" };
         self.dispatch_action(namespace, &action)
     }
 
@@ -194,6 +187,20 @@ impl AppRuntime {
         f(&pubkey, &consumer_id);
         Ok(())
     }
+
+    fn dispatch_visible_note_relations(&self, op: &str, event_id: &str) -> Result<()> {
+        if self.app.is_null() {
+            return Err("runtime app is not available".to_string());
+        }
+        let consumer_id = visible_note_relations_consumer_id(event_id)?;
+        let action = json!({
+            "op": op,
+            "event_id": event_id,
+            "consumer_id": consumer_id,
+        });
+        self.dispatch_action_value("nmp.nip01.visible_note_relations", &action)
+            .map(|_| ())
+    }
 }
 
 fn parse_dispatch_envelope(value: &Value) -> Result<String> {
@@ -232,6 +239,13 @@ impl Drop for AppRuntime {
 fn visible_author_profile_consumer_id(pubkey: &str) -> Result<String> {
     validate_hex64("pubkey", pubkey)?;
     Ok(format!("{VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX}:{pubkey}"))
+}
+
+fn visible_note_relations_consumer_id(event_id: &str) -> Result<String> {
+    validate_hex64("event id", event_id)?;
+    Ok(format!(
+        "{VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX}:{event_id}"
+    ))
 }
 
 fn validate_hex64(label: &str, value: &str) -> Result<()> {
@@ -282,17 +296,13 @@ mod tests {
     }
 
     #[test]
-    fn note_relation_count_claim_seam_is_explicitly_unavailable() {
+    fn note_relation_count_claim_release_are_idempotent() {
         let (runtime, _rx) = AppRuntime::new().expect("runtime starts without live relays");
 
-        assert_eq!(
-            runtime.claim_visible_note_relation_counts(EVENT),
-            Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
-        );
-        assert_eq!(
-            runtime.release_visible_note_relation_counts(EVENT),
-            Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
-        );
+        assert_eq!(runtime.claim_visible_note_relation_counts(EVENT), Ok(()));
+        assert_eq!(runtime.claim_visible_note_relation_counts(EVENT), Ok(()));
+        assert_eq!(runtime.release_visible_note_relation_counts(EVENT), Ok(()));
+        assert_eq!(runtime.release_visible_note_relation_counts(EVENT), Ok(()));
         assert_eq!(
             runtime.claim_visible_note_relation_counts("bad"),
             Err("event id must be 64 hex characters".to_string())

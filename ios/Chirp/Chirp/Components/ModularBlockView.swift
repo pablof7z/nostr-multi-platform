@@ -56,6 +56,7 @@ struct ModularBlockView: View {
     var onZap: ((String, String, String) -> Void)? = nil
 
     @EnvironmentObject private var router: ChirpRouter
+    @EnvironmentObject private var model: KernelModel
 
     var body: some View {
         switch block {
@@ -77,6 +78,7 @@ struct ModularBlockView: View {
                     mentionProfiles: mentionProfiles,
                     eventCards: cards,
                     timelineItems: items,
+                    relationCounts: cards[id]?.relationCounts,
                     onLike: onLike,
                     onZap: onZap
                 )
@@ -91,6 +93,7 @@ struct ModularBlockView: View {
                 mentionProfiles: mentionProfiles,
                 eventCards: cards,
                 timelineItems: items,
+                relationCounts: card.relationCounts,
                 onLike: onLike,
                 onZap: onZap
             )
@@ -165,6 +168,8 @@ struct ModularBlockView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onAppear { model.claimVisibleNoteRelations(eventID: id) }
+        .onDisappear { model.releaseVisibleNoteRelations(eventID: id) }
     }
 
     /// Avatar + the connecting line that runs from the avatar's bottom
