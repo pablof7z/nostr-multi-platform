@@ -858,10 +858,34 @@ Rationale:
 
 `PendingClaim.interest_id` now stores the `InterestId` returned by
 `oneshot.request`. The author for `EventRx`/`EoseNoMatch` scoring comes
-from the `InterestShape.authors` set for naddr claims (single-author by
-construction at `requests/event.rs:125`) and from the **EVENT pubkey**
-for nevent claims (the URI carries no author — the score row is created
-lazily on the first EVENT arrival).
+from three layered signals (in order of preference):
+
+1. **naddr URI** — author is the `pubkey` field on `NostrUri::Address`
+   (verified at `crates/nmp-core/src/nip21.rs:130`). Single-author by
+   construction; passed into the `InterestShape.authors` set at
+   `requests/event.rs:125`. Available *before* any wire round-trip.
+2. **nevent URI with author TLV** — `NostrUri::Event { author:
+   Option<String>, .. }` already carries the author hint from the NIP-19
+   bech32 TLV (`crates/nmp-core/src/nip21.rs:37-44, :130`).
+   `parse_nostr_uri` exposes it. When `Some(pk)`, seed
+   `PendingClaim.author = pk` at claim-registration time — Phase 1
+   warm-relay filter (W4) fires immediately.
+3. **nevent URI with no author TLV** — `author: None`. Defer score-row
+   creation until first EVENT delivers the pubkey; W3's `Hit` handler
+   creates the cell at that point.
+
+`NostrUri::Event { relays: Vec<String>, .. }` also carries
+**operator-shipped relay hints** from the bech32 TLV. Feed these into
+W7's hint-consumption seam as Phase-1 candidates (`RoutingSource::Hint`
+lane). They don't bypass the warm-relay filter — they only add
+additional candidate URLs. NIP-19 `nevent` relay hints are the
+canonical "I saw this event at <url>" signal from the publisher; W5
+must honour them in the Phase-1 candidate set, not just as Phase-2
+fallbacks.
+
+Earlier draft of this section incorrectly claimed "the URI carries no
+author"; that was wrong — see the NIP-19 TLV decode in
+`crates/nmp-core/src/nip21.rs:130`.
 
 ### 7.4 W8 env-var rename — supersedes §W8 entirely on the env var
 
@@ -953,10 +977,11 @@ The four items §6 deferred to Agent B remain on the table:
 
 Plus three new items raised by this retarget:
 
-5. **§7.3 author lookup for nevent claims** — the URI carries no
-   author; the score row gets created on the first EVENT. Is the
-   "create-on-first-EVENT" semantics OK, or should nevent claims skip
-   scoring entirely (they have no author signal until they resolve)?
+5. **§7.3 author lookup for nevent claims** — **resolved**: nevent URIs
+   carry an optional `author` TLV (`nip21.rs:37-44, :130`). Use it when
+   present; defer to first EVENT when absent. Additionally, the
+   `relays: Vec<String>` TLV feeds Phase-1 candidate hints via W7.
+   Confirm the layering is right; flag any case the spec missed.
 6. **§7.4 env-var rename** — `NMP_CLAIM_LOG` vs. piggyback vs. some
    third option (e.g. `NMP_TRACE=claim,wire,...` comma-list). Pick.
 7. **§7.6 ingest/mod.rs pre-extraction** — should W3 land the
