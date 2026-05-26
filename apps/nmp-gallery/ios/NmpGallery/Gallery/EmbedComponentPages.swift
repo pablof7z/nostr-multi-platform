@@ -70,7 +70,15 @@ struct ArticleEmbedPage: View {
                 .eventRef(NostrWireUri(
                     uri: GIGI_ARTICLE_NADDR,
                     kind: .address,
-                    primaryId: "30023:6e468422e84cc0c1c879b6207e3e93da3ad7ab86157a8c2fa1467e02de166e22:the-internet-left-me"
+                    // Coordinate must match the kernel-emitted
+                    // `claimed_events` key exactly — `<kind>:<pubkey>:<d>`,
+                    // where pubkey is the decoded `naddr` author (NIP-19
+                    // `provider` TLV). The kernel computes this in
+                    // `kernel/requests/event.rs:132`; if the renderer-side
+                    // `primary_id` doesn't match, `EmbedHost`'s map lookup
+                    // returns nil and the article stays on the loading
+                    // placeholder forever. Decoded via `nak decode <naddr>`.
+                    primaryId: "30023:6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93:the-internet-left-me"
                 )),
                 .text(" I hope you enjoy it!"),
                 .paragraph(children: [0, 1, 2]),
