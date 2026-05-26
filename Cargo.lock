@@ -3868,7 +3868,6 @@ dependencies = [
  "nmp-nip47",
  "nmp-nip57",
  "nmp-nip59",
- "nmp-signer-broker",
  "nmp-threading",
  "nmp-wasm",
  "nostr",
@@ -3914,7 +3913,6 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "nmp-ffi",
- "nmp-signer-broker",
 ]
 
 [[package]]
@@ -4032,6 +4030,9 @@ name = "nmp-ffi"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-signer-broker",
+ "nmp-signer-iface",
+ "nmp-signers",
  "nostr",
  "serde",
  "serde_json",
@@ -4274,8 +4275,6 @@ dependencies = [
 name = "nmp-signer-broker"
 version = "0.1.0"
 dependencies = [
- "nmp-core",
- "nmp-ffi",
  "nmp-network",
  "nmp-signer-iface",
  "nmp-signers",

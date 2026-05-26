@@ -13,6 +13,8 @@ mod identity;
 mod lifecycle;
 mod publish;
 mod raw_event_tap;
+#[cfg(feature = "signer-broker")]
+mod signer_broker;
 // V-51 phase 2 — routing-trace FFI snapshot accessor
 // (`nmp_app_recent_routing_decisions`). Pull-only diagnostic surface; not
 // folded into the snapshot tick.
@@ -89,6 +91,11 @@ pub use raw_event_tap::{
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use routing_trace::nmp_app_recent_routing_decisions;
+#[cfg(feature = "signer-broker")]
+pub use signer_broker::{
+    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
+    nmp_signer_broker_init,
+};
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use snapshot::nmp_app_register_snapshot_projection;
@@ -374,10 +381,10 @@ pub struct NmpApp {
     /// `Metrics::actor_queue_depth`. `Relaxed` ordering throughout — this is an
     /// approximate observability counter, not a synchronization primitive.
     ///
-    /// Note: external sends through [`Self::actor_sender`] (used by
-    /// `nmp-signer-broker`) bypass this counter; the depth is therefore a
-    /// lower bound when a broker is wired. That is acceptable for the
-    /// backpressure gate, which watches for *buildup*, not exact occupancy.
+    /// Note: external sends through [`Self::actor_sender`] bypass this
+    /// counter; the depth is therefore a lower bound when Rust-side runtime
+    /// controllers are wired. That is acceptable for the backpressure gate,
+    /// which watches for *buildup*, not exact occupancy.
     queue_depth: Arc<AtomicU64>,
     /// D2 coverage-gate hook slot. Set by the per-app crate (`nmp-app-chirp`)
     /// via [`Self::set_coverage_hook`] before `nmp_app_start`. The actor thread
@@ -1259,11 +1266,9 @@ impl NmpApp {
         self.pending_mls_autopublish.swap(false, Ordering::AcqRel)
     }
 
-    /// Clone of the actor command sender. Used by `nmp-signer-broker` to push
-    /// `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor without
-    /// importing private internals. Stage 4 of the NIP-46 wiring (D0 stays
-    /// clean — the broker depends on `nmp-core` + `nmp-signers`; `nmp-core`
-    /// has no idea the broker exists).
+    /// Clone of the actor command sender. Used by Rust-side runtime
+    /// controllers that need to report work back to the actor without a C
+    /// round-trip.
     ///
     /// G-S4 caveat: sends through this raw clone bypass the `queue_depth`
     /// straddle counter (`send_cmd` is the only incrementing path). The

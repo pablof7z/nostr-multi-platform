@@ -17,7 +17,7 @@
 //! **read-only** path (kind:30023 article reader on substrate primitives,
 //! ~150 LOC Rust). This crate proves the same thesis for the **stateful
 //! write path** by composing ONLY the generic substrate seams that
-//! `nmp-core` + `nmp-signer-broker` already export.
+//! `nmp-core` + `nmp-ffi` already export.
 //!
 //! # Shape
 //!
@@ -27,7 +27,7 @@
 //! protocol seam. Everything Swift needs is already exported by:
 //!
 //! * `nmp_core::*` (via the `android-ffi` feature, see `Cargo.toml`).
-//! * `nmp_signer_broker::*`.
+//! * `nmp_ffi::*`.
 //!
 //! The `pub use` statements below are what cause rustc to pull each symbol
 //! body into the CGU that ends up inside `libnmp_app_notes.a` — without
@@ -36,7 +36,7 @@
 //!
 //! # D0 — no Chirp deps, no protocol-crate deps
 //!
-//! `Cargo.toml` depends on `nmp-core` + `nmp-signer-broker` only. No
+//! `Cargo.toml` depends on `nmp-core` + `nmp-ffi` only. No
 //! `nmp-nip01`, no `nmp-app-chirp`, no `nmp-marmot`. The crate name appears
 //! nowhere in any social/NIP-protocol Cargo file.
 
@@ -51,7 +51,7 @@
 #[allow(unused_imports)]
 pub use nmp_core::*;
 #[allow(unused_imports)]
-pub use nmp_signer_broker::{
+pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
     nmp_signer_broker_init,
 };

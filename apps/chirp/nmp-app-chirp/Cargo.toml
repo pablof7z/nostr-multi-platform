@@ -46,12 +46,11 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
-# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
-# `nmp-core::ffi` in step 11-final). Chirp's `nmp_app_chirp_register`
-# takes `*mut NmpApp`; the per-app crate names the handle + the FFI
-# symbols (`nmp_app_dispatch_action`, etc.) through this dep.
-nmp-ffi = { path = "../../../crates/nmp-ffi" }
-nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle and the shared native C-ABI
+# symbols, including the NIP-46 broker adapter. Chirp's `nmp_app_chirp_register`
+# takes `*mut NmpApp`; the per-app crate names the handle + the FFI symbols
+# (`nmp_app_dispatch_action`, `nmp_signer_broker_init`, etc.) through this dep.
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["signer-broker"] }
 # Canonical NMP composition root (step 10 — V-48). One call wires the
 # default action modules (NIP-02 / NIP-17 / NIP-57 / NIP-65), the
 # kind:10050 ingest parser, the production routing substrate

@@ -278,8 +278,8 @@ pub enum ActorCommand {
     /// `bunker_handshake` snapshot projection with "connecting", and delegate
     /// the handshake to the registered broker via
     /// [`crate::bunker_hook::invoke_bunker_connect_hook`]. D0: the broker
-    /// crate (`nmp-signer-broker`) links `nmp-core` + `nmp-signers`; neither
-    /// direction of that import crosses into `nmp-core` itself.
+    /// app/FFI adapter translates the app-neutral broker event into
+    /// `AddRemoteSigner`; `nmp-core` never imports the broker or signer crate.
     SignInBunker {
         uri: String,
     },
@@ -306,7 +306,7 @@ pub enum ActorCommand {
     RemoveAccount {
         identity_id: String,
     },
-    /// Broker → actor: register a fully-handshaken remote signer (e.g.
+    /// Broker adapter → actor: register a fully-handshaken remote signer (e.g.
     /// completed NIP-46 bunker handshake). Actor inserts into
     /// `IdentityRuntime.remote_signers` and emits a snapshot update.
     /// Becomes active if no account was active. D0 stays clean — the
@@ -314,24 +314,22 @@ pub enum ActorCommand {
     /// only sees `dyn RemoteSignerHandle` (defined in
     /// [`crate::remote_signer`]).
     ///
-    /// Constructed by the `nmp-signer-broker` crate, which depends on both
-    /// `nmp-core` and `nmp-signers`. It has a live production caller
-    /// (`BunkerBroker::spawn_handshake` in `nmp-signer-broker/src/broker.rs`);
-    /// `#[allow(dead_code)]` only suppresses rustc's *per-crate* dead-code
-    /// lint, which cannot see the cross-crate constructor.
+    /// Constructed by app/FFI composition when the app-neutral broker reports
+    /// a completed signer. It has a live production caller outside
+    /// `nmp-core`; `#[allow(dead_code)]` only suppresses rustc's *per-crate*
+    /// dead-code lint, which cannot see the cross-crate constructor.
     #[allow(dead_code)]
-    // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
+    // live cross-crate caller in nmp-ffi — per-crate lint false positive
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
-    /// Broker → actor: progress event for the bunker handshake UI. Actor
-    /// stores the latest into a kernel snapshot field; the broker is the
-    /// sole writer. Stage `"idle"` clears the projection. Has a live
-    /// production caller (`BunkerBroker::emit_progress` in
-    /// `nmp-signer-broker/src/broker.rs`); `#[allow(dead_code)]` only
-    /// suppresses rustc's per-crate lint, which cannot see it.
+    /// Broker adapter → actor: progress event for the bunker handshake UI.
+    /// Actor stores the latest into a kernel snapshot field; the adapter is
+    /// the sole writer. Stage `"idle"` clears the projection. Has a live
+    /// production caller in the app/FFI broker adapter; `#[allow(dead_code)]`
+    /// only suppresses rustc's per-crate lint, which cannot see it.
     #[allow(dead_code)]
-    // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
+    // live cross-crate caller in nmp-ffi — per-crate lint false positive
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,

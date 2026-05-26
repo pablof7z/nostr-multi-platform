@@ -1,8 +1,8 @@
 //! `BunkerBroker` — top-level coordinator.
 //!
 //! Owns:
-//! - A clone of the actor command sender (`Sender<ActorCommand>`) for pushing
-//!   `BunkerHandshakeProgress` and `AddRemoteSigner` to the kernel.
+//! - A host-installed event callback for reporting progress and completed
+//!   signers without naming app or actor types.
 //! - At most one `ActiveSession` (relay client + transport + handshake
 //!   thread). MVP supports a single concurrent bunker; a follow-up can key a
 //!   `HashMap<bunker_url, ActiveSession>`.
@@ -10,7 +10,7 @@
 //! Lifecycle:
 //! - `start_handshake(uri)` validates the URI, opens a relay client,
 //!   subscribes to inbound responses, spawns a worker thread that drives the
-//!   handshake state machine, and reports progress to the actor.
+//!   handshake state machine, and reports progress to the host callback.
 //! - `cancel()` flips the active session's `AtomicBool` cancel flag and
 //!   tears down the relay client. Idempotent.
 //!
@@ -25,17 +25,15 @@ mod restore;
 mod tests;
 
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use nmp_core::substrate::UnsignedEvent;
-use nmp_core::{ActorCommand, RemoteSignerHandle};
-use nmp_signer_iface::SignerOp;
 use nmp_signers::{parse_bunker_uri, Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
+use crate::events::{BrokerEvent, BrokerEventHandler};
 use crate::handshake::{build_req_frame, run_handshake, HandshakeOutcome};
 use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
@@ -43,10 +41,10 @@ use crate::transport::BrokerTransport;
 /// Subscription id used for the inbound REQ. One per session is enough.
 const BUNKER_SUB_ID: &str = "nmp-bunker";
 
-/// Top-level broker. Single instance per `NmpApp`; constructed by
-/// `nmp_signer_broker_init`.
+/// Top-level broker. Host composition owns the app/actor adapter and passes
+/// its event callback here.
 pub struct BunkerBroker {
-    actor_tx: Sender<ActorCommand>,
+    events: Arc<BrokerEventHandler>,
     active: Mutex<Option<ActiveSession>>,
 }
 
@@ -58,17 +56,16 @@ struct ActiveSession {
     /// Kept here so we can drop it on `cancel`.
     transport: Arc<BrokerTransport>,
     /// Strong ref to the signer once handshake completes. Dropped on
-    /// `cancel` or when the actor removes the account.
+    /// `cancel` or when the host drops the account.
     signer: Mutex<Option<Arc<Nip46Signer>>>,
 }
 
 impl BunkerBroker {
-    /// Construct a new broker. Holds a clone of the actor's command sender;
-    /// the actor itself never sees the broker.
+    /// Construct a new broker with the host event callback.
     #[must_use]
-    pub fn new(actor_tx: Sender<ActorCommand>) -> Arc<Self> {
+    pub fn new(events: Arc<BrokerEventHandler>) -> Arc<Self> {
         Arc::new(Self {
-            actor_tx,
+            events,
             active: Mutex::new(None),
         })
     }
@@ -154,13 +151,13 @@ impl BunkerBroker {
     }
 
     /// Body of the per-handshake worker thread. Outline:
-    /// 1. Parse the URI (already shape-validated by the actor, but we
+    /// 1. Parse the URI (already shape-validated by the host, but we
     ///    re-parse here for the typed `BunkerUri`).
     /// 2. Connect to the first relay (cycle through if it fails).
     /// 3. Subscribe to inbound kind:24133 events.
     /// 4. Drive the connect → get_public_key state machine.
-    /// 5. Construct `Nip46Signer`, ship `AddRemoteSigner` to the actor, and
-    ///    emit the terminal `"ready"` progress snapshot.
+    /// 5. Construct `Nip46Signer`, emit `SignerReady`, and emit the terminal
+    ///    `"ready"` progress snapshot.
     fn run_handshake_thread(self: Arc<Self>, uri_str: String, cancel: Arc<AtomicBool>) {
         let bunker_uri = match parse_bunker_uri(&uri_str) {
             Ok(u) => u,
@@ -287,7 +284,7 @@ impl BunkerBroker {
         }
     }
 
-    /// Construct the `Nip46Signer`, ship it to the actor, drain inbound
+    /// Construct the `Nip46Signer`, emit it to the host, drain inbound
     /// events going forward by routing them directly to the transport.
     fn complete_handshake(
         self: &Arc<Self>,
@@ -319,10 +316,9 @@ impl BunkerBroker {
     ) {
         transport.bind_signer(&signer);
 
-        // Stash the signer on the active session so it stays alive past
-        // this function; the actor's `Box<dyn RemoteSignerHandle>` is the
-        // primary owner, but we want a second strong ref so cancel() can
-        // tear it down deterministically.
+        // Stash the signer on the active session so cancel() can tear it
+        // down deterministically even after the host adapter receives its
+        // own strong reference.
         if let Ok(guard) = self.active.lock() {
             if let Some(session) = guard.as_ref() {
                 if let Ok(mut slot) = session.signer.lock() {
@@ -340,14 +336,8 @@ impl BunkerBroker {
             }
         });
 
-        // Tell the actor about the new signer. `AddRemoteSigner` consumes a
-        // `Box<dyn RemoteSignerHandle>`; we use an `ArcRemoteSigner` wrapper
-        // so we can keep our `Arc<Nip46Signer>` alive in `signer` while the
-        // actor holds its own boxed view.
-        let actor_handle: Box<dyn RemoteSignerHandle> =
-            Box::new(ArcRemoteSigner(Arc::clone(&signer)));
-        let _ = self.actor_tx.send(ActorCommand::AddRemoteSigner {
-            handle: actor_handle,
+        self.emit(BrokerEvent::SignerReady {
+            signer: Arc::clone(&signer),
         });
 
         // `"ready"` is the broker's terminal success signal. Observers that
@@ -361,54 +351,20 @@ impl BunkerBroker {
     }
 
     fn emit_progress(&self, stage: &str, message: Option<&str>) {
-        let _ = self.actor_tx.send(ActorCommand::BunkerHandshakeProgress {
+        self.emit(BrokerEvent::Progress {
             stage: stage.to_string(),
             message: message.map(str::to_string),
         });
+    }
+
+    fn emit(&self, event: BrokerEvent) {
+        (self.events)(event);
     }
 }
 
 impl std::fmt::Debug for BunkerBroker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BunkerBroker").finish_non_exhaustive()
-    }
-}
-
-/// Adapter: `Box<dyn RemoteSignerHandle>` from an `Arc<Nip46Signer>`. The
-/// broker keeps its own `Arc` (for cancel/teardown); the actor holds this
-/// wrapper. Both delegate to the same underlying signer state.
-#[derive(Debug)]
-struct ArcRemoteSigner(Arc<Nip46Signer>);
-
-impl RemoteSignerHandle for ArcRemoteSigner {
-    fn pubkey_hex(&self) -> String {
-        self.0.pubkey_hex()
-    }
-    fn signer_kind(&self) -> &'static str {
-        self.0.signer_kind()
-    }
-    fn persistence_payload_json(&self) -> Option<String> {
-        RemoteSignerHandle::persistence_payload_json(&*self.0)
-    }
-    fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<nmp_core::substrate::SignedEvent> {
-        RemoteSignerHandle::sign(&*self.0, unsigned)
-    }
-    fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String> {
-        RemoteSignerHandle::nip44_encrypt(&*self.0, recipient_pubkey, plaintext)
-    }
-    fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> SignerOp<String> {
-        RemoteSignerHandle::nip44_decrypt(&*self.0, sender_pubkey, ciphertext)
-    }
-    fn deliver_rpc_response(&self, response_json: &str) {
-        self.0.deliver_rpc_response(response_json);
-    }
-    fn disconnect(&self) {
-        // MUST forward — the actor holds this wrapper as its
-        // `Box<dyn RemoteSignerHandle>` and calls `disconnect()` on
-        // `RemoveAccount`. Without this the trait's default no-op runs and
-        // in-flight `sign()` ops hang for the full remote-sign timeout
-        // instead of failing fast (`Nip46Signer::disconnect` drains them).
-        self.0.disconnect();
     }
 }
 

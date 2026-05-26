@@ -281,10 +281,9 @@ void nmp_app_open_uri(void *app, const char *uri);
 
 // ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────
 //
-// The signer broker lives outside nmp-core (doctrine D0 forbids
-// `nmp-core -> nmp-signers`) but Chirp links it through the aggregate
-// `libnmp_app_chirp.a` archive. That keeps process-global Rust state,
-// including the bunker hook, single-copy.
+// The reusable signer broker is app-neutral; the NmpApp/actor adapter lives
+// in nmp-ffi and is linked through the aggregate `libnmp_app_chirp.a` archive.
+// That keeps process-global Rust state, including the bunker hook, single-copy.
 //
 // Call `nmp_signer_broker_init(app)` exactly once, right after `nmp_app_new()`.
 // It registers a `bunker://` handler that drives the NIP-46 connect /

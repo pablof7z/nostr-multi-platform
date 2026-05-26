@@ -37,7 +37,7 @@ clean place to add it without changing the FFI shape.
 ```
 apps/notes/
 ├── nmp-app-notes/         # Rust composition shim (25 LOC code, ≤50 LOC budget)
-│   ├── Cargo.toml         # depends on nmp-core (+ android-ffi feature) + nmp-signer-broker
+│   ├── Cargo.toml         # depends on nmp-core + nmp-ffi
 │   └── src/lib.rs         # `pub use` aggregator + nmp_app_notes_init marker
 ├── ios/Notes/             # SwiftUI iOS shell (299 LOC, ≤300 LOC budget)
 │   ├── NotesApp.swift     # @main, scenePhase wiring

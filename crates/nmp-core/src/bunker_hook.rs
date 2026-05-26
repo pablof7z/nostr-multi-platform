@@ -1,12 +1,11 @@
-//! Pluggable hook for `bunker://` URI handling. Registered by
-//! `nmp-signer-broker` at app init via [`register_bunker_hook`]; invoked by
-//! the actor's `sign_in_bunker` after shape-validation succeeds.
+//! Pluggable hook for `bunker://` URI handling. Registered by app/FFI
+//! composition at app init via [`register_bunker_hook`]; invoked by the
+//! actor's `sign_in_bunker` after shape-validation succeeds.
 //!
 //! Keeps `nmp-core` ignorant of NIP-46 protocol details (D0 spirit): the
 //! kernel knows there is *something* on the other side that will handle the
-//! URI, but it does not name `nmp-signers` or any NIP-46 type. The broker
-//! crate (which depends on both `nmp-core` and `nmp-signers`) is the only
-//! place those names live.
+//! URI, but it does not name `nmp-signers`, `nmp-signer-broker`, or any
+//! NIP-46 type.
 //!
 //! ## Threading model
 //!
@@ -45,7 +44,8 @@ pub type BunkerHookFn = Arc<dyn Fn(BunkerHookRequest) + Send + Sync>;
 static HOOK: OnceLock<RwLock<Option<BunkerHookFn>>> = OnceLock::new();
 
 /// Register the bunker-URI handler. Called once by `nmp_signer_broker_init`
-/// after constructing the broker. Replaces any previously-registered hook.
+/// in the FFI adapter after constructing the broker. Replaces any
+/// previously-registered hook.
 pub fn register_bunker_hook(hook: BunkerHookFn) {
     let slot = HOOK.get_or_init(|| RwLock::new(None));
     if let Ok(mut guard) = slot.write() {
