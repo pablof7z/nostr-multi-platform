@@ -56,6 +56,22 @@ targets:
         # process-global Rust state such as the bunker hook single-copy.
         OTHER_LDFLAGS: "$(inherited) -lnmp_app_chirp"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - name: Generate BuildInfo
+        basedOnDependencyAnalysis: false
+        script: |
+          BRANCH=$(git -C "$SRCROOT/../.." rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          COMMIT=$(git -C "$SRCROOT/../.." rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+          OUT="$SRCROOT/Chirp/App/BuildInfo.generated.swift"
+          {
+            echo "// Auto-generated at build time — do not edit"
+            echo "enum BuildInfo {"
+            echo "    static let branch = \"$BRANCH\""
+            echo "    static let commit = \"$COMMIT\""
+            echo "    static let buildTime = \"$BUILD_TIME\""
+            echo "}"
+          } > "$OUT"
 
   ChirpTests:
     type: bundle.unit-test

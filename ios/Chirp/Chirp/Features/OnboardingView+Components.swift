@@ -44,6 +44,12 @@ extension OnboardingView {
 
             Spacer().frame(height: 48)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Text("\(BuildInfo.branch) · \(BuildInfo.commit) · \(BuildInfo.buildTime)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 12)
+        }
     }
 
     // MARK: — Create account screen

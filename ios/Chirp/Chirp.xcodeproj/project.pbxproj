@@ -68,6 +68,7 @@
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22815F76AA03DAE183DBA656 /* GroupChatView.swift */; };
+		F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */; };
 		F1EA6E7AABA81D70DD3C93F2 /* NostrQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181DB651D587AA70439571C4 /* NostrQuoteCard.swift */; };
 		F5E5940625200643254B4588 /* NostrContentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475509EE4AB3F523D5551F7 /* NostrContentRenderer.swift */; };
 		F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */; };
@@ -113,6 +114,7 @@
 		3BC963A1B34A470A8E542854 /* PubkeyFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PubkeyFormatting.swift; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
+		5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
 		64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicGroupBridge.swift; sourceTree = "<group>"; };
 		6642DD3D8D6000AC2E047C03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		672D6715F6F793C4B032B8D0 /* NoteContentRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentRenderingTests.swift; sourceTree = "<group>"; };
@@ -306,6 +308,7 @@
 		935D67AACBA8594449383214 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */,
 				E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */,
 				31F55FC6A139DA43D434DBF9 /* RootShell.swift */,
 			);
@@ -363,6 +366,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 757DFA98676C48ACD6508A66 /* Build configuration list for PBXNativeTarget "Chirp" */;
 			buildPhases = (
+				5BFE3F1D8AF4EBE98ED87C13 /* Generate BuildInfo */,
 				EE812C034A7568790A8F7328 /* Sources */,
 				508C6B98B6722BD7B8DD3AD0 /* Frameworks */,
 			);
@@ -462,6 +466,28 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		5BFE3F1D8AF4EBE98ED87C13 /* Generate BuildInfo */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate BuildInfo";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "BRANCH=$(git -C \"$SRCROOT/../..\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nCOMMIT=$(git -C \"$SRCROOT/../..\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBUILD_TIME=$(date -u +\"%Y-%m-%d %H:%M UTC\")\nOUT=\"$SRCROOT/Chirp/App/BuildInfo.generated.swift\"\n{\n  echo \"// Auto-generated at build time — do not edit\"\n  echo \"enum BuildInfo {\"\n  echo \"    static let branch = \\\"$BRANCH\\\"\"\n  echo \"    static let commit = \\\"$COMMIT\\\"\"\n  echo \"    static let buildTime = \\\"$BUILD_TIME\\\"\"\n  echo \"}\"\n} > \"$OUT\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		BDFBCF954229B14EBFA094DE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -487,6 +513,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A4D78531938555278B719582 /* AccountsView.swift in Sources */,
+				F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */,
 				4E112E69FDB45203BAC81E1D /* ChatsView.swift in Sources */,
 				192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */,
 				62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */,
