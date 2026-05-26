@@ -16,7 +16,7 @@ path = "src/main.rs"
 [dependencies]
 crossterm = "0.29"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-nmp-app-gallery = { path = "../../../crates/nmp-app-gallery" }
+nmp-app-gallery = { path = "../nmp-app-gallery" }
 nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-ffi = { path = "../../../crates/nmp-ffi" }

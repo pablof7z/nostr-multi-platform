@@ -33,7 +33,7 @@ targets:
         # The gallery links one aggregate Rust archive — `libnmp_app_gallery.a` —
         # that bundles the kernel + a gallery-tailored projection
         # (`nmp_app_gallery_register` / `_snapshot` / `_snapshot_free`). The
-        # parallel `crates/nmp-app-gallery` crate builds it via
+        # sibling `apps/nmp-gallery/nmp-app-gallery` crate builds it via
         # `cargo build -p nmp-app-gallery --target aarch64-apple-ios-sim`.
         "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]":
           - $(SRCROOT)/../../../target/aarch64-apple-ios/debug

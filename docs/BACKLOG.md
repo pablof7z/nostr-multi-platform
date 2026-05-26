@@ -50,9 +50,8 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
 1. **P1 — remove upward dependencies and app policy from reusable crates.**
    `crates/nmp-signer-broker/Cargo.toml:17-23` depends on `nmp-core`/`nmp-ffi` while the
    crate is meant to be a reusable broker; `crates/nmp-router/Cargo.toml:13-17` depends on
-   `nmp-ffi` for registration; `crates/nmp-marmot/src/identity.rs:1-6`, `:15`, and `:31`
-   keep Chirp identity naming/keyring policy inside a generic Marmot crate; and
-   `crates/nmp-app-gallery/src/android.rs:1-5` is an app JNI adapter living under `crates/`.
+   `nmp-ffi` for registration; and `crates/nmp-marmot/src/identity.rs:1-6`, `:15`, and
+   `:31` keep Chirp identity naming/keyring policy inside a generic Marmot crate.
    **Next step:** split pure protocol/broker crates from app/FFI adapters, starting with the
    signer-broker and router registration seams.
 2. **P2 — move protocol policy back out of `nmp-core`.**
@@ -77,7 +76,7 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    and return caller-visible failures as data envelopes.
 5. **P5 — close native update-loop and envelope discipline gaps.**
    `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
-   polls for updates; `crates/nmp-app-gallery/src/android.rs:221-228` returns `null` on
+   polls for updates; `apps/nmp-gallery/nmp-app-gallery/src/android.rs:221-228` returns `null` on
    `recv_timeout`; and `ios/Chirp/Chirp/Bridge/KernelBridge.swift:603-618` identifies panic
    frames by substring before decoding the envelope. **Next step:** use blocking/pushed update
    delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.

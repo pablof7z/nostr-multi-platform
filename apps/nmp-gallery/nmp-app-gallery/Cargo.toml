@@ -30,13 +30,13 @@ android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
 # Substrate seam — `nmp_app_*` C-ABI symbol bodies live here. Re-exported
 # with `pub use nmp_ffi::*` so the iOS / Android shell links exactly one
 # archive (`libnmp_app_gallery.a` / `.so`) for the whole NMP surface.
-nmp-ffi = { path = "../nmp-ffi", default-features = false }
+nmp-ffi = { path = "../../../crates/nmp-ffi", default-features = false }
 # Canonical NMP composition root (V-48). `register_defaults` wires the
 # default action modules, ingest parsers, routing substrate, publish
 # resolver, coverage hook, and the canonical DM-inbox + zap-receipts
 # runtime controllers. The gallery's `nmp_app_gallery_register` is a
 # one-line forward to this call — that is the whole point of the crate.
-nmp-app-template = { path = "../nmp-app-template" }
+nmp-app-template = { path = "../../../crates/nmp-app-template" }
 serde_json = { workspace = true }
 # JNI surface for the Android shell — only active under `android-ffi`.
 jni = { version = "0.21", optional = true }
@@ -47,4 +47,4 @@ jni = { version = "0.21", optional = true }
 # `nmp_app_gallery_register`, and confirm the registration didn't panic
 # / didn't fail closed. Mirrors the pattern in `nmp-app-template` and
 # the per-NIP crates.
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
