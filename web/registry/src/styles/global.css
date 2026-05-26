@@ -130,6 +130,9 @@ pre,
   grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
 }
+.app--wide {
+  grid-template-columns: 1fr;
+}
 
 .topbar {
   grid-column: 1 / -1;

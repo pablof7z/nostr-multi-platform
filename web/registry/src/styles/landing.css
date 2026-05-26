@@ -1,0 +1,292 @@
+/* Landing page — NMP framework home
+ * Keep this file separate from global.css (which owns registry/docs layout).
+ */
+
+/* Full-width layout override on home route */
+.app--wide {
+  grid-template-columns: 1fr;
+}
+.app--wide .topbar__menu-btn {
+  display: none;
+}
+
+/* Container */
+.landing {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 5vw, 3rem) 6rem;
+}
+
+/* Hero ------------------------------------------------------------- */
+
+.hero {
+  padding: 5rem 0 4rem;
+}
+.hero__eyebrow {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  margin-bottom: 1.5rem;
+}
+.hero__title {
+  font-size: clamp(2.2rem, 5.5vw, 3.75rem);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  max-width: 22ch;
+  margin-bottom: 1.5rem;
+  color: var(--fg);
+}
+.hero__sub {
+  font-size: 1.1rem;
+  color: var(--fg-muted);
+  max-width: 60ch;
+  line-height: 1.75;
+  margin-bottom: 0.75rem;
+}
+.hero__sub strong {
+  color: var(--fg);
+}
+.hero__cta {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 2.5rem;
+  flex-wrap: wrap;
+}
+
+/* Section commons -------------------------------------------------- */
+
+.l-section {
+  padding: 4rem 0;
+  border-top: 1px solid var(--border);
+}
+.l-section__label {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  margin-bottom: 0.75rem;
+}
+.l-section__heading {
+  font-size: 1.75rem;
+  letter-spacing: -0.025em;
+  margin-bottom: 0.75rem;
+  color: var(--fg);
+}
+.l-section__lead {
+  font-size: 1rem;
+  color: var(--fg-muted);
+  max-width: 64ch;
+  line-height: 1.75;
+  margin-bottom: 0;
+}
+
+/* Don't list ------------------------------------------------------- */
+
+.dont-list {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0 0;
+}
+.dont-list__item {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 0.25rem;
+}
+.dont-list__item:last-child {
+  border-bottom: none;
+}
+.dont-list__title {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+.dont-list__desc {
+  font-size: 0.9rem;
+  color: var(--fg-muted);
+  max-width: 70ch;
+  line-height: 1.6;
+}
+
+/* How it works ----------------------------------------------------- */
+
+.how-body {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+.how-body p {
+  color: var(--fg-muted);
+  line-height: 1.8;
+  max-width: 68ch;
+  margin: 0;
+  font-size: 0.97rem;
+}
+.how-body strong {
+  color: var(--fg);
+}
+
+/* Doctrine --------------------------------------------------------- */
+
+.doctrine-blocks {
+  display: grid;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+.doctrine-group__name {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  margin-bottom: 1rem;
+}
+.doctrine-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.88rem;
+}
+.doctrine-table th {
+  text-align: left;
+  padding: 0.5rem 1rem 0.5rem 0;
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--fg-subtle);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+.doctrine-table td {
+  padding: 0.85rem 1rem 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.55;
+}
+.doctrine-table td:first-child {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--type);
+  white-space: nowrap;
+  width: 3.5rem;
+}
+.doctrine-table td:nth-child(2) {
+  font-weight: 600;
+  color: var(--fg);
+  width: 24ch;
+  padding-right: 2rem;
+}
+.doctrine-table td:nth-child(3) {
+  color: var(--fg-muted);
+}
+.doctrine-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Registry section ------------------------------------------------- */
+
+.registry-cats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0 0;
+}
+.registry-cat {
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 1.25rem;
+  background: var(--bg-elevated);
+  display: block;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.registry-cat:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-muted);
+  border-bottom-color: var(--border-strong);
+}
+.registry-cat__name {
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 0.4rem;
+  font-size: 0.95rem;
+}
+.registry-cat__desc {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  line-height: 1.55;
+}
+
+/* Start here ------------------------------------------------------- */
+
+.start-links {
+  margin-top: 2rem;
+}
+.start-link {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+}
+.start-link:hover .start-link__title {
+  color: var(--link-hover);
+}
+.start-link:last-child {
+  border-bottom: none;
+}
+.start-link__num {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--fg-subtle);
+  width: 1.5rem;
+  flex-shrink: 0;
+}
+.start-link__text {
+  flex: 1;
+}
+.start-link__title {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 0.95rem;
+  margin-bottom: 0.2rem;
+  transition: color 0.1s ease;
+}
+.start-link__desc {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.start-link__arrow {
+  color: var(--fg-subtle);
+  font-size: 1rem;
+  flex-shrink: 0;
+  transition: color 0.1s ease;
+}
+.start-link:hover .start-link__arrow {
+  color: var(--fg-muted);
+}
+
+/* Landing footer --------------------------------------------------- */
+
+.landing-footer {
+  padding: 3rem 0 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--fg-subtle);
+  font-size: 0.82rem;
+  text-align: center;
+}
+.landing-footer a {
+  color: var(--fg-muted);
+}
+
+/* Responsive ------------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .doctrine-table td:nth-child(2) {
+    padding-right: 1rem;
+    width: auto;
+  }
+}
