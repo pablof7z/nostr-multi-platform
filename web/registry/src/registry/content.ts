@@ -1,50 +1,50 @@
 import type { Component } from "./types";
 
 // Content — SwiftUI
-import contentCoreSwift from "../../../../crates/nmp-cli/registry/swiftui/content-core/NostrContentRenderer.swift?raw";
-import contentCoreWireSwift from "../../../../crates/nmp-cli/registry/swiftui/content-core/ContentTreeWire.swift?raw";
-import contentMinimalSwift from "../../../../crates/nmp-cli/registry/swiftui/content-minimal/NostrMinimalContentView.swift?raw";
-import contentMinimalPreviewSwift from "../../../../crates/nmp-cli/registry/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift?raw";
-import loginBlockSwift from "../../../../crates/nmp-cli/registry/swiftui/login-block/NostrLoginBlock.swift?raw";
-import contentViewSwift from "../../../../crates/nmp-cli/registry/swiftui/content-view/NostrContentView.swift?raw";
-import contentGroupingSwift from "../../../../crates/nmp-cli/registry/swiftui/content-view/NostrContentGrouping.swift?raw";
-import contentViewPreviewSwift from "../../../../crates/nmp-cli/registry/swiftui/content-view/Examples/NostrContentViewPreview.swift?raw";
-import mentionChipSwift from "../../../../crates/nmp-cli/registry/swiftui/content-mention-chip/NostrMentionChip.swift?raw";
-import quoteCardSwift from "../../../../crates/nmp-cli/registry/swiftui/content-quote-card/NostrQuoteCard.swift?raw";
-import mediaGridSwift from "../../../../crates/nmp-cli/registry/swiftui/content-media-grid/NostrMediaGrid.swift?raw";
+import contentCoreSwift from "../vendor/swiftui/content-core/NostrContentRenderer.swift?raw";
+import contentCoreWireSwift from "../vendor/swiftui/content-core/ContentTreeWire.swift?raw";
+import contentMinimalSwift from "../vendor/swiftui/content-minimal/NostrMinimalContentView.swift?raw";
+import contentMinimalPreviewSwift from "../vendor/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift?raw";
+import loginBlockSwift from "../vendor/swiftui/login-block/NostrLoginBlock.swift?raw";
+import contentViewSwift from "../vendor/swiftui/content-view/NostrContentView.swift?raw";
+import contentGroupingSwift from "../vendor/swiftui/content-view/NostrContentGrouping.swift?raw";
+import contentViewPreviewSwift from "../vendor/swiftui/content-view/Examples/NostrContentViewPreview.swift?raw";
+import mentionChipSwift from "../vendor/swiftui/content-mention-chip/NostrMentionChip.swift?raw";
+import quoteCardSwift from "../vendor/swiftui/content-quote-card/NostrQuoteCard.swift?raw";
+import mediaGridSwift from "../vendor/swiftui/content-media-grid/NostrMediaGrid.swift?raw";
 
 // Content — Compose
-import composeContentRendererKotlin from "../../../../crates/nmp-cli/registry/compose/content-core/NostrContentRenderer.kt?raw";
-import composeContentTreeWireKotlin from "../../../../crates/nmp-cli/registry/compose/content-core/ContentTreeWire.kt?raw";
-import composeContentViewKotlin from "../../../../crates/nmp-cli/registry/compose/content-view/NostrContentView.kt?raw";
-import composeContentGroupingKotlin from "../../../../crates/nmp-cli/registry/compose/content-view/NostrContentGrouping.kt?raw";
-import composeMentionChipKotlin from "../../../../crates/nmp-cli/registry/compose/content-mention-chip/NostrMentionChip.kt?raw";
-import composeQuoteCardKotlin from "../../../../crates/nmp-cli/registry/compose/content-quote-card/NostrQuoteCard.kt?raw";
-import composeMediaGridKotlin from "../../../../crates/nmp-cli/registry/compose/content-media-grid/NostrMediaGrid.kt?raw";
+import composeContentRendererKotlin from "../vendor/compose/content-core/NostrContentRenderer.kt?raw";
+import composeContentTreeWireKotlin from "../vendor/compose/content-core/ContentTreeWire.kt?raw";
+import composeContentViewKotlin from "../vendor/compose/content-view/NostrContentView.kt?raw";
+import composeContentGroupingKotlin from "../vendor/compose/content-view/NostrContentGrouping.kt?raw";
+import composeMentionChipKotlin from "../vendor/compose/content-mention-chip/NostrMentionChip.kt?raw";
+import composeQuoteCardKotlin from "../vendor/compose/content-quote-card/NostrQuoteCard.kt?raw";
+import composeMediaGridKotlin from "../vendor/compose/content-media-grid/NostrMediaGrid.kt?raw";
 
 // Content — Ratatui
-import tuiContentTreeWireRust from "../../../../crates/nmp-cli/registry/tui/content-core/content_tree_wire.rs?raw";
-import tuiContentRenderDataRust from "../../../../crates/nmp-cli/registry/tui/content-core/content_render_data.rs?raw";
-import tuiTextWrapRust from "../../../../crates/nmp-cli/registry/tui/content-core/ratatui_text_wrap.rs?raw";
-import tuiContentViewRust from "../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_view.rs?raw";
-import tuiContentWidgetRust from "../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_widget.rs?raw";
-import tuiMentionChipRust from "../../../../crates/nmp-cli/registry/tui/content-mention-chip/nostr_mention_chip.rs?raw";
-import tuiMinimalContentRust from "../../../../crates/nmp-cli/registry/tui/content-minimal/nostr_minimal_content.rs?raw";
-import tuiMediaGridRust from "../../../../crates/nmp-cli/registry/tui/content-media-grid/nostr_media_grid.rs?raw";
-import tuiQuoteCardRust from "../../../../crates/nmp-cli/registry/tui/content-quote-card/nostr_quote_card.rs?raw";
-import tuiKindRegistryModRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/mod.rs?raw";
-import tuiKindRendererRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/kind_renderer.rs?raw";
-import tuiKindRegistryRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs?raw";
-import tuiEmbedChromeRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/embed_chrome_container.rs?raw";
-import tuiEmbeddedEventRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/embedded_event.rs?raw";
+import tuiContentTreeWireRust from "../vendor/tui/content-core/content_tree_wire.rs?raw";
+import tuiContentRenderDataRust from "../vendor/tui/content-core/content_render_data.rs?raw";
+import tuiTextWrapRust from "../vendor/tui/content-core/ratatui_text_wrap.rs?raw";
+import tuiContentViewRust from "../vendor/tui/content-view/nostr_content_view.rs?raw";
+import tuiContentWidgetRust from "../vendor/tui/content-view/nostr_content_widget.rs?raw";
+import tuiMentionChipRust from "../vendor/tui/content-mention-chip/nostr_mention_chip.rs?raw";
+import tuiMinimalContentRust from "../vendor/tui/content-minimal/nostr_minimal_content.rs?raw";
+import tuiMediaGridRust from "../vendor/tui/content-media-grid/nostr_media_grid.rs?raw";
+import tuiQuoteCardRust from "../vendor/tui/content-quote-card/nostr_quote_card.rs?raw";
+import tuiKindRegistryModRust from "../vendor/tui/content-kind-registry/mod.rs?raw";
+import tuiKindRendererRust from "../vendor/tui/content-kind-registry/kind_renderer.rs?raw";
+import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_registry.rs?raw";
+import tuiEmbedChromeRust from "../vendor/tui/content-kind-registry/embed_chrome_container.rs?raw";
+import tuiEmbeddedEventRust from "../vendor/tui/content-kind-registry/embedded_event.rs?raw";
 
 // Content — SwiftUI kind-dispatch registry + per-kind components
-import swiftuiEmbedKindProjectionSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/EmbedKindProjection.swift?raw";
-import swiftuiEmbedChromeContainerSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/EmbedChromeContainer.swift?raw";
-import swiftuiNostrKindRegistrySwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/NostrKindRegistry.swift?raw";
-import swiftuiEmbeddedEventSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/EmbeddedEvent.swift?raw";
-import swiftuiArticleEmbedSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
-import swiftuiHighlightEmbedSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
+import swiftuiEmbedKindProjectionSwift from "../vendor/swiftui/content-kind-registry/EmbedKindProjection.swift?raw";
+import swiftuiEmbedChromeContainerSwift from "../vendor/swiftui/content-kind-registry/EmbedChromeContainer.swift?raw";
+import swiftuiNostrKindRegistrySwift from "../vendor/swiftui/content-kind-registry/NostrKindRegistry.swift?raw";
+import swiftuiEmbeddedEventSwift from "../vendor/swiftui/content-kind-registry/EmbeddedEvent.swift?raw";
+import swiftuiArticleEmbedSwift from "../vendor/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
+import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
 
 export const contentComponents: Component[] = [
   {
