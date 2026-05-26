@@ -23,16 +23,15 @@
 //! the caller supplies.
 
 use crate::kernel::{Kernel, RelayEditRow};
+use crate::kinds::KIND_RELAY_LIST;
 use crate::relay::canonical_relay_url;
 use crate::substrate::UnsignedEvent;
 
-/// NIP-65 kind: the relay list. Duplicated here (instead of imported from
-/// `nmp-router`) because `nmp-core` is the D0 floor — it does not depend on
-/// any higher-layer crate. Keeping the magic number local keeps the crate
-/// dependency arrow pointing in the right direction; the wire-shape contract
-/// with `nmp-router`'s `PublishRelayListAction` is held by `nmp-router`'s
-/// own round-trip tests.
-const KIND_RELAY_LIST: u32 = 10002;
+// V-57 P2 (2026-05-27) — the relay-list kind constant lives in the
+// workspace-canonical [`crate::kinds`] registry. The wire-shape contract
+// with `nmp-router`'s `PublishRelayListAction` is still held by the
+// round-trip tests in that crate; the integer is now declared in one
+// place across the workspace instead of duplicated here.
 
 fn normalize_role(role: &str) -> Option<String> {
     crate::actor::canonical_relay_role(role)

@@ -42,6 +42,10 @@ pub mod ffi_guard;
 mod kernel;
 mod kernel_action;
 mod kernel_reducer;
+/// V-57 P2 — canonical Nostr kind constants for the entire workspace.
+/// Single source of truth for the integer kind numbers used on the wire.
+/// See [`kinds`] for the migration rationale.
+pub mod kinds;
 pub mod nip19;
 pub mod nip21;
 /// Subscription compiler.

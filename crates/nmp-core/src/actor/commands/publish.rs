@@ -9,16 +9,17 @@
 use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
 use crate::actor::pending_sign::PendingSign;
 use crate::kernel::Kernel;
+use crate::kinds::KIND_GIFT_WRAP;
 use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
 use crate::relay::OutboundMessage;
 use crate::substrate::UnsignedEvent;
 
-/// NIP-59 gift-wrap kind. Mirrors the private constants in
-/// `nmp-nip17::inbox::KIND_GIFT_WRAP` and `nmp-marmot::interest::KIND_GIFT_WRAP`
-/// — duplicated here (not imported) because `nmp-core` must not depend on
-/// `nmp-nip17` / `nmp-marmot` (the dependency direction is the other way).
-/// The single source-of-truth for the wire kind is the NIP-59 spec itself.
-const KIND_GIFT_WRAP: u32 = 1059;
+// V-57 P2 (2026-05-27) — the gift-wrap kind constant lives in the
+// workspace-canonical [`crate::kinds`] registry. The D10 guard predicate
+// below still keys off the integer; centralising it removes the
+// duplication between this file and `nmp-nip59::kinds::KIND_GIFT_WRAP`
+// (and the other private duplicates in `nmp-nip17` / `nmp-marmot`) so the
+// wire integer is declared once across the workspace.
 
 /// Set a "no active account" toast and — when a dispatched action is waiting
 /// on a `correlation_id` — record the matching `Failed` terminal so the host
@@ -288,21 +289,20 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// path. Threading it makes the publish engine report THAT id in
 /// `action_results` via `correlation_id_override` — explicit symmetry with
 /// `publish_note`. `None` for non-dispatch callers (the kernel-internal
-/// `NmpApp::publish_signed_explicit` Marmot seam + conformance harnesses
-/// land on this `None` path; the deleted `nmp_app_publish_signed_event*`
-/// C-ABI symbols used to land here too, always with `None`); the engine
-/// then falls back to the publish handle (== event id), preserving the
-/// prior behaviour.
+/// `NmpApp::publish_signed_explicit` workspace-internal seam + conformance
+/// harnesses land on this `None` path; the deleted
+/// `nmp_app_publish_signed_event*` C-ABI symbols used to land here too,
+/// always with `None`); the engine then falls back to the publish handle
+/// (== event id), preserving the prior behaviour.
 ///
-/// **D10 defensive guard.** A kind:1059 (NIP-59 gift-wrap) envelope
-/// with `relays.is_empty()` is REFUSED — the empty-relays → `PublishTarget::Auto`
-/// branch below would otherwise leak the encrypted envelope through the
-/// author's NIP-65 outbox. The refusal sets a D6 toast and emits a
-/// `tracing::warn!`. This is the kernel-level twin of the call-site guard
-/// in `commands::dm::send_gift_wrapped_dm` — defense in depth at
-/// every entry into the verified-publish path. Callers of kind:1059 MUST
-/// supply an explicit pin (recipient kind:10050 DM-inbox relays for NIP-17,
-/// or the group's relays for the Marmot bridge).
+/// **D10 defensive guard.** A kind:1059 gift-wrap envelope with
+/// `PublishTarget::Auto` is REFUSED — the Auto branch below would
+/// otherwise resolve through the author's public-relay outbox and leak
+/// the encrypted envelope. The refusal sets a D6 toast and emits a
+/// `tracing::warn!`. This is the kernel-level twin of the per-protocol
+/// call-site guards — defense in depth at every entry into the
+/// verified-publish path. Callers of kind:1059 MUST supply an explicit
+/// relay pin (`PublishTarget::Explicit { relays }`).
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,
@@ -347,9 +347,9 @@ pub(crate) fn publish_signed_event(
     //
     // Belt-and-suspenders for kind:1059 gift-wraps: refuse to publish the
     // envelope when the caller did not supply an explicit relay pin. The
-    // call-site guard in `commands::dm::send_gift_wrapped_dm` closes the
-    // NIP-17 send path; this is the kernel-level twin that closes EVERY
-    // path that reaches `publish_signed_event`. In particular:
+    // per-protocol call-site guards close their own send paths; this is the
+    // kernel-level twin that closes EVERY path that reaches
+    // `publish_signed_event`. In particular:
     //
     //   1. The generic `dispatch_action("nmp.publish")` → `PublishAction::Publish`
     //      arm: a `PublishTarget::Auto` carries no relays and is routed
@@ -358,22 +358,21 @@ pub(crate) fn publish_signed_event(
     //      kind:1059 envelope with `target: Auto` would silently leak through
     //      the Auto branch below.
     //
-    //   2. The `NmpApp::publish_signed_explicit` workspace-internal seam (used
-    //      by `nmp-marmot::MarmotProjection`) always builds
-    //      `PublishTarget::Explicit { relays }` (the branch's fail-closed
-    //      `validate_publish_target` already rejects an empty `Explicit`
-    //      relay set at the top of this function), so this Auto-leg of the
-    //      guard is unreachable from Marmot today. The Marmot runtime guard
-    //      in `nmp-marmot::projection::publish::publish_to` covers the
-    //      C-ABI symbol path; this covers the typed Rust sibling.
+    //   2. Workspace-internal seams that always build
+    //      `PublishTarget::Explicit { relays }` (with `validate_publish_target`
+    //      rejecting an empty `Explicit` relay set at the top of this
+    //      function) do not hit this Auto leg today — the guard is the
+    //      defence in depth that keeps the invariant when a future caller is
+    //      added.
     //
-    // Structural invariant: kind:1059 + `Auto` is NEVER routed to the NIP-65
-    // outbox. The refusal mirrors the dm.rs precedent — D6 toast set, no
-    // outbound frames, no publish-queue entry, plus a `tracing::warn!` so
-    // the leak attempt is visible in logs. This is policy, not malformed
-    // data — `set_last_error_toast` (the legacy uncategorized path) is the
-    // right surface (kind:1059 routing leak is not in the closed
-    // `error_category` key set defined by `kernel::closed_reason`).
+    // Structural invariant: kind:1059 + `Auto` is NEVER routed to the
+    // author's public-relay outbox. The refusal sets a D6 toast, drops the
+    // event before any outbound frames or publish-queue entries are
+    // produced, and emits a `tracing::warn!` so the leak attempt is visible
+    // in logs. This is policy, not malformed data — `set_last_error_toast`
+    // (the legacy uncategorized path) is the right surface (a routing-leak
+    // policy refusal is not in the closed `error_category` key set defined
+    // by `kernel::closed_reason`).
     if raw.kind == KIND_GIFT_WRAP && matches!(target, PublishTarget::Auto) {
         let reason = "cannot publish kind:1059 gift-wrap: no explicit relay pin \
              (D10 would leak the encrypted envelope to the author's public relays)"
@@ -381,10 +380,9 @@ pub(crate) fn publish_signed_event(
         tracing::warn!(
             kind = raw.kind,
             "publish_signed_event refused: kind:1059 envelope with PublishTarget::Auto \
-             would route through the author's NIP-65 outbox, leaking the \
+             would route through the author's public-relay outbox, leaking the \
              existence of the encrypted gift-wrap (D10 violation). Caller must \
-             pin recipient kind:10050 DM-inbox relays (NIP-17) or another \
-             explicit set.",
+             supply an explicit relay pin.",
         );
         kernel.set_last_error_toast(Some(reason.clone()));
         // Broken-promise fix: if this publish came in via `dispatch_action`'s
