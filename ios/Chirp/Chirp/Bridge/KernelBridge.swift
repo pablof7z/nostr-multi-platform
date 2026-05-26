@@ -1633,6 +1633,9 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     /// `if attempt > 0` branch). When non-empty the shell renders it as-is.
     let attemptLabel: String
     let message: String
+    /// Pre-formatted English reason the relay was targeted — empty string on
+    /// old kernels. Shell renders verbatim with no branching.
+    let relayReason: String
 
     var id: String { relayUrl }
 }
