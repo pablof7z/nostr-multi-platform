@@ -77,4 +77,22 @@ let REGISTRY_SECTIONS: [RegistrySection] = [
             label: "NostrQuoteCard",
             description: "Embedded event quote card"),
     ]),
+    RegistrySection(id: "embeds", label: "Embeds & Kinds", components: [
+        RegistryComponent(
+            id: "embed-article",
+            label: "ArticleEmbed",
+            description: "Kind:30023 long-form article — hero image, title, summary"),
+        RegistryComponent(
+            id: "embed-profile",
+            label: "ProfileEmbed",
+            description: "Inline npub mention chip — kind:0 profile"),
+        RegistryComponent(
+            id: "embed-note",
+            label: "NoteEmbed",
+            description: "Kind:1 short text note via nevent claim"),
+        RegistryComponent(
+            id: "embed-highlight",
+            label: "HighlightEmbed",
+            description: "Kind:9802 highlight — pull-quote + source"),
+    ]),
 ]

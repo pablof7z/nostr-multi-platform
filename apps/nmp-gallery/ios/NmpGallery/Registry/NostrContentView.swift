@@ -21,6 +21,9 @@ public struct NostrContentView: View {
     public var quoteCardProvider: ((NostrWireUri) -> NostrQuoteCardModel?)?
 
     @Environment(\.nostrContentRenderer) private var renderer
+    @Environment(\.embedHost) private var embedHost
+    @Environment(\.embedClaimSink) private var embedClaimSink
+    @Environment(\.nostrKindRegistry) private var nostrKindRegistry
 
     public init(
         tree: ContentTreeWire,
@@ -208,30 +211,44 @@ public struct NostrContentView: View {
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
     private func eventRefView(_ uri: NostrWireUri) -> some View {
-        // Variant selection is a three-branch decision so the `.missing`
-        // variant is reachable:
-        //   • no provider wired       → `.collapsed` (View quote affordance)
-        //   • provider returned model → `.rich`
-        //   • provider returned nil   → `.missing` (Content unavailable + URI)
-        let providedModel = quoteCardProvider?(uri)
-        let variant: NostrQuoteCardVariant
-        let model: NostrQuoteCardModel
-        if quoteCardProvider == nil {
-            variant = .collapsed
-            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-        } else if let providedModel {
-            variant = .rich
-            model = providedModel
+        if embedHost != nil || embedClaimSink != nil {
+            // Kind-dispatch path (ADR-0034 / M16). `EmbeddedEvent` owns the
+            // claim/release lifecycle via `task(id:)` + `onDisappear`; the
+            // registry picks the renderer for the resolved projection. The
+            // view always renders even if the host doesn't have the envelope
+            // yet (loading placeholder via `EmbedChromeContainer`).
+            EmbeddedEvent(
+                uri: uri.uri,
+                envelope: embedHost?.envelopeForPrimaryID(uri.primaryId)
+                    ?? embedHost?.envelopeForURI(uri.uri),
+                registry: nostrKindRegistry,
+                claimSink: embedClaimSink
+            )
         } else {
-            variant = .missing
-            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
+            // Legacy quote-card path. Kept so existing content-quote-card
+            // showcases keep working — the new embed environment opts in
+            // when an EmbedHost is bound by the gallery shell.
+            let providedModel = quoteCardProvider?(uri)
+            let variant: NostrQuoteCardVariant
+            let model: NostrQuoteCardModel
+            if quoteCardProvider == nil {
+                variant = .collapsed
+                model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
+            } else if let providedModel {
+                variant = .rich
+                model = providedModel
+            } else {
+                variant = .missing
+                model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
+            }
+            NostrQuoteCard(
+                model: model,
+                variant: variant,
+                onTap: { renderer.callbacks.onEventRefTap(uri.primaryId) }
+            )
         }
-        return NostrQuoteCard(
-            model: model,
-            variant: variant,
-            onTap: { renderer.callbacks.onEventRefTap(uri.primaryId) }
-        )
     }
 
     private func codeBlockView(info: String?, body: String) -> some View {

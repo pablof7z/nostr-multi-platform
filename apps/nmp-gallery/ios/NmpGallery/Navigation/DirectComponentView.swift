@@ -66,6 +66,14 @@ struct DirectComponentView: View {
             ContentQuoteCardPage()
         case "relay-list":
             RelayListPage()
+        case "embed-article":
+            ArticleEmbedPage()
+        case "embed-profile":
+            ProfileEmbedPage()
+        case "embed-note":
+            NoteEmbedPage()
+        case "embed-highlight":
+            HighlightEmbedPage()
         default:
             Text("Unknown component: \(component.id)")
                 .foregroundStyle(.secondary)

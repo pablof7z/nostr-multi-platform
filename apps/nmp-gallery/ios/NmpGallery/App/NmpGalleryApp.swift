@@ -17,10 +17,25 @@ import SwiftUI
 struct NmpGalleryApp: App {
     @State private var model = GalleryModel()
 
+    /// Kind-dispatch embed registry. Built once at app start with the
+    /// gallery's richer per-kind components (ArticleEmbed, HighlightEmbed)
+    /// installed on top of the defaults. Injected into the SwiftUI
+    /// environment so every `NostrContentView` / `EmbeddedEvent` sees the
+    /// same renderer table.
+    @State private var kindRegistry: NostrKindRegistry = {
+        let reg = NostrKindRegistry.makeDefault()
+        reg.setArticle(ArticleEmbed())
+        reg.setHighlight(HighlightEmbed())
+        return reg
+    }()
+
     var body: some Scene {
         WindowGroup {
             rootView
                 .environment(model)
+                .environment(\.embedHost, model.embedHost)
+                .environment(\.embedClaimSink, model.embedClaimSink)
+                .environment(\.nostrKindRegistry, kindRegistry)
                 .task {
                     model.start()
                 }
