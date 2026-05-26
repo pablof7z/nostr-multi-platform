@@ -80,7 +80,7 @@ impl TimelineRow {
             id,
             author_pubkey,
             author_profile,
-            content: content_preview(&content),
+            content,
             created_at,
             depth,
             has_gap,
@@ -210,16 +210,6 @@ fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
             .and_then(Value::as_u64)
             .map_or(RowRelationCount::Loading, RowRelationCount::Known),
         _ => RowRelationCount::Loading,
-    }
-}
-
-fn content_preview(content: &str) -> String {
-    let compact = content.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.chars().count() <= 96 {
-        compact
-    } else {
-        let preview = compact.chars().take(95).collect::<String>();
-        format!("{preview}...")
     }
 }
 

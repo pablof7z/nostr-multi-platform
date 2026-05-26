@@ -22,6 +22,10 @@ ios/NmpPodcast/build/
 ios/NmpPodcast/NmpPodcast.xcodeproj/xcuserdata/
 ios/NmpPodcast/NmpPodcast.xcodeproj/project.xcworkspace/xcuserdata/
 
+# Android gallery Gradle output
+apps/nmp-gallery/android/.gradle/
+apps/nmp-gallery/android/app/build/
+
 # Xcode Instruments traces
 *.trace/
 *.trace
