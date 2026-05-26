@@ -16,7 +16,6 @@ use super::{
     ratatui_text_wrap::{wrap_plain, wrap_prefixed, wrap_spans},
 };
 
-/// Full terminal renderer for the Rust-owned `ContentTreeWire` projection.
 pub struct NostrContentView<'a> {
     tree: &'a ContentTreeWire,
     render_data: Option<&'a ContentRenderData>,
@@ -84,6 +83,15 @@ impl<'a> NostrContentView<'a> {
         inline
     }
 
+    pub fn preferred_height(&self, width: usize) -> u16 {
+        self.tree
+            .roots
+            .iter()
+            .map(|root| self.node_height(*root, width))
+            .sum::<u16>()
+            .max(1)
+    }
+
     fn append_node(&self, index: usize, width: usize, lines: &mut Vec<Line<'static>>) {
         let Some(node) = self.tree.node(index) else {
             return;
@@ -145,7 +153,11 @@ impl<'a> NostrContentView<'a> {
             }
             WireNode::Rule => lines.push(Line::from("─".repeat(width.min(48)))),
             WireNode::Media { urls, kind } => {
-                lines.extend(NostrMediaGrid::new(urls, kind).lines(width));
+                lines.extend(
+                    NostrMediaGrid::new(urls, kind)
+                        .images(self.media_images)
+                        .lines(width),
+                );
             }
             WireNode::Image { alt, src, .. } => {
                 let target = src.as_deref().unwrap_or("missing src");
@@ -315,6 +327,63 @@ impl<'a> NostrContentView<'a> {
             .collect::<Vec<_>>()
             .join("\n")
     }
+
+    fn node_height(&self, index: usize, width: usize) -> u16 {
+        let Some(node) = self.tree.node(index) else {
+            return 0;
+        };
+        match node {
+            WireNode::Paragraph { children } => self.paragraph_height(children, width),
+            WireNode::Media { urls, kind } => NostrMediaGrid::new(urls, kind)
+                .images(self.media_images)
+                .preferred_height()
+                .saturating_add(1),
+            WireNode::Image { src: Some(src), .. } => {
+                NostrMediaGrid::new(std::slice::from_ref(src), "image")
+                    .images(self.media_images)
+                    .preferred_height()
+                    .saturating_add(1)
+            }
+            WireNode::EventRef(_) | WireNode::BlockQuote { .. } => {
+                NostrQuoteCard::new(self.tree, node)
+                    .render_data(self.render_data)
+                    .media_images(self.media_images)
+                    .preferred_height(width)
+                    .saturating_add(1)
+            }
+            _ => {
+                let mut lines = Vec::new();
+                self.append_node(index, width, &mut lines);
+                lines.len().max(1) as u16
+            }
+        }
+    }
+
+    fn paragraph_height(&self, children: &[usize], width: usize) -> u16 {
+        let mut inline = Vec::new();
+        let mut height = 0u16;
+        for child in children {
+            match self.tree.node(*child) {
+                Some(WireNode::EventRef(_) | WireNode::Media { .. } | WireNode::Image { .. }) => {
+                    height = height.saturating_add(nonempty_wrapped_height(
+                        std::mem::take(&mut inline),
+                        width,
+                    ));
+                    height = height.saturating_add(self.node_height(*child, width));
+                }
+                Some(_) => self.append_inline_node(*child, &mut inline),
+                None => {}
+            }
+        }
+        height.saturating_add(nonempty_wrapped_height(inline, width))
+    }
+}
+
+fn nonempty_wrapped_height(spans: Vec<Span<'static>>, width: usize) -> u16 {
+    wrap_spans(spans, width)
+        .into_iter()
+        .filter(|line| line.spans.iter().any(|span| !span.content.is_empty()))
+        .count() as u16
 }
 
 impl Widget for NostrContentView<'_> {
@@ -473,21 +542,10 @@ fn take_area(area: Rect, cursor: &mut u16, wanted_height: u16) -> Rect {
 }
 
 fn short_id(id: &str) -> String {
-    let count = id.chars().count();
-    if count <= 12 {
-        id.to_string()
-    } else {
-        let head = id.chars().take(6).collect::<String>();
-        let tail = id
-            .chars()
-            .rev()
-            .take(6)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<String>();
-        format!("{head}…{tail}")
+    if id.len() > 12 {
+        return format!("{}…{}", &id[..6], &id[id.len() - 6..]);
     }
+    id.to_string()
 }
 
 fn muted_style() -> Style {

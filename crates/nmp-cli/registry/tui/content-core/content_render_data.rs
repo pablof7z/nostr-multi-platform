@@ -52,6 +52,20 @@ impl ContentRenderData {
             .get(&uri.primary_id)
             .or_else(|| self.events.get(&uri.uri))
     }
+
+    pub fn media_urls(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for event in self.events.values() {
+            if let Some(tree) = event.content_tree.as_ref() {
+                for url in tree.media_urls() {
+                    if !out.iter().any(|existing| existing == &url) {
+                        out.push(url);
+                    }
+                }
+            }
+        }
+        out
+    }
 }
 
 impl ContentProfileRenderData {

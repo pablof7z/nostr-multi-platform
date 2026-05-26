@@ -16,10 +16,12 @@ use crate::ui::colors::{
     author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT,
     HEART, REPLY_COLOR, REPOST, SELECTED_BG,
 };
+use crate::ui::layout::RenderContext;
 use crate::ui::nostr_content::nostr_content_view::NostrContentView;
 use crate::ui::nostr_user::profile_name_span;
+use crate::ui::post_detail_rich::render_rich;
 
-pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(f: &mut Frame, area: Rect, state: &AppState, context: &RenderContext<'_>) {
     let focused = state.focused == Pane::Detail;
     let border_color = if focused { ACCENT_CYAN } else { DIMMER_TEXT };
     let block = Block::default()
@@ -29,6 +31,16 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
 
     let inner = block.inner(area);
     let pane_width = inner.width as usize;
+
+    if !context.media_images.is_empty() {
+        f.render_widget(block, area);
+        f.render_widget(
+            Paragraph::new("").style(Style::default().bg(DETAIL_BG)),
+            inner,
+        );
+        render_rich(f, inner, state, context);
+        return;
+    }
 
     let lines = build_lines(state, pane_width);
 
@@ -77,12 +89,12 @@ fn build_lines(state: &AppState, pane_width: usize) -> Vec<Line<'static>> {
     lines
 }
 
-struct SelectedRoot<'a> {
-    row: &'a TimelineRow,
-    row_idx: usize,
+pub(super) struct SelectedRoot<'a> {
+    pub(super) row: &'a TimelineRow,
+    pub(super) row_idx: usize,
 }
 
-fn root_for_selection(state: &AppState) -> Option<SelectedRoot<'_>> {
+pub(super) fn root_for_selection(state: &AppState) -> Option<SelectedRoot<'_>> {
     if state.rows.is_empty() {
         return None;
     }
@@ -101,7 +113,7 @@ fn root_for_selection(state: &AppState) -> Option<SelectedRoot<'_>> {
         .map(|row| SelectedRoot { row, row_idx: 0 })
 }
 
-fn collect_replies(state: &AppState, root_idx: usize) -> Vec<(usize, &TimelineRow)> {
+pub(super) fn collect_replies(state: &AppState, root_idx: usize) -> Vec<(usize, &TimelineRow)> {
     let start = root_idx.saturating_add(1);
     if start >= state.rows.len() {
         return Vec::new();
@@ -200,7 +212,7 @@ fn append_reply(
     append_content_lines(lines, row, prefix, bg, content_width);
 }
 
-fn reaction_spans(
+pub(super) fn reaction_spans(
     counts: &RowRelationCounts,
     bg: ratatui::style::Color,
 ) -> (Vec<Span<'static>>, usize) {
@@ -273,7 +285,7 @@ fn append_content_lines(
     }
 }
 
-fn prefix_line(
+pub(super) fn prefix_line(
     line: Line<'static>,
     prefix: Span<'static>,
     bg: ratatui::style::Color,
@@ -289,7 +301,7 @@ fn prefix_line(
     Line::from(spans)
 }
 
-fn wrap_body(content: &str, width: usize) -> Vec<String> {
+pub(super) fn wrap_body(content: &str, width: usize) -> Vec<String> {
     if width == 0 {
         return vec![String::new()];
     }
@@ -341,7 +353,7 @@ fn wrap_body(content: &str, width: usize) -> Vec<String> {
     out
 }
 
-fn pad_for(width: usize, used: usize) -> String {
+pub(super) fn pad_for(width: usize, used: usize) -> String {
     if width > used {
         " ".repeat(width - used)
     } else {

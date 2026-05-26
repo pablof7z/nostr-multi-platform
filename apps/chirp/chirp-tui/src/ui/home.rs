@@ -8,9 +8,10 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 
 use crate::app::{AppState, Mode, Pane};
+use crate::ui::layout::RenderContext;
 use crate::ui::{palette, post_detail, post_list, profile_pane, relay_panel};
 
-pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+pub fn render(f: &mut Frame, area: Rect, state: &AppState, context: &RenderContext<'_>) {
     let cols =
         Layout::horizontal([Constraint::Percentage(38), Constraint::Percentage(62)]).split(area);
 
@@ -23,7 +24,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
         post_list::render(f, left[0], state);
     }
     relay_panel::render(f, left[1], state);
-    post_detail::render(f, cols[1], state);
+    post_detail::render(f, cols[1], state, context);
 
     if let Mode::Palette { cursor } = state.mode {
         palette::render(f, area, state, cursor);

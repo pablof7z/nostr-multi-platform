@@ -14,8 +14,9 @@ use ratatui::Terminal;
 use chirp_tui::app::{AppRuntime, AppState};
 use chirp_tui::bridge::NmpEvent;
 use chirp_tui::input::{self, InputFlow};
+use chirp_tui::media_cache::{visible_media_urls, MediaCache, MediaFetch};
 use chirp_tui::render_intents::{RenderIntent, RenderIntentDiff, RenderIntentTracker};
-use chirp_tui::ui;
+use chirp_tui::ui::{self, layout::RenderContext};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -33,6 +34,7 @@ struct Args {
 enum UiEvent {
     Terminal(Event),
     Nmp(NmpEvent),
+    Media(MediaFetch),
 }
 
 fn main() -> Result<()> {
@@ -63,16 +65,19 @@ fn run(args: Args) -> Result<()> {
     }
 
     let (ui_tx, ui_rx) = mpsc::channel();
+    let (media_tx, media_rx) = mpsc::channel();
     spawn_terminal_reader(ui_tx.clone());
-    spawn_nmp_forwarder(nmp_rx, ui_tx);
+    spawn_nmp_forwarder(nmp_rx, ui_tx.clone());
+    spawn_media_forwarder(media_rx, ui_tx);
 
     let mut state = AppState::default();
+    let mut media_cache = MediaCache::new();
     let mut render_intents = RenderIntentTracker::default();
     if args.basic {
         state.set_basic();
     }
 
-    terminal.draw(|frame| ui::layout::render(frame, &state))?;
+    draw(&mut terminal, &state, &media_cache)?;
 
     while let Ok(event) = ui_rx.recv() {
         match event {
@@ -83,12 +88,32 @@ fn run(args: Args) -> Result<()> {
             }
             UiEvent::Terminal(_) => {}
             UiEvent::Nmp(event) => state.apply_nmp_event(&runtime, event),
+            UiEvent::Media(event) => media_cache.apply_fetch(event),
         }
         let diff = render_intents.sync_rows(&state.rows);
         apply_render_intents(&runtime, diff).map_err(|e| eyre!(e))?;
-        terminal.draw(|frame| ui::layout::render(frame, &state))?;
+        media_cache.sync_urls(visible_media_urls(&state), media_tx.clone());
+        draw(&mut terminal, &state, &media_cache)?;
     }
 
+    Ok(())
+}
+
+fn draw(
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    state: &AppState,
+    media_cache: &MediaCache,
+) -> Result<()> {
+    let media_images = media_cache.image_refs();
+    terminal.draw(|frame| {
+        ui::layout::render_with_context(
+            frame,
+            state,
+            &RenderContext {
+                media_images: &media_images,
+            },
+        )
+    })?;
     Ok(())
 }
 
@@ -130,6 +155,16 @@ fn spawn_nmp_forwarder(rx: mpsc::Receiver<NmpEvent>, tx: mpsc::Sender<UiEvent>) 
     thread::spawn(move || {
         while let Ok(event) = rx.recv() {
             if tx.send(UiEvent::Nmp(event)).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+fn spawn_media_forwarder(rx: mpsc::Receiver<MediaFetch>, tx: mpsc::Sender<UiEvent>) {
+    thread::spawn(move || {
+        while let Ok(event) = rx.recv() {
+            if tx.send(UiEvent::Media(event)).is_err() {
                 break;
             }
         }

@@ -3,6 +3,7 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui_image::protocol::Protocol;
 
 use crate::app::AppState;
 use crate::app::Mode;
@@ -13,6 +14,20 @@ use crate::ui::help;
 use crate::ui::home;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
+    render_with_context(frame, state, &RenderContext::empty());
+}
+
+pub struct RenderContext<'a> {
+    pub media_images: &'a [(&'a str, &'a Protocol)],
+}
+
+impl<'a> RenderContext<'a> {
+    pub const fn empty() -> Self {
+        Self { media_images: &[] }
+    }
+}
+
+pub fn render_with_context(frame: &mut Frame<'_>, state: &AppState, context: &RenderContext<'_>) {
     let area = frame.area();
 
     // First-run welcome: no accounts configured yet.
@@ -32,7 +47,7 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState) {
         .split(area);
 
     render_title(frame, rows[0], state);
-    render_body(frame, rows[1], state);
+    render_body(frame, rows[1], state, context);
     render_compose(frame, rows[2], state);
     render_status(frame, rows[3], state);
 
@@ -113,9 +128,9 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     frame.render_widget(Paragraph::new(title), area);
 }
 
-fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState, context: &RenderContext<'_>) {
     match state.tab {
-        FeatureTab::Home => home::render(frame, area, state),
+        FeatureTab::Home => home::render(frame, area, state, context),
         _ => feature_panels::render(frame, area, state),
     }
 }
