@@ -281,6 +281,26 @@ pub struct LogicalInterest {
 
     /// Lifecycle: when to close the resulting REQ.
     pub lifecycle: InterestLifecycle,
+
+    /// PD-033-C planner-extension gate: marks an interest as a
+    /// discovery-direction probe (kind:0 profile, kind:3 contacts,
+    /// kind:10002 NIP-65 relay list, kind:10050 DM-relay list, …) for
+    /// authors whose NIP-65 mailbox isn't cached yet.
+    ///
+    /// When `true` AND the author's NIP-65 mailbox is unknown AND no
+    /// `app_relays` are configured, `case_a_authors` routes the interest
+    /// onto `bootstrap_indexer_relays` (the same lane the retired M1
+    /// `kernel/discovery.rs::drain_unknown_oneshots` profile-oneshot arm
+    /// used). When `false`, the same author falls through to
+    /// `unroutable` so the kernel can surface the standard UI toast.
+    ///
+    /// Defaults to `false` so non-bootstrap call sites (view modules,
+    /// reactive timeline subscriptions, follow-feed registrations)
+    /// retain the pre-PD-033-C unroutable semantics without an explicit
+    /// opt-out. `#[serde(default)]` so older serialised interests
+    /// without the field round-trip cleanly through reload paths.
+    #[serde(default)]
+    pub is_indexer_discovery: bool,
 }
 
 impl Default for LogicalInterest {
@@ -291,6 +311,7 @@ impl Default for LogicalInterest {
             shape: InterestShape::default(),
             hints: Vec::new(),
             lifecycle: InterestLifecycle::OneShot,
+            is_indexer_discovery: false,
         }
     }
 }

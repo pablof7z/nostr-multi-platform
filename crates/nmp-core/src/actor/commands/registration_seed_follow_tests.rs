@@ -225,21 +225,33 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
         let frames_for_relay = reqs
             .get(relay)
             .unwrap_or_else(|| panic!("missing tailing REQ for {relay}; frames={frames:?}"));
-        // V-04 Stage 2: the active-account NIP-65 write relay (self-follow.relay)
-        // now also receives the four `OneShot + Global` bootstrap interests
-        // (kind:0 / kind:10002 / kind:10050 / kind:3, all pinned to the active
-        // account with `limit:1`) — they share the active account's mailbox
-        // with the follow-feed interest. The follow-feed REQ is the *Tailing*
-        // one; locate it explicitly rather than assuming it's first in the
-        // per-relay list (BTreeMap ordering by sub-id hash is non-deterministic
-        // relative to interest kinds).
+        // V-04 reactive subs: the active-account NIP-65 write relay
+        // (self-follow.relay) now receives BOTH the follow-feed Tailing REQ
+        // (kinds 1, 6) AND the bootstrap Tailing self-kinds REQ (kinds
+        // 0, 3, 10002, 10000, 10006). Both have `Tailing` lifecycle, so
+        // discriminate by kinds: the follow feed is the one carrying
+        // `1` AND `6`. The kind:10050 DM relay OneShot also rides this
+        // relay; it has OneShot lifecycle and is filtered out by the
+        // `Tailing` predicate below.
         let (follow_filter, _) = frames_for_relay
             .iter()
-            .find(|(_, lifecycle)| matches!(lifecycle, InterestLifecycle::Tailing))
+            .find(|(filter, lifecycle)| {
+                if !matches!(lifecycle, InterestLifecycle::Tailing) {
+                    return false;
+                }
+                let json: Value = match serde_json::from_str(filter) {
+                    Ok(v) => v,
+                    Err(_) => return false,
+                };
+                let kinds = json.get("kinds").and_then(Value::as_array);
+                let has_one = kinds.map_or(false, |k| k.contains(&Value::from(1)));
+                let has_six = kinds.map_or(false, |k| k.contains(&Value::from(6)));
+                has_one && has_six
+            })
             .unwrap_or_else(|| {
                 panic!(
-                    "follow-feed REQ for {relay} must stay open as Tailing; \
-                     got: {frames_for_relay:?}"
+                    "follow-feed REQ (Tailing kinds [1,6,…]) for {relay} \
+                     must be present; got: {frames_for_relay:?}"
                 )
             });
         let json = serde_json::from_str::<Value>(follow_filter).expect("REQ filter JSON");
@@ -279,6 +291,7 @@ fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     });
     kernel
         .lifecycle_mut()

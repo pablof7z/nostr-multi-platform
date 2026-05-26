@@ -25,6 +25,7 @@ fn giftwrap_dm_inbox_interest(id: u64, pubkey: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 

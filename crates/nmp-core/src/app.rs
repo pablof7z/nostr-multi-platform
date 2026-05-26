@@ -217,6 +217,10 @@ pub fn resolve_open_uri(uri: &str) -> Result<OpenUriRouting, OpenUriError> {
         shape,
         hints,
         lifecycle: InterestLifecycle::OneShot,
+        // Pointer-resolution interests come with explicit relay hints (the
+        // `nevent` / `nprofile` / `naddr` carried them); no bootstrap-indexer
+        // fallback needed.
+        is_indexer_discovery: false,
     };
 
     Ok(OpenUriRouting {

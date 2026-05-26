@@ -59,6 +59,10 @@ where
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        // WoT bootstrap fetches contacts for known authors via NIP-65; the
+        // mailbox is expected to be cached by the time WoT runs, so no
+        // bootstrap-indexer fallback opt-in.
+        is_indexer_discovery: false,
     })
 }
 

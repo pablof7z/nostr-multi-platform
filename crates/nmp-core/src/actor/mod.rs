@@ -856,6 +856,13 @@ pub fn run_actor(
             crate::substrate::EventIngestDispatcher::new(),
         )),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // Throwaway blocked-relay lookup slot — no app composition here,
+        // so the kernel defaults to returning an empty `BlockedRelaySet`
+        // per account.
+        Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
+        // Throwaway bootstrap self-kinds override slot (`None` → builtin
+        // default).
+        Arc::new(Mutex::new(None)),
         // V-51 phase 4 — no `NmpApp` is wired through this entry, so the
         // routing-trace slot is a private throwaway (the actor still
         // publishes its kernel's projection into it, but nothing reads it).
@@ -930,6 +937,11 @@ pub fn run_actor_with_lifecycle_observer(
             crate::substrate::EventIngestDispatcher::new(),
         )),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        // Throwaway blocked-relay lookup slot — same private-throwaway
+        // pattern as the dm-inbox slot above.
+        Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
+        // Throwaway bootstrap self-kinds override slot.
+        Arc::new(Mutex::new(None)),
         // V-51 phase 4 — same private-throwaway pattern.
         Arc::new(Mutex::new(None)),
         // V-51 phase 5 — same private-throwaway pattern (no factory installed).
@@ -1042,6 +1054,18 @@ pub fn run_actor_with_observers(
     // current handle and binds it onto the kernel at construction time
     // (and re-binds on `Reset`).
     dm_inbox_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    // Substrate `BlockedRelayLookup` slot. Mirrors `dm_inbox_relays_slot`:
+    // the `NmpApp` owns the setter (`set_blocked_relay_lookup`); this
+    // actor thread reads the current handle and binds it onto the kernel
+    // so `build_routing_context` snapshots the same `Arc` the kind:10006
+    // ingest parser writes into.
+    blocked_relays_slot: Arc<Mutex<Arc<dyn crate::substrate::BlockedRelayLookup>>>,
+    // Per-app override for the active-account bootstrap Tailing self-kinds
+    // list. `None` (the default) leaves the kernel on its built-in
+    // `[0, 3, 10002, 10000, 10006]` list at
+    // `active_account_bootstrap_requests`; `Some(kinds)` is applied via
+    // `Kernel::set_bootstrap_self_kinds_override` at construction.
+    bootstrap_self_kinds_slot: Arc<Mutex<Option<Vec<u64>>>>,
     // V-51 phase 4 — routing-trace projection slot. The `NmpApp` owns the
     // read side (`NmpApp::routing_trace`); this actor thread is the sole
     // writer, publishing `kernel.routing_trace()` into the slot right after
@@ -1179,6 +1203,27 @@ pub fn run_actor_with_observers(
             .map(|g| Arc::clone(&*g))
             .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
         kernel.set_dm_inbox_relay_lookup(lookup);
+    }
+    {
+        let lookup = blocked_relays_slot
+            .lock()
+            .ok()
+            .map(|g| Arc::clone(&*g))
+            .unwrap_or_else(crate::substrate::empty_blocked_relay_lookup);
+        kernel.set_blocked_relay_lookup(lookup);
+    }
+    {
+        // FFI override slot: u64 over the wire (matches Substrate FFI
+        // convention) but the kernel field is `Vec<u32>` (matches NIP kind
+        // typing). Truncating cast: production kinds fit in u32; a u64
+        // value larger than u32::MAX is a host-side misconfiguration that
+        // we silently truncate rather than reject (D6 — no panics on
+        // input data we don't own).
+        let kinds = bootstrap_self_kinds_slot
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>()));
+        kernel.set_bootstrap_self_kinds_override(kinds);
     }
     // G-S4 — bind the actor command-channel depth counter so it surfaces on
     // the diagnostic snapshot (`Metrics::actor_queue_depth`). `NmpApp::send_cmd`
@@ -1389,6 +1434,8 @@ pub fn run_actor_with_observers(
                         host_op_handler: &host_op_handler,
                         ingest_dispatcher_slot: &ingest_dispatcher_slot,
                         dm_inbox_relays_slot: &dm_inbox_relays_slot,
+                        blocked_relays_slot: &blocked_relays_slot,
+                        bootstrap_self_kinds_slot: &bootstrap_self_kinds_slot,
                         routing_trace_slot: &routing_trace_slot,
                         routing_substrate_slot: &routing_substrate_slot,
                         publish_resolver_slot: &publish_resolver_slot,

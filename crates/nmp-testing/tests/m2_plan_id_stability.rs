@@ -78,6 +78,7 @@ fn plan_id_unchanged_when_unrelated_mailbox_arrives() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan_before = {
@@ -143,6 +144,7 @@ fn plan_id_changes_when_referenced_author_mailbox_updates() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan_before = {
@@ -206,6 +208,7 @@ fn plan_id_changes_on_indexer_set_version_bump() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let ctx_v0 = CompileContext { indexer_set_version: 0, user_config_version: 0 };

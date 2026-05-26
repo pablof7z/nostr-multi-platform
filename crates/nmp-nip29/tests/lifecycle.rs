@@ -51,6 +51,7 @@ fn generic_pinned_interest(id: u64, host: &str, kinds: &[u32]) -> LogicalInteres
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 
@@ -177,6 +178,7 @@ fn same_host_pinned_interests_coalesce_h_tag_values() {
             },
             hints: Vec::new(),
             lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
         }
     }
 

@@ -157,6 +157,7 @@ mod tests {
             },
             hints: Vec::new(),
             lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
         }
     }
 
@@ -256,6 +257,7 @@ mod tests {
             },
             hints: Vec::new(),
             lifecycle: InterestLifecycle::OneShot,
+            is_indexer_discovery: false,
         }
     }
 
