@@ -871,13 +871,13 @@ version = "0.1.0"
 dependencies = [
  "nmp-app-template",
  "nmp-core",
+ "nmp-feed",
  "nmp-ffi",
  "nmp-nip01",
  "nmp-nip02",
  "nmp-nip18",
  "nmp-nip29",
  "nmp-nip57",
- "nmp-signer-broker",
  "nmp-threading",
  "nostr",
  "serde",
@@ -891,7 +891,6 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "nmp-coverage-gate",
- "nmp-ffi",
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip57",
@@ -946,10 +945,24 @@ name = "nmp-coverage-gate"
 version = "0.1.0"
 
 [[package]]
+name = "nmp-feed"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-threading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-ffi"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-feed",
+ "nmp-signer-broker",
+ "nmp-signer-iface",
+ "nmp-signers",
  "nostr",
  "serde",
  "serde_json",
@@ -976,7 +989,9 @@ version = "0.1.0"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-feed",
  "nmp-nip18",
+ "nmp-nip57",
  "nmp-threading",
  "serde",
  "serde_json",
@@ -987,7 +1002,6 @@ name = "nmp-nip02"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "nostr",
  "serde",
  "serde_json",
@@ -998,7 +1012,6 @@ name = "nmp-nip17"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "nmp-nip59",
  "nostr",
  "serde",
@@ -1052,7 +1065,6 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "nmp-core",
- "nmp-ffi",
  "nmp-nip47",
  "nostr",
  "serde",
@@ -1117,7 +1129,6 @@ name = "nmp-router"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "serde",
 ]
 
@@ -1125,8 +1136,6 @@ dependencies = [
 name = "nmp-signer-broker"
 version = "0.1.0"
 dependencies = [
- "nmp-core",
- "nmp-ffi",
  "nmp-network",
  "nmp-signer-iface",
  "nmp-signers",
@@ -1187,7 +1196,6 @@ name = "nmp-wot"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "nostr",
  "serde",
  "serde_json",

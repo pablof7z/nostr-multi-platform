@@ -61,7 +61,18 @@ class KernelModel : ViewModel() {
         bridge.start(visibleLimit = 80, emitHz = 4)
         viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
-                val payload = bridge.nextUpdate() ?: continue
+                val payload = try {
+                    bridge.nextUpdate()
+                } catch (e: IllegalStateException) {
+                    // Mirrors PR #644 / V-57 P5 for nmp-gallery: the Rust JNI
+                    // distinguishes RecvTimeoutError::Disconnected (channel
+                    // closed — sender dropped) from RecvTimeoutError::Timeout
+                    // (idle tick — keep polling). A disconnect surfaces as
+                    // this exception. Break out of the loop instead of
+                    // spinning on a dead channel.
+                    Log.i(TAG, "snapshot channel closed: ${e.message}")
+                    break
+                } ?: continue
                 val update = decodeSnapshot(payload) ?: continue
                 val applied = update.copy(modularTimeline = decodeChirpSnapshot())
                 if (applied.rev <= _state.value.rev) continue   // mirror only
