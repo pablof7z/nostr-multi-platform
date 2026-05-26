@@ -126,6 +126,15 @@ impl ActionModule for ZapAction {
                 "zap amount must be greater than 0 msats".into(),
             ));
         }
+        if action
+            .lnurl
+            .as_deref()
+            .is_some_and(|lnurl| lnurl.trim().is_empty())
+        {
+            return Err(ActionRejection::Invalid(
+                "zap lnurl must not be empty when provided".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -303,6 +312,18 @@ mod tests {
         // The kernel resolves the address from the cached kind:0 profile at
         // execute time — `start` must not reject it.
         assert!(ZapAction::start(&mut ctx(), well_formed_input_no_lnurl()).is_ok());
+    }
+
+    #[test]
+    fn start_rejects_empty_lnurl_when_provided() {
+        let input = ZapInput {
+            lnurl: Some("   ".to_string()),
+            ..well_formed_input()
+        };
+        assert!(matches!(
+            ZapAction::start(&mut ctx(), input),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 
     /// V-07: empty relays is VALID — the actor injects the recipient's

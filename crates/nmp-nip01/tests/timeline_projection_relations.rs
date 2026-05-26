@@ -53,17 +53,19 @@ fn profile_event(author: &str, display: &str) -> KernelEvent {
 
 #[test]
 fn relation_counts_serialize_loading_vs_known_zero() {
-    let counts = NoteRelationCounts::for_note("R", 0);
+    let counts = NoteRelationCounts {
+        replies: RelationCount::known(0),
+        reactions: RelationCount::known(0),
+        reposts: RelationCount::known(0),
+        zaps: RelationCount::known(0),
+    };
     let json = serde_json::to_value(counts).expect("counts serialize");
 
     assert_eq!(json["replies"]["state"], "known");
     assert_eq!(json["replies"]["count"], 0);
-    assert_eq!(json["reactions"]["state"], "loading");
-    assert_eq!(
-        json["reactions"]["interest"]["namespace"],
-        "nmp.reactions.summary"
-    );
-    assert_eq!(json["reposts"]["state"], "loading");
+    assert_eq!(json["reactions"]["state"], "known");
+    assert_eq!(json["reposts"]["state"], "known");
+    assert_eq!(json["zaps"]["state"], "known");
 }
 
 #[test]
@@ -83,16 +85,9 @@ fn cards_include_known_reply_counts_and_loading_relation_interests() {
 
     assert_eq!(root.relation_counts.replies, RelationCount::known(2));
     assert_eq!(child.relation_counts.replies, RelationCount::known(0));
-    assert!(matches!(
-        root.relation_counts.reactions,
-        RelationCount::Loading { ref interest }
-            if interest.namespace == "nmp.reactions.summary" && interest.target_event_id == "R"
-    ));
-    assert!(matches!(
-        root.relation_counts.reposts,
-        RelationCount::Loading { ref interest }
-            if interest.namespace == "nmp.reactions.reposts" && interest.target_event_id == "R"
-    ));
+    assert_eq!(root.relation_counts.reactions, RelationCount::known(0));
+    assert_eq!(root.relation_counts.reposts, RelationCount::known(0));
+    assert_eq!(root.relation_counts.zaps, RelationCount::known(0));
 }
 
 #[test]
@@ -124,4 +119,48 @@ fn reply_counts_handle_out_of_order_and_duplicate_delivery() {
     let root = snap.cards.iter().find(|c| c.id == "R").expect("root card");
 
     assert_eq!(root.relation_counts.replies, RelationCount::known(1));
+}
+
+#[test]
+fn relation_counts_include_reactions_reposts_and_zaps() {
+    let target = "R";
+    let proj = ModularTimelineProjection::new(&spec());
+    proj.on_kernel_event(&note(target, 1, vec![]));
+    proj.on_kernel_event(&KernelEvent {
+        id: "react".into(),
+        author: "alice".into(),
+        kind: 7,
+        created_at: 2,
+        tags: vec![vec!["e".into(), target.into()]],
+        content: "+".into(),
+    });
+    proj.on_kernel_event(&KernelEvent {
+        id: "repost".into(),
+        author: "bob".into(),
+        kind: nmp_nip18::KIND_REPOST,
+        created_at: 3,
+        tags: vec![vec!["e".into(), target.into()]],
+        content: String::new(),
+    });
+    proj.on_kernel_event(&KernelEvent {
+        id: "zap".into(),
+        author: "ln".into(),
+        kind: nmp_nip57::KIND_ZAP_RECEIPT,
+        created_at: 4,
+        tags: vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["e".into(), target.into()],
+        ],
+        content: String::new(),
+    });
+
+    let snap = proj.snapshot();
+    let root = snap
+        .cards
+        .iter()
+        .find(|c| c.id == target)
+        .expect("root card");
+    assert_eq!(root.relation_counts.reactions, RelationCount::known(1));
+    assert_eq!(root.relation_counts.reposts, RelationCount::known(1));
+    assert_eq!(root.relation_counts.zaps, RelationCount::known(1));
 }

@@ -114,6 +114,7 @@ pub struct RowRelationCounts {
     pub replies: RowRelationCount,
     pub reactions: RowRelationCount,
     pub reposts: RowRelationCount,
+    pub zaps: RowRelationCount,
 }
 
 impl RowRelationCounts {
@@ -123,16 +124,18 @@ impl RowRelationCounts {
             replies: count_from(relation_counts, "replies"),
             reactions: count_from(relation_counts, "reactions"),
             reposts: count_from(relation_counts, "reposts"),
+            zaps: count_from(relation_counts, "zaps"),
         }
     }
 
     #[must_use]
     pub fn summary(&self) -> String {
         format!(
-            "reply {}  react {}  repost {}",
+            "reply {}  react {}  repost {}  zap {}",
             self.replies.label(),
             self.reactions.label(),
-            self.reposts.label()
+            self.reposts.label(),
+            self.zaps.label()
         )
     }
 }
@@ -143,6 +146,7 @@ impl Default for RowRelationCounts {
             replies: RowRelationCount::Loading,
             reactions: RowRelationCount::Loading,
             reposts: RowRelationCount::Loading,
+            zaps: RowRelationCount::Loading,
         }
     }
 }
@@ -254,7 +258,8 @@ mod tests {
                 "relation_counts": {
                     "replies": {"state": "known", "count": 2},
                     "reactions": {"state": "known", "count": 3},
-                    "reposts": {"state": "known", "count": 1}
+                    "reposts": {"state": "known", "count": 1},
+                    "zaps": {"state": "known", "count": 4}
                 }
             }]
         });
@@ -272,6 +277,7 @@ mod tests {
             RowRelationCount::Known(3)
         );
         assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(1));
+        assert_eq!(rows[0].relation_counts.zaps, RowRelationCount::Known(4));
     }
 
     #[test]
@@ -410,7 +416,8 @@ mod tests {
                 "relation_counts": {
                     "replies": {"state": "known", "count": 0},
                     "reactions": {"state": "loading", "interest": {"namespace": "nmp.reactions.summary"}},
-                    "reposts": {"state": "known", "count": 0}
+                    "reposts": {"state": "known", "count": 0},
+                    "zaps": {"state": "known", "count": 0}
                 }
             }]
         });
@@ -422,7 +429,7 @@ mod tests {
         assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(0));
         assert_eq!(
             rows[0].relation_counts.summary(),
-            "reply 0  react ...  repost 0"
+            "reply 0  react ...  repost 0  zap 0"
         );
     }
 }

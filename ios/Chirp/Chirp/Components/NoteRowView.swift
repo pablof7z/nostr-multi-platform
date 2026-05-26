@@ -20,6 +20,7 @@ struct NoteRowView: View {
     var mentionProfiles: [String: MentionProfile] = [:]
     var eventCards: [String: ChirpEventCard] = [:]
     var timelineItems: [String: TimelineItem] = [:]
+    var relationCounts: NoteRelationCounts? = nil
     let onLike: (String) -> Void
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. Optional
     /// so callers that don't surface zap (e.g. thread / profile views that
@@ -28,6 +29,7 @@ struct NoteRowView: View {
     var onZap: ((String, String, String) -> Void)? = nil
 
     @EnvironmentObject private var router: ChirpRouter
+    @EnvironmentObject private var model: KernelModel
 
     /// Controls the inline reply sheet for this row.
     @State private var showReply = false
@@ -63,6 +65,7 @@ struct NoteRowView: View {
                 rowContent
                 NoteActionsRow(
                     item: item,
+                    relationCounts: relationCounts,
                     onLike: onLike,
                     onZap: onZap,
                     likeTapped: $likeTapped,
@@ -83,6 +86,8 @@ struct NoteRowView: View {
         .sheet(isPresented: $showReply) {
             ComposeView(replyToID: item.id, replyToShortID: item.id.shortHex)
         }
+        .onAppear { model.claimVisibleNoteRelations(eventID: item.id) }
+        .onDisappear { model.releaseVisibleNoteRelations(eventID: item.id) }
     }
 
     private var rowContent: some View {
@@ -190,6 +195,7 @@ struct NoteRowView: View {
 
 struct NoteActionsRow: View {
     let item: TimelineItem
+    let relationCounts: NoteRelationCounts?
     let onLike: (String) -> Void
     /// NIP-57 — invoked when the user taps the zap bolt. Hidden when this is
     /// `nil` (no zap wiring from the host) OR `item.authorLnurl == nil`
@@ -203,7 +209,8 @@ struct NoteActionsRow: View {
         HStack(spacing: 0) {
             actionButton(
                 icon: "bubble.left",
-                label: "Reply"
+                label: "Reply",
+                count: relationCounts?.replies.value
             ) {
                 showReply = true
             }
@@ -212,7 +219,8 @@ struct NoteActionsRow: View {
 
             actionButton(
                 icon: "arrow.2.squarepath",
-                label: "Repost"
+                label: "Repost",
+                count: relationCounts?.reposts.value
             ) {
                 // Repost command not yet on kernel surface — no-op.
             }
@@ -241,10 +249,8 @@ struct NoteActionsRow: View {
                 onZap(item.id, item.authorPubkey, lnurl)
                 UIImpactFeedbackGenerator(style: .soft).impactOccurred()
             } label: {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 15, weight: .regular))
+                actionLabel(icon: "bolt.fill", count: relationCounts?.zaps.value)
                     .foregroundStyle(ChirpColor.zap)
-                    .frame(minWidth: 44, minHeight: 32, alignment: .center)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Zap")
@@ -269,14 +275,11 @@ struct NoteActionsRow: View {
             onLike(item.id)
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: likeTapped ? "heart.fill" : "heart")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
-                    .scaleEffect(likeTapped ? 1.35 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
-            }
-            .frame(minWidth: 44, minHeight: 32, alignment: .center)
+            actionLabel(icon: likeTapped ? "heart.fill" : "heart",
+                        count: relationCounts?.reactions.value)
+                .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
+                .scaleEffect(likeTapped ? 1.15 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
         }
         .buttonStyle(.borderless)
     }
@@ -287,16 +290,27 @@ struct NoteActionsRow: View {
     private func actionButton(
         icon: String,
         label: String,
+        count: UInt64?,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .regular))
+            actionLabel(icon: icon, count: count)
                 .foregroundStyle(.secondary)
-                .frame(minWidth: 44, minHeight: 32, alignment: .center)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
+    }
+
+    private func actionLabel(icon: String, count: UInt64?) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .regular))
+            if let count, count > 0 {
+                Text("\(count)")
+                    .font(.caption)
+            }
+        }
+        .frame(minWidth: 44, minHeight: 32, alignment: .center)
     }
 }
 

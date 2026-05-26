@@ -15,15 +15,17 @@ pub struct NoteRelationCounts {
     pub replies: RelationCount,
     pub reactions: RelationCount,
     pub reposts: RelationCount,
+    pub zaps: RelationCount,
 }
 
 impl NoteRelationCounts {
-    #[must_use] 
-    pub fn for_note(event_id: &str, replies: u64) -> Self {
+    #[must_use]
+    pub fn for_note(_event_id: &str, counts: TargetRelationCounts) -> Self {
         Self {
-            replies: RelationCount::known(replies),
-            reactions: RelationCount::loading(RelationCountInterest::reactions(event_id)),
-            reposts: RelationCount::loading(RelationCountInterest::reposts(event_id)),
+            replies: RelationCount::known(counts.replies),
+            reactions: RelationCount::known(counts.reactions),
+            reposts: RelationCount::known(counts.reposts),
+            zaps: RelationCount::known(counts.zaps),
         }
     }
 }
@@ -36,12 +38,12 @@ pub enum RelationCount {
 }
 
 impl RelationCount {
-    #[must_use] 
+    #[must_use]
     pub fn known(count: u64) -> Self {
         Self::Known { count }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn loading(interest: RelationCountInterest) -> Self {
         Self::Loading { interest }
     }
@@ -55,7 +57,7 @@ pub struct RelationCountInterest {
 }
 
 impl RelationCountInterest {
-    #[must_use] 
+    #[must_use]
     pub fn reactions(event_id: &str) -> Self {
         Self {
             namespace: "nmp.reactions.summary".to_string(),
@@ -64,7 +66,7 @@ impl RelationCountInterest {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn reposts(event_id: &str) -> Self {
         Self {
             namespace: "nmp.reactions.reposts".to_string(),
@@ -72,22 +74,35 @@ impl RelationCountInterest {
             tag: "e".to_string(),
         }
     }
+
+    #[must_use]
+    pub fn zaps(event_id: &str) -> Self {
+        Self {
+            namespace: "nmp.nip57.zaps".to_string(),
+            target_event_id: event_id.to_string(),
+            tag: "e".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct TargetRelationCounts {
+    pub replies: u64,
+    pub reactions: u64,
+    pub reposts: u64,
+    pub zaps: u64,
 }
 
 pub struct NoteRelationIndex {
-    /// Counts replies per parent event id. Stays accurate because evictions
-    /// from `reply_parent_by_event` decrement the corresponding entry here.
-    reply_counts: HashMap<String, u64>,
-    /// Bounded map: reply-event-id → parent-event-id. Evicting the oldest
-    /// entry decrements `reply_counts[parent]` to keep counts consistent.
-    reply_parent_by_event: BoundedMessageMap<String, String>,
+    counts: HashMap<String, TargetRelationCounts>,
+    relation_by_event: BoundedMessageMap<String, IndexedRelation>,
 }
 
 impl Default for NoteRelationIndex {
     fn default() -> Self {
         Self {
-            reply_counts: HashMap::new(),
-            reply_parent_by_event: BoundedMessageMap::new(REPLY_INDEX_CAP),
+            counts: HashMap::new(),
+            relation_by_event: BoundedMessageMap::new(REPLY_INDEX_CAP),
         }
     }
 }
@@ -95,38 +110,112 @@ impl Default for NoteRelationIndex {
 impl NoteRelationIndex {
     #[must_use]
     pub fn counts_for(&self, event_id: &str) -> NoteRelationCounts {
-        NoteRelationCounts::for_note(event_id, self.reply_count_for(event_id))
+        NoteRelationCounts::for_note(
+            event_id,
+            self.counts.get(event_id).copied().unwrap_or_default(),
+        )
     }
 
     #[must_use]
     pub fn ingest(&mut self, event: &KernelEvent) -> Vec<String> {
-        let Some(note) = try_from_kernel_event(event) else {
+        let Some(relation) = IndexedRelation::from_event(event) else {
             return Vec::new();
         };
-        let Some(parent) = note.refs.reply.or(note.refs.root).map(|reply| reply.id) else {
-            return Vec::new();
-        };
-        if self.reply_parent_by_event.contains_key(&event.id) {
+        if self.relation_by_event.contains_key(&event.id) {
             return Vec::new();
         }
-        let (_, evicted) = self.reply_parent_by_event
-            .insert_returning_evicted(event.id.clone(), parent.clone());
-        if let Some((_, evicted_parent)) = evicted {
-            if let Some(c) = self.reply_counts.get_mut(&evicted_parent) {
-                *c = c.saturating_sub(1);
-                if *c == 0 {
-                    self.reply_counts.remove(&evicted_parent);
-                }
-            }
+        let (_, evicted) = self
+            .relation_by_event
+            .insert_returning_evicted(event.id.clone(), relation.clone());
+        let mut changed = Vec::new();
+        if let Some((_, evicted_relation)) = evicted {
+            self.apply_delta(&evicted_relation, Direction::Down);
+            changed.push(evicted_relation.target);
         }
-        let count = self.reply_counts.entry(parent.clone()).or_insert(0);
-        *count = count.saturating_add(1);
-        vec![parent]
+        self.apply_delta(&relation, Direction::Up);
+        changed.push(relation.target);
+        changed.sort();
+        changed.dedup();
+        changed
     }
 
-    fn reply_count_for(&self, event_id: &str) -> u64 {
-        self.reply_counts.get(event_id).copied().unwrap_or(0)
+    fn apply_delta(&mut self, relation: &IndexedRelation, direction: Direction) {
+        let counts = self.counts.entry(relation.target.clone()).or_default();
+        let slot = match relation.kind {
+            RelationKind::Reply => &mut counts.replies,
+            RelationKind::Reaction => &mut counts.reactions,
+            RelationKind::Repost => &mut counts.reposts,
+            RelationKind::Zap => &mut counts.zaps,
+        };
+        match direction {
+            Direction::Up => *slot = slot.saturating_add(1),
+            Direction::Down => *slot = slot.saturating_sub(1),
+        }
+        if *counts == TargetRelationCounts::default() {
+            self.counts.remove(&relation.target);
+        }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IndexedRelation {
+    target: String,
+    kind: RelationKind,
+}
+
+impl IndexedRelation {
+    fn from_event(event: &KernelEvent) -> Option<Self> {
+        if let Some(note) = try_from_kernel_event(event) {
+            return note.refs.reply.or(note.refs.root).map(|reply| Self {
+                target: reply.id,
+                kind: RelationKind::Reply,
+            });
+        }
+        if event.kind == nmp_nip18::KIND_REPOST {
+            return nmp_nip18::try_from_kernel_event(event)
+                .and_then(|repost| repost.target_event_id)
+                .map(|target| Self {
+                    target,
+                    kind: RelationKind::Repost,
+                });
+        }
+        if event.kind == 7 {
+            return first_event_tag(&event.tags).map(|target| Self {
+                target,
+                kind: RelationKind::Reaction,
+            });
+        }
+        nmp_nip57::try_from_kernel_event(event)
+            .and_then(|zap| zap.zapped_event_id)
+            .map(|target| Self {
+                target,
+                kind: RelationKind::Zap,
+            })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RelationKind {
+    Reply,
+    Reaction,
+    Repost,
+    Zap,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Direction {
+    Up,
+    Down,
+}
+
+fn first_event_tag(tags: &[Vec<String>]) -> Option<String> {
+    tags.iter().find_map(|tag| {
+        if tag.first().is_some_and(|name| name == "e") {
+            tag.get(1).filter(|id| !id.is_empty()).cloned()
+        } else {
+            None
+        }
+    })
 }
 
 #[cfg(test)]
@@ -171,22 +260,49 @@ mod tests {
         // Use a tiny cap so eviction is easy to trigger in a test.
         const CAP: usize = 2;
         let mut index = NoteRelationIndex {
-            reply_counts: std::collections::HashMap::new(),
-            reply_parent_by_event: nmp_core::substrate::BoundedMessageMap::new(CAP),
+            counts: std::collections::HashMap::new(),
+            relation_by_event: nmp_core::substrate::BoundedMessageMap::new(CAP),
         };
 
         // "reply1" and "reply2" both reply to "root".
-        let r1 = event("reply1", vec![vec!["e".into(), "root".into(), String::new(), "reply".into()]]);
-        let r2 = event("reply2", vec![vec!["e".into(), "root".into(), String::new(), "reply".into()]]);
+        let r1 = event(
+            "reply1",
+            vec![vec![
+                "e".into(),
+                "root".into(),
+                String::new(),
+                "reply".into(),
+            ]],
+        );
+        let r2 = event(
+            "reply2",
+            vec![vec![
+                "e".into(),
+                "root".into(),
+                String::new(),
+                "reply".into(),
+            ]],
+        );
         // "reply3" replies to "other" — its insertion evicts "reply1" from the bounded map.
-        let r3 = event("reply3", vec![vec!["e".into(), "other".into(), String::new(), "reply".into()]]);
+        let r3 = event(
+            "reply3",
+            vec![vec![
+                "e".into(),
+                "other".into(),
+                String::new(),
+                "reply".into(),
+            ]],
+        );
 
-        index.ingest(&r1);
-        index.ingest(&r2);
-        assert_eq!(index.counts_for("root").replies, RelationCount::Known { count: 2 });
+        let _ = index.ingest(&r1);
+        let _ = index.ingest(&r2);
+        assert_eq!(
+            index.counts_for("root").replies,
+            RelationCount::Known { count: 2 }
+        );
 
         // r3 pushes r1 out: "root" count should drop to 1.
-        index.ingest(&r3);
+        let _ = index.ingest(&r3);
         assert_eq!(
             index.counts_for("root").replies,
             RelationCount::Known { count: 1 },
@@ -203,17 +319,8 @@ mod tests {
         let counts = NoteRelationIndex::default().counts_for("root");
 
         assert_eq!(counts.replies, RelationCount::Known { count: 0 });
-        assert!(matches!(
-            counts.reactions,
-            RelationCount::Loading { ref interest }
-                if interest.namespace == "nmp.reactions.summary"
-                    && interest.target_event_id == "root"
-        ));
-        assert!(matches!(
-            counts.reposts,
-            RelationCount::Loading { ref interest }
-                if interest.namespace == "nmp.reactions.reposts"
-                    && interest.target_event_id == "root"
-        ));
+        assert_eq!(counts.reactions, RelationCount::Known { count: 0 });
+        assert_eq!(counts.reposts, RelationCount::Known { count: 0 });
+        assert_eq!(counts.zaps, RelationCount::Known { count: 0 });
     }
 }

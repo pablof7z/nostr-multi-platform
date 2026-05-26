@@ -4094,6 +4094,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-nip18",
+ "nmp-nip57",
  "nmp-threading",
  "serde",
  "serde_json",

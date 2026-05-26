@@ -172,6 +172,7 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     let createdAt: UInt64
     let content: String
     let contentTree: ContentTreeWire?
+    let relationCounts: NoteRelationCounts?
     /// Flat mirror of `author_display.name` for renderers that want a
     /// simple display-name field without decoding the nested
     /// `AuthorDisplay` object. `nil` when no kind:0 has arrived.
@@ -191,9 +192,41 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         case createdAt = "created_at"
         case content
         case contentTree = "content_tree"
+        case relationCounts = "relation_counts"
         case authorDisplayName = "author_display_name"
         case authorPictureUrl = "author_picture_url"
         case contentPreview = "content_preview"
+    }
+}
+
+struct NoteRelationCounts: Decodable, Equatable, Sendable {
+    let replies: RelationCount
+    let reactions: RelationCount
+    let reposts: RelationCount
+    let zaps: RelationCount
+}
+
+enum RelationCount: Decodable, Equatable, Sendable {
+    case known(UInt64)
+    case loading
+
+    var value: UInt64? {
+        if case .known(let count) = self { return count }
+        return nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case count
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if try container.decode(String.self, forKey: .state) == "known" {
+            self = .known(try container.decode(UInt64.self, forKey: .count))
+        } else {
+            self = .loading
+        }
     }
 }
 

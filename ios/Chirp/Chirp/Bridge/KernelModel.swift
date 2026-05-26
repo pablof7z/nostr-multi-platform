@@ -398,6 +398,14 @@ final class KernelModel: ObservableObject {
         track(kernel.react(targetEventID: targetEventID, reaction: reaction))
     }
 
+    func claimVisibleNoteRelations(eventID: String) {
+        kernel.claimVisibleNoteRelations(eventID: eventID)
+    }
+
+    func releaseVisibleNoteRelations(eventID: String) {
+        kernel.releaseVisibleNoteRelations(eventID: eventID)
+    }
+
     @discardableResult
     func follow(_ pubkey: String) -> DispatchResult {
         track(kernel.follow(pubkey: pubkey))
@@ -525,7 +533,6 @@ final class KernelModel: ObservableObject {
 
         // Capture pre-assignment values for delta-driven side-effects below.
         let priorActiveAccount = activeAccount
-        let priorItems = items
         if update.activeAccount != priorActiveAccount {
             kmLog.info(
                 "apply: activeAccount \(priorActiveAccount ?? "nil") → \(update.activeAccount ?? "nil")")

@@ -156,9 +156,11 @@ fn reaction_spans(
     let reactions = count_value(&counts.reactions);
     let reposts = count_value(&counts.reposts);
     let replies = count_value(&counts.replies);
+    let zaps = count_value(&counts.zaps);
     let r1 = fmt_count(reactions);
     let r2 = fmt_count(reposts);
     let r3 = fmt_count(replies);
+    let r4 = fmt_count(zaps);
     let dot = " \u{00b7} ";
 
     let segs = vec![
@@ -170,6 +172,9 @@ fn reaction_spans(
         Span::styled(dot, Style::default().fg(DIM_TEXT).bg(bg)),
         Span::styled("\u{1f4ac} ", Style::default().fg(REPLY_COLOR).bg(bg)),
         Span::styled(r3.clone(), Style::default().fg(REPLY_COLOR).bg(bg)),
+        Span::styled(dot, Style::default().fg(DIM_TEXT).bg(bg)),
+        Span::styled("\u{26a1} ", Style::default().fg(ACCENT_CYAN).bg(bg)),
+        Span::styled(r4.clone(), Style::default().fg(ACCENT_CYAN).bg(bg)),
     ];
     // Approximate character width for padding.
     let len = 2
@@ -179,7 +184,10 @@ fn reaction_spans(
         + r2.chars().count()
         + dot.chars().count()
         + 2
-        + r3.chars().count();
+        + r3.chars().count()
+        + dot.chars().count()
+        + 2
+        + r4.chars().count();
     (segs, len)
 }
 

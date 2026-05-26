@@ -70,4 +70,26 @@ extension KernelHandle {
         unregisterChirpProjectionIfNeeded()
         registerChirpProjection()
     }
+
+    func claimVisibleNoteRelations(eventID: String) {
+        dispatchVisibleNoteRelations(op: "claim", eventID: eventID)
+    }
+
+    func releaseVisibleNoteRelations(eventID: String) {
+        dispatchVisibleNoteRelations(op: "release", eventID: eventID)
+    }
+
+    private func dispatchVisibleNoteRelations(op: String, eventID: String) {
+        let body: [String: String] = [
+            "op": op,
+            "event_id": eventID,
+            "consumer_id": "ios.visible-note:\(eventID)"
+        ]
+        guard
+            JSONSerialization.isValidJSONObject(body),
+            let data = try? JSONSerialization.data(withJSONObject: body),
+            let json = String(data: data, encoding: .utf8)
+        else { return }
+        _ = dispatchRawAction(namespace: "nmp.nip01.visible_note_relations", bodyJson: json)
+    }
 }

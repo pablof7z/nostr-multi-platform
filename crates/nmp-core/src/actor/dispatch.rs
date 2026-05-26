@@ -1249,6 +1249,40 @@ pub(super) fn dispatch_command(
             );
             Some(Vec::new())
         }
+        ActorCommand::EnsureInterest { identity, interest } => {
+            let newly_installed = ctx
+                .kernel
+                .lifecycle_mut()
+                .registry_mut()
+                .ensure_sub(identity, interest);
+            if newly_installed {
+                ctx.kernel.lifecycle_mut().enqueue_trigger(
+                    crate::subs::CompileTrigger::InvalidateCompile {
+                        reason: crate::subs::InvalidateReason::External(
+                            "ensure-interest".to_string(),
+                        ),
+                    },
+                );
+            }
+            Some(Vec::new())
+        }
+        ActorCommand::DropInterestOwner(identity) => {
+            let removed = ctx
+                .kernel
+                .lifecycle_mut()
+                .registry_mut()
+                .drop_owner(&identity);
+            if removed {
+                ctx.kernel.lifecycle_mut().enqueue_trigger(
+                    crate::subs::CompileTrigger::InvalidateCompile {
+                        reason: crate::subs::InvalidateReason::External(
+                            "drop-interest-owner".to_string(),
+                        ),
+                    },
+                );
+            }
+            Some(Vec::new())
+        }
         ActorCommand::Shutdown => {
             close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
             ctx.connected_urls.clear();

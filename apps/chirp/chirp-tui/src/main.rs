@@ -94,13 +94,23 @@ fn run(args: Args) -> Result<()> {
 
 fn apply_render_intents(runtime: &AppRuntime, diff: RenderIntentDiff) -> chirp_tui::Result<()> {
     for intent in diff.removed {
-        if let RenderIntent::AuthorProfile { pubkey } = intent {
-            runtime.release_visible_author_profile(&pubkey)?;
+        match intent {
+            RenderIntent::AuthorProfile { pubkey } => {
+                runtime.release_visible_author_profile(&pubkey)?;
+            }
+            RenderIntent::NoteRelations { event_id } => {
+                runtime.release_visible_note_relation_counts(&event_id)?;
+            }
         }
     }
     for intent in diff.added {
-        if let RenderIntent::AuthorProfile { pubkey } = intent {
-            runtime.claim_visible_author_profile(&pubkey)?;
+        match intent {
+            RenderIntent::AuthorProfile { pubkey } => {
+                runtime.claim_visible_author_profile(&pubkey)?;
+            }
+            RenderIntent::NoteRelations { event_id } => {
+                runtime.claim_visible_note_relation_counts(&event_id)?;
+            }
         }
     }
     Ok(())
