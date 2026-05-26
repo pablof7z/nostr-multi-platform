@@ -54,7 +54,7 @@ impl KernelEventObserver for CountingObserver {
 /// the proven pattern from `kernel/raw_event_observer_tests.rs` so the
 /// fixture survives `VerifiedEvent::try_from_raw`'s real sig verification.
 fn signed_event_value(kind: u32, content: &str) -> serde_json::Value {
-    use ::nostr::{EventBuilder, Keys, Kind};
+    use nostr::{EventBuilder, Keys, Kind};
     let keys = Keys::generate();
     let nostr_event = EventBuilder::new(Kind::from(kind as u16), content)
         .sign_with_keys(&keys)
@@ -114,6 +114,65 @@ fn wildcard_kind_fan_out_to_event_observers() {
         "the observer must receive the event with its original kind \
          (kind:9 NIP-29 group chat)"
     );
+}
+
+/// Kind:0 is handled by an explicit arm because it updates the kernel's
+/// profile cache. It must still fan the accepted event to observers so app
+/// projections such as Chirp's modular timeline can refresh author display
+/// names from kind:0 without app-local fetching or polling.
+#[test]
+fn kind0_fans_out_to_event_observers() {
+    let slot = new_event_observer_slot();
+    let observer = CountingObserver::new();
+    register_rust_observer(&slot, observer.clone());
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot);
+
+    let value = signed_event_value(0, r#"{"display_name":"Alice"}"#);
+    kernel.handle_event(
+        RelayRole::Indexer,
+        "wss://relay.test",
+        "profile-claim-1-test",
+        &value,
+    );
+
+    assert_eq!(
+        observer.count.load(Ordering::SeqCst),
+        1,
+        "accepted kind:0 metadata must fan out to KernelEventObservers"
+    );
+    let kinds = observer.kinds.lock().unwrap().clone();
+    assert_eq!(kinds, vec![0]);
+}
+
+/// Kind:3 is also an explicit arm. The NIP-02 follow-list projection consumes
+/// it through KernelEventObserver, so accepted contact lists must fan out just
+/// like timeline, wildcard, and kind:0 events.
+#[test]
+fn kind3_fans_out_to_event_observers() {
+    let slot = new_event_observer_slot();
+    let observer = CountingObserver::new();
+    register_rust_observer(&slot, observer.clone());
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot);
+
+    let value = signed_event_value(3, "");
+    kernel.handle_event(
+        RelayRole::Indexer,
+        "wss://relay.test",
+        "account-profile",
+        &value,
+    );
+
+    assert_eq!(
+        observer.count.load(Ordering::SeqCst),
+        1,
+        "accepted kind:3 contact lists must fan out to KernelEventObservers"
+    );
+    let kinds = observer.kinds.lock().unwrap().clone();
+    assert_eq!(kinds, vec![3]);
 }
 
 /// D4 duplicate dedup: a second delivery of the same event id must NOT

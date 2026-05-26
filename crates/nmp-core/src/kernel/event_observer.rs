@@ -10,9 +10,8 @@
 //! - `take_event_observers_handle_for_reset` — preserves the slot across
 //!   `ActorCommand::Reset` so existing per-app crate registrations stay
 //!   alive (same survival pattern as `dispatch_drops_handle`).
-//! - `notify_event_observers` — fan-out entry called from
-//!   `ingest/timeline.rs` and `test_support.rs` after every
-//!   `EventStore::insert` returning `Inserted | Replaced`.
+//! - `notify_event_observers` — fan-out entry called after every
+//!   observer-visible `EventStore::insert` returning `Inserted | Replaced`.
 //!
 //! Lives as a sibling of `kernel/mod.rs` to keep `mod.rs` under the
 //! AGENTS.md soft cap (300 LOC) — the methods are otherwise inline `impl
@@ -49,7 +48,7 @@ impl Kernel {
     }
 
     /// Fan one accepted event out to every registered observer. Called
-    /// from `ingest/timeline.rs` (and the test-support fixture) after
+    /// from the ingest paths (and the test-support fixture) after
     /// `EventStore::insert` returns `Inserted | Replaced`. Best-effort:
     /// missing slot, poisoned mutex, or serialization failure on the
     /// C-ABI side are all silent no-ops (D6). The no-observers fast path

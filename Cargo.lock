@@ -970,6 +970,7 @@ dependencies = [
  "nmp-chirp-config",
  "nmp-core",
  "nmp-ffi",
+ "nmp-nip01",
  "ratatui",
  "ratatui-image",
  "rexpect",

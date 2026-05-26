@@ -36,5 +36,6 @@ ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
+nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 rexpect = "0.7.1"
 vt100 = "0.16.2"

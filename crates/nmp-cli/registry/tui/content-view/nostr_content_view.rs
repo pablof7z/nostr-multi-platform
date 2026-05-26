@@ -44,13 +44,44 @@ impl<'a> NostrContentView<'a> {
 
     pub fn lines(&self, width: usize) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
-        for root in &self.tree.roots {
-            self.append_node(*root, width, &mut lines);
+        let mut root_pos = 0usize;
+        while root_pos < self.tree.roots.len() {
+            let root = self.tree.roots[root_pos];
+            let Some(node) = self.tree.node(root) else {
+                root_pos += 1;
+                continue;
+            };
+            if is_inline_root(node) {
+                let inline = self.collect_inline_roots(&mut root_pos);
+                if !inline.is_empty() {
+                    lines.extend(wrap_spans(inline, width));
+                }
+            } else {
+                self.append_node(root, width, &mut lines);
+                root_pos += 1;
+            }
         }
         if lines.is_empty() {
             lines.push(Line::from(""));
         }
         lines
+    }
+
+    fn collect_inline_roots(&self, root_pos: &mut usize) -> Vec<Span<'static>> {
+        let mut inline = Vec::new();
+        while *root_pos < self.tree.roots.len() {
+            let root = self.tree.roots[*root_pos];
+            let Some(node) = self.tree.node(root) else {
+                *root_pos += 1;
+                continue;
+            };
+            if !is_inline_root(node) {
+                break;
+            }
+            self.append_inline_node(root, &mut inline);
+            *root_pos += 1;
+        }
+        inline
     }
 
     fn append_node(&self, index: usize, width: usize, lines: &mut Vec<Line<'static>>) {
@@ -289,8 +320,25 @@ impl<'a> NostrContentView<'a> {
 impl Widget for NostrContentView<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let mut cursor = area.y;
-        for root in &self.tree.roots {
-            self.render_node(*root, area, buf, &mut cursor);
+        let mut root_pos = 0usize;
+        while root_pos < self.tree.roots.len() {
+            let root = self.tree.roots[root_pos];
+            let Some(node) = self.tree.node(root) else {
+                root_pos += 1;
+                continue;
+            };
+            if is_inline_root(node) {
+                let inline = self.collect_inline_roots(&mut root_pos);
+                self.render_lines(
+                    wrap_spans(inline, area.width as usize),
+                    area,
+                    buf,
+                    &mut cursor,
+                );
+            } else {
+                self.render_node(root, area, buf, &mut cursor);
+                root_pos += 1;
+            }
             if cursor >= area.bottom() {
                 break;
             }
@@ -403,6 +451,12 @@ impl NostrContentView<'_> {
             .render(rect, buf);
         *cursor = rect.bottom();
     }
+}
+
+#[rustfmt::skip]
+fn is_inline_root(node: &WireNode) -> bool {
+    use WireNode::*;
+    !matches!(node, Paragraph { .. } | Heading { .. } | BlockQuote { .. } | CodeBlock { .. } | List { .. } | Rule | Media { .. } | Image { .. } | EventRef(_))
 }
 
 fn take_area(area: Rect, cursor: &mut u16, wanted_height: u16) -> Rect {
