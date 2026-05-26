@@ -34,7 +34,19 @@ class KernelBridge {
         if (handle != 0L) nativeCreateLocalAccount(handle, displayName)
     }
 
-    /** Blocking (≤250 ms) drain of the kernel snapshot channel; null on idle. */
+    /**
+     * Blocking (≤250 ms) drain of the kernel snapshot channel.
+     *
+     * Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery):
+     * * `null` — idle tick (`RecvTimeoutError::Timeout` on the Rust side).
+     *   The caller should loop back into `nextUpdate` immediately.
+     * * Non-null string — one JSON snapshot envelope.
+     * * Throws [IllegalStateException] — the snapshot channel has been
+     *   closed (`RecvTimeoutError::Disconnected`; the boxed `Sender` in the
+     *   Rust `Session` was dropped, typically as part of `free()`). The
+     *   caller MUST stop polling — looping after a disconnect spins the
+     *   CPU on a dead channel.
+     */
     fun nextUpdate(): String? = if (handle != 0L) nativeNextUpdate(handle) else null
 
     /** Full Chirp modular timeline projection produced by `nmp-app-chirp`. */
