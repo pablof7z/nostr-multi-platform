@@ -10,11 +10,7 @@ use image::DynamicImage;
 use ratatui::layout::Size;
 use ratatui_image::{picker::Picker, picker::ProtocolType, protocol::Protocol, Resize};
 
-use crate::{
-    app::AppState,
-    timeline::TimelineRow,
-    ui::nostr_user::profile_wire::ProfileWire,
-};
+use crate::{app::AppState, timeline::TimelineRow};
 
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 
