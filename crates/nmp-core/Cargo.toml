@@ -90,6 +90,7 @@ bech32 = "0.11"
 # `clock` feature reads the OS wall-clock; gated behind `native` so wasm32
 # builds compile (wasm has no OS clock without a js-sys shim).
 chrono = { version = "0.4", default-features = false }
+flatbuffers = { workspace = true }
 # Insertion-ordered hash map. Powers `substrate::bounded::BoundedMessageMap` —
 # the cap-and-evict-oldest primitive every long-lived per-projection message
 # store now backs onto so memory and per-tick snapshot serialisation are

@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use crate::bridge::UpdatePayload;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeatureSnapshot {
     pub accounts: Vec<AccountLine>,
@@ -18,19 +20,28 @@ pub struct FeatureSnapshot {
 }
 
 impl FeatureSnapshot {
-    #[must_use] 
-    pub fn from_payload(payload: &str) -> Self {
+    #[must_use]
+    pub fn from_transport_payload(payload: &UpdatePayload) -> Self {
+        let Some(value) = crate::snapshot::value_from_transport_payload(payload) else {
+            return Self::default();
+        };
+        Self::from_snapshot_value(&value)
+    }
+
+    #[must_use]
+    pub fn from_json_fixture(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
         };
-        let projections = value
-            .get("v")
-            .and_then(|v| v.get("projections"))
-            .or_else(|| value.get("projections"));
-        Self::from_projections(projections)
+        let snapshot = value.get("v").unwrap_or(&value);
+        Self::from_snapshot_value(snapshot)
     }
 
-    #[must_use] 
+    fn from_snapshot_value(value: &Value) -> Self {
+        Self::from_projections(value.get("projections"))
+    }
+
+    #[must_use]
     pub fn from_projections(projections: Option<&Value>) -> Self {
         let Some(projections) = projections else {
             return Self::default();
@@ -52,7 +63,7 @@ impl FeatureSnapshot {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.accounts.is_empty()
             && self.outbox.is_empty()

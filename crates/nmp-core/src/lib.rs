@@ -74,6 +74,7 @@ pub mod planner {
 }
 pub mod publish;
 mod relay;
+mod transport;
 // Step 8 phase A — `relay_protocol` and `relay_worker` moved to
 // `nmp-network`. They are re-imported here only through the (gated) actor
 // runtime path; the public re-exports below preserve the prior
@@ -127,7 +128,9 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
-pub use kernel::{read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+pub use kernel::{
+    read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot,
+};
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
@@ -165,7 +168,8 @@ pub use relay::canonical_relay_url;
 pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
-    panic_message, wrap_panic, wrap_snapshot, PanicFrame, UpdateEnvelope, WireEnvelope,
+    decode_snapshot_payload, decode_update_frame, encode_panic, encode_snapshot_value,
+    panic_message, PanicFrame, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
     SNAPSHOT_SCHEMA_VERSION,
 };
 
@@ -200,9 +204,7 @@ pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE
 // The FFI shape (`KernelEventObserverFn` etc.) is the C-ABI channel
 // Swift / Kotlin bridges use directly through
 // `nmp_app_register_event_observer`.
-pub use actor::{
-    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
-};
+pub use actor::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
 
 // Raw signed-event tap surface exposed to per-app Rust crates. Apps
 // register typed `Arc<dyn RawEventObserver>`s (with a `KindFilter`) via
@@ -211,9 +213,7 @@ pub use actor::{
 // (`RawEventObserverFn` etc.) is the C-ABI channel Swift / Kotlin bridges
 // use directly through `nmp_app_register_raw_event_observer`. Generic
 // capability (D0) — no protocol nouns.
-pub use actor::{
-    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
-};
+pub use actor::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
 
 // ── Step 11 final — `nmp-ffi` re-export surface ────────────────────────────
 //
@@ -237,14 +237,13 @@ pub use actor::{
 #[doc(hidden)]
 pub mod __ffi_internal {
     pub use crate::actor::{
-        has_role, new_bunker_handshake_slot, new_event_observer_slot,
-        new_lifecycle_observer_slot, new_raw_event_observer_slot, nostrconnect_relay_url,
-        register_c_observer, register_c_raw_observer, register_rust_observer,
-        register_rust_raw_observer, run_actor_with_observers, unregister_observer,
-        unregister_raw_observer, KernelEventObserverRegistration, KernelEventObserverSlot,
-        LifecycleObserverFn, LifecycleObserverRegistration, LifecycleObserverSlot,
-        RawEventObserverRegistration, RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
-        LIFECYCLE_PHASE_FOREGROUND,
+        has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+        new_raw_event_observer_slot, nostrconnect_relay_url, register_c_observer,
+        register_c_raw_observer, register_rust_observer, register_rust_raw_observer,
+        run_actor_with_observers, unregister_observer, unregister_raw_observer,
+        KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
+        LifecycleObserverRegistration, LifecycleObserverSlot, RawEventObserverRegistration,
+        RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
     };
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
     // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
@@ -290,10 +289,13 @@ pub mod testing {
     /// Spawn the kernel actor on a dedicated thread.
     ///
     /// Returns a command sender and an update receiver.  The caller drives the
-    /// actor by sending [`ActorCommand`] values and reads JSON-encoded kernel
-    /// snapshots from the update channel.  Dropping the sender or sending
+    /// actor by sending [`ActorCommand`] values and reads FlatBuffers update
+    /// frames from the update channel.  Dropping the sender or sending
     /// [`ActorCommand::Shutdown`] stops the actor thread.
-    pub fn spawn_actor() -> (mpsc::Sender<ActorCommand>, mpsc::Receiver<String>) {
+    pub fn spawn_actor() -> (
+        mpsc::Sender<ActorCommand>,
+        mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
+    ) {
         let (command_tx, command_rx) = mpsc::channel();
         let (update_tx, update_rx) = mpsc::channel();
         // Hand the actor a clone of the command sender so dispatch arms

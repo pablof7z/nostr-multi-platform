@@ -15,10 +15,10 @@ use std::time::Instant;
 
 use zeroize::Zeroizing;
 
-use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 use crate::kernel::Kernel;
-use crate::substrate::HostOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
+use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
+use crate::substrate::HostOpHandlerSlot;
 use nmp_network::pool::{Pool, PoolEvent, RelayFrame as PoolFrame};
 
 use crate::kernel::RelayFrame;
@@ -56,7 +56,6 @@ fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
 use crate::subs::PlanCoverageHook;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
-use crate::kernel_action::dispatch_kernel_action;
 use super::pending_sign::PendingSign;
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
@@ -66,6 +65,7 @@ use super::session_persistence;
 use super::tick::{emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
 use crate::capability_socket::CapabilityCallbackSlot;
+use crate::kernel_action::dispatch_kernel_action;
 
 /// Sync every host-readable local-key mirror to the current active account.
 ///
@@ -199,7 +199,7 @@ pub(super) struct ActorContext<'a> {
     pub(super) pool: &'a Pool,
     pub(super) connected_relays: &'a mut HashSet<RelayRole>,
     pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
-    pub(super) update_tx: &'a Sender<String>,
+    pub(super) update_tx: &'a Sender<crate::update_envelope::UpdateFrameBytes>,
     pub(super) last_emit: &'a mut Instant,
     pub(super) next_relay_generation: &'a mut u64,
     pub(super) running: &'a mut bool,
@@ -255,8 +255,7 @@ pub(super) struct ActorContext<'a> {
         &'a Arc<std::sync::RwLock<crate::substrate::EventIngestDispatcher>>,
     /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. Same
     /// `Reset`-survival contract as the ingest dispatcher slot.
-    pub(super) dm_inbox_relays_slot:
-        &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    pub(super) dm_inbox_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
     /// V-51 phase 4 — routing-trace projection slot. Read by the `Reset`
     /// arm to re-publish the rebuilt kernel's `routing_trace()` clone so
     /// `NmpApp::routing_trace` keeps returning a live projection across a
@@ -1049,7 +1048,13 @@ pub(super) fn dispatch_command(
         ActorCommand::Stop => {
             *ctx.running = false;
             *ctx.startup_sent = false;
-            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
+            close_relays(
+                ctx.relay_controls,
+                ctx.slot_to_url,
+                ctx.pool,
+                ctx.connected_relays,
+                ctx.kernel,
+            );
             // T116/G1 — clear reconnect-replay discriminator so a subsequent
             // Start replays cleanly (every URL appears as a first-connect).
             ctx.connected_urls.clear();
@@ -1057,7 +1062,13 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Reset => {
-            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
+            close_relays(
+                ctx.relay_controls,
+                ctx.slot_to_url,
+                ctx.pool,
+                ctx.connected_relays,
+                ctx.kernel,
+            );
             ctx.connected_urls.clear();
             // T114b — preserve the FFI-channel drop-counter handle across
             // Reset (the underlying Arc<AtomicU64> is shared with the FFI
@@ -1138,12 +1149,7 @@ pub(super) fn dispatch_command(
             // The slot outlives the reset (shared `Arc` with `NmpApp`); reading
             // it here ensures the rebuilt lifecycle also enforces D2. Mirrors
             // the initial install in `run_actor_with_observers`.
-            if let Some(hook) = ctx
-                .coverage_hook_slot
-                .lock()
-                .ok()
-                .and_then(|g| g.clone())
-            {
+            if let Some(hook) = ctx.coverage_hook_slot.lock().ok().and_then(|g| g.clone()) {
                 ctx.kernel.lifecycle_mut().set_coverage_hook(hook);
             }
             if let Some(interceptor) = ctx
@@ -1284,7 +1290,13 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Shutdown => {
-            close_relays(ctx.relay_controls, ctx.slot_to_url, ctx.pool, ctx.connected_relays, ctx.kernel);
+            close_relays(
+                ctx.relay_controls,
+                ctx.slot_to_url,
+                ctx.pool,
+                ctx.connected_relays,
+                ctx.kernel,
+            );
             ctx.connected_urls.clear();
             None
         }
@@ -1331,11 +1343,21 @@ pub(super) fn dispatch_command(
             let identity_cell = std::cell::RefCell::new(&*ctx.identity);
             let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
 
-            let clock = KernelClockAdapter { kernel: &kernel_cell };
-            let signers = LocalSignerAccessAdapter { identity: &identity_cell };
-            let errors = ErrorSurfaceAdapter { kernel: &kernel_cell };
-            let stages = ActionStageTrackerAdapter { kernel: &kernel_cell };
-            let recipients = RecipientRelayLookupAdapter { kernel: &kernel_cell };
+            let clock = KernelClockAdapter {
+                kernel: &kernel_cell,
+            };
+            let signers = LocalSignerAccessAdapter {
+                identity: &identity_cell,
+            };
+            let errors = ErrorSurfaceAdapter {
+                kernel: &kernel_cell,
+            };
+            let stages = ActionStageTrackerAdapter {
+                kernel: &kernel_cell,
+            };
+            let recipients = RecipientRelayLookupAdapter {
+                kernel: &kernel_cell,
+            };
 
             // A second sender clone for the worker-thread surface. Cloning
             // a `mpsc::Sender` is cheap (atomic ref-count bump); the
@@ -1454,7 +1476,7 @@ pub(super) fn handle_relay_event(
     next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
     connected_urls: &mut HashSet<CanonicalRelayUrl>,
-    update_tx: &Sender<String>,
+    update_tx: &Sender<crate::update_envelope::UpdateFrameBytes>,
     last_emit: &mut Instant,
     startup_sent: &mut bool,
     running: bool,
@@ -1652,8 +1674,7 @@ mod nip65_auto_publish_tests {
     /// (`tests/nip_tag_conformance.rs`) and the remote-signer tests
     /// (`actor/commands/remote_signer_tests.rs`) use. Reusing it here
     /// keeps the test fixture surface small.
-    const TEST_NSEC: &str =
-        "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+    const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
     fn fresh_kernel() -> Kernel {
         Kernel::new(DEFAULT_VISIBLE_LIMIT)
@@ -1713,12 +1734,8 @@ mod nip65_auto_publish_tests {
         let added = add_relay(&mut kernel, "wss://relay.example", "both");
         assert!(added.is_some(), "add_relay must accept a valid wss:// URL");
 
-        let outbound = maybe_publish_relay_list_after_edit(
-            &mut identity,
-            &mut kernel,
-            &before,
-            &mut pending,
-        );
+        let outbound =
+            maybe_publish_relay_list_after_edit(&mut identity, &mut kernel, &before, &mut pending);
         assert!(
             count_kind_10002_frames(&outbound) >= 1,
             "AddRelay with an active signer must re-publish kind:10002. \
@@ -1738,12 +1755,8 @@ mod nip65_auto_publish_tests {
         let before = kernel.relay_edit_rows_snapshot().to_vec();
         add_relay(&mut kernel, "wss://relay.example", "both");
 
-        let outbound = maybe_publish_relay_list_after_edit(
-            &mut identity,
-            &mut kernel,
-            &before,
-            &mut pending,
-        );
+        let outbound =
+            maybe_publish_relay_list_after_edit(&mut identity, &mut kernel, &before, &mut pending);
         assert_eq!(
             count_kind_10002_frames(&outbound),
             0,
@@ -1773,12 +1786,8 @@ mod nip65_auto_publish_tests {
         let before = kernel.relay_edit_rows_snapshot().to_vec();
         add_relay(&mut kernel, "wss://relay.example", "both");
 
-        let outbound = maybe_publish_relay_list_after_edit(
-            &mut identity,
-            &mut kernel,
-            &before,
-            &mut pending,
-        );
+        let outbound =
+            maybe_publish_relay_list_after_edit(&mut identity, &mut kernel, &before, &mut pending);
         assert_eq!(
             count_kind_10002_frames(&outbound),
             0,
@@ -1803,12 +1812,8 @@ mod nip65_auto_publish_tests {
         let before = kernel.relay_edit_rows_snapshot().to_vec();
         remove_relay(&mut kernel, "wss://other.example");
 
-        let outbound = maybe_publish_relay_list_after_edit(
-            &mut identity,
-            &mut kernel,
-            &before,
-            &mut pending,
-        );
+        let outbound =
+            maybe_publish_relay_list_after_edit(&mut identity, &mut kernel, &before, &mut pending);
         assert_eq!(
             count_kind_10002_frames(&outbound),
             0,
@@ -1837,12 +1842,8 @@ mod nip65_auto_publish_tests {
         let before = kernel.relay_edit_rows_snapshot().to_vec();
         remove_relay(&mut kernel, "wss://drop.example");
 
-        let outbound = maybe_publish_relay_list_after_edit(
-            &mut identity,
-            &mut kernel,
-            &before,
-            &mut pending,
-        );
+        let outbound =
+            maybe_publish_relay_list_after_edit(&mut identity, &mut kernel, &before, &mut pending);
         assert!(
             count_kind_10002_frames(&outbound) >= 1,
             "removing an existing URL must re-publish kind:10002 with \
@@ -1872,12 +1873,8 @@ mod nip65_auto_publish_tests {
             "test precondition: projection must be empty after removing the only row"
         );
 
-        let outbound = maybe_publish_relay_list_after_edit(
-            &mut identity,
-            &mut kernel,
-            &before,
-            &mut pending,
-        );
+        let outbound =
+            maybe_publish_relay_list_after_edit(&mut identity, &mut kernel, &before, &mut pending);
         assert_eq!(
             count_kind_10002_frames(&outbound),
             0,

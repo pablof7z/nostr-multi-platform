@@ -9,7 +9,7 @@
 use std::time::{Duration, Instant};
 
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::UpdateEnvelope;
+use nmp_core::{decode_update_frame, UpdateEnvelope};
 
 #[test]
 #[ignore = "hits the public relay wss://relay.primal.net; run with --ignored"]
@@ -26,13 +26,15 @@ fn in_process_kernel_renders_live_feed() {
     let mut best_events = 0u64;
 
     while Instant::now() < deadline {
-        let Ok(line) = rx.recv_timeout(Duration::from_secs(5)) else {
+        let Ok(frame) = rx.recv_timeout(Duration::from_secs(5)) else {
             continue;
         };
-        let Ok(env) = serde_json::from_str::<UpdateEnvelope>(&line) else {
+        let Ok(env) = decode_update_frame(&frame) else {
             continue;
         };
-        let UpdateEnvelope::Snapshot(v) = env else { continue };
+        let UpdateEnvelope::Snapshot(v) = env else {
+            continue;
+        };
         let items = v["items"].as_array().map(Vec::len).unwrap_or(0);
         let events = v["metrics"]["events_rx"].as_u64().unwrap_or(0);
         best_items = best_items.max(items);

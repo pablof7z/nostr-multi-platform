@@ -848,6 +848,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "negentropy"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
+
+[[package]]
 name = "nmp-android-ffi"
 version = "0.1.0"
 dependencies = [
@@ -868,6 +874,7 @@ dependencies = [
  "nmp-ffi",
  "nmp-nip01",
  "nmp-nip02",
+ "nmp-nip18",
  "nmp-nip29",
  "nmp-nip57",
  "nmp-signer-broker",
@@ -888,7 +895,9 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip57",
+ "nmp-nip77",
  "nmp-router",
+ "nmp-wot",
  "nostr",
  "serde",
  "serde_json",
@@ -916,6 +925,7 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "chrono",
+ "flatbuffers",
  "indexmap",
  "nmp-network",
  "nmp-nip42-types",
@@ -966,6 +976,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-nip18",
  "nmp-threading",
  "serde",
  "serde_json",
@@ -996,6 +1007,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip18"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nip29"
 version = "0.1.0"
 dependencies = [
@@ -1014,12 +1034,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip47"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nwc",
+ "nostr",
+ "serde",
+ "serde_json",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
 name = "nmp-nip57"
 version = "0.1.0"
 dependencies = [
  "bech32",
  "nmp-core",
  "nmp-ffi",
+ "nmp-nip47",
  "nostr",
  "serde",
  "serde_json",
@@ -1037,6 +1071,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip77"
+version = "0.1.0"
+dependencies = [
+ "negentropy",
+ "nmp-core",
+ "nmp-coverage-gate",
+ "nostr",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nostr-lmdb"
 version = "0.1.0"
 dependencies = [
@@ -1047,6 +1092,16 @@ dependencies = [
  "nostr-database",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "nmp-nwc"
+version = "0.1.0"
+dependencies = [
+ "nostr",
+ "serde",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]
@@ -1123,6 +1178,17 @@ name = "nmp-threading"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-wot"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-ffi",
+ "nostr",
  "serde",
  "serde_json",
 ]

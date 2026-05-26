@@ -2,8 +2,11 @@ import type { WorkerEvent, WorkerRequest } from "./protocol";
 
 const defaultModulePath = "/nmp-wasm/nmp_wasm.js";
 
+type SnapshotCallback = (bytes: Uint8Array) => void;
+
 type NmpWasmRuntime = {
   handle_json(request: string): unknown;
+  set_snapshot_callback?(callback: SnapshotCallback | null): void;
 };
 
 type NmpWasmModule = {
@@ -20,8 +23,30 @@ export type WasmBridgeLoadResult =
   | { type: "loaded"; bridge: WasmBridge }
   | { type: "unavailable"; error: WasmBridgeUnavailable };
 
+/// The wasm runtime delivers FlatBuffers update bytes through a registered
+/// JS callback rather than through `handle_json`'s return value. Encoding
+/// ~870KB of binary frame as a JSON number array on every 4Hz tick defeats
+/// the binary transport; the typed-array sink keeps the bytes binary.
+///
+/// The sink is installed once at bridge construction time and stays
+/// installed for the bridge's lifetime — the wasm runtime calls it
+/// synchronously from inside `handle_json` (for `Start`/dispatch-driven
+/// snapshots) and from the relay-pool sink (for inbound-driven snapshots).
+export type UpdateBytesSink = (bytes: Uint8Array) => void;
+
 export class WasmBridge {
-  constructor(private readonly runtime: NmpWasmRuntime) {}
+  constructor(
+    private readonly runtime: NmpWasmRuntime,
+    private readonly onUpdateBytes: UpdateBytesSink,
+  ) {
+    runtime.set_snapshot_callback?.((bytes) => {
+      // The runtime hands us a fresh `Uint8Array` owned by the JS heap
+      // (see `push_bytes_if_callback` in snapshot.rs — `copy_from` allocs
+      // into JS memory). Forwarding the same instance is safe; the sink
+      // is responsible for any further copy/transfer semantics.
+      this.onUpdateBytes(bytes);
+    });
+  }
 
   handle(request: WorkerRequest): WorkerEvent[] {
     try {
@@ -40,6 +65,7 @@ export class WasmBridge {
 }
 
 export async function loadWasmBridge(
+  onUpdateBytes: UpdateBytesSink,
   modulePath = defaultModulePath,
 ): Promise<WasmBridgeLoadResult> {
   try {
@@ -54,7 +80,10 @@ export async function loadWasmBridge(
     if (typeof wasmModule.NmpWasmRuntime !== "function") {
       return unavailable("nmp-wasm module loaded without NmpWasmRuntime export");
     }
-    return { type: "loaded", bridge: new WasmBridge(new wasmModule.NmpWasmRuntime()) };
+    return {
+      type: "loaded",
+      bridge: new WasmBridge(new wasmModule.NmpWasmRuntime(), onUpdateBytes),
+    };
   } catch (error) {
     return unavailable(`nmp-wasm module could not be loaded from ${modulePath}`);
   }

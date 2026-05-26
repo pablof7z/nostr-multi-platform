@@ -20,10 +20,9 @@
 //!   the wasm-side install request with the cached pubkey hex.
 //! - The `NmpWasmRuntime::set_snapshot_callback` wasm-bindgen method stores
 //!   a `js_sys::Function` the relay-pool sink invokes whenever an inbound
-//!   relay frame mutates kernel state. The callback receives the same
-//!   `{"type":"update","envelope":…}` JSON shape `handle()` returns
-//!   synchronously, so the JS event-handling code does not branch on push
-//!   vs. pull.
+//!   relay frame mutates kernel state. The callback receives the same binary
+//!   update event shape `handle()` returns synchronously, so the JS
+//!   event-handling code does not branch on push vs. pull.
 //!
 //! What Stage 3b deliberately does NOT do (Stage 3c follow-up):
 //!
@@ -42,7 +41,7 @@
 //!   real `KernelUpdate` values.
 //! - `OpenUri` routes through `resolve_open_uri` and emits the corresponding
 //!   `ViewOpened` update.
-//! - Snapshot envelopes are produced via [`nmp_core::wrap_snapshot`].
+//! - Snapshot updates are produced as FlatBuffers `UpdateFrame` bytes.
 //! - **(wasm32)** Relay sockets dial on `Start`, reconnect with the same
 //!   exponential backoff + jitter constants the native worker uses, ingest
 //!   frames into the kernel, route outbound back to the wire, and push a
@@ -59,9 +58,9 @@ use nmp_core::{KernelAction, KernelReducer, KernelUpdate};
 use nmp_signers::Signer;
 
 #[cfg(target_arch = "wasm32")]
-use nmp_network::browser_driver::BrowserRelayDriver;
-#[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
+#[cfg(target_arch = "wasm32")]
+use nmp_network::browser_driver::BrowserRelayDriver;
 
 use crate::dispatch_routing::{
     browser_driver_missing_reason, kernel_action_from_dispatch, write_path_unavailable_reason,
@@ -71,7 +70,7 @@ use crate::protocol::{
     WorkerEvent, WorkerRequest,
 };
 use crate::signer_slot;
-use crate::snapshot::{build_snapshot_value, RuntimeMeta};
+use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
 
 const PROTOCOL_VERSION: u16 = 1;
 
@@ -96,7 +95,7 @@ pub struct WasmRuntime {
     /// Held behind `Rc<RefCell>` so the wasm32 relay-driver closures can
     /// share it without unsafe lifetime gymnastics.
     reducer: Rc<RefCell<KernelReducer>>,
-    /// Runtime metadata mirrored into every snapshot envelope. Shared with
+    /// Runtime metadata mirrored into every snapshot update. Shared with
     /// the relay-pool sink via `Rc<RefCell>` so the sink can build a fresh
     /// snapshot from kernel + meta without holding a reference to the
     /// runtime itself (which the sink, captured by JS event handlers,
@@ -157,6 +156,17 @@ impl WasmRuntime {
     #[cfg(target_arch = "wasm32")]
     pub fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
         *self.snapshot_callback.borrow_mut() = callback;
+    }
+
+    /// Hand the wasm-bindgen wrapper a borrow of the snapshot-callback slot
+    /// so the `handle_json` drain path can route `UpdateBytes` through the
+    /// same `Uint8Array` channel the relay-pool sink uses. Wasm32-only —
+    /// callers off-wasm have no `js_sys::Function` to push to.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn snapshot_callback_handle(
+        &self,
+    ) -> &Rc<RefCell<Option<js_sys::Function>>> {
+        &self.snapshot_callback
     }
 
     /// Native test-side shim — the wasm-bindgen `NmpWasmRuntime` only
@@ -309,8 +319,7 @@ impl WasmRuntime {
             Rc::clone(&self.reducer),
             Rc::clone(&self.meta),
         );
-        let drivers =
-            relay_pool::spawn_drivers(&self.meta.borrow().relay_bootstrap, handlers)?;
+        let drivers = relay_pool::spawn_drivers(&self.meta.borrow().relay_bootstrap, handlers)?;
         *self.relays.borrow_mut() = drivers;
         Ok(())
     }
@@ -390,12 +399,12 @@ impl WasmRuntime {
         })])
     }
 
-    /// Build a `WorkerEvent::Update` from the current kernel + meta state.
-    /// Identical shape to the JSON the relay-pool callback push uses, so the
-    /// host's reducer doesn't branch on push vs. pull.
+    /// Build a binary `WorkerEvent::UpdateBytes` from the current kernel +
+    /// meta state. The legacy JSON snapshot builder remains only for native
+    /// tests and non-update diagnostics; runtime snapshot transport is bytes.
     fn snapshot_event(&self) -> WorkerEvent {
-        let envelope = build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow());
-        WorkerEvent::Update { envelope }
+        let bytes = build_snapshot_bytes(&self.reducer.borrow(), &self.meta.borrow());
+        WorkerEvent::UpdateBytes { bytes }
     }
 
     /// V-51 phase 2 — JSON snapshot of the kernel's recent routing
@@ -417,7 +426,7 @@ impl WasmRuntime {
     /// inspect the snapshot without unwrapping the envelope.
     #[cfg(test)]
     pub(crate) fn snapshot_value(&self) -> serde_json::Value {
-        build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow())
+        crate::snapshot::build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow())
     }
 
     /// V-01 Stage 3c — start an async publish for an `AppAction`. Wasm32-only.

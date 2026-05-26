@@ -1,18 +1,24 @@
-//! Snapshot emission: serializes kernel state into the `KernelSnapshot` JSON
+//! Snapshot emission: encodes kernel state into the FlatBuffers update frame
 //! that drives every UI update.
 //!
 //! `Kernel::make_update` is the hot path called at up to 4 Hz. It:
 //! 1. Calls `visible_items()` to compute the current timeline item list.
 //! 2. Diffs against `last_emitted_items` to compute `inserted`/`updated`/`removed`.
 //! 3. Assembles `KernelSnapshot` with `Metrics` counters and all projections.
-//! 4. Serialises the snapshot exactly once and hands the JSON string to the caller.
+//! 4. Encodes the snapshot once and hands the binary frame to the caller.
 //!
 //! Performance invariants (see `make_update_us` / `serialize_us` metrics):
 //! - No store scans on the hot path — all aggregates maintained incrementally.
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ, ratio, TimelineItem, SettingsHubSummary, StoredEvent, truncate, ProfileCard, Profile, ProfileAction, ProfileDispatchSpec, AccountSummary, AuthorViewPayload, ThreadViewPayload, BTreeSet, referenced_event_ids, event_references, root_event_id, first_event_ref, MentionProfilePayload};
+use super::{
+    diff_items, event_references, first_event_ref, ratio, referenced_event_ids, root_event_id,
+    truncate, AccountSummary, AuthorViewPayload, BTreeSet, Instant, Kernel, KernelSnapshot,
+    MentionProfilePayload, Metrics, Profile, ProfileAction, ProfileCard, ProfileDispatchSpec,
+    SettingsHubSummary, StoredEvent, ThreadViewPayload, TimelineItem, DEFAULT_EMIT_HZ,
+};
+use crate::update_envelope::{encode_snapshot_value, UpdateFrameBytes};
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.
 ///
@@ -29,7 +35,7 @@ use super::{Kernel, Instant, diff_items, KernelSnapshot, Metrics, DEFAULT_EMIT_H
 pub const KERNEL_SCHEMA_VERSION: u32 = crate::update_envelope::SNAPSHOT_SCHEMA_VERSION;
 
 impl Kernel {
-    pub(crate) fn make_update(&mut self, running: bool) -> String {
+    pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
         let emit_started = Instant::now();
         // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
         // above is monotonic and cannot be compared to a shell-side clock, so
@@ -143,6 +149,7 @@ impl Kernel {
                 claim_drops_total: self.claim_drops_total(),
                 make_update_us: self.last_make_update_us,
                 serialize_us: self.last_serialize_us,
+                update_frame_degradations_total: self.update_frame_degradations_total,
             },
             relay_status: self.relay_status(),
             relay_statuses: self.relay_statuses(),
@@ -186,18 +193,40 @@ impl Kernel {
             // tick-local bindings, so they are passed in; `profile_card()`,
             // `author_view()`, and `thread_view()` read `&self` and are called
             // inside the helper.
-            projections: self.snapshot_projections_with_publish_cluster(
-                &items, &inserted, &updated, &removed,
-            ),
+            projections: self
+                .snapshot_projections_with_publish_cluster(&items, &inserted, &updated, &removed),
         };
 
-        // Serialize the snapshot exactly once. The on-wire `payload_bytes`
+        // Encode the snapshot exactly once. The on-wire `payload_bytes`
         // metric above already reflects the previous tick's size; the perf log
         // below uses this tick's true length so the diagnostic stays accurate.
-        // Capture the serialize start so we can report "build" vs "encode" time.
+        // Capture the encode start so we can report "build" vs "encode" time.
         let before_serialize = Instant::now();
-        let serialized = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());
-        // Compute this tick's timing immediately after serialize; the log below
+        let snapshot = match serde_json::to_value(&update) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.update_frame_degradations_total =
+                    self.update_frame_degradations_total.saturating_add(1);
+                self.log(format!(
+                    "NMP_DEGRADATION update_snapshot_to_value_failed rev={} error={error}",
+                    self.rev
+                ));
+                serde_json::json!({
+                    "schema_version": KERNEL_SCHEMA_VERSION,
+                    "rev": self.rev,
+                    "last_tick_ms": last_tick_ms,
+                    "update_kind": "ViewBatch",
+                    "running": running,
+                    "metrics": {
+                        "update_frame_degradations_total": self.update_frame_degradations_total
+                    },
+                    "last_error_category": "transport",
+                    "last_error_toast": "Update transport degraded"
+                })
+            }
+        };
+        let encoded = encode_snapshot_value(snapshot);
+        // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
         let this_serialize_us = before_serialize.elapsed().as_micros();
@@ -211,7 +240,7 @@ impl Kernel {
                 updated.len(),
                 removed.len(),
                 self.last_emitted_items.len(),
-                serialized.len(),
+                encoded.len(),
                 this_make_update_us,
                 this_serialize_us,
                 last_event_to_emit_ms
@@ -225,8 +254,19 @@ impl Kernel {
         // NEXT tick's Metrics reflect them. Same pattern as `last_payload_bytes`.
         self.last_serialize_us = this_serialize_us;
         self.last_make_update_us = this_make_update_us;
-        self.last_payload_bytes = serialized.len();
-        serialized
+        self.last_payload_bytes = encoded.len();
+        encoded
+    }
+
+    #[cfg(test)]
+    pub(crate) fn make_update_value_for_test(&mut self, running: bool) -> serde_json::Value {
+        crate::update_envelope::decode_snapshot_payload(&self.make_update(running))
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn make_update_json_for_test(&mut self, running: bool) -> String {
+        serde_json::to_string(&self.make_update_value_for_test(running)).unwrap_or_default()
     }
 
     /// Collect the snapshot `projections` map: every host-registered
@@ -270,13 +310,11 @@ impl Kernel {
         let mut projections = self.run_snapshot_projections();
         projections.insert(
             "publish_queue".to_string(),
-            serde_json::to_value(self.publish_queue_snapshot())
-                .unwrap_or(serde_json::Value::Null),
+            serde_json::to_value(self.publish_queue_snapshot()).unwrap_or(serde_json::Value::Null),
         );
         projections.insert(
             "publish_outbox".to_string(),
-            serde_json::to_value(self.publish_outbox_items())
-                .unwrap_or(serde_json::Value::Null),
+            serde_json::to_value(self.publish_outbox_items()).unwrap_or(serde_json::Value::Null),
         );
         // D0: outbox header summary — `OutboxSummarySnapshot`. The kernel owns
         // the per-status counters AND the English `title` / `subtitle`
@@ -284,8 +322,7 @@ impl Kernel {
         // instead of `.filter`-counting `publish_outbox` to derive them.
         projections.insert(
             "outbox_summary".to_string(),
-            serde_json::to_value(self.outbox_summary_snapshot())
-                .unwrap_or(serde_json::Value::Null),
+            serde_json::to_value(self.outbox_summary_snapshot()).unwrap_or(serde_json::Value::Null),
         );
         projections.insert(
             "relay_edit_rows".to_string(),
@@ -372,8 +409,7 @@ impl Kernel {
         );
         projections.insert(
             "timeline".to_string(),
-            serde_json::to_value(items)
-                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
         projections.insert(
             "author_view".to_string(),
@@ -385,18 +421,15 @@ impl Kernel {
         );
         projections.insert(
             "inserted".to_string(),
-            serde_json::to_value(inserted)
-                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            serde_json::to_value(inserted).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
         projections.insert(
             "updated".to_string(),
-            serde_json::to_value(updated)
-                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            serde_json::to_value(updated).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
         projections.insert(
             "removed".to_string(),
-            serde_json::to_value(removed)
-                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            serde_json::to_value(removed).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
         // Diagnostics-screen projection. Pre-rolls the relay + wire-sub
         // arrays into one struct with every aggregate (active / EOSE'd /
@@ -543,8 +576,10 @@ impl Kernel {
             nip05: profile
                 .map(|profile| profile.nip05.clone())
                 .unwrap_or_default(),
-            about: profile
-                .map_or_else(|| placeholder_about.to_string(), |profile| truncate(&profile.about.replace('\n', " "), 220)),
+            about: profile.map_or_else(
+                || placeholder_about.to_string(),
+                |profile| truncate(&profile.about.replace('\n', " "), 220),
+            ),
             has_profile: profile.is_some(),
             // NIP-57 — pre-extracted lightning address / LNURL from
             // kind:0 (lud16 preferred over lud06). `None` when no
@@ -590,12 +625,7 @@ impl Kernel {
             .get(active)
             .is_some_and(|follows| follows.iter().any(|follow| follow == pubkey));
         let (kind, label, icon_name, namespace) = if is_following {
-            (
-                "unfollow",
-                "Unfollow",
-                "person.badge.minus",
-                "nmp.unfollow",
-            )
+            ("unfollow", "Unfollow", "person.badge.minus", "nmp.unfollow")
         } else {
             ("follow", "Follow", "person.badge.plus", "nmp.follow")
         };
@@ -629,10 +659,7 @@ impl Kernel {
             .cloned()
             .map(|mut acc| {
                 if let Some(profile) = self.profile_for_pubkey(&acc.id) {
-                    let real_picture = profile
-                        .picture_url
-                        .as_deref()
-                        .filter(|url| !url.is_empty());
+                    let real_picture = profile.picture_url.as_deref().filter(|url| !url.is_empty());
                     acc.picture_url = real_picture.map(str::to_owned);
                     if !profile.display.is_empty() {
                         acc.display_name = Some(profile.display.clone());
@@ -693,8 +720,7 @@ impl Kernel {
         let items = self.thread_items(focused_id, &root_id);
         let focused_index = items.iter().position(|item| item.id == *focused_id);
         let previous_count = focused_index.unwrap_or(0);
-        let next_count = focused_index
-            .map_or(0, |index| items.len().saturating_sub(index + 1));
+        let next_count = focused_index.map_or(0, |index| items.len().saturating_sub(index + 1));
         let state = if self.thread_view.request_pending {
             "queued"
         } else if items.is_empty() {
@@ -769,9 +795,7 @@ impl Kernel {
         for item in items {
             out.entry(item.author_pubkey.clone()).or_insert_with(|| {
                 let profile = self.profile_for_pubkey(&item.author_pubkey);
-                let display_name = profile
-                    .map(|p| p.display.clone())
-                    .filter(|d| !d.is_empty());
+                let display_name = profile.map(|p| p.display.clone()).filter(|d| !d.is_empty());
                 let picture_url = profile
                     .and_then(|p| p.picture_url.as_deref())
                     .filter(|url| !url.is_empty())
@@ -806,10 +830,7 @@ fn parse_repost_inner(raw: &str) -> (Option<String>, Option<String>) {
         Ok(v) => v,
         Err(_) => return (None, None),
     };
-    let inner_id = value
-        .get("id")
-        .and_then(|v| v.as_str())
-        .map(str::to_owned);
+    let inner_id = value.get("id").and_then(|v| v.as_str()).map(str::to_owned);
     let inner_content = value
         .get("content")
         .and_then(|v| v.as_str())

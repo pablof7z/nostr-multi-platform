@@ -59,6 +59,7 @@ public struct KernelMetrics: Decodable, Equatable, Sendable {
     public let timelineOpenedMs: UInt64?
     public let tombstones: Int
     public let updateEmittedMs: UInt64?
+    public let updateFrameDegradationsTotal: UInt64
     public let updateSequence: UInt64
     public let updatedCount: Int
     public let visibleItems: Int

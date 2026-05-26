@@ -67,7 +67,21 @@ fn start_runs_browser_wasm_facade_with_shared_relay_defaults() {
             correlation_id: Some("start-1".to_string()),
         }
     );
-    assert!(matches!(events[1], WorkerEvent::Update { .. }));
+    assert!(matches!(events[1], WorkerEvent::UpdateBytes { .. }));
+}
+
+#[test]
+fn update_bytes_event_round_trips_without_json_snapshot_envelope() {
+    let event = WorkerEvent::UpdateBytes {
+        bytes: vec![0x4e, 0x4d, 0x50, 0x46],
+    };
+
+    let encoded = serde_json::to_string(&event).unwrap();
+    assert!(encoded.contains(r#""type":"update_bytes""#));
+    assert!(!encoded.contains(r#""envelope""#));
+
+    let decoded: WorkerEvent = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(decoded, event);
 }
 
 #[test]
@@ -178,7 +192,7 @@ fn chirp_action_uses_same_generic_worker_event_path() {
 // wire `web_sys::WebSocket` so these complete.
 
 #[test]
-fn start_emits_canonical_snapshot_envelope_from_real_kernel() {
+fn start_emits_flatbuffer_snapshot_update_from_real_kernel() {
     let mut runtime = WasmRuntime::new();
     let events = runtime
         .handle(WorkerRequest::Start(StartConfig {
@@ -194,36 +208,19 @@ fn start_emits_canonical_snapshot_envelope_from_real_kernel() {
         .unwrap();
 
     assert_eq!(events.len(), 2, "Start must emit RuntimeStatus + Update");
-    let WorkerEvent::Update { envelope } = &events[1] else {
-        panic!("expected update envelope, got {:?}", events[1]);
+    let WorkerEvent::UpdateBytes { bytes } = &events[1] else {
+        panic!("expected update bytes, got {:?}", events[1]);
     };
 
-    // Envelope is the canonical `wrap_snapshot` shape every native host
-    // also decodes: `{"t":"snapshot","v":{…}}`. No more bespoke "chirpTimeline"
-    // synthesized field — that was the stub leaking app-noun shape into the
-    // wire envelope.
-    assert_eq!(envelope["t"], "snapshot");
-    let payload = &envelope["v"];
-
-    // The inner payload's `rev` is the kernel's own rev, not a runtime-local
-    // counter. `KernelAction::Start` always returns `Started { rev: 0 }` on a
-    // fresh kernel, so the wasm runtime mirrors that.
-    assert_eq!(payload["rev"], 0, "rev must match KernelUpdate::Started");
-    assert_eq!(payload["running"], true);
-    assert_eq!(payload["database_name"], "chirp-dev");
-    assert_eq!(payload["schema_version"], 1);
-
-    // `relay_diagnostics` carries the bootstrap entries the host supplied at
-    // Start time. Status is "configured" — the honest state until Stage 3
-    // (web_sys::WebSocket) connects.
-    let diags = &payload["projections"]["relay_diagnostics"];
-    assert!(diags.is_array(), "relay_diagnostics must be an array");
-    assert_eq!(
-        diags[0]["url"],
-        nmp_chirp_config::CHIRP_CONTENT_RELAY_URL
+    assert!(!bytes.is_empty());
+    assert!(
+        bytes.windows(4).any(|window| window == b"NMPU"),
+        "FlatBuffers update must carry the NMPU file identifier"
     );
-    assert_eq!(diags[0]["role"], "both,indexer");
-    assert_eq!(diags[0]["status"], "configured");
+    assert!(
+        !String::from_utf8_lossy(bytes).contains(r#""t":"snapshot""#),
+        "snapshot update transport must not be the legacy JSON envelope"
+    );
 }
 
 #[test]
@@ -270,14 +267,16 @@ fn publish_note_after_set_signer_returns_publish_path_not_wired() {
     let set_events = runtime
         .handle(WorkerRequest::SetSigner(SetSigner {
             kind: "nip07".to_string(),
-            pubkey_hex:
-                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
-                    .to_string(),
+            pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+                .to_string(),
             correlation_id: "set-1".to_string(),
         }))
         .unwrap();
     match &set_events[0] {
-        WorkerEvent::ActionAccepted { action_type, correlation_id } => {
+        WorkerEvent::ActionAccepted {
+            action_type,
+            correlation_id,
+        } => {
             assert_eq!(action_type, "nmp.set_signer");
             assert_eq!(correlation_id, "set-1");
         }
@@ -416,14 +415,10 @@ fn kernel_namespaced_dispatch_routes_through_real_reducer() {
             correlation_id: "k-start-1".to_string(),
         }
     );
-    let WorkerEvent::Update { envelope } = &events[1] else {
-        panic!("expected update envelope, got {:?}", events[1]);
+    let WorkerEvent::UpdateBytes { bytes } = &events[1] else {
+        panic!("expected update bytes, got {:?}", events[1]);
     };
-    // Real kernel `rev` came back through `KernelUpdate::Started`. Stub never
-    // touched the kernel at all, so this assertion failing means a regression
-    // back to the synthetic-JSON path.
-    assert_eq!(envelope["v"]["rev"], 0);
-    assert_eq!(envelope["v"]["running"], true);
+    assert!(bytes.windows(4).any(|window| window == b"NMPU"));
 }
 
 #[test]

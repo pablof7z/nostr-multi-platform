@@ -63,8 +63,8 @@ pub use capability::{
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_relay,
-    nmp_app_remove_account, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
+    nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
@@ -161,7 +161,7 @@ use nmp_core::{
     ActorCommand, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
     RawEventObserverId,
 };
-use std::ffi::{c_char, c_uint, c_void, CStr, CString};
+use std::ffi::{c_char, c_uint, c_void, CStr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -169,7 +169,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use zeroize::Zeroizing;
 
-type UpdateCallback = extern "C" fn(*mut c_void, *const c_char);
+type UpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);
 
 #[derive(Clone, Copy)]
 struct UpdateCallbackRegistration {
@@ -193,7 +193,8 @@ struct UpdateCallbackRegistration {
 /// also module-private so the alias cannot be wider. Lives in this crate
 /// (not `nmp-core::slots`) because the `UpdateCallback` C-ABI function
 /// pointer type is a structurally-FFI shape; the actor reads through this
-/// slot but the type itself is a C-ABI surface concern.
+/// slot but the type itself is a C-ABI surface concern. The byte pointer is
+/// borrowed only for the callback duration; hosts must copy before returning.
 type UpdateCallbackSlot = Arc<Mutex<Option<UpdateCallbackRegistration>>>;
 
 fn new_update_callback_slot() -> UpdateCallbackSlot {
@@ -592,8 +593,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // relay list without crossing FFI.
     //
     // Typed slot constructor — see `kernel/relay_projection.rs`.
-    let relay_edit_rows: nmp_core::RelayEditRowsSlot =
-        new_relay_edit_rows_slot();
+    let relay_edit_rows: nmp_core::RelayEditRowsSlot = new_relay_edit_rows_slot();
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
@@ -673,7 +673,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // actor's kernel construction step binds it onto the kernel so the
     // ingest path and the registration path share one dispatcher.
     let ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>> =
-        Arc::new(std::sync::RwLock::new(nmp_core::substrate::EventIngestDispatcher::new()));
+        Arc::new(std::sync::RwLock::new(
+            nmp_core::substrate::EventIngestDispatcher::new(),
+        ));
     let actor_ingest_dispatcher = Arc::clone(&ingest_dispatcher_slot);
     // V-40 — substrate `DmInboxRelayLookup` slot. The per-app crate
     // (today: `nmp-nip17::register_actions`) installs the concrete
@@ -681,9 +683,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // the actor's kernel construction reads the current handle and binds
     // it onto the kernel. Default is `EmptyDmInboxRelayLookup` (fail-
     // closed cold-start).
-    let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>> = Arc::new(
-        Mutex::new(nmp_core::substrate::empty_dm_inbox_relay_lookup()),
-    );
+    let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>> =
+        Arc::new(Mutex::new(
+            nmp_core::substrate::empty_dm_inbox_relay_lookup(),
+        ));
     let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
@@ -781,22 +784,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         if let Err(e) = result {
             // Best-effort downcast of the panic payload — see
             // `update_envelope::panic_message`. D6: `panic_message` and
-            // `wrap_panic` are both infallible (placeholder / constant-frame
-            // fallbacks), so building the death signal cannot itself panic.
-            // The resulting `{"t":"panic","v":{"msg":…}}` decodes cleanly
-            // into `UpdateEnvelope::Panic` — unlike the previous ad-hoc
-            // `{"t":"panic","m":…}` string, which did not match the
-            // envelope's tag/content schema and failed host decode.
+            // `encode_panic` is infallible in practice, so building the
+            // death signal cannot itself panic.
             let msg = nmp_core::panic_message(&*e);
-            let frame = nmp_core::wrap_panic(format!("actor thread died: {msg}"));
+            let frame = nmp_core::encode_panic(format!("actor thread died: {msg}"));
             let _ = update_tx_panic.send(frame);
         }
     });
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
-            let Ok(payload) = CString::new(update) else {
-                continue;
-            };
             let callback = listener_callback.lock().ok().and_then(|guard| *guard);
             if let Some(registration) = callback {
                 // UB guard: the foreign update callback may panic / raise.
@@ -804,7 +800,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the actor thread above), so an unguarded unwind here is
                 // undefined behaviour across the C ABI boundary.
                 let _ = nmp_core::ffi_guard::guard_ffi_callback("update listener", || {
-                    (registration.callback)(registration.context as *mut c_void, payload.as_ptr());
+                    (registration.callback)(
+                        registration.context as *mut c_void,
+                        update.as_ptr(),
+                        update.len(),
+                    );
                 });
             }
         }
@@ -1055,7 +1055,10 @@ impl NmpApp {
     /// namespace whose `ActionModule::execute` emits `DispatchHostOp` —
     /// installing the handler late produces a stream of `Failed` terminals
     /// for the gap, not a panic.
-    pub fn set_host_op_handler(&self, handler: std::sync::Arc<dyn nmp_core::substrate::HostOpHandler>) {
+    pub fn set_host_op_handler(
+        &self,
+        handler: std::sync::Arc<dyn nmp_core::substrate::HostOpHandler>,
+    ) {
         if let Ok(mut slot) = self.host_op_handler.lock() {
             *slot = Some(handler);
         }
@@ -1339,9 +1342,8 @@ impl NmpApp {
         let result = nmp_core::substrate::KeyringIdentityWiring::decode_result(&envelope);
         match result.status {
             nmp_core::substrate::KeyringStatus::Ok => result.secret,
-            nmp_core::substrate::KeyringStatus::NotFound | nmp_core::substrate::KeyringStatus::Error => {
-                None
-            }
+            nmp_core::substrate::KeyringStatus::NotFound
+            | nmp_core::substrate::KeyringStatus::Error => None,
         }
     }
 
@@ -1484,8 +1486,7 @@ impl NmpApp {
         request: &nmp_core::substrate::CapabilityRequest,
     ) -> nmp_core::substrate::CapabilityEnvelope {
         let json = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
-        let payload =
-            dispatch_capability(&self.capability_callback, &json);
+        let payload = dispatch_capability(&self.capability_callback, &json);
         serde_json::from_str(&payload).unwrap_or_else(|_| nmp_core::substrate::CapabilityEnvelope {
             namespace: request.namespace.clone(),
             correlation_id: request.correlation_id.clone(),
@@ -1546,9 +1547,7 @@ impl NmpApp {
     /// session that never installs a real router will see an empty
     /// projection (substrate-honest debt B, 2026-05-24).
     #[must_use]
-    pub fn routing_trace(
-        &self,
-    ) -> Option<Arc<nmp_core::RoutingTraceProjection>> {
+    pub fn routing_trace(&self) -> Option<Arc<nmp_core::RoutingTraceProjection>> {
         self.routing_trace.lock().ok()?.clone()
     }
 
@@ -1654,7 +1653,10 @@ impl NmpApp {
             content: event.content.clone(),
             sig: event.sig.to_string(),
         };
-        let relays: Vec<nmp_core::publish::RelayUrl> = relays.iter().map(std::string::ToString::to_string).collect();
+        let relays: Vec<nmp_core::publish::RelayUrl> = relays
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         self.send_cmd(ActorCommand::PublishSignedEvent {
             raw,
             target: nmp_core::publish::PublishTarget::Explicit { relays },
@@ -1673,12 +1675,7 @@ impl NmpApp {
         };
         // Typed slot — iterate via `as_slice()` so the inner `Vec`
         // never leaks through this consumer.
-        nostrconnect_relay_url(
-            guard
-                .as_slice()
-                .iter()
-                .map(|row| (row.url(), row.role())),
-        )
+        nostrconnect_relay_url(guard.as_slice().iter().map(|row| (row.url(), row.role())))
     }
 }
 

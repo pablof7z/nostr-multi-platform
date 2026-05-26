@@ -104,10 +104,10 @@ pub(crate) fn profile_thrashing() -> Scenario {
     // than silently saturating-sub to zero (false-pass risk per codex T23/P3).
     let snapshot_valid = final_update
         .as_deref()
-        .map(|s| serde_json::from_str::<serde_json::Value>(s).is_ok())
+        .map(|bytes| nmp_core::decode_snapshot_payload(bytes).is_ok())
         .unwrap_or(false);
     let final_subs = if snapshot_valid {
-        open_sub_count(final_update.as_deref().unwrap_or(""))
+        open_sub_count(final_update.as_deref().unwrap_or(&[]))
     } else {
         // Return a sentinel so saturating_sub reports a large leak value,
         // ensuring the gate fails rather than silently passing.

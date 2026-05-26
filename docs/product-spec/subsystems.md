@@ -420,7 +420,7 @@ A framework subsystem, not an afterthought. The proof app (§4.6, §12) is the p
 - Memory footprint of the actor's working set.
 - Per-platform marshaling time (recorded by the reconciler).
 
-Exposed via `AppState.debug` in debug builds; accessible via the `EmitDiagnosticSnapshot` action in release builds (writes a JSON snapshot to a path returned via `Effect::DiagnosticReady`). The proof app renders this live as an in-app overlay.
+Exposed via `AppState.debug` in debug builds; accessible via the `EmitDiagnosticSnapshot` action in release builds (writes a diagnostic JSON export to a path returned via `Effect::DiagnosticReady`). The runtime update transport remains FlatBuffers; this JSON file is an inspection artifact. The proof app renders this live as an in-app overlay.
 
 **Budgets** (initial targets; revised after Phase 9 measurement on real devices):
 

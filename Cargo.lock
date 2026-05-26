@@ -3895,6 +3895,7 @@ version = "0.1.0"
 dependencies = [
  "jni 0.21.1",
  "nmp-app-template",
+ "nmp-core",
  "nmp-ffi",
  "serde_json",
 ]
@@ -3991,6 +3992,7 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "chrono",
+ "flatbuffers",
  "indexmap",
  "nmp-network",
  "nmp-nip42-types",

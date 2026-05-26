@@ -1,19 +1,29 @@
 # 0001 — FFI update-channel envelope (T103)
 
-Status: **Superseded (in part)** · Scope: `nmp-core` actor emit boundary + `nmp-codegen` projection
+Status: **Superseded** · Scope: historical `nmp-core` actor emit boundary + `nmp-codegen` projection
+
+> **Update (2026-05-26):** the runtime update transport is moving to one
+> canonical FlatBuffers schema for Rust-to-frontend `FullState`, `ViewBatch`,
+> and side-effect frames. This document now records the historical JSON
+> envelope only. Do not add a production JSON fallback beside FlatBuffers.
+> JSON remains valid for Nostr relay protocol frames, diagnostics/golden files,
+> and temporary migration/test tooling where explicitly documented. UniFFI
+> remains the binding/lifecycle/capability surface, not the hot payload format.
 
 > **Update (2026-05-22):** the `t=update` arm (the discrete `WireDelta` /
 > `DeltaEnvelope` channel) was **deleted** as shipped-but-inert. Every host
 > bridge (iOS `KernelBridge.swift`, Android `KernelModel.kt`, desktop
 > `bridge.rs`) explicitly dropped every `t=update` frame with a debug log;
-> there were zero consumers. The remaining contract is just `{"t":"snapshot"}`
-> and `{"t":"panic"}` (the D7 actor-death signal added later); everything
+> there were zero consumers. At the time, the remaining historical JSON
+> contract was `{"t":"snapshot"}` and `{"t":"panic"}` (the D7 actor-death
+> signal added later); everything
 > below referring to the `Update` arm is historical context only.
 
 ## Problem
 
-The actor pushes updates to every host (Pulse, future Android/desktop shells,
-`nmp-codegen`-projected enums) over a **single** channel: `update_tx:
+At the time of this ADR, the actor pushed updates to every host (Pulse, future
+Android/desktop shells, `nmp-codegen`-projected enums) over a **single**
+channel: `update_tx:
 Sender<String>`. That channel carries **two structurally distinct JSON
 shapes**:
 
@@ -126,30 +136,8 @@ Verified: `cargo test -p nmp-core -p nmp-codegen` and
 
 ---
 
-## FFI-surface delta for M10.5 session to fold in
+## FFI-surface delta
 
-`docs/ffi-surface.md` is owned by the concurrent M10.5 session — **not edited
-here**. M10.5 must fold the following into it:
-
-1. **`UpdateCallback` payload row** (currently: "*the `*const c_char` payload
-   is a Rust-owned `CString` valid only for the call's duration*"): append the
-   payload **content** contract — every `*const c_char` delivered to
-   `UpdateCallback` is a UTF-8 JSON string matching `UpdateEnvelope`:
-
-   > Payload is always one tagged envelope object:
-   > `{"t":"update","v":<KernelUpdate>}` or
-   > `{"t":"snapshot","v":<snapshot>}`. The `t` values are exactly `"update"`
-   > / `"snapshot"` (lowercase snake_case). Consumers decode the single
-   > `UpdateEnvelope` discriminated type — never sniff payload keys. The
-   > snapshot interior (the `v` of `"snapshot"`) is opaque/forward-compatible.
-
-2. **Add a one-line source-of-truth pointer** near the channel/threading
-   section (around `nmp_app_set_update_callback` / the `UpdateCallback` type
-   row):
-
-   > Update-channel wire contract: see
-   > `docs/design/0001-ffi-update-channel-envelope.md` (T103).
-
-3. No signature/ABI changes — the envelope is a **payload-format** contract
-   only; `update_tx` is still `Sender<String>` and the callback ABI
-   (`extern "C" fn(*mut c_void, *const c_char)`) is unchanged.
+This section is superseded by the FlatBuffers transport migration. The current
+runtime callback ABI is `extern "C" fn(*mut c_void, *const u8, usize)`, and
+`docs/ffi-surface.md` is the current source of truth for that surface.

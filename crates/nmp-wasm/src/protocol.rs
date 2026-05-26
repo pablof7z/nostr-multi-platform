@@ -24,7 +24,9 @@ pub enum WorkerRequest {
     /// `kind`: `"nip07"` — the only kind wired in Stage 3b. Other kinds
     /// return [`WorkerEvent::CapabilityFailure`] with `unsupported_signer_kind`.
     SetSigner(SetSigner),
-    Stop { correlation_id: String },
+    Stop {
+        correlation_id: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,7 +83,7 @@ pub struct AppActionDispatch {
 }
 
 impl AppActionDispatch {
-    #[must_use] 
+    #[must_use]
     pub fn into_action_dispatch(self) -> ActionDispatch {
         let (action_type, payload) = self.action.into_dispatch_parts();
         ActionDispatch {
@@ -114,7 +116,7 @@ pub enum AppAction {
 }
 
 impl AppAction {
-    #[must_use] 
+    #[must_use]
     pub fn into_dispatch_parts(self) -> (String, Value) {
         match self {
             Self::PublishNote {
@@ -224,8 +226,8 @@ pub enum WorkerEvent {
         action_type: String,
         correlation_id: String,
     },
-    Update {
-        envelope: Value,
+    UpdateBytes {
+        bytes: Vec<u8>,
     },
     CapabilityFailure(CapabilityFailure),
     Error {

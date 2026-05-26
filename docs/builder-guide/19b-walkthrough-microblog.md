@@ -108,7 +108,7 @@ the snapshot, not as a thrown error (D6).
 | `LocalKeySigner` (nsec / hex / ncryptsec) | ✅ M6 (DONE) | — |
 | Multi-account switch (`AccountManager`) | ✅ M8 (DONE) | — |
 | Outbox auto-routing in the planner | ✅ M2 (DONE) | wiring the planner into the *actor's REQ path* is the gap tracked in [27](27-discrepancies.md); the kernel demo still uses constant relays |
-| Raw C FFI (JSON-over-string snapshot) | ✅ today | UniFFI typed bridge = **M14, PLANNED** |
+| Legacy raw C FFI (JSON-over-string snapshot on master) | ✅ today | FlatBuffers runtime transport in progress; UniFFI binding/lifecycle bridge = **M14, PLANNED** |
 | `nmp init` starter CLI | ❌ not built | **M16, PLANNED** — example is hand-scaffolded |
 | iOS shell (Chirp, active) | ✅ M1/M10.5 (DONE) | Additional app shells are deferred until Chirp is complete |
 
@@ -130,12 +130,12 @@ expected and honest, not a defect.
 - **Manual REQ in app code to "refresh the feed."** The `FeedViewModule`
   snapshot updates reactively. A manual REQ scan parallel to the kernel is
   a D2/D4 violation; the feed is a projection, not something you poll.
-- **Per-platform SwiftData/Room cache parallel to `AppState`.** The JSON
+- **Per-platform SwiftData/Room cache parallel to `AppState`.** The decoded
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
-- **Expecting `nmp init` or UniFFI today.** Both are PLANNED milestones.
-  Code that imports a typed UniFFI `AppUpdate` will not compile against
-  master.
+- **Expecting `nmp init` or UniFFI payload delivery today.** Both are PLANNED
+  milestones, and UniFFI is not the hot update payload format. Code that
+  imports a typed UniFFI `AppUpdate` will not compile against master.
 
 See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·

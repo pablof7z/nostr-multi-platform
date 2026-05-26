@@ -83,6 +83,7 @@ version = "0.1.0"
 #   nmp-signer-broker, nmp-testing, nmp-repl, nmp-content, nmp-relations,
 #   nmp-threading, nmp-nip23/29/42/57, nmp-cli, nmp-codegen, etc.
 [workspace.dependencies]
+flatbuffers = "25.12.19"
 nostr = "0.44"
 serde = "1.0"
 serde_json = "1.0"

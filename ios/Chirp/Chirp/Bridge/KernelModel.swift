@@ -11,8 +11,8 @@ private let kmLog = Logger(subsystem: "io.f7z.chirp", category: "KernelModel")
 private let diagLog = Logger(subsystem: "org.nmp.chirp.diag", category: "KernelModel")
 
 /// `ObservableObject` mirror of the kernel snapshot. The Rust actor pushes
-/// JSON updates via the callback; this class decodes them and republishes
-/// for SwiftUI consumption.
+/// binary FlatBuffers updates via the callback; the bridge decodes them and
+/// this class republishes the resulting model for SwiftUI consumption.
 ///
 /// PR-L (KernelModel collapse): every kernel-driven projection lives behind
 /// the single `@Published var snapshot: KernelUpdate?` slot; the computed
@@ -40,7 +40,8 @@ final class KernelModel: ObservableObject {
     // ── Local mutable state ──────────────────────────────────────────────
 
     /// Modular timeline blocks — sourced from `kernel.chirpSnapshot()` rather
-    /// than the snapshot JSON, so this stays a standalone `@Published` slot.
+    /// than the FlatBuffers update frame, so this stays a standalone
+    /// `@Published` slot.
     @Published private(set) var modularTimeline: ChirpTimelineSnapshot = .empty
     @Published private(set) var snapshotCount: UInt64 = 0
     @Published private(set) var lastSnapshotAt: Date?

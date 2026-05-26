@@ -1,8 +1,8 @@
 # 26 — FAQ + troubleshooting
 
 **Status: SHIPS · audience: builders.** Practical answers for the common
-build/run failures. The golden rule: **inspect the JSON snapshot before you
-touch Swift.** Almost every "it doesn't work" is visible in the snapshot's
+build/run failures. The golden rule: **inspect the decoded kernel snapshot
+before you touch Swift.** Almost every "it doesn't work" is visible in the snapshot's
 `relay_statuses`, `logical_interests`, or `wire_subscriptions` arrays.
 
 ## FAQ (~15 items)
@@ -27,9 +27,11 @@ It does not exist. The starter CLI is **M16, PLANNED**. Scaffold by hand per
 [19a](19a-walkthrough-microblog.md) and run `gen modules`.
 
 **Q5. Where is UniFFI / the typed `AppUpdate` enum?**
-**M14, PLANNED.** Today the FFI surface is raw C: a JSON-over-string snapshot
-delivered to a callback. Code expecting typed UniFFI bindings will not
-compile against master. See [27](27-discrepancies.md).
+**M14, PLANNED.** UniFFI is the binding/lifecycle/capability surface, not the
+hot payload format. The runtime update transport target is FlatBuffers-only;
+master still has historical raw-C JSON callback code while the migration is
+incomplete. Code expecting typed UniFFI payload delivery will not compile
+against master. See [27](27-discrepancies.md).
 
 **Q6. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
 The static lib was not built for the simulator triple. Run
@@ -118,12 +120,14 @@ M16), not bugs. Don't change the spec to match incomplete code; file it.
    (rate limit, bad filter, auth-required). Match the `wire_id` back to the
    `logical_interests[].key` that owns it.
 
-## JSON snapshot — top-level field reference
+## Snapshot — top-level field reference
 
 The canonical shape is the `KernelUpdate` struct
 ([`crates/nmp-core/src/kernel/types.rs:306-326`](../../crates/nmp-core/src/kernel/types.rs));
-the Swift decoder mirror is `KernelBridge.swift:119-138` (decoded with
-`.convertFromSnakeCase`). 18 top-level fields:
+the Swift shadow mirror is `KernelBridge.swift:119-138`. On master this shape
+is still decoded from the legacy JSON callback; the FlatBuffers migration makes
+the same logical fields arrive through generated FlatBuffers readers. 18
+top-level fields:
 
 | Field | Type | Use |
 |---|---|---|
@@ -155,7 +159,7 @@ Debug order: `relay_statuses` → `logical_interests` → `wire_subscriptions` �
 - **Blaming the relay for a stale `rev`.** A frozen `rev` with
   `connection: "connected"` is an emit/interest problem, not a relay one.
   Read `logical_interests` before accusing the relay.
-- **Debugging in Swift instead of the JSON snapshot.** The snapshot is the
+- **Debugging in Swift instead of the decoded snapshot.** The snapshot is the
   source of truth across FFI. Decode and inspect it first; Swift only
   renders what the snapshot already decided.
 - **Editing generated code to fix a symptom.** Stale FFI crate → regenerate,

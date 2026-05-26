@@ -11,20 +11,29 @@
 //!    snapshot-builder keeps both files comfortably under the limit and gives
 //!    the relay-driven push path a single owner.
 //! 2. The snapshot shape needs to be identical whether the request came in
-//!    via `Start` (host pulls the envelope from `handle()`'s return value)
+//!    via `Start` (host pulls the frame from `handle()`'s return value)
 //!    or via an inbound relay frame (callback push). Putting the build logic
 //!    in one place makes the equivalence syntactic, not aspirational.
 //!
 //! # Substrate-grade (D0)
 //!
-//! No app nouns. The envelope shape mirrors what `wrap_snapshot` does for the
-//! native actor; the `v` payload carries only protocol-neutral fields
+//! No app nouns. The FlatBuffers frame mirrors what the native actor emits;
+//! the snapshot payload carries only protocol-neutral fields
 //! (schema version, kernel rev, started flag, relay diagnostics).
+//!
+//! # wasm→JS transport
+//!
+//! On `wasm32`, snapshot bytes cross the JS boundary as a raw
+//! `js_sys::Uint8Array` argument to the host-installed callback — never as a
+//! JSON-wrapped string. Encoding the FlatBuffers frame as a JSON number
+//! array bloats a 4Hz hot-path payload ~3–4× and then forces the host to
+//! `JSON.parse` + `new Uint8Array(…)` back out. The typed-array hop keeps
+//! the binary transport binary.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nmp_core::{wrap_snapshot, KernelReducer, SNAPSHOT_SCHEMA_VERSION};
+use nmp_core::{encode_snapshot_value, KernelReducer, SNAPSHOT_SCHEMA_VERSION};
 use serde_json::Value;
 
 use crate::protocol::RelayBootstrapEntry;
@@ -71,17 +80,25 @@ impl RuntimeMeta {
     }
 }
 
-/// Build the snapshot envelope from the kernel + the runtime's captured
-/// metadata. Returns the canonical `{"t":"snapshot","v":…}` shape every
-/// native host also decodes.
-///
-/// Falls back to a bare snapshot value (no `wrap_snapshot` round-trip) if
-/// serialization somehow fails — preferable to dropping the frame.
-pub(crate) fn build_snapshot_value(
-    _reducer: &KernelReducer,
-    meta: &RuntimeMeta,
-) -> Value {
-    let snapshot = serde_json::json!({
+/// Build the test-only JSON view from the kernel + runtime metadata. Runtime
+/// hosts consume [`build_snapshot_bytes`] instead.
+#[cfg(test)]
+pub(crate) fn build_snapshot_value(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Value {
+    let snapshot = build_snapshot_payload_value(meta);
+
+    serde_json::json!({
+        "t": "snapshot",
+        "v": snapshot,
+    })
+}
+
+pub(crate) fn build_snapshot_bytes(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
+    let snapshot = build_snapshot_payload_value(meta);
+    encode_snapshot_value(snapshot)
+}
+
+fn build_snapshot_payload_value(meta: &RuntimeMeta) -> Value {
+    serde_json::json!({
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "rev": meta.rev,
         "running": meta.started,
@@ -101,16 +118,7 @@ pub(crate) fn build_snapshot_value(
                 })
             }).collect::<Vec<_>>()
         }
-    });
-
-    let snapshot_json = serde_json::to_string(&snapshot)
-        .unwrap_or_else(|_| String::from(r#"{"schema_version":1,"rev":0,"running":false}"#));
-    wrap_snapshot(snapshot_json)
-        .and_then(|wire| serde_json::from_str::<Value>(&wire).ok())
-        .unwrap_or(serde_json::json!({
-            "t": "snapshot",
-            "v": snapshot,
-        }))
+    })
 }
 
 /// Push a snapshot envelope through the JS callback the host registered via
@@ -122,6 +130,13 @@ pub(crate) fn build_snapshot_value(
 /// no async push surface exists on native because there's no out-of-band
 /// kernel mutation source (the native crate uses its own `relay_worker`).
 ///
+/// The callback receives a raw `Uint8Array` of FlatBuffers update-frame
+/// bytes — not a JSON-wrapped string. Encoding the FlatBuffers bytes as a
+/// JSON array of decimal numbers undoes the whole point of the binary
+/// transport (~3–4× bloat on a hot-path snapshot), so the wasm→JS hop
+/// uses a typed-array argument and the JS host pushes the resulting
+/// `update_bytes` event upstream itself.
+///
 /// Errors from `Function::call1` are intentionally swallowed: a JS handler
 /// throwing should not crash the wasm runtime; the JS side gets the throw
 /// at the call site and can log/report. Dropping the frame is honest — the
@@ -132,22 +147,32 @@ pub(crate) fn push_snapshot_if_callback(
     reducer: &Rc<RefCell<KernelReducer>>,
     meta: &Rc<RefCell<RuntimeMeta>>,
 ) {
+    let bytes = build_snapshot_bytes(&reducer.borrow(), &meta.borrow());
+    push_bytes_if_callback(callback, &bytes);
+}
+
+/// Inner primitive shared by every wasm→JS snapshot-callback push site
+/// (`push_snapshot_if_callback` above for the relay-pool sink and the
+/// publish-path fan-out; the `handle_json` drain in `lib.rs` for the
+/// synchronous-return path). Keeps the conversion from `&[u8]` to
+/// `js_sys::Uint8Array` in one place so the two call sites cannot drift.
+///
+/// `copy_from` allocates a fresh `Uint8Array` whose backing buffer is owned
+/// by the JS heap — safe to hand to a callback that may stash it (the
+/// runtime's `&[u8]` is borrowed from the wasm linear memory and would be
+/// invalidated by any subsequent `Vec` growth).
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn push_bytes_if_callback(
+    callback: &Rc<RefCell<Option<js_sys::Function>>>,
+    bytes: &[u8],
+) {
     let callback_ref = callback.borrow();
     let Some(callback_fn) = callback_ref.as_ref() else {
         return;
     };
-    let envelope = build_snapshot_value(&reducer.borrow(), &meta.borrow());
-    let event = serde_json::json!({
-        "type": "update",
-        "envelope": envelope,
-    });
-    let json = match serde_json::to_string(&event) {
-        Ok(s) => s,
-        // Serialization failure → silently drop. Bumping it to the JS host
-        // would require a side channel; the next inbound recovers.
-        Err(_) => return,
-    };
-    let _ = callback_fn.call1(&wasm_bindgen::JsValue::NULL, &wasm_bindgen::JsValue::from_str(&json));
+    let array = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
+    array.copy_from(bytes);
+    let _ = callback_fn.call1(&wasm_bindgen::JsValue::NULL, &array.into());
 }
 
 /// Native no-op kept for symmetry with the wasm32 surface. Never invoked

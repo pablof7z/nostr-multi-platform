@@ -3,7 +3,7 @@
 //! invariant ("emit only when state changed") is concentrated in one file.
 
 use crate::kernel::Kernel;
-use crate::update_envelope::wrap_snapshot;
+use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
@@ -41,15 +41,10 @@ pub(super) fn flush_due(kernel: &Kernel, running: bool, last_emit: Instant, emit
 pub(super) fn emit_now(
     kernel: &mut Kernel,
     running: bool,
-    update_tx: &Sender<String>,
+    update_tx: &Sender<UpdateFrameBytes>,
     last_emit: &mut Instant,
 ) {
-    // Snapshot frame: wrap the already-serialized snapshot as
-    // `{"t":"snapshot","v":…}` (D8 — borrowed RawValue, one outer alloc, no
-    // re-parse). D6 — a wrap failure drops the frame, never unwinds.
-    if let Some(frame) = wrap_snapshot(kernel.make_update(running)) {
-        let _ = update_tx.send(frame);
-    }
+    let _ = update_tx.send(kernel.make_update(running));
     *last_emit = Instant::now();
 }
 
@@ -64,9 +59,9 @@ pub(super) fn emit_now(
 /// pattern used by S1–S5, and the `nmp_app_configure` mid-process call before
 /// any `Start`) there is no UI consumer subscribed to the snapshot channel.
 /// Per-dispatch emits in that mode (a) produce no useful work (the listener
-/// fires `sink_cb` with no consumer) and (b) push `String` frames onto the
+/// fires `sink_cb` with no consumer) and (b) push binary frames onto the
 /// unbounded kernel→listener mpsc whose internal block free-list retains
-/// segments long after the strings themselves are dropped — the dominant
+/// segments long after the frames themselves are dropped — the dominant
 /// per-dispatch retention source measured in `s2-drain-analysis.md`.
 ///
 /// Lifecycle commands (`Start`, `Configure`, `Reset`, `Stop`, `Shutdown`) MUST
@@ -80,7 +75,7 @@ pub(super) fn emit_now(
 pub(super) fn maybe_emit_after_dispatch(
     kernel: &mut Kernel,
     running: bool,
-    update_tx: &Sender<String>,
+    update_tx: &Sender<UpdateFrameBytes>,
     last_emit: &mut Instant,
 ) {
     if running {
@@ -98,7 +93,7 @@ mod tests {
     use crate::actor::{run_actor, ActorCommand};
     use crate::app::KernelAction;
     use crate::kernel::Kernel;
-    use crate::update_envelope::UpdateEnvelope;
+    use crate::update_envelope::{decode_update_frame, UpdateEnvelope, UpdateFrameBytes};
     use std::sync::mpsc;
     use std::thread;
     use std::time::{Duration, Instant};
@@ -112,7 +107,7 @@ mod tests {
     #[test]
     fn idle_ticks_do_not_emit_snapshots_when_state_unchanged() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
@@ -141,7 +136,7 @@ mod tests {
     #[test]
     fn live_actor_frames_are_all_decodable_envelopes() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
@@ -166,8 +161,8 @@ mod tests {
         while let Ok(frame) = upd_rx.try_recv() {
             // Every frame MUST decode as the single discriminated type — this
             // is exactly what each host does.
-            match serde_json::from_str::<UpdateEnvelope>(&frame)
-                .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}: {frame}"))
+            match decode_update_frame(&frame)
+                .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}"))
             {
                 UpdateEnvelope::Snapshot(v) => {
                     // Every snapshot MUST carry a schema version so a shell can
@@ -204,7 +199,7 @@ mod tests {
     #[test]
     fn view_dispatches_do_not_emit_snapshots_when_not_running() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
@@ -238,12 +233,12 @@ mod tests {
 
         let mut snapshots = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
-            match serde_json::from_str::<UpdateEnvelope>(&frame) {
+            match decode_update_frame(&frame) {
                 Ok(UpdateEnvelope::Snapshot(_)) => snapshots += 1,
                 Ok(UpdateEnvelope::Panic(p)) => {
                     panic!("unexpected actor-death frame on the channel: {}", p.msg)
                 }
-                Err(_) => {} // ignore: legacy untagged frames
+                Err(_) => {}
             }
         }
 
@@ -262,7 +257,7 @@ mod tests {
     /// future "optimization" doesn't drop emits entirely and break the UI.
     #[test]
     fn view_dispatches_emit_snapshots_when_running() {
-        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let mut kernel = Kernel::new(50);
         let mut last_emit = Instant::now();
 
@@ -274,11 +269,8 @@ mod tests {
             .recv_timeout(Duration::from_millis(50))
             .expect("running=true view dispatch must emit a snapshot");
         assert!(
-            matches!(
-                serde_json::from_str::<UpdateEnvelope>(&frame),
-                Ok(UpdateEnvelope::Snapshot(_))
-            ),
-            "regression: running=true + view dispatch emitted a non-snapshot frame: {frame}"
+            matches!(decode_update_frame(&frame), Ok(UpdateEnvelope::Snapshot(_))),
+            "regression: running=true + view dispatch emitted a non-snapshot frame"
         );
     }
 
@@ -286,7 +278,7 @@ mod tests {
     #[test]
     fn create_account_emits_snapshot_with_active_account() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
@@ -320,9 +312,7 @@ mod tests {
         // built-in key `"active_account"`.
         let mut found_active = false;
         while let Ok(frame) = upd_rx.try_recv() {
-            if let Ok(UpdateEnvelope::Snapshot(snap)) =
-                serde_json::from_str::<UpdateEnvelope>(&frame)
-            {
+            if let Ok(UpdateEnvelope::Snapshot(snap)) = decode_update_frame(&frame) {
                 if let Some(active) = snap
                     .get("projections")
                     .and_then(|projections| projections.get("active_account"))

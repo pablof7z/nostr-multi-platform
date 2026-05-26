@@ -1,0 +1,59 @@
+namespace nmp.transport;
+
+// Runtime pins are intentionally asymmetric until every platform package
+// manager publishes the same FlatBuffers line:
+// - Rust + Swift: 25.12.19
+// - Web/TypeScript: 25.9.23
+// - Android/Kotlin runtime: 25.2.10
+// Regenerate checked-in bindings only with the matching runtime guard for that
+// platform; ci/check-flatbuffers-version-pins.sh enforces the current set.
+
+enum FrameKind:ubyte {
+  Snapshot = 0,
+  Panic = 1
+}
+
+enum ValueKind:ubyte {
+  Null = 0,
+  Bool = 1,
+  Int = 2,
+  UInt = 3,
+  Float = 4,
+  String = 5,
+  List = 6,
+  Map = 7
+}
+
+table Pair {
+  key:string (required);
+  value:Value;
+}
+
+table Value {
+  kind:ValueKind = Null;
+  bool_value:bool = false;
+  int_value:long = 0;
+  uint_value:ulong = 0;
+  float_value:double = 0.0;
+  string_value:string;
+  list:[Value];
+  map:[Pair];
+}
+
+table SnapshotFrame {
+  schema_version:uint = 1;
+  payload:Value;
+}
+
+table PanicFrame {
+  msg:string (required);
+}
+
+table UpdateFrame {
+  kind:FrameKind = Snapshot;
+  snapshot:SnapshotFrame;
+  panic:PanicFrame;
+}
+
+root_type UpdateFrame;
+file_identifier "NMPU";

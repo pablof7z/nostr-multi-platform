@@ -193,7 +193,7 @@ mod tests {
         }];
 
         let _ = wire_frames_to_outbound(frames, &mut kernel);
-        let update = kernel.make_update(true);
+        let update = kernel.make_update_json_for_test(true);
         let payload: serde_json::Value = serde_json::from_str(&update).expect("kernel update JSON");
         let sub = payload["wire_subscriptions"]
             .as_array()
@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(seen.interest_id, InterestId(7));
         assert_eq!(seen.lifecycle, InterestLifecycle::OneShot);
 
-        let update = kernel.make_update(true);
+        let update = kernel.make_update_json_for_test(true);
         let payload: serde_json::Value = serde_json::from_str(&update).expect("kernel update JSON");
         assert!(
             payload["wire_subscriptions"]

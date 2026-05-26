@@ -14,7 +14,7 @@
 //! state-level ingest tests cannot catch.
 //!
 //! Every test here drives a real ingest / lifecycle transition, then calls
-//! `kernel.make_update(true)` and asserts on the parsed `serde_json::Value` —
+//! `kernel.make_update_json_for_test(true)` and asserts on the parsed `serde_json::Value` —
 //! i.e. exactly the bytes that cross the C-ABI. `KernelUpdate` is `Serialize`
 //! only (no `Deserialize`), so the assertions parse the JSON dynamically rather
 //! than round-tripping the typed struct.
@@ -35,7 +35,7 @@ const NOTE_ID: &str = "e1e2e3e4e5e6e7e8e9eae1e2e3e4e5e6e7e8e9eae1e2e3e4e5e6e7e8e
 
 /// Drive `make_update` and parse the emitted JSON snapshot.
 fn snapshot(kernel: &mut Kernel) -> serde_json::Value {
-    let json = kernel.make_update(true);
+    let json = kernel.make_update_json_for_test(true);
     serde_json::from_str(&json).expect("kernel snapshot must be valid JSON")
 }
 
@@ -262,7 +262,9 @@ fn profile_card_does_not_project_metadata_source() {
 
     let snap = snapshot(&mut kernel);
     assert!(
-        snap["projections"]["profile"].get("metadata_source").is_none(),
+        snap["projections"]["profile"]
+            .get("metadata_source")
+            .is_none(),
         "profile cards must not expose a second metadata-source discriminator"
     );
 }
@@ -437,10 +439,7 @@ fn outbox_summary_projects_sending_counters_and_strings() {
     let snap = snapshot(&mut kernel);
     let summary = &snap["projections"]["outbox_summary"];
     assert_eq!(summary["title"].as_str(), Some("1 pending publish"));
-    assert_eq!(
-        summary["subtitle"].as_str(),
-        Some("1 currently sending.")
-    );
+    assert_eq!(summary["subtitle"].as_str(), Some("1 currently sending."));
     assert_eq!(summary["total"].as_u64(), Some(1));
     assert_eq!(summary["sending"].as_u64(), Some(1));
     assert_eq!(summary["retrying"].as_u64(), Some(0));
@@ -501,7 +500,10 @@ fn profile_action_follow_carries_nmp_follow_dispatch_spec() {
     assert_eq!(action["kind"].as_str(), Some("follow"));
     assert_eq!(action["icon_name"].as_str(), Some("person.badge.plus"));
     let dispatch = &action["dispatch"];
-    assert!(!dispatch.is_null(), "follow action must carry a dispatch spec");
+    assert!(
+        !dispatch.is_null(),
+        "follow action must carry a dispatch spec"
+    );
     assert_eq!(dispatch["namespace"].as_str(), Some("nmp.follow"));
     let body_json = dispatch["body_json"]
         .as_str()
@@ -611,8 +613,14 @@ fn mention_profiles_projection_carries_each_author_in_author_view() {
     );
     // Raw fields per aim.md §2: pubkey (hex), display_name + picture_url as Option<String>.
     assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
-    assert!(entry["display_name"].is_null(), "no kind:0 → display_name null");
-    assert!(entry["picture_url"].is_null(), "no kind:0 → picture_url null");
+    assert!(
+        entry["display_name"].is_null(),
+        "no kind:0 → display_name null"
+    );
+    assert!(
+        entry["picture_url"].is_null(),
+        "no kind:0 → picture_url null"
+    );
     assert!(entry.get("avatar_initials").is_none());
     assert!(entry.get("avatar_color").is_none());
 }
@@ -640,7 +648,13 @@ fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
 fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
-    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "hello home feed");
+    ingest_note(
+        &mut kernel,
+        NOTE_ID,
+        ACCOUNT,
+        1_700_000_000,
+        "hello home feed",
+    );
 
     let snap = snapshot(&mut kernel);
     let mp = &snap["projections"]["mention_profiles"];
@@ -651,8 +665,14 @@ fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
         "mention_profiles must cover the home-timeline author with no author/thread view open"
     );
     assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
-    assert!(entry["display_name"].is_null(), "no kind:0 → display_name null");
-    assert!(entry["picture_url"].is_null(), "no kind:0 → picture_url null");
+    assert!(
+        entry["display_name"].is_null(),
+        "no kind:0 → display_name null"
+    );
+    assert!(
+        entry["picture_url"].is_null(),
+        "no kind:0 → picture_url null"
+    );
 }
 
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar

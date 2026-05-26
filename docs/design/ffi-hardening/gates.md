@@ -228,9 +228,10 @@ Each line item names the artifact that proves it.
   **silently no-op** (see parent doc §7.2).
 - ✅ **Stress proof + remediation:** S7 (error-shape exhaustion)
   exercises every invalid-input path. The M10.5 deliverable
-  adds a `toast: Option<String>` field to the JSON update
-  payload and populates it from S7's failure paths. The
-  schema change is additive and non-breaking.
+  adds a `toast: Option<String>` field to the update payload
+  and populates it from S7's failure paths. The schema change
+  is additive and non-breaking; legacy JSON and canonical
+  FlatBuffers transports both carry the same logical field.
 - 📝 **Sign-off:** doctrine-review.md § D3, with the explicit
   note that this milestone *closes* the D3-incomplete state
   identified in the debt inventory.

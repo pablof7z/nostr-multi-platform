@@ -8,7 +8,8 @@ use crate::substrate::{SignedEvent, UnsignedEvent};
 const FOLLOWED: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
 fn snapshot(kernel: &mut Kernel) -> serde_json::Value {
-    serde_json::from_str(&kernel.make_update(true)).expect("kernel snapshot must be valid JSON")
+    serde_json::from_str(&kernel.make_update_json_for_test(true))
+        .expect("kernel snapshot must be valid JSON")
 }
 
 fn signed_contact_list(keys: &::nostr::Keys, follow: &str, created_at: u64) -> SignedEvent {

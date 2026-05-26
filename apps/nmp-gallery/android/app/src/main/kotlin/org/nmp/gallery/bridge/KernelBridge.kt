@@ -5,8 +5,8 @@ package org.nmp.gallery.bridge
  * Rust shim that links the SAME `nmp-core` kernel that Chirp / iOS consume.
  *
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross
- * FFI (D6) — natives return only a handle / string / void; outcomes arrive
- * in the next JSON snapshot. The Rust side is in
+ * FFI (D6) — natives return only a handle / bytes / void; outcomes arrive
+ * in the next FlatBuffers update frame. The Rust side is in
  * `apps/nmp-gallery/nmp-app-gallery`; it MUST export
  * JNI symbols named `Java_org_nmp_gallery_bridge_KernelBridge_<methodName>`
  * to match this Kotlin class.
@@ -66,11 +66,11 @@ class KernelBridge {
     }
 
     /**
-     * Blocking drain of the snapshot channel. `timeoutMs` caps the wait so
+     * Blocking drain of the update-frame channel. `timeoutMs` caps the wait so
      * the Kotlin reader coroutine can react to cancellation. Returns `null`
      * on timeout / closed channel.
      */
-    fun nextUpdate(timeoutMs: Long = 250L): String? =
+    fun nextUpdate(timeoutMs: Long = 250L): ByteArray? =
         if (handle != 0L) nativeNextUpdate(handle, timeoutMs) else null
 
     /**
@@ -105,7 +105,7 @@ class KernelBridge {
     private external fun nativeStop(handle: Long)
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
-    private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): String?
+    private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): ByteArray?
     private external fun nativeGallerySnapshot(handle: Long): String?
     private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
 }

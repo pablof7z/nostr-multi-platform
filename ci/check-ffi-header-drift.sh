@@ -73,6 +73,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 HEADER="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
+UPDATE_CALLBACK_HEADERS=(
+    "${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
+    "${REPO_ROOT}/apps/notes/ios/Notes/Bridge/NmpCore.h"
+    "${REPO_ROOT}/apps/nmp-gallery/ios/NmpGallery/Bridge/NmpGallery.h"
+)
 
 # FFI source roots. Directories are scanned recursively for `*.rs`; explicit
 # files are scanned as-is. Each entry is "<path>" — existence is required.
@@ -108,6 +113,50 @@ if [[ ! -f "${HEADER}" ]]; then
     echo "error: header not found: ${HEADER}" >&2
     exit 1
 fi
+
+# The symbol diff below catches additions/removals, but it deliberately ignores
+# C function signatures. Guard the hot update callback ABI explicitly so a
+# future `const char *`/length regression fails in CI even though the symbol
+# name stays unchanged.
+check_update_callback_abi() {
+    local rust_ffi="${REPO_ROOT}/crates/nmp-ffi/src/lib.rs"
+    local rust_normalized
+    rust_normalized="$(perl -0pe 's/\s+/ /g' "${rust_ffi}")"
+    case "${rust_normalized}" in
+        *'type UpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);'*) ;;
+        *)
+            echo "FFI DRIFT — Rust UpdateCallback must be (*mut c_void, *const u8, usize)" >&2
+            return 1
+            ;;
+    esac
+    case "${rust_normalized}" in
+        *'pub extern "C" fn nmp_app_set_update_callback( app: *mut NmpApp, context: *mut c_void, callback: Option<UpdateCallback>, )'*) ;;
+        *)
+            echo "FFI DRIFT — Rust nmp_app_set_update_callback signature drifted" >&2
+            return 1
+            ;;
+    esac
+
+    local expected='typedef void (*NmpUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);'
+    local header
+    for header in "${UPDATE_CALLBACK_HEADERS[@]}"; do
+        if [[ ! -f "${header}" ]]; then
+            echo "error: callback header not found: ${header}" >&2
+            return 1
+        fi
+        if ! grep -Fqx "${expected}" "${header}"; then
+            echo "FFI DRIFT — ${header#"${REPO_ROOT}/"} has stale NmpUpdateCallback typedef" >&2
+            echo "expected: ${expected}" >&2
+            return 1
+        fi
+        if ! grep -Fqx 'void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);' "${header}"; then
+            echo "FFI DRIFT — ${header#"${REPO_ROOT}/"} has stale nmp_app_set_update_callback declaration" >&2
+            return 1
+        fi
+    done
+}
+
+check_update_callback_abi
 
 # ── Build the full list of .rs files to scan. ────────────────────────────────
 SCAN_FILES=()

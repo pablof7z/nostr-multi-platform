@@ -4,7 +4,7 @@
 //! Profile, `TimelineItem`, `ProfileCard`, view payloads, relay health/status, wire
 //! subscription state, counters, and the `AuthorRelayList` cache entry.
 
-use super::{Serialize, RelayRole, CanonicalRelayUrl, Instant, BTreeSet, HashSet, HashMap};
+use super::{BTreeSet, CanonicalRelayUrl, HashMap, HashSet, Instant, RelayRole, Serialize};
 
 // ── Seed accounts (test fixtures only) ──────────────────────────────────────
 
@@ -709,17 +709,22 @@ pub(crate) struct Metrics {
     pub(super) claim_drops_total: u64,
     /// Microseconds spent in `make_update` on the PREVIOUS tick (one-tick lag,
     /// same as `payload_bytes`): full time from `emit_started` through the
-    /// `serde_json::to_string` call. Covers projection builds + serialize.
+    /// FlatBuffers encode call. Covers projection builds + encode.
     /// Zero on the first tick. Feed to per-session p50/p95/p99 diagnostics.
     pub(super) make_update_us: u128,
-    /// Microseconds spent in `serde_json::to_string` alone on the PREVIOUS
+    /// Microseconds spent in FlatBuffers encoding alone on the PREVIOUS
     /// tick (one-tick lag). Combined with `make_update_us` this lets callers
-    /// separate "building the snapshot tree" from "serializing it to JSON".
+    /// separate "building the snapshot tree" from "encoding it for transport".
     pub(super) serialize_us: u128,
+    /// Count of update-frame encoding/decoding degradations observed by the
+    /// Rust transport boundary. This is intentionally monotonic for the kernel
+    /// lifetime so malformed or impossible value-shape drift becomes visible in
+    /// diagnostics instead of collapsing to an empty/null snapshot.
+    pub(super) update_frame_degradations_total: u64,
 }
 
 // ── Update envelope ───────────────────────────────────────────────────────────
-/// Full JSON snapshot of kernel state emitted to the host on each tick.
+/// Full snapshot of kernel state encoded into the host update frame each tick.
 /// Named `KernelSnapshot` (not `KernelUpdate`) to avoid ambiguity with the
 /// public `crate::app::KernelUpdate` lifecycle-event enum.
 #[derive(Clone, Debug, Serialize)]

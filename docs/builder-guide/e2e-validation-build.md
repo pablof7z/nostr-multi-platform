@@ -60,9 +60,11 @@ void nmp_app_trigger_sync(void *app, const char *filter_json, const char *relay_
 void nmp_app_open_timeline(void *app);  // opens FollowingTimeline for active account
 ```
 
-### 1.2 AppState JSON extensions
+### 1.2 AppState update extensions
 
-The kernel's snapshot JSON (already emitted via `update_callback`) gains these fields. Existing fields stay intact.
+The kernel's decoded snapshot/update shape gains these fields. Existing fields
+stay intact. Historical raw-C builds emitted this through `update_callback` as
+JSON; the canonical runtime update transport is FlatBuffers.
 
 ```jsonc
 {

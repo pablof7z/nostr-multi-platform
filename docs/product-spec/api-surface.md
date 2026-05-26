@@ -10,7 +10,7 @@ The concrete FFI API is per-app generated. `nmp-core` defines kernel primitives 
 
 ### 6.1 The App handle
 
-`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. Per RMP bible, it is a `uniffi::Object` constructed once per process.
+`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. Per RMP bible, it is a `uniffi::Object` constructed once per process. UniFFI owns object lifetime, callback registration, and capability interfaces; the hot Rust-to-frontend update payload is the canonical FlatBuffers schema, not UniFFI records.
 
 ```rust
 #[derive(uniffi::Object)]
@@ -49,7 +49,7 @@ impl FfiApp {
 
 ### 6.2 AppState
 
-`AppState` is a `uniffi::Record`. It is the entire UI's source of truth. It is cloned across FFI on every `FullState` update.
+`AppState` is the logical source-of-truth shape for the UI. The runtime `FullState` payload is encoded as FlatBuffers and decoded into the platform shadow model. UniFFI may expose helper objects and lifecycle APIs, but `AppState` is not cloned across the hot path as a UniFFI record.
 
 Top-level shape (long-term, illustrative; v1 contains the kernel fields needed by [`docs/plan.md`](../plan.md) and keeps product subsystems absent or empty):
 
@@ -163,7 +163,7 @@ Doctrine:
 
 ### 6.4 AppUpdate
 
-`AppUpdate` is the outbound stream. Bible doctrine: snapshots by default; granular variants only where profiling warrants. v1 starts with:
+`AppUpdate` is the outbound stream. Bible doctrine: snapshots by default; granular variants only where profiling warrants. The canonical runtime encoding is FlatBuffers, with this logical schema:
 
 ```rust
 #[derive(Clone, uniffi::Enum)]
@@ -188,6 +188,7 @@ Decisions captured here for `aim.md` §7.1:
 - **`ViewBatch` exists from day one** because view churn dominates Nostr UI updates and full-state churn would burn CPU on serialization. The planner emits at ≤ 60Hz aggregated.
 - **`SideEffect` is reserved for ephemeral, non-state data** (pairing URIs that should not persist in `AppState`, NIP-42 auth challenges, generated diagnostic blobs).
 - All update variants carry a monotonic `rev` and platforms enforce the stale guard.
+- **No JSON runtime fallback.** JSON may be used for Nostr relay frames, diagnostics, golden fixtures, and temporary migration/test tooling. The production Rust-to-frontend update transport has one canonical schema: FlatBuffers.
 
 ### 6.5 Capabilities
 

@@ -112,7 +112,9 @@ impl RemoteSignerHandle for StubRemoteSigner {
                 plaintext,
                 nostr::nips::nip44::Version::V2,
             )
-            .map_err(|e| nmp_signer_iface::SignerError::Backend(format!("stub nip44 encrypt: {e}"))),
+            .map_err(|e| {
+                nmp_signer_iface::SignerError::Backend(format!("stub nip44 encrypt: {e}"))
+            }),
         )
     }
 
@@ -126,10 +128,9 @@ impl RemoteSignerHandle for StubRemoteSigner {
             }
         };
         SignerOp::Ready(
-            nostr::nips::nip44::decrypt(self.keys.secret_key(), &sender, ciphertext)
-                .map_err(|e| {
-                    nmp_signer_iface::SignerError::Backend(format!("stub nip44 decrypt: {e}"))
-                }),
+            nostr::nips::nip44::decrypt(self.keys.secret_key(), &sender, ciphertext).map_err(|e| {
+                nmp_signer_iface::SignerError::Backend(format!("stub nip44 decrypt: {e}"))
+            }),
         )
     }
 
@@ -248,7 +249,10 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
     assert!(!dto.is_idle);
     assert!(!dto.is_in_flight, "ready is not in flight");
     assert!(!dto.is_failed);
-    assert!(dto.is_terminal_success, "ready is the terminal-success flag");
+    assert!(
+        dto.is_terminal_success,
+        "ready is the terminal-success flag"
+    );
     assert!(!dto.can_cancel, "no cancel once terminal");
     assert_eq!(dto.stage_label, "Connected");
 
@@ -351,8 +355,8 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     // _pinned_to_kind10050_relays` — automatically routes through the
     // bunker too.
     use crate::substrate::{
-        EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker,
-        NoopErrorSurface, NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
+        EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
+        NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
         ProtocolCommandContextParts,
     };
     use nmp_nip59::{gift_wrap_with_signer, GIFT_WRAP_TOTAL_TIMEOUT};
@@ -466,13 +470,9 @@ fn snapshot_carries_bunker_handshake_value() {
             .lock()
             .expect("registry lock")
             .register("bunker_handshake", move || {
-                let slot = projection_slot
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
+                let slot = projection_slot.lock().unwrap_or_else(|e| e.into_inner());
                 slot.as_ref()
-                    .map(|dto| {
-                        serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
-                    })
+                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
                     .unwrap_or(serde_json::Value::Null)
             });
     }
@@ -484,12 +484,18 @@ fn snapshot_carries_bunker_handshake_value() {
         "connecting".to_string(),
         Some("dialing wss://r.example".to_string()),
     );
-    let json = kernel.make_update(true);
+    let snapshot = kernel.make_update_value_for_test(true);
     assert!(
-        json.contains("\"bunker_handshake\""),
-        "snapshot must carry the bunker_handshake projection key: {json}"
+        snapshot
+            .get("projections")
+            .and_then(|projections| projections.get("bunker_handshake"))
+            .is_some(),
+        "snapshot must carry the bunker_handshake projection key: {snapshot}"
     );
-    assert!(json.contains("\"stage\":\"connecting\""));
+    assert_eq!(
+        snapshot["projections"]["bunker_handshake"]["stage"],
+        serde_json::json!("connecting")
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -515,7 +521,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
     use std::sync::Arc;
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-    let (upd_tx, upd_rx) = mpsc::channel::<String>();
+    let (upd_tx, upd_rx) = mpsc::channel::<crate::update_envelope::UpdateFrameBytes>();
 
     let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
     let bunker_slot = crate::actor::new_bunker_handshake_slot();
@@ -570,8 +576,12 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // not exercise the `DispatchHostOp` path.
             crate::substrate::new_host_op_handler_slot(),
             // V-40 — test wiring; no NIP-17 cache here.
-            Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
-            Arc::new(std::sync::Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+            Arc::new(std::sync::RwLock::new(
+                crate::substrate::EventIngestDispatcher::new(),
+            )),
+            Arc::new(std::sync::Mutex::new(
+                crate::substrate::empty_dm_inbox_relay_lookup(),
+            )),
             // V-51 phase 4 — test wiring; nothing reads the routing-trace slot here.
             Arc::new(std::sync::Mutex::new(None)),
             // V-51 phase 5 — test wiring; no per-app routing factory installed.
@@ -602,28 +612,38 @@ fn snapshot_carries_nip46_onboarding_projection() {
     thread::sleep(Duration::from_millis(300));
     let _ = cmd_tx.send(ActorCommand::Shutdown);
 
-    let mut last_frame = String::new();
+    let mut last_snapshot = None;
     while let Ok(frame) = upd_rx.try_recv() {
-        last_frame = frame;
+        if let Ok(crate::update_envelope::UpdateEnvelope::Snapshot(snapshot)) =
+            crate::update_envelope::decode_update_frame(&frame)
+        {
+            last_snapshot = Some(snapshot);
+        }
     }
-    assert!(!last_frame.is_empty(), "actor produced no snapshot frames");
+    let last_snapshot = last_snapshot.expect("actor produced no snapshot frames");
     // Both NIP-46 projection keys must appear and the typed projection's
     // `stage_kind` + `is_in_flight` must reflect the same broker progress.
     assert!(
-        last_frame.contains("\"nip46_onboarding\""),
-        "snapshot missing nip46_onboarding projection: {last_frame}"
+        last_snapshot["projections"]
+            .get("nip46_onboarding")
+            .is_some(),
+        "snapshot missing nip46_onboarding projection: {last_snapshot}"
+    );
+    assert_eq!(
+        last_snapshot["projections"]["nip46_onboarding"]["stage_kind"],
+        serde_json::json!("connecting"),
+        "nip46_onboarding must carry typed stage_kind: {last_snapshot}"
+    );
+    assert_eq!(
+        last_snapshot["projections"]["nip46_onboarding"]["is_in_flight"],
+        serde_json::json!(true),
+        "nip46_onboarding must pre-compute is_in_flight=true for connecting: {last_snapshot}"
     );
     assert!(
-        last_frame.contains("\"stage_kind\":\"connecting\""),
-        "nip46_onboarding must carry typed stage_kind: {last_frame}"
-    );
-    assert!(
-        last_frame.contains("\"is_in_flight\":true"),
-        "nip46_onboarding must pre-compute is_in_flight=true for connecting: {last_frame}"
-    );
-    assert!(
-        last_frame.contains("\"signer_apps\""),
-        "nip46_onboarding must carry signer_apps table: {last_frame}"
+        last_snapshot["projections"]["nip46_onboarding"]
+            .get("signer_apps")
+            .is_some(),
+        "nip46_onboarding must carry signer_apps table: {last_snapshot}"
     );
 }
 
@@ -636,7 +656,7 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     use crate::actor::{run_actor, ActorCommand};
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-    let (upd_tx, upd_rx) = mpsc::channel::<String>();
+    let (upd_tx, upd_rx) = mpsc::channel::<crate::update_envelope::UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
@@ -663,22 +683,31 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     thread::sleep(Duration::from_millis(300));
     let _ = cmd_tx.send(ActorCommand::Shutdown);
 
-    let mut last_frame = String::new();
+    let mut last_snapshot = None;
     while let Ok(frame) = upd_rx.try_recv() {
-        last_frame = frame;
+        if let Ok(crate::update_envelope::UpdateEnvelope::Snapshot(snapshot)) =
+            crate::update_envelope::decode_update_frame(&frame)
+        {
+            last_snapshot = Some(snapshot);
+        }
     }
-    assert!(!last_frame.is_empty(), "actor produced no snapshot frames");
+    let last_snapshot = last_snapshot.expect("actor produced no snapshot frames");
     assert!(
-        last_frame.contains(&pk),
-        "snapshot missing remote-signer pubkey: {last_frame}"
+        last_snapshot.to_string().contains(&pk),
+        "snapshot missing remote-signer pubkey: {last_snapshot}"
     );
     assert!(
-        last_frame.contains("\"signer_kind\":\"nip46\""),
-        "snapshot missing nip46 signer_kind: {last_frame}"
+        last_snapshot["projections"]["accounts"]
+            .as_array()
+            .is_some_and(|accounts| accounts
+                .iter()
+                .any(|account| account["signer_kind"] == serde_json::json!("nip46"))),
+        "snapshot missing nip46 signer_kind: {last_snapshot}"
     );
-    assert!(
-        last_frame.contains("\"stage\":\"ready\""),
-        "snapshot missing handshake stage=ready: {last_frame}"
+    assert_eq!(
+        last_snapshot["projections"]["bunker_handshake"]["stage"],
+        serde_json::json!("ready"),
+        "snapshot missing handshake stage=ready: {last_snapshot}"
     );
 }
 
@@ -704,12 +733,18 @@ fn remote_handle_nip44_round_trips_through_the_seam() {
     let ciphertext = RemoteSignerHandle::nip44_encrypt(&alice, &bob_pk, plaintext)
         .wait(std::time::Duration::from_secs(1))
         .expect("encrypt resolves");
-    assert_ne!(ciphertext, plaintext, "ciphertext must not be the plaintext");
+    assert_ne!(
+        ciphertext, plaintext,
+        "ciphertext must not be the plaintext"
+    );
 
     let decrypted = RemoteSignerHandle::nip44_decrypt(&bob, &alice_pk, &ciphertext)
         .wait(std::time::Duration::from_secs(1))
         .expect("decrypt resolves");
-    assert_eq!(decrypted, plaintext, "round-trip must recover the plaintext");
+    assert_eq!(
+        decrypted, plaintext,
+        "round-trip must recover the plaintext"
+    );
 }
 
 #[test]

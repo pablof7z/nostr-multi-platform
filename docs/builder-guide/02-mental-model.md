@@ -20,9 +20,9 @@ four layers with strict ownership. Built from the bottom up:
 ┌──────────────────────────────────────────────────────────────────────┐
 │ PLATFORM SHELL          ios/Chirp + Android Chirp/gallery shells       │
 │  owns: rendering, OS handle execution, generated wrappers              │
-│  D5 ► consumes ONE bounded JSON snapshot; no policy nouns              │
+│  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns   │
 └────────────────────────────────▲───────────────────────────────────────┘
-                                  │ raw C JSON-over-string (UniFFI = M14)
+                                  │ FlatBuffers payload; UniFFI = lifecycle/bindings
 ┌────────────────────────────────┴───────────────────────────────────────┐
 │ GENERATED FFI CRATE     nmp-codegen output (per-app `nmp-app-<name>`)   │
 │  owns: concrete AppAction / AppUpdate / ViewSpec enums + wrappers       │
@@ -66,8 +66,9 @@ product shell.
   actor inside the kernel is that writer. The platform shell never mutates
   state; it renders snapshots and dispatches actions.
 - **D5 (snapshots bounded by what's open).** What crosses up to the shell is
-  one bounded JSON snapshot scoped to currently-open views — not the whole
-  store. The shell holds no source-of-truth state.
+  one bounded update payload scoped to currently-open views — not the whole
+  store. The runtime payload format is FlatBuffers; the shell holds no
+  source-of-truth state.
 
 ## The 5 trait families in one paragraph each
 
@@ -113,15 +114,19 @@ generic seam (the relay-pin routing lane) and zero group nouns.
 
 | Crosses FFI | Stays in Rust |
 |---|---|
-| One JSON snapshot per emit (D5) | The EventStore + every `VerifiedEvent` |
+| One FlatBuffers update frame per emit (D5) | The EventStore + every `VerifiedEvent` |
 | Dispatched `AppAction` variants | Action ledger, step machines |
 | `CapabilityRequest` / `CapabilityEnvelope` | Planner, subscription pool, signer keys |
 | `rev: u64` monotonic guard | All policy / retry / routing decisions |
 
 No `Result<T,E>` crosses the boundary (D6) — failures arrive as data inside
-the snapshot or as capability envelopes. Today the wire is raw C
-JSON-over-string (`crates/nmp-core/src/ffi.rs`); the UniFFI migration is M14
-(see [27 — Discrepancies](27-discrepancies.md)).
+the snapshot or as capability envelopes. The intended runtime update
+transport is a single canonical FlatBuffers schema for `FullState`,
+`ViewBatch`, and side-effect frames. UniFFI remains the binding, object
+lifecycle, and callback-registration surface; it is not the hot payload
+format. Historical raw C JSON-over-string remains relevant only while the
+current migration is incomplete and for legacy/test tooling that has not yet
+been converted (see [27 — Discrepancies](27-discrepancies.md)).
 
 ## "Where does X live?" — concrete map
 

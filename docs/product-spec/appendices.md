@@ -16,7 +16,7 @@ The bible mandates snapshots over FFI. For a Nostr client with timelines of thou
 
 The event store, gossip cache, sync watermarks, working set, and signer state all live in the actor and **never cross FFI**.
 
-**Two outbound channels, one ordering.** `AppUpdate` carries either a full snapshot or a batch of view deltas. Both carry a monotonic `rev`. Platforms apply only updates with `rev > last_applied`; out-of-order delivery is impossible to render. Mixing `FullState` and `ViewBatch` is safe: a `FullState` at rev=N supersedes any pending `ViewBatch` with rev<N.
+**Two outbound variants, one ordering.** `AppUpdate` carries either a full snapshot or a batch of view deltas. Both carry a monotonic `rev` and are encoded in the same canonical FlatBuffers runtime schema. Platforms apply only updates with `rev > last_applied`; out-of-order delivery is impossible to render. Mixing `FullState` and `ViewBatch` is safe: a `FullState` at rev=N supersedes any pending `ViewBatch` with rev<N.
 
 **The planner batches at ≤60Hz.** 500 reactions arriving in 100ms become ≤6 batched deltas, not 500 callbacks. Bible commandment 9 (no high-frequency FFI loops) is honored by construction.
 
@@ -29,7 +29,7 @@ Three serious alternatives to snapshots+ViewBatch were evaluated. Each is used i
 | Alternative | Used by | Why rejected for v1 |
 |---|---|---|
 | **Reactive shared SQLite.** Rust writes; both sides hold read handles; reactive query libraries (GRDB / SQLDelight / Drift) re-run queries on table writes. | 1Password (Op core), Linear, Notion mobile, most local-first apps | Surrenders doctrine. Platforms now write queries, which is display-shaping logic. Pre-formatting (timestamps, npubs, sats) either moves into native (D-violation) or materializes as columns at write time (extra schema). Web fragments — wasm SQLite doesn't share with JS the way native does. Cross-platform consistency tests get harder (per-platform query results vs byte-diffable JSON). |
-| **Local relay / localhost IPC.** Rust runs an in-process Nostr relay (e.g. `LocalRelay` from `nostr-relay-builder`); platform talks Nostr over WebSocket to it. | Some Tauri apps; Citrine-style Android setups conceptually | WebSocket+JSON tax for in-process IPC. Outbox routing semantics get weird (the "relay" is local but represents many remote relays). The framework's value-add (views, actions, sessions as state) gets obscured behind a protocol that wasn't designed for it. |
+| **Local relay / localhost IPC.** Rust runs an in-process Nostr relay (e.g. `LocalRelay` from `nostr-relay-builder`); platform talks Nostr over WebSocket to it. | Some Tauri apps; Citrine-style Android setups conceptually | WebSocket+Nostr-JSON tax for in-process IPC. Outbox routing semantics get weird (the "relay" is local but represents many remote relays). The framework's value-add (views, actions, sessions as state) gets obscured behind a protocol that wasn't designed for it. |
 | **Shared memory + signal.** Rust writes to mmap'd or shared heap; platform reads via raw pointers; FFI carries only "key X changed." | Game engines; Flutter+Skia for graphics state | Memory safety across FFI is hellish. Unsuitable for Swift/Kotlin idioms. Not portable to web. |
 
 **The "hybrid for v2" possibility.** If Phase 9 measurement shows marshaling cost as the bottleneck on bulk-scrolling views (timeline, conversation history, search), the deliberate v2 escape is:
@@ -51,7 +51,7 @@ The bible's stated default is "start with `FullState` everywhere; add granular u
 - The marginal complexity of `ViewBatch` is small: it's a typed delta enum over the already-existing view payload types.
 - Retrofitting `ViewBatch` later would invalidate every platform shim and reconciler implementation.
 
-Both channels (`FullState` and `ViewBatch`) ship in v1. `FullState` remains the canonical fallback for coarse changes and the recovery path for platform-side state drift.
+Both update variants (`FullState` and `ViewBatch`) ship in v1 over FlatBuffers. `FullState` remains the recovery path for coarse changes and platform-side state drift. It is not a JSON fallback.
 
 ---
 

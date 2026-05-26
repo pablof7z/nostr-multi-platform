@@ -80,10 +80,7 @@ fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str])
 
 /// Helper: locate the queue entry for `event_id` in the kernel's snapshot.
 /// Panics if missing — every T128 test pushes one entry before asserting.
-fn entry_for<'a>(
-    kernel: &'a Kernel,
-    event_id: &str,
-) -> &'a crate::kernel::PublishQueueEntry {
+fn entry_for<'a>(kernel: &'a Kernel, event_id: &str) -> &'a crate::kernel::PublishQueueEntry {
     kernel
         .publish_queue_snapshot()
         .iter()
@@ -100,13 +97,14 @@ fn t128_all_relays_ack_flips_status_to_ok_with_full_outcome_map() {
     let author = "22".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "11".repeat(32).as_str(),
-        &author,
-        1,
-        "all-ack t128",
+    let signed = fake_signed("11".repeat(32).as_str(), &author, 1, "all-ack t128");
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        None,
+        1_000,
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 1_000);
     assert_eq!(outbound.len(), 2, "two NIP-65 write relays expected");
 
     // Immediately after `run_publish_engine_at` (no acks yet) the entry
@@ -174,13 +172,9 @@ fn t128_all_relays_give_up_flips_status_to_failed_with_failure_reasons() {
     let author = "44".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "33".repeat(32).as_str(),
-        &author,
-        1,
-        "all-fail t128",
-    );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let signed = fake_signed("33".repeat(32).as_str(), &author, 1, "all-fail t128");
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
     // Helper closure: drive a single relay through three transient acks +
@@ -251,13 +245,9 @@ fn t128_partial_success_reports_ok_with_mixed_outcome_map() {
     let author = "66".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "55".repeat(32).as_str(),
-        &author,
-        1,
-        "partial t128",
-    );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let signed = fake_signed("55".repeat(32).as_str(), &author, 1, "partial t128");
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
     // r1 settles OK on attempt 1.
@@ -267,23 +257,13 @@ fn t128_partial_success_reports_ok_with_mixed_outcome_map() {
     assert_eq!(entry_for(&kernel, &signed.id).status, "accepted_locally");
 
     // r2 burns through three transient attempts.
-    let _ = kernel.handle_publish_ok_at(
-        WRITE_R2,
-        ok_payload(&signed.id, false, "io: down 1"),
-        100,
-    );
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "io: down 1"), 100);
     let _ = kernel.tick_publish_engine(1_500);
-    let _ = kernel.handle_publish_ok_at(
-        WRITE_R2,
-        ok_payload(&signed.id, false, "io: down 2"),
-        1_600,
-    );
+    let _ =
+        kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "io: down 2"), 1_600);
     let _ = kernel.tick_publish_engine(6_000);
-    let _ = kernel.handle_publish_ok_at(
-        WRITE_R2,
-        ok_payload(&signed.id, false, "io: down 3"),
-        6_100,
-    );
+    let _ =
+        kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "io: down 3"), 6_100);
 
     let entry = entry_for(&kernel, &signed.id);
     assert_eq!(
@@ -321,13 +301,9 @@ fn t128_late_ack_after_terminal_does_not_re_flip_status() {
     let author = "88".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "77".repeat(32).as_str(),
-        &author,
-        1,
-        "idempotence t128",
-    );
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let signed = fake_signed("77".repeat(32).as_str(), &author, 1, "idempotence t128");
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Settle both relays.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
@@ -362,17 +338,13 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
     let author = "aa".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "99".repeat(32).as_str(),
-        &author,
-        1,
-        "wire-shape t128",
-    );
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let signed = fake_signed("99".repeat(32).as_str(), &author, 1, "wire-shape t128");
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
 
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
     // D0: the publish cluster is no longer a typed `KernelSnapshot` field —
@@ -430,7 +402,7 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
 /// conditionally inserted (only when a terminal settled this tick), so absence
 /// is normal — it is reported as `Null` here.
 fn action_results(kernel: &mut Kernel) -> serde_json::Value {
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
     parsed
@@ -459,7 +431,8 @@ fn action_results_reports_published_on_all_ack_success() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("b1".repeat(32).as_str(), &author, 1, "publish ok");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Not terminal after one ack — the key is absent.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
@@ -495,7 +468,8 @@ fn action_results_reports_failed_with_reason_on_all_relays_giving_up() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("b2".repeat(32).as_str(), &author, 1, "publish fail");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     let drive_to_giveup = |kernel: &mut Kernel, relay: &str, base_ms: u64| {
         let _ = kernel.handle_publish_ok_at(
@@ -549,7 +523,8 @@ fn action_results_reports_failed_when_no_relays_resolve() {
     let author = "a3".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let signed = fake_signed("b3".repeat(32).as_str(), &author, 1, "no targets");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     let result = single_action_result(&mut kernel);
     assert_eq!(
@@ -581,7 +556,8 @@ fn action_results_reports_cancelled_on_user_cancel() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("b4".repeat(32).as_str(), &author, 1, "cancel me");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     kernel.cancel_publish(&signed.id);
 
@@ -615,7 +591,8 @@ fn concurrent_terminals_in_one_tick_keep_all_in_publish_queue() {
     let first = fake_signed("d1".repeat(32).as_str(), &author, 1, "concurrent first");
     let second = fake_signed("d2".repeat(32).as_str(), &author, 1, "concurrent second");
     let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
-    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ =
+        kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Settle BOTH publishes back-to-back (both terminal before any snapshot).
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
@@ -653,7 +630,12 @@ fn action_results_reports_dispatch_correlation_id_for_publish_note() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     // The signed kind:1 the actor produced — its id is the publish handle.
-    let signed = fake_signed("d9".repeat(32).as_str(), &author, 1, "publishnote roundtrip");
+    let signed = fake_signed(
+        "d9".repeat(32).as_str(),
+        &author,
+        1,
+        "publishnote roundtrip",
+    );
     // The registry-minted action correlation_id the host received from
     // `nmp_app_dispatch_action` — deliberately distinct from the event id.
     let minted_correlation_id = "9f".repeat(16);
@@ -710,8 +692,10 @@ fn action_results_reports_dispatch_correlation_id_on_publish_note_failure() {
         0,
     );
     // Both relays return a permanent NIP-20 rejection → terminal `failed`.
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "blocked: spam"), 10);
-    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "blocked: spam"), 20);
+    let _ =
+        kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "blocked: spam"), 10);
+    let _ =
+        kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "blocked: spam"), 20);
 
     let result = single_action_result(&mut kernel);
     assert_eq!(
@@ -750,7 +734,8 @@ fn two_terminals_in_one_tick_both_appear_in_action_results() {
     let first = fake_signed("e1".repeat(32).as_str(), &author, 1, "drain first");
     let second = fake_signed("e2".repeat(32).as_str(), &author, 1, "drain second");
     let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
-    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ =
+        kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Settle BOTH publishes before any snapshot emit — the same-tick condition.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);

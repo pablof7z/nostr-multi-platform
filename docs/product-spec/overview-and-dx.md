@@ -131,7 +131,7 @@ We treat this as a property of the spec: if it fails repeatedly with capable LLM
 
 ### 3.5 Cross-platform consistency
 
-A scripted action sequence (defined in `crates/nmp-testing`) run against the starter app on all four platforms produces byte-identical `AppState` JSON snapshots after each action. Divergence is a framework defect, not a platform issue.
+A scripted action sequence (defined in `crates/nmp-testing`) run against the starter app on all four platforms produces byte-identical decoded `AppState` snapshots after each action. The runtime transport is FlatBuffers; JSON may be used only as a deterministic test/export representation for comparison. Divergence is a framework defect, not a platform issue.
 
 ---
 
@@ -198,7 +198,7 @@ Feature set:
 
 The proof app also ships a **performance overlay** (toggleable, debug-build default-on) rendering the live counters and budgets from §7.16. The overlay is implemented entirely in platform code reading from `AppState.debug` — no Rust-side UI logic.
 
-The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on all four platforms and `AppState` JSON snapshots must match.
+The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on all four platforms and decoded `AppState` snapshots must match. Any JSON in that harness is a comparison artifact, not the runtime update transport.
 
 ### 4.5 Documentation set
 
