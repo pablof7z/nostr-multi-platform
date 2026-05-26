@@ -7,7 +7,7 @@ package org.nmp.gallery.bridge
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross
  * FFI (D6) — natives return only a handle / string / void; outcomes arrive
  * in the next JSON snapshot. The Rust side is in
- * `crates/nmp-app-gallery` (created in a parallel agent); it MUST export
+ * `apps/nmp-gallery/nmp-app-gallery`; it MUST export
  * JNI symbols named `Java_org_nmp_gallery_bridge_KernelBridge_<methodName>`
  * to match this Kotlin class.
  *
