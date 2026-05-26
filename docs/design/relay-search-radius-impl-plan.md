@@ -1191,17 +1191,24 @@ under `wss://r.example.com` would be a cell miss.
 
 ### 8.11 Non-blockers tracked for inline notes
 
-- **§B.5** (Article VII citation does not resolve) — spec patch deferred;
-  follow-up issue (not Phase 3).
-- **§C.E12** (empty NIP-65 outbox) — W5 test 10:
-  `phase2_with_empty_outbox_terminates_exhausted`.
-- **§C.E13** (NIP-65 arrives mid-claim) — W5 builds candidate queue
-  lazily at Phase-2 entry, not at claim registration.
-- **§C.E15** (AUTH-required Phase 2 relay) — v1 out of scope.
-  Recommended spec amendment: AUTH-pause → neutral, not Failed.
-  Follow-up issue.
-- **§C.E16** (`release_event` mid-Phase-2) — Phase 2 in-flight
-  continues on release (matches Q7 background-complete). Test 11:
+- **§B.5** (Article VII citation does not resolve) — closed in §9
+  follow-up: spec §9 row dropped (HTML comment retains reviewer
+  pointer); no substitute doctrine substituted.
+- **§C.E12** (empty NIP-65 outbox) — spec §5 E12 added in §9 follow-up;
+  W5 test 10: `phase2_with_empty_outbox_terminates_exhausted`.
+- **§C.E13** (NIP-65 arrives mid-claim) — spec §5 E13 added in §9
+  follow-up; W5 builds candidate queue lazily at Phase-2 entry, not at
+  claim registration.
+- **§C.E14** (URL canonicalisation mismatch) — spec §5 E14 added in §9
+  follow-up (companion to impl-plan §8.10); both sides of the score
+  map (read + write) call `CanonicalRelayUrl::parse_or_raw`.
+- **§C.E15** (AUTH-required Phase 2 relay) — spec §5 E15 added in §9
+  follow-up *as deferred*; recommended resolution (AUTH-pause → neutral)
+  is post-v1 because the auth-gate pause semantics are out of scope for
+  the first feature iteration. Follow-up issue.
+- **§C.E16** (`release_event` mid-Phase-2) — spec §5 E16 added in §9
+  follow-up; Phase 2 in-flight continues on release (matches Q7
+  background-complete). Test 11:
   `release_mid_phase2_continues_score_writeback`.
 - **§D.W4** wildcard-author preservation — added to W4 test plan.
 - **§D.W8** emitted-line shape — W9 reads same fixture W8 writes
@@ -1223,3 +1230,34 @@ W1 → W7 → W3 → W5 → W6 → W9
 
 W7 becomes a blocker for W5 (was: parallel). W5's "+450 LOC" budget
 drops to ~380 LOC (no per-candidate interest registration logic).
+
+---
+
+## 9. Review iteration log (2026-05-27 follow-up)
+
+After the previous Phase-2c convergence commit (§8 above, ref `7c74221d`)
+the maintainer dispatched a follow-up iteration pass over Agent B's
+findings list to verify completeness. Two items were not fully closed
+by §8 and required spec-level patches; the rest were already resolved.
+
+| # | Reviewer finding | Resolution | Where |
+|---|---|---|---|
+| 1 | **Blocker — W3 retarget** to `Kernel::relay_failed` (not `FailedAfterRetries`) | Adopted: W3 hooks `kernel/requests/relay_lifecycle.rs::relay_failed` (line 73, verified). | §8.1 |
+| 2 | **Blocker — `oneshot.in_flight()` counter contention** with `MAX_DISCOVERY_CONCURRENCY = 2` | Adopted reviewer alternative §E.1: Phase 2 fans out through W7 hints on a *single* `LogicalInterest` per claim; `oneshot.in_flight()` stays at 1/claim. §0 Q9 superseded. | §8.2 |
+| 3 | **Blocker — `pending_claims: Vec` hot-path O(N)** | Adopted: twin `BTreeMap`s (`InterestId → PendingClaim`, plus reverse `sub_id → InterestId` populated through `register_planner_wire_frames`). | §8.3 |
+| 4 | **Blocker — Q3 reconnect-backoff rationale factually wrong** | Adopted: rationale rewritten against `RELAY_RECONNECT_DELAY_INITIAL = 3 s` (verified at `crates/nmp-network/src/relay_protocol.rs:32`); 8 s = 2× reconnect cycles + Phase-1 budget. Values unchanged. | §8.4 |
+| 5 | Substantive — Article VII / Simplicity Gate citation does not resolve | Adopted: spec §9 row dropped (HTML comment in spec explains why and points at the reviewer's §B.5). No substitute doctrine substituted — none cleanly anchors "no future-proofing"; the intent is preserved by §2 N1–N4 + §11. Spec patch landed in this commit. | spec §9 |
+| 6 | Substantive — E12–E16 missing from spec §5 | Adopted: E12, E13, E14, E16 appended to spec §5 with full resolutions (scenario / behaviour / scoring impact). E15 included as **deferred** — reviewer themselves recommended treating AUTH-pause as neutral but that requires auth-gate semantics work out of v1 scope. Spec patch landed in this commit. | spec §5 |
+| 7 | Substantive — `Arc<RelayAuthorScoreLookup>` cargo-cult; breaks A6 same-tick visibility | Adopted: `impl RelayAuthorScoreLookup for Kernel` via `&self`; planner consults the kernel directly. No `Arc`. | §8.6 |
+| 8 | Substantive — score-on-EOSE-no-match penalises narrow-but-reliable relays (reviewer §E.2: Gigi math) | Adopted reviewer's split: `Hit → +1 success`, `EoseNoMatch → neutral`, `Failed → +3 failures`. Only socket-level failure is treated as a "this relay is bad" signal. | §8.5 |
+
+**Other adoptions tracked in §8** (not on the user's 8-item list but
+addressed by the same commit): §8.7 same-tick race contract (reviewer
+§A.4), §8.8 `OnceLock<bool>` env-gate cache (§B.4), §8.9 32-byte raw
+pubkey LMDB key (§A.2), §8.10 URL canonicalisation before scoring
+(§C.E14).
+
+**Convergence**: all four blockers + the five substantive findings the
+user enumerated are now closed. The reviewer's §F verdict was
+"Approve with changes — do not block"; Phase 3 implementation can
+begin (and has — W1 substrate type landed at commit `a865d7d1`).

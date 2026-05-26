@@ -137,7 +137,7 @@ The exact delta function is an open question listed in §7 and is for Agent A to
 
 | # | Case | Resolution |
 |---|---|---|
-| E1 | Relay unreachable mid-claim, after returning some EVENT frames but before EOSE | Treat as Phase advancement event: the EVENT count to date is preserved (those events are persisted to the store and the renderer sees them), but the relay is scored as if FailedAfterRetries for the current claim. |
+| E1 | Relay unreachable mid-claim, after returning some EVENT frames but before EOSE | Treat as Phase advancement event: the EVENT count to date is preserved (those events are persisted to the store and the renderer sees them), but the relay is scored as `Failed` (the outcome `Kernel::relay_failed` records — see impl plan §8.1 retarget; the earlier "FailedAfterRetries" name was publish-engine terminology and did not apply here) for the current claim. |
 | E2 | EOSE arrives before the relay's WebSocket is fully open (out-of-order frame from a buffering worker) | Cannot occur: EOSE is keyed on `sub_id`, which doesn't exist until the REQ is sent. The relay_worker invariant from `nmp-network` already prevents this; spec notes it for traceability. |
 | E3 | Simultaneous claims for two different events authored by the same author | Registry dedup is keyed on `(scope, shape)`. Different `event_ids` ⇒ different shapes ⇒ no dedup. The two claims run independent Phase 1/2 budgets. Score writes are serialized by the kernel actor (D4), so the second claim's Phase 1 sees scores updated by the first claim's Phase 1 only if those writes have been applied before the second claim's compile pass — by D4 single-writer this is well-ordered. |
 | E4 | Simultaneous claims for the *same* event (same `event_ids` filter) | Registry dedups ⇒ one wire REQ, both oneshot tokens complete on the same EOSE/EVENT. Already handled by the existing OneshotApi dedup tests; no new code path needed. |
@@ -148,6 +148,11 @@ The exact delta function is an open question listed in §7 and is for Agent A to
 | E9 | `app_relays` is empty AND no NIP-65 for the author | Claim immediately terminates as exhausted (see §4.1). Renderer's loading state ends. |
 | E10 | Two events authored by the same author land via different `(scope, shape)` paths concurrently — e.g. one via discovery `event_ids`, one via addressable `authors+kinds+d_tags` | Both are independent oneshots; both update scores for the same `(author, relay)` cells. Last-write-wins under D4 single-writer; the actor serializes writes. No lost update. |
 | E11 | A relay reports as connected but is silently dropping frames (zombie connection) | Out of scope at the protocol level (relay_worker already detects this via NIP-42 heartbeat / write-failure detection). Phase 2 would still kick in via the wall-clock budget. |
+| E12 | Author has a kind:10002 outbox but it lists zero `r` write-relays (empty NIP-65) | Phase 2 has no expansion candidates. Treat the claim as exhausted immediately after Phase 1 EOSE-without-match — do not spin or retry. Scoring impact: Phase 1 EoseNoMatches are *neutral* per §7's revised delta table (no demerit for a relay that legitimately doesn't carry this event). Acceptance: claim resolves to `terminal-exhausted` within `PHASE_1_BUDGET_MS + epsilon`. Reviewer ref §C.E12. |
+| E13 | NIP-65 for the author arrives mid-claim — Phase 1 started against `app_relays` only (no outbox known), then the indexer hydrates kind:10002 before Phase 1 elapses | Build the Phase-2 candidate queue **lazily at Phase-2 entry**, not at claim registration. Reading `MailboxCache.write_relays` is cheap (one call). This means a freshly-arrived outbox is honoured on the same claim's Phase 2 instead of being missed until the next claim. Scoring impact: only Phase-2 outcomes update scores for the newly-discovered relays; the Phase-1 EOSE on `app_relays` is scored against `app_relays`, not the (then-unknown) outbox. Reviewer ref §C.E13. |
+| E14 | Relay-URL canonicalisation mismatch — a score row is written under `wss://relay.example.com/` (trailing slash) and read under `wss://relay.example.com` (no slash) | Both `record_claim_outcome` (write) and `is_warm` / `weight` (read) call `CanonicalRelayUrl::parse_or_raw` before keying the score map. Cell consolidation is by canonical form. Scoring impact: a single relay served under multiple textual forms scores as one cell, not many — preserves the "one author, one relay" invariant the score weight assumes. NIP-65 outbox entries (author-provided, not always canonical) and `app_relays` (operator-configured, usually canonical) both flow through the same canonicaliser. Reviewer ref §C.E14. |
+| E15 | A relay in the Phase 2 candidate list requires NIP-42 AUTH and the kernel has no key bound for it | **Deferred to follow-up issue, post-v1.** Today's AUTH gate (`crates/nmp-core/src/kernel/auth.rs`) parks the REQ until authenticated; the per-relay 5 s timeout would then implicitly demerit the relay as `Failed` even though the failure mode is "no key bound", not "relay is bad". Correct resolution (per reviewer §C.E15 recommendation): AUTH-pause excludes the relay from Phase 2 attribution and records a *neutral* score outcome — but wiring this requires touching the auth gate's pause semantics, which is out of scope for the first feature iteration. Tracked as v1-OOS in §11. |
+| E16 | Consumer calls `release_event` mid-Phase-2 — the user navigated away before the claim completed | Phase 2 in-flight REQs **continue** to completion in the background (matches §10 Q7's "background-complete after user budget = yes" rationale: the score-learning is worth the cost even when the user is gone). The OneshotApi token is released when the EOSE handler fires for the last in-flight Phase-2 sub; the renderer's loading state ends immediately on `release_event`. Scoring impact: Phase-2 outcomes still write scores even after the user-visible release, so the next claim for an event from the same author benefits from the learning. Reviewer ref §C.E16. |
 
 ---
 
@@ -258,8 +263,21 @@ The scores table is NOT included in `AppUpdate` snapshots — it is purely inter
 | **D0** | No protocol nouns in `nmp-core` | `Score`, `relay_author_scores`, etc. are generic over `(Pubkey, RelayUrl)`. No NIP-XX naming. The fact that we *use* NIP-65 to derive the outbox is handled in an existing module (`nmp-nip65` adapter); the score table itself is protocol-agnostic. |
 | **D4** | `InterestRegistry` is the single writer for sub state | All Phase 1/2 expansion goes through the existing `InterestRegistry::ensure_sub` / `drop_owner`. The expansion adds *more* `LogicalInterest` entries when it advances to Phase 2 — but each entry is registered the same way the original claim is. No bypass. |
 | **D6** | No panics, no `Result` across FFI | Score lookups are infallible (`get_or_default`). The Phase 2 trigger emits state, not errors. Operational failure (relay unreachable) surfaces as state fields the renderer already handles ("loading" / "not found"). |
-| **D8** | No polling | Every score update is edge-triggered by a frame arrival (EVENT / EOSE / FailedAfterRetries). Phase advancement on wall-clock budget uses the existing actor observer tick, not a `sleep`. Snapshot update equality preserved — the score table is internal-only. |
-| **Article VII (Simplicity Gate)** | No future-proofing | We are not building a "relay reputation service" — only the minimum to pass A1–A6. |
+| **D8** | No polling | Every score update is edge-triggered by a frame arrival (EVENT / EOSE / `Kernel::relay_failed`). Phase advancement on wall-clock budget uses the existing actor observer tick, not a `sleep`. Snapshot update equality preserved — the score table is internal-only. |
+
+<!--
+  The earlier draft cited "Article VII (Simplicity Gate)" as a constraint. The
+  reviewer (`relay-search-radius-review.md` §B.5) confirmed this citation does
+  not resolve to any in-tree source — `docs/aim.md` §6 numbers 12 doctrines
+  without Roman numerals, and no `docs/principles/` or `docs/constitution.md`
+  carrying that framing exists. Citation dropped rather than re-anchored to a
+  substitute doctrine, because no in-tree doctrine cleanly maps to "no
+  future-proofing" without overloading its meaning (D9 "no business logic in
+  native code" is the closest, but it constrains the FFI surface, not feature
+  scope). The intent — keeping this feature minimal — is preserved by the
+  explicit non-goals in §2 (N1–N4) and the out-of-scope list in §11.
+-->
+
 
 ---
 
