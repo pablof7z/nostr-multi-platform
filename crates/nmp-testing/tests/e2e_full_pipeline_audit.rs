@@ -1,10 +1,10 @@
 //! Audit: fail CI when an e2e test is still `#[ignore]`-tagged for a milestone
-//! that has already been recorded as DONE in `docs/plan/status.md`.
+//! that has already been recorded as DONE in `docs/plan.md`.
 //!
 //! # How it works
 //!
 //! 1. `DONE_MILESTONES` lists every milestone whose status is DONE per
-//!    `docs/plan/status.md`.  Update this constant when a milestone ships.
+//!    `docs/plan.md`.  Update this constant when a milestone ships.
 //! 2. The test reads `e2e_full_pipeline.rs` and finds all `#[ignore = "..."]`
 //!    annotations that match the pattern `blocked on M<N>+...`.
 //! 3. For each gate milestone extracted from those annotations, if it appears

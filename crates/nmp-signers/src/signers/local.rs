@@ -42,8 +42,8 @@ pub struct LocalKeySigner {
     /// a third copy that *is* wiped (via the `Zeroizing` wrapper's `Drop`),
     /// reducing — but not eliminating — recoverable secret material in freed
     /// memory.  Full mitigation requires upstream `Zeroize` support in `nostr`
-    /// (or a `nostr`/`secp256k1` upgrade that adds it).  Tracked in
-    /// `docs/arch-review-queue.md`.
+    /// (or a `nostr`/`secp256k1` upgrade that adds it).  Tracked as V-55 in
+    /// `docs/BACKLOG.md`.
     ///
     /// Stored as an inline `[u8; 32]` (which `zeroize` natively implements
     /// `Zeroize` for); the bytes are wiped wherever the enclosing
@@ -310,4 +310,3 @@ impl Nip44 for LocalKeySigner {
         )
     }
 }
-

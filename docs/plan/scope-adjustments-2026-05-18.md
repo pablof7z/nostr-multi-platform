@@ -5,7 +5,7 @@
 > `nmp-nip59`) and NWC + NIP-57 zaps (`nmp-nwc`, `nmp-nip57`) were subsequently built,
 > tested, and wired into the kernel on master. This document is kept for the historical
 > record; the plan and the codebase have diverged. A formal scope decision is needed —
-> tracked in `docs/arch-review-queue.md` and summarized in `docs/plan/status.md`.
+> tracked as PD-041 in `docs/BACKLOG.md`.
 
 User direction landed mid-session-1. Captures: what shifts in the milestone ladder, what gets folded into existing milestones, and what new research must precede the next plan revision.
 

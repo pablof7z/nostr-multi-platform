@@ -8,7 +8,9 @@
 
 ## TL;DR — where we are
 
-> Full per-milestone status in [`docs/plan/status.md`](docs/plan/status.md); per-milestone scope in `docs/plan/m*.md`.
+> Current milestone status lives in [`docs/plan.md`](docs/plan.md); per-milestone
+> scope lives in `docs/plan/m*.md`; active work and open decisions live in
+> [`docs/BACKLOG.md`](docs/BACKLOG.md) and [`WIP.md`](WIP.md).
 
 - **M0 (kernel substrate + non-Nostr fixture):** ✅ DONE.
 - **M1 (Chirp social baseline on live iOS):** ✅ DONE (`701d0e5` — firehose-bench `live` cold_start 258ms first-item / 3587ms filled-timeline; profile_thrashing 0 leaked subs). Chirp's broader goal is the full NMP showcase: every reusable feature NMP ships should become visible, testable, and debuggable there.

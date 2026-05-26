@@ -37,11 +37,12 @@
 | `kernel/types.rs` `KernelUpdate` | `:306-326` | 18 top-level fields (briefs implied 16) |
 | `framework-magic/replaceable.md`, `lmdb-schema.md:229-238` | — | These design docs line-cite `kernel/ingest.rs:NNN`; `kernel/ingest` is now a **directory** (`ingest/mod.rs`). Stale cites in upstream design docs (not builder-guide) — flagged for a docs sweep |
 
-## C. Doc/doc reconciliation follow-ups (out of writer contract)
+## C. Doc/doc reconciliation follow-ups
 
-- **§05 split** into `05a-substrate-traits.md` + `05b-substrate-traits.md` (combined >300 LOC, AGENTS.md cap). `PLAN.md` TOC still lists single `05-substrate-traits.md`; §02/§04/§06 `See also:` link `05-substrate-traits.md` — repoint to `05a` when the TOC is reconciled.
-- **§19 split** into `19a-` + `19b-walkthrough-microblog.md`; `PLAN.md` TOC still lists single `19-walkthrough-microblog.md`. No stale single file exists.
-- These are PLAN.md TOC edits, deliberately deferred — the writer contract forbids touching `PLAN.md`. Orchestrator/TOC owner to fold in.
+The former builder-guide `PLAN.md` was a writer-dispatch artifact and has been
+deleted. The numbered section files are now the source of truth for this guide.
+Future guide-wide reconciliation work belongs in this section or
+`docs/BACKLOG.md`, not in a parallel plan file.
 
 ## Anti-patterns
 
@@ -55,6 +56,7 @@
 
 1. The §A 5-column register (claim · evidence · status · owner · severity) — the orchestrator triage queue; HIGH/MED rows become milestone tasks, not code markers.
 2. The §B cite-drift table — an audit trail proving every builder-guide `path:line` was verified at master tip, with corrections applied in place.
-3. The §C TOC-reconciliation list — the only PLAN.md edits the doc build deferred.
+3. The §C note — the builder-guide dispatch plan was removed so guide state does
+   not live in two places.
 
 See also: [00 — How to read this guide](00-how-to-read.md) · [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) · [07 — Subscription planner](07-subscription-planner.md) · [09 — Persistence (LMDB) + watermarks](09-persistence-lmdb.md) · [10 — Outbox routing (NIP-65)](10-outbox-routing.md) · [15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) · [21 — The framework-magic contract](21-framework-magic.md) · [22 — Doctrine compliance checklist](22-doctrine-checklist.md). This register is cross-cut by every section.

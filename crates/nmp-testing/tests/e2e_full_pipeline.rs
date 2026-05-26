@@ -10,8 +10,8 @@
 //! Each test carries `#[ignore = "blocked on M<N>: <label>"]`.  The
 //! companion `e2e_full_pipeline_audit.rs` fails at CI time when any such
 //! tag is present but the referenced milestone is recorded as DONE in
-//! `docs/plan/status.md`.  That file is the single source of truth; the
-//! audit enforces un-ignoring.
+//! `docs/plan.md`.  That file owns milestone status; the audit enforces
+//! un-ignoring.
 //!
 //! Gate map for this suite:
 //!   M2 — subscription compilation + outbox routing + kind:3 auto-tracking

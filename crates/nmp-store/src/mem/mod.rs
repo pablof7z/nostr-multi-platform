@@ -33,10 +33,9 @@
 //!
 //! ## Tracking
 //!
-//! This limitation is a known, accepted trade-off recorded in
-//! `docs/arch-review-queue.md` under "MEDIUM — architectural hygiene"
-//! ("Mem backend has zero indexes — all O(N) scans"). Documented loudly here
-//! by design so future developers do not hit the cliff by accident.
+//! This limitation is a known, accepted trade-off. It is documented loudly here
+//! by design so future developers do not hit the cliff by accident instead of
+//! relying on a parallel planning queue.
 //! ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //!
 //! Module layout:
