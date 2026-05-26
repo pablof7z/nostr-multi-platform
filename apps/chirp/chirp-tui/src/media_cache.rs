@@ -169,6 +169,7 @@ mod tests {
     use crate::ui::nostr_content::{
         content_render_data::ContentRenderData, content_tree_wire::ContentTreeWire,
     };
+    use crate::ui::nostr_user::profile_wire::ProfileWire;
 
     #[test]
     fn visible_media_urls_tracks_selected_thread_only() {
