@@ -22,8 +22,10 @@ serde_json = "1.0"
 nmp-core = { path = "../nmp-core" }
 nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
+nmp-nip59 = { path = "../nmp-nip59" }
 # V-51 phase 4 validation harness — `routing_trace_real_nostr` test
 # constructs `GenericOutboxRouter` + `InMemoryMailboxCache` + the
 # `Kind10002Parser` directly to seed the cache from a live kind:10002
@@ -105,6 +107,25 @@ path = "tests/framework_magic_contract.rs"
 [[test]]
 name = "real_relay_smoke"
 path = "tests/real_relay_smoke.rs"
+
+# PR #631 verification — NIP-17 gift-wrap round-trip over a real relay using
+# the post-pub(crate) `gift_wrap_with_signer` seam (Alice publishes from one
+# socket; Bob subscribes on a separate socket and decrypts).
+# `#[ignore]` by default; run explicitly:
+#   cargo test -p nmp-testing --test real_relay_nip17_roundtrip -- --ignored --nocapture
+[[test]]
+name = "real_relay_nip17_roundtrip"
+path = "tests/real_relay_nip17_roundtrip.rs"
+
+# PR #631 verification — Marmot kind:445 group-message round-trip over a real
+# relay (Alice publishes the encrypted MLS message; Bob's socket receives and
+# decrypts via MarmotService). Two in-process MarmotService instances share
+# state via the harness; the wire path is the only "real" part.
+# `#[ignore]` by default; run explicitly:
+#   cargo test -p nmp-testing --test real_relay_marmot_roundtrip -- --ignored --nocapture
+[[test]]
+name = "real_relay_marmot_roundtrip"
+path = "tests/real_relay_marmot_roundtrip.rs"
 
 # Marmot milestone exit-gate integration tests.
 # Run all five: `cargo test -p nmp-testing --test 'marmot_*'`
