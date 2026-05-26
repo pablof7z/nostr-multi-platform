@@ -78,7 +78,22 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::interest::{Pubkey, RelayUrl};
-use super::plan::CompiledPlan;
+use super::plan::{CompiledPlan, RoutingSource, UserConfiguredCategory};
+
+/// Predicate: does this relay's `role_tags` carry the operator-pinned
+/// `UserConfigured(AppRelay)` lane?
+///
+/// App-relays are operator directives — "always REQ from here" — and must
+/// survive the greedy max-coverage pass regardless of whether the author's
+/// NIP-65 outbox already covers them. Other `UserConfigured` sub-categories
+/// (`Indexer`, `Bootstrap`, …) are kernel-driven cold-start helpers, NOT
+/// operator intent, and therefore remain subject to coverage pruning.
+///
+/// See `selection/tests.rs::app_relay_survives_*` for the contract and the
+/// gallery-TUI smoke regression that motivated this carve-out.
+fn relay_is_operator_pinned(role_tags: &BTreeSet<RoutingSource>) -> bool {
+    role_tags.contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay))
+}
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -116,13 +131,36 @@ use super::plan::CompiledPlan;
 ///
 /// [`SubscriptionCompiler`]: super::compiler::SubscriptionCompiler
 pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_user: usize) {
+    // Stage 0: identify operator-pinned relays (those carrying
+    // `UserConfigured(AppRelay)`). They bypass greedy coverage entirely and
+    // are preserved unchanged at projection. This is the operator-intent
+    // override: when the user pins an app relay, the planner's coverage
+    // optimizer MUST NOT second-guess it — even if the author's NIP-65 outbox
+    // already covers the author under `max_per_user`. See
+    // `selection/tests.rs::app_relay_survives_*` for the contract and the
+    // gallery-TUI smoke regression (`app_relays=[primal]` dropped in favour
+    // of an author's [atlas, eden] outbox).
+    //
+    // Excluding these relays from the greedy input also frees their authors'
+    // coverage budget for the OTHER relays — i.e. the operator's pin does
+    // not consume a slot in `max_per_user` or `max_connections`, both of
+    // which exist solely to bound the NIP-65 outbox connection storm.
+    let operator_pinned: BTreeSet<RelayUrl> = plan
+        .per_relay
+        .iter()
+        .filter_map(|(relay, relay_plan)| {
+            relay_is_operator_pinned(&relay_plan.role_tags).then(|| relay.clone())
+        })
+        .collect();
+
     // Stage 1: extract the (relay → union-of-author-sets) shape the algorithm
-    // wants. Wildcard sub-shapes (empty authors) contribute nothing here; if a
-    // relay's only sub-shapes are wildcards, it will not be picked by coverage
-    // and will be dropped.
+    // wants — EXCLUDING operator-pinned relays. Wildcard sub-shapes (empty
+    // authors) contribute nothing here; if a relay's only sub-shapes are
+    // wildcards, it will not be picked by coverage and will be dropped.
     let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = plan
         .per_relay
         .iter()
+        .filter(|(relay, _)| !operator_pinned.contains(*relay))
         .map(|(relay, relay_plan)| {
             let mut union: BTreeSet<Pubkey> = BTreeSet::new();
             for sub in &relay_plan.sub_shapes {
@@ -146,10 +184,19 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
         }
     }
 
-    // Stage 3: project back. Drop unselected relays; filter author sets on
-    // selected ones; recompute hashes where author sets changed.
+    // Stage 3: project back. Operator-pinned relays survive unchanged;
+    // greedy-selected relays have their author sets filtered to the oracle;
+    // every other relay is dropped.
     let mut new_per_relay = BTreeMap::new();
     for (relay, mut relay_plan) in std::mem::take(&mut plan.per_relay) {
+        if operator_pinned.contains(&relay) {
+            // Operator-pinned: preserve unchanged. The wire-emitter must emit
+            // the REQ to this relay regardless of coverage decisions.
+            // Sub-shape author sets are NOT mutated, so canonical_filter_hash
+            // stays valid and sub-id stability is preserved across recompiles.
+            new_per_relay.insert(relay, relay_plan);
+            continue;
+        }
         let Some(allowed_authors) = selections.get(&relay) else {
             // Relay was not chosen — drop it entirely.
             continue;
