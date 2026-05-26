@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+
+use nmp_content::{embed_projection::EmbeddedEventEnvelope, EventClaimSink};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
@@ -22,6 +25,18 @@ use crate::{
     nostr_user_card::NostrUserCard,
 };
 
+/// Per-frame embed-rendering context — the renderer's pulled-in deps so
+/// it can drive the renderer-triggered claim path (ADR-0034). `envelopes`
+/// is the host's current `claimed_events` map (built from the latest
+/// snapshot push); `sink` forwards new claims to the kernel; `consumer_id`
+/// is the per-consumer key the kernel refcounts under.
+#[derive(Clone, Copy)]
+pub struct EmbedFrameContext<'a> {
+    pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
+    pub sink: Option<&'a dyn EventClaimSink>,
+    pub consumer_id: &'a str,
+}
+
 
 pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
     match id {
@@ -43,7 +58,13 @@ pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
     }
 }
 
-pub fn render_body(id: &str, area: Rect, buf: &mut Buffer, data: &GalleryData) {
+pub fn render_body(
+    id: &str,
+    area: Rect,
+    buf: &mut Buffer,
+    data: &GalleryData,
+    embed_ctx: EmbedFrameContext<'_>,
+) {
     let media_images = media_refs(data);
     match id {
         "content-core" => paragraph(content_core_ratatui_lines(
@@ -66,7 +87,7 @@ pub fn render_body(id: &str, area: Rect, buf: &mut Buffer, data: &GalleryData) {
             render_quote_card(area, buf, &data.content_quote_card, &media_images)
         }
         "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
-            render_embed_showcase(id, area, buf, data, &media_images)
+            render_embed_showcase(id, area, buf, data, &media_images, embed_ctx)
         }
         "user-avatar" => render_avatar(area, buf, data),
         "user-name" => NostrProfileName::new(&data.primary_profile).render(area, buf),
@@ -251,6 +272,7 @@ fn render_embed_showcase(
     buf: &mut Buffer,
     data: &GalleryData,
     media_images: &[(&str, &Protocol)],
+    embed_ctx: EmbedFrameContext<'_>,
 ) {
     let example = match id {
         "embed-article" => &data.embed_article,
@@ -262,18 +284,20 @@ fn render_embed_showcase(
 
     let registry = NostrKindRegistry::make_default();
 
-    // M16 / ADR-0034: drive `nmp_app_claim_event` via the renderer→host
-    // bridge. In fixture mode `live_sink` is `None`, so `as_deref()` yields
-    // `None` and the claim path is a back-compat no-op (W4). In live mode
-    // (W7) the sink calls `nmp_app_claim_event(uri, consumer_id)` so the
-    // kernel fetches the embedded event over the OneshotApi.
+    // M16 / ADR-0034: the renderer is frontend-driven. When `NostrContentView`
+    // hits an EventRef(uri), it calls `sink.claim(uri, consumer_id)` — the
+    // kernel fetches (cache or relay) and surfaces in `claimed_events`. The
+    // `EmbedHostState` decodes that on each snapshot tick and exposes the
+    // envelopes through `embed_ctx.envelopes`. The renderer looks them up
+    // by `primary_id` / `uri`; if absent → loading placeholder; if present
+    // → kind registry dispatches to the right handler.
     NostrContentView::new(&example.tree)
         .render_data(Some(&example.render_data))
         .media_images(media_images)
         .kind_registry(Some(&registry))
-        .embedded_events(Some(&example.embedded_events))
-        .claim_sink(data.live_sink.as_deref())
-        .consumer_id(Some("nmp-gallery-tui.embed"))
+        .embedded_events(Some(embed_ctx.envelopes))
+        .claim_sink(embed_ctx.sink)
+        .consumer_id(Some(embed_ctx.consumer_id))
         .render(area, buf);
 }
 
@@ -318,46 +342,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn embed_note_has_envelope_keyed_by_event_id() {
-        let data = GalleryData::render_test_data();
-        // The embed_note ContentExample must carry a ShortNote envelope so that
-        // NostrContentView can look it up by primary_id when it encounters the
-        // EventRef node produced by tokenising the synthetic content string.
-        assert!(
-            !data.embed_note.embedded_events.is_empty(),
-            "embed_note must have at least one envelope"
-        );
-        let has_short_note = data.embed_note.embedded_events.values().any(|env| {
-            matches!(
-                env.projection,
-                nmp_content::embed_projection::EmbedKindProjection::ShortNote(_)
-            )
-        });
-        assert!(has_short_note, "embed_note envelope must be a ShortNote projection");
-    }
-
-    #[test]
-    fn embed_article_has_article_projection() {
-        let data = GalleryData::render_test_data();
-        let has_article = data.embed_article.embedded_events.values().any(|env| {
-            matches!(
-                env.projection,
-                nmp_content::embed_projection::EmbedKindProjection::Article(_)
-            )
-        });
-        assert!(has_article, "embed_article envelope must be an Article projection");
-    }
-
-    #[test]
-    fn embed_highlight_has_highlight_projection() {
-        let data = GalleryData::render_test_data();
-        let has_highlight = data.embed_highlight.embedded_events.values().any(|env| {
-            matches!(
-                env.projection,
-                nmp_content::embed_projection::EmbedKindProjection::Highlight(_)
-            )
-        });
-        assert!(has_highlight, "embed_highlight envelope must be a Highlight projection");
-    }
+    // Embed-envelope projection tests live in `embed_host::tests` now —
+    // they exercise the snapshot → ClaimedEventDto → EmbedKindProjection
+    // dispatch (the same path the renderer takes), not a static field on
+    // `ContentExample` (which no longer exists). The renderer's
+    // `embedded_events(...)` is sourced from `EmbedFrameContext`, not from
+    // `ContentExample`.
 }

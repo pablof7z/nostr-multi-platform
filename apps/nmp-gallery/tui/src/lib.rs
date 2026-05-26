@@ -33,6 +33,7 @@ pub mod nostr_user_card;
 pub mod profile_wire;
 
 pub mod data;
+pub mod embed_host;
 pub mod gallery;
 pub mod live;
 pub mod render;

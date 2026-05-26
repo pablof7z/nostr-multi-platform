@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::{data::GalleryData, render};
+use crate::{data::GalleryData, render, render::EmbedFrameContext};
 
 pub const COMPONENTS: &[&str] = &[
     "user-avatar",
@@ -136,13 +136,19 @@ pub const REGISTRY_SECTIONS: &[RegistrySectionSpec] = &[
 pub struct GalleryView<'a> {
     selected_index: usize,
     data: &'a GalleryData,
+    embed_ctx: EmbedFrameContext<'a>,
 }
 
 impl<'a> GalleryView<'a> {
-    pub fn new(selected_index: usize, data: &'a GalleryData) -> Self {
+    pub fn new(
+        selected_index: usize,
+        data: &'a GalleryData,
+        embed_ctx: EmbedFrameContext<'a>,
+    ) -> Self {
         Self {
             selected_index,
             data,
+            embed_ctx,
         }
     }
 }
@@ -166,7 +172,13 @@ impl Widget for GalleryView<'_> {
             .spacing(1)
             .split(inner);
         render_sidebar(chunks[0], self.selected_index, buf);
-        render_detail(component_at(self.selected_index), chunks[1], self.data, buf);
+        render_detail(
+            component_at(self.selected_index),
+            chunks[1],
+            self.data,
+            buf,
+            self.embed_ctx,
+        );
     }
 }
 
@@ -233,7 +245,13 @@ fn render_sidebar(area: Rect, selected_index: usize, buf: &mut Buffer) {
     Paragraph::new(rows).block(block).render(area, buf);
 }
 
-fn render_detail(component: ComponentSpec, area: Rect, data: &GalleryData, buf: &mut Buffer) {
+fn render_detail(
+    component: ComponentSpec,
+    area: Rect,
+    data: &GalleryData,
+    buf: &mut Buffer,
+    embed_ctx: EmbedFrameContext<'_>,
+) {
     let block = Block::default()
         .title(component.label)
         .borders(Borders::ALL)
@@ -245,7 +263,7 @@ fn render_detail(component: ComponentSpec, area: Rect, data: &GalleryData, buf: 
         .spacing(1)
         .split(inner);
     component_header(component).render(chunks[0], buf);
-    render::render_body(component.id, chunks[1], buf, data);
+    render::render_body(component.id, chunks[1], buf, data, embed_ctx);
 }
 
 fn component_header(component: ComponentSpec) -> Paragraph<'static> {

@@ -1,19 +1,26 @@
+//! Initial gallery view state — what every page needs at frame zero.
+//!
+//! Live-only (ADR-0034 / M16): there is no fixture mode, no hardcoded
+//! embed envelopes, no `load_images: bool` knob that toggles fakery. The
+//! gallery boots, the kernel runs through cold-start, and this module
+//! turns the resulting `LiveFacts` (profiles + thread/author items
+//! resolved from kind:0 / kind:1 / etc.) into the content trees and
+//! `ContentRenderData` the renderer needs to draw the first frame.
+//!
+//! Embedded events do NOT live here. The renderer is frontend-driven:
+//! when `NostrContentView` hits an `EventRef(uri)` it calls
+//! `sink.claim(uri, …)`, the kernel fetches (cache or relay), and the
+//! resolved envelopes flow through `EmbedHostState` (see `embed_host.rs`).
+//! Renderers consume the host's envelope map at render time, not a
+//! static field on `ContentExample`.
+
 use std::{
-    collections::BTreeMap,
     io::{IsTerminal, Read},
-    sync::Arc,
     time::Duration,
 };
 
-use nmp_content::{
-    embed_projection::{
-        ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope, HighlightProjection,
-        RenderContextWire, ShortNoteProjection,
-    },
-    resolve_embed_projection, tokenize_with_kind, EventClaimSink, RenderContext, RenderMode,
-};
+use nmp_content::{tokenize_with_kind, RenderMode};
 use nmp_core::display::{short_hex, short_npub, to_npub};
-use nmp_core::substrate::KernelEvent;
 use ratatui::layout::Size;
 use ratatui_image::{picker::Picker, picker::ProtocolType, protocol::Protocol, Resize};
 use serde_json::{json, Map, Value};
@@ -21,48 +28,17 @@ use serde_json::{json, Map, Value};
 use crate::{
     content_render_data::ContentRenderData,
     content_tree_wire::ContentTreeWire,
+    live::{LiveFacts, LiveItem, LiveProfile},
     profile_wire::ProfileWire,
 };
 
-const PRIMARY_PUBKEY: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
-const SECONDARY_PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-const MENTION_EVENT_ID: &str = "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660";
-const MEDIA_EVENT_ID: &str = "c2ee64b0371f290edf66fc797598b2d307aa79192f6d6e0bf5344cf81104029b";
-const QUOTE_SOURCE_EVENT_ID: &str =
-    "2df88accbf264b10f47809abcf9d32b4146b035a5a197c9ff30e45ac010d5368";
-const ARTICLE_NADDR: &str = "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp";
-
-struct FixtureProfile {
-    pubkey: String,
-    display_name: Option<String>,
-    picture_url: Option<String>,
-    nip05: Option<String>,
-    about: Option<String>,
-}
-
-struct FixtureItem {
-    id: String,
-    author_pubkey: String,
-    kind: u32,
-    content: String,
-    created_at: u64,
-}
-
-impl FixtureProfile {
-    fn display_label(&self) -> String {
-        self.display_name
-            .as_deref()
-            .filter(|n| !n.trim().is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| self.pubkey.clone())
-    }
-}
-
-impl FixtureItem {
-    fn preview(&self) -> String {
-        self.content.replace('\n', " ").chars().take(180).collect()
-    }
-}
+/// The naddr the embed-article showcase references in its synthesized
+/// content string. The renderer encounters this URI inside the content
+/// tree, calls `host.claim(uri, ...)`, the kernel fetches the kind:30023,
+/// and `EmbedHostState` decodes it into an `ArticleProjection`. Defining
+/// it here (rather than inline) makes the showcase reproducible — anyone
+/// running the gallery TUI claims THIS naddr.
+pub const ARTICLE_NADDR: &str = "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp";
 
 pub struct GalleryData {
     pub primary_profile: ProfileWire,
@@ -81,12 +57,6 @@ pub struct GalleryData {
     pub embed_profile: ContentExample,
     pub embed_note: ContentExample,
     pub embed_highlight: ContentExample,
-
-    /// Optional host-side bridge that lets the embed renderer drive
-    /// `nmp_app_claim_event` (ADR-0034 / M16). `None` in fixture mode —
-    /// the upcoming live-mode constructor (W7) populates it with a
-    /// `LiveKernelSink` so embed render passes trigger kernel fetches.
-    pub live_sink: Option<Arc<dyn EventClaimSink>>,
 }
 
 pub struct ContentExample {
@@ -94,7 +64,6 @@ pub struct ContentExample {
     pub title: String,
     pub tree: ContentTreeWire,
     pub render_data: ContentRenderData,
-    pub embedded_events: BTreeMap<String, EmbeddedEventEnvelope>,
 }
 
 pub struct MediaProtocol {
@@ -103,247 +72,135 @@ pub struct MediaProtocol {
 }
 
 impl GalleryData {
-    pub fn load(load_images: bool) -> Result<Self, String> {
-        let primary = FixtureProfile {
-            pubkey: PRIMARY_PUBKEY.to_string(),
-            display_name: Some("Pablo".to_string()),
-            picture_url: Some("https://pablof7z.com/avatar.png".to_string()),
-            nip05: Some("pablo@pablof7z.com".to_string()),
-            about: Some("Building NMP and other stuff.".to_string()),
-        };
-        let secondary = FixtureProfile {
-            pubkey: SECONDARY_PUBKEY.to_string(),
-            display_name: Some("fiatjaf".to_string()),
-            picture_url: None,
-            nip05: Some("fiatjaf@fiatjaf.com".to_string()),
-            about: Some("The guy who made nostr.".to_string()),
-        };
-
-        let secondary_npub_uri = format!("nostr:{}", to_npub(SECONDARY_PUBKEY));
-        let mention_note_uri = note_uri(MENTION_EVENT_ID);
-
-        let mention_item = FixtureItem {
-            id: MENTION_EVENT_ID.to_string(),
-            author_pubkey: PRIMARY_PUBKEY.to_string(),
-            kind: 1,
-            content: format!(
-                "{secondary_npub_uri} shipped another elegant NIP today — one of the most creative minds in the protocol space #nostr"
-            ),
-            created_at: 1716000000,
-        };
-        let media_item = FixtureItem {
-            id: MEDIA_EVENT_ID.to_string(),
-            author_pubkey: PRIMARY_PUBKEY.to_string(),
-            kind: 1,
-            content: "The view is incredible \u{1f305} https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800 #photography #nostr".to_string(),
-            created_at: 1716001000,
-        };
-        let quote_source_item = FixtureItem {
-            id: QUOTE_SOURCE_EVENT_ID.to_string(),
-            author_pubkey: PRIMARY_PUBKEY.to_string(),
-            kind: 1,
-            content: format!("this resonated with me {mention_note_uri} what do you think?"),
-            created_at: 1716002000,
-        };
+    /// Build the initial gallery view state from the kernel's cold-start
+    /// fetch. The renderer (driven by snapshot pushes) later updates the
+    /// embed host with resolved kind:30023 / kind:9802 / kind:1 envelopes
+    /// — those do NOT live on this struct.
+    ///
+    /// `load_images` controls the synchronous avatar/media HTTP fetches.
+    /// Set `false` for non-TTY environments (CI dump-lines, tests).
+    pub fn from_live(facts: &LiveFacts, load_images: bool) -> Result<Self, String> {
+        let primary = &facts.primary_profile;
+        let secondary = &facts.mention_profile;
 
         let avatar_images = if load_images {
-            avatar_protocols(&primary)
+            avatar_protocols(primary)
         } else {
             AvatarProtocols::default()
         };
         let media_images = if load_images {
-            media_protocols(&[&media_item])
+            media_protocols(&[&facts.media_item, &facts.quote_target_item])
         } else {
             Vec::new()
         };
 
-        let mention_profiles = [(&secondary, Some(secondary_npub_uri.as_str()))];
+        let mention_profiles = [(secondary, Some(facts.mention_profile_uri.as_str()))];
+        let quote_events = [(
+            &facts.quote_target_item,
+            &facts.quote_target_profile,
+            Some(facts.quote_event_uri.as_str()),
+        )];
+
+        // Embed-showcase content strings. The renderer turns the embedded
+        // bech32 URIs into `EventRef` tokens, claims via the sink, and the
+        // resolved envelopes arrive through `EmbedHostState`. We do NOT
+        // synthesize envelopes here.
+        let article_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!("hey, check out my article {ARTICLE_NADDR} I hope you enjoy it!"),
+        );
+        let mention_uri_for_embed = facts.mention_profile_uri.clone();
+        let profile_embed_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!(
+                "met {mention_uri_for_embed} at a nostr conference last week, brilliant mind"
+            ),
+        );
+        let note_embed_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!(
+                "this is a great point {} what do you think?",
+                facts.quote_event_uri
+            ),
+        );
+        let highlight_embed_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!("found this interesting {}", facts.quote_event_uri),
+        );
 
         Ok(Self {
-            primary_profile: profile_wire(&primary),
-            secondary_profile: profile_wire(&secondary),
+            primary_profile: profile_wire(primary),
+            secondary_profile: profile_wire(secondary),
             avatar_image: avatar_images.large,
             avatar_image_compact: avatar_images.compact,
             media_images,
             content_core: content_example(
-                &mention_item,
-                "fixture mention tree",
+                &facts.mention_item,
+                "live mention tree",
                 &mention_profiles,
                 &[],
             )?,
             content_minimal: content_example(
-                &mention_item,
-                "fixture minimal mention",
+                &facts.mention_item,
+                "live minimal mention",
                 &mention_profiles,
                 &[],
             )?,
-            content_view: content_example(&media_item, "fixture image content", &[], &[])?,
+            content_view: content_example(&facts.media_item, "live image content", &[], &[])?,
             content_mention_chip: content_example(
-                &mention_item,
-                "fixture mention chip",
+                &facts.mention_item,
+                "live mention chip",
                 &mention_profiles,
                 &[],
             )?,
-            content_media_grid: content_example(&media_item, "fixture media grid", &[], &[])?,
+            content_media_grid: content_example(
+                &facts.media_item,
+                "live media grid",
+                &[],
+                &[],
+            )?,
             content_quote_card: content_example(
-                &quote_source_item,
-                "fixture quote card",
+                &facts.quote_source_item,
+                "live quote card",
+                &[],
+                &quote_events,
+            )?,
+            embed_article: content_example(
+                &article_item,
+                "Embedded Article (kind:30023)",
                 &[],
                 &[],
             )?,
-            embed_article: {
-                let content_tree =
-                    tokenize_with_kind("Long-form article body here.", &[], RenderMode::Auto, 30023)
-                        .to_wire();
-                let projection = EmbedKindProjection::Article(ArticleProjection {
-                    id: MENTION_EVENT_ID.to_string(),
-                    author_pubkey: PRIMARY_PUBKEY.to_string(),
-                    author_display_name: Some("Pablo".to_string()),
-                    author_picture_url: Some("https://pablof7z.com/avatar.png".to_string()),
-                    created_at: 1716000000,
-                    title: Some("Kind-Dispatch Content Rendering (ADR-0034)".to_string()),
-                    summary: Some(
-                        "How NMP routes embedded Nostr events to typed platform renderers."
-                            .to_string(),
-                    ),
-                    hero_image_url: None,
-                    d_tag: "kind-dispatch".to_string(),
-                    content_tree,
-                });
-                embed_example(
-                    MENTION_EVENT_ID,
-                    "Embedded Article (kind:30023)",
-                    &format!("hey, check out my article {ARTICLE_NADDR} I hope you enjoy it!"),
-                    // keyed by the naddr URI string (primary_id for naddr = author pubkey which
-                    // we don't know without decoding; the uri fallback in envelope_for catches it)
-                    ARTICLE_NADDR,
-                    projection,
-                )?
-            },
-            embed_profile: static_embed_example(
-                MENTION_EVENT_ID,
+            embed_profile: content_example(
+                &profile_embed_item,
                 "Inline Profile Mention (via mention chip)",
-                &format!(
-                    "met {secondary_npub_uri} at a nostr conference last week, brilliant mind"
-                ),
-                1,
+                &mention_profiles,
+                &[],
             )?,
-            embed_note: {
-                let content_tree = tokenize_with_kind(
-                    "This is the quoted note body rendered via ShortNoteProjection.",
-                    &[],
-                    RenderMode::Auto,
-                    1,
-                )
-                .to_wire();
-                let projection = EmbedKindProjection::ShortNote(ShortNoteProjection {
-                    id: MENTION_EVENT_ID.to_string(),
-                    author_pubkey: SECONDARY_PUBKEY.to_string(),
-                    author_display_name: Some("fiatjaf".to_string()),
-                    author_picture_url: None,
-                    created_at: 1716000000,
-                    content_tree,
-                    media_urls: vec![],
-                });
-                embed_example(
-                    MENTION_EVENT_ID,
-                    "Embedded Note (kind:1)",
-                    &format!("this is a great point {mention_note_uri} what do you think?"),
-                    &mention_note_uri,
-                    projection,
-                )?
-            },
-            embed_highlight: {
-                let projection = EmbedKindProjection::Highlight(HighlightProjection {
-                    id: QUOTE_SOURCE_EVENT_ID.to_string(),
-                    author_pubkey: SECONDARY_PUBKEY.to_string(),
-                    author_display_name: Some("fiatjaf".to_string()),
-                    created_at: 1716002000,
-                    highlighted_text:
-                        "The simplest protocol wins because protocol simplicity is leverage."
-                            .to_string(),
-                    source_event_id: None,
-                    source_event_addr: None,
-                    source_url: Some("https://fiatjaf.com".to_string()),
-                    context: None,
-                });
-                let quote_note_uri = note_uri(MENTION_EVENT_ID);
-                embed_example(
-                    MENTION_EVENT_ID,
-                    "Embedded Highlight (kind:9802)",
-                    &format!("found this interesting {quote_note_uri}"),
-                    &quote_note_uri,
-                    projection,
-                )?
-            },
-            // Fixture mode: no live kernel — the embed envelopes above
-            // already resolve via `embedded_events` without a fetch.
-            live_sink: None,
+            embed_note: content_example(
+                &note_embed_item,
+                "Embedded Note (kind:1)",
+                &[],
+                &[],
+            )?,
+            embed_highlight: content_example(
+                &highlight_embed_item,
+                "Embedded Highlight (kind:9802)",
+                &[],
+                &[],
+            )?,
         })
     }
 
-    /// Live-mode constructor: spins up an `nmp_app_*` kernel via
-    /// `LiveGallerySource::load`, pre-warms the embedded article through the
-    /// new `claim_event` primitive (W1/W2), and overrides `embed_article`'s
-    /// envelope with the real kind:30023 returned by relays.
-    ///
-    /// Other showcase components keep their fixture data in this PR — the
-    /// canonical real-fetch demo per the user brief is `embed_article`.
-    ///
-    /// Soft-fail: if the article doesn't arrive in time (relays down, naddr
-    /// nonexistent), the fixture envelope is preserved so the gallery still
-    /// renders something useful.
-    ///
-    /// `live_sink` stays `None` even here because `LiveKernel` drops at the
-    /// end of `load`; long-running-kernel mode (renderer-triggered claims
-    /// via the W4/W5 wiring) is a follow-up PR.
-    pub fn live(timeout: Duration) -> Result<Self, String> {
-        let facts = crate::live::LiveGallerySource::new(timeout).load()?;
-        let mut data = Self::load(true)?;
-
-        if let Some(article) = facts.embedded_article {
-            // Route the real fetched event through the same dispatch point
-            // ADR-0034 uses for all kinds — no special-casing in the gallery.
-            let event = KernelEvent {
-                id: article.id.clone(),
-                author: article.author_pubkey.clone(),
-                kind: article.kind,
-                created_at: article.created_at,
-                tags: article.tags.clone(),
-                content: article.content.clone(),
-            };
-            let ctx = RenderContext::new();
-            let projection = resolve_embed_projection(&event, &ctx);
-
-            let envelope = EmbeddedEventEnvelope {
-                uri: crate::live::ARTICLE_NADDR.to_string(),
-                primary_id: article.primary_id.clone(),
-                render_context: RenderContextWire {
-                    depth: 0,
-                    max_depth: 4,
-                    visited: Vec::new(),
-                },
-                projection,
-                collapsed: false,
-                collapse_reason: None,
-            };
-
-            // Replace the fixture entries with the live envelope. Renderer's
-            // `envelope_for(uri)` does `events.get(&uri.primary_id).or_else(|| events.get(&uri.uri))`,
-            // so we key under both so either lookup hits.
-            data.embed_article.embedded_events.clear();
-            data.embed_article
-                .embedded_events
-                .insert(article.primary_id.clone(), envelope.clone());
-            data.embed_article
-                .embedded_events
-                .insert(crate::live::ARTICLE_NADDR.to_string(), envelope);
-            data.embed_article.title = "Embedded Article (kind:30023, LIVE)".to_string();
-        }
-
-        Ok(data)
-    }
-
+    /// Synthetic `LiveFacts`-equivalent for unit tests that need a
+    /// `GalleryData` without spinning up the kernel. The profiles and
+    /// items use deterministic test-only pubkeys/event-ids; no embed
+    /// envelopes are synthesized (the renderer-triggered path is
+    /// exercised by `embed_host::tests`, not by `render::tests`).
     #[cfg(test)]
     pub(crate) fn render_test_data() -> Self {
         let referenced_pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -356,153 +213,57 @@ impl GalleryData {
                 .expect("note id formats")
         );
 
-        let resolved_profile = FixtureProfile {
+        let resolved_profile = LiveProfile {
             pubkey: referenced_pubkey.to_string(),
             display_name: Some("Resolved Profile".to_string()),
             picture_url: Some("https://example.invalid/profile.png".to_string()),
             nip05: Some("resolved.example".to_string()),
             about: Some("Test-only resolved profile".to_string()),
         };
-        let quote_author = FixtureProfile {
+        let quote_author = LiveProfile {
             pubkey: author_pubkey.to_string(),
             display_name: Some("Quoted Author".to_string()),
             picture_url: None,
             nip05: None,
             about: None,
         };
-        let mention_item = FixtureItem {
+        let mention_item = LiveItem {
             id: "4444444444444444444444444444444444444444444444444444444444444444".to_string(),
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: format!("hello {mention_uri}"),
+            content_preview: String::new(),
             created_at: 1,
         };
-        let quote_source = FixtureItem {
+        let quote_source = LiveItem {
             id: "5555555555555555555555555555555555555555555555555555555555555555".to_string(),
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: format!("look {quote_uri}"),
+            content_preview: String::new(),
             created_at: 2,
         };
-        let quote_target = FixtureItem {
+        let quote_target = LiveItem {
             id: quote_id.to_string(),
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: "Quoted event body from render data".to_string(),
+            content_preview: String::new(),
             created_at: 3,
         };
 
-        let mention_profiles = [(&resolved_profile, Some(mention_uri.as_str()))];
-        let quote_events = [(&quote_target, &quote_author, Some(quote_uri.as_str()))];
-
-        let embed_note_tree =
-            tokenize_with_kind(&quote_target.content, &[], RenderMode::Auto, 1).to_wire();
-        let embed_note_projection = EmbedKindProjection::ShortNote(ShortNoteProjection {
-            id: quote_target.id.clone(),
-            author_pubkey: quote_target.author_pubkey.clone(),
-            author_display_name: quote_author.display_name.clone(),
-            author_picture_url: quote_author.picture_url.clone(),
-            created_at: quote_target.created_at,
-            content_tree: embed_note_tree,
-            media_urls: vec![],
-        });
-        let embed_article_tree =
-            tokenize_with_kind(&quote_target.content, &[], RenderMode::Auto, 30023).to_wire();
-        let embed_article_projection = EmbedKindProjection::Article(ArticleProjection {
-            id: quote_target.id.clone(),
-            author_pubkey: quote_target.author_pubkey.clone(),
-            author_display_name: quote_author.display_name.clone(),
-            author_picture_url: quote_author.picture_url.clone(),
-            created_at: quote_target.created_at,
-            title: Some("Gallery Article Demo (kind:30023)".to_string()),
-            summary: Some(quote_target.content.clone()),
-            hero_image_url: None,
-            d_tag: "gallery-demo".to_string(),
-            content_tree: embed_article_tree,
-        });
-        let embed_highlight_projection = EmbedKindProjection::Highlight(HighlightProjection {
-            id: quote_target.id.clone(),
-            author_pubkey: quote_target.author_pubkey.clone(),
-            author_display_name: quote_author.display_name.clone(),
-            created_at: quote_target.created_at,
-            highlighted_text: quote_target.content.clone(),
-            source_event_id: Some(quote_target.id.clone()),
-            source_event_addr: None,
-            source_url: None,
-            context: None,
-        });
-
-        let make_embed_item = |content: String| FixtureItem {
-            id: quote_target.id.clone(),
-            author_pubkey: author_pubkey.to_string(),
-            kind: 1,
-            content,
-            created_at: 0,
+        let facts = LiveFacts {
+            primary_profile: quote_author.clone(),
+            mention_profile: resolved_profile,
+            quote_target_profile: quote_author,
+            mention_item,
+            media_item: quote_source.clone(),
+            quote_source_item: quote_source,
+            quote_target_item: quote_target,
+            mention_profile_uri: mention_uri,
+            quote_event_uri: quote_uri,
         };
-
-        Self {
-            primary_profile: profile_wire(&quote_author),
-            secondary_profile: profile_wire(&resolved_profile),
-            avatar_image: None,
-            avatar_image_compact: None,
-            media_images: Vec::new(),
-            content_core: content_example(&mention_item, "live mention tree", &mention_profiles, &[])
-                .expect("test data is valid"),
-            content_minimal: content_example(
-                &mention_item,
-                "live minimal mention",
-                &mention_profiles,
-                &[],
-            )
-            .expect("test data is valid"),
-            content_view: content_example(&quote_source, "live image content", &[], &[])
-                .expect("test data is valid"),
-            content_mention_chip: content_example(
-                &mention_item,
-                "live mention chip",
-                &mention_profiles,
-                &[],
-            )
-            .expect("test data is valid"),
-            content_media_grid: content_example(&quote_source, "live media grid", &[], &[])
-                .expect("test data is valid"),
-            content_quote_card: content_example(
-                &quote_source,
-                "live quote card",
-                &[],
-                &quote_events,
-            )
-            .expect("test data is valid"),
-            embed_article: embed_example_from_fixture(
-                &make_embed_item(format!("check out this article: {quote_uri}")),
-                "Embedded Article (kind:30023)",
-                &quote_uri,
-                embed_article_projection,
-            )
-            .expect("test data is valid"),
-            embed_profile: content_example(
-                &mention_item,
-                "Inline Profile Mention (via mention chip)",
-                &mention_profiles,
-                &[],
-            )
-            .expect("test data is valid"),
-            embed_note: embed_example_from_fixture(
-                &make_embed_item(format!("this is a great point: {quote_uri}")),
-                "Embedded Note (kind:1)",
-                &quote_uri,
-                embed_note_projection,
-            )
-            .expect("test data is valid"),
-            embed_highlight: embed_example_from_fixture(
-                &make_embed_item(format!("interesting highlight: {quote_uri}")),
-                "Embedded Highlight (kind:9802)",
-                &quote_uri,
-                embed_highlight_projection,
-            )
-            .expect("test data is valid"),
-            live_sink: None,
-        }
+        Self::from_live(&facts, false).expect("test data is valid")
     }
 }
 
@@ -512,7 +273,7 @@ struct AvatarProtocols {
     compact: Option<Protocol>,
 }
 
-fn avatar_protocols(profile: &FixtureProfile) -> AvatarProtocols {
+fn avatar_protocols(profile: &LiveProfile) -> AvatarProtocols {
     let Some(url) = profile.picture_url.as_deref() else {
         return AvatarProtocols::default();
     };
@@ -550,7 +311,7 @@ fn fetch_image(url: &str) -> Option<image::DynamicImage> {
     image::load_from_memory(&bytes).ok()
 }
 
-fn media_protocols(items: &[&FixtureItem]) -> Vec<MediaProtocol> {
+fn media_protocols(items: &[&LiveItem]) -> Vec<MediaProtocol> {
     if !std::io::stdout().is_terminal() {
         return Vec::new();
     }
@@ -577,7 +338,7 @@ fn media_protocols(items: &[&FixtureItem]) -> Vec<MediaProtocol> {
         .collect()
 }
 
-fn media_urls_for_item(item: &FixtureItem) -> Vec<String> {
+fn media_urls_for_item(item: &LiveItem) -> Vec<String> {
     tree_for_item(item)
         .map(|tree| {
             let mut out = Vec::new();
@@ -595,7 +356,7 @@ fn media_urls_for_item(item: &FixtureItem) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn profile_wire(profile: &FixtureProfile) -> ProfileWire {
+fn profile_wire(profile: &LiveProfile) -> ProfileWire {
     ProfileWire {
         pubkey: profile.pubkey.clone(),
         display_name: profile.display_name.clone(),
@@ -607,11 +368,37 @@ fn profile_wire(profile: &FixtureProfile) -> ProfileWire {
     }
 }
 
+/// Build a synthetic `LiveItem` for embed-showcase content strings that
+/// reference real bech32 URIs the renderer will claim. The `id` is
+/// deterministic-from-content so the same showcase rebuild always produces
+/// the same scenario_id badge.
+fn synth_item(author_pubkey: &str, kind: u32, content: &str) -> LiveItem {
+    LiveItem {
+        id: deterministic_id(content),
+        author_pubkey: author_pubkey.to_string(),
+        kind,
+        content: content.to_string(),
+        content_preview: String::new(),
+        created_at: 0,
+    }
+}
+
+fn deterministic_id(content: &str) -> String {
+    // 64-hex string derived from content; not a real event id, just a
+    // stable label for `scenario_id` and the renderer's per-event keys.
+    let mut h: u64 = 1469598103934665603;
+    for b in content.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(1099511628211);
+    }
+    format!("{h:016x}{h:016x}{h:016x}{h:016x}")
+}
+
 fn content_example(
-    item: &FixtureItem,
+    item: &LiveItem,
     title: &str,
-    profiles: &[(&FixtureProfile, Option<&str>)],
-    events: &[(&FixtureItem, &FixtureProfile, Option<&str>)],
+    profiles: &[(&LiveProfile, Option<&str>)],
+    events: &[(&LiveItem, &LiveProfile, Option<&str>)],
 ) -> Result<ContentExample, String> {
     let tree = tree_for_item(item)?;
     Ok(ContentExample {
@@ -619,94 +406,22 @@ fn content_example(
         title: title.to_string(),
         tree,
         render_data: render_data_for(profiles, events)?,
-        embedded_events: BTreeMap::new(),
     })
 }
 
-fn static_embed_example(
-    id: &str,
-    title: &str,
-    content: &str,
-    kind: u32,
-) -> Result<ContentExample, String> {
-    let item = FixtureItem {
-        id: id.to_string(),
-        author_pubkey: PRIMARY_PUBKEY.to_string(),
-        kind,
-        content: content.to_string(),
-        created_at: 1716000000,
-    };
-    Ok(ContentExample {
-        scenario_id: short_hex(id),
-        title: title.to_string(),
-        tree: tree_for_item(&item)?,
-        render_data: ContentRenderData::default(),
-        embedded_events: BTreeMap::new(),
-    })
-}
-
-fn embed_example(
-    event_id: &str,
-    title: &str,
-    content: &str,
-    uri_key: &str,
-    projection: EmbedKindProjection,
-) -> Result<ContentExample, String> {
-    let item = FixtureItem {
-        id: event_id.to_string(),
-        author_pubkey: PRIMARY_PUBKEY.to_string(),
-        kind: 1,
-        content: content.to_string(),
-        created_at: 0,
-    };
-    let tree = tree_for_item(&item)?;
-    let envelope = EmbeddedEventEnvelope {
-        uri: uri_key.to_string(),
-        primary_id: event_id.to_string(),
-        render_context: RenderContextWire {
-            depth: 0,
-            max_depth: 4,
-            visited: vec![],
-        },
-        projection,
-        collapsed: false,
-        collapse_reason: None,
-    };
-    let mut embedded_events = BTreeMap::new();
-    embedded_events.insert(event_id.to_string(), envelope.clone());
-    embedded_events.insert(uri_key.to_string(), envelope);
-    Ok(ContentExample {
-        scenario_id: short_hex(event_id),
-        title: title.to_string(),
-        tree,
-        render_data: ContentRenderData::default(),
-        embedded_events,
-    })
-}
-
-#[cfg(test)]
-fn embed_example_from_fixture(
-    item: &FixtureItem,
-    title: &str,
-    uri_key: &str,
-    projection: EmbedKindProjection,
-) -> Result<ContentExample, String> {
-    embed_example(&item.id, title, &item.content, uri_key, projection)
-}
-
-fn tree_for_item(item: &FixtureItem) -> Result<ContentTreeWire, String> {
+fn tree_for_item(item: &LiveItem) -> Result<ContentTreeWire, String> {
     let value = tree_value_for_item(item)?;
     ContentTreeWire::from_value(&value).ok_or_else(|| "content tree decode failed".to_string())
 }
 
-fn tree_value_for_item(item: &FixtureItem) -> Result<Value, String> {
+fn tree_value_for_item(item: &LiveItem) -> Result<Value, String> {
     let wire = tokenize_with_kind(&item.content, &[], RenderMode::Auto, item.kind).to_wire();
     serde_json::to_value(wire).map_err(|e| format!("content tree encode failed: {e}"))
 }
 
 fn render_data_for(
-    profiles: &[(&FixtureProfile, Option<&str>)],
-    events: &[(&FixtureItem, &FixtureProfile, Option<&str>)],
+    profiles: &[(&LiveProfile, Option<&str>)],
+    events: &[(&LiveItem, &LiveProfile, Option<&str>)],
 ) -> Result<ContentRenderData, String> {
     let mut profile_map = Map::new();
     for (profile, uri) in profiles {
@@ -727,7 +442,7 @@ fn render_data_for(
             "author_npub": to_npub(&event.author_pubkey),
             "kind": event.kind,
             "created_at": event.created_at,
-            "content_preview": event.preview(),
+            "content_preview": preview_of(event),
             "content_tree": content_tree,
         });
         event_map.insert(event.id.clone(), value.clone());
@@ -743,7 +458,7 @@ fn render_data_for(
     Ok(ContentRenderData::from_value(Some(&value)))
 }
 
-fn profile_value(profile: &FixtureProfile) -> Value {
+fn profile_value(profile: &LiveProfile) -> Value {
     json!({
         "pubkey": profile.pubkey,
         "display_name": profile.display_label(),
@@ -752,10 +467,10 @@ fn profile_value(profile: &FixtureProfile) -> Value {
     })
 }
 
-fn note_uri(event_id: &str) -> String {
-    format!(
-        "nostr:{}",
-        nmp_core::nip19::format(&nmp_core::nip19::Nip19Entity::Note(event_id.to_string()))
-            .expect("note id formats")
-    )
+fn preview_of(item: &LiveItem) -> String {
+    if item.content_preview.trim().is_empty() {
+        item.content.replace('\n', " ").chars().take(180).collect()
+    } else {
+        item.content_preview.clone()
+    }
 }

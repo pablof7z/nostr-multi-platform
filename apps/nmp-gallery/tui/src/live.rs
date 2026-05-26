@@ -1,3 +1,31 @@
+//! Persistent live-mode kernel host for the gallery TUI.
+//!
+//! The gallery is **live-only** (ADR-0034 / M16): there is no fixture mode,
+//! no pre-warm bootstrap, no synthesized embed envelopes. The kernel boots
+//! once at program start and stays alive for the lifetime of the process.
+//!
+//! Initial cold-start does an opportunistic fetch of the demo profile +
+//! the mention/media/quote events so the user-* component pages render
+//! real kind:0 data immediately. After that, all further data — including
+//! every embedded event in the kind-dispatch showcase — flows through the
+//! standard snapshot push:
+//!
+//! 1. Renderer encounters an `EventRef(uri)` token.
+//! 2. `NostrContentView` calls `sink.claim(uri, consumer_id)` via the
+//!    `EventClaimSink` host bridge.
+//! 3. `LiveKernelSink::claim` forwards to `nmp_app_claim_event` — the
+//!    kernel registers a `OneshotApi` interest (D4 single writer), short-
+//!    circuits on cache hit, or compiles a wire REQ on cache miss.
+//! 4. The event arrives (cache or relay), gets surfaced in
+//!    `snapshot.projections.claimed_events[primary_id]`, the gallery's
+//!    snapshot thread sends a `GalleryEvent::Snapshot` to the main loop,
+//!    `EmbedHostState::update_from_snapshot` decodes it, and the next
+//!    redraw shows the resolved article (or short-note / highlight / ...).
+//!
+//! `LiveKernel` is `pub` so `main.rs` can keep it alive for the program
+//! lifetime; `LiveKernelSink` wraps the `*mut NmpApp` pointer as the
+//! `EventClaimSink` plugged into the renderer via the W4/W5 wiring.
+
 use std::{
     ffi::{c_void, CString},
     sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
@@ -5,7 +33,6 @@ use std::{
 };
 
 use nmp_content::EventClaimSink;
-use nmp_core::nip19::{decode_naddr, NaddrData};
 use nmp_core::nip21::{parse_nostr_uri, NostrUri};
 use serde_json::Value;
 
@@ -15,16 +42,6 @@ const MEDIA_EVENT_ID: &str = "c2ee64b0371f290edf66fc797598b2d307aa79192f6d6e0bf5
 const QUOTE_SOURCE_EVENT_ID: &str =
     "2df88accbf264b10f47809abcf9d32b4146b035a5a197c9ff30e45ac010d5368";
 const CONSUMER_ID: &str = "nmp-gallery-tui.preview";
-/// Embed consumer id — distinct from `CONSUMER_ID` (the profile-claim consumer)
-/// so the kernel's refcount keys don't collide across the gallery's two
-/// distinct interest sources.
-const EMBED_CONSUMER_ID: &str = "nmp-gallery-tui.embed";
-
-/// The naddr the gallery's embed showcase claims in live mode. Mirrors
-/// `data.rs::ARTICLE_NADDR`. Inlined here (rather than re-exported from
-/// `data.rs`) to keep this module self-contained — `data.rs` is the
-/// fixture surface; `live.rs` is the kernel-driven surface.
-pub const ARTICLE_NADDR: &str = "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp";
 
 const RELAYS: &[(&str, &str)] = &[
     ("wss://purplepag.es", "indexer"),
@@ -37,6 +54,10 @@ pub struct LiveGallerySource {
     timeout: Duration,
 }
 
+/// Initial cold-start data. Populated by `LiveGallerySource::bootstrap`
+/// before the main loop takes over the snapshot stream. Embedded events
+/// are NOT pre-warmed here — the renderer-triggered claim path drives
+/// those (ADR-0034).
 pub struct LiveFacts {
     pub primary_profile: LiveProfile,
     pub mention_profile: LiveProfile,
@@ -47,13 +68,6 @@ pub struct LiveFacts {
     pub quote_target_item: LiveItem,
     pub mention_profile_uri: String,
     pub quote_event_uri: String,
-    /// `None` when the article didn't arrive in time. The gallery falls back
-    /// to the static fixture envelope for that section in that case. In live
-    /// mode this is populated during `LiveGallerySource::load` via the new
-    /// `nmp_app_claim_event` primitive (W1/W2) — the renderer-triggered
-    /// claim path (W4/W5) stays inert in this PR because LiveKernel drops
-    /// at the end of `load`; long-running-kernel mode is a follow-up.
-    pub embedded_article: Option<LiveEmbeddedEvent>,
 }
 
 #[derive(Clone)]
@@ -75,27 +89,37 @@ pub struct LiveItem {
     pub created_at: u64,
 }
 
-/// Snapshot view of a resolved embedded event — mirrors W1's
-/// `ClaimedEventDto` wire shape. The gallery turns one of these into an
-/// `EmbeddedEventEnvelope` via `nmp_content::resolve_embed_projection`
-/// (called from `data.rs::live`, W7).
-#[derive(Clone, Debug)]
-pub struct LiveEmbeddedEvent {
-    pub primary_id: String,
-    pub id: String,
-    pub author_pubkey: String,
-    pub kind: u32,
-    pub created_at: u64,
-    pub tags: Vec<Vec<String>>,
-    pub content: String,
+struct LiveAuthorView {
+    profile: LiveProfile,
 }
 
-/// Host-side `EventClaimSink` impl wrapping the gallery's running
-/// `*mut NmpApp`. Renderers call `claim`/`release` through `&dyn
-/// EventClaimSink`; this struct forwards to `nmp_app_claim_event` /
-/// `nmp_app_release_event`. Send + Sync are sound because every FFI symbol
-/// here goes through the actor's command channel — the pointer is just an
-/// opaque token (`*mut NmpApp`) the actor uses to look up the app instance.
+/// Persistent kernel handle. Owned by the gallery's main loop for the
+/// entire process lifetime. The actor thread keeps running; snapshot pushes
+/// arrive on `rx` until `Drop` tears the app down (program exit).
+pub struct LiveKernel {
+    /// Raw `*mut NmpApp` pointer. The actor (running on its own threads)
+    /// is the single owner of the pointer's mutable state — every FFI
+    /// symbol routes through its command channel. The pointer is opaque to
+    /// callers and is only used to identify the app instance.
+    pub app: *mut nmp_ffi::NmpApp,
+    /// Keepalive for the update-callback context. Lives as long as
+    /// `LiveKernel` does so the callback never sees a dangling pointer.
+    bridge: Option<Box<UpdateBridge>>,
+    /// Snapshot stream — taken once by `take_receiver` so the main loop
+    /// can hand it to its snapshot-thread aggregator.
+    rx: Option<Receiver<String>>,
+}
+
+struct UpdateBridge {
+    tx: Sender<String>,
+}
+
+/// `EventClaimSink` impl wrapping a live kernel's app pointer. The
+/// renderer-triggered claim path (`NostrContentView::claim_sink`) calls
+/// this on each render frame; `claim` forwards to `nmp_app_claim_event`,
+/// `release` to `nmp_app_release_event`. `Send + Sync` because every FFI
+/// symbol forwards to the actor's command channel — the pointer is just
+/// an opaque key.
 pub struct LiveKernelSink {
     pub app: *mut nmp_ffi::NmpApp,
 }
@@ -117,26 +141,16 @@ impl EventClaimSink for LiveKernelSink {
     }
 }
 
-struct LiveAuthorView {
-    profile: LiveProfile,
-}
-
-struct LiveKernel {
-    app: *mut nmp_ffi::NmpApp,
-    bridge: Option<Box<UpdateBridge>>,
-    rx: Receiver<String>,
-}
-
-struct UpdateBridge {
-    tx: Sender<String>,
-}
-
 impl LiveGallerySource {
     pub fn new(timeout: Duration) -> Self {
         Self { timeout }
     }
 
-    pub fn load(&self) -> Result<LiveFacts, String> {
+    /// Boot the kernel, fetch the initial profile + thread/author/media
+    /// items the user-* component pages need, and return a `(LiveFacts,
+    /// LiveKernel)` pair. The kernel STAYS ALIVE — caller owns it for the
+    /// lifetime of the program. Embeds are NOT pre-warmed.
+    pub fn bootstrap(&self) -> Result<(LiveFacts, LiveKernel), String> {
         let kernel = LiveKernel::new()?;
         let primary = kernel.wait_for_author(PRIMARY_PUBKEY, &[], self.timeout)?;
         let mention_item = kernel.wait_for_event(MENTION_EVENT_ID, None, self.timeout)?;
@@ -159,28 +173,7 @@ impl LiveGallerySource {
             .wait_for_author(&quote_target_item.author_pubkey, &[], self.timeout)?
             .profile;
 
-        // Embedded article (ADR-0034 / F-CR-09 demo). The renderer is the
-        // declarative trigger; here we pre-warm during cold start because
-        // LiveKernel drops at the end of `load` (long-running-kernel mode is
-        // a follow-up PR). The actual fetch path is identical to what the
-        // render-time claim would do: `nmp_app_claim_event(naddr)` →
-        // kernel registers a `OneshotApi` interest with `InterestShape.addresses`
-        // → relay returns the kind:30023 event → snapshot's
-        // `claimed_events[primary_id]` populates.
-        //
-        // Soft-fail: a timeout or malformed naddr falls back to `None` so
-        // the gallery still renders the fixture envelope for that section.
-        let embedded_article = match primary_id_for_naddr(ARTICLE_NADDR) {
-            Some(primary_id) => {
-                kernel
-                    .claim_event(ARTICLE_NADDR)
-                    .and_then(|()| kernel.wait_for_claimed_event(&primary_id, self.timeout))
-                    .ok()
-            }
-            None => None,
-        };
-
-        Ok(LiveFacts {
+        let facts = LiveFacts {
             primary_profile: primary.profile,
             mention_profile,
             quote_target_profile,
@@ -190,8 +183,8 @@ impl LiveGallerySource {
             quote_target_item,
             mention_profile_uri,
             quote_event_uri,
-            embedded_article,
-        })
+        };
+        Ok((facts, kernel))
     }
 }
 
@@ -232,12 +225,20 @@ impl LiveKernel {
         let kernel = Self {
             app,
             bridge: Some(bridge),
-            rx,
+            rx: Some(rx),
         };
         for (url, role) in RELAYS {
             kernel.add_relay(url, role)?;
         }
         Ok(kernel)
+    }
+
+    /// Take ownership of the snapshot receiver. After this call, the kernel
+    /// can no longer poll its own snapshots (`wait_for_*` would return
+    /// `Disconnected`) — the main loop owns the stream. Idempotent: a
+    /// second call returns `None`.
+    pub fn take_receiver(&mut self) -> Option<Receiver<String>> {
+        self.rx.take()
     }
 
     fn wait_for_author(
@@ -302,7 +303,11 @@ impl LiveKernel {
                     snapshot_summary(last)
                 )
             })?;
-        match self.rx.recv_timeout(remaining) {
+        let rx = self
+            .rx
+            .as_ref()
+            .ok_or_else(|| "live kernel receiver already taken by main loop".to_string())?;
+        match rx.recv_timeout(remaining) {
             Ok(payload) => Ok(payload),
             Err(RecvTimeoutError::Timeout) => Err(format!(
                 "timed out waiting for live {label}: {}",
@@ -347,33 +352,6 @@ impl LiveKernel {
         nmp_ffi::nmp_app_open_uri(self.app, uri.as_ptr());
         Ok(())
     }
-
-    fn claim_event(&self, uri: &str) -> Result<(), String> {
-        let uri_c = CString::new(uri).map_err(|_| "claim_event URI contains NUL byte".to_string())?;
-        let consumer = CString::new(EMBED_CONSUMER_ID)
-            .map_err(|_| "embed consumer id contains NUL byte".to_string())?;
-        nmp_ffi::nmp_app_claim_event(self.app, uri_c.as_ptr(), consumer.as_ptr());
-        Ok(())
-    }
-
-    fn wait_for_claimed_event(
-        &self,
-        primary_id: &str,
-        timeout: Duration,
-    ) -> Result<LiveEmbeddedEvent, String> {
-        let started = Instant::now();
-        let mut last = String::new();
-        loop {
-            let payload = self.next_payload(started, timeout, &last, "claimed event")?;
-            last = payload;
-            let Some(snapshot) = parse_snapshot(&last) else {
-                continue;
-            };
-            if let Some(event) = claimed_event_for(&snapshot, primary_id) {
-                return Ok(event);
-            }
-        }
-    }
 }
 
 impl Drop for LiveKernel {
@@ -399,7 +377,10 @@ extern "C" fn on_update(context: *mut c_void, payload: *const u8, len: usize) {
     let _ = bridge.tx.send(snapshot.to_string());
 }
 
-fn parse_snapshot(payload: &str) -> Option<Value> {
+/// Parse a kernel update payload (envelope or bare snapshot). Public so
+/// the main loop's snapshot aggregator can decode pushed frames into the
+/// `serde_json::Value` shape `EmbedHostState::update_from_snapshot` reads.
+pub fn parse_snapshot(payload: &str) -> Option<Value> {
     let envelope: Value = serde_json::from_str(payload).ok()?;
     if envelope.get("t").and_then(Value::as_str) == Some("snapshot") {
         envelope.get("v").cloned()
@@ -441,59 +422,6 @@ fn author_view_for(
         return Ok(None);
     }
     Ok(Some(LiveAuthorView { profile }))
-}
-
-/// Decode an `nostr:naddr1…` URI into the W1 snapshot key shape:
-/// `"kind:author_pubkey:d_tag"`. Returns `None` when the URI isn't a naddr
-/// or fails to decode (silent — caller falls back to fixture rendering).
-fn primary_id_for_naddr(uri: &str) -> Option<String> {
-    let stripped = uri.strip_prefix("nostr:").unwrap_or(uri);
-    let NaddrData {
-        identifier,
-        pubkey,
-        kind,
-        ..
-    } = decode_naddr(stripped).ok()?;
-    Some(format!("{kind}:{pubkey}:{identifier}"))
-}
-
-/// Pull a `claimed_events[primary_id]` entry out of a kernel snapshot. The
-/// kernel's `ClaimedEventDto` shape (W1: `primary_id`, `id`, `author_pubkey`,
-/// `kind`, `created_at`, `tags`, `content`) is decoded into the gallery's
-/// `LiveEmbeddedEvent` here.
-fn claimed_event_for(snapshot: &Value, primary_id: &str) -> Option<LiveEmbeddedEvent> {
-    let entry = snapshot
-        .get("projections")
-        .and_then(|p| p.get("claimed_events"))
-        .and_then(|m| m.get(primary_id))?;
-    let tags = entry
-        .get("tags")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|row| row.as_array())
-                .map(|row| {
-                    row.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect::<Vec<String>>()
-                })
-                .collect::<Vec<Vec<String>>>()
-        })
-        .unwrap_or_default();
-    Some(LiveEmbeddedEvent {
-        primary_id: primary_id.to_string(),
-        id: string(entry, "id")?,
-        author_pubkey: string(entry, "author_pubkey")?,
-        kind: entry.get("kind").and_then(Value::as_u64)? as u32,
-        created_at: entry.get("created_at").and_then(Value::as_u64).unwrap_or(0),
-        tags,
-        content: entry
-            .get("content")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-    })
 }
 
 fn thread_item_for(snapshot: &Value, event_id: &str) -> Result<Option<LiveItem>, String> {
