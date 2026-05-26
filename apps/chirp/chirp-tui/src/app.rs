@@ -46,6 +46,7 @@ pub struct AppState {
     pub blocks: usize,
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
+    pub timeline_has_more: bool,
     pub metrics: RuntimeMetrics,
     pub relays: Vec<RelayRow>,
     pub interests: Vec<InterestRow>,
@@ -125,6 +126,7 @@ impl Default for AppState {
             blocks: 0,
             cards: 0,
             rows: Vec::new(),
+            timeline_has_more: false,
             metrics: RuntimeMetrics::default(),
             relays: Vec::new(),
             interests: Vec::new(),
@@ -222,24 +224,8 @@ impl AppState {
             self.settings_account_selected = account_len - 1;
         }
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
-        if let Some(snapshot) = runtime.chirp_snapshot() {
-            self.blocks = snapshot
-                .get("blocks")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            self.cards = snapshot
-                .get("cards")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            self.rows = TimelineRow::from_snapshot(&snapshot);
-            let previous_selected = self.selected;
-            if self.selected >= self.rows.len() {
-                self.selected = self.rows.len().saturating_sub(1);
-            }
-            if self.selected != previous_selected {
-                self.detail_cursor = 0;
-                self.detail_scroll = 0;
-            }
+        if let Some(feed) = shared.home_feed {
+            self.apply_feed_snapshot(feed);
         }
         if !applied_action_result {
             self.status = format!(
@@ -340,6 +326,19 @@ impl AppState {
 
     pub fn select_last(&mut self) {
         self.selected = self.rows.len().saturating_sub(1);
+    }
+
+    pub fn load_older_timeline_if_needed(&mut self, runtime: &AppRuntime) {
+        if self.timeline_has_more && self.selected.saturating_add(5) >= self.rows.len() {
+            self.load_older_timeline(runtime);
+        }
+    }
+
+    pub fn load_older_timeline(&mut self, runtime: &AppRuntime) {
+        if !self.timeline_has_more {
+            return;
+        }
+        runtime.chirp_load_older_timeline();
     }
 
     #[must_use]
@@ -611,6 +610,31 @@ impl AppState {
             self.last_action_result = Some(result);
         }
         true
+    }
+
+    fn apply_feed_snapshot(&mut self, snapshot: Value) {
+        self.blocks = snapshot
+            .get("blocks")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.cards = snapshot
+            .get("cards")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.timeline_has_more = snapshot
+            .get("page")
+            .and_then(|page| page.get("has_more"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.rows = TimelineRow::from_snapshot(&snapshot);
+        let previous_selected = self.selected;
+        if self.selected >= self.rows.len() {
+            self.selected = self.rows.len().saturating_sub(1);
+        }
+        if self.selected != previous_selected {
+            self.detail_cursor = 0;
+            self.detail_scroll = 0;
+        }
     }
 }
 

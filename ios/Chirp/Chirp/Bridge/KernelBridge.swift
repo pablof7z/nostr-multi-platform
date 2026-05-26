@@ -818,6 +818,9 @@ struct KernelUpdate: Decodable {
     /// from the identity-cluster optional pattern to preserve that flow.
     var items: [TimelineItem] { projections?.timeline ?? [] }
 
+    /// Standard bounded home-feed projection from `nmp-feed`.
+    var homeFeed: ChirpTimelineSnapshot? { projections?.homeFeed }
+
     /// Open author-view payload — `projections["author_view"]`. `nil` when no
     /// author view is open (kernel emits JSON null).
     var authorView: AuthorProfileSnapshot? { projections?.authorView }

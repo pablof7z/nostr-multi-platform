@@ -22,8 +22,10 @@
 //!    every kind:1 the kernel ingests fans out to the projection.
 //! 3. Returns an opaque handle the shell keeps for snapshots / unregister.
 //!
-//! On each render tick the shell calls [`ffi::nmp_app_chirp_snapshot`],
-//! decodes the JSON, and renders `[TimelineBlock]` over the home timeline.
+//! The home feed is registered as the standard `"nmp.feed.home"` projection.
+//! Render shells consume it from the normal NMP update stream and report
+//! viewport intent through generic feed FFI; cursor math, page size, cap, and
+//! quoted-card closure remain in reusable NMP crates.
 //!
 //! ## Doctrine
 //!
@@ -47,6 +49,9 @@ pub use nmp_ffi::{
 pub use nmp_nip01::{
     ModularTimelineProjection as ChirpModularTimeline,
     ModularTimelineSnapshot as ChirpTimelineSnapshot, TimelineEventCard as ChirpEventCard,
+    TimelineWindowCursor as ChirpTimelineWindowCursor,
+    TimelineWindowMetrics as ChirpTimelineWindowMetrics,
+    TimelineWindowPage as ChirpTimelineWindowPage,
 };
 
 // ── Marmot (MLS encrypted groups) projection ─────────────────────────────

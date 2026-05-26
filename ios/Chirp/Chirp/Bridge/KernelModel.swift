@@ -39,10 +39,6 @@ final class KernelModel: ObservableObject {
 
     // ── Local mutable state ──────────────────────────────────────────────
 
-    /// Modular timeline blocks — sourced from `kernel.chirpSnapshot()` rather
-    /// than the FlatBuffers update frame, so this stays a standalone
-    /// `@Published` slot.
-    @Published private(set) var modularTimeline: ChirpTimelineSnapshot = .empty
     @Published private(set) var snapshotCount: UInt64 = 0
     @Published private(set) var lastSnapshotAt: Date?
     @Published private(set) var appMetrics = AppRuntimeMetrics()
@@ -79,6 +75,7 @@ final class KernelModel: ObservableObject {
     // ── Computed projections — read through `snapshot` ────────────────────
 
     var isRunning: Bool { snapshot?.running ?? false }
+    var modularTimeline: ChirpTimelineSnapshot { snapshot?.homeFeed ?? .empty }
     var rev: UInt64 { snapshot?.rev ?? 0 }
     var profile: ProfileCard? { snapshot?.profile }
     var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
@@ -131,6 +128,7 @@ final class KernelModel: ObservableObject {
     /// accessor only flips after the first tick lands, so a re-entrant
     /// `start()` before then would dispatch the FFI twice.
     private var startedKernel = false
+    private var lastLoadMoreCursor: TimelineWindowCursor?
     private var lastLogicalInterestSummary = ""
     private var marmotRegistrationRequested = false
 
@@ -294,7 +292,7 @@ final class KernelModel: ObservableObject {
         // T146 — Reset preserves the observer slot but the grouper retains
         // the prior session's blocks; re-register so it starts empty.
         kernel.reregisterChirpProjection()
-        modularTimeline = .empty
+        lastLoadMoreCursor = nil
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
         // V5 thin-shell: action lifecycle state lives in Rust and resets
@@ -308,6 +306,18 @@ final class KernelModel: ObservableObject {
 
     func applyConfiguration() {
         kernel.configure(visibleLimit: visibleLimit, emitHz: emitHz)
+    }
+
+    func loadOlderTimeline(after cursor: TimelineWindowCursor) {
+        // When Rust reaches the feed cap, `hasMore` flips false and this
+        // returns before the repeated last-row `onAppear` can retry.
+        guard modularTimeline.page?.hasMore == true else { return }
+        // Swift treats the cursor as an opaque render-edge marker. Rust owns
+        // page size, cap, and the next window; this guard only de-dupes
+        // repeated `onAppear` calls for the same visible tail row.
+        guard lastLoadMoreCursor != cursor else { return }
+        lastLoadMoreCursor = cursor
+        kernel.loadOlderHomeFeed()
     }
 
     // ── View/Author/Thread open + close ──────────────────────────────────
@@ -544,16 +554,6 @@ final class KernelModel: ObservableObject {
         // tap-to-dismiss has nowhere else to land.
         snapshot = update
         lastErrorToast = update.lastErrorToast
-
-        // T146 — refresh modular timeline on every tick. `cards` grows
-        // independently when quoted/referenced events arrive via discovery
-        // oneshots — those events don't change the visible `items` window, so
-        // gating on `items` left embedded-event embeds as collapsed placeholders.
-        // The equality check below prevents spurious SwiftUI re-renders.
-        let nextTimeline = kernel.chirpSnapshot()
-        if nextTimeline != modularTimeline {
-            modularTimeline = nextTimeline
-        }
 
         let activeAccountChanged = update.activeAccount != priorActiveAccount
         if marmotRegistrationRequested, activeAccountChanged {

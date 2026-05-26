@@ -50,6 +50,7 @@ set -euo pipefail
 # adr-override: ADR-0028 — nmp_app_is_alive (lifecycle observability probe).
 ADR_OVERRIDES=(
     "nmp_app_is_alive ADR-0028"
+    "nmp_app_load_older_feed ADR-0033"
 )
 
 # Resolve an ADR override for a given symbol. Echoes the ADR number on a

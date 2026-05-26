@@ -5,14 +5,13 @@ use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_unregister, nmp_marmot_unregister, nmp_signer_broker_init, ChirpHandle,
-    MarmotHandle,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_marmot_unregister,
+    nmp_signer_broker_init, ChirpHandle, MarmotHandle,
 };
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
-    nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline, nmp_app_release_profile,
-    nmp_app_start, NmpApp,
+    nmp_app_load_older_feed, nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
+    nmp_app_release_profile, nmp_app_start, NmpApp,
 };
 use serde_json::{json, Value};
 
@@ -126,19 +125,9 @@ impl AppRuntime {
         })
     }
 
-    pub fn chirp_snapshot(&self) -> Option<Value> {
-        if self.chirp.is_null() {
-            return None;
-        }
-        let ptr = nmp_app_chirp_snapshot(self.chirp);
-        if ptr.is_null() {
-            return None;
-        }
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_app_chirp_snapshot_free(ptr);
-        serde_json::from_str(&text).ok()
+    pub fn chirp_load_older_timeline(&self) {
+        let key = CString::new("nmp.feed.home").expect("static feed key has no NUL byte");
+        nmp_app_load_older_feed(self.app, key.as_ptr());
     }
 
     pub fn dispatch_action_value(&self, namespace: &str, action: &Value) -> Result<String> {

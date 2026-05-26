@@ -39,7 +39,9 @@ pub use meta_timeline::{
 pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
 pub use profile_display::AuthorDisplay;
 pub use timeline_projection::{
-    ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard,
+    ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,
+    TimelineWindowMetrics, TimelineWindowPage, TimelineWindowRequest,
+    DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT,
 };
 pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,

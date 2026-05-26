@@ -197,6 +197,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         swift_type: "[TimelineItem]",
     },
     SnapshotProjectionEntry {
+        json_key: "nmp.feed.home",
+        swift_field: "homeFeed",
+        swift_type: "ChirpTimelineSnapshot",
+    },
+    SnapshotProjectionEntry {
         json_key: "author_view",
         swift_field: "authorView",
         swift_type: "AuthorProfileSnapshot",

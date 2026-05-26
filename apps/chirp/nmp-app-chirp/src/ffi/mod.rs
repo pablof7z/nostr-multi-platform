@@ -67,4 +67,6 @@ pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
-pub use snapshot::{nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister};
+pub use snapshot::{
+    nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister,
+};

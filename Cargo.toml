@@ -15,6 +15,7 @@ members = [
     "crates/nmp-content-fixtures",
     "crates/nmp-core",
     "crates/nmp-coverage-gate",
+    "crates/nmp-feed",
     "crates/nmp-marmot",
     "crates/nmp-nip01",
     "crates/nmp-nip02",

@@ -18,7 +18,10 @@ pub extern "C" fn nmp_app_chirp_snapshot(handle: *mut ChirpHandle) -> *mut c_cha
     // SAFETY: caller guarantees `handle` is a valid pointer returned by
     // `nmp_app_chirp_register` and not yet freed.
     let handle = unsafe { &*handle };
-    let snapshot = handle.projection.snapshot();
+    snapshot_to_c_string(&handle.projection.snapshot())
+}
+
+fn snapshot_to_c_string(snapshot: &nmp_nip01::ModularTimelineSnapshot) -> *mut c_char {
     let Ok(payload) = serde_json::to_string(&snapshot) else {
         return std::ptr::null_mut();
     };

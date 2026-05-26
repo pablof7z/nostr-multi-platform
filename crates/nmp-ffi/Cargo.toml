@@ -49,6 +49,7 @@ android-ffi = ["native"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-feed = { path = "../nmp-feed" }
 nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
 nmp-signers = { path = "../nmp-signers", optional = true }

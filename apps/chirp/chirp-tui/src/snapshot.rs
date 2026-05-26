@@ -9,6 +9,7 @@ pub struct SharedSnapshot {
     pub interests: Vec<InterestRow>,
     pub action_results: Vec<ActionResult>,
     pub action_stages: Vec<ActionStageRow>,
+    pub home_feed: Option<Value>,
 }
 
 impl SharedSnapshot {
@@ -41,6 +42,7 @@ impl SharedSnapshot {
             interests: interests_from(projections),
             action_results: action_results_from(projections),
             action_stages: action_stages_from(projections),
+            home_feed: projections.and_then(|p| p.get("nmp.feed.home")).cloned(),
         }
     }
 }

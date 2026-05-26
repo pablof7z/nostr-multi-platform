@@ -977,6 +977,11 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::MarkChangedSinceEmit => {
+            ctx.kernel.mark_changed_since_emit();
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::DispatchHostOp {
             action_json,
             correlation_id,

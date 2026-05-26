@@ -3860,6 +3860,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-app-template",
  "nmp-core",
+ "nmp-feed",
  "nmp-ffi",
  "nmp-marmot",
  "nmp-nip01",
@@ -4030,10 +4031,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-feed"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-threading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-ffi"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-feed",
  "nmp-signer-broker",
  "nmp-signer-iface",
  "nmp-signers",
@@ -4096,6 +4108,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-feed",
  "nmp-nip18",
  "nmp-nip57",
  "nmp-threading",

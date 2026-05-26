@@ -11,8 +11,9 @@ import Foundation
 //     Idempotent: safe to call when `chirpHandle` is nil OR already set.
 //   • `KernelHandle.unregisterChirpProjectionIfNeeded()` — drops the
 //     projection before `nmp_app_free` (FFI contract).
-//   • `KernelHandle.chirpSnapshot()` — JSON snapshot decoded into
-//     `ChirpTimelineSnapshot`. Returns `.empty` on any failure (D6).
+//   • `KernelHandle.loadOlderHomeFeed()` — high-level render intent that
+//     advances the Rust-owned standard home-feed projection; Swift never
+//     constructs cursors.
 //   • `KernelHandle.reregisterChirpProjection()` — used by
 //     `KernelModel.resetAndRestart()` so the projection's grouper state
 //     is dropped on account switch / reset.
@@ -44,21 +45,9 @@ extension KernelHandle {
         }
     }
 
-    /// Decode the current modular timeline snapshot. Returns
-    /// `ChirpTimelineSnapshot.empty` when the projection handle is unset
-    /// (registration failed) or when JSON parse fails (D6 — never throws
-    /// across the bridge; logs and continues).
-    func chirpSnapshot() -> ChirpTimelineSnapshot {
-        guard let handle = chirpHandle else { return .empty }
-        guard let ptr = nmp_app_chirp_snapshot(handle) else { return .empty }
-        defer { nmp_app_chirp_snapshot_free(ptr) }
-        let payload = String(cString: ptr)
-        guard let data = payload.data(using: .utf8) else { return .empty }
-        do {
-            return try JSONDecoder().decode(ChirpTimelineSnapshot.self, from: data)
-        } catch {
-            kbLog.error("chirpSnapshot decode failed: \(error.localizedDescription)")
-            return .empty
+    func loadOlderHomeFeed() {
+        "nmp.feed.home".withCString { key in
+            nmp_app_load_older_feed(raw, key)
         }
     }
 

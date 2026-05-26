@@ -9,6 +9,7 @@
 mod action;
 mod capability;
 mod event_observer;
+mod feed;
 mod identity;
 mod lifecycle;
 mod publish;
@@ -61,6 +62,8 @@ pub use capability::{
 };
 #[cfg(feature = "native")]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
+#[cfg(feature = "native")]
+pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
@@ -372,6 +375,10 @@ pub struct NmpApp {
     /// queried on the FFI thread — it fires from inside the actor tick, hence
     /// the shared-`Arc` slot rather than a plain owned field.
     snapshot_projections: SnapshotProjectionSlot,
+    /// Reusable feed-controller registry. App crates register named feed
+    /// surfaces here; shells report viewport intent through generic feed FFI
+    /// instead of app-specific cursor/window APIs.
+    feed_registry: nmp_feed::FeedRegistrySlot,
     /// G-S4 — straddle counter for the actor command channel depth. The
     /// command channel is an unbounded `std::sync::mpsc::channel()` whose
     /// `Receiver` has no `len()`, so depth is observed indirectly: `send_cmd`
@@ -637,6 +644,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // applies the produced resolver via `Kernel::set_publish_resolver`.
     let publish_resolver: PublishResolverSlot = new_publish_resolver_slot();
     let actor_publish_resolver = Arc::clone(&publish_resolver);
+    let feed_registry = nmp_feed::new_feed_registry_slot();
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
@@ -838,6 +846,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // host registers its own projections via
         // `nmp_app_register_snapshot_projection` during init.
         snapshot_projections,
+        feed_registry,
         // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
         // incremented by `send_cmd`. The actor holds the matching clone.
         queue_depth,
@@ -961,6 +970,29 @@ impl NmpApp {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             registry.register(key, f);
         }
+    }
+
+    /// Register a reusable feed surface. The controller owns ordering,
+    /// viewport state, paging, and render payload selection; native shells
+    /// only render the emitted projection and report viewport intent.
+    pub fn register_feed(
+        &self,
+        key: impl Into<String>,
+        controller: std::sync::Arc<dyn nmp_feed::FeedController>,
+    ) {
+        let key = key.into();
+        self.feed_registry
+            .register(key.clone(), std::sync::Arc::clone(&controller));
+        self.register_snapshot_projection(key, move || controller.snapshot_json());
+    }
+
+    #[must_use]
+    pub fn load_older_feed(&self, key: &str) -> bool {
+        let changed = self.feed_registry.load_older(key);
+        if changed {
+            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+        }
+        changed
     }
 
     /// Register a host-supplied action-result observer — the *push*

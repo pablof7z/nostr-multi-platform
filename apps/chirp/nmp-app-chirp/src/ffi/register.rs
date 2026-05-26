@@ -127,6 +127,10 @@ pub extern "C" fn nmp_app_chirp_register(
         // caller gets a null handle and treats it as a soft-fail.
         return std::ptr::null_mut();
     }
+    app_ref.register_feed(
+        "nmp.feed.home",
+        Arc::clone(&projection) as Arc<dyn nmp_feed::FeedController>,
+    );
 
     Box::into_raw(Box::new(ChirpHandle {
         projection,

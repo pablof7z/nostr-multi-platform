@@ -67,6 +67,7 @@ struct HomeFeedView: View {
         TimelineListView(
             blocks: effectiveBlocks,
             cards: model.modularTimeline.cards,
+            nextCursor: model.modularTimeline.page?.nextCursor,
             items: model.items,
             // V-31 — kernel-owned `mention_profiles` projection covers every
             // home-timeline author (and any open author/thread view),
@@ -82,6 +83,9 @@ struct HomeFeedView: View {
             // closure when the field is non-nil — see `NoteActionsRow`).
             onZap: { eventID, pubkey, lnurl in
                 model.zap(targetEventID: eventID, authorPubkey: pubkey, lnurl: lnurl)
+            },
+            onLoadMore: { cursor in
+                model.loadOlderTimeline(after: cursor)
             }
         )
         .equatable()
@@ -174,6 +178,7 @@ struct HomeFeedView: View {
 private struct TimelineListView: View, Equatable {
     let blocks: [TimelineBlock]
     let cards: [ChirpEventCard]
+    let nextCursor: TimelineWindowCursor?
     let items: [TimelineItem]
     /// V-31 — kernel-owned mention-profile map (replaces the Swift
     /// `Dictionary(items.map …)` derivation this view used to build). Bound
@@ -188,10 +193,12 @@ private struct TimelineListView: View, Equatable {
     /// is always called with a non-empty `lnurl`. Threaded through alongside
     /// `onLike` to avoid coupling the row to `KernelModel` directly.
     let onZap: (String, String, String) -> Void
+    let onLoadMore: (TimelineWindowCursor) -> Void
 
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
         lhs.blocks == rhs.blocks
             && lhs.cards == rhs.cards
+            && lhs.nextCursor == rhs.nextCursor
             && lhs.items == rhs.items
             && lhs.mentionProfiles == rhs.mentionProfiles
     }
@@ -201,7 +208,7 @@ private struct TimelineListView: View, Equatable {
         let itemLookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
 
         return List {
-            ForEach(blocks, id: \.stableID) { block in
+            ForEach(Array(blocks.enumerated()), id: \.element.stableID) { index, block in
                 ModularBlockView(
                     block: block,
                     cards: cardLookup,
@@ -213,6 +220,11 @@ private struct TimelineListView: View, Equatable {
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(ChirpColor.bg)
+                    .onAppear {
+                        if index == blocks.count - 1, let cursor = nextCursor {
+                            onLoadMore(cursor)
+                        }
+                    }
             }
         }
         .listStyle(.plain)
