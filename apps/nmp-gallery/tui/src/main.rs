@@ -31,6 +31,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use nmp_content::EventClaimSink;
 use nmp_gallery_tui::{
     data::GalleryData,
     embed_host::EmbedHostState,
@@ -48,6 +49,14 @@ struct Args {
     component: String,
     dump_lines: bool,
     list: bool,
+    /// Headless verification mode — boots the kernel, claims every embed
+    /// URI the gallery's content trees reference, waits up to N seconds
+    /// for each claim to resolve via the snapshot push, and prints a
+    /// structured pass/fail report. Exits 0 on full success, 1 on any
+    /// timeout or decode failure. Used to validate the architecture
+    /// end-to-end without an interactive terminal.
+    smoke: bool,
+    smoke_timeout_secs: u64,
 }
 
 enum GalleryEvent {
@@ -64,6 +73,34 @@ fn main() -> io::Result<()> {
         }
         return Ok(());
     }
+
+    // Smoke mode bypasses the cold-start bootstrap (which can flake when
+    // specific hardcoded event ids aren't available on configured relays).
+    // It directly validates the embed architecture: kernel boot → renderer
+    // claims via sink → snapshot delivery → host decode.
+    if args.smoke {
+        let mut kernel = match LiveGallerySource::boot_kernel_only() {
+            Ok(k) => k,
+            Err(error) => {
+                eprintln!("failed to boot kernel: {error}");
+                std::process::exit(1);
+            }
+        };
+        let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: kernel.app });
+        let mut host = EmbedHostState::new();
+        let snapshot_rx = kernel
+            .take_receiver()
+            .expect("snapshot receiver must still be present after boot");
+        let exit_code = run_smoke(
+            &sink,
+            &mut host,
+            snapshot_rx,
+            Duration::from_secs(args.smoke_timeout_secs),
+        );
+        drop(kernel);
+        std::process::exit(exit_code);
+    }
+
     if !gallery::is_component(&args.component) {
         eprintln!(
             "unknown component `{}`; run `nmp-gallery-tui --list`",
@@ -115,6 +152,8 @@ fn main() -> io::Result<()> {
         .take_receiver()
         .expect("snapshot receiver must still be present after bootstrap");
 
+    let _ = &facts; // smoke handled above
+
     run_terminal(&args, &data, &sink, &mut host, snapshot_rx)?;
 
     // Kernel drops here at end of scope — clears the update callback and
@@ -123,10 +162,296 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+/// Headless verification of the renderer-triggered claim path. Mirrors what
+/// the TUI does at render time but without ratatui — claims each embed URI
+/// directly via the sink, drains snapshots into the host until either the
+/// targets resolve or the timeout fires, then prints a structured report.
+fn run_smoke(
+    sink: &Arc<LiveKernelSink>,
+    host: &mut EmbedHostState,
+    snapshot_rx: std::sync::mpsc::Receiver<String>,
+    timeout: Duration,
+) -> i32 {
+    use nmp_core::nip19::{decode_naddr, decode_nevent, decode_note};
+    use std::time::Instant;
+
+    struct SmokeTarget {
+        label: &'static str,
+        uri: String,
+        /// Snapshot key the kernel uses for `claimed_events[primary_id]`.
+        /// hex64 event id for nevent/note; "kind:author:d_tag" for naddr.
+        primary_id: String,
+    }
+
+    fn primary_id_for(uri: &str) -> Option<String> {
+        let stripped = uri.strip_prefix("nostr:").unwrap_or(uri);
+        if let Ok(naddr) = decode_naddr(stripped) {
+            return Some(format!("{}:{}:{}", naddr.kind, naddr.pubkey, naddr.identifier));
+        }
+        if let Ok(nevent) = decode_nevent(stripped) {
+            return Some(nevent.event_id);
+        }
+        if let Ok(note) = decode_note(stripped) {
+            return Some(note);
+        }
+        None
+    }
+
+    // The article naddr is the canonical kind-dispatch demo (coordinate-
+    // form URI → addressable kind:30023 interest shape). We also include a
+    // known kind:1 event encoded as a `note1` so the smoke covers both
+    // URI shapes (event-id form + naddr coordinate form). The event id is
+    // a real pablof7z note from the workspace's existing fixture set.
+    const SMOKE_NOTE_HEX: &str =
+        "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660";
+    let smoke_note_uri = match nmp_core::nip19::encode_note(SMOKE_NOTE_HEX) {
+        Ok(bech) => format!("nostr:{bech}"),
+        Err(error) => {
+            eprintln!("smoke: failed to encode note1 from hex {SMOKE_NOTE_HEX}: {error}");
+            return 1;
+        }
+    };
+
+    let mut targets: Vec<SmokeTarget> = Vec::new();
+    for (label, uri) in [
+        (
+            "embed_article (kind:30023 naddr)",
+            nmp_gallery_tui::data::ARTICLE_NADDR.to_string(),
+        ),
+        ("embed_note (kind:1 note1)", smoke_note_uri),
+    ] {
+        match primary_id_for(&uri) {
+            Some(primary_id) => targets.push(SmokeTarget {
+                label,
+                uri,
+                primary_id,
+            }),
+            None => {
+                eprintln!("smoke: could not decode URI for {label}: {uri}");
+                return 1;
+            }
+        }
+    }
+
+    let consumer_id = "nmp-gallery-tui.smoke";
+
+    println!("== nmp-gallery-tui --smoke ==");
+    println!("kernel up, relays seeded; validating renderer-triggered embed claims.");
+    println!();
+
+    println!(
+        "Target {} embed URI(s); waiting for relay connection then claiming:",
+        targets.len()
+    );
+    for t in &targets {
+        println!("  target: {} → {}", t.label, t.uri);
+        println!("    primary_id expected in claimed_events: {}", t.primary_id);
+    }
+    println!();
+
+    let started = Instant::now();
+    let mut claims_issued = false;
+    let mut snapshot_tick = 0u32;
+    let mut resolved_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+
+    while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
+        let remaining = timeout - started.elapsed();
+        match snapshot_rx.recv_timeout(remaining) {
+            Ok(payload) => {
+                let Some(value) = parse_snapshot(&payload) else {
+                    continue;
+                };
+                snapshot_tick += 1;
+                host.update_from_snapshot(&value);
+
+                // Re-claim on EVERY snapshot tick until claims_issued.
+                // The kernel's claim_event no-ops when !relays_ready
+                // (W1 open-Q #3), so we keep trying until at least one
+                // relay is connected — at which point the OneshotApi
+                // interest registers and the planner compiles a wire REQ.
+                if !claims_issued && any_relay_connected(&value) {
+                    println!(
+                        "  + relay connected — claims firing on tick #{snapshot_tick}"
+                    );
+                    for t in &targets {
+                        println!("    claim: {}", t.uri);
+                        sink.claim(&t.uri, consumer_id);
+                    }
+                    claims_issued = true;
+                }
+
+                // Print any target that just resolved.
+                for t in &targets {
+                    if resolved_ids.contains(&t.primary_id) {
+                        continue;
+                    }
+                    if let Some(envelope) = host.current_envelopes().get(&t.primary_id) {
+                        println!(
+                            "+ resolved at {:.2}s: {}",
+                            started.elapsed().as_secs_f32(),
+                            t.label
+                        );
+                        print_resolved(t.label, envelope);
+                        resolved_ids.insert(t.primary_id.clone());
+                    }
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                eprintln!("snapshot channel disconnected before targets resolved");
+                return 1;
+            }
+        }
+    }
+
+    println!();
+    println!("Summary:");
+    println!("  snapshot ticks observed: {snapshot_tick}");
+    println!("  claims issued:           {}", if claims_issued { "yes" } else { "no" });
+    println!("  resolved targets:        {}/{}", resolved_ids.len(), targets.len());
+    let unresolved: Vec<&SmokeTarget> = targets
+        .iter()
+        .filter(|t| !resolved_ids.contains(&t.primary_id))
+        .collect();
+    println!();
+    if unresolved.is_empty() {
+        println!(
+            "✅ ALL {} embed targets resolved in {:.2}s",
+            targets.len(),
+            started.elapsed().as_secs_f32()
+        );
+        0
+    } else {
+        println!(
+            "❌ {}/{} targets unresolved after {:.2}s:",
+            unresolved.len(),
+            targets.len(),
+            started.elapsed().as_secs_f32()
+        );
+        for t in &unresolved {
+            println!(
+                "  unresolved: {} → {} (expected primary_id: {})",
+                t.label, t.uri, t.primary_id
+            );
+        }
+        println!();
+        println!(
+            "  Most likely cause: the target event isn't on the seeded relays."
+        );
+        println!(
+            "  The seeded relays are purplepag.es (indexer), nos.lol, relay.damus.io,"
+        );
+        println!(
+            "  relay.nostr.band. Architecture is validated by the resolved targets above."
+        );
+        println!();
+        println!("Host envelope map ({} entries):", host.current_envelopes().len());
+        for (k, env) in host.current_envelopes() {
+            println!(
+                "  - {k} → {}",
+                projection_label(&env.projection)
+            );
+        }
+        1
+    }
+}
+
+fn any_relay_connected(snapshot: &Value) -> bool {
+    relay_status_array(snapshot)
+        .map(|relays| {
+            relays.iter().any(|r| {
+                r.get("connection").and_then(Value::as_str) == Some("connected")
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn relay_status_array(snapshot: &Value) -> Option<&Vec<Value>> {
+    snapshot
+        .get("relay_statuses")
+        .and_then(Value::as_array)
+        .or_else(|| {
+            snapshot
+                .get("projections")
+                .and_then(|p| p.get("relay_diagnostics"))
+                .and_then(|d| d.get("relays"))
+                .and_then(Value::as_array)
+        })
+        .or_else(|| {
+            snapshot
+                .get("relay_status")
+                .and_then(Value::as_array)
+        })
+}
+
+fn projection_label(p: &nmp_content::embed_projection::EmbedKindProjection) -> &'static str {
+    use nmp_content::embed_projection::EmbedKindProjection;
+    match p {
+        EmbedKindProjection::Article(_) => "Article (kind:30023)",
+        EmbedKindProjection::ShortNote(_) => "ShortNote (kind:1)",
+        EmbedKindProjection::Highlight(_) => "Highlight (kind:9802)",
+        EmbedKindProjection::Profile(_) => "Profile (kind:0)",
+        EmbedKindProjection::Unknown(_) => "Unknown",
+    }
+}
+
+fn print_resolved(label: &str, env: &nmp_content::embed_projection::EmbeddedEventEnvelope) {
+    use nmp_content::embed_projection::EmbedKindProjection;
+    match &env.projection {
+        EmbedKindProjection::Article(a) => {
+            println!("✓ {label} → ArticleProjection (kind:30023)");
+            println!("    id:        {}", a.id);
+            println!("    author:    {}", a.author_pubkey);
+            println!("    d_tag:     {}", a.d_tag);
+            if let Some(title) = &a.title {
+                println!("    title:     {title}");
+            }
+            if let Some(summary) = &a.summary {
+                println!("    summary:   {summary}");
+            }
+            if let Some(hero) = &a.hero_image_url {
+                println!("    hero:      {hero}");
+            }
+        }
+        EmbedKindProjection::ShortNote(n) => {
+            println!("✓ {label} → ShortNoteProjection (kind:1)");
+            println!("    id:        {}", n.id);
+            println!("    author:    {}", n.author_pubkey);
+            println!("    media:     {:?}", n.media_urls);
+        }
+        EmbedKindProjection::Highlight(h) => {
+            println!("✓ {label} → HighlightProjection (kind:9802)");
+            println!("    id:        {}", h.id);
+            println!("    quoted:    {}", truncate_for_display(&h.highlighted_text, 80));
+        }
+        EmbedKindProjection::Profile(p) => {
+            println!("✓ {label} → ProfileProjection (kind:0)");
+            println!("    pubkey:    {}", p.pubkey);
+        }
+        EmbedKindProjection::Unknown(u) => {
+            println!("✓ {label} → UnknownProjection (kind:{})", u.kind);
+            println!("    content:   {}", truncate_for_display(&u.content, 80));
+        }
+    }
+}
+
+fn truncate_for_display(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max).collect();
+        out.push('…');
+        out
+    }
+}
+
 fn parse_args() -> Args {
     let mut component = "content-view".to_string();
     let mut dump_lines = false;
     let mut list = false;
+    let mut smoke = false;
+    let mut smoke_timeout_secs = 30u64;
 
     let mut iter = std::env::args().skip(1).peekable();
     while let Some(arg) = iter.next() {
@@ -138,6 +463,12 @@ fn parse_args() -> Args {
             }
             "--dump-lines" => dump_lines = true,
             "--list" => list = true,
+            "--smoke" => smoke = true,
+            "--smoke-timeout-secs" => {
+                if let Some(value) = iter.next().and_then(|v| v.parse::<u64>().ok()) {
+                    smoke_timeout_secs = value;
+                }
+            }
             value if !value.starts_with('-') => component = value.to_string(),
             _ => {}
         }
@@ -147,6 +478,8 @@ fn parse_args() -> Args {
         component,
         dump_lines,
         list,
+        smoke,
+        smoke_timeout_secs,
     }
 }
 

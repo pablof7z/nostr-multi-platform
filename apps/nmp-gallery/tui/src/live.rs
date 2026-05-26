@@ -146,6 +146,15 @@ impl LiveGallerySource {
         Self { timeout }
     }
 
+    /// Boot the kernel and seed the relay pool without waiting on any
+    /// specific events. Used by the `--smoke` mode to validate the embed
+    /// architecture in isolation from cold-start latency / relay flakes.
+    /// Returns the kernel; the caller is responsible for any further
+    /// data fetches via the standard claim_* / open_* FFI surface.
+    pub fn boot_kernel_only() -> Result<LiveKernel, String> {
+        LiveKernel::new()
+    }
+
     /// Boot the kernel, fetch the initial profile + thread/author/media
     /// items the user-* component pages need, and return a `(LiveFacts,
     /// LiveKernel)` pair. The kernel STAYS ALIVE — caller owns it for the
