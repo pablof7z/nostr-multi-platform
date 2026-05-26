@@ -14,14 +14,15 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_app_chirp::{
-    nmp_app_chirp_default_window_limit, nmp_app_chirp_max_window_limit, nmp_app_chirp_register,
-    nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_snapshot_window,
-    nmp_app_chirp_unregister, ChirpTimelineSnapshot, DEFAULT_TIMELINE_WINDOW_LIMIT,
-    MAX_TIMELINE_WINDOW_LIMIT,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpTimelineSnapshot,
 };
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
-use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start};
+use nmp_ffi::{
+    nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed, nmp_app_new,
+    nmp_app_read_projection_json, nmp_app_start,
+};
+use nmp_nip01::DEFAULT_TIMELINE_WINDOW_LIMIT;
 use nmp_threading::TimelineBlock;
 
 // Serialize tests because `NmpApp` initialisation spawns process-global
@@ -40,32 +41,16 @@ fn raw_note(id: &str, author: &str, ts: u64, tags: Vec<Vec<String>>, content: &s
     }
 }
 
-fn snapshot_for(handle: *mut nmp_app_chirp::ChirpHandle) -> ChirpTimelineSnapshot {
-    let ptr = nmp_app_chirp_snapshot(handle);
-    assert!(!ptr.is_null(), "snapshot returned null");
-    // SAFETY: ptr is a valid C string from our own CString.
+fn feed_projection_for(app: *mut nmp_ffi::NmpApp) -> ChirpTimelineSnapshot {
+    let key = CString::new("nmp.feed.home").expect("static key has no nul");
+    let ptr = nmp_app_read_projection_json(app, key.as_ptr());
+    assert!(!ptr.is_null(), "home feed projection returned null");
     let json = unsafe { CStr::from_ptr(ptr) }
         .to_str()
-        .expect("snapshot JSON is utf8")
+        .expect("projection JSON is utf8")
         .to_owned();
-    nmp_app_chirp_snapshot_free(ptr);
-    serde_json::from_str(&json).expect("snapshot deserializes")
-}
-
-fn window_snapshot_for(
-    handle: *mut nmp_app_chirp::ChirpHandle,
-    request_json: &str,
-) -> ChirpTimelineSnapshot {
-    let request = CString::new(request_json).expect("request contains no nul");
-    let ptr = nmp_app_chirp_snapshot_window(handle, request.as_ptr());
-    assert!(!ptr.is_null(), "window snapshot returned null");
-    // SAFETY: ptr is a valid C string from our own CString.
-    let json = unsafe { CStr::from_ptr(ptr) }
-        .to_str()
-        .expect("snapshot JSON is utf8")
-        .to_owned();
-    nmp_app_chirp_snapshot_free(ptr);
-    serde_json::from_str(&json).expect("snapshot deserializes")
+    nmp_app_free_string(ptr);
+    serde_json::from_str(&json).expect("projection deserializes")
 }
 
 fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
@@ -78,7 +63,7 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
 }
 
 #[test]
-fn root_plus_reply_round_trip_through_ffi_snapshot() {
+fn root_plus_reply_round_trip_through_feed_projection() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
@@ -110,7 +95,7 @@ fn root_plus_reply_round_trip_through_ffi_snapshot() {
     // 250ms idle tick should be plenty even on a loaded CI machine.
     std::thread::sleep(Duration::from_millis(500));
 
-    let snap = snapshot_for(handle);
+    let snap = feed_projection_for(app);
     assert_eq!(snap.blocks.len(), 1, "expected one block, got {snap:?}");
     match &snap.blocks[0] {
         TimelineBlock::Module { events, .. } => {
@@ -140,7 +125,7 @@ fn standalone_note_renders_as_standalone_block() {
     inject(app, vec![note]);
     std::thread::sleep(Duration::from_millis(500));
 
-    let snap = snapshot_for(handle);
+    let snap = feed_projection_for(app);
     assert_eq!(snap.blocks.len(), 1);
     assert!(matches!(snap.blocks[0], TimelineBlock::Standalone(_)));
     assert_eq!(snap.cards.len(), 1);
@@ -150,7 +135,7 @@ fn standalone_note_renders_as_standalone_block() {
 }
 
 #[test]
-fn window_snapshot_returns_bounded_newest_blocks() {
+fn snapshot_returns_default_window_and_load_older_expands_it() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
@@ -158,35 +143,35 @@ fn window_snapshot_returns_bounded_newest_blocks() {
     let handle = nmp_app_chirp_register(app, std::ptr::null());
 
     let author = "c".repeat(64);
-    let old_id = "4".repeat(64);
-    let new_id = "5".repeat(64);
-    let old = VerifiedEvent::from_raw_unchecked(raw_note(&old_id, &author, 1, vec![], "old"));
-    let new = VerifiedEvent::from_raw_unchecked(raw_note(&new_id, &author, 2, vec![], "new"));
-    inject(app, vec![new, old]);
+    let total = DEFAULT_TIMELINE_WINDOW_LIMIT + 2;
+    let events = (0..total)
+        .map(|idx| {
+            let id = format!("{:064x}", idx + 1);
+            VerifiedEvent::from_raw_unchecked(raw_note(
+                &id,
+                &author,
+                (idx + 1) as u64,
+                vec![],
+                "note",
+            ))
+        })
+        .collect::<Vec<_>>();
+    inject(app, events);
     std::thread::sleep(Duration::from_millis(500));
 
-    let snap = window_snapshot_for(handle, r#"{"limit":1}"#);
-    assert_eq!(snap.blocks.len(), 1);
-    assert!(matches!(&snap.blocks[0], TimelineBlock::Standalone(id) if id == &new_id));
-    assert_eq!(snap.cards.len(), 1);
+    let snap = feed_projection_for(app);
+    assert_eq!(snap.blocks.len(), DEFAULT_TIMELINE_WINDOW_LIMIT);
     let page = snap.page.expect("window snapshot carries page metadata");
     assert!(snap.metrics.is_some(), "window snapshot carries metrics");
     assert!(page.has_more);
-    assert_eq!(page.total_blocks, 2);
-    assert_eq!(page.next_cursor.expect("cursor").id, new_id);
+    assert_eq!(page.total_blocks, total);
+
+    let key = CString::new("nmp.feed.home").expect("static key has no nul");
+    nmp_app_load_older_feed(app, key.as_ptr());
+    let expanded = feed_projection_for(app);
+    assert_eq!(expanded.blocks.len(), total);
+    assert!(!expanded.page.expect("expanded page").has_more);
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
-}
-
-#[test]
-fn window_limit_accessors_match_rust_constants() {
-    assert_eq!(
-        nmp_app_chirp_default_window_limit(),
-        DEFAULT_TIMELINE_WINDOW_LIMIT as u32
-    );
-    assert_eq!(
-        nmp_app_chirp_max_window_limit(),
-        MAX_TIMELINE_WINDOW_LIMIT as u32
-    );
 }

@@ -173,6 +173,27 @@ fn window_snapshot_includes_visible_quote_cards() {
 }
 
 #[test]
+fn current_window_state_loads_older_inside_projection() {
+    let proj = ModularTimelineProjection::new(&spec());
+    let total = DEFAULT_TIMELINE_WINDOW_LIMIT + 2;
+    for idx in 0..total {
+        let id = format!("id-{idx:03}");
+        proj.on_kernel_event(&note(&id, (idx + 1) as u64, vec![]));
+    }
+
+    let first = proj.snapshot_current_window();
+
+    assert_eq!(first.blocks.len(), DEFAULT_TIMELINE_WINDOW_LIMIT);
+    assert!(first.page.as_ref().expect("page").has_more);
+
+    assert!(proj.load_older_window());
+    let expanded = proj.snapshot_current_window();
+
+    assert_eq!(expanded.blocks.len(), total);
+    assert!(!expanded.page.expect("page").has_more);
+}
+
+#[test]
 fn cards_include_content_tree_wire_for_mentions() {
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let mention = format!("nostr:{}", encode_npub(PK).expect("fixture npub encodes"));

@@ -8,6 +8,7 @@ description = "NIP-01 short text notes (kind:1) relation surface as an NMP proto
 [dependencies]
 nmp-core = { path = "../nmp-core" }
 nmp-content = { path = "../nmp-content" }
+nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-threading = { path = "../nmp-threading" }

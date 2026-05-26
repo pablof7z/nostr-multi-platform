@@ -1,9 +1,7 @@
 //! Snapshot + unregister entry points the host calls against a
 //! [`ChirpHandle`] returned by [`super::register::nmp_app_chirp_register`].
 
-use std::ffi::{c_char, CStr, CString};
-
-use nmp_nip01::{TimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT};
+use std::ffi::{c_char, CString};
 
 use super::handle::ChirpHandle;
 
@@ -21,47 +19,6 @@ pub extern "C" fn nmp_app_chirp_snapshot(handle: *mut ChirpHandle) -> *mut c_cha
     // `nmp_app_chirp_register` and not yet freed.
     let handle = unsafe { &*handle };
     snapshot_to_c_string(&handle.projection.snapshot())
-}
-
-/// Serialize a bounded timeline window into a JSON C string. `request_json`
-/// may be null, in which case Rust returns the default newest window.
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_snapshot_window(
-    handle: *mut ChirpHandle,
-    request_json: *const c_char,
-) -> *mut c_char {
-    if handle.is_null() {
-        return std::ptr::null_mut();
-    }
-    let request = if request_json.is_null() {
-        TimelineWindowRequest::default()
-    } else {
-        let Ok(text) = (unsafe { CStr::from_ptr(request_json) }).to_str() else {
-            return std::ptr::null_mut();
-        };
-        let Ok(request) = serde_json::from_str::<TimelineWindowRequest>(text) else {
-            return std::ptr::null_mut();
-        };
-        request
-    };
-    // SAFETY: caller guarantees `handle` is a valid pointer returned by
-    // `nmp_app_chirp_register` and not yet freed.
-    let handle = unsafe { &*handle };
-    snapshot_to_c_string(&handle.projection.snapshot_window(request))
-}
-
-/// Rust-owned default modular timeline window size. Exported so thin
-/// shells do not mirror protocol/app constants.
-#[no_mangle]
-pub extern "C" fn nmp_app_chirp_default_window_limit() -> u32 {
-    DEFAULT_TIMELINE_WINDOW_LIMIT as u32
-}
-
-/// Rust-owned modular timeline window cap.
-#[no_mangle]
-pub extern "C" fn nmp_app_chirp_max_window_limit() -> u32 {
-    MAX_TIMELINE_WINDOW_LIMIT as u32
 }
 
 fn snapshot_to_c_string(snapshot: &nmp_nip01::ModularTimelineSnapshot) -> *mut c_char {

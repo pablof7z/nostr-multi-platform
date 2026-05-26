@@ -106,10 +106,7 @@ final class KernelHandle {
         nmp_app_is_alive(raw) == 1
     }
 
-    func start(
-        visibleLimit: UInt32 = nmp_app_chirp_default_window_limit(),
-        emitHz: UInt32 = 4
-    ) {
+    func start(visibleLimit: UInt32 = 80, emitHz: UInt32 = 4) {
         nmp_app_start(raw, 0, visibleLimit, emitHz)
     }
 
@@ -820,6 +817,9 @@ struct KernelUpdate: Decodable {
     /// keeps working without an `Optional` unwrap. This deliberately differs
     /// from the identity-cluster optional pattern to preserve that flow.
     var items: [TimelineItem] { projections?.timeline ?? [] }
+
+    /// Standard bounded home-feed projection from `nmp-feed`.
+    var homeFeed: ChirpTimelineSnapshot? { projections?.homeFeed }
 
     /// Open author-view payload — `projections["author_view"]`. `nil` when no
     /// author view is open (kernel emits JSON null).

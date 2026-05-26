@@ -231,6 +231,7 @@ typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
+void nmp_app_load_older_feed(void *app, const char *feed_key);
 typedef void (*NmpActionResultObserver)(const char *result_json);
 void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);
 // PR-G: ack a `correlation_id` in the `action_stages` snapshot mirror so the
@@ -318,25 +319,22 @@ void nmp_broker_free_string(char *ptr);
 // 1. Call `nmp_app_chirp_register(app, viewer_pubkey)` once after
 //    `nmp_app_new()` succeeds. Returns an opaque handle (or NULL on
 //    failure). `viewer_pubkey` may be NULL (treated as "no viewer set").
-// 2. On each render tick (or after an update arrives), call
-//    `nmp_app_chirp_snapshot_window(handle, request_json)` to get a
-//    nul-terminated JSON string
+// 2. Read the standard `projections["nmp.feed.home"]` value from the normal
+//    NMP update stream. It carries
 //    `{ "blocks": [...], "cards": [...], "page": {...}, "metrics": {...} }`.
-//    `request_json` is `{ "limit": N, "cursor": { "created_at": T, "id": E } }`;
-//    cursor may be omitted/null for the newest window. The shell owns the
-//    pointer until it calls `nmp_app_chirp_snapshot_free(ptr)`.
-// 3. On teardown, call `nmp_app_chirp_unregister(handle)` BEFORE
+// 3. When the rendered tail becomes visible, call generic
+//    `nmp_app_load_older_feed(app, "nmp.feed.home")`. Rust owns the cursor,
+//    page size, and cap policy.
+// 4. On teardown, call `nmp_app_chirp_unregister(handle)` BEFORE
 //    `nmp_app_free(app)`.
 //
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or serialization failure (D6).
+
 void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
 char *nmp_app_chirp_snapshot(void *handle);
-char *nmp_app_chirp_snapshot_window(void *handle, const char *request_json_or_null);
-uint32_t nmp_app_chirp_default_window_limit(void);
-uint32_t nmp_app_chirp_max_window_limit(void);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
 

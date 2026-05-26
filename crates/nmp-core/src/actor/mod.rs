@@ -660,6 +660,11 @@ pub enum ActorCommand {
     ShowToast {
         message: String,
     },
+    /// Mark the kernel dirty so host-registered snapshot projections re-emit.
+    ///
+    /// Used when reusable NMP extension state changes outside a typed kernel
+    /// field (for example a registered feed viewport expanding older rows).
+    MarkChangedSinceEmit,
     /// Dispatch a stateful, host-owned action to the host-installed
     /// [`crate::substrate::HostOpHandler`].
     ///

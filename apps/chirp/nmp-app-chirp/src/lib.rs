@@ -22,9 +22,10 @@
 //!    every kind:1 the kernel ingests fans out to the projection.
 //! 3. Returns an opaque handle the shell keeps for snapshots / unregister.
 //!
-//! On each render tick the shell calls [`ffi::nmp_app_chirp_snapshot_window`],
-//! decodes the bounded JSON window, and renders `[TimelineBlock]` over the
-//! home timeline.
+//! The home feed is registered as the standard `"nmp.feed.home"` projection.
+//! Render shells consume it from the normal NMP update stream and report
+//! viewport intent through generic feed FFI; cursor math, page size, cap, and
+//! quoted-card closure remain in reusable NMP crates.
 //!
 //! ## Doctrine
 //!
@@ -38,8 +39,7 @@ pub mod ffi;
 mod wallet_runtime;
 
 pub use ffi::{
-    nmp_app_chirp_default_window_limit, nmp_app_chirp_max_window_limit, nmp_app_chirp_register,
-    nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_snapshot_window,
+    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
     nmp_app_chirp_unregister, ChirpHandle,
 };
 pub use nmp_ffi::{
@@ -52,8 +52,6 @@ pub use nmp_nip01::{
     TimelineWindowCursor as ChirpTimelineWindowCursor,
     TimelineWindowMetrics as ChirpTimelineWindowMetrics,
     TimelineWindowPage as ChirpTimelineWindowPage,
-    TimelineWindowRequest as ChirpTimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT,
-    MAX_TIMELINE_WINDOW_LIMIT,
 };
 
 // ── Marmot (MLS encrypted groups) projection ─────────────────────────────

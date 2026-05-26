@@ -200,6 +200,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let actionLifecycle: ActionLifecycleSnapshot?
     let profile: ProfileCard?
     let timeline: [TimelineItem]?
+    let homeFeed: ChirpTimelineSnapshot?
     let authorView: AuthorProfileSnapshot?
     let threadView: ThreadView?
     let inserted: [TimelineItem]?
@@ -232,6 +233,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case actionLifecycle
         case profile
         case timeline
+        case homeFeed = "nmp.feed.home"
         case authorView
         case threadView
         case inserted

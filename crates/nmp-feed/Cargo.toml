@@ -1,0 +1,12 @@
+[package]
+name = "nmp-feed"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "Reusable bounded Nostr feed windowing, cursor paging, and feed controller registry for NMP apps."
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-threading = { path = "../nmp-threading" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

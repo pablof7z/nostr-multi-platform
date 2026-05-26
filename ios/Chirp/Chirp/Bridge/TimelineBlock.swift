@@ -4,7 +4,7 @@ import Foundation
 // T146 — Swift mirror of `nmp_threading::TimelineBlock` + the per-event
 // metadata `nmp_app_chirp` ships alongside the blocks.
 //
-// Wire shape produced by `nmp_app_chirp_snapshot_window(handle, request)`:
+// Wire shape produced by `projections["nmp.feed.home"]`:
 //   { "blocks": [TimelineBlock], "cards": [ChirpEventCard], "page": ..., "metrics": ... }
 //
 // `TimelineBlock` is a tagged enum on the Rust side (serde default
@@ -230,7 +230,7 @@ enum RelationCount: Decodable, Equatable, Sendable {
     }
 }
 
-struct TimelineWindowCursor: Codable, Equatable, Sendable {
+struct TimelineWindowCursor: Decodable, Equatable, Sendable {
     let createdAt: UInt64
     let id: String
 
@@ -254,12 +254,7 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
     }
 }
 
-struct TimelineWindowRequest: Encodable {
-    let limit: UInt32
-    let cursor: TimelineWindowCursor?
-}
-
-/// Decoded `nmp_app_chirp_snapshot` payload.
+/// Decoded `nmp-feed` home projection payload.
 struct ChirpTimelineSnapshot: Decodable, Equatable {
     let blocks: [TimelineBlock]
     let cards: [ChirpEventCard]

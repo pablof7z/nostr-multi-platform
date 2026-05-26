@@ -1,4 +1,3 @@
-use nmp_app_chirp::{DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT};
 use serde_json::Value;
 
 use crate::bridge::{NmpEvent, UpdatePayload};
@@ -47,7 +46,6 @@ pub struct AppState {
     pub blocks: usize,
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
-    pub timeline_window_limit: usize,
     pub timeline_has_more: bool,
     pub metrics: RuntimeMetrics,
     pub relays: Vec<RelayRow>,
@@ -128,7 +126,6 @@ impl Default for AppState {
             blocks: 0,
             cards: 0,
             rows: Vec::new(),
-            timeline_window_limit: DEFAULT_TIMELINE_WINDOW_LIMIT,
             timeline_has_more: false,
             metrics: RuntimeMetrics::default(),
             relays: Vec::new(),
@@ -227,7 +224,9 @@ impl AppState {
             self.settings_account_selected = account_len - 1;
         }
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
-        self.refresh_timeline(runtime);
+        if let Some(feed) = shared.home_feed {
+            self.apply_feed_snapshot(feed);
+        }
         if !applied_action_result {
             self.status = format!(
                 "received NMP update #{} ({} bytes)",
@@ -339,16 +338,7 @@ impl AppState {
         if !self.timeline_has_more {
             return;
         }
-        let next_limit = self
-            .timeline_window_limit
-            .saturating_add(DEFAULT_TIMELINE_WINDOW_LIMIT)
-            .min(MAX_TIMELINE_WINDOW_LIMIT);
-        if next_limit == self.timeline_window_limit {
-            self.timeline_has_more = false;
-            return;
-        }
-        self.timeline_window_limit = next_limit;
-        self.refresh_timeline(runtime);
+        runtime.chirp_load_older_timeline();
     }
 
     #[must_use]
@@ -622,10 +612,7 @@ impl AppState {
         true
     }
 
-    fn refresh_timeline(&mut self, runtime: &AppRuntime) {
-        let Some(snapshot) = runtime.chirp_snapshot_window(self.timeline_window_limit) else {
-            return;
-        };
+    fn apply_feed_snapshot(&mut self, snapshot: Value) {
         self.blocks = snapshot
             .get("blocks")
             .and_then(Value::as_array)

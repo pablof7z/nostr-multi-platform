@@ -11,8 +11,9 @@ import Foundation
 //     Idempotent: safe to call when `chirpHandle` is nil OR already set.
 //   • `KernelHandle.unregisterChirpProjectionIfNeeded()` — drops the
 //     projection before `nmp_app_free` (FFI contract).
-//   • `KernelHandle.chirpSnapshot(limit:cursor:)` — JSON window decoded into
-//     `ChirpTimelineSnapshot`. Returns `.empty` on any failure (D6).
+//   • `KernelHandle.loadOlderHomeFeed()` — high-level render intent that
+//     advances the Rust-owned standard home-feed projection; Swift never
+//     constructs cursors.
 //   • `KernelHandle.reregisterChirpProjection()` — used by
 //     `KernelModel.resetAndRestart()` so the projection's grouper state
 //     is dropped on account switch / reset.
@@ -21,11 +22,6 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────
 
 extension KernelHandle {
-    enum ChirpTimelineWindowLimits {
-        static var defaultLimit: UInt32 { nmp_app_chirp_default_window_limit() }
-        static var maxLimit: UInt32 { nmp_app_chirp_max_window_limit() }
-    }
-
     /// Register the Chirp modular timeline projection on the kernel event
     /// observer slot. Viewer pubkey is `nil` on cold boot — `signInNsec`
     /// etc. retarget the projection once an account becomes active
@@ -49,34 +45,9 @@ extension KernelHandle {
         }
     }
 
-    /// Decode the current modular timeline snapshot. Returns
-    /// `ChirpTimelineSnapshot.empty` when the projection handle is unset
-    /// (registration failed) or when JSON parse fails (D6 — never throws
-    /// across the bridge; logs and continues).
-    func chirpSnapshot(
-        limit: UInt32,
-        cursor: TimelineWindowCursor? = nil
-    ) -> ChirpTimelineSnapshot {
-        guard let handle = chirpHandle else { return .empty }
-        let request = TimelineWindowRequest(limit: limit, cursor: cursor)
-        guard
-            let data = try? JSONEncoder().encode(request),
-            let requestJSON = String(data: data, encoding: .utf8)
-        else {
-            return .empty
-        }
-        let ptr = requestJSON.withCString { requestPtr in
-            nmp_app_chirp_snapshot_window(handle, requestPtr)
-        }
-        guard let ptr else { return .empty }
-        defer { nmp_app_chirp_snapshot_free(ptr) }
-        let payload = String(cString: ptr)
-        guard let data = payload.data(using: .utf8) else { return .empty }
-        do {
-            return try JSONDecoder().decode(ChirpTimelineSnapshot.self, from: data)
-        } catch {
-            kbLog.error("chirpSnapshot decode failed: \(error.localizedDescription)")
-            return .empty
+    func loadOlderHomeFeed() {
+        "nmp.feed.home".withCString { key in
+            nmp_app_load_older_feed(raw, key)
         }
     }
 

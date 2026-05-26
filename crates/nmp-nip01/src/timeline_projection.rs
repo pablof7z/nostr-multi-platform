@@ -9,6 +9,7 @@ use std::{collections::BTreeMap, sync::Mutex, time::Instant};
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, ViewContext, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
+use nmp_feed::FeedCard;
 use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
@@ -20,11 +21,11 @@ use crate::meta_timeline::{
 use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
 use crate::profile_display::{profile_from_event, should_replace, AuthorDisplay, ProfileDisplay};
 
-mod window;
-
-pub use window::{
-    TimelineWindowCursor, TimelineWindowPage, TimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT,
-    MAX_TIMELINE_WINDOW_LIMIT,
+pub use nmp_feed::{
+    FeedCursor as TimelineWindowCursor, FeedPage as TimelineWindowPage,
+    FeedRequest as TimelineWindowRequest, FeedWindowMetrics as TimelineWindowMetrics,
+    DEFAULT_FEED_WINDOW_LIMIT as DEFAULT_TIMELINE_WINDOW_LIMIT,
+    MAX_FEED_WINDOW_LIMIT as MAX_TIMELINE_WINDOW_LIMIT,
 };
 
 /// One render-ready event card surfaced through the modular timeline
@@ -235,9 +236,23 @@ impl ModularTimelineSnapshot {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct TimelineWindowMetrics {
-    pub make_window_us: u64,
+impl FeedCard for TimelineEventCard {
+    fn feed_created_at(&self) -> u64 {
+        self.created_at
+    }
+
+    fn feed_event_refs(&self) -> Vec<String> {
+        self.content_tree
+            .nodes
+            .iter()
+            .filter_map(|node| match node {
+                WireNode::EventRef { uri } if uri.kind == WireNostrUriKind::Event => {
+                    Some(uri.primary_id.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 pub struct ModularTimelineProjection {
@@ -246,6 +261,7 @@ pub struct ModularTimelineProjection {
 
 struct Inner {
     state: ModularTimelineState,
+    window: nmp_feed::FeedWindowState,
     cards: BoundedMessageMap<String, TimelineEventCard>,
     profiles: BoundedMessageMap<String, ProfileDisplay>,
     relations: NoteRelationIndex,
@@ -259,6 +275,7 @@ impl ModularTimelineProjection {
         Self {
             inner: Mutex::new(Inner {
                 state,
+                window: nmp_feed::FeedWindowState::default(),
                 cards: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
                 profiles: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
                 relations: NoteRelationIndex::default(),
@@ -281,39 +298,18 @@ impl ModularTimelineProjection {
     }
 
     #[must_use]
-    pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
+    pub fn snapshot_current_window(&self) -> ModularTimelineSnapshot {
         let make_window_start = Instant::now();
         let Ok(inner) = self.inner.lock() else {
             return ModularTimelineSnapshot::empty();
         };
         let blocks = sorted_projection_blocks(&inner);
-        let total_blocks = blocks.len();
-        let limit = request.bounded_limit();
-        let start = request
-            .cursor
-            .as_ref()
-            .map(|cursor| window::page_start_after_cursor(&blocks, &inner.cards, cursor))
-            .unwrap_or(0);
-        let end = start.saturating_add(limit).min(total_blocks);
-        let page_blocks = blocks[start..end].to_vec();
-        let has_more = end < total_blocks;
-        let next_cursor = if has_more {
-            page_blocks
-                .last()
-                .map(|block| window::block_window_cursor(block, &inner.cards))
-        } else {
-            None
-        };
-        let cards = window::cards_for_blocks(&page_blocks, &inner.cards);
+        let (page_blocks, page) = inner.window.snapshot_blocks(&blocks, &inner.cards);
+        let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
         ModularTimelineSnapshot {
             blocks: page_blocks,
             cards,
-            page: Some(TimelineWindowPage {
-                limit,
-                next_cursor,
-                has_more,
-                total_blocks,
-            }),
+            page: Some(page),
             metrics: Some(TimelineWindowMetrics {
                 make_window_us: make_window_start
                     .elapsed()
@@ -321,6 +317,49 @@ impl ModularTimelineProjection {
                     .min(u64::MAX as u128) as u64,
             }),
         }
+    }
+
+    pub fn load_older_window(&self) -> bool {
+        let Ok(mut inner) = self.inner.lock() else {
+            return false;
+        };
+        let blocks = sorted_projection_blocks(&inner);
+        let mut window = std::mem::take(&mut inner.window);
+        let changed = window.load_older(&blocks, &inner.cards);
+        inner.window = window;
+        changed
+    }
+
+    #[must_use]
+    pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
+        let make_window_start = Instant::now();
+        let Ok(inner) = self.inner.lock() else {
+            return ModularTimelineSnapshot::empty();
+        };
+        let blocks = sorted_projection_blocks(&inner);
+        let (page_blocks, page) = nmp_feed::page_for_request(&blocks, &inner.cards, &request);
+        let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
+        ModularTimelineSnapshot {
+            blocks: page_blocks,
+            cards,
+            page: Some(page),
+            metrics: Some(TimelineWindowMetrics {
+                make_window_us: make_window_start
+                    .elapsed()
+                    .as_micros()
+                    .min(u64::MAX as u128) as u64,
+            }),
+        }
+    }
+}
+
+impl nmp_feed::FeedController for ModularTimelineProjection {
+    fn snapshot_json(&self) -> serde_json::Value {
+        serde_json::to_value(self.snapshot_current_window()).unwrap_or(serde_json::Value::Null)
+    }
+
+    fn load_older(&self) -> bool {
+        self.load_older_window()
     }
 }
 
@@ -435,7 +474,7 @@ fn content_render_for_snapshot(
 fn sorted_projection_blocks(inner: &Inner) -> Vec<TimelineBlock> {
     let ctx = ViewContext::default();
     let payload: ModularTimelinePayload = Nip10ModularTimelineView::snapshot(&ctx, &inner.state);
-    window::sorted_blocks(payload.blocks, &inner.cards)
+    nmp_feed::sorted_blocks(payload.blocks, &inner.cards)
 }
 
 #[cfg(test)]
