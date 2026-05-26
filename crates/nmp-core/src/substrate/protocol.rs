@@ -469,7 +469,14 @@ impl<'a> ProtocolCommandContext<'a> {
 
     /// Wall-clock seconds since the Unix epoch (D15-wrapped
     /// [`KernelClock::now_secs`]). Returns `0` on a panicking adapter.
+    ///
+    /// When a direct `&Kernel` is attached (production dispatch), reads the
+    /// kernel's clock directly so the RefCell held by `KernelClockAdapter`
+    /// in the dispatch arm cannot trigger a double-borrow panic.
     pub fn now_secs(&self) -> u64 {
+        if let Some(k) = self.kernel.as_deref() {
+            return k.now_secs();
+        }
         let c = self.clock;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.now_secs())).unwrap_or(0)
     }
