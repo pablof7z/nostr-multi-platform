@@ -133,9 +133,24 @@ fn render_relays(frame: &mut Frame, area: Rect, state: &AppState) {
     // Prefer relay_edit_rows if available, fall back to live relay diagnostics,
     // then fall back to shared_snapshot_lines for minimal text output.
     let lines = if !state.features.relay_edit_rows.is_empty() {
+        // Build a short_url → connection_label lookup from live diagnostics so
+        // we show real connection state instead of the role label. short_url
+        // strips the wss:// prefix and trailing slash (mirrors kernel logic).
+        let conn_map: std::collections::HashMap<String, String> = state
+            .relays
+            .iter()
+            .map(|r| (r.short_url.clone(), r.connection_label.clone()))
+            .collect();
         let mut all: Vec<Line<'static>> = Vec::new();
         for row in state.features.relay_edit_rows.iter().take(12) {
-            let (dot, dot_color) = status_dot(&row.role_label);
+            let short = row
+                .url
+                .strip_prefix("wss://")
+                .or_else(|| row.url.strip_prefix("ws://"))
+                .unwrap_or(&row.url)
+                .trim_end_matches('/');
+            let conn_label = conn_map.get(short).cloned().unwrap_or_default();
+            let (dot, dot_color) = status_dot(&conn_label);
             let url = truncate(&row.url, pane_width.saturating_sub(4));
             all.push(Line::from(vec![
                 Span::styled(format!("{dot} "), Style::default().fg(dot_color)),
