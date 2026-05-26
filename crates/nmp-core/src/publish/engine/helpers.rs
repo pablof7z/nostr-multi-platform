@@ -17,13 +17,6 @@ pub(super) fn canonical_relay_identity(raw: &str) -> RelayUrl {
     CanonicalRelayUrl::parse_or_raw(raw).into_string()
 }
 
-pub(super) fn canonicalize_relay_set(relays: BTreeSet<RelayUrl>) -> BTreeSet<RelayUrl> {
-    relays
-        .into_iter()
-        .map(|relay| canonical_relay_identity(&relay))
-        .collect()
-}
-
 pub(super) fn relay_url_of(ack: &RelayAck) -> RelayUrl {
     canonical_relay_identity(&ack.relay_url)
 }

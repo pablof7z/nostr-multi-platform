@@ -26,10 +26,25 @@ impl Kernel {
         });
         rows.into_iter()
             .map(|row| {
+                // Build a quick canonical-URL → reason lookup so the per_relay
+                // iteration stays O(n + m) instead of O(n*m). Keys match the
+                // canonicalization already applied by the engine, so a direct
+                // `.get()` against `url.as_str()` is sufficient.
+                let relay_reasons_map: std::collections::HashMap<&str, &str> = row
+                    .relay_reasons
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect();
                 let relays = row
                     .per_relay
                     .iter()
-                    .map(|(url, state)| publish_outbox_relay(url, state))
+                    .map(|(url, state)| {
+                        let reason = relay_reasons_map
+                            .get(url.as_str())
+                            .copied()
+                            .unwrap_or("");
+                        publish_outbox_relay(url, state, reason)
+                    })
                     .collect::<Vec<_>>();
                 let status = publish_outbox_status(&row.per_relay);
                 let status_label = publish_outbox_status_label(&status);
@@ -149,7 +164,11 @@ impl Kernel {
     }
 }
 
-fn publish_outbox_relay(relay_url: &str, state: &PerRelayState) -> PublishOutboxRelay {
+fn publish_outbox_relay(
+    relay_url: &str,
+    state: &PerRelayState,
+    relay_reason: &str,
+) -> PublishOutboxRelay {
     let (status, attempt, message) = match state {
         PerRelayState::Pending => ("pending", 0, "Waiting for relay connection".to_string()),
         PerRelayState::InFlight { attempt, .. } => {
@@ -171,6 +190,7 @@ fn publish_outbox_relay(relay_url: &str, state: &PerRelayState) -> PublishOutbox
         attempt,
         attempt_label: publish_outbox_attempt_label(attempt),
         message,
+        relay_reason: relay_reason.to_string(),
     }
 }
 

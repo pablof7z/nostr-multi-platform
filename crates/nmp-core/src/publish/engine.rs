@@ -78,6 +78,13 @@ impl From<PublishStoreError> for PublishEngineError {
 pub(super) struct InFlight {
     pub event: SignedEvent,
     pub per_relay: BTreeMap<RelayUrl, PerRelayState>,
+    /// Per-relay selection rationale, captured from `OutboxResolver::resolve()`
+    /// at publish time and never mutated thereafter. Mirrors the key set of
+    /// `per_relay`; the engine reads it only during projection
+    /// (`flush_view` → `EventPublishStatus.relay_reasons`) so the snapshot
+    /// projection can render a "why was this relay targeted?" string without
+    /// re-running the resolver. Survives restart via `PublishRecord.relay_reasons`.
+    pub relay_reasons: BTreeMap<RelayUrl, String>,
     pub pending_retries: BTreeMap<RelayUrl, u64>, // relay -> earliest retry epoch ms
     pub dirty: bool,
     /// Optional action `correlation_id` to report in `LastTerminal` instead of
@@ -262,9 +269,18 @@ impl PublishEngine {
             for (url, due_ms) in record.pending_retries {
                 pending_retries.insert(helpers::canonical_relay_identity(&url), due_ms);
             }
+            // Restore the per-relay selection rationale alongside the state
+            // map. Older serialised rows (`relay_reasons` defaulted to empty)
+            // simply project with an empty string per relay — the projection
+            // skips empty `relay_reason` fields via `skip_serializing_if`.
+            let mut relay_reasons: BTreeMap<RelayUrl, String> = BTreeMap::new();
+            for (url, reason) in record.relay_reasons {
+                relay_reasons.insert(helpers::canonical_relay_identity(&url), reason);
+            }
             let in_flight = InFlight {
                 event: record.event,
                 per_relay,
+                relay_reasons,
                 pending_retries,
                 dirty: true,
                 // A resumed publish survived a process restart; the minted
@@ -343,26 +359,46 @@ impl PublishEngine {
         if self.in_flight.contains_key(&handle) {
             return Err(PublishEngineError::DuplicateHandle(handle));
         }
-        let relays = self.outbox.resolve(
+        let resolved = self.outbox.resolve(
             &event.unsigned.pubkey,
             &helpers::collect_p_tags(&event),
             &target,
             event.unsigned.kind,
         );
-        let relays = helpers::canonicalize_relay_set(relays);
-        if relays.is_empty() {
+        // Deduplicate by canonical URL. When the same canonical URL appears
+        // with multiple distinct reasons (e.g. NIP-65 write relay AND a
+        // discovery indexer for kind:0), join the reasons with "; " so the
+        // user sees both rationales instead of an arbitrary one. The publish
+        // engine remains the single owner of canonicalization (the resolver
+        // returns whatever URL form the caller stored in kind:10002).
+        let mut relay_map: BTreeMap<RelayUrl, String> = BTreeMap::new();
+        for r in resolved {
+            let canonical = helpers::canonical_relay_identity(&r.url);
+            relay_map
+                .entry(canonical)
+                .and_modify(|existing| {
+                    if !existing.split("; ").any(|chunk| chunk == r.reason) {
+                        existing.push_str("; ");
+                        existing.push_str(&r.reason);
+                    }
+                })
+                .or_insert(r.reason);
+        }
+        if relay_map.is_empty() {
             self.emit_no_targets(&handle, &event, correlation_id_override.as_deref(), now_ms);
             return Err(PublishEngineError::NoTargets);
         }
-        let mut per_relay = BTreeMap::new();
-        for url in &relays {
-            per_relay.insert(url.clone(), PerRelayState::Pending);
-        }
+        let per_relay: BTreeMap<RelayUrl, PerRelayState> = relay_map
+            .keys()
+            .map(|url| (url.clone(), PerRelayState::Pending))
+            .collect();
+        let relay_reasons = relay_map;
         self.in_flight.insert(
             handle.clone(),
             InFlight {
                 event,
                 per_relay,
+                relay_reasons,
                 pending_retries: BTreeMap::new(),
                 dirty: true,
                 correlation_id_override,
@@ -695,6 +731,15 @@ impl PublishEngine {
                 .iter()
                 .map(|(k, v)| (k.clone(), *v))
                 .collect(),
+            // Persist per-relay rationale so the human-readable
+            // "why was this relay targeted?" string survives kernel restart
+            // and is available to the snapshot projection without re-running
+            // the resolver.
+            relay_reasons: in_flight
+                .relay_reasons
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         };
         self.store.upsert(&record).map_err(PublishEngineError::from)
     }
@@ -714,6 +759,11 @@ impl PublishEngine {
                 content: row.event.unsigned.content.clone(),
                 per_relay: row
                     .per_relay
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+                relay_reasons: row
+                    .relay_reasons
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect(),

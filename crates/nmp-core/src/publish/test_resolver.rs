@@ -33,11 +33,10 @@
 //! that need the full algorithm live in `nmp-testing/tests/real_relay_*`
 //! and use the router-side `nmp_router::Nip65OutboxResolver` directly.
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::action::{PublishTarget, RelayUrl};
-use super::traits::OutboxResolver;
+use super::traits::{OutboxResolver, ResolvedRelay};
 use crate::store::{EventStore, PubKey};
 
 #[derive(Clone)]
@@ -127,13 +126,24 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
-    ) -> BTreeSet<RelayUrl> {
+    ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
-            return relays.iter().cloned().collect();
+            return relays
+                .iter()
+                .map(|url| ResolvedRelay {
+                    url: url.clone(),
+                    reason: "Explicit relay".to_string(),
+                })
+                .collect();
         }
-        let mut out: BTreeSet<RelayUrl> = BTreeSet::new();
+        let mut out: Vec<ResolvedRelay> = Vec::new();
         let (writes, _reads) = self.lookup_relays(author_pubkey);
-        out.extend(writes);
+        for url in writes {
+            out.push(ResolvedRelay {
+                url,
+                reason: "NIP-65 write relay".to_string(),
+            });
+        }
 
         // Active-account local-write fallback (parity with the router-side
         // `Nip65OutboxResolver`). Applies only when the author IS the
@@ -141,7 +151,12 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         if out.is_empty() && self.is_active_account(author_pubkey) {
             if let Some(slot) = self.local_write_relays.as_ref() {
                 if let Ok(guard) = slot.lock() {
-                    out.extend(guard.as_slice().iter().cloned());
+                    for url in guard.as_slice().iter().cloned() {
+                        out.push(ResolvedRelay {
+                            url,
+                            reason: "App relay (local config)".to_string(),
+                        });
+                    }
                 }
             }
         }
@@ -153,11 +168,27 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
             for p in p_tags {
                 let (_writes, reads) = self.lookup_relays(p);
-                out.extend(reads);
+                for url in reads {
+                    out.push(ResolvedRelay {
+                        url,
+                        reason: format!("Inbox relay for {}", short_pubkey(p)),
+                    });
+                }
             }
         }
         out
     }
+}
+
+/// Test-resolver-local short pubkey abbreviation: first 8 chars + `"…"`.
+/// `nmp_core::display::short_npub` does bech32-encoding which would pull the
+/// nostr crate into the dependency surface of this test resolver — keep it
+/// local instead so the test resolver stays self-contained.
+fn short_pubkey(hex: &str) -> String {
+    if hex.len() <= 12 {
+        return hex.to_string();
+    }
+    format!("{}…", &hex[..8])
 }
 
 fn hex_to_pubkey(hex: &str) -> Option<PubKey> {

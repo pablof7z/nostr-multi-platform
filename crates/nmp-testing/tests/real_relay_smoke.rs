@@ -214,6 +214,8 @@ fn outbox_resolves_to_kind10002_writes() {
 
     let resolver = Nip65OutboxResolver::with_default_fallback(store);
     let resolved = resolver.resolve(&author_hex, &[], &PublishTarget::Auto, 1);
+    let resolved_urls: std::collections::BTreeSet<&str> =
+        resolved.iter().map(|r| r.url.as_str()).collect();
 
     // Resolver must pick exactly nos.lol from the kind:10002 — NOT the
     // damus.io / nos.lol indexer fallback (which would be a 2-relay set).
@@ -224,7 +226,7 @@ fn outbox_resolves_to_kind10002_writes() {
         resolved
     );
     assert!(
-        resolved.contains(NOS_LOL),
+        resolved_urls.contains(NOS_LOL),
         "expected nos.lol in resolved set, got {:?}",
         resolved
     );
@@ -232,7 +234,7 @@ fn outbox_resolves_to_kind10002_writes() {
     // And the indexer-fallback relay is explicitly NOT included since the
     // author has a kind:10002 with at least one write-relay.
     assert!(
-        !resolved.contains(DAMUS_RELAY),
+        !resolved_urls.contains(DAMUS_RELAY),
         "damus.io fallback should not appear when author has kind:10002"
     );
 

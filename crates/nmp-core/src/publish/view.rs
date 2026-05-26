@@ -34,6 +34,13 @@ pub struct EventPublishStatus {
     pub created_at: u64,
     pub content: String,
     pub per_relay: Vec<(RelayUrl, PerRelayState)>,
+    /// Per-relay selection rationale, parallel to `per_relay` (same key set).
+    /// Carried from the publish engine through the projection so kernel snapshots
+    /// (`publish_outbox_items`) and apps can render "why was this relay targeted?"
+    /// without re-running the outbox resolver. Defaults to empty for
+    /// backwards-compatible deserialization of older payloads.
+    #[serde(default)]
+    pub relay_reasons: Vec<(RelayUrl, String)>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

@@ -41,10 +41,10 @@
 //! algorithmic concern as the substrate `OutboxRouter`
 //! (`GenericOutboxRouter`, same crate).
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use nmp_core::publish::{OutboxResolver, PublishTarget, RelayUrl};
+use nmp_core::display::short_npub;
+use nmp_core::publish::{OutboxResolver, PublishTarget, RelayUrl, ResolvedRelay};
 use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
@@ -160,13 +160,19 @@ impl OutboxResolver for Nip65OutboxResolver {
         p_tags: &[String],
         target: &PublishTarget,
         kind: u32,
-    ) -> BTreeSet<RelayUrl> {
+    ) -> Vec<ResolvedRelay> {
         // 1. Explicit targets win — the caller has opted out per D3.
         if let PublishTarget::Explicit { relays } = target {
-            return relays.iter().cloned().collect();
+            return relays
+                .iter()
+                .map(|url| ResolvedRelay {
+                    url: url.clone(),
+                    reason: "Explicit relay".to_string(),
+                })
+                .collect();
         }
 
-        let mut out: BTreeSet<RelayUrl> = BTreeSet::new();
+        let mut out: Vec<ResolvedRelay> = Vec::new();
 
         // 2. Author write-relays (when a kind:10002 is cached).
         //
@@ -178,11 +184,21 @@ impl OutboxResolver for Nip65OutboxResolver {
         // unroutable is surfaced honestly, never silently widened. Discovery
         // kinds escape the empty set via step 3 below.
         if let Some((writes, _reads)) = self.lookup_kind10002(author_pubkey) {
-            out.extend(writes);
+            for url in writes {
+                out.push(ResolvedRelay {
+                    url,
+                    reason: "NIP-65 write relay".to_string(),
+                });
+            }
         }
         if out.is_empty() && self.is_active_account(author_pubkey) {
             if let Ok(guard) = self.local_write_relays.lock() {
-                out.extend(guard.as_slice().iter().cloned());
+                for url in guard.as_slice().iter().cloned() {
+                    out.push(ResolvedRelay {
+                        url,
+                        reason: "App relay (local config)".to_string(),
+                    });
+                }
             }
         }
 
@@ -194,7 +210,12 @@ impl OutboxResolver for Nip65OutboxResolver {
         // (NoTargets), it does not leak onto the indexers.
         if is_discovery_kind(kind) {
             if let Ok(guard) = self.indexer_relays.lock() {
-                out.extend(guard.as_slice().iter().cloned());
+                for url in guard.as_slice().iter().cloned() {
+                    out.push(ResolvedRelay {
+                        url,
+                        reason: format!("Discovery indexer (kind {kind})"),
+                    });
+                }
             }
         }
 
@@ -204,7 +225,12 @@ impl OutboxResolver for Nip65OutboxResolver {
         if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
             for p in p_tags {
                 if let Some((_writes, reads)) = self.lookup_kind10002(p) {
-                    out.extend(reads);
+                    for url in reads {
+                        out.push(ResolvedRelay {
+                            url,
+                            reason: format!("Inbox relay for {}", short_npub(p)),
+                        });
+                    }
                 }
             }
         }

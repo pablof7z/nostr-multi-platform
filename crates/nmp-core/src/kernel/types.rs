@@ -408,6 +408,15 @@ pub(super) struct PublishOutboxRelay {
     /// the shell renders it as-is.
     pub(super) attempt_label: String,
     pub(super) message: String,
+    /// Pre-formatted "why was this relay targeted?" string, computed by the
+    /// outbox resolver at publish time and carried verbatim through the
+    /// snapshot. Examples: `"NIP-65 write relay"`, `"App relay (local config)"`,
+    /// `"Inbox relay for npub1abc…"`. Empty when the publish predates this
+    /// projection field (older persisted rows) — `skip_serializing_if` keeps
+    /// the JSON payload shape unchanged in that case so apps that don't yet
+    /// read the field stay forward-compatible.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub(super) relay_reason: String,
 }
 
 /// Pre-formatted outbox summary header for `NotificationsView` (and similar

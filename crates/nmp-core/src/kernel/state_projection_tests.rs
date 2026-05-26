@@ -288,6 +288,7 @@ fn profile_card_projects_pending_kind0_publish_intent_after_restart() {
             },
             per_relay: vec![("wss://relay.test".to_string(), PerRelayState::Pending)],
             pending_retries: Vec::new(),
+            relay_reasons: Vec::new(),
         })
         .expect("seed pending profile intent");
     let mut kernel = Kernel::with_publish_store(
@@ -383,6 +384,120 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     assert_eq!(
         outbox[0]["relays"][0]["attempt_label"].as_str(),
         Some("try 1")
+    );
+}
+
+/// Per-relay rationale ("why was this relay targeted?") threads from the
+/// outbox resolver all the way through to the JSON projection that crosses
+/// the C-ABI. Apps render `relay_reason` verbatim — this test pins the field
+/// to the resolver's exact string so a regression that drops the value (or
+/// stops serializing it) is caught at the projection boundary.
+///
+/// Pairs with `relay_reasons_are_threaded_from_resolver_through_snapshot` in
+/// `tests/publish_engine_relay_reasons.rs`, which pins the engine surface.
+/// This test pins the *kernel projection* surface: the JSON the C-ABI emits.
+#[test]
+fn publish_outbox_projects_relay_reason_from_resolver() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let signed = SignedEvent {
+        id: "e".repeat(64),
+        sig: "a".repeat(128),
+        unsigned: UnsignedEvent {
+            pubkey: ACCOUNT.to_string(),
+            kind: 1,
+            tags: Vec::new(),
+            content: "Why is this relay being targeted?".to_string(),
+            created_at: 1_700_000_000,
+        },
+    };
+
+    // `PublishTarget::Explicit` exercises the resolver's short-circuit lane —
+    // the kernel's installed resolver (`Nip65OutboxResolver` /
+    // `TestKind10002OutboxResolver`) returns
+    // `ResolvedRelay { reason: "Explicit relay", .. }` for each URL.
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Explicit {
+            relays: vec!["wss://reason.test".to_string()],
+        },
+        None,
+        0,
+    );
+    assert_eq!(outbound.len(), 1);
+
+    let snap = snapshot(&mut kernel);
+    let outbox = snap["projections"]["publish_outbox"]
+        .as_array()
+        .expect("projections.publish_outbox must be an array");
+    assert_eq!(outbox.len(), 1);
+    let relay = &outbox[0]["relays"][0];
+    assert_eq!(relay["relay_url"].as_str(), Some("wss://reason.test"));
+    assert_eq!(
+        relay["relay_reason"].as_str(),
+        Some("Explicit relay"),
+        "kernel projection must surface the resolver's reason verbatim",
+    );
+}
+
+/// `skip_serializing_if = "String::is_empty"` on `PublishOutboxRelay.relay_reason`
+/// drops the field from the JSON payload when the engine has no reason on
+/// file (older persisted rows resumed from disk, defaulted to empty). This
+/// keeps the JSON shape backwards-compatible for apps that have not yet been
+/// rebuilt against the new schema.
+#[test]
+fn publish_outbox_omits_empty_relay_reason_from_json() {
+    // Seed a persisted publish row WITHOUT relay_reasons — the engine's
+    // resume path defaults the rationale to empty for older serialised rows.
+    let publish_store = Arc::new(InMemoryPublishStore::new());
+    publish_store
+        .upsert(&PublishRecord {
+            handle: "legacy-row".to_string(),
+            event: SignedEvent {
+                id: "d".repeat(64),
+                sig: "a".repeat(128),
+                unsigned: UnsignedEvent {
+                    pubkey: ACCOUNT.to_string(),
+                    kind: 1,
+                    tags: Vec::new(),
+                    content: "Resumed from an older schema".to_string(),
+                    created_at: 1_700_000_000,
+                },
+            },
+            per_relay: vec![("wss://legacy.test".to_string(), PerRelayState::Pending)],
+            pending_retries: Vec::new(),
+            // Deliberately empty — simulates a record persisted before the
+            // `relay_reasons` field existed.
+            relay_reasons: Vec::new(),
+        })
+        .expect("seed legacy publish row");
+
+    let mut kernel = Kernel::with_publish_store(
+        DEFAULT_VISIBLE_LIMIT,
+        Arc::clone(&publish_store) as Arc<dyn PublishStore>,
+    );
+    kernel.active_account = Some(ACCOUNT.to_string());
+    // `with_publish_store` does NOT auto-resume; the kernel's actor entry
+    // point calls `resume_publish_engine` separately. Mirror that flow so
+    // the seeded row reaches the engine's in-flight set and surfaces on
+    // the `publish_outbox` projection.
+    let _ = kernel.resume_publish_engine();
+
+    let snap = snapshot(&mut kernel);
+    let outbox = snap["projections"]["publish_outbox"]
+        .as_array()
+        .expect("projections.publish_outbox must be an array");
+    assert_eq!(outbox.len(), 1);
+    let relay = &outbox[0]["relays"][0];
+    assert_eq!(relay["relay_url"].as_str(), Some("wss://legacy.test"));
+    // `skip_serializing_if = "String::is_empty"` MUST drop the field entirely
+    // — not emit an empty string. Apps that haven't been recompiled against
+    // the new schema rely on this to keep their existing Codable definitions
+    // working unchanged.
+    assert!(
+        relay.get("relay_reason").is_none(),
+        "empty relay_reason must NOT appear in the JSON (skip_serializing_if): \
+         got {relay:?}",
     );
 }
 
