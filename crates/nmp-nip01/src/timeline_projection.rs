@@ -33,6 +33,13 @@ pub use nmp_feed::{
 /// timestamps as Unix seconds, display name/picture as `Option<String>`
 /// (None when no kind:0 has arrived). Presentation layers own all
 /// formatting decisions (aim.md §2).
+///
+/// For NIP-18 repost cards (a kind:6 whose target the grouper has
+/// superseded) the `author_*` fields name the *original* note's author and
+/// `content` carries the note's body — the kind:6 wrapper is exposed via
+/// `reposted_by`. `created_at` is the *outer* event's timestamp (the repost
+/// time) so the feed cursor bumps the card to the top; the underlying
+/// note's publish time travels on `reposted_by.note_created_at`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
     pub id: String,
@@ -64,6 +71,29 @@ pub struct TimelineEventCard {
     /// Scalar-based (`chars()`) rather than grapheme-cluster-based; for
     /// Nostr text this is indistinguishable in practice.
     pub content_preview: String,
+    /// `None` for ordinary notes; `Some` when this card was surfaced because
+    /// a NIP-18 kind:6 repost superseded the original. The `author_*` fields
+    /// above name the *original* note's author; this struct names who
+    /// reposted it and when the original was authored (so the UI can show
+    /// "<original-author> · <note-time> · ↻ reposted by <reposter>").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reposted_by: Option<RepostAttribution>,
+}
+
+/// Attribution payload for a card whose surfacing was driven by a repost.
+/// Sibling to the card's primary author fields — those name the *original*
+/// note's author; these fields name the *reposter*.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RepostAttribution {
+    pub author_pubkey: String,
+    pub author_display: AuthorDisplay,
+    pub author_display_name: Option<String>,
+    pub author_picture_url: Option<String>,
+    /// Original note's publish time. The card's own `created_at` is the
+    /// repost timestamp (used as the feed-cursor sort key so the repost
+    /// bumps the note to the top); this is the timestamp the UI shows next
+    /// to the original author.
+    pub note_created_at: u64,
 }
 
 impl TimelineEventCard {
@@ -82,15 +112,28 @@ impl TimelineEventCard {
             render_payload.kind,
         )
         .to_wire();
-        let author_display = AuthorDisplay::from_profile(&event.author, profile);
+        let display_author = render_payload.author.as_deref().unwrap_or(&event.author);
+        let display_profile = if render_payload.author.is_some() {
+            // Embedded note's author is decoupled from the outer event's
+            // author; consult the profile cache directly rather than the
+            // outer event's pre-fetched `profile` argument.
+            profiles.get(display_author)
+        } else {
+            profile
+        };
+        let author_display = AuthorDisplay::from_profile(display_author, display_profile);
         let author_display_name = author_display.name.clone();
         let author_picture_url = author_display.picture_url.clone();
         let content_render = content_render_for(&content_tree, profiles, cards);
+        let reposted_by = render_payload.repost_attribution(&event.author, profiles);
         Self {
             id: event.id.clone(),
-            author_pubkey: event.author.clone(),
+            author_pubkey: display_author.to_string(),
             author_display,
-            kind: event.kind,
+            kind: render_payload.kind,
+            // Sort key: the outer event's `created_at`. For reposts this is
+            // the repost time (so the card bumps to the top); for ordinary
+            // notes it's the note's own time.
             created_at: event.created_at,
             content: render_payload.content,
             content_tree,
@@ -99,6 +142,7 @@ impl TimelineEventCard {
             author_display_name,
             author_picture_url,
             content_preview: content_preview(&render_payload.preview_source, 180),
+            reposted_by,
         }
     }
 }
@@ -175,6 +219,15 @@ struct RenderPayload {
     preview_source: String,
     tags: Vec<Vec<String>>,
     kind: u32,
+    /// `Some` when the source event is a NIP-18 repost with an embedded
+    /// inner note — the embedded note's author. `None` for ordinary notes
+    /// and for e-tag-only reposts (no inner data to attribute).
+    author: Option<String>,
+    /// `Some` when the source event is a NIP-18 repost with an embedded
+    /// inner note — the embedded note's publish time. Used to build the
+    /// repost attribution; the card's own `created_at` stays as the outer
+    /// event's timestamp so the feed cursor bumps it to the top.
+    note_created_at: Option<u64>,
 }
 
 impl RenderPayload {
@@ -186,13 +239,21 @@ impl RenderPayload {
                     content: inner.content,
                     tags: inner.tags,
                     kind: inner.kind,
+                    author: Some(inner.author),
+                    note_created_at: Some(inner.created_at),
                 };
             }
+            // E-tag-only repost: we don't have the inner note locally, so
+            // the card has no original author to attribute. Falls back to
+            // an empty placeholder card whose author + timestamp still
+            // come from the outer kind:6 (caller's existing behaviour).
             return Self {
                 content: String::new(),
                 preview_source: String::new(),
                 tags: Vec::new(),
                 kind: KIND_SHORT_NOTE,
+                author: None,
+                note_created_at: None,
             };
         }
 
@@ -201,7 +262,32 @@ impl RenderPayload {
             preview_source: event.content.clone(),
             tags: event.tags.clone(),
             kind: event.kind,
+            author: None,
+            note_created_at: None,
         }
+    }
+
+    /// Build the `reposted_by` attribution from the *outer* event (the
+    /// kind:6 wrapper). Returns `None` for ordinary notes and for e-tag-only
+    /// reposts (no inner note → no original-author/timestamp split to
+    /// surface).
+    fn repost_attribution(
+        &self,
+        outer_author: &str,
+        profiles: &BoundedMessageMap<String, ProfileDisplay>,
+    ) -> Option<RepostAttribution> {
+        let note_created_at = self.note_created_at?;
+        let reposter_profile = profiles.get(outer_author);
+        let author_display = AuthorDisplay::from_profile(outer_author, reposter_profile);
+        let author_display_name = author_display.name.clone();
+        let author_picture_url = author_display.picture_url.clone();
+        Some(RepostAttribution {
+            author_pubkey: outer_author.to_string(),
+            author_display,
+            author_display_name,
+            author_picture_url,
+            note_created_at,
+        })
     }
 }
 
@@ -414,6 +500,16 @@ impl Inner {
                 // identicon placeholder must be replaced by the parsed
                 // profile picture on the next snapshot.
                 card.author_picture_url = card.author_display.picture_url.clone();
+            }
+            // Repost cards carry a second author (the reposter) on
+            // `reposted_by`. When that author's kind:0 lands later, refresh
+            // the attribution so the UI shows the resolved display name.
+            if let Some(attribution) = card.reposted_by.as_mut() {
+                if attribution.author_pubkey == author {
+                    attribution.author_display = AuthorDisplay::from_profile(author, profile);
+                    attribution.author_display_name = attribution.author_display.name.clone();
+                    attribution.author_picture_url = attribution.author_display.picture_url.clone();
+                }
             }
         }
     }

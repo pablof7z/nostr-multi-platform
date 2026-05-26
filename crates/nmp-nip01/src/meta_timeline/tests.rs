@@ -122,7 +122,10 @@ fn author_filter_excludes_others() {
 }
 
 #[test]
-fn repost_e_tag_does_not_create_a_reply_module() {
+fn repost_supersedes_original_and_keeps_layout_to_one_block() {
+    // A kind:6 repost of a note already in the feed bumps the original to the
+    // repost's position rather than stacking a second block — NIP-18
+    // supersession via `ParentResolver::supersedes`.
     let spec = ModularTimelineSpec {
         viewer: "me".into(),
         kinds: vec![KIND_SHORT_NOTE, KIND_REPOST],
@@ -137,19 +140,46 @@ fn repost_e_tag_does_not_create_a_reply_module() {
     let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &boost);
     let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
 
-    assert_eq!(snap.blocks.len(), 2);
-    assert!(snap
-        .blocks
-        .iter()
-        .any(|block| matches!(block, TimelineBlock::Standalone(id) if id == "R")));
-    assert!(snap
-        .blocks
-        .iter()
-        .any(|block| matches!(block, TimelineBlock::Standalone(id) if id == "B")));
-    assert!(snap
-        .blocks
-        .iter()
-        .all(|block| !matches!(block, TimelineBlock::Module { .. })));
+    assert_eq!(snap.blocks.len(), 1, "repost must evict the original's block");
+    assert!(matches!(
+        &snap.blocks[0],
+        TimelineBlock::Standalone(id) if id == "B"
+    ));
+}
+
+#[test]
+fn repost_arriving_before_original_suppresses_the_late_original() {
+    // Relay-order opposite: the repost reaches us first, then the kind:1 it
+    // targets. The original must still be suppressed so the note renders once
+    // at the repost's slot.
+    let spec = ModularTimelineSpec {
+        viewer: "me".into(),
+        kinds: vec![KIND_SHORT_NOTE, KIND_REPOST],
+        authors: None,
+        policy: ModulePolicy::default(),
+    };
+    let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
+    let boost = repost("B", 2, "R");
+    let root = note("R", 1, vec![]);
+
+    let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &boost);
+    let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
+    let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
+
+    assert_eq!(snap.blocks.len(), 1, "late-arriving original must stay suppressed");
+    assert!(matches!(
+        &snap.blocks[0],
+        TimelineBlock::Standalone(id) if id == "B"
+    ));
+}
+
+#[test]
+fn nip10_resolver_supersedes_returns_target_only_for_kind_6() {
+    let plain = note("X", 1, vec![]);
+    assert!(Nip10Resolver.supersedes(&plain).is_none());
+
+    let boost = repost("B", 2, "R");
+    assert_eq!(Nip10Resolver.supersedes(&boost).as_deref(), Some("R"));
 }
 
 #[test]

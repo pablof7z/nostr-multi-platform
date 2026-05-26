@@ -353,13 +353,41 @@ fn repost_cards_render_embedded_event_content_tree() {
         .find(|c| c.id == "repost")
         .expect("repost card exists");
 
-    assert_eq!(card.kind, nmp_nip18::KIND_REPOST);
+    // Card surfaces the *original* note (kind:1) — the kind:6 wrapper is
+    // exposed via `reposted_by`. Sort key (`created_at`) stays as the
+    // repost's timestamp so the card bumps to the top of the feed.
+    assert_eq!(card.kind, 1);
+    assert_eq!(card.author_pubkey, "inner-author");
+    assert_eq!(card.created_at, 2, "sort key is the outer repost timestamp");
     assert_eq!(card.content, "boosted #nostr");
     assert!(card
         .content_tree
         .nodes
         .iter()
         .any(|node| { matches!(node, WireNode::Hashtag { tag } if tag == "nostr") }));
+
+    let attribution = card
+        .reposted_by
+        .as_ref()
+        .expect("repost attribution present");
+    assert_eq!(attribution.author_pubkey, "reposter");
+    assert_eq!(
+        attribution.note_created_at, 123,
+        "attribution carries the original note's publish time"
+    );
+}
+
+#[test]
+fn ordinary_notes_have_no_repost_attribution() {
+    let proj = ModularTimelineProjection::new(&spec());
+    proj.on_kernel_event(&note("N", 1, vec![]));
+    let snap = proj.snapshot();
+    let card = snap
+        .cards
+        .iter()
+        .find(|c| c.id == "N")
+        .expect("note card exists");
+    assert!(card.reposted_by.is_none());
 }
 
 #[test]

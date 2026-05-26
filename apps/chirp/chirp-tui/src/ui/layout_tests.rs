@@ -56,6 +56,7 @@ fn home_tab_handles_narrow_terminal_without_panicking() {
         content_tree: None,
         content_render: Default::default(),
         mention_pubkeys: Vec::new(),
+        repost: None,
     });
 
     let rendered = render_state(80, 24, state);
@@ -99,6 +100,7 @@ fn state_with_row() -> AppState {
         content_tree: None,
         content_render: Default::default(),
         mention_pubkeys: Vec::new(),
+        repost: None,
     });
     state
 }

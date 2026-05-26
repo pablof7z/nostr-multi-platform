@@ -222,6 +222,7 @@ mod tests {
             content_tree: Some(media_tree(urls)),
             content_render: ContentRenderData::default(),
             mention_pubkeys: Vec::new(),
+            repost: None,
         }
     }
 
