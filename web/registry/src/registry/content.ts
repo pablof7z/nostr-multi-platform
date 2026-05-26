@@ -27,10 +27,16 @@ import tuiContentTreeWireRust from "../../../../crates/nmp-cli/registry/tui/cont
 import tuiContentRenderDataRust from "../../../../crates/nmp-cli/registry/tui/content-core/content_render_data.rs?raw";
 import tuiTextWrapRust from "../../../../crates/nmp-cli/registry/tui/content-core/ratatui_text_wrap.rs?raw";
 import tuiContentViewRust from "../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_view.rs?raw";
+import tuiContentWidgetRust from "../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_widget.rs?raw";
 import tuiMentionChipRust from "../../../../crates/nmp-cli/registry/tui/content-mention-chip/nostr_mention_chip.rs?raw";
 import tuiMinimalContentRust from "../../../../crates/nmp-cli/registry/tui/content-minimal/nostr_minimal_content.rs?raw";
 import tuiMediaGridRust from "../../../../crates/nmp-cli/registry/tui/content-media-grid/nostr_media_grid.rs?raw";
 import tuiQuoteCardRust from "../../../../crates/nmp-cli/registry/tui/content-quote-card/nostr_quote_card.rs?raw";
+import tuiKindRegistryModRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/mod.rs?raw";
+import tuiKindRendererRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/kind_renderer.rs?raw";
+import tuiKindRegistryRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs?raw";
+import tuiEmbedChromeRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/embed_chrome_container.rs?raw";
+import tuiEmbeddedEventRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/embedded_event.rs?raw";
 
 export const contentComponents: Component[] = [
   {
@@ -182,15 +188,44 @@ export const contentComponents: Component[] = [
       tui: {
         status: "stable",
         installId: "tui/content-view",
-        version: "0.1.2",
-        dependencies: ["content-core", "content-mention-chip", "content-media-grid", "content-quote-card"],
+        version: "0.1.3",
+        dependencies: ["content-core", "content-kind-registry", "content-mention-chip", "content-media-grid", "content-quote-card"],
         files: [
           { source: "tui/content-view/nostr_content_view.rs", target: "src/components/nostr_content/nostr_content_view.rs", role: "source", content: tuiContentViewRust },
+          { source: "tui/content-view/nostr_content_widget.rs", target: "src/components/nostr_content/nostr_content_widget.rs", role: "source", content: tuiContentWidgetRust },
         ],
         screenshots: ["tui-content-view-preview.png"],
         customization: [
           "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and keeps event refs as quote cards when render data is present.",
           "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "content-kind-registry",
+    routeId: "content-kind-registry",
+    version: "0.1.0",
+    description: "Kind-dispatch registry for embedded Nostr events.",
+    platforms: {
+      tui: {
+        status: "stable",
+        installId: "tui/content-kind-registry",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "`NostrKindRegistry` maps Rust-owned `EmbedKindProjection` envelopes to Ratatui renderers. It ships default short-note and unknown-kind handlers plus the `EmbeddedEvent` chrome wrapper.",
+        files: [
+          { source: "tui/content-kind-registry/mod.rs", target: "src/components/nostr_content/content_kind_registry/mod.rs", role: "source", content: tuiKindRegistryModRust },
+          { source: "tui/content-kind-registry/kind_renderer.rs", target: "src/components/nostr_content/content_kind_registry/kind_renderer.rs", role: "source", content: tuiKindRendererRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
+          { source: "tui/content-kind-registry/embed_chrome_container.rs", target: "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs", role: "source", content: tuiEmbedChromeRust },
+          { source: "tui/content-kind-registry/embedded_event.rs", target: "src/components/nostr_content/content_kind_registry/embedded_event.rs", role: "source", content: tuiEmbeddedEventRust },
+        ],
+        screenshots: ["tui-content-view-preview.png"],
+        customization: [
+          "Register additional `KindRenderer` implementations at app startup for event kinds your app cares about.",
+          "Keep projection data in Rust; TUI renderers should only choose layout and styling for the typed envelope they receive.",
         ],
       },
     },

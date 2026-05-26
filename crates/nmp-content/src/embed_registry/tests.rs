@@ -130,8 +130,7 @@ fn event_insert_updates_resolution_for_claimed_event() {
     assert!(before.is_none());
 
     let ctx = ViewContext::default();
-    let delta =
-        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev(&id, 1));
+    let delta = EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev(&id, 1));
     assert!(delta.is_some());
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 }
@@ -140,11 +139,7 @@ fn event_insert_updates_resolution_for_claimed_event() {
 fn event_insert_for_unclaimed_target_is_noop() {
     let mut state = EmbedClaimRegistry::state();
     let ctx = ViewContext::default();
-    let delta = EmbedClaimRegistry::on_event_inserted(
-        &ctx,
-        &mut state,
-        &ev("uninterested", 1),
-    );
+    let delta = EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev("uninterested", 1));
     assert!(delta.is_none());
     assert_eq!(EmbedClaimRegistry::claim_count(&state), 0);
 }
@@ -161,8 +156,7 @@ fn address_coordinated_embed_resolves_via_d_tag() {
     let event = article("art-id", "my-article");
 
     let ctx = ViewContext::default();
-    let delta =
-        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &event);
+    let delta = EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &event);
     assert!(delta.is_some());
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 }
@@ -179,20 +173,13 @@ fn address_target_resolution_cleared_on_bare_event_removal() {
     };
     let (_h, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
     let ctx = ViewContext::default();
-    EmbedClaimRegistry::on_event_inserted(
-        &ctx,
-        &mut state,
-        &article("art-v1", "my-article"),
-    );
+    let _ =
+        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &article("art-v1", "my-article"));
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 
     // Pre-fix: removing "art-v1" only cleared Event targets, leaving the
     // Address resolution stale. It must now clear.
-    let delta = EmbedClaimRegistry::on_event_removed(
-        &ctx,
-        &mut state,
-        &"art-v1".to_string(),
-    );
+    let delta = EmbedClaimRegistry::on_event_removed(&ctx, &mut state, &"art-v1".to_string());
     assert!(delta.is_some());
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_none());
     // Entry still claimed — only the resolution was cleared.
@@ -211,11 +198,8 @@ fn address_target_re_resolves_on_event_replace() {
     };
     let (_h, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
     let ctx = ViewContext::default();
-    EmbedClaimRegistry::on_event_inserted(
-        &ctx,
-        &mut state,
-        &article("art-v1", "my-article"),
-    );
+    let _ =
+        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &article("art-v1", "my-article"));
     assert_eq!(
         EmbedClaimRegistry::resolved(&state, &target).unwrap().id,
         "art-v1"
@@ -236,7 +220,10 @@ fn address_target_re_resolves_on_event_replace() {
 
 #[test]
 fn from_uri_skips_profile_returns_event_or_address() {
-    let profile = NostrUri::Profile { pubkey: "p".into(), relays: vec![] };
+    let profile = NostrUri::Profile {
+        pubkey: "p".into(),
+        relays: vec![],
+    };
     assert!(EmbedTarget::from_uri(&profile).is_none());
 
     let event = NostrUri::Event {
@@ -245,7 +232,10 @@ fn from_uri_skips_profile_returns_event_or_address() {
         author: None,
         kind: None,
     };
-    assert!(matches!(EmbedTarget::from_uri(&event), Some(EmbedTarget::Event(_))));
+    assert!(matches!(
+        EmbedTarget::from_uri(&event),
+        Some(EmbedTarget::Event(_))
+    ));
 
     let addr = NostrUri::Address {
         identifier: "d".into(),

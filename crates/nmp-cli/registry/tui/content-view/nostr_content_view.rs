@@ -1,13 +1,16 @@
+use std::collections::BTreeMap;
+
+use nmp_content::embed_projection::EmbeddedEventEnvelope;
 use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Widget, Wrap},
 };
 use ratatui_image::protocol::Protocol;
 
+mod nostr_content_widget;
+
 use super::{
+    content_kind_registry::NostrKindRegistry,
     content_render_data::ContentRenderData,
     content_tree_wire::{ContentTreeWire, WireNode},
     nostr_media_grid::NostrMediaGrid,
@@ -20,6 +23,8 @@ pub struct NostrContentView<'a> {
     tree: &'a ContentTreeWire,
     render_data: Option<&'a ContentRenderData>,
     media_images: &'a [(&'a str, &'a Protocol)],
+    kind_registry: Option<&'a NostrKindRegistry>,
+    embedded_events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
 }
 
 impl<'a> NostrContentView<'a> {
@@ -28,6 +33,8 @@ impl<'a> NostrContentView<'a> {
             tree,
             render_data: None,
             media_images: &[],
+            kind_registry: None,
+            embedded_events: None,
         }
     }
 
@@ -38,6 +45,19 @@ impl<'a> NostrContentView<'a> {
 
     pub fn media_images(mut self, images: &'a [(&'a str, &'a Protocol)]) -> Self {
         self.media_images = images;
+        self
+    }
+
+    pub fn kind_registry(mut self, registry: Option<&'a NostrKindRegistry>) -> Self {
+        self.kind_registry = registry;
+        self
+    }
+
+    pub fn embedded_events(
+        mut self,
+        events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
+    ) -> Self {
+        self.embedded_events = events;
         self
     }
 
@@ -386,159 +406,10 @@ fn nonempty_wrapped_height(spans: Vec<Span<'static>>, width: usize) -> u16 {
         .count() as u16
 }
 
-impl Widget for NostrContentView<'_> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let mut cursor = area.y;
-        let mut root_pos = 0usize;
-        while root_pos < self.tree.roots.len() {
-            let root = self.tree.roots[root_pos];
-            let Some(node) = self.tree.node(root) else {
-                root_pos += 1;
-                continue;
-            };
-            if is_inline_root(node) {
-                let inline = self.collect_inline_roots(&mut root_pos);
-                self.render_lines(
-                    wrap_spans(inline, area.width as usize),
-                    area,
-                    buf,
-                    &mut cursor,
-                );
-            } else {
-                self.render_node(root, area, buf, &mut cursor);
-                root_pos += 1;
-            }
-            if cursor >= area.bottom() {
-                break;
-            }
-        }
-        if cursor == area.y {
-            Paragraph::new("").render(area, buf);
-        }
-    }
-}
-
-impl NostrContentView<'_> {
-    fn render_node(&self, index: usize, area: Rect, buf: &mut Buffer, cursor: &mut u16) {
-        let Some(node) = self.tree.node(index) else {
-            return;
-        };
-        match node {
-            WireNode::Paragraph { children } => self.render_paragraph(children, area, buf, cursor),
-            WireNode::Media { urls, kind } => self.render_media(urls, kind, area, buf, cursor),
-            WireNode::Image { src, .. } => {
-                if let Some(src) = src {
-                    self.render_media(std::slice::from_ref(src), "image", area, buf, cursor);
-                }
-            }
-            WireNode::EventRef(_) | WireNode::BlockQuote { .. } => {
-                self.render_quote(node, area, buf, cursor);
-            }
-            _ => {
-                let lines = {
-                    let mut out = Vec::new();
-                    self.append_node(index, area.width as usize, &mut out);
-                    out
-                };
-                self.render_lines(lines, area, buf, cursor);
-            }
-        }
-    }
-
-    fn render_paragraph(&self, children: &[usize], area: Rect, buf: &mut Buffer, cursor: &mut u16) {
-        let mut inline = Vec::new();
-        for child in children {
-            let Some(node) = self.tree.node(*child) else {
-                continue;
-            };
-            match node {
-                WireNode::EventRef(_) | WireNode::Media { .. } | WireNode::Image { .. } => {
-                    self.render_lines(
-                        wrap_spans(std::mem::take(&mut inline), area.width as usize),
-                        area,
-                        buf,
-                        cursor,
-                    );
-                    self.render_node(*child, area, buf, cursor);
-                }
-                _ => self.append_inline_node(*child, &mut inline),
-            }
-        }
-        self.render_lines(wrap_spans(inline, area.width as usize), area, buf, cursor);
-    }
-
-    fn render_quote(&self, node: &WireNode, area: Rect, buf: &mut Buffer, cursor: &mut u16) {
-        let card = NostrQuoteCard::new(self.tree, node)
-            .render_data(self.render_data)
-            .media_images(self.media_images);
-        let height = card.preferred_height(area.width as usize);
-        let rect = take_area(area, cursor, height);
-        if rect.is_empty() {
-            return;
-        }
-        card.render(rect, buf);
-        *cursor = rect.bottom().saturating_add(1).min(area.bottom());
-    }
-
-    fn render_media(
-        &self,
-        urls: &[String],
-        kind: &str,
-        area: Rect,
-        buf: &mut Buffer,
-        cursor: &mut u16,
-    ) {
-        let grid = NostrMediaGrid::new(urls, kind).images(self.media_images);
-        let rect = take_area(area, cursor, grid.preferred_height());
-        if rect.is_empty() {
-            return;
-        }
-        grid.render(rect, buf);
-        *cursor = rect.bottom().saturating_add(1).min(area.bottom());
-    }
-
-    fn render_lines(
-        &self,
-        lines: Vec<Line<'static>>,
-        area: Rect,
-        buf: &mut Buffer,
-        cursor: &mut u16,
-    ) {
-        let lines = lines
-            .into_iter()
-            .filter(|line| line.spans.iter().any(|span| !span.content.is_empty()))
-            .collect::<Vec<_>>();
-        if lines.is_empty() {
-            return;
-        }
-        let rect = take_area(area, cursor, lines.len() as u16);
-        if rect.is_empty() {
-            return;
-        }
-        Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .render(rect, buf);
-        *cursor = rect.bottom();
-    }
-}
-
 #[rustfmt::skip]
 fn is_inline_root(node: &WireNode) -> bool {
     use WireNode::*;
     !matches!(node, Paragraph { .. } | Heading { .. } | BlockQuote { .. } | CodeBlock { .. } | List { .. } | Rule | Media { .. } | Image { .. } | EventRef(_))
-}
-
-fn take_area(area: Rect, cursor: &mut u16, wanted_height: u16) -> Rect {
-    if *cursor >= area.bottom() || wanted_height == 0 {
-        return Rect::new(area.x, area.bottom(), area.width, 0);
-    }
-    let available = area.bottom().saturating_sub(*cursor);
-    Rect {
-        x: area.x,
-        y: *cursor,
-        width: area.width,
-        height: wanted_height.min(available),
-    }
 }
 
 fn short_id(id: &str) -> String {
