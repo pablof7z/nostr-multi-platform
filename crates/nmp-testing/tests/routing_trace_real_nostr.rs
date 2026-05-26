@@ -189,6 +189,7 @@ fn interest_for_pablo() -> LogicalInterest {
         shape: InterestShape::timeline_for([PABLO_HEX.to_string()].into_iter().collect()),
         hints: vec![],
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     }
 }
 
