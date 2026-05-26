@@ -80,6 +80,41 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    `recv_timeout`; and `ios/Chirp/Chirp/Bridge/KernelBridge.swift:603-618` identifies panic
    frames by substring before decoding the envelope. **Next step:** use blocking/pushed update
    delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.
+
+   **Implementation notes (2026-05-27, post-merge review):**
+   - **iOS panic-substring sub-item is already DONE** — superseded by commit `021ba295`
+     ("Replace update transport with FlatBuffers"). `KernelBridge.swift:509-543` now calls
+     `KernelUpdateFrameDecoder.decode(data)` (typed FlatBuffers root with `file_id "NMPU"`)
+     and pattern-matches on the typed `KernelUpdateFrame.snapshot(_,_)` / `.panic(String)`
+     enum, then reads the typed `frame.panic.msg`. There is no substring scan anywhere in
+     the file (verified `grep -n "panic" KernelBridge.swift`). The cited line range
+     `:603-618` now points at the `KernelUpdateResult` struct + `dispatch_action` envelope
+     comment, not panic detection. Strike this sub-item next time the bullet is rewritten.
+   - **Android "polling" is really a 250ms-capped blocking `recv_timeout`** — not a
+     `sleep`+check loop, so it is permitted under `AGENTS.md` §"No polling — ever" line 124.
+     The real defect is the **disconnect-vs-timeout conflation**: `android.rs:226` collapses
+     `RecvTimeoutError::Timeout` and `RecvTimeoutError::Disconnected` to the same `null`
+     return, and `GalleryModel.kt:72` treats `null` as `continue`, so a closed channel
+     becomes a CPU spin until `viewModelScope` cancels. Disconnect must be terminal.
+   - **Minimum-correctness fix (P5 scope):** widen the JNI return contract to three states
+     so the Kotlin reader can distinguish frame / timeout / closed. Options: (a) sentinel
+     zero-length `byte[]` for "channel closed" + `null` reserved for timeout, with Kotlin
+     calling `pollJob?.cancel()` on the sentinel; or (b) split into two natives
+     (`nativeNextUpdate(handle, timeoutMs): ByteArray?` for frame-or-timeout and
+     `nativeIsChannelOpen(handle): Boolean`). Either way, drop the 250ms cap once closed
+     is signalled — replace with a true blocking `recv()` and close `GallerySession.rx`
+     from `nativeFree` so the read deterministically wakes on teardown.
+   - **Architecturally-correct fix (later):** delete the `mpsc::channel` + reader coroutine
+     entirely. `android.rs` already registers `on_update` via `nmp_app_set_update_callback`;
+     have it invoke a cached `GlobalRef` Kotlin method directly through `JNIEnv::CallVoidMethod`,
+     mirroring iOS's `nmpUpdateCallback`. That eliminates `nextUpdate`, `pollJob`, the
+     `timeoutMs` parameter, and the disconnect-conflation bug in one cut. Out of scope for
+     P5 but worth recording so the minimum fix above is not over-engineered.
+   - **Envelope-decode hardening:** the Android path already decodes typed snapshots via
+     `NmpUpdateFrameDecoder.decodeSnapshot(raw)` (`GalleryModel.kt:86`), so the "decode one
+     typed `UpdateEnvelope` first" half of the next-step is already satisfied on Android.
+     Remaining envelope work is purely the iOS sub-item, which is already DONE per bullet
+     one above. Net P5 surface after this note: Android JNI return-contract widening only.
 6. **P6 — strengthen enforcement so these regressions trip earlier.**
    V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
    dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
