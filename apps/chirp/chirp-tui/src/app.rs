@@ -360,7 +360,7 @@ impl AppState {
         self.mode = Mode::Compose;
         self.compose.clear();
         self.reply_to = None;
-        self.status = "compose note: Ctrl+Enter publishes, Esc cancels".to_string();
+        self.status = "compose note: Enter sends, Shift+Enter for newline, Esc cancels".to_string();
     }
 
     pub fn start_reply(&mut self) {
@@ -372,7 +372,10 @@ impl AppState {
         self.mode = Mode::Compose;
         self.compose.clear();
         self.reply_to = Some(row_id.clone());
-        self.status = format!("replying to {}", short_id(&row_id));
+        self.status = format!(
+            "replying to {}: Enter sends, Shift+Enter for newline, Esc cancels",
+            short_id(&row_id)
+        );
     }
 
     pub fn cancel_compose(&mut self) {

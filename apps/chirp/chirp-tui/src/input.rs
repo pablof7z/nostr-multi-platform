@@ -168,10 +168,10 @@ fn handle_compose_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent)
     match key.code {
         KeyCode::Esc => state.cancel_compose(),
         KeyCode::Backspace => state.backspace_compose(),
-        KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            publish_compose(state, runtime)
+        KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+            state.push_compose_newline()
         }
-        KeyCode::Enter => state.push_compose_newline(),
+        KeyCode::Enter => publish_compose(state, runtime),
         KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
             state.push_compose_char(ch)
         }

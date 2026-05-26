@@ -31,7 +31,7 @@ fn help_overlay_renders_keybindings() {
     let rendered = render_state(120, 40, state);
 
     assert!(rendered.contains("Help"));
-    assert!(rendered.contains("Ctrl+Enter"));
+    assert!(rendered.contains("Shift+Enter"));
     assert!(rendered.contains("open"));
 }
 

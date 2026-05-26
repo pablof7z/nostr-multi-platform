@@ -1,14 +1,15 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui_image::protocol::Protocol;
 
 use crate::app::AppState;
 use crate::app::Mode;
 use crate::features::FeatureTab;
-use crate::ui::colors::{ACCENT_CYAN, DIM_TEXT, RELAY_DOWN, RELAY_OK};
+use crate::short_id;
+use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, RELAY_DOWN, RELAY_OK};
 use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::home;
@@ -53,6 +54,10 @@ pub fn render_with_context(frame: &mut Frame<'_>, state: &AppState, context: &Re
 
     if state.show_help {
         help::render_with_state(frame, area, state);
+    }
+
+    if state.mode == Mode::Compose {
+        render_compose_modal(frame, area, state);
     }
 }
 
@@ -140,17 +145,6 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         (
             "Command".to_string(),
             format!(":{}\nEnter run  Esc cancel", state.command),
-        )
-    } else if state.mode == Mode::Compose {
-        let target = state.reply_to.as_deref().map_or("new note", |_| "reply");
-        let text = if state.compose.is_empty() {
-            format!("{target}: ")
-        } else {
-            format!("{target}: {}", state.compose)
-        };
-        (
-            format!("Compose ({})", state.compose.chars().count()),
-            format!("{text}\nCtrl+Enter publish  Esc cancel"),
         )
     } else if state.mode == Mode::InputBar {
         let label = if state.input_bar_label.is_empty() {
@@ -240,6 +234,87 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         state.pending_actions.len()
     );
     frame.render_widget(Paragraph::new(fit_line(status, area.width as usize)), area);
+}
+
+fn render_compose_modal(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let width = ((area.width as u32 * 70 / 100) as u16).max(52);
+    let height = 14u16.min(area.height.saturating_sub(4));
+    let popup = centered_rect(area, width, height);
+
+    frame.render_widget(Clear, popup);
+
+    let title = match state.reply_to.as_deref() {
+        Some(target) => format!(" \u{21a9} Reply to {} ", short_id(target)),
+        None => " \u{270f} New Note ".to_string(),
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(ACCENT_CYAN));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let inner_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
+        .split(inner);
+
+    let mut compose_text = state.compose.clone();
+    compose_text.push('\u{2588}');
+    let text_area = Paragraph::new(compose_text)
+        .style(Style::default().fg(BODY_TEXT))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(text_area, inner_rows[0]);
+
+    let char_count = state.compose.chars().count();
+    let hint_cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(12)])
+        .split(inner_rows[1]);
+
+    let key_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(DIM_TEXT);
+    let hint_line = Line::from(vec![
+        Span::styled("Enter", key_style),
+        Span::styled(" send  ", desc_style),
+        Span::styled("Shift+Enter", key_style),
+        Span::styled(" newline  ", desc_style),
+        Span::styled("Esc", key_style),
+        Span::styled(" cancel", desc_style),
+    ]);
+    frame.render_widget(Paragraph::new(hint_line), hint_cols[0]);
+
+    let count_line = Line::from(Span::styled(
+        format!("{char_count} chars"),
+        Style::default().fg(DIMMER_TEXT),
+    ));
+    frame.render_widget(
+        Paragraph::new(count_line).alignment(Alignment::Right),
+        hint_cols[1],
+    );
+}
+
+fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let w = width.min(area.width.saturating_sub(2));
+    let h = height.min(area.height.saturating_sub(2));
+    let vert = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(area.height.saturating_sub(h) / 2),
+            Constraint::Length(h),
+            Constraint::Min(0),
+        ])
+        .split(area);
+    let horiz = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(area.width.saturating_sub(w) / 2),
+            Constraint::Length(w),
+            Constraint::Min(0),
+        ])
+        .split(vert[1]);
+    horiz[1]
 }
 
 fn fit_line(text: String, width: usize) -> String {

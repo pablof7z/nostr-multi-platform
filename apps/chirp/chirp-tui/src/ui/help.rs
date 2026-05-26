@@ -129,9 +129,9 @@ fn right_column() -> Vec<Line<'static>> {
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Compose mode");
-    binding(&mut lines, "Ctrl+Enter", "publish note");
+    binding(&mut lines, "Enter", "publish note");
+    binding(&mut lines, "Shift+Enter", "insert newline");
     binding(&mut lines, "Esc Esc", "discard draft");
-    binding(&mut lines, "Enter", "insert newline");
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Palette");
