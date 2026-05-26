@@ -39,6 +39,54 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
+### V-57 · 2026-05-26 architecture audit follow-up queue [HIGH · priority tracker]
+
+**Scope:** this is the canonical roll-up for the six-agent architecture audit run on
+2026-05-26. PR #578 removes the duplicate planning/status authorities; the remaining
+findings below are ordered by architectural risk. When a slice gets a dedicated V/PD entry
+or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
+
+**Priority order:**
+1. **P1 — remove upward dependencies and app policy from reusable crates.**
+   `crates/nmp-signer-broker/Cargo.toml:17-23` depends on `nmp-core`/`nmp-ffi` while the
+   crate is meant to be a reusable broker; `crates/nmp-router/Cargo.toml:13-17` depends on
+   `nmp-ffi` for registration; `crates/nmp-marmot/src/identity.rs:1-6`, `:15`, and `:31`
+   keep Chirp identity naming/keyring policy inside a generic Marmot crate; and
+   `crates/nmp-app-gallery/src/android.rs:1-5` is an app JNI adapter living under `crates/`.
+   **Next step:** split pure protocol/broker crates from app/FFI adapters, starting with the
+   signer-broker and router registration seams.
+2. **P2 — move protocol policy back out of `nmp-core`.**
+   `crates/nmp-core/src/actor/commands/relays.rs:29-35` duplicates NIP-65 kind `10002`
+   publishing policy; `crates/nmp-core/src/actor/commands/publish.rs:16-21`, `:297-305`,
+   and `:377-389` hardcode kind `1059` gift-wrap routing policy. **Next step:** protocol
+   crates should declare publish/routing constraints as typed policy data; core should enforce
+   the abstract constraint without naming NIP kinds.
+3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
+   `apps/chirp/chirp-tui/src/commands.rs:169-205` resolves lightning addresses and builds
+   zap input in the TUI; `apps/chirp/chirp-tui/src/app.rs:99-105` and `:168-178` use a
+   pending flag plus toast-string parsing to auto-pay; `apps/chirp/chirp-tui/src/runtime_commands.rs:251-261`
+   bypasses the canonical action door for Marmot; and
+   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two protocol
+   publishes while tracking only one correlation id. **Next step:** expose composite Rust
+   actions/action-stage projections for zap, Marmot rich results, and relay-settings publish.
+4. **P4 — make wasm use the same snapshot and error contract as native.**
+   `crates/nmp-wasm/src/snapshot.rs:80-84` ignores the `KernelReducer` and hand-builds a
+   status-shaped snapshot; `crates/nmp-wasm/src/lib.rs:70-78` exposes public errors as
+   `Result<JsValue, JsValue>`; `crates/nmp-wasm/src/lib.rs:165-170` rejects a promise for
+   invalid JSON. **Next step:** route wasm snapshots through the canonical kernel update path
+   and return caller-visible failures as data envelopes.
+5. **P5 — close native update-loop and envelope discipline gaps.**
+   `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
+   polls for updates; `crates/nmp-app-gallery/src/android.rs:221-228` returns `null` on
+   `recv_timeout`; and `ios/Chirp/Chirp/Bridge/KernelBridge.swift:603-618` identifies panic
+   frames by substring before decoding the envelope. **Next step:** use blocking/pushed update
+   delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.
+6. **P6 — strengthen enforcement so these regressions trip earlier.**
+   V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
+   dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
+   lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
+   plus explicit allowlists for sanctioned adapter crates.
+
 ### V-01 · nmp-wasm stub — multi-platform claim is false [CRITICAL · staged fix in progress]
 
 **Verified:** `crates/nmp-wasm/Cargo.toml` has zero `nmp-core` dependency (only
