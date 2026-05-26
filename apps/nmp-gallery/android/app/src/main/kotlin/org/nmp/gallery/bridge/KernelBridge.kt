@@ -66,9 +66,18 @@ class KernelBridge {
     }
 
     /**
-     * Blocking drain of the update-frame channel. `timeoutMs` caps the wait so
-     * the Kotlin reader coroutine can react to cancellation. Returns `null`
-     * on timeout / closed channel.
+     * Blocking drain of the update-frame channel. `timeoutMs` caps the wait
+     * so the Kotlin reader coroutine can react to cancellation.
+     *
+     * Return contract (V-57 P5):
+     * * `null` — idle tick (`RecvTimeoutError::Timeout` on the Rust side).
+     *   The caller should loop back into `nextUpdate` immediately.
+     * * `ByteArray` (non-empty) — one FlatBuffers snapshot frame.
+     * * Throws [IllegalStateException] — the snapshot channel has been
+     *   closed (`RecvTimeoutError::Disconnected`; the boxed `Sender` in the
+     *   Rust `GallerySession` was dropped, typically as part of `free()`).
+     *   The caller MUST stop polling — looping after a disconnect spins
+     *   the CPU on a dead channel.
      */
     fun nextUpdate(timeoutMs: Long = 250L): ByteArray? =
         if (handle != 0L) nativeNextUpdate(handle, timeoutMs) else null
