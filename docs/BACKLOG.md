@@ -1192,7 +1192,7 @@ rather than being handled by the dispatch table that should own it.
 A new crate (analogous to applesauce's `relay` package) owning:
 1. **Per-kind routing dispatch table:** given an unsigned event, select the right relay
    list kind and target pubkey, then resolve to a concrete relay URL set.
-2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in nmp-core, marked
+2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in `crates/nmp-router/src/cache.rs`, marked
    "Phase 2: replace with nmp-router implementation" — that future destination is here).
 3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-router/src/publish_relay_list.rs`
    (that file is too thin to stand alone; absorb it here).
