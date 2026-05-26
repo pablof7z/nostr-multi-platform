@@ -192,7 +192,9 @@ fn encode_value<'bldr>(
             )
         }
         Value::Object(values) => {
-            let offsets: Vec<_> = values
+            let mut entries: Vec<_> = values.iter().collect();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            let offsets: Vec<_> = entries
                 .iter()
                 .map(|(key, value)| {
                     let key = builder.create_string(key);

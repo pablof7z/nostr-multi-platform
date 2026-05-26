@@ -208,9 +208,10 @@ fn c8_subscriptions_coalesce_and_buffer() {
 ///    `identicon:<pubkey-prefix>` URI and `author_avatar_source` is
 ///    `"placeholder"` (the discriminator tracks the actual URL selection).
 /// 2. **ADR-0001 / T103 (FFI envelope).** Every frame on the channel decodes
-///    as the single `UpdateEnvelope` discriminated type — the tag *is* the
-///    discriminant (D6).  This test never sniffs payload keys to decide
-///    snapshot-vs-update; it pattern-matches on `UpdateEnvelope::Snapshot`.
+///    as the single FlatBuffers `UpdateEnvelope` discriminated type — the tag
+///    *is* the discriminant (D6). This test never sniffs payload keys to
+///    decide snapshot-vs-update; it pattern-matches on
+///    `UpdateEnvelope::Snapshot`.
 ///
 /// In-place refinement (placeholder → kind:0 URL) is covered by the kernel
 /// companion `c13_kernel_*` in `kernel/tests.rs`, per the ADR-0017 split.
@@ -221,7 +222,7 @@ fn c8_subscriptions_coalesce_and_buffer() {
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::UpdateEnvelope;
+    use nmp_core::{decode_update_frame, UpdateEnvelope};
     use std::time::Duration;
 
     let (tx, rx) = spawn_actor();
@@ -252,19 +253,19 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
         .expect("send IngestPreVerifiedEvents");
 
     // Drain envelopes until we find a `Snapshot` carrying our event in `items`.
-    // Every frame on the channel is wrapped as `{"t":"…","v":…}` per ADR-0001
+    // Every frame on the channel is a FlatBuffers update frame per ADR-0001
     // (T103); decoding through `UpdateEnvelope` here proves the snapshot is
-    // delivered with the canonical discriminator — discrete `Update` frames
-    // (e.g. `Started`) are skipped on the typed tag, never by key sniffing.
+    // delivered with the canonical discriminator. Non-snapshot frames are
+    // skipped on the typed tag, never by key sniffing.
     let snapshot = {
         let mut found: Option<serde_json::Value> = None;
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(frame) => {
-                    let envelope: UpdateEnvelope = serde_json::from_str(&frame)
+                    let envelope = decode_update_frame(&frame)
                         .unwrap_or_else(|e| {
-                            panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame: {frame}")
+                            panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame bytes: {frame:?}")
                         });
                     if let UpdateEnvelope::Snapshot(snapshot) = envelope {
                         let items = snapshot["projections"]["timeline"]

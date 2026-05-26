@@ -29,6 +29,7 @@
 //!    file's coverage of that primitive is independent of which FFI door
 //!    sends the toast.
 
+use nmp_core::decode_snapshot_payload;
 use nmp_core::testing::ActorCommand;
 use nmp_nip01::Note;
 use std::time::Duration;
@@ -101,19 +102,18 @@ fn unsigned_event_serde_round_trips_for_action_payload() {
 
 /// Drain the update channel until either a snapshot containing
 /// `last_error_toast` with the given substring appears or the deadline passes.
-fn find_toast_in_updates(
-    rx: &std::sync::mpsc::Receiver<String>,
-    expected: &str,
-) -> bool {
+fn find_toast_in_updates(rx: &std::sync::mpsc::Receiver<Vec<u8>>, expected: &str) -> bool {
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(json) => {
-                // The snapshot is a JSON envelope; we just check for the string
-                // rather than parsing the full shape — avoids a hard dep on the
-                // exact snapshot schema.
-                if json.contains(expected) {
-                    return true;
+            Ok(frame) => {
+                // Actor update frames are FlatBuffers envelopes. Decode only
+                // snapshot payloads, then keep the loose string probe so this
+                // test does not lock the full snapshot schema.
+                if let Ok(snapshot) = decode_snapshot_payload(&frame) {
+                    if snapshot.to_string().contains(expected) {
+                        return true;
+                    }
                 }
             }
             // Timeout: the actor may be mid-block in relay_rx.recv_timeout
