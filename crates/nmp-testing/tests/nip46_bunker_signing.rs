@@ -44,7 +44,7 @@ mod common;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use nmp_core::{ActorCommand, RemoteSignerHandle};
+use nmp_core::{decode_snapshot_payload, ActorCommand, RemoteSignerHandle};
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
 
@@ -168,7 +168,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     );
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-    let (upd_tx, upd_rx) = mpsc::channel::<String>();
+    let (upd_tx, upd_rx) = mpsc::channel::<Vec<u8>>();
     let actor_self_tx = cmd_tx.clone();
     let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
@@ -278,7 +278,7 @@ fn wait_for_add_remote_signer(
 /// Drain `upd_rx` until a snapshot frame matches `predicate`, or timeout.
 /// Returns the matching frame.
 fn wait_for_snapshot_predicate(
-    upd_rx: &mpsc::Receiver<String>,
+    upd_rx: &mpsc::Receiver<Vec<u8>>,
     timeout: Duration,
     predicate: impl Fn(&str) -> bool,
 ) -> Option<String> {
@@ -287,8 +287,12 @@ fn wait_for_snapshot_predicate(
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match upd_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
             Ok(frame) => {
-                if predicate(&frame) {
-                    return Some(frame);
+                let Ok(snapshot) = decode_snapshot_payload(&frame) else {
+                    continue;
+                };
+                let snapshot = snapshot.to_string();
+                if predicate(&snapshot) {
+                    return Some(snapshot);
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
