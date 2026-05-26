@@ -9,9 +9,9 @@
       "uri": {
         "uri": "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
         "kind": "address",
-        "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "primary_id": "30003:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reading",
         "relays": [],
-        "author": null,
+        "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
         "event_kind": 30003
       }
     }
