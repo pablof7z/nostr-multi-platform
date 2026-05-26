@@ -247,6 +247,7 @@ pub fn c6_authors_subscription_routes_to_per_author_write_relays() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler

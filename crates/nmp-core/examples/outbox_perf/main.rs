@@ -111,6 +111,7 @@ fn main() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     };
     // No indexer / account-read / app-relay fallbacks — strict NIP-65 only.
     // Authors with no kind:10002 will land in `unroutable_authors`.

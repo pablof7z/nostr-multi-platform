@@ -57,6 +57,7 @@ fn interest(id: u64, authors: &[&str], lifecycle: InterestLifecycle) -> LogicalI
         shape,
         hints: Vec::new(),
         lifecycle,
+        is_indexer_discovery: false,
     }
 }
 

@@ -73,6 +73,7 @@ fn nip29_lattice_rule9_relay_pin_blocks_cross_host_merge() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
     let outcome2 = lattice_merge(&i_a.shape, &unpinned.shape, &i_a.lifecycle, &unpinned.lifecycle);
     assert_eq!(outcome2, MergeOutcome::Refused, "None must not absorb Some(host)");

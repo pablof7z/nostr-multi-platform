@@ -143,6 +143,7 @@ fn compile_author_set(followees: &BTreeSet<Pubkey>) -> (BTreeSet<Pubkey>, String
         shape: InterestShape::timeline_for(followees.clone()),
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
     let plan = compiler
         .compile(&[interest])

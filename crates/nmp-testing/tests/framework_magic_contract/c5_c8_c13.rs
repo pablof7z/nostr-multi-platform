@@ -44,6 +44,7 @@ fn tailing_interest(id: u64, authors: &[&str]) -> LogicalInterest {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 
