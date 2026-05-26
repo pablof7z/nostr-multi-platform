@@ -34,4 +34,10 @@ pub mod profile_wire;
 
 pub mod data;
 pub mod gallery;
+pub mod live;
 pub mod render;
+
+// `live` is `pub` so the future `--live` flag in main.rs can construct
+// `LiveGallerySource` and the `data` module can build `EventClaimSink`-backed
+// embed envelopes. Internally it's still gated behind `GalleryData::live`
+// (W7) — fixture callers never touch the live module.
