@@ -2,42 +2,36 @@ import SwiftUI
 
 /// Sidebar list of registry sections.
 struct SectionListView: View {
-    @Binding var selection: RegistrySection?
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
     var body: some View {
-        if sizeClass == .regular {
-            // iPad split view: List(selection:) drives the middle column
-            List(selection: $selection) {
-                ForEach(REGISTRY_SECTIONS) { section in
-                    NavigationLink(value: section) {
-                        sectionRow(section)
+        List {
+            ForEach(REGISTRY_SECTIONS) { section in
+                NavigationLink(value: section) {
+                    HStack(spacing: 12) {
+                        Image(systemName: symbolName(for: section.id))
+                            .foregroundStyle(.tint)
+                            .frame(width: 24)
+                        Text(section.label)
+                        Spacer()
+                        Text("\(section.components.count)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-            .listStyle(.sidebar)
-        } else {
-            // iPhone stack: NavigationLink(value:) pushes to GalleryNavigation's
-            // .navigationDestination(for: RegistrySection.self) handler
-            List {
-                ForEach(REGISTRY_SECTIONS) { section in
-                    NavigationLink(value: section) {
-                        sectionRow(section)
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
         }
+        .listStyle(.insetGrouped)
     }
 
-    private func sectionRow(_ section: RegistrySection) -> some View {
-        HStack {
-            Text(section.label)
-                .font(.body.weight(.medium))
-            Spacer()
-            Text("\(section.components.count)")
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+    private func symbolName(for sectionId: String) -> String {
+        switch sectionId {
+        case "relay":
+            return "antenna.radiowaves.left.and.right"
+        case "user":
+            return "person.crop.circle"
+        case "content":
+            return "text.bubble"
+        default:
+            return "square.grid.2x2"
         }
     }
 }
