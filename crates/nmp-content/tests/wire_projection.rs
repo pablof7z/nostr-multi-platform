@@ -279,7 +279,16 @@ fn address_uri_projects_with_address_discriminator_and_round_trips() {
     match &wire.nodes[0] {
         WireNode::EventRef { uri } => {
             assert_eq!(uri.kind, WireNostrUriKind::Address);
-            assert_eq!(uri.primary_id, "d".repeat(64));
+            // `primary_id` for an addressable URI is the coordinate string
+            // `"{kind}:{pubkey}:{d_tag}"` so it matches the kernel's
+            // `claimed_events[primary_id]` projection key exactly (the
+            // renderer's `envelope_for(uri)` lookup hits without an alias
+            // map). See `wire/projection.rs::project_uri` for the
+            // construction; the prior shape (bare pubkey) caused the
+            // renderer to miss addressable embeds and fall back to
+            // NostrQuoteCard.
+            assert_eq!(uri.primary_id, format!("30023:{}:my-article", "d".repeat(64)));
+            assert_eq!(uri.author.as_deref(), Some(&*"d".repeat(64)));
             assert_eq!(uri.event_kind, Some(30023));
             assert_eq!(uri.relays, vec!["wss://r.test".to_string()]);
             assert!(uri.uri.starts_with("nostr:"));

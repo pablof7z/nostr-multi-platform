@@ -553,13 +553,17 @@ fn drive(
                 // Other input events (mouse, etc.) — ignore.
             }
             Ok(GalleryEvent::Snapshot(snapshot)) => {
-                host.update_from_snapshot(&snapshot);
+                let new_authors = host.update_from_snapshot(&snapshot);
+                claim_profiles_for(sink, &new_authors);
                 // Coalesce any additional snapshots that have already piled
                 // up so we don't redraw N times for N quick ticks. Latest
                 // wins (the host replaces its state from each tick).
                 while let Ok(extra) = rx.try_recv() {
                     match extra {
-                        GalleryEvent::Snapshot(next) => host.update_from_snapshot(&next),
+                        GalleryEvent::Snapshot(next) => {
+                            let more = host.update_from_snapshot(&next);
+                            claim_profiles_for(sink, &more);
+                        }
                         other => {
                             // A non-snapshot event landed during coalescing —
                             // re-queue would deadlock; handle it next loop
@@ -616,6 +620,20 @@ fn handle_input_after_snapshot(ev: Event, selected_index: &mut usize) {
             }
             _ => {}
         }
+    }
+}
+
+/// Fire `claim_profile` for each author whose kind:0 hasn't arrived in
+/// `claimed_events.author_display_name` yet. `update_from_snapshot`
+/// returns the deduped pubkey list each tick; we let the kernel's
+/// per-(pubkey, consumer_id) refcounting dedup across ticks — re-claiming
+/// the same author on every snapshot is a near-no-op once kind:0 is
+/// cached. Component composability: the article renderer reads the
+/// enriched `ArticleProjection.author_display_name` and composes with
+/// `NostrProfileName`, falling back to truncated npub while in-flight.
+fn claim_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
+    for pubkey in authors {
+        sink.claim_profile(pubkey, "nmp-gallery-tui.embed.author");
     }
 }
 

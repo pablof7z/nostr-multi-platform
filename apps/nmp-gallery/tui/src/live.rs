@@ -130,6 +130,22 @@ pub struct LiveKernelSink {
 unsafe impl Send for LiveKernelSink {}
 unsafe impl Sync for LiveKernelSink {}
 
+impl LiveKernelSink {
+    /// Trigger a kind:0 fetch for `pubkey`. Used by the gallery's main
+    /// loop when a new `claimed_events` entry arrives without a cached
+    /// author profile — the next snapshot tick will carry the resolved
+    /// kind:0 in `mention_profiles` and the kernel's enriched
+    /// `ClaimedEventDto.author_display_name` so the embed renderer can
+    /// compose with `NostrProfileName` / `NostrAvatar`. Mirrors
+    /// `LiveKernel::claim_profile` but available on the persistent sink
+    /// the main loop holds.
+    pub fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+        let Ok(pk) = CString::new(pubkey) else { return };
+        let Ok(cid) = CString::new(consumer_id) else { return };
+        nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr());
+    }
+}
+
 impl EventClaimSink for LiveKernelSink {
     fn claim(&self, uri: &str, consumer_id: &str) {
         let Ok(uri_c) = CString::new(uri) else { return };

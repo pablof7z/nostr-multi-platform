@@ -494,9 +494,22 @@ impl Kernel {
             std::collections::BTreeMap::new();
         for key in self.event_claims.keys() {
             if let Some(stored) = self.lookup_for_primary_id(key) {
+                // Enrich with the author's display name + picture URL from
+                // the kernel's profile cache so the embed renderer can
+                // compose with NostrProfileName / NostrAvatar without
+                // having to make a separate FFI claim_profile round-trip.
+                // `None` when no kind:0 has been ingested for the author —
+                // the renderer falls back to truncated npub + identicon
+                // until the profile arrives in a later snapshot tick.
+                let profile = self.profile_for_pubkey(&stored.author);
+                let display_name = profile
+                    .map(|p| p.display.clone())
+                    .filter(|d| !d.trim().is_empty());
+                let picture_url = profile.and_then(|p| p.picture_url.clone());
                 claimed_events.insert(
                     key.clone(),
-                    ClaimedEventDto::from_stored(key.clone(), &stored),
+                    ClaimedEventDto::from_stored(key.clone(), &stored)
+                        .with_author_profile(display_name, picture_url),
                 );
             }
         }

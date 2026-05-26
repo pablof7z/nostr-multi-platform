@@ -29,7 +29,7 @@
 use std::collections::BTreeMap;
 
 use nmp_content::{
-    embed_projection::{EmbeddedEventEnvelope, RenderContextWire},
+    embed_projection::{EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire},
     resolve_embed_projection, RenderContext,
 };
 use nmp_core::substrate::KernelEvent;
@@ -61,23 +61,45 @@ impl EmbedHostState {
     /// Non-fatal: malformed entries are silently skipped (D6 — the
     /// renderer falls back to a loading placeholder until a well-formed
     /// snapshot lands).
-    pub fn update_from_snapshot(&mut self, snapshot: &Value) {
+    pub fn update_from_snapshot(&mut self, snapshot: &Value) -> Vec<String> {
         let Some(claimed) = snapshot
             .get("projections")
             .and_then(|p| p.get("claimed_events"))
             .and_then(Value::as_object)
         else {
-            return;
+            return Vec::new();
         };
 
         let mut next: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
+        let mut authors_needing_profile: Vec<String> = Vec::new();
         let ctx = RenderContext::new();
 
         for (primary_id, dto) in claimed {
             let Some(event) = kernel_event_from_dto(primary_id, dto) else {
                 continue;
             };
-            let projection = resolve_embed_projection(&event, &ctx);
+
+            // Read the author's profile fields from the kernel's enriched
+            // ClaimedEventDto. None when no kind:0 has been ingested yet —
+            // we return the author pubkey to the caller so the main loop
+            // can trigger a `claim_profile` and the next snapshot tick
+            // brings the resolved profile.
+            let author_display_name = dto
+                .get("author_display_name")
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_string);
+            let author_picture_url = dto
+                .get("author_picture_url")
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_string);
+            if author_display_name.is_none() && !event.author.is_empty() {
+                authors_needing_profile.push(event.author.clone());
+            }
+
+            let mut projection = resolve_embed_projection(&event, &ctx);
+            apply_author_profile(&mut projection, author_display_name, author_picture_url);
             let envelope = EmbeddedEventEnvelope {
                 uri: String::new(), // The renderer falls back from primary_id; URI keying happens at claim time, not here.
                 primary_id: primary_id.clone(),
@@ -94,6 +116,9 @@ impl EmbedHostState {
         }
 
         self.envelopes = next;
+        authors_needing_profile.sort();
+        authors_needing_profile.dedup();
+        authors_needing_profile
     }
 
     /// Borrow the current envelope map for the renderer's
@@ -154,6 +179,42 @@ fn kernel_event_from_dto(primary_id: &str, dto: &Value) -> Option<KernelEvent> {
         tags,
         content,
     })
+}
+
+/// Stamp the author's display name + picture URL on whichever
+/// projection variant carries those fields. `resolve_embed_projection`
+/// initializes them as `None` since it only sees the raw `KernelEvent`;
+/// this helper folds in the kernel's profile-cache enrichment delivered
+/// via `ClaimedEventDto.author_display_name` / `_picture_url`. The
+/// `Highlight` variant carries `author_display_name` only (no picture);
+/// `Unknown` follows the same shape. All variants degrade gracefully
+/// when both fields are `None` — renderers compose with
+/// `NostrProfileName` which falls back to the truncated npub.
+fn apply_author_profile(
+    projection: &mut EmbedKindProjection,
+    display_name: Option<String>,
+    picture_url: Option<String>,
+) {
+    match projection {
+        EmbedKindProjection::ShortNote(n) => {
+            n.author_display_name = display_name;
+            n.author_picture_url = picture_url;
+        }
+        EmbedKindProjection::Article(a) => {
+            a.author_display_name = display_name;
+            a.author_picture_url = picture_url;
+        }
+        EmbedKindProjection::Highlight(h) => {
+            h.author_display_name = display_name;
+        }
+        EmbedKindProjection::Profile(_) => {
+            // kind:0 — the projection itself IS the profile.
+        }
+        EmbedKindProjection::Unknown(u) => {
+            u.author_display_name = display_name;
+            u.author_picture_url = picture_url;
+        }
+    }
 }
 
 #[cfg(test)]
