@@ -257,6 +257,16 @@ final class GalleryModel {
     private(set) var lastDecodeError: String?
     private let kernel: GalleryKernelHandle
 
+    /// Embed-projection host. Reads `projections.claimed_events` from every
+    /// snapshot push (M16 / ADR-0034) so kind-dispatched embed renderers see
+    /// resolved envelopes without re-parsing the kernel wire.
+    let embedHost = EmbedHost()
+
+    /// Concrete `EventClaimSinkProtocol` impl forwarded into the SwiftUI
+    /// environment so `EmbeddedEvent` views can fire `claim`/`release` against
+    /// the gallery's live kernel.
+    private(set) lazy var embedClaimSink: EventClaimSinkProtocol = KernelEventClaimSink(kernel: kernel)
+
     init() {
         self.kernel = GalleryKernelHandle()
     }
@@ -300,6 +310,14 @@ final class GalleryModel {
 
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
+    ///
+    /// The decode is split into two reads of the same JSON blob:
+    ///   1. Typed `GallerySnapshot` decode — author_view / mention_profiles /
+    ///      accounts. Lean: stays decoupled from any embed-projection drift.
+    ///   2. Raw JSONSerialization read passed through to `embedHost` so the
+    ///      kind-dispatched embed projection (`projections.claimed_events`)
+    ///      flows into the SwiftUI environment without expanding the typed
+    ///      `GallerySnapshot` shape.
     func decode(frame: Data) {
         guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
             return
@@ -315,6 +333,14 @@ final class GalleryModel {
             let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
             self.lastDecodeError = msg
+        }
+
+        // Embed-projection ingest. Separate from the typed decode so a
+        // claimed_events shape change cannot break user/relay/content pages.
+        if let raw = try? JSONSerialization.jsonObject(with: data),
+           let dict = raw as? [String: Any]
+        {
+            embedHost.update(fromSnapshotJSON: dict)
         }
     }
 

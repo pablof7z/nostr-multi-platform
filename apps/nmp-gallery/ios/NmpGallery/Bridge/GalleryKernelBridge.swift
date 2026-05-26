@@ -117,6 +117,35 @@ final class GalleryKernelHandle {
         }
     }
 
+    // ── Event claim / release ────────────────────────────────────────────
+
+    /// Claim an embedded event by `nostr:` URI (ADR-0034 / M16). Refcounted
+    /// per `consumerID`. The kernel fetches the event via the OneshotApi
+    /// (single-writer interest registration — D4) when not yet in the local
+    /// store, and surfaces it in the snapshot's
+    /// `projections.claimed_events[primary_id]` map.
+    ///
+    /// Fire-and-forget at the FFI boundary (D6 — silent no-op on null/empty
+    /// arguments; the actor owns all error handling).
+    func claimEvent(uri: String, consumerID: String) {
+        uri.withCString { uriPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_claim_event(raw, uriPtr, cidPtr)
+            }
+        }
+    }
+
+    /// Release a previously-claimed embedded event. Mirrors `releaseProfile`:
+    /// decrements the per-consumer refcount; the kernel drops the row when
+    /// the refcount hits zero.
+    func releaseEvent(uri: String, consumerID: String) {
+        uri.withCString { uriPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_release_event(raw, uriPtr, cidPtr)
+            }
+        }
+    }
+
     /// Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
     /// from discovery relays and exposes the resolved ProfileCard under
     /// `projections.author_view.profile` in the push-callback snapshot. This
