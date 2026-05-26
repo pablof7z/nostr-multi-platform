@@ -77,15 +77,16 @@ impl<'a> NostrQuoteCard<'a> {
     }
 
     pub fn preferred_height(&self, width: usize) -> u16 {
+        let inner_width = width.saturating_sub(2);
         match self.node {
             WireNode::EventRef(uri) => self
                 .render_data
                 .and_then(|data| data.event_for(uri))
-                .map(|event| 1 + self.event_body_height(event, width.saturating_sub(2)))
-                .unwrap_or_else(|| self.lines(width).len() as u16),
-            _ => self.lines(width).len() as u16,
+                .map(|event| 2 + 1 + self.event_body_height(event, inner_width.saturating_sub(2)))
+                .unwrap_or_else(|| self.lines(inner_width).len() as u16 + 2),
+            _ => self.lines(inner_width).len() as u16 + 2,
         }
-        .max(1)
+        .max(3)
     }
 
     fn text_for_nodes(&self, children: &[usize]) -> String {
@@ -102,7 +103,7 @@ impl<'a> NostrQuoteCard<'a> {
 impl Widget for NostrQuoteCard<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let block = Block::default()
-            .borders(Borders::LEFT)
+            .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Rgb(71, 85, 105)));
         let inner = block.inner(area);
         block.render(area, buf);

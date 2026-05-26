@@ -123,7 +123,7 @@ private fun CollapsedBody(modifier: Modifier, onTap: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(renderer.quoteBackgroundColor)
-            .border(0.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
+            .border(1.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
             .clickable { onTap() }
             .padding(10.dp)
             .semantics { contentDescription = "View quoted post" },
@@ -236,7 +236,7 @@ private fun MissingBody(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(renderer.quoteBackgroundColor)
-            .border(0.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
+            .border(1.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
             .clickable { onTap() }
             .semantics { contentDescription = "Open quoted post" }
             .padding(10.dp),
@@ -286,7 +286,7 @@ private fun QuoteCardFrame(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(renderer.quoteBackgroundColor)
-            .border(0.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
+            .border(1.5.dp, renderer.quoteBorderColor, RoundedCornerShape(8.dp))
             .clickable { onTap() }
             .padding(10.dp)
             .semantics { contentDescription = "Open quoted post" },

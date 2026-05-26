@@ -224,7 +224,7 @@ public struct NostrQuoteCard: View {
 
     private var border: some View {
         RoundedRectangle(cornerRadius: 8)
-            .stroke(renderer.quoteBorderColor, lineWidth: 0.5)
+            .stroke(renderer.quoteBorderColor, lineWidth: 1.5)
     }
 
     private var authorLabel: String {
