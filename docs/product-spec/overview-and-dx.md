@@ -46,6 +46,61 @@ Summary: D0–D5 and D10 are *policy* doctrines (user-facing semantics); D6–D9
 
 ---
 
+## 1.6 API design philosophy — pit-of-success principles
+
+The doctrines D0–D10 are the *rules* the framework enforces. The principles below are the *design stance* those doctrines exist to serve. They are named so that "is this API hard to misuse?" can be asked and answered with a shared vocabulary, not adjudicated case-by-case.
+
+The stance, in one sentence: **it should be hard to fuck up, there should be one way of doing things, it should work reliably, and it should be really hard to do something really stupid or annoying.** Code review, ADRs, and module proposals cite these principles by label.
+
+### P1. One happy path
+
+For each operation the framework supports, there is exactly one public-API way to do it. Reads happen through store subscriptions; writes happen through actions; sessions switch by dispatching a session action; relay selection is automatic. There is no "alternative" API surface that bypasses the canonical one — alternatives are escape hatches, not parallel happy paths.
+
+- **Enforced by:** D0 (typed module seams, not freelance APIs), D3 (manual relay selection is the opt-out), the read/write split in `aim.md` §4.3.
+- **Escape hatch:** Action Module Seam and Raw Event Tap (`docs/escape-hatches.md` §3, §1) — both named, instrumented, opt-in.
+
+### P2. Structural prevention over documented footguns
+
+Bad patterns are not banned in prose; they are made *hard to type*. View payload fields are non-`Option` so a developer cannot accidentally render a spinner over cached data (D1). Errors are not in the FFI signature so a developer cannot write `try/catch` glue around `dispatch` (D6). Relay URLs do not appear in the safe publish path so a developer cannot route a DM to a public relay (D3, D10). If a doctrine relies on the developer reading a comment, the API surface is wrong.
+
+- **Enforced by:** D0, D1, D3, D6, D7, D10, and `aim.md` §1 ("ruled out by the type system, actor ownership, and public API surface").
+- **Test:** §3.3 bug-class extinction — each class regression-tested in `crates/nmp-testing`.
+
+### P3. Reliable by default; correctness is not opt-in
+
+The default behavior of every safe API is the correct behavior. Outbox routing is on, replaceable supersession is on, subscription dedup is on, idle-tick gating is on, provenance is recorded, NIP-40 expiration is honored — none of these require the developer to enable them. The framework never ships a default that requires a follow-up call to make safe.
+
+- **Enforced by:** D2 (negentropy is default backfill), D3 (outbox is default routing), D4 (one writer, derived caches are automatic), D9 (kernel clock is injected, not opt-in), D10 (provenance is recorded on every insert).
+- **Inverse smell:** any API whose docs say "remember to call X after" is a P3 violation.
+
+### P4. Graceful degradation; never all-or-nothing
+
+Apps function with partial data, partial connectivity, partial relay availability, partial profile metadata, partial follow graphs. There is no bootstrap phase that gates rendering on completeness. This is the user-visible face of D1 ("render now, refine in place") generalized beyond display fields to every dimension of partial state: offline composes queue and replay; an unknown recipient inbox surfaces as diagnostic state, never as a crash or a silent drop; an empty cache renders placeholders, never a blank screen.
+
+- **Enforced by:** D1 (display fields are typed, not optional), D2 (gaps fill via negentropy without re-architecting reads), D8 (working-set bounded — degradation does not unbound memory).
+- **Inverse smell:** any code path with a `Loading` state that hides already-renderable data.
+
+### P5. The framework absorbs protocol complexity
+
+Relay routing, replaceable-event resolution, gift-wrap encryption, EOSE handling, REQ/CLOSE bookkeeping, negentropy reconciliation, subscription coalescing, kind-5 delete propagation, and NIP-40 expiration are *invisible* to app code. The developer-never-has-to-do list (§5.3) is the operational statement of this principle; if a new feature would require the developer to learn a protocol subtlety to use it correctly, the feature is incomplete.
+
+- **Enforced by:** the kernel substrate (`aim.md` §2), D2, D3, D4, D8, and the exhaustive §5.3 list.
+- **Inverse smell:** a recipe in `docs/recipes/` that teaches the developer to handle a protocol-layer concern rather than to call a framework method.
+
+### Reviewing against the principles
+
+A change passes pit-of-success review when:
+
+1. It does not introduce a second happy path for an operation the framework already supports (P1).
+2. The wrong usage is hard to type, not just documented as discouraged (P2).
+3. Its default behavior is the correct behavior; correctness is not gated on a follow-up call (P3).
+4. It degrades gracefully under partial data / connectivity / cache (P4).
+5. It does not push a protocol subtlety into app code (P5).
+
+A change that cannot satisfy all five is either an escape hatch (named in `docs/escape-hatches.md`) or a framework defect.
+
+---
+
 ## 2. Audience and use cases
 
 **Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, desktop, and web — including LLM-driven and inexperienced developers who lack the protocol literacy to navigate Nostr's footguns unaided.
