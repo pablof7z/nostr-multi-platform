@@ -20,6 +20,10 @@ pub const COMPONENTS: &[&str] = &[
     "content-minimal",
     "content-media-grid",
     "content-quote-card",
+    "embed-article",
+    "embed-profile",
+    "embed-note",
+    "embed-highlight",
 ];
 
 #[derive(Clone, Copy)]
