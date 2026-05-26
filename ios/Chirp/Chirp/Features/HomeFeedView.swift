@@ -110,7 +110,7 @@ struct HomeFeedView: View {
             ChirpPlaceholder(
                 systemImage: "bird",
                 title: "Your timeline",
-                subtitle: "Loading your timeline…"
+                subtitle: "Nothing here yet."
             )
             .frame(minHeight: 500)
             .padding(.horizontal, ChirpSpace.l)

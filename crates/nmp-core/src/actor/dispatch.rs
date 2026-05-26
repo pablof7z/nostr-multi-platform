@@ -418,6 +418,9 @@ pub(super) fn dispatch_command(
                 ctx.relays_ready,
             );
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
+            // D1 — first snapshot must reach the shell before any relay TCP
+            // connection is dialed, so emit_now precedes spawn_missing_relays.
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             spawn_missing_relays(
                 ctx.relay_controls,
                 ctx.slot_to_url,
@@ -425,7 +428,6 @@ pub(super) fn dispatch_command(
                 ctx.kernel,
                 ctx.next_relay_generation,
             );
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             // T127: boot-resume for the publish engine. Closes Residual 3
             // from T117 — `accepted_locally` rows persisted by a previous
             // process come back as `InFlight` and any due retries dispatch
