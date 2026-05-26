@@ -60,6 +60,93 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    and `:377-389` hardcode kind `1059` gift-wrap routing policy. **Next step:** protocol
    crates should declare publish/routing constraints as typed policy data; core should enforce
    the abstract constraint without naming NIP kinds.
+
+   **Implementation plan (2026-05-27):** verified on current HEAD. Note one BACKLOG
+   discrepancy: there is **no `nmp-nip65` crate** — it was deleted at step 3 of the
+   crate-boundary migration and `nmp-router` now owns kind:10002 end-to-end (ingest,
+   cache, publish builder via `publish_relay_list::build_relay_list_event`, resolver —
+   see `crates/nmp-router/src/lib.rs:18-22`). The plan lands the kind:10002 seam in
+   `nmp-router`, not a new crate. The two violations are independent fixes (one is a
+   *builder location* + *publish-on-edit trigger*, the other is a *routing constraint*);
+   they ship as two separate PRs.
+
+   *Kind:10002 — `RelayListBuilder` substrate slot* (PR 2). Direct call from
+   `nmp-core` into `nmp-router` is blocked (dep direction is `nmp-router → nmp-core`).
+   Dispatching the existing `nmp.nip65.publish_relay_list` action from
+   `AddRelay`/`RemoveRelay` arms is also rejected: that action's `execute` sends
+   `ActorCommand::PublishUnsignedEvent` back into the queue, defers the publish by a
+   tick, and removes `OutboundMessage`s from the dispatch arm's return value — the
+   existing assertions at `crates/nmp-core/src/actor/dispatch.rs:1715-1900`
+   (`count_kind_10002_frames(&outbound)`) would silently break. The chosen shape is a
+   substrate slot, matching the precedent of `routing_substrate_slot`,
+   `publish_resolver_slot`, `host_op_handler`, and `dm_inbox_relays_slot`:
+
+   ```rust
+   // crates/nmp-core/src/substrate/relay_list_builder.rs (new)
+   pub trait RelayListBuilder: Send + Sync {
+       fn build_from_projection(
+           &self,
+           rows: &[crate::kernel::RelayEditRow],
+       ) -> Option<crate::substrate::UnsignedEvent>;
+   }
+   pub type RelayListBuilderSlot =
+       std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<dyn RelayListBuilder>>>>;
+   ```
+
+   `nmp-router` ships the canonical adapter (closes projection → entries → existing
+   `build_relay_list_event`); installed via `AppHost::set_relay_list_builder` with
+   `Reset`-survival following the same recipe as the slots above.
+   `crates/nmp-core/src/actor/commands/relays.rs` loses `KIND_RELAY_LIST` (line 35),
+   `nip65_marker_for_role` (59-74), `build_relay_list_event_from_edit_rows` (103-138),
+   and the wire-shape tests (359-497) — ~140 LOC deleted from `nmp-core`, ~30 LOC
+   added in `nmp-core/src/substrate/`, ~25 LOC added in `nmp-router`. The
+   relay-edit projection helpers (`add_relay`, `remove_relay`, `normalize_role`) are
+   NIP-neutral and stay. The dispatch.rs caller (`maybe_publish_relay_list_after_edit`
+   at line 154-174) swaps `commands::build_relay_list_event_from_edit_rows(...)` for
+   `ctx.relay_list_builder.lock().unwrap().clone()?.build_from_projection(...)`. Test
+   harness installs the adapter in its `fresh_*` helpers so the existing assertions
+   keep passing.
+
+   *Kind:1059 — typed publish constraint* (PR 1). The const at `publish.rs:21` is a
+   pure import miss — `nmp-nip59` already exposes `pub const KIND_GIFT_WRAP: u32 = 1059`
+   at `crates/nmp-nip59/src/kinds.rs:8` and `nmp-core` already depends on `nmp-nip59`
+   (V-08, see `crates/nmp-core/src/substrate/mod.rs:102-108` re-exporting
+   `SignerForSeal`); the defending comment at lines 16-20 is stale. Swap the const for
+   `use nmp_nip59::KIND_GIFT_WRAP`. The structural piece is the guard at lines
+   377-389: NIP-59 should *declare* the constraint typed and `nmp-core` should
+   *enforce* the abstract shape:
+
+   ```rust
+   // crates/nmp-core/src/substrate/publish_constraint.rs (new)
+   pub trait PublishConstraint: Send + Sync {
+       fn check(&self, kind: u32, target: &crate::publish::PublishTarget)
+           -> Result<(), String>;
+   }
+   pub type PublishConstraintRegistry =
+       std::sync::Arc<std::sync::RwLock<Vec<std::sync::Arc<dyn PublishConstraint>>>>;
+   ```
+
+   `nmp-nip59` ships `RequireExplicitTargetForGiftWrap` registered via
+   `AppHost::register_publish_constraint` (folded into the existing
+   `register_actions` pattern so hosts that wire NIP-59 get the constraint for free).
+   `publish_signed_event` at `publish.rs:377-403` iterates the registry; the first
+   `Err` wins, surfacing the constraint's verbatim reason as the D6 toast +
+   `Failed` terminal — the existing `tracing::warn!` becomes generic. ~25 LOC added
+   in `nmp-core/src/substrate/`, ~20 LOC in `nmp-nip59`, ~30 LOC deleted from
+   `publish.rs` (guard body + commentary).
+
+   *Combined scope:* 3 crates touched (`nmp-core`, `nmp-router`, `nmp-nip59`), 0 new
+   crates created, **net ≈ −90 LOC** (deletion > addition — strong signal the plan is
+   structurally correct; existing seams absorb the behavior). Sequencing: PR 1
+   (kind:1059) ships first (smaller blast radius, no test-harness surgery); PR 2
+   (kind:10002) ships second.
+
+   *Risk:* if a host wires NIP-59 publishes but forgets `register_publish_constraint`,
+   kind:1059 Auto leaks through the author's NIP-65 outbox (the D10 violation the
+   current hard-coded guard catches). Mitigation: the constraint registration is
+   folded into NIP-59's `register_actions` so any host using NIP-59 publish actions
+   gets the constraint automatically — the failure mode requires actively
+   *unregistering* a NIP-59 default, which is opt-out, not opt-in.
 3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
    `apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses and builds
    zap input in the TUI; the host-side zap auto-pay loop was removed so Rust owns the
