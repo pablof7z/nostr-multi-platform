@@ -54,10 +54,17 @@ fn empty_tick_does_not_compile() {
 /// `max_connections = 5` to force the greedy selector to actually prune
 /// — proving `apply_selection` is wired into `recompile_and_diff` (not a
 /// no-op).
+///
+/// Note: this test deliberately does NOT call `set_app_relays`. Operator-
+/// configured app relays carry the `UserConfigured(AppRelay)` lane and are
+/// exempt from coverage pruning (operator-intent override; see
+/// `selection.rs::relay_is_operator_pinned`). Including one here would
+/// preserve it regardless of budget and obscure the actual selector test —
+/// the carve-out's coverage lives in
+/// `subs::lifecycle_tests::recompile_preserves_app_relay_under_budget`.
 #[test]
 fn recompile_caps_per_relay_at_max_connections() {
     let mut l = SubscriptionLifecycle::new();
-    l.set_app_relays(vec!["wss://app.example".to_string()]);
     // Tighten the budget so the test is independent of the default
     // (which would not prune at only 10 follows).
     let max_connections: usize = 5;
@@ -85,6 +92,65 @@ fn recompile_caps_per_relay_at_max_connections() {
         "per_relay.len() = {} must be ≤ max_connections = {}",
         plan.per_relay.len(),
         max_connections,
+    );
+}
+
+/// Companion to `recompile_caps_per_relay_at_max_connections`: when an
+/// operator-configured app relay is added on top of the same 10-follow
+/// scenario, the app relay MUST survive selection regardless of the
+/// `max_connections` budget — and the budget still bounds the NIP-65
+/// outbox relays alongside it. End state: 5 outbox relays + 1 app relay = 6.
+///
+/// This is the regression guard for the gallery-TUI smoke bug: under
+/// `app_relays=[primal]` + an author with [atlas, eden] outbox, the
+/// selector dropped primal because the outbox already covered the author
+/// under `max_per_user=2`. Operator intent must override coverage.
+#[test]
+fn recompile_preserves_app_relay_under_budget() {
+    let mut l = SubscriptionLifecycle::new();
+    l.set_app_relays(vec!["wss://app.example".to_string()]);
+    let max_connections: usize = 5;
+    l.set_selection_budget(max_connections, 2);
+
+    let mut mailboxes = InMemoryMailboxCache::new();
+    for i in 0..10u32 {
+        let author_seed = format!("aa{i:02}");
+        let relay = format!("wss://r{i:02}.example");
+        mailboxes.put(
+            pubkey(&author_seed),
+            MailboxSnapshot {
+                write_relays: vec![relay],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        l.registry_mut().push(follow(u64::from(i) + 1, &author_seed));
+    }
+
+    let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let plan = l.current_plan.as_ref().expect("plan present");
+
+    assert!(
+        plan.per_relay.contains_key("wss://app.example"),
+        "operator-pinned app relay must survive selection regardless of \
+         coverage budget; got per_relay keys: {:?}",
+        plan.per_relay.keys().collect::<Vec<_>>(),
+    );
+
+    // The greedy budget still bounds the NIP-65 outbox relays alongside
+    // the pinned app relay — total = pinned + at most max_connections.
+    let outbox_count = plan
+        .per_relay
+        .keys()
+        .filter(|k| k.as_str() != "wss://app.example")
+        .count();
+    assert!(
+        outbox_count <= max_connections,
+        "outbox-relay count = {} must remain ≤ max_connections = {} (the \
+         pinned app relay must NOT consume the greedy budget); got: {:?}",
+        outbox_count,
+        max_connections,
+        plan.per_relay.keys().collect::<Vec<_>>(),
     );
 }
 
