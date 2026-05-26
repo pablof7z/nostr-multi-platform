@@ -16,7 +16,7 @@ pub fn execute(input: &str, state: &mut AppState, runtime: &AppRuntime) {
         ("relay", rest) => relay(rest, runtime),
         ("dm-relays", rest) => dm_relays(rest, runtime),
         ("wallet", rest) => wallet(rest, runtime),
-        ("zap", rest) => zap(rest, state, runtime),
+        ("zap", rest) => zap(rest, runtime),
         ("dm", rest) => dm(rest, runtime),
         ("group", rest) => group(rest, runtime),
         ("mls", rest) => mls(rest, runtime),
@@ -168,12 +168,9 @@ fn wallet(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
 
 /// `:zap <lightning-address> <sats> [comment]` — dispatches
 /// `nmp.nip57.zap` with the resolved Nostr pubkey and sats→msats
-/// conversion. The kernel completes the action asynchronously: when the
-/// LNURL fetcher surfaces the bolt11 via `ShowToast`, `apply_nmp_event`
-/// auto-pays through the connected NWC. Requires both a local-keys
-/// account and a connected wallet — bunker signers cannot sign
-/// kind:9734 yet (ADR-0026 Phase 2 follow-up).
-fn zap(rest: &str, state: &mut AppState, runtime: &AppRuntime) -> Result<CommandResult, String> {
+/// conversion. Rust owns the LNURL fetch and NWC pay-invoice chain; the
+/// TUI only builds and dispatches the command input.
+fn zap(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
     let (address, rest) = first_word(rest);
     require(address, "zap <lightning-address> <sats> [comment]")?;
     let (sats_str, comment_rest) = first_word(rest);
@@ -201,7 +198,6 @@ fn zap(rest: &str, state: &mut AppState, runtime: &AppRuntime) -> Result<Command
     }
 
     let cid = runtime.zap(&body)?;
-    state.pending_zap_pay = true;
     Ok(action(cid, &format!("zap {sats} sat → {address}")))
 }
 

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::bridge::{NmpEvent, UpdatePayload};
+use crate::bridge::NmpEvent;
 use crate::feature_snapshot::FeatureSnapshot;
 use crate::features::FeatureTab;
 pub use crate::runtime::AppRuntime;
@@ -105,13 +105,6 @@ pub struct AppState {
     /// Settings tab's j/k continues to navigate the accounts column.
     pub outbox_selected: Option<usize>,
 
-    /// Set by `:zap` while waiting for `nmp.nip57.zap` to surface the
-    /// bolt11 via `ShowToast`. When the next snapshot carries a
-    /// `last_error_toast` starting with `"Zap invoice: "`, the host
-    /// extracts the bolt11 and auto-pays through NWC, then clears this
-    /// flag. Mirrors the iOS/Swift host pattern documented in
-    /// `nmp-nip57/src/lnurl/mod.rs` (V-43 future fix: kernel auto-pay).
-    pub pending_zap_pay: bool,
     /// Recipient pubkey carried across the palette → input-bar → dispatch
     /// boundary for the `"zap-amount"` input bar action.
     pub pending_zap_pubkey: Option<String>,
@@ -167,7 +160,6 @@ impl Default for AppState {
             group_compose_buf: String::new(),
             settings_cursor: 0,
             outbox_selected: None,
-            pending_zap_pay: false,
             pending_zap_pubkey: None,
             pending_zap_event_id: None,
         }
@@ -183,33 +175,6 @@ impl AppState {
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
         self.features = FeatureSnapshot::from_transport_payload(&event.payload);
-
-        // `nmp.nip57.zap` is async-completing: the LNURL fetcher surfaces
-        // the bolt11 via `ShowToast { "Zap invoice: <bolt11>" }`, which
-        // lands in the kernel snapshot as `last_error_toast`. While a
-        // zap is pending, watch for that toast and auto-pay over NWC.
-        // (V-43 will move auto-pay into the kernel; until then the host
-        // bridges the two-leg flow.)
-        if self.pending_zap_pay {
-            if let Some(toast) = parse_last_error_toast_from_transport(&event.payload) {
-                if let Some(bolt11) = toast.strip_prefix("Zap invoice: ") {
-                    let bolt11 = bolt11.trim().to_string();
-                    match runtime.wallet_pay_invoice(&bolt11, None) {
-                        Ok(()) => {
-                            let preview = &bolt11[..bolt11.len().min(20)];
-                            self.status = format!("Zap payment sent: {preview}\u{2026}");
-                        }
-                        Err(e) => {
-                            self.status = format!("Zap pay failed: {e}");
-                        }
-                    }
-                    self.pending_zap_pay = false;
-                } else if toast.starts_with("Zap failed:") {
-                    self.status = toast;
-                    self.pending_zap_pay = false;
-                }
-            }
-        }
 
         // Clamp tab-specific selection indices to avoid out-of-bounds access.
         let conv_len = self.features.dm_conversations.len();
@@ -656,27 +621,6 @@ impl AppState {
 
 use crate::short_id;
 
-fn parse_last_error_toast_from_transport(payload: &UpdatePayload) -> Option<String> {
-    let value = crate::snapshot::value_from_transport_payload(payload)?;
-    parse_last_error_toast_value(&value)
-}
-
-/// Pull `last_error_toast` out of a JSON snapshot fixture. Runtime update
-/// transport goes through `UpdatePayload::FlatBuffers`; this JSON parser is
-/// retained only for tests that pin the legacy envelope shape.
-fn parse_last_error_toast_json_fixture(payload: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(payload).ok()?;
-    let root = value.get("v").unwrap_or(&value);
-    parse_last_error_toast_value(root)
-}
-
-fn parse_last_error_toast_value(root: &Value) -> Option<String> {
-    root.get("last_error_toast")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -699,61 +643,5 @@ mod tests {
 
         assert_eq!(payload, Some(("hi".to_string(), None)));
         assert_eq!(state.mode, Mode::Normal);
-    }
-
-    // Pin the legacy fixture shapes separately from the runtime FlatBuffers
-    // transport seam.
-
-    #[test]
-    fn parse_last_error_toast_unwraps_snapshot_envelope() {
-        let payload = serde_json::json!({
-            "t": "snapshot",
-            "v": { "last_error_toast": "Zap invoice: lnbcDEAD" }
-        })
-        .to_string();
-        assert_eq!(
-            parse_last_error_toast_json_fixture(&payload),
-            Some("Zap invoice: lnbcDEAD".to_string())
-        );
-    }
-
-    #[test]
-    fn parse_last_error_toast_reads_bare_snapshot() {
-        let payload = serde_json::json!({
-            "last_error_toast": "Zap failed: bunker signing not yet supported"
-        })
-        .to_string();
-        assert_eq!(
-            parse_last_error_toast_json_fixture(&payload),
-            Some("Zap failed: bunker signing not yet supported".to_string())
-        );
-    }
-
-    #[test]
-    fn parse_last_error_toast_returns_none_when_missing() {
-        let payload = serde_json::json!({ "t": "snapshot", "v": {} }).to_string();
-        assert_eq!(parse_last_error_toast_json_fixture(&payload), None);
-    }
-
-    #[test]
-    fn parse_last_error_toast_returns_none_for_empty_string() {
-        let payload = serde_json::json!({
-            "t": "snapshot",
-            "v": { "last_error_toast": "" }
-        })
-        .to_string();
-        assert_eq!(parse_last_error_toast_json_fixture(&payload), None);
-    }
-
-    #[test]
-    fn parse_last_error_toast_returns_none_for_invalid_json() {
-        assert_eq!(parse_last_error_toast_json_fixture("not json"), None);
-    }
-
-    #[test]
-    fn parse_last_error_toast_does_not_parse_json_bytes_as_transport() {
-        let payload =
-            UpdatePayload::flatbuffers(b"{\"last_error_toast\":\"Zap invoice: lnbc\"}".to_vec());
-        assert_eq!(parse_last_error_toast_from_transport(&payload), None);
     }
 }

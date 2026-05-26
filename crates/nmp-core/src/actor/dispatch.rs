@@ -936,9 +936,9 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::RecordActionSuccess { correlation_id } => {
             // Symmetric counterpart to RecordActionFailure: off-thread workers
-            // (e.g. the LNURL-pay HTTP worker) fan success back through the
-            // actor channel. Writes `Accepted` to `action_stages` and a
-            // terminal verdict to `action_results`.
+            // and runtime responders fan success back through the actor
+            // channel. Writes `Accepted` to `action_stages` and a terminal
+            // verdict to `action_results`.
             ctx.kernel.record_action_success(correlation_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())

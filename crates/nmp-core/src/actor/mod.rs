@@ -607,14 +607,12 @@ pub enum ActorCommand {
     /// terminal) and the `action_results` per-tick drain (so a spinner
     /// keyed on the `correlation_id` clears).
     ///
-    /// The motivating consumer is the NIP-57 zap LNURL-pay worker
-    /// (`actor/commands/zap.rs`): after the HTTP round-trip returns a
-    /// bolt11 invoice, the spawned worker has no `&mut Kernel` reference
-    /// and must round-trip through the actor channel to record the
-    /// terminal. Without this command the `dispatch_action`
-    /// (`nmp.nip57.zap`) spinner hangs forever — `ShowToast` is a
-    /// human-readable surface, NOT the spinner-closing one
-    /// (`action_results` is the closing surface).
+    /// The motivating consumer is off-band action settlement such as NIP-47
+    /// `pay_invoice`: after the kind:23195 wallet response arrives, the
+    /// runtime needs to close the original action promise by correlation id.
+    /// The same path closes NIP-57 zaps because their LNURL worker dispatches
+    /// wallet payment internally instead of asking the host to pay a toasted
+    /// invoice.
     ///
     /// Idempotent w.r.t. a buggy worker that re-sends — `record_action_success`
     /// records a second `Accepted` stage, which is a benign no-op for the

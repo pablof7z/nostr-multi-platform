@@ -145,7 +145,7 @@ impl Kernel {
     /// wallet's kind:23195 response (carrying a `preimage` on success or an
     /// `error` object on failure). The NWC response handler decodes it on the
     /// actor thread and routes here to close the dispatched action's promise
-    /// — without this call a host that dispatched `nmp.zap` would see its
+    /// — without this call a host that dispatched `nmp.nip57.zap` would see its
     /// spinner hang forever, exactly the broken-promise gap
     /// `record_action_failure` closes on the failure leg.
     ///
@@ -154,15 +154,13 @@ impl Kernel {
     /// today (post-V3 the C-ABI symbol `nmp_app_wallet_pay_invoice` is a
     /// thin wrapper that routes through `nmp_app_dispatch_action`'s
     /// `nmp.wallet.pay_invoice` namespace). `None` is reserved for
-    /// actor-internal auto-dispatched payments (e.g. the LNURL → pay_invoice
-    /// chain in `commands/zap.rs`) where the wallet runtime simply skips
-    /// this call (nothing is waiting on an id).
+    /// actor-internal auto-dispatched payments where nothing is waiting on an
+    /// id.
     //
     // `#[allow(dead_code)]` was lifted when the
-    // `ActorCommand::RecordActionSuccess` dispatch arm landed (the NIP-57 zap
-    // LNURL-pay worker's success branch routes through it). The wallet-feature
-    // caller (`handle_nwc_text`) is no longer the only live caller, so the
-    // default-features build now sees a real consumer through `dispatch.rs`.
+    // `ActorCommand::RecordActionSuccess` dispatch arm landed. The NIP-47
+    // wallet response handler is the off-band success consumer for pay-invoice
+    // flows, including the NIP-57 LNURL → wallet chain.
     pub fn record_action_success(&mut self, correlation_id: String) {
         // Mirror `record_action_failure`'s dual write: an `Accepted` stage in
         // the `action_stages` mirror so a host listening only on the stage

@@ -61,10 +61,10 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    crates should declare publish/routing constraints as typed policy data; core should enforce
    the abstract constraint without naming NIP kinds.
 3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
-   `apps/chirp/chirp-tui/src/commands.rs:169-205` resolves lightning addresses and builds
-   zap input in the TUI; `apps/chirp/chirp-tui/src/app.rs:99-105` and `:168-178` use a
-   pending flag plus toast-string parsing to auto-pay; `apps/chirp/chirp-tui/src/runtime_commands.rs:251-261`
-   bypasses the canonical action door for Marmot; and
+   `apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses and builds
+   zap input in the TUI; the host-side zap auto-pay loop was removed so Rust owns the
+   LNURL → `nmp.wallet.pay_invoice` chain; `apps/chirp/chirp-tui/src/runtime_commands.rs:249-269`
+   still bypasses the canonical action door for Marmot; and
    `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two protocol
    publishes while tracking only one correlation id. **Next step:** expose composite Rust
    actions/action-stage projections for zap, Marmot rich results, and relay-settings publish.
