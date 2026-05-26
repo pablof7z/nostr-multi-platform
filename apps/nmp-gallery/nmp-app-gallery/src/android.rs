@@ -206,9 +206,31 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleasePro
     nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
 }
 
+/// Drain one FlatBuffers update frame from the kernel callback channel.
+///
+/// V-57 P5: the two `recv_timeout` error arms have distinct meanings and must
+/// not be conflated — earlier revisions returned `null` for both, which made
+/// the Kotlin polling coroutine spin (the `?: continue` arm in
+/// `GalleryModel.startPolling`) once the channel had closed.
+///
+/// * [`RecvTimeoutError::Timeout`] — normal idle tick. Return `null`; the
+///   Kotlin caller loops back into `nextUpdate`. This is the steady state
+///   between snapshot emits at `emit_hz`.
+/// * [`RecvTimeoutError::Disconnected`] — the boxed [`Sender`] inside this
+///   [`GallerySession`] has been dropped. The only drop site is
+///   [`Java_org_nmp_gallery_bridge_KernelBridge_nativeFree`], which calls
+///   `nmp_app_free` (joining the actor thread) before dropping the boxed
+///   sender. The Kotlin coroutine MUST stop polling — we surface this as an
+///   `IllegalStateException` so the `viewModelScope` reader breaks out of its
+///   `while (isActive)` loop instead of busy-spinning on a dead channel.
+///
+/// Reachability note: in the current architecture, `Disconnected` is only
+/// observable in the narrow window between sender-drop and session-drop
+/// inside `nativeFree`. This fix is defensive hardening matching the V-57 P5
+/// BACKLOG entry's intent, not a reproduced spin from production logs.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNextUpdate<'l>(
-    env: JNIEnv<'l>,
+    mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     handle: jlong,
     timeout_ms: jlong,
@@ -223,7 +245,19 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNextUpdate
             Ok(array) => array.into_raw(),
             Err(_) => null,
         },
-        Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => null,
+        // Normal idle tick — Kotlin caller loops back into `nextUpdate`.
+        Err(RecvTimeoutError::Timeout) => null,
+        // Sender dropped: signal Kotlin to stop polling by raising a JNI
+        // exception. Per the JNI contract, no further env calls are issued
+        // after `throw_new`; we return null which the JVM ignores in favour
+        // of the pending exception on the Rust → Java return.
+        Err(RecvTimeoutError::Disconnected) => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "gallery snapshot channel disconnected",
+            );
+            null
+        }
     }
 }
 
