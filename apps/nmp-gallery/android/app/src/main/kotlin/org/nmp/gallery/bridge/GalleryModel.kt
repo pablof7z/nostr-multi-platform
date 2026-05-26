@@ -82,7 +82,12 @@ class GalleryModel : ViewModel() {
      * GallerySnapshot decoder.
      */
     private fun applyFrame(raw: ByteArray) {
-        val v = NmpUpdateFrameDecoder.decodeSnapshot(raw) ?: return
+        val v = try {
+            NmpUpdateFrameDecoder.decodeSnapshot(raw)
+        } catch (e: UpdateFrameDecodeException) {
+            android.util.Log.w("GalleryModel", "drop frame: ${e.message}")
+            return
+        }
         val projections = (v["projections"] as? JsonObject) ?: return
 
         val assembled = mutableMapOf<String, ProfileWire>()
