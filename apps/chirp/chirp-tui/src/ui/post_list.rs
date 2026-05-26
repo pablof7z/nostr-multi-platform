@@ -13,11 +13,12 @@ use ratatui::Frame;
 
 use crate::app::{AppState, Pane};
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
-use crate::ui::nostr_content::nostr_minimal_content::NostrMinimalContent;
 use crate::ui::colors::{
     author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, HEART,
     LIST_BG, REPLY_COLOR, REPOST, SELECTED_BG,
 };
+use crate::ui::nostr_content::nostr_minimal_content::NostrMinimalContent;
+use crate::ui::nostr_user::profile_name_span;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     let focused = state.focused == Pane::Feed;
@@ -105,20 +106,19 @@ fn append_card(
     let content_width = pane_width.saturating_sub(gutter_width);
 
     // Row 1: author · timestamp
-    let author_span = Span::styled(
-        truncate(&row.author, content_width.saturating_sub(8)),
-        Style::default()
-            .fg(author_color(&row.author_pubkey))
-            .bg(row_bg)
-            .add_modifier(Modifier::BOLD),
+    let author_style = Style::default()
+        .fg(author_color(&row.author_pubkey))
+        .bg(row_bg)
+        .add_modifier(Modifier::BOLD);
+    let (author_span, author_len) = profile_name_span(
+        &row.author_profile,
+        author_style,
+        content_width.saturating_sub(8),
     );
     let sep_span = Span::styled(" \u{00b7} ", Style::default().fg(DIM_TEXT).bg(row_bg));
-    let age_span = Span::styled(
-        format_age(row.created_at),
-        Style::default().fg(DIM_TEXT).bg(row_bg),
-    );
-    let line1_text_len =
-        row.author.chars().count() + 3 + format_age(row.created_at).chars().count();
+    let age = format_age(row.created_at);
+    let age_span = Span::styled(age.clone(), Style::default().fg(DIM_TEXT).bg(row_bg));
+    let line1_text_len = author_len + 3 + age.chars().count();
     let line1_pad = pad_for(content_width, line1_text_len);
     let line1 = Line::from(vec![
         gutter_span.clone(),

@@ -14,6 +14,7 @@ use crate::app::AppState;
 use crate::ui::colors::{
     ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, LIST_BG, author_color, format_age,
 };
+use crate::ui::nostr_user::profile_name_span;
 
 const HEADER_HEIGHT: u16 = 8;
 
@@ -207,16 +208,18 @@ fn build_author_post_lines(
 
         // Row 1: author · timestamp
         let age = format_age(row.created_at);
-        let author_span = Span::styled(
-            truncate_to_width(&row.author, content_width.saturating_sub(8)),
-            Style::default()
-                .fg(author_color(&row.author_pubkey))
-                .bg(LIST_BG)
-                .add_modifier(Modifier::BOLD),
+        let author_style = Style::default()
+            .fg(author_color(&row.author_pubkey))
+            .bg(LIST_BG)
+            .add_modifier(Modifier::BOLD);
+        let (author_span, author_len) = profile_name_span(
+            &row.author_profile,
+            author_style,
+            content_width.saturating_sub(8),
         );
         let sep = Span::styled(" \u{00b7} ", Style::default().fg(DIM_TEXT).bg(LIST_BG));
         let age_span = Span::styled(age.clone(), Style::default().fg(DIM_TEXT).bg(LIST_BG));
-        let used = row.author.chars().count() + 3 + age.chars().count();
+        let used = author_len + 3 + age.chars().count();
         let pad = pad_to(content_width, used);
         lines.push(Line::from(vec![
             gutter.clone(),

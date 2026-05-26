@@ -5,6 +5,7 @@ use crate::app::AppState;
 use crate::feature_snapshot::AccountLine;
 use crate::timeline::TimelineRow;
 use crate::ui::layout::render;
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 #[test]
 fn home_tab_renders_chrome_and_compose_at_120_by_40() {
@@ -38,10 +39,14 @@ fn help_overlay_renders_keybindings() {
 fn home_tab_handles_narrow_terminal_without_panicking() {
     let mut state = state_with_account();
     state.status = "narrow terminal smoke test".to_string();
+    let author_pubkey = "a".repeat(64);
     state.rows.push(TimelineRow {
         id: "event-with-display-counts".to_string(),
-        author: "alexandria-cassandra-with-a-very-long-kind0-display-name".to_string(),
-        author_pubkey: "a".repeat(64),
+        author_pubkey: author_pubkey.clone(),
+        author_profile: profile(
+            &author_pubkey,
+            "alexandria-cassandra-with-a-very-long-kind0-display-name",
+        ),
         content: "reply 0 repost 0 like 0 -- this content should wrap inside the feed pane"
             .to_string(),
         created_at: 1,
@@ -84,8 +89,8 @@ fn state_with_row() -> AppState {
     let mut state = state_with_account();
     state.rows.push(TimelineRow {
         id: "event-1".to_string(),
-        author: "alice".to_string(),
         author_pubkey: "alice-pubkey".to_string(),
+        author_profile: profile("alice-pubkey", "alice"),
         content: "hello from nostr".to_string(),
         created_at: 1,
         depth: 0,
@@ -96,4 +101,16 @@ fn state_with_row() -> AppState {
         mention_pubkeys: Vec::new(),
     });
     state
+}
+
+fn profile(pubkey: &str, display_name: &str) -> ProfileWire {
+    ProfileWire {
+        pubkey: pubkey.to_string(),
+        display_name: Some(display_name.to_string()),
+        about: None,
+        picture_url: None,
+        nip05: None,
+        npub: pubkey.to_string(),
+        npub_short: pubkey.to_string(),
+    }
 }
