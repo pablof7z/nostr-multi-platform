@@ -140,11 +140,10 @@ impl ActionModule for ZapAction {
 
     /// Settles asynchronously: `execute` enqueues
     /// `Protocol(FetchLnurlInvoiceCommand{...})` and returns immediately;
-    /// the HTTP worker spawned in `FetchLnurlInvoiceCommand::run` surfaces
-    /// the bolt11 (or failure) via `ShowToast` + `RecordActionSuccess` /
-    /// `RecordActionFailure`. Recording sites: `lnurl::mod`
-    /// (`Requested` via `ctx.record_action_stage_requested`; `Failed` on
-    /// pre-payment errors).
+    /// the HTTP worker spawned in `FetchLnurlInvoiceCommand::run` dispatches
+    /// NWC pay-invoice on a fetched invoice, or records `Failed` on LNURL /
+    /// missing-wallet errors. The NIP-47 kind:23195 response closes the
+    /// original zap action's `correlation_id` on wallet confirmation.
     fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (crate::lnurl records Requested via ProtocolCommandContext and Failed on pre-payment errors)
         true
     }

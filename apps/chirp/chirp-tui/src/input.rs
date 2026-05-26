@@ -514,7 +514,6 @@ fn dispatch_input_bar_action(
             }
             match runtime.zap(&body) {
                 Ok(cid) => {
-                    state.pending_zap_pay = true;
                     state.track_action(cid, &format!("zap {sats} sat"));
                 }
                 Err(e) => state.push_toast(&format!("\u{2717} zap failed: {e}")),

@@ -13,10 +13,10 @@
 //! the LN provider's LNURL **callback URL** as a `nostr=<urlencoded>` query
 //! parameter — NOT broadcast to Nostr relays. The kind:9735 receipt is what
 //! relays receive, and the LN provider mints it after the invoice settles.
-//! This command therefore emits NO relay-bound frames; the only follow-up
-//! `ActorCommand`s are `ShowToast` (always — the human-readable surface) and
-//! the optional `RecordActionSuccess` / `RecordActionFailure` that close the
-//! host's spinner when a `correlation_id` was supplied.
+//! This command therefore emits NO relay-bound frames. On a fetched invoice it
+//! dispatches the actor-local NWC pay-invoice command; on LNURL failure or a
+//! missing wallet it sends `ShowToast` + `RecordActionFailure` so the host's
+//! spinner resolves without scraping toast text.
 //!
 //! # Surfaces threaded through `ProtocolCommandContext`
 //!
@@ -39,8 +39,8 @@
 //!   so the stage observer sees the transition before the worker thread
 //!   posts the terminal.
 //! - [`ProtocolCommandContext::send`] — re-enter the actor loop with the
-//!   follow-up `ActorCommand`s (`ShowToast`, `RecordActionSuccess`,
-//!   `RecordActionFailure`).
+//!   follow-up `ActorCommand`s (`Protocol(WalletPayInvoiceCommand)`,
+//!   `ShowToast`, `RecordActionFailure`).
 //!
 //! # D8 — no blocking on the actor thread
 //!
@@ -55,11 +55,11 @@
 //! 3. HTTP GET `{callback}?amount=<msats>&nostr=<urlencoded-signed-9734>` →
 //!    parse `{ "pr": "lnbc…" }`.
 //! 4. Send the follow-up [`ActorCommand`]s back through the cloned
-//!    [`Sender<ActorCommand>`] (`ShowToast` on success / failure, plus the
-//!    spinner-closing `RecordActionSuccess` / `RecordActionFailure` when a
-//!    `correlation_id` was supplied).
+//!    [`Sender<ActorCommand>`]: `Protocol(WalletPayInvoiceCommand)` on a
+//!    fetched invoice, or `ShowToast` + `RecordActionFailure` for LNURL
+//!    failures and missing-wallet failures.
 //!
-//! # NWC auto-pay handoff (V-43)
+//! # NWC payment handoff
 //!
 //! After the bolt11 is fetched, the worker checks `nmp_nip47::active_wallet_runtime()`.
 //! If a wallet runtime is installed, it dispatches `WalletPayInvoiceCommand`
@@ -249,12 +249,12 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                 &signed_json,
             ) {
                 Ok(bolt11) => {
-                    // V-43: hand the bolt11 to the NWC wallet so it pays the
-                    // invoice. The correlation_id threads through so the
-                    // kind:23195 response handler closes the `nmp.nip57.zap`
-                    // action stage — success or failure — on wallet confirmation.
-                    // If no wallet runtime is installed, fail the action so the
-                    // host spinner resolves with a clear reason instead of hanging.
+                    // Hand the bolt11 to the NWC wallet so it pays the invoice.
+                    // The correlation_id threads through so the kind:23195
+                    // response handler closes the `nmp.nip57.zap` action stage
+                    // on wallet confirmation. If no wallet runtime is installed,
+                    // fail the action so the host spinner resolves with a clear
+                    // reason instead of hanging.
                     match nmp_nip47::active_wallet_runtime() {
                         Some(runtime) => {
                             let _ = worker_tx.send(ActorCommand::Protocol(Box::new(

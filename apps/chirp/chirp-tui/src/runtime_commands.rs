@@ -160,13 +160,11 @@ impl AppRuntime {
         )
     }
 
-    /// Dispatch `nmp.nip57.zap`. The action settles asynchronously: the
-    /// LNURL-pay HTTP round-trip surfaces the bolt11 as a `ShowToast`
-    /// (`"Zap invoice: <bolt11>"`), which the TUI auto-pays via NWC by
-    /// watching `last_error_toast` in `app::apply_nmp_event`. The body
-    /// shape is the [`nmp_nip57::ZapInput`] wire form — `recipient_pubkey`,
-    /// `amount_msats`, `lnurl` are required; `comment` /
-    /// `target_event_id` / `relays` are optional.
+    /// Dispatch `nmp.nip57.zap`. Rust owns the asynchronous LNURL fetch and
+    /// NWC pay-invoice chain; the TUI only forwards the
+    /// [`nmp_nip57::ZapInput`] wire form — `recipient_pubkey` and
+    /// `amount_msats` are required, while `lnurl`, `comment`,
+    /// `target_event_id`, and `relays` are optional.
     pub fn zap(&self, body: &Value) -> Result<String> {
         self.dispatch_action_value("nmp.nip57.zap", body)
     }
