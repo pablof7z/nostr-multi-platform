@@ -1,16 +1,16 @@
-use nmp_core::display::short_npub;
+use nmp_core::display::{short_npub, to_npub};
 use serde_json::Value;
 
 use crate::ui::nostr_content::{
     content_render_data::ContentRenderData, content_tree_wire::ContentTreeWire,
 };
-
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimelineRow {
     pub id: String,
-    pub author: String,
     pub author_pubkey: String,
+    pub author_profile: ProfileWire,
     pub content: String,
     pub created_at: u64,
     pub depth: usize,
@@ -58,16 +58,14 @@ impl TimelineRow {
         rows
     }
 
+    pub fn author_label(&self) -> &str {
+        self.author_profile.display()
+    }
+
     fn from_card(card: &Value, depth: usize, has_gap: bool) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
-        let author = card
-            .get("author_display")
-            .and_then(|display| display.get("name"))
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| short_npub(&author_pubkey));
+        let author_profile = author_profile_from_card(&author_pubkey, card);
         let content = string_field(card, "content");
         let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
         let content_tree = card
@@ -80,8 +78,8 @@ impl TimelineRow {
         let content_render = ContentRenderData::from_value(card.get("content_render"));
         Self {
             id,
-            author,
             author_pubkey,
+            author_profile,
             content: content_preview(&content),
             created_at,
             depth,
@@ -94,46 +92,21 @@ impl TimelineRow {
     }
 }
 
-/// Walk `card.content_tree.nodes`, collect every NIP-21 profile mention's
-/// primary id, validate as 64-hex, return sorted + deduped. Returns an empty
-/// `Vec` when `content_tree` is absent (cold-start, missing card) or carries
-/// no mentions — never panics on shape regressions (D1).
-///
-/// The wire shape is fixed: `WireNode` serializes with
-/// `#[serde(tag = "kind", rename_all = "snake_case")]`, so a mention is
-/// `{"kind": "mention", "uri": {"primary_id": "<hex>", "kind": "profile", ...}}`.
-fn mention_pubkeys_from_card(card: &Value) -> Vec<String> {
-    let Some(nodes) = card
-        .get("content_tree")
-        .and_then(|tree| tree.get("nodes"))
-        .and_then(Value::as_array)
-    else {
-        return Vec::new();
-    };
-    let mut set = std::collections::BTreeSet::new();
-    for node in nodes {
-        if node.get("kind").and_then(Value::as_str) != Some("mention") {
-            continue;
-        }
-        let Some(id) = node
-            .get("uri")
-            .and_then(|uri| uri.get("primary_id"))
-            .and_then(Value::as_str)
-        else {
-            continue;
-        };
-        if is_hex_pubkey_64(id) {
-            set.insert(id.to_string());
-        }
+fn author_profile_from_card(pubkey: &str, card: &Value) -> ProfileWire {
+    let display = card.get("author_display");
+    ProfileWire {
+        pubkey: pubkey.to_string(),
+        display_name: optional_string(display, "name")
+            .or_else(|| optional_string(Some(card), "author_display_name")),
+        about: optional_string(display, "about"),
+        picture_url: optional_string(display, "picture_url")
+            .or_else(|| optional_string(Some(card), "author_picture_url")),
+        nip05: optional_string(display, "nip05"),
+        npub: optional_string(display, "npub")
+            .or_else(|| optional_string(Some(card), "author_npub"))
+            .unwrap_or_else(|| to_npub(pubkey)),
+        npub_short: short_npub(pubkey),
     }
-    set.into_iter().collect()
-}
-
-/// 64-char lowercase-or-uppercase hex gate. Mirrors the C-ABI `is_hex_pubkey`
-/// guard the kernel uses on every claim/release boundary; here it filters out
-/// short/garbage mention ids before they reach the kernel.
-fn is_hex_pubkey_64(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +126,7 @@ impl RowRelationCounts {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn summary(&self) -> String {
         format!(
             "reply {}  react {}  repost {}",
@@ -218,6 +191,15 @@ fn string_field(card: &Value, key: &str) -> String {
         .to_string()
 }
 
+fn optional_string(value: Option<&Value>, key: &str) -> Option<String> {
+    value
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
     let Some(value) = relation_counts.and_then(|counts| counts.get(key)) else {
         return RowRelationCount::Loading;
@@ -230,7 +212,6 @@ fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
         _ => RowRelationCount::Loading,
     }
 }
-
 
 fn content_preview(content: &str) -> String {
     let compact = content.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -290,7 +271,11 @@ mod tests {
 
         let rows = TimelineRow::from_snapshot(&snapshot);
 
-        assert_eq!(rows[0].author, "Alice");
+        assert_eq!(rows[0].author_label(), "Alice");
+        assert_eq!(
+            rows[0].author_profile.display_name.as_deref(),
+            Some("Alice")
+        );
         assert_eq!(rows[0].relation_counts.replies, RowRelationCount::Known(2));
         assert_eq!(
             rows[0].relation_counts.reactions,

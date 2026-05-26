@@ -218,7 +218,7 @@ fn open_selected_author(state: &mut AppState, runtime: &AppRuntime) {
     match runtime.open_author(&row.author_pubkey) {
         Ok(()) => {
             state.focus(Pane::Profile);
-            state.status = format!("opened profile {}", row.author);
+            state.status = format!("opened profile {}", row.author_label());
         }
         Err(error) => state.status = format!("open profile failed: {error}"),
     }
@@ -245,10 +245,10 @@ fn follow_selected(state: &mut AppState, runtime: &AppRuntime, add: bool) {
     };
     match runtime.follow(&row.author_pubkey, add) {
         Ok(correlation_id) if add => {
-            state.track_action(correlation_id, &format!("follow {}", row.author))
+            state.track_action(correlation_id, &format!("follow {}", row.author_label()))
         }
         Ok(correlation_id) => {
-            state.track_action(correlation_id, &format!("unfollow {}", row.author))
+            state.track_action(correlation_id, &format!("unfollow {}", row.author_label()))
         }
         Err(error) => state.status = format!("follow action failed: {error}"),
     }

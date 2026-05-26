@@ -12,11 +12,12 @@ use ratatui::Frame;
 
 use crate::app::{AppState, Pane};
 use crate::timeline::{RowRelationCount, RowRelationCounts, TimelineRow};
-use crate::ui::nostr_content::nostr_content_view::NostrContentView;
 use crate::ui::colors::{
     author_color, fmt_count, format_age, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT,
     HEART, REPLY_COLOR, REPOST, SELECTED_BG,
 };
+use crate::ui::nostr_content::nostr_content_view::NostrContentView;
+use crate::ui::nostr_user::profile_name_span;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     let focused = state.focused == Pane::Detail;
@@ -129,16 +130,18 @@ fn append_main_post(
     let content_width = pane_width.saturating_sub(prefix_width);
 
     // Header
-    let author_span = Span::styled(
-        row.author.clone(),
-        Style::default()
-            .fg(author_color(&row.author_pubkey))
-            .bg(bg)
-            .add_modifier(Modifier::BOLD),
+    let author_style = Style::default()
+        .fg(author_color(&row.author_pubkey))
+        .bg(bg)
+        .add_modifier(Modifier::BOLD);
+    let (author_span, author_len) = profile_name_span(
+        &row.author_profile,
+        author_style,
+        content_width.saturating_sub(8),
     );
     let sep = Span::styled(" \u{00b7} ", Style::default().fg(DIM_TEXT).bg(bg));
     let age = format_age(row.created_at);
-    let used = row.author.chars().count() + 3 + age.chars().count();
+    let used = author_len + 3 + age.chars().count();
     let pad = pad_for(content_width, used);
     lines.push(Line::from(vec![
         prefix.clone(),
@@ -173,16 +176,18 @@ fn append_reply(
     let content_width = pane_width.saturating_sub(prefix_width);
 
     // Author line
-    let author_span = Span::styled(
-        row.author.clone(),
-        Style::default()
-            .fg(author_color(&row.author_pubkey))
-            .bg(bg)
-            .add_modifier(Modifier::BOLD),
+    let author_style = Style::default()
+        .fg(author_color(&row.author_pubkey))
+        .bg(bg)
+        .add_modifier(Modifier::BOLD);
+    let (author_span, author_len) = profile_name_span(
+        &row.author_profile,
+        author_style,
+        content_width.saturating_sub(8),
     );
     let sep = Span::styled(" \u{00b7} ", Style::default().fg(DIM_TEXT).bg(bg));
     let age = format_age(row.created_at);
-    let used = row.author.chars().count() + 3 + age.chars().count();
+    let used = author_len + 3 + age.chars().count();
     let pad = pad_for(content_width, used);
     lines.push(Line::from(vec![
         prefix.clone(),

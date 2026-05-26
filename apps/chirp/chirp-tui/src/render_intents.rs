@@ -62,6 +62,7 @@ fn intents_for_rows(rows: &[TimelineRow]) -> BTreeSet<RenderIntent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::nostr_user::profile_wire::ProfileWire;
 
     fn row(id: &str, pubkey: &str) -> TimelineRow {
         row_with_mentions(id, pubkey, Vec::new())
@@ -70,8 +71,8 @@ mod tests {
     fn row_with_mentions(id: &str, pubkey: &str, mention_pubkeys: Vec<String>) -> TimelineRow {
         TimelineRow {
             id: id.to_string(),
-            author: pubkey.to_string(),
             author_pubkey: pubkey.to_string(),
+            author_profile: profile(pubkey),
             content: String::new(),
             created_at: 1,
             depth: 0,
@@ -80,6 +81,18 @@ mod tests {
             content_tree: None,
             content_render: Default::default(),
             mention_pubkeys,
+        }
+    }
+
+    fn profile(pubkey: &str) -> ProfileWire {
+        ProfileWire {
+            pubkey: pubkey.to_string(),
+            display_name: Some(pubkey.to_string()),
+            about: None,
+            picture_url: None,
+            nip05: None,
+            npub: pubkey.to_string(),
+            npub_short: pubkey.to_string(),
         }
     }
 
