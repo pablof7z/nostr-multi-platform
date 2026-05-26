@@ -713,7 +713,7 @@ author's DM and group-chat tint), not a regression. Same disclosure pattern as V
 `crates/nmp-core/src/ffi/`) is wire transport, not the developer-facing API. The real API is
 the `dispatch_action` namespace catalog. Known namespaces are scattered across action-module
 files: `nmp.publish` (`nmp-nip01/src/action.rs`), `nmp.nip17.*` (`nmp-nip17/src/action.rs`),
-`nmp.nip57.*` (`nmp-nip57/src/action.rs`), `nmp.nip65.*` (`nmp-nip65/src/action.rs`),
+`nmp.nip57.*` (`nmp-nip57/src/action.rs`), `nmp.nip65.*` (`nmp-router/src/publish_relay_list.rs`),
 `nmp.follow` / `nmp.unfollow` / `nmp.nip25.react` (`nmp-nip02/src/action.rs`),
 `nmp.wallet.pay_invoice` (`nmp-nip57` wallet module). No catalog file exists.
 
@@ -812,7 +812,7 @@ written rationale. V-45 splits sub-item (c) into its own tracked item.
 the workspace exhibits:
 
 - `crates/nmp-core/Cargo.toml:90` — `nmp-nwc = { path = "../nmp-nwc", optional = true }`.
-  Every other NIP crate (`nmp-nip02`, `nmp-nip17`, `nmp-nip57`, `nmp-nip65`) goes
+  Every other NIP crate (`nmp-nip02`, `nmp-nip17`, `nmp-nip57`, `nmp-router`) goes
   `nip-crate → nmp-core`; only NWC inverts this so `nmp-core → nmp-nwc`. The
   module docstring at `actor/commands/wallet.rs:6` says the quiet part out
   loud: *"D0: nmp-core may depend on nmp-nwc (the protocol crate). The
@@ -1193,15 +1193,15 @@ A new crate (analogous to applesauce's `relay` package) owning:
 1. **Per-kind routing dispatch table:** given an unsigned event, select the right relay
    list kind and target pubkey, then resolve to a concrete relay URL set.
 2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in nmp-core, marked
-   "Phase 2: replace with nmp-nip65 implementation" — that future destination is here).
-3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-nip65/` (that crate is
-   too thin to stand alone; absorb it here).
+   "Phase 2: replace with nmp-router implementation" — that future destination is here).
+3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-router/src/publish_relay_list.rs`
+   (that file is too thin to stand alone; absorb it here).
 4. **Relay pool lifecycle** — connect/disconnect/reconnect, not just routing math.
 
 `nmp-core` substrate defines `trait OutboxRouter` + `trait MailboxCache`; the kernel holds
 injected `Arc<dyn>` of each. `nmp-relay-pool` provides the concrete implementations.
 
-`crates/nmp-nip65/` is deleted after the ActionModule migrates.
+`crates/nmp-router/src/publish_relay_list.rs` is deleted after the ActionModule migrates.
 
 **Migration difficulty: MEDIUM-HARD.** The `MailboxCache` trait seam exists; `OutboxRouter`
 trait needs to be designed carefully to express the per-kind dispatch without leaking NIP
