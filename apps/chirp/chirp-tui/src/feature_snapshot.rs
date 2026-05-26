@@ -91,6 +91,15 @@ pub struct OutboxLine {
     pub status_label: String,
     pub preview: String,
     pub can_retry: bool,
+    pub relays: Vec<OutboxRelayLine>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OutboxRelayLine {
+    pub relay_url: String,
+    pub status_label: String,
+    pub reason: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -186,6 +195,21 @@ fn outbox_from(projections: &Value) -> Vec<OutboxLine> {
             status_label: first_nonempty(row, &["status_label", "statusLabel", "status"]),
             preview: string_field(row, "preview"),
             can_retry: bool_field(row, "can_retry") || bool_field(row, "canRetry"),
+            relays: relay_lines_from(row),
+        })
+        .collect()
+}
+
+fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
+    row.get("relays")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|r| OutboxRelayLine {
+            relay_url: string_field(r, "relay_url"),
+            status_label: first_nonempty(r, &["status_label", "statusLabel"]),
+            reason: string_field(r, "relay_reason"),
+            message: string_field(r, "message"),
         })
         .collect()
 }

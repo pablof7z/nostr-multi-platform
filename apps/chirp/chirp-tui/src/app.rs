@@ -99,6 +99,12 @@ pub struct AppState {
     /// 4=Appearance, 5=About).
     pub settings_cursor: usize,
 
+    /// Settings → Outbox: when `Some(i)`, the outbox detail pane is open and
+    /// focused on item `i`. j/k navigate between items; Esc clears.
+    /// `None` (the default) means the outbox pane shows a flat list and the
+    /// Settings tab's j/k continues to navigate the accounts column.
+    pub outbox_selected: Option<usize>,
+
     /// Set by `:zap` while waiting for `nmp.nip57.zap` to surface the
     /// bolt11 via `ShowToast`. When the next snapshot carries a
     /// `last_error_toast` starting with `"Zap invoice: "`, the host
@@ -160,6 +166,7 @@ impl Default for AppState {
             group_composing: false,
             group_compose_buf: String::new(),
             settings_cursor: 0,
+            outbox_selected: None,
             pending_zap_pay: false,
             pending_zap_pubkey: None,
             pending_zap_event_id: None,
@@ -223,6 +230,12 @@ impl AppState {
         } else if self.settings_account_selected >= account_len {
             self.settings_account_selected = account_len - 1;
         }
+        let outbox_len = self.features.outbox.len();
+        self.outbox_selected = match self.outbox_selected {
+            Some(_) if outbox_len == 0 => None,
+            Some(i) if i >= outbox_len => Some(outbox_len - 1),
+            other => other,
+        };
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
         if let Some(feed) = shared.home_feed {
             self.apply_feed_snapshot(feed);

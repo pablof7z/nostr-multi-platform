@@ -7,13 +7,13 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::app::AppState;
-use crate::feature_snapshot::{AccountLine, OutboxLine};
+use crate::feature_snapshot::{AccountLine, OutboxLine, OutboxRelayLine};
 use crate::snapshot::RelayRow;
-use crate::ui::shared_snapshot_lines::{action_summary, relay_lines};
 use crate::ui::colors::{
     ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, LIST_BG, RELAY_CONNECTING,
     RELAY_DOWN, RELAY_OK, REPOST, SELECTED_BG, ZAP, author_color,
 };
+use crate::ui::shared_snapshot_lines::{action_summary, relay_lines};
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let cols = Layout::default()
@@ -206,6 +206,26 @@ fn build_relay_lines(relays: &[RelayRow], pane_width: usize) -> Vec<Line<'static
 }
 
 fn render_outbox(frame: &mut Frame, area: Rect, state: &AppState) {
+    // When an outbox item is selected, split the pane vertically:
+    // top = item list (with cursor), bottom = per-relay detail.
+    // When nothing is selected, render the full flat list (legacy behavior).
+    let selected = state
+        .outbox_selected
+        .filter(|i| *i < state.features.outbox.len());
+
+    if let Some(idx) = selected {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .split(area);
+        render_outbox_list(frame, rows[0], state, Some(idx));
+        render_outbox_detail(frame, rows[1], &state.features.outbox[idx]);
+    } else {
+        render_outbox_list(frame, area, state, None);
+    }
+}
+
+fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected: Option<usize>) {
     let block = Block::default()
         .borders(Borders::NONE)
         .style(Style::default().bg(DETAIL_BG))
@@ -251,8 +271,8 @@ fn render_outbox(frame: &mut Frame, area: Rect, state: &AppState) {
             Style::default().fg(DIMMER_TEXT),
         )));
     } else {
-        for item in state.features.outbox.iter().take(10) {
-            append_outbox_line(&mut lines, item, pane_width);
+        for (i, item) in state.features.outbox.iter().take(10).enumerate() {
+            append_outbox_line(&mut lines, item, pane_width, selected == Some(i));
         }
     }
 
@@ -262,19 +282,112 @@ fn render_outbox(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(paragraph, area);
 }
 
-fn append_outbox_line(lines: &mut Vec<Line<'static>>, item: &OutboxLine, pane_width: usize) {
+fn render_outbox_detail(frame: &mut Frame, area: Rect, item: &OutboxLine) {
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(ACCENT_CYAN))
+        .style(Style::default().bg(DETAIL_BG))
+        .title(Span::styled(
+            " Relays ",
+            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+        ));
+
+    let inner = block.inner(area);
+    let pane_width = inner.width as usize;
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    if item.relays.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No relay detail",
+            Style::default().fg(DIMMER_TEXT),
+        )));
+    } else {
+        for relay in item.relays.iter() {
+            append_outbox_relay_lines(&mut lines, relay, pane_width);
+        }
+    }
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .style(Style::default().bg(DETAIL_BG).fg(BODY_TEXT));
+    frame.render_widget(paragraph, area);
+}
+
+fn append_outbox_line(
+    lines: &mut Vec<Line<'static>>,
+    item: &OutboxLine,
+    pane_width: usize,
+    selected: bool,
+) {
     let status_color = outbox_status_color(&item.status_label);
+    let cursor = if selected { "> " } else { "  " };
+    let cursor_color = if selected { ACCENT_CYAN } else { DIM_TEXT };
+    let prefix_len = 2; // "> " or "  "
     let handle = truncate(&item.handle, 10);
     let status = truncate(&item.status_label, 8);
-    let title_max = pane_width.saturating_sub(handle.chars().count() + status.chars().count() + 2);
+    let title_max = pane_width
+        .saturating_sub(prefix_len + handle.chars().count() + status.chars().count() + 2);
     let title = truncate(&item.title, title_max);
     lines.push(Line::from(vec![
+        Span::styled(cursor.to_string(), Style::default().fg(cursor_color)),
         Span::styled(handle, Style::default().fg(DIM_TEXT)),
         Span::raw(" "),
         Span::styled(status, Style::default().fg(status_color)),
         Span::raw(" "),
         Span::styled(title, Style::default().fg(BODY_TEXT)),
     ]));
+}
+
+fn append_outbox_relay_lines(
+    lines: &mut Vec<Line<'static>>,
+    relay: &OutboxRelayLine,
+    pane_width: usize,
+) {
+    let (dot, dot_color) = relay_status_dot(&relay.status_label);
+    let status = truncate(&relay.status_label, 10);
+    let status_len = status.chars().count();
+    // First line: dot + url ... status
+    let url_max = pane_width.saturating_sub(2 + status_len + 1);
+    let url = truncate(&relay.relay_url, url_max);
+    let url_len = url.chars().count();
+    let pad_len = pane_width
+        .saturating_sub(2 + url_len + status_len)
+        .max(1);
+    lines.push(Line::from(vec![
+        Span::styled(format!("{dot} "), Style::default().fg(dot_color)),
+        Span::styled(url, Style::default().fg(BODY_TEXT)),
+        Span::styled(" ".repeat(pad_len), Style::default()),
+        Span::styled(status, Style::default().fg(dot_color)),
+    ]));
+    // Reason line (indented under the URL).
+    if !relay.reason.is_empty() {
+        let reason = truncate(&relay.reason, pane_width.saturating_sub(2));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(reason, Style::default().fg(DIM_TEXT)),
+        ]));
+    }
+    // Message line (further dimmed).
+    if !relay.message.is_empty() {
+        let message = truncate(&relay.message, pane_width.saturating_sub(2));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(message, Style::default().fg(DIMMER_TEXT)),
+        ]));
+    }
+    lines.push(Line::from(""));
+}
+
+fn relay_status_dot(label: &str) -> (char, ratatui::style::Color) {
+    let lower = label.to_ascii_lowercase();
+    if lower.contains("ok") || lower.contains("sent") || lower.contains("success") {
+        ('\u{25cf}', RELAY_OK)
+    } else if lower.contains("fail") || lower.contains("error") || lower.contains("timeout") {
+        ('\u{2717}', RELAY_DOWN)
+    } else {
+        // Pending, Retrying, Sending, etc.
+        ('\u{25cc}', RELAY_CONNECTING)
+    }
 }
 
 fn outbox_status_color(status: &str) -> ratatui::style::Color {
