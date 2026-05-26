@@ -32,8 +32,7 @@ The rule had two structural problems that surfaced in practice:
    ingest time using only the raw pubkey — those strings could never
    improve when a later kind:0 arrived, so DM rows and group-chat rows
    showed `npub1abc…xyz` *forever* even after the user's display name
-   loaded and rendered correctly elsewhere. (See
-   `Plans/display-separation-plan.md` §0 for the full audit.)
+   loaded and rendered correctly elsewhere.
 2. **Policy in the wrong place.** Many of the pre-formatted strings
    embedded policy a host application should be free to override —
    *which* abbreviation algorithm to use for a pubkey (8+8 vs 10+6),
@@ -248,17 +247,15 @@ for exactly this purpose.
 
 Non-Rust shells (iOS Swift, Android Kotlin, TypeScript) ship their
 own thin display helpers in this PR. A subsequent ADR may consolidate
-those helpers into a shared `nmp-display` crate with codegen ports
-(see `Plans/display-separation-plan.md` §4-D), but that is **out of
-scope** for this change.
+those helpers into a shared `nmp-display` crate with codegen ports,
+but that is **out of scope** for this change.
 
 ## What this ADR does *not* do
 
-- It does not introduce a new `nmp-display` Layer-0 crate or a D17
-  doctrine-lint rule (both proposed in
-  `Plans/display-separation-plan.md`). Those land in a follow-up if
-  the user decides the cross-platform algorithm-duplication cost is
-  worth the additional crate / codegen surface.
+- It does not introduce a new `nmp-display` Layer-0 crate or a doctrine-lint
+  rule for banned display helpers in projections. Those land in a follow-up if
+  the user decides the cross-platform algorithm-duplication cost is worth the
+  additional crate / codegen surface.
 - It does not touch the `nmp-marmot` `MarmotGroupRow::display_name`
   fallback (`"Untitled group"` when `name` is empty), the
   `MarmotGroupRow::initials` 2-char extractor, or
@@ -276,7 +273,5 @@ scope** for this change.
 
 - `docs/aim.md` §2 (post-`ec8decad`) — the current canonical doctrine
   statement.
-- `Plans/display-separation-plan.md` — the full audit and the
-  multi-PR plan this ADR's PR implements as "Option A".
 - Commit `ec8decad` — `doctrine: backend sends raw data, presentation
   layers format`.

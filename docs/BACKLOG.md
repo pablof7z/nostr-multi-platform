@@ -2,13 +2,13 @@
 
 > Tracker for active violations, pending user decisions, and the ordered v1 feature backlog.
 > Supersedes `docs/perf/pending-user-decisions.md` (append-only history log, kept for audit)
-> and `docs/arch-review-queue.md`.
+> and the former `docs/arch-review-queue.md` (deleted after open items were folded here).
 >
 > Companion files:
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **76bc8547** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **3ce6f45c** (2026-05-26). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -38,6 +38,54 @@ explicit coordination.
 
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
+
+### V-57 · 2026-05-26 architecture audit follow-up queue [HIGH · priority tracker]
+
+**Scope:** this is the canonical roll-up for the six-agent architecture audit run on
+2026-05-26. PR #578 removes the duplicate planning/status authorities; the remaining
+findings below are ordered by architectural risk. When a slice gets a dedicated V/PD entry
+or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
+
+**Priority order:**
+1. **P1 — remove upward dependencies and app policy from reusable crates.**
+   `crates/nmp-signer-broker/Cargo.toml:17-23` depends on `nmp-core`/`nmp-ffi` while the
+   crate is meant to be a reusable broker; `crates/nmp-router/Cargo.toml:13-17` depends on
+   `nmp-ffi` for registration; `crates/nmp-marmot/src/identity.rs:1-6`, `:15`, and `:31`
+   keep Chirp identity naming/keyring policy inside a generic Marmot crate; and
+   `crates/nmp-app-gallery/src/android.rs:1-5` is an app JNI adapter living under `crates/`.
+   **Next step:** split pure protocol/broker crates from app/FFI adapters, starting with the
+   signer-broker and router registration seams.
+2. **P2 — move protocol policy back out of `nmp-core`.**
+   `crates/nmp-core/src/actor/commands/relays.rs:29-35` duplicates NIP-65 kind `10002`
+   publishing policy; `crates/nmp-core/src/actor/commands/publish.rs:16-21`, `:297-305`,
+   and `:377-389` hardcode kind `1059` gift-wrap routing policy. **Next step:** protocol
+   crates should declare publish/routing constraints as typed policy data; core should enforce
+   the abstract constraint without naming NIP kinds.
+3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
+   `apps/chirp/chirp-tui/src/commands.rs:169-205` resolves lightning addresses and builds
+   zap input in the TUI; `apps/chirp/chirp-tui/src/app.rs:99-105` and `:168-178` use a
+   pending flag plus toast-string parsing to auto-pay; `apps/chirp/chirp-tui/src/runtime_commands.rs:251-261`
+   bypasses the canonical action door for Marmot; and
+   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two protocol
+   publishes while tracking only one correlation id. **Next step:** expose composite Rust
+   actions/action-stage projections for zap, Marmot rich results, and relay-settings publish.
+4. **P4 — make wasm use the same snapshot and error contract as native.**
+   `crates/nmp-wasm/src/snapshot.rs:80-84` ignores the `KernelReducer` and hand-builds a
+   status-shaped snapshot; `crates/nmp-wasm/src/lib.rs:70-78` exposes public errors as
+   `Result<JsValue, JsValue>`; `crates/nmp-wasm/src/lib.rs:165-170` rejects a promise for
+   invalid JSON. **Next step:** route wasm snapshots through the canonical kernel update path
+   and return caller-visible failures as data envelopes.
+5. **P5 — close native update-loop and envelope discipline gaps.**
+   `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
+   polls for updates; `crates/nmp-app-gallery/src/android.rs:221-228` returns `null` on
+   `recv_timeout`; and `ios/Chirp/Chirp/Bridge/KernelBridge.swift:603-618` identifies panic
+   frames by substring before decoding the envelope. **Next step:** use blocking/pushed update
+   delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.
+6. **P6 — strengthen enforcement so these regressions trip earlier.**
+   V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
+   dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
+   lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
+   plus explicit allowlists for sanctioned adapter crates.
 
 ### V-01 · nmp-wasm stub — multi-platform claim is false [CRITICAL · staged fix in progress]
 
@@ -1354,9 +1402,9 @@ relays even when the active account has a NIP-65 write set covering them.
 
 ### V-53 · iOS Swift sweep for raw-data projection doctrine (ADR-0032) [MEDIUM · follow-up to ec8decad / display-separation PR]
 
-**What we did:** ADR-0032 (commit ef9a9e50) executes Option A of
-`Plans/display-separation-plan.md` — the kernel and the four Layer-4 NIP
-projections now ship raw protocol data; presentation layers own all formatting.
+**What we did:** ADR-0032 (commit ef9a9e50) records the raw-data projection
+doctrine — the kernel and the four Layer-4 NIP projections now ship raw
+protocol data; presentation layers own all formatting.
 Rust shells (chirp-tui, nmp-desktop), the web TS shell, and the Android model +
 TimelineScreen Compose row are aligned with the new doctrine.
 
@@ -1404,6 +1452,52 @@ in `Bridge/Generated/KernelTypes.generated.swift` regenerate automatically
 once `nmp-codegen`'s Swift emitter is taught the new shape (the
 `gen modules --check` gate against `apps/fixture/nmp.toml` is currently
 green because the fixture types do not include these projection shapes).
+
+### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX]
+
+**Verified:** `crates/nmp-core/src/actor/commands/identity.rs:826`, `:864`, and
+`:1019` still call the synchronous `sign_active` path while publishing the
+initial kind:0 metadata, kind:10002 relay list, and kind:3 follows during
+`create_account`. `sign_active` is bounded by `REMOTE_SIGN_TIMEOUT` (5s), but
+a remote signer can still stall the actor during account creation.
+
+**Impact:** the non-blocking signing path exists for normal publish/react/follow
+flows, but onboarding remains a residual blocking path for bunker accounts.
+
+**Correct fix:** move the three cold-start publishes onto the existing
+`sign_active_nonblocking` / `PendingSign` settlement path, preserving explicit
+cold-start relay targets and D6 toast surfaces for "no cold-start relay".
+
+### V-55 · `LocalKeySigner` cannot zero all `nostr::Keys` secret copies [MEDIUM · upstream-blocked]
+
+**Verified:** `crates/nmp-signers/src/signers/local.rs:35-46` documents that
+`nostr::Keys` retains the secret in private `secp256k1::SecretKey` and cached
+`Keypair` storage that NMP cannot wipe. NMP keeps a redundant
+`Zeroizing<[u8; 32]>` copy, which reduces but does not eliminate recoverable
+secret material in freed memory.
+
+**Correct fix:** upgrade to upstream `nostr` / `secp256k1` support that exposes
+a zeroizable key type or mutable erasure hook, then delete the partial-mitigation
+comment and prove all in-memory secret copies wipe on drop. Until upstream support
+exists, do not claim full zeroization for local-key accounts.
+
+### V-56 · Content-level profile mentions do not feed profile discovery [MEDIUM · v1 UX]
+
+**Verified:** `crates/nmp-core/src/kernel/ingest/timeline.rs:132-138` only feeds
+event tags (`p`/`e`/`q`) and the note author into discovery/profile fetch.
+`crates/nmp-core/src/subs/unknown_ids.rs:121-128` already exposes
+`UnknownIds::note_pubkey`, and `crates/nmp-content/src/tokenizer.rs:206-210`
+extracts `nostr:npub1...` / `nostr:nprofile1...` mentions, but no production
+ingest path connects those content-extracted pubkeys to `UnknownIds`.
+
+**Impact:** a visible `nostr:npub1...` mention that is not also present in a
+`p` tag may render indefinitely without a kind:0 profile fetch.
+
+**Correct fix:** add a D8-clean content-mention demand producer that extracts
+profile pubkeys during ingest and records them through the existing
+`UnknownIds::note_pubkey` path. The kind:0 re-fetch after kind:10002 arrival is
+already implemented via `refresh_profile_after_mailbox`; do not duplicate that
+part of the deleted scratch plan.
 
 ---
 
@@ -1497,6 +1591,17 @@ Full per-symbol inventory, Theme A doctrine, batch-by-batch namespace map, and
 adjacent hygiene items (header drift in `NmpCore.h`; signer-broker /
 nmp-app-chirp symbols outside this calendar's scope) live in
 [`docs/architecture-audit/ffi-deprecation-calendar.md`](architecture-audit/ffi-deprecation-calendar.md).
+
+### PD-041 · Marmot/NWC scope reconciliation — NEEDS OWNER DECISION
+
+`docs/plan/scope-adjustments-2026-05-18.md` deferred M9 DMs/messaging and M12
+Wallet to post-v1, but Marmot/MLS (`nmp-marmot`, `nmp-nip29`, `nmp-nip59`) and
+NWC + NIP-57 (`nmp-nwc`, `nmp-nip57`) were subsequently built and wired.
+
+**Decision needed:** either formally accept the built Marmot/NWC surfaces into
+the v1 support matrix, or label them experimental/Labs/post-v1 so `docs/plan.md`,
+`docs/plan/post-v1.md`, product copy, and validation expectations do not imply
+contradictory scope.
 
 ---
 
@@ -1700,6 +1805,9 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Second non-social app (shipped product) | PD-033-A decision needed first; the v1 spike is a thesis test, not a shipped product |
 | Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. Parity work blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
 | Additional Nostr-aware component packs | Content rendering moved to F-08 / M16. Post-v1 packs cover broader reusable app blocks such as account switchers, diagnostics inspectors, full thread screens, auth blocks, and non-content templates. |
+| Raw-data projection follow-ups | ADR-0032 is canonical. Post-v1 work may add a shared `nmp-display` helper/codegen surface, a doctrine-lint rule for banned display helpers in projections, and a review of free-form metadata fallbacks. |
+| Chirp TUI approach-B visual refresh | The top-level scratch plans were deleted. If this work resumes, track it as a scoped TUI UX item here or in WIP while a branch is active; preserve existing `chirp-tui` runtime/bridge/command wiring and keep rendering modules under the LOC ceiling. |
+| Indexer-republish follow-ups | The default-on replaceable-event republish pipeline exists in `nmp-core::actor::indexer_republish`. Deferred add-ons are runtime toggles, telemetry, and parameterized replaceable support only if product demand appears. |
 
 ---
 

@@ -99,7 +99,8 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not; component-registry/content-kit plan added in [`plan/m16-component-registry.md`](plan/m16-component-registry.md) |
 | M17 v1 release | pending | ❌ Pending |
 
-Detail per milestone lives in [`docs/plan/m*.md`](plan/). The fresh codebase inventory and divergence analysis live in [`docs/plan/status.md`](plan/status.md).
+Detail per milestone lives in [`docs/plan/m*.md`](plan/). Active violations,
+pending decisions, and feature backlog items live in [`docs/BACKLOG.md`](BACKLOG.md).
 
 ---
 
@@ -159,7 +160,6 @@ Where to look for detail:
 - [`docs/product-spec.md`](product-spec.md) + [`docs/product-spec/doctrine.md`](product-spec/doctrine.md) — full doctrine
 - [`docs/BACKLOG.md`](BACKLOG.md) — active violations, pending decisions, v1 backlog
 - [`WIP.md`](../WIP.md) — live in-flight tracker
-- [`docs/plan/status.md`](plan/status.md) — honest codebase inventory + divergence
 - [`docs/plan/principles.md`](plan/principles.md) — execution principles
 - [`docs/plan/subsystem-matrix.md`](plan/subsystem-matrix.md) — subsystem coverage + NIP roadmap
 - [`docs/plan/parallelization.md`](plan/parallelization.md) — parallelization opportunities

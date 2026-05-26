@@ -91,7 +91,7 @@ patch rather than a per-view scan (`view-deltas-and-projections.md:110-164`).
 
 ## reactivity-bench validation (run 002, report 1779051783)
 
-`status.md:13` records run 002 passing all ADR-0001..0004 gates. Harness:
+Run 002 passed all ADR-0001..0004 gates. Harness:
 `crates/nmp-testing/bin/reactivity-bench/main.rs` (counting `GlobalAlloc`,
 gate exit code 2 on failure). Excerpt from
 `docs/perf/reactivity-bench/1779051783-run-002.md` (overall: **passed**):
