@@ -8,5 +8,6 @@ pub mod nostr_kind_registry;
 pub use embedded_event::EmbeddedEvent;
 pub use kind_renderer::{KindRenderer, KindRendererRef};
 pub use nostr_kind_registry::{
+    DefaultArticleRenderer, DefaultHighlightRenderer, DefaultProfileRenderer,
     DefaultShortNoteRenderer, DefaultUnknownRenderer, NostrKindRegistry,
 };

@@ -12,8 +12,13 @@
 		0491E060707CBE219C36709A /* NostrContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D9E80972B82352D9DF1152E /* NostrContentView.swift */; };
 		0637A1696092C8775547F3BB /* ContentTreeWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94444DA5ACC2E7B1F880665C /* ContentTreeWire.swift */; };
 		0CF4C06BB3CFF2587C788BF1 /* NostrQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F9256608B19032CA625722F /* NostrQuoteCard.swift */; };
+		1567440E5CAD34C549BAE09B /* EmbeddedEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F773C1AE333707F031437E /* EmbeddedEvent.swift */; };
 		20DDB9992ED10F9F4EC89648 /* NostrNpubChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */; };
+		20E58F5EBD42EAF8ED46EAC4 /* EmbedKindProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7930F5278836668225735EC5 /* EmbedKindProjection.swift */; };
+		29231718AE0080B8DBB38E54 /* NostrKindRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630AE36F4D7EA414FEA9020A /* NostrKindRegistry.swift */; };
 		328AFCD8867E60202F152596 /* RelayComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4EB3843AF142754F973865 /* RelayComponentPages.swift */; };
+		35B6AC6851702565602DBA2F /* EventClaimSink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B8FCD1C122F2D5AB3F55E2 /* EventClaimSink.swift */; };
+		3AFBC7EC900132F25AFE4868 /* EmbedChromeContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 569D0431681AFE8CE2F12779 /* EmbedChromeContainer.swift */; };
 		4E04939850D1F5920F4C7DFF /* NostrAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */; };
 		4F5290134DE6177279101B4A /* NostrMentionChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFF9A2206748816172F8E00 /* NostrMentionChip.swift */; };
 		5134A56E7710BF1650E143F4 /* NostrContentGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70093462B21EFEE184D5AB6D /* NostrContentGrouping.swift */; };
@@ -21,40 +26,53 @@
 		5BE3D6D2819725E8A9725BCC /* RegistrySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853208E9878618BC9FB930B6 /* RegistrySection.swift */; };
 		60232E17601576EC053AB29D /* ComponentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4800B56EE8E057B51213394E /* ComponentListView.swift */; };
 		668CC9B523ECD4BE9A39B3EB /* ContentComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 603752C0D6DEB2C4CDA84CEC /* ContentComponentPages.swift */; };
+		71304E1C9E4249C60776304F /* HighlightEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422775FE03AEBC41D31A9CEB /* HighlightEmbed.swift */; };
 		72655451AE46362C0AFF4619 /* NostrMinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FAE1282D8D5B6BA540C7FCD /* NostrMinimalContentView.swift */; };
 		7A7FE14D11B5567D98FF93EA /* DirectComponentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C50496D401A334EEF5199E2 /* DirectComponentView.swift */; };
+		866EF612F73C566B3F4574F6 /* EmbedComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91341CF5FBEEA10908271E1 /* EmbedComponentPages.swift */; };
+		8B08E0DACA4841D443483BD0 /* EmbedHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5E64D5A238551D49F8E4E9 /* EmbedHost.swift */; };
 		91F5C25A561E0C6055DB8EB7 /* NostrProfileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178F68FA938F19E5CC76902B /* NostrProfileName.swift */; };
 		9879ED595B26E60D623D2111 /* SectionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C0C0410ED532F645E1EF0E /* SectionListView.swift */; };
 		9D9087C9F1760A51C0B0FDBA /* NostrUserCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */; };
 		AF4382BE1C4738BCEC1A774F /* NostrLoginBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 777B5C73F0DB8699B6484909 /* NostrLoginBlock.swift */; };
+		B12BEBD352C83894013067EB /* NostrRelayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D80853B9C9FD81C72BBDC36 /* NostrRelayList.swift */; };
 		B460476F92691955D51D5333 /* NostrMediaGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F15A1B2EBC5BC92ABA4E550 /* NostrMediaGrid.swift */; };
 		BAC8BCD4BF99A624C0AEAEBE /* ProfileWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */; };
 		BB6B2FC426EB10FAB6900CAD /* NmpGalleryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6102E81F7EF3C37BED7D66D /* NmpGalleryApp.swift */; };
 		C238056A192E8A0398B52082 /* ComponentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F17B56B043B229FC30FB1DE /* ComponentDetailView.swift */; };
+		C5FC7049E3C92D696C8CE83D /* ArticleEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BE1D72BC236AFA1DFE88353 /* ArticleEmbed.swift */; };
 		E1DF9EAE22735120704CBF16 /* GalleryKernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8178DFF99C0D4CD59A662BEF /* GalleryKernelBridge.swift */; };
 		EE497ADFA69269C53C369539 /* GalleryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE182FEFD5F2DAA789D2993 /* GalleryModel.swift */; };
 		EFEF89C5235140656F9E248B /* UserComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F4D3AF10C138FD275465E9 /* UserComponentPages.swift */; };
-		9D61D09D600012DA72DC1EED /* NostrRelayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97F06A5FE454EE4F4D22E03 /* NostrRelayList.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0BE1D72BC236AFA1DFE88353 /* ArticleEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleEmbed.swift; sourceTree = "<group>"; };
 		178F68FA938F19E5CC76902B /* NostrProfileName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrProfileName.swift; sourceTree = "<group>"; };
+		2A5E64D5A238551D49F8E4E9 /* EmbedHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedHost.swift; sourceTree = "<group>"; };
 		2F17B56B043B229FC30FB1DE /* ComponentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentDetailView.swift; sourceTree = "<group>"; };
 		335610730ED35640701DBD2A /* GalleryNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryNavigation.swift; sourceTree = "<group>"; };
 		3789C28A96FC1FC7C5E83F9B /* NostrContentRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrContentRenderer.swift; sourceTree = "<group>"; };
 		3D9E80972B82352D9DF1152E /* NostrContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrContentView.swift; sourceTree = "<group>"; };
 		3F15A1B2EBC5BC92ABA4E550 /* NostrMediaGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrMediaGrid.swift; sourceTree = "<group>"; };
+		422775FE03AEBC41D31A9CEB /* HighlightEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightEmbed.swift; sourceTree = "<group>"; };
+		42F773C1AE333707F031437E /* EmbeddedEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedEvent.swift; sourceTree = "<group>"; };
 		4800B56EE8E057B51213394E /* ComponentListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentListView.swift; sourceTree = "<group>"; };
 		4FFF9A2206748816172F8E00 /* NostrMentionChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrMentionChip.swift; sourceTree = "<group>"; };
 		548E8DB5F88EC311C762FE1F /* NmpGallery.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NmpGallery.h; sourceTree = "<group>"; };
+		569D0431681AFE8CE2F12779 /* EmbedChromeContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedChromeContainer.swift; sourceTree = "<group>"; };
 		57492EBB355A6040AB0390B7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		58B8FCD1C122F2D5AB3F55E2 /* EventClaimSink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventClaimSink.swift; sourceTree = "<group>"; };
 		5FAE1282D8D5B6BA540C7FCD /* NostrMinimalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrMinimalContentView.swift; sourceTree = "<group>"; };
 		603752C0D6DEB2C4CDA84CEC /* ContentComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentComponentPages.swift; sourceTree = "<group>"; };
+		630AE36F4D7EA414FEA9020A /* NostrKindRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKindRegistry.swift; sourceTree = "<group>"; };
 		64076DAB0A088C7B05FF6CC6 /* NmpGallery.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NmpGallery.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6DE182FEFD5F2DAA789D2993 /* GalleryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryModel.swift; sourceTree = "<group>"; };
 		6F9256608B19032CA625722F /* NostrQuoteCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrQuoteCard.swift; sourceTree = "<group>"; };
 		70093462B21EFEE184D5AB6D /* NostrContentGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrContentGrouping.swift; sourceTree = "<group>"; };
 		777B5C73F0DB8699B6484909 /* NostrLoginBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrLoginBlock.swift; sourceTree = "<group>"; };
+		7930F5278836668225735EC5 /* EmbedKindProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedKindProjection.swift; sourceTree = "<group>"; };
+		7D80853B9C9FD81C72BBDC36 /* NostrRelayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrRelayList.swift; sourceTree = "<group>"; };
 		8178DFF99C0D4CD59A662BEF /* GalleryKernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryKernelBridge.swift; sourceTree = "<group>"; };
 		837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrUserCard.swift; sourceTree = "<group>"; };
 		853208E9878618BC9FB930B6 /* RegistrySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrySection.swift; sourceTree = "<group>"; };
@@ -65,7 +83,7 @@
 		C6102E81F7EF3C37BED7D66D /* NmpGalleryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NmpGalleryApp.swift; sourceTree = "<group>"; };
 		E0840B3061A60EE899BADEB1 /* NostrNip05Badge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrNip05Badge.swift; sourceTree = "<group>"; };
 		E2F4D3AF10C138FD275465E9 /* UserComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserComponentPages.swift; sourceTree = "<group>"; };
-		A97F06A5FE454EE4F4D22E03 /* NostrRelayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrRelayList.swift; sourceTree = "<group>"; };
+		E91341CF5FBEEA10908271E1 /* EmbedComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedComponentPages.swift; sourceTree = "<group>"; };
 		E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWire.swift; sourceTree = "<group>"; };
 		EA4EB3843AF142754F973865 /* RelayComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayComponentPages.swift; sourceTree = "<group>"; };
 		F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrAvatar.swift; sourceTree = "<group>"; };
@@ -92,6 +110,7 @@
 			isa = PBXGroup;
 			children = (
 				603752C0D6DEB2C4CDA84CEC /* ContentComponentPages.swift */,
+				E91341CF5FBEEA10908271E1 /* EmbedComponentPages.swift */,
 				853208E9878618BC9FB930B6 /* RegistrySection.swift */,
 				EA4EB3843AF142754F973865 /* RelayComponentPages.swift */,
 				E2F4D3AF10C138FD275465E9 /* UserComponentPages.swift */,
@@ -102,6 +121,8 @@
 		6F90F52185CF67AF12F3A5F5 /* Bridge */ = {
 			isa = PBXGroup;
 			children = (
+				2A5E64D5A238551D49F8E4E9 /* EmbedHost.swift */,
+				58B8FCD1C122F2D5AB3F55E2 /* EventClaimSink.swift */,
 				8178DFF99C0D4CD59A662BEF /* GalleryKernelBridge.swift */,
 				6DE182FEFD5F2DAA789D2993 /* GalleryModel.swift */,
 				548E8DB5F88EC311C762FE1F /* NmpGallery.h */,
@@ -121,11 +142,17 @@
 		B7083EC5E8F939CB044330EC /* Registry */ = {
 			isa = PBXGroup;
 			children = (
+				0BE1D72BC236AFA1DFE88353 /* ArticleEmbed.swift */,
 				94444DA5ACC2E7B1F880665C /* ContentTreeWire.swift */,
+				569D0431681AFE8CE2F12779 /* EmbedChromeContainer.swift */,
+				42F773C1AE333707F031437E /* EmbeddedEvent.swift */,
+				7930F5278836668225735EC5 /* EmbedKindProjection.swift */,
+				422775FE03AEBC41D31A9CEB /* HighlightEmbed.swift */,
 				F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */,
 				70093462B21EFEE184D5AB6D /* NostrContentGrouping.swift */,
 				3789C28A96FC1FC7C5E83F9B /* NostrContentRenderer.swift */,
 				3D9E80972B82352D9DF1152E /* NostrContentView.swift */,
+				630AE36F4D7EA414FEA9020A /* NostrKindRegistry.swift */,
 				777B5C73F0DB8699B6484909 /* NostrLoginBlock.swift */,
 				3F15A1B2EBC5BC92ABA4E550 /* NostrMediaGrid.swift */,
 				4FFF9A2206748816172F8E00 /* NostrMentionChip.swift */,
@@ -134,7 +161,7 @@
 				A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */,
 				178F68FA938F19E5CC76902B /* NostrProfileName.swift */,
 				6F9256608B19032CA625722F /* NostrQuoteCard.swift */,
-				A97F06A5FE454EE4F4D22E03 /* NostrRelayList.swift */,
+				7D80853B9C9FD81C72BBDC36 /* NostrRelayList.swift */,
 				837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */,
 				E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */,
 			);
@@ -224,19 +251,28 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C5FC7049E3C92D696C8CE83D /* ArticleEmbed.swift in Sources */,
 				C238056A192E8A0398B52082 /* ComponentDetailView.swift in Sources */,
 				60232E17601576EC053AB29D /* ComponentListView.swift in Sources */,
 				668CC9B523ECD4BE9A39B3EB /* ContentComponentPages.swift in Sources */,
 				0637A1696092C8775547F3BB /* ContentTreeWire.swift in Sources */,
 				7A7FE14D11B5567D98FF93EA /* DirectComponentView.swift in Sources */,
+				3AFBC7EC900132F25AFE4868 /* EmbedChromeContainer.swift in Sources */,
+				866EF612F73C566B3F4574F6 /* EmbedComponentPages.swift in Sources */,
+				8B08E0DACA4841D443483BD0 /* EmbedHost.swift in Sources */,
+				20E58F5EBD42EAF8ED46EAC4 /* EmbedKindProjection.swift in Sources */,
+				1567440E5CAD34C549BAE09B /* EmbeddedEvent.swift in Sources */,
+				35B6AC6851702565602DBA2F /* EventClaimSink.swift in Sources */,
 				E1DF9EAE22735120704CBF16 /* GalleryKernelBridge.swift in Sources */,
 				EE497ADFA69269C53C369539 /* GalleryModel.swift in Sources */,
 				03079DBA697D8C4F2A73BA4A /* GalleryNavigation.swift in Sources */,
+				71304E1C9E4249C60776304F /* HighlightEmbed.swift in Sources */,
 				BB6B2FC426EB10FAB6900CAD /* NmpGalleryApp.swift in Sources */,
 				4E04939850D1F5920F4C7DFF /* NostrAvatar.swift in Sources */,
 				5134A56E7710BF1650E143F4 /* NostrContentGrouping.swift in Sources */,
 				58B191EA9596A743E4872877 /* NostrContentRenderer.swift in Sources */,
 				0491E060707CBE219C36709A /* NostrContentView.swift in Sources */,
+				29231718AE0080B8DBB38E54 /* NostrKindRegistry.swift in Sources */,
 				AF4382BE1C4738BCEC1A774F /* NostrLoginBlock.swift in Sources */,
 				B460476F92691955D51D5333 /* NostrMediaGrid.swift in Sources */,
 				4F5290134DE6177279101B4A /* NostrMentionChip.swift in Sources */,
@@ -245,7 +281,7 @@
 				20DDB9992ED10F9F4EC89648 /* NostrNpubChip.swift in Sources */,
 				91F5C25A561E0C6055DB8EB7 /* NostrProfileName.swift in Sources */,
 				0CF4C06BB3CFF2587C788BF1 /* NostrQuoteCard.swift in Sources */,
-				9D61D09D600012DA72DC1EED /* NostrRelayList.swift in Sources */,
+				B12BEBD352C83894013067EB /* NostrRelayList.swift in Sources */,
 				9D9087C9F1760A51C0B0FDBA /* NostrUserCard.swift in Sources */,
 				BAC8BCD4BF99A624C0AEAEBE /* ProfileWire.swift in Sources */,
 				5BE3D6D2819725E8A9725BCC /* RegistrySection.swift in Sources */,

@@ -484,6 +484,18 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::ClaimEvent { uri, consumer_id } => {
+            let outbound = ctx
+                .kernel
+                .claim_event(uri, consumer_id, ctx.relays_ready);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        ActorCommand::ReleaseEvent { uri, consumer_id } => {
+            let outbound = ctx.kernel.release_event(&uri, &consumer_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::CloseAuthor { pubkey } => {
             let outbound = ctx.kernel.close_author(&pubkey);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

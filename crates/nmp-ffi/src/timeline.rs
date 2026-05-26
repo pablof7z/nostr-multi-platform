@@ -122,6 +122,57 @@ pub extern "C" fn nmp_app_release_profile(
     });
 }
 
+/// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted
+/// per `consumer_id`; the kernel fetches the event over the OneshotApi
+/// (single-writer interest registration — D4) when not yet in the store,
+/// and surfaces it in snapshot `projections.claimed_events` keyed by
+/// `primary_id` (event-id hex for `nevent`/`note`; `"kind:pubkey:d"` for
+/// `naddr`). FFI-clean (D6): a null/invalid argument is a silent no-op,
+/// never a panic. D8: forwards to the actor; no polling, no sync wait.
+#[no_mangle]
+pub extern "C" fn nmp_app_claim_event(
+    app: *mut NmpApp,
+    uri: *const c_char,
+    consumer_id: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(uri) = c_string_argument(uri) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+
+    app.send_cmd(ActorCommand::ClaimEvent { uri, consumer_id });
+}
+
+/// Release a previously-claimed embedded event (T180 / ADR-0034). Mirrors
+/// `nmp_app_release_profile`: decrements the per-consumer refcount in the
+/// kernel's `event_claims` table; the kernel drops the row when the set
+/// is empty. The OneshotApi interest itself is released EOSE-driven via
+/// the existing `complete_unknown_oneshot` path. FFI-clean (D6): a null
+/// or invalid argument is a silent no-op. D8: forwards to the actor.
+#[no_mangle]
+pub extern "C" fn nmp_app_release_event(
+    app: *mut NmpApp,
+    uri: *const c_char,
+    consumer_id: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(uri) = c_string_argument(uri) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+
+    app.send_cmd(ActorCommand::ReleaseEvent { uri, consumer_id });
+}
+
 #[no_mangle]
 pub extern "C" fn nmp_app_close_author(app: *mut NmpApp, pubkey: *const c_char) {
     let Some(app) = app_ref(app) else {

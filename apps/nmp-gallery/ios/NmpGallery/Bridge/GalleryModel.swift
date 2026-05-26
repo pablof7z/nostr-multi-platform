@@ -39,17 +39,16 @@ let GALLERY_PROFILE_CONSUMER_ID = "gallery"
 ///
 ///   • `wss://purplepag.es`  — canonical kind:0 / kind:10002 indexer
 ///     (`FALLBACK_INDEXER_RELAY` in `crates/nmp-core/src/relay.rs`).
-///   • `wss://relay.damus.io`, `wss://nos.lol` — redundancy so pablof7z's
-///     write relays (discovered via kind:10002) remain reachable even if one
-///     of them is throttling at the moment of the screenshot.
+///   • `wss://relay.primal.net` — primal's indexed mirror; carries pablof7z's
+///     own kind:1/9802/30023 events used by the embed showcase. Matches the
+///     TUI gallery's relay set so both surfaces resolve the same embeds.
 ///
 /// Role `"both"` lets the same socket carry inbox + outbox legs of the
 /// planner's interest set (the diagnostic lane is `RelayRole::Content`; the
 /// NIP-65 read/write split lives on the `RelayEditRow`, not on the pool key).
 let GALLERY_BOOTSTRAP_RELAYS: [String] = [
     "wss://purplepag.es",
-    "wss://relay.damus.io",
-    "wss://nos.lol",
+    "wss://relay.primal.net",
 ]
 
 /// Wire-shape of `projections.author_view.profile` — the kernel's
@@ -257,8 +256,21 @@ final class GalleryModel {
     private(set) var lastDecodeError: String?
     private let kernel: GalleryKernelHandle
 
+    /// Embed-projection host. Reads `projections.claimed_events` from every
+    /// snapshot push (M16 / ADR-0034) so kind-dispatched embed renderers see
+    /// resolved envelopes without re-parsing the kernel wire.
+    let embedHost = EmbedHost()
+
+    /// Concrete `EventClaimSinkProtocol` impl forwarded into the SwiftUI
+    /// environment so `EmbeddedEvent` views can fire `claim`/`release` against
+    /// the gallery's live kernel. Stored (not computed / lazy) so the
+    /// `@Observable` macro can synthesize storage.
+    let embedClaimSink: EventClaimSinkProtocol
+
     init() {
-        self.kernel = GalleryKernelHandle()
+        let kernel = GalleryKernelHandle()
+        self.kernel = kernel
+        self.embedClaimSink = KernelEventClaimSink(kernel: kernel)
     }
 
     /// One-shot bootstrap. Wires the push callback, starts the kernel actor,
@@ -300,6 +312,14 @@ final class GalleryModel {
 
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
+    ///
+    /// The decode is split into two reads of the same JSON blob:
+    ///   1. Typed `GallerySnapshot` decode — author_view / mention_profiles /
+    ///      accounts. Lean: stays decoupled from any embed-projection drift.
+    ///   2. Raw JSONSerialization read passed through to `embedHost` so the
+    ///      kind-dispatched embed projection (`projections.claimed_events`)
+    ///      flows into the SwiftUI environment without expanding the typed
+    ///      `GallerySnapshot` shape.
     func decode(frame: Data) {
         guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
             return
@@ -315,6 +335,14 @@ final class GalleryModel {
             let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
             self.lastDecodeError = msg
+        }
+
+        // Embed-projection ingest. Separate from the typed decode so a
+        // claimed_events shape change cannot break user/relay/content pages.
+        if let raw = try? JSONSerialization.jsonObject(with: data),
+           let dict = raw as? [String: Any]
+        {
+            embedHost.update(fromSnapshotJSON: dict)
         }
     }
 

@@ -1,5 +1,7 @@
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashSet};
 
+use nmp_content::EventClaimSink;
 use nmp_content::embed_projection::EmbeddedEventEnvelope;
 use ratatui::{
     style::{Color, Modifier, Style},
@@ -25,6 +27,13 @@ pub struct NostrContentView<'a> {
     media_images: &'a [(&'a str, &'a Protocol)],
     kind_registry: Option<&'a NostrKindRegistry>,
     embedded_events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
+    claim_sink: Option<&'a dyn EventClaimSink>,
+    consumer_id: Option<&'a str>,
+    // Per-render-pass seen-set. `Widget::render` consumes `self`, so the widget
+    // is built fresh by the builder each frame — this set is naturally scoped
+    // to a single render pass and dedups multiple references to the same URI
+    // within one frame (D8: edge-triggered by render, no polling).
+    claimed_this_frame: RefCell<HashSet<String>>,
 }
 
 impl<'a> NostrContentView<'a> {
@@ -35,6 +44,9 @@ impl<'a> NostrContentView<'a> {
             media_images: &[],
             kind_registry: None,
             embedded_events: None,
+            claim_sink: None,
+            consumer_id: None,
+            claimed_this_frame: RefCell::new(HashSet::new()),
         }
     }
 
@@ -58,6 +70,23 @@ impl<'a> NostrContentView<'a> {
         events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
     ) -> Self {
         self.embedded_events = events;
+        self
+    }
+
+    /// Optional host-side sink used to initiate an upstream fetch the first
+    /// time a `nostr:` event URI is encountered in a render pass (ADR-0034 /
+    /// M16). Defaults to `None`, which preserves fixture-only behaviour: no
+    /// claims are issued and only pre-populated `embedded_events` resolve.
+    pub fn claim_sink(mut self, sink: Option<&'a dyn EventClaimSink>) -> Self {
+        self.claim_sink = sink;
+        self
+    }
+
+    /// Optional consumer identifier passed alongside each `claim` call so the
+    /// kernel can refcount per-host. Defaults to `None`; if either this or
+    /// `claim_sink` is unset, the claim path is skipped entirely.
+    pub fn consumer_id(mut self, id: Option<&'a str>) -> Self {
+        self.consumer_id = id;
         self
     }
 

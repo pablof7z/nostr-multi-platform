@@ -207,16 +207,22 @@ fn project_uri(uri: &NostrUri) -> Option<WireNostrUri> {
             event_kind: *kind,
         },
         NostrUri::Address {
-            identifier: _,
+            identifier,
             pubkey,
             kind,
             relays,
         } => WireNostrUri {
             uri: canonical,
             kind: WireNostrUriKind::Address,
-            primary_id: pubkey.clone(),
+            // Coordinate string `"{kind}:{pubkey}:{d_tag}"` matches the
+            // kernel's `claimed_events[primary_id]` snapshot key, so the
+            // renderer's `envelope_for(uri)` lookup hits without an extra
+            // alias map on the host side. (Previously `pubkey.clone()`,
+            // which was ambiguous — the same author can have many
+            // addressable events under different d-tags.)
+            primary_id: format!("{kind}:{pubkey}:{identifier}"),
             relays: relays.clone(),
-            author: None,
+            author: Some(pubkey.clone()),
             event_kind: Some(*kind),
         },
     };

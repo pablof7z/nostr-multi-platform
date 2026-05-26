@@ -1,3 +1,19 @@
+//! Initial gallery view state — what every page needs at frame zero.
+//!
+//! Live-only (ADR-0034 / M16): there is no fixture mode, no hardcoded
+//! embed envelopes, no `load_images: bool` knob that toggles fakery. The
+//! gallery boots, the kernel runs through cold-start, and this module
+//! turns the resulting `LiveFacts` (profiles + thread/author items
+//! resolved from kind:0 / kind:1 / etc.) into the content trees and
+//! `ContentRenderData` the renderer needs to draw the first frame.
+//!
+//! Embedded events do NOT live here. The renderer is frontend-driven:
+//! when `NostrContentView` hits an `EventRef(uri)` it calls
+//! `sink.claim(uri, …)`, the kernel fetches (cache or relay), and the
+//! resolved envelopes flow through `EmbedHostState` (see `embed_host.rs`).
+//! Renderers consume the host's envelope map at render time, not a
+//! static field on `ContentExample`.
+
 use std::{
     io::{IsTerminal, Read},
     time::Duration,
@@ -12,9 +28,33 @@ use serde_json::{json, Map, Value};
 use crate::{
     content_render_data::ContentRenderData,
     content_tree_wire::ContentTreeWire,
-    live::{LiveFacts, LiveGallerySource, LiveItem, LiveProfile},
+    live::{LiveFacts, LiveItem, LiveProfile},
     profile_wire::ProfileWire,
 };
+
+/// The naddr the embed-article showcase references in its synthesized
+/// content string. The renderer encounters this URI inside the content
+/// tree, calls `host.claim(uri, ...)`, the kernel fetches the kind:30023,
+/// and `EmbedHostState` decodes it into an `ArticleProjection`. Defining
+/// it here (rather than inline) makes the showcase reproducible — anyone
+/// running the gallery TUI claims THIS naddr.
+/// Gigi's "What's left of the internet?" (kind:30023, d="the-internet-left-me")
+/// — the canonical kind-dispatch demo. Loads cleanly when the kernel queries
+/// relay.primal.net before NIP-65 hydration kicks in (visible via NMP_WIRE_LOG).
+/// After NIP-65 routes the OneshotApi REQ exclusively to Gigi's outbox relays
+/// (atlas.nostr.land, eden.nostr.land) which don't carry it, so a cold cache
+/// post-hydration sees the loading placeholder. The renderer + projection
+/// path is exercised in either case (smoke verifies cache-hit → resolved
+/// envelope in 700ms).
+pub const ARTICLE_NADDR: &str = "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp";
+
+/// pablof7z kind:1 note "grok cli is INSANELY bad, jesus" — verified on
+/// wss://relay.primal.net via `nak req` (event id 276d69d6…).
+pub const NOTE_NEVENT: &str = "nostr:nevent1qqszwmtf6mfdeq6g62st0fnjg4grjzwutfq967awvx5zfhpzfcga0pqpzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqlxqxcq";
+
+/// pablof7z kind:9802 highlight "Vibe-coding is what brought me back to
+/// programming" — verified on wss://relay.primal.net (event id 4fb59c3c…).
+pub const HIGHLIGHT_NEVENT: &str = "nostr:nevent1qqsyldvu8s4pwha9vqqvur0ht4d2gj0e7u3kmguv9hpf0thuk5prjwspzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afq2dlzvt";
 
 pub struct GalleryData {
     pub primary_profile: ProfileWire,
@@ -28,6 +68,11 @@ pub struct GalleryData {
     pub content_mention_chip: ContentExample,
     pub content_media_grid: ContentExample,
     pub content_quote_card: ContentExample,
+
+    pub embed_article: ContentExample,
+    pub embed_profile: ContentExample,
+    pub embed_note: ContentExample,
+    pub embed_highlight: ContentExample,
 }
 
 pub struct ContentExample {
@@ -43,14 +88,19 @@ pub struct MediaProtocol {
 }
 
 impl GalleryData {
-    pub fn load(load_images: bool) -> Result<Self, String> {
-        let facts = LiveGallerySource::new(Duration::from_secs(45)).load()?;
-        Self::from_live_facts(facts, load_images)
-    }
+    /// Build the initial gallery view state from the kernel's cold-start
+    /// fetch. The renderer (driven by snapshot pushes) later updates the
+    /// embed host with resolved kind:30023 / kind:9802 / kind:1 envelopes
+    /// — those do NOT live on this struct.
+    ///
+    /// `load_images` controls the synchronous avatar/media HTTP fetches.
+    /// Set `false` for non-TTY environments (CI dump-lines, tests).
+    pub fn from_live(facts: &LiveFacts, load_images: bool) -> Result<Self, String> {
+        let primary = &facts.primary_profile;
+        let secondary = &facts.mention_profile;
 
-    fn from_live_facts(facts: LiveFacts, load_images: bool) -> Result<Self, String> {
         let avatar_images = if load_images {
-            avatar_protocols(&facts.primary_profile)
+            avatar_protocols(primary)
         } else {
             AvatarProtocols::default()
         };
@@ -59,21 +109,47 @@ impl GalleryData {
         } else {
             Vec::new()
         };
-        let primary_profile = profile_wire(&facts.primary_profile);
-        let secondary_profile = profile_wire(&facts.mention_profile);
-        let mention_profiles = [(
-            &facts.mention_profile,
-            Some(facts.mention_profile_uri.as_str()),
-        )];
+
+        let mention_profiles = [(secondary, Some(facts.mention_profile_uri.as_str()))];
         let quote_events = [(
             &facts.quote_target_item,
             &facts.quote_target_profile,
             Some(facts.quote_event_uri.as_str()),
         )];
 
+        // Embed-showcase content strings. The renderer turns the embedded
+        // bech32 URIs into `EventRef` tokens, claims via the sink, and the
+        // resolved envelopes arrive through `EmbedHostState`. We do NOT
+        // synthesize envelopes here.
+        let article_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!("hey, check out my article {ARTICLE_NADDR} I hope you enjoy it!"),
+        );
+        let mention_uri_for_embed = facts.mention_profile_uri.clone();
+        let profile_embed_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!(
+                "met {mention_uri_for_embed} at a nostr conference last week, brilliant mind"
+            ),
+        );
+        let note_embed_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!(
+                "this is a great point {NOTE_NEVENT} what do you think?"
+            ),
+        );
+        let highlight_embed_item = synth_item(
+            &primary.pubkey,
+            1,
+            &format!("found this interesting {HIGHLIGHT_NEVENT}"),
+        );
+
         Ok(Self {
-            primary_profile,
-            secondary_profile,
+            primary_profile: profile_wire(primary),
+            secondary_profile: profile_wire(secondary),
             avatar_image: avatar_images.large,
             avatar_image_compact: avatar_images.compact,
             media_images,
@@ -96,16 +172,50 @@ impl GalleryData {
                 &mention_profiles,
                 &[],
             )?,
-            content_media_grid: content_example(&facts.media_item, "live media grid", &[], &[])?,
+            content_media_grid: content_example(
+                &facts.media_item,
+                "live media grid",
+                &[],
+                &[],
+            )?,
             content_quote_card: content_example(
                 &facts.quote_source_item,
                 "live quote card",
                 &[],
                 &quote_events,
             )?,
+            embed_article: content_example(
+                &article_item,
+                "Embedded Article (kind:30023)",
+                &[],
+                &[],
+            )?,
+            embed_profile: content_example(
+                &profile_embed_item,
+                "Inline Profile Mention (via mention chip)",
+                &mention_profiles,
+                &[],
+            )?,
+            embed_note: content_example(
+                &note_embed_item,
+                "Embedded Note (kind:1)",
+                &[],
+                &[],
+            )?,
+            embed_highlight: content_example(
+                &highlight_embed_item,
+                "Embedded Highlight (kind:9802)",
+                &[],
+                &[],
+            )?,
         })
     }
 
+    /// Synthetic `LiveFacts`-equivalent for unit tests that need a
+    /// `GalleryData` without spinning up the kernel. The profiles and
+    /// items use deterministic test-only pubkeys/event-ids; no embed
+    /// envelopes are synthesized (the renderer-triggered path is
+    /// exercised by `embed_host::tests`, not by `render::tests`).
     #[cfg(test)]
     pub(crate) fn render_test_data() -> Self {
         let referenced_pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -117,7 +227,8 @@ impl GalleryData {
             nmp_core::nip19::format(&nmp_core::nip19::Nip19Entity::Note(quote_id.to_string()))
                 .expect("note id formats")
         );
-        let profile = LiveProfile {
+
+        let resolved_profile = LiveProfile {
             pubkey: referenced_pubkey.to_string(),
             display_name: Some("Resolved Profile".to_string()),
             picture_url: Some("https://example.invalid/profile.png".to_string()),
@@ -136,7 +247,7 @@ impl GalleryData {
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: format!("hello {mention_uri}"),
-            content_preview: "hello profile".to_string(),
+            content_preview: String::new(),
             created_at: 1,
         };
         let quote_source = LiveItem {
@@ -144,7 +255,7 @@ impl GalleryData {
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: format!("look {quote_uri}"),
-            content_preview: "look quote".to_string(),
+            content_preview: String::new(),
             created_at: 2,
         };
         let quote_target = LiveItem {
@@ -152,12 +263,13 @@ impl GalleryData {
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: "Quoted event body from render data".to_string(),
-            content_preview: "Quoted event body from render data".to_string(),
+            content_preview: String::new(),
             created_at: 3,
         };
+
         let facts = LiveFacts {
             primary_profile: quote_author.clone(),
-            mention_profile: profile,
+            mention_profile: resolved_profile,
             quote_target_profile: quote_author,
             mention_item,
             media_item: quote_source.clone(),
@@ -166,7 +278,7 @@ impl GalleryData {
             mention_profile_uri: mention_uri,
             quote_event_uri: quote_uri,
         };
-        Self::from_live_facts(facts, false).expect("test data is valid")
+        Self::from_live(&facts, false).expect("test data is valid")
     }
 }
 
@@ -190,7 +302,6 @@ fn avatar_protocols(profile: &LiveProfile) -> AvatarProtocols {
     if std::env::var("ITERM_SESSION_ID").is_ok() {
         picker.set_protocol_type(ProtocolType::Iterm2);
     }
-
     AvatarProtocols {
         large: picker
             .new_protocol(image.clone(), Size::new(18, 9), Resize::Fit(None))
@@ -227,12 +338,10 @@ fn media_protocols(items: &[&LiveItem]) -> Vec<MediaProtocol> {
             }
         }
     }
-
     let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
     if std::env::var("ITERM_SESSION_ID").is_ok() {
         picker.set_protocol_type(ProtocolType::Iterm2);
     }
-
     urls.into_iter()
         .filter_map(|url| {
             let image = fetch_image(&url)?;
@@ -272,6 +381,32 @@ fn profile_wire(profile: &LiveProfile) -> ProfileWire {
         npub: to_npub(&profile.pubkey),
         npub_short: short_npub(&profile.pubkey),
     }
+}
+
+/// Build a synthetic `LiveItem` for embed-showcase content strings that
+/// reference real bech32 URIs the renderer will claim. The `id` is
+/// deterministic-from-content so the same showcase rebuild always produces
+/// the same scenario_id badge.
+fn synth_item(author_pubkey: &str, kind: u32, content: &str) -> LiveItem {
+    LiveItem {
+        id: deterministic_id(content),
+        author_pubkey: author_pubkey.to_string(),
+        kind,
+        content: content.to_string(),
+        content_preview: String::new(),
+        created_at: 0,
+    }
+}
+
+fn deterministic_id(content: &str) -> String {
+    // 64-hex string derived from content; not a real event id, just a
+    // stable label for `scenario_id` and the renderer's per-event keys.
+    let mut h: u64 = 1469598103934665603;
+    for b in content.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(1099511628211);
+    }
+    format!("{h:016x}{h:016x}{h:016x}{h:016x}")
 }
 
 fn content_example(
@@ -322,7 +457,7 @@ fn render_data_for(
             "author_npub": to_npub(&event.author_pubkey),
             "kind": event.kind,
             "created_at": event.created_at,
-            "content_preview": event.preview(),
+            "content_preview": preview_of(event),
             "content_tree": content_tree,
         });
         event_map.insert(event.id.clone(), value.clone());
@@ -345,4 +480,12 @@ fn profile_value(profile: &LiveProfile) -> Value {
         "npub": to_npub(&profile.pubkey),
         "picture_url": profile.picture_url,
     })
+}
+
+fn preview_of(item: &LiveItem) -> String {
+    if item.content_preview.trim().is_empty() {
+        item.content.replace('\n', " ").chars().take(180).collect()
+    } else {
+        item.content_preview.clone()
+    }
 }

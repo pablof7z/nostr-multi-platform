@@ -36,6 +36,9 @@ struct ComponentListView: View {
         if componentId.hasPrefix("content-") {
             return "text.bubble"
         }
+        if componentId.hasPrefix("embed-") {
+            return "rectangle.stack.badge.plus"
+        }
         return "square.grid.2x2"
     }
 }

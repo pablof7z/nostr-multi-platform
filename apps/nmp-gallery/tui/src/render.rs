@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+
+use nmp_content::{embed_projection::EmbeddedEventEnvelope, EventClaimSink};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
@@ -7,6 +10,7 @@ use ratatui::{
 use ratatui_image::protocol::Protocol;
 
 use crate::{
+    content_kind_registry::NostrKindRegistry,
     content_tree_wire::WireNode,
     data::{ContentExample, GalleryData},
     nostr_avatar::NostrAvatar,
@@ -20,6 +24,19 @@ use crate::{
     nostr_quote_card::NostrQuoteCard,
     nostr_user_card::NostrUserCard,
 };
+
+/// Per-frame embed-rendering context — the renderer's pulled-in deps so
+/// it can drive the renderer-triggered claim path (ADR-0034). `envelopes`
+/// is the host's current `claimed_events` map (built from the latest
+/// snapshot push); `sink` forwards new claims to the kernel; `consumer_id`
+/// is the per-consumer key the kernel refcounts under.
+#[derive(Clone, Copy)]
+pub struct EmbedFrameContext<'a> {
+    pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
+    pub sink: Option<&'a dyn EventClaimSink>,
+    pub consumer_id: &'a str,
+}
+
 
 pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
     match id {
@@ -41,7 +58,13 @@ pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
     }
 }
 
-pub fn render_body(id: &str, area: Rect, buf: &mut Buffer, data: &GalleryData) {
+pub fn render_body(
+    id: &str,
+    area: Rect,
+    buf: &mut Buffer,
+    data: &GalleryData,
+    embed_ctx: EmbedFrameContext<'_>,
+) {
     let media_images = media_refs(data);
     match id {
         "content-core" => paragraph(content_core_ratatui_lines(
@@ -62,6 +85,9 @@ pub fn render_body(id: &str, area: Rect, buf: &mut Buffer, data: &GalleryData) {
         }
         "content-quote-card" => {
             render_quote_card(area, buf, &data.content_quote_card, &media_images)
+        }
+        "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
+            render_embed_showcase(id, area, buf, data, &media_images, embed_ctx)
         }
         "user-avatar" => render_avatar(area, buf, data),
         "user-name" => NostrProfileName::new(&data.primary_profile).render(area, buf),
@@ -240,6 +266,41 @@ fn media_refs(data: &GalleryData) -> Vec<(&str, &Protocol)> {
         .collect()
 }
 
+fn render_embed_showcase(
+    id: &str,
+    area: Rect,
+    buf: &mut Buffer,
+    data: &GalleryData,
+    media_images: &[(&str, &Protocol)],
+    embed_ctx: EmbedFrameContext<'_>,
+) {
+    let example = match id {
+        "embed-article" => &data.embed_article,
+        "embed-profile" => &data.embed_profile,
+        "embed-note" => &data.embed_note,
+        "embed-highlight" => &data.embed_highlight,
+        _ => &data.content_view,
+    };
+
+    let registry = NostrKindRegistry::make_default();
+
+    // M16 / ADR-0034: the renderer is frontend-driven. When `NostrContentView`
+    // hits an EventRef(uri), it calls `sink.claim(uri, consumer_id)` — the
+    // kernel fetches (cache or relay) and surfaces in `claimed_events`. The
+    // `EmbedHostState` decodes that on each snapshot tick and exposes the
+    // envelopes through `embed_ctx.envelopes`. The renderer looks them up
+    // by `primary_id` / `uri`; if absent → loading placeholder; if present
+    // → kind registry dispatches to the right handler.
+    NostrContentView::new(&example.tree)
+        .render_data(Some(&example.render_data))
+        .media_images(media_images)
+        .kind_registry(Some(&registry))
+        .embedded_events(Some(embed_ctx.envelopes))
+        .claim_sink(embed_ctx.sink)
+        .consumer_id(Some(embed_ctx.consumer_id))
+        .render(area, buf);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,4 +341,11 @@ mod tests {
             "{lines}"
         );
     }
+
+    // Embed-envelope projection tests live in `embed_host::tests` now —
+    // they exercise the snapshot → ClaimedEventDto → EmbedKindProjection
+    // dispatch (the same path the renderer takes), not a static field on
+    // `ContentExample` (which no longer exists). The renderer's
+    // `embedded_events(...)` is sourced from `EmbedFrameContext`, not from
+    // `ContentExample`.
 }
