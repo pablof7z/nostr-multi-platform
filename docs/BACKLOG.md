@@ -77,8 +77,7 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
 5. **P5 — close native update-loop and envelope discipline gaps.**
    `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
    polls for updates; `apps/nmp-gallery/nmp-app-gallery/src/android.rs:221-228` returns `null` on
-   `recv_timeout`; and `ios/Chirp/Chirp/Bridge/KernelBridge.swift:603-618` identifies panic
-   frames by substring before decoding the envelope. **Next step:** use blocking/pushed update
+   `recv_timeout`. **Next step:** use blocking/pushed update
    delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.
 6. **P6 — strengthen enforcement so these regressions trip earlier.**
    V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
@@ -1768,7 +1767,7 @@ drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
 exact byte set as the M16 cross-platform wire-contract truth.
 
 **Kind-dispatch sub-track (ADR-0034):** the next M16 slice is the kind-dispatched
-content rendering system. Implementation plan: [`docs/plan/m16-kind-dispatch.md`](plan/m16-kind-dispatch.md).
+content rendering system.
 Architectural decisions: [`ADR-0034`](decisions/0034-kind-dispatch-content-rendering.md).
 Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
 open item not already in Section 2. PR #588 closes F-CR-01 and F-CR-06; the next
