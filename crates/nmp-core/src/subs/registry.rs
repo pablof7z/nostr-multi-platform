@@ -205,6 +205,7 @@ mod tests {
             shape: InterestShape::default(),
             hints: Vec::new(),
             lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
         }
     }
 

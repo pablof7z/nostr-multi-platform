@@ -28,6 +28,7 @@ fn follow(id: u64, author: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 
@@ -410,6 +411,7 @@ fn drain_tick_follow_list_changed_emits_req_frames() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
     l.registry_mut().push(interest);
 
@@ -693,6 +695,7 @@ fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     };
     l.registry_mut().push(interest);
 
@@ -748,6 +751,7 @@ fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     });
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -798,6 +802,10 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        // The planner-extension bootstrap-indexer fallback gate is now the
+        // explicit `is_indexer_discovery` flag (was: OneShot + Global). The
+        // discovery-direction profile-shape interest opts in.
+        is_indexer_discovery: true,
     };
     l.registry_mut().push(interest);
 

@@ -449,6 +449,24 @@ pub struct NmpApp {
     /// and the planner-side `KernelMailboxes` adapter both see the same
     /// cache.
     dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
+    /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot. Mirrors
+    /// `dm_inbox_relays_slot`: the per-app crate (today: any app that
+    /// wires `nmp_router::Kind10006Parser`) writes a concrete
+    /// `Arc<InMemoryBlockedRelayCache>` here via
+    /// [`Self::set_blocked_relay_lookup`]; the actor reads the current
+    /// handle and binds it onto the kernel so the kernel's
+    /// `build_routing_context` snapshot helper reads through the same
+    /// `Arc` the kind:10006 parser writes into.
+    blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
+    /// Per-app override for the active-account bootstrap Tailing
+    /// self-kinds list. `None` (the default) makes the kernel use the
+    /// built-in `[0, 3, 10002, 10000, 10006]` list at
+    /// `active_account_bootstrap_requests`. Written by the per-app crate
+    /// via [`Self::set_bootstrap_self_kinds`] before `nmp_app_start`;
+    /// the actor reads through its matching clone at kernel construction
+    /// time and binds the resolved value onto the kernel via
+    /// [`nmp_core::kernel::Kernel::set_bootstrap_self_kinds_override`].
+    bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -706,6 +724,18 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             nmp_core::substrate::empty_dm_inbox_relay_lookup(),
         ));
     let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
+    // Mirror dm_inbox_relays_slot for the blocked-relay lookup: empty
+    // default until an app crate wires `nmp_router::InMemoryBlockedRelayCache`
+    // through `set_blocked_relay_lookup`.
+    let blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>> =
+        Arc::new(Mutex::new(
+            nmp_core::substrate::empty_blocked_relay_lookup(),
+        ));
+    let actor_blocked_relays = Arc::clone(&blocked_relays_slot);
+    // Per-app override for the bootstrap Tailing self-kinds list.
+    // `None` → kernel uses its built-in default.
+    let bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>> = Arc::new(Mutex::new(None));
+    let actor_bootstrap_self_kinds = Arc::clone(&bootstrap_self_kinds);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -780,6 +810,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the kernel at construction.
                 actor_ingest_dispatcher,
                 actor_dm_inbox_relays,
+                // Mirrors `actor_dm_inbox_relays`: the actor's clone of the
+                // blocked-relay lookup slot, bound onto the kernel at
+                // construction so `build_routing_context` consults the same
+                // `Arc` the kind:10006 parser writes into.
+                actor_blocked_relays,
+                // Per-app bootstrap self-kinds override slot. Read once at
+                // kernel construction and applied via
+                // `Kernel::set_bootstrap_self_kinds_override`.
+                actor_bootstrap_self_kinds,
                 // V-51 phase 4 — the actor's clone of the routing-trace slot.
                 // Filled with `kernel.routing_trace()` right after kernel
                 // construction (and re-filled on `Reset`); per-app crates read
@@ -886,6 +925,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // share one `Arc`.
         ingest_dispatcher_slot,
         dm_inbox_relays_slot,
+        // Blocked-relay lookup + reactive-bootstrap self-kinds override
+        // slots. Mirrors the dm_inbox_relays_slot wiring above.
+        blocked_relays_slot,
+        bootstrap_self_kinds,
         // V-38: NIP-47 wallet `pay_invoice` double-tap guard. The state is
         // still in `NmpApp` (a generic UI dedup primitive, no protocol
         // content); the wallet runtime that consumes the dispatched action
@@ -1178,6 +1221,42 @@ impl NmpApp {
     ) {
         if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
             *slot = lookup;
+        }
+    }
+
+    /// Install the kernel's [`nmp_core::substrate::BlockedRelayLookup`]
+    /// handle. Mirrors [`Self::set_dm_inbox_relay_lookup`]: the per-app
+    /// crate hands in a concrete `Arc<InMemoryBlockedRelayCache>` (from
+    /// `nmp-router`); the same `Arc` is simultaneously the writer side
+    /// fed by `nmp_router::Kind10006Parser` (registered through
+    /// [`Self::register_ingest_parser`]) and the reader side the kernel
+    /// snapshots through `build_routing_context`'s blocked-set
+    /// post-pass.
+    ///
+    /// MUST be called before `nmp_app_start` AND before any kind:10006
+    /// event is ingested (the caches are independent stores; a late swap
+    /// would lose entries written into the old cache).
+    pub fn set_blocked_relay_lookup(
+        &self,
+        lookup: std::sync::Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
+    ) {
+        if let Ok(mut slot) = self.blocked_relays_slot.lock() {
+            *slot = lookup;
+        }
+    }
+
+    /// Override the active-account bootstrap Tailing self-kinds list.
+    /// Passing `None` clears the override (the kernel reverts to its
+    /// built-in `[0, 3, 10002, 10000, 10006]` default).
+    ///
+    /// MUST be called BEFORE `nmp_app_start` so the actor binds the
+    /// override onto the kernel at construction time, before the first
+    /// `active_account_bootstrap_requests` call. A late write after sign-in
+    /// is silently ignored — the bootstrap REQ shape is fixed at the
+    /// moment of sign-in.
+    pub fn set_bootstrap_self_kinds(&self, kinds: Option<Vec<u64>>) {
+        if let Ok(mut slot) = self.bootstrap_self_kinds.lock() {
+            *slot = kinds;
         }
     }
 

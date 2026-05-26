@@ -582,6 +582,15 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_dm_inbox_relay_lookup(),
             )),
+            // Test wiring — no blocked-relay cache installed; the kernel
+            // defaults to the empty-lookup that returns an empty
+            // `BlockedRelaySet` for every account.
+            Arc::new(std::sync::Mutex::new(
+                crate::substrate::empty_blocked_relay_lookup(),
+            )),
+            // Test wiring — no bootstrap self-kinds override; the kernel
+            // uses its built-in `[0, 3, 10002, 10000, 10006]` default.
+            Arc::new(std::sync::Mutex::new(None)),
             // V-51 phase 4 — test wiring; nothing reads the routing-trace slot here.
             Arc::new(std::sync::Mutex::new(None)),
             // V-51 phase 5 — test wiring; no per-app routing factory installed.

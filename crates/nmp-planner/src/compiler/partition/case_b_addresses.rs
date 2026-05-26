@@ -103,6 +103,7 @@ mod tests {
             },
             hints: Vec::new(),
             lifecycle: InterestLifecycle::OneShot,
+            is_indexer_discovery: false,
         }
     }
 

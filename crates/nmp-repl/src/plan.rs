@@ -134,6 +134,9 @@ pub fn build_interest(
         shape,
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        // REPL-level ad-hoc plans are reactive timeline-style interests, not
+        // discovery probes.
+        is_indexer_discovery: false,
     })
 }
 

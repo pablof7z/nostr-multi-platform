@@ -39,6 +39,7 @@ fn timeline_interest(id: u64, author: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 
@@ -60,6 +61,7 @@ fn ephemeral_interest(id: u64, author: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     }
 }
 

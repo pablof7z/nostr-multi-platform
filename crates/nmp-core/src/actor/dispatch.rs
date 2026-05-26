@@ -256,6 +256,14 @@ pub(super) struct ActorContext<'a> {
     /// V-40 — shared [`crate::substrate::DmInboxRelayLookup`] slot. Same
     /// `Reset`-survival contract as the ingest dispatcher slot.
     pub(super) dm_inbox_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
+    /// Shared [`crate::substrate::BlockedRelayLookup`] slot. Same
+    /// `Reset`-survival contract as `dm_inbox_relays_slot`.
+    pub(super) blocked_relays_slot:
+        &'a Arc<Mutex<Arc<dyn crate::substrate::BlockedRelayLookup>>>,
+    /// Per-app bootstrap Tailing self-kinds override slot. `None` →
+    /// kernel reverts to its built-in default. Read by the `Reset` arm
+    /// to re-apply the override against the rebuilt kernel.
+    pub(super) bootstrap_self_kinds_slot: &'a Arc<Mutex<Option<Vec<u64>>>>,
     /// V-51 phase 4 — routing-trace projection slot. Read by the `Reset`
     /// arm to re-publish the rebuilt kernel's `routing_trace()` clone so
     /// `NmpApp::routing_trace` keeps returning a live projection across a
@@ -1162,6 +1170,26 @@ pub(super) fn dispatch_command(
                     .map(|g| Arc::clone(&*g))
                     .unwrap_or_else(crate::substrate::empty_dm_inbox_relay_lookup);
                 ctx.kernel.set_dm_inbox_relay_lookup(lookup);
+            }
+            {
+                let lookup = ctx
+                    .blocked_relays_slot
+                    .lock()
+                    .ok()
+                    .map(|g| Arc::clone(&*g))
+                    .unwrap_or_else(crate::substrate::empty_blocked_relay_lookup);
+                ctx.kernel.set_blocked_relay_lookup(lookup);
+            }
+            {
+                let kinds = ctx
+                    .bootstrap_self_kinds_slot
+                    .lock()
+                    .ok()
+                    .and_then(|g| {
+                        g.as_ref()
+                            .map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>())
+                    });
+                ctx.kernel.set_bootstrap_self_kinds_override(kinds);
             }
             // D2 — re-install the coverage-gate hook on the rebuilt kernel.
             // The slot outlives the reset (shared `Arc` with `NmpApp`); reading

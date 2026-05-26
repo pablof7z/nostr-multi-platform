@@ -46,6 +46,9 @@ fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        // Follow-feed timeline interests ride NIP-65 outbox routing; T134
+        // invariant: never divert tailing follow feeds to the indexer.
+        is_indexer_discovery: false,
     }
 }
 
