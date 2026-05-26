@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "scenarios": [
     {
       "id": "S-T01",
@@ -14,17 +14,20 @@
           "kind": 1,
           "tags": [],
           "content": "Just shipped the relay reconnect fix. Feels good.",
-          "sig": "c9ac93314bfe38531f0ebe838b2b97342759031846aeb07c39c7c99a1787bd6a128a02590eb077b5d517579b5975ef8c638ba61b3e846b63928334e2d07ef958"
+          "sig": "5c8cfa78a4c8501f38d7b14dff0702450800e3010632d7d319e5501d5012861ced9ce2501c3c980d45a67715d7f0a6ca8a28f3c1c95562555727a55f85552da4"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "Just shipped the relay reconnect fix. Feels good."
           }
-        ]
+        ],
+        "roots": [
+          0
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -54,37 +57,45 @@
             ]
           ],
           "content": "Debugging #Nostr relays again #NIP01 #zaps",
-          "sig": "54875dd56300181162dfff6059c3d7e7d5fee7e4e31242a7022992c80af5c639bf8e84981edefab4c364ebdd7fa9c3c2bb5537b469bd877920e225e9530f92d5"
+          "sig": "b50e06d110dfaa07e774fd42aa84f6aa3263557b6b4c7c7c73abc62d634face917c59b62f04d35ed8932baa3c9867dbdfc346a0ae3d3e51f5bf76689fa4cb7ba"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "Debugging "
           },
           {
-            "type": "hashtag",
+            "kind": "hashtag",
             "tag": "nostr"
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " relays again "
           },
           {
-            "type": "hashtag",
+            "kind": "hashtag",
             "tag": "nip01"
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " "
           },
           {
-            "type": "hashtag",
+            "kind": "hashtag",
             "tag": "zaps"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -101,25 +112,30 @@
           "kind": 1,
           "tags": [],
           "content": "Spec lives at https://github.com/nostr-protocol/nips read it",
-          "sig": "47dd444ee1a9dce626fbe299cc90a895b6e60797f9c1f0d35a55dd576ed6b1724d1e54bb1469cf95c21d9ef88181218246142a6f4b567ab425ba5f5387eaeea2"
+          "sig": "1db04d073f26b231f9d45f830c6409940589ba059578be4f42bdba28c0da1ae600ad8bc4ac5b712600281ca9061f1c9216a3db12c527b56f2ef3fb59bc4fce89"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "Spec lives at "
           },
           {
-            "type": "url",
+            "kind": "url",
             "url": "https://github.com/nostr-protocol/nips"
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " read it"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1,
+          2
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -136,24 +152,28 @@
           "kind": 1,
           "tags": [],
           "content": "Sunset from the office https://nmp.test/img/sunset.jpg",
-          "sig": "67bc204341616d0f0446296492797d733aefb8ec2ac240966cf8d4c74f726fdcadf8a67e2067b5c17ae6ccaba88dbebc82128ac804855e0aac9126cdd8b627fb"
+          "sig": "e37585a5ab955f041531ed92bb1844c059f5f7298f4509530ef05d53726ccb5bf12200499a44be55f212d2d71b9192318ee8328e585f5314101c8f75aab4f19f"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "Sunset from the office "
           },
           {
-            "type": "media",
-            "media_kind": "Image",
+            "kind": "media",
             "urls": [
               "https://nmp.test/img/sunset.jpg"
-            ]
+            ],
+            "media_kind": "Image"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -170,24 +190,28 @@
           "kind": 1,
           "tags": [],
           "content": "Recording of the postmortem https://nmp.test/v/postmortem.mp4",
-          "sig": "7e81a3eb8a9dd6a66b46e8bdf527fee54ec10c1489ce3e853f51d08718f087b2531ba889dcb35ca36bd568cbb6d41dead36382dab617626a36f4cacc4d0ac1dd"
+          "sig": "e271782885116ebb9d5347bc41e902afd519c762e72b32b397688c4f98038cbfa25b573bdb4938eeb28c592cd1a19ceb24a7541d56b278708be1eb113a64646d"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "Recording of the postmortem "
           },
           {
-            "type": "media",
-            "media_kind": "Video",
+            "kind": "media",
             "urls": [
               "https://nmp.test/v/postmortem.mp4"
-            ]
+            ],
+            "media_kind": "Video"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -204,26 +228,30 @@
           "kind": 1,
           "tags": [],
           "content": "Trip photos https://nmp.test/img/a.jpg https://nmp.test/img/b.png https://nmp.test/img/c.webp",
-          "sig": "3cabb54918fb8bf8abef2c28f7852f7cf37c7674976ffe39cd54d776d36b6496fee20ebc43ac124ecfaae476d107e02807588a857ab8c964e56d3be3499bec22"
+          "sig": "258e9364887c21813cd1c6382242204089b3b21ccb819b151049561c98b0a160c0c9d4424b9d50cccb418c592234e2157db72a794523915f662e85884c617043"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "Trip photos "
           },
           {
-            "type": "media",
-            "media_kind": "Image",
+            "kind": "media",
             "urls": [
               "https://nmp.test/img/a.jpg",
               "https://nmp.test/img/b.png",
               "https://nmp.test/img/c.webp"
-            ]
+            ],
+            "media_kind": "Image"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -240,42 +268,49 @@
           "kind": 1,
           "tags": [],
           "content": "https://nmp.test/img/x.png https://nmp.test/v/y.webm https://nmp.test/a/z.mp3",
-          "sig": "156472c28547f2c253e592704e74b3eb41401f52b3ef9acf9439c9da3954aa4173583d87e24748224a59d0a32375033eeff77809edeed4e5751e3059b1c163d5"
+          "sig": "285b27c8d2eb6e411d43d42a98f9dce5a09a255ba5be017927acb5c737c44e776b199dad16c6c54b038e76a7d52552bb788346d83cd14c44816fb5ef4185247d"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "media",
-            "media_kind": "Image",
+            "kind": "media",
             "urls": [
               "https://nmp.test/img/x.png"
-            ]
+            ],
+            "media_kind": "Image"
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " "
           },
           {
-            "type": "media",
-            "media_kind": "Video",
+            "kind": "media",
             "urls": [
               "https://nmp.test/v/y.webm"
-            ]
+            ],
+            "media_kind": "Video"
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " "
           },
           {
-            "type": "media",
-            "media_kind": "Audio",
+            "kind": "media",
             "urls": [
               "https://nmp.test/a/z.mp3"
-            ]
+            ],
+            "media_kind": "Audio"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -303,31 +338,37 @@
             ]
           ],
           "content": "gm :nmp: ship it :rocket:",
-          "sig": "06ab8fd0f17aa7dd8f3f1bebfe663a2f8a509c4d4b06721b87f172ce27207181d2c41e5af2601b3efe9e308bc50dba69d977a6c133e2813f241707a61d3e82e6"
+          "sig": "2690793f6f3bbe78b653212f69e204a58c22dedb1bc2bd13e8b92d6d667c77bdc869ea93bdea5f47211e99dde2315e4beee2dc82e297aebd267f5a943a3526d6"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "gm "
           },
           {
-            "type": "emoji",
+            "kind": "emoji",
             "shortcode": "nmp",
             "url": "https://nmp.test/e/nmp.png"
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " ship it "
           },
           {
-            "type": "emoji",
+            "kind": "emoji",
             "shortcode": "rocket",
             "url": "https://nmp.test/e/rocket.png"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -344,26 +385,31 @@
           "kind": 1,
           "tags": [],
           "content": "missing :ghost: shortcode",
-          "sig": "33c6e11443174499991ca63173e5128aa09fd2c6fc4dc1b3d6885cf141e2ef075232541a7b143417f057e74e664c8a8913be14c617d3bc8400bc4d3a347be552"
+          "sig": "6e7c53587e47f2f9e823e78e8c01ea075c08535031e742970d245de43a1e581d9757d6f48bb7aef731c9b22662cc23d394fed8cc4442ef690ba5e9fb356a88f3"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "missing "
           },
           {
-            "type": "emoji",
+            "kind": "emoji",
             "shortcode": "ghost",
             "url": null
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " shortcode"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1,
+          2
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -380,17 +426,20 @@
           "kind": 1,
           "tags": [],
           "content": "zap me lnbc10u1p3xqsrpp5demoinvoicebody or cashu cashuAeyJ0b2tlbnMiOnt9fQ==",
-          "sig": "50f4dd2ebdc93c4a0e18e3ac752a8010d98720a4903f251aaf9d07300fa48cc3c453f1e2c243679186a4495fc26e185b2e5499aa78233c4a23fec1f171403b69"
+          "sig": "4da94d0106940ce96f9897f142e04d0e9dcb74192b22095998f40817dce7eb9828b8989aa198a30ca71cd5277815f1d5740d33feba87c055a59ead8557e5a5d7"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "zap me lnbc10u1p3xqsrpp5demoinvoicebody or cashu cashuAeyJ0b2tlbnMiOnt9fQ=="
           }
-        ]
+        ],
+        "roots": [
+          0
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -407,27 +456,37 @@
           "kind": 1,
           "tags": [],
           "content": "talked with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd about reconnects",
-          "sig": "7890f69e53f7b088adffd5f7c652eca5b3fc2ccbfd7173d346846b96585a7d2fd54f0fc240cbc676eba0fca137950c47b9ecd033fd779ec68ebcc534d9e148b4"
+          "sig": "e6ab324501a6bab77924f243041a63dde1f11ec6b48f62016aad840b74905c3b0924982005144c2616e5770d114310cd5f19081427fffc3100806027c68104b0"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "talked with "
           },
           {
-            "type": "mention",
-            "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-            "kind": "npub",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+            "kind": "mention",
+            "uri": {
+              "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+              "kind": "profile",
+              "primary_id": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           },
           {
-            "type": "text",
+            "kind": "text",
             "text": " about reconnects"
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1,
+          2
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
@@ -451,23 +510,34 @@
           "kind": 1,
           "tags": [],
           "content": "shoutout nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
-          "sig": "700048e6cc5ef3ab72f130d7d915b39012e63a0633c4cf5fee45b9d617097e9d586f9fc4af6b8c7591211e0ce9c6f776b995164880f6f557743040f3507d36bf"
+          "sig": "16ce2e4dbef28f29c256d27bfbe04b0e86aa577e196682578c542acff67810eba1b66a8efa875a914bf7108204de43d7411d066f308c99ab5f6f072c62e7532d"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "shoutout "
           },
           {
-            "type": "mention",
-            "uri": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
-            "kind": "nprofile",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+            "kind": "mention",
+            "uri": {
+              "uri": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
+              "kind": "profile",
+              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv": {
@@ -490,23 +560,32 @@
           "kind": 1,
           "tags": [],
           "content": "ping nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-          "sig": "5bfd30cbfbf63fb1d426f00d680103d398bb97537aaed703a3fd2f89662f5fd26841b20d575ed298985526c1d3ea8293f74748bc4c9fd9729dc01a1be6f0b4d1"
+          "sig": "ca8839b6274bb886f6e51b5a67979c9c37a904971669f6766cf5b5be4950f0e65fecef2fa9a8699d4cb13588543ee7f3ac5c9c0303ea5e1156392dabd61b9ebf"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "ping "
           },
           {
-            "type": "mention",
-            "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-            "kind": "npub",
-            "pubkey": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13"
+            "kind": "mention",
+            "uri": {
+              "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+              "kind": "profile",
+              "primary_id": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
@@ -529,7 +608,7 @@
           "kind": 1,
           "tags": [],
           "content": "this nails it: nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
-          "sig": "8e50ffc1158b3aa5a1bd0f85d05237567cfb2c0183d60e5029e09828d4ef040a77d11f3047862ec255000ecc1a7f1e0a829200cf06bf805df38deff6fe09a301"
+          "sig": "1c12314d833dc5adbf8a8453d682c938724ebf7e857dd21d38a2aae55ee7388a0d5526e2ca334c4c755a42d4d09856068892d11b3871fc8f8f1f218db89bca36"
         },
         {
           "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
@@ -538,23 +617,32 @@
           "kind": 1,
           "tags": [],
           "content": "Relays are a CDN you forgot you were running.",
-          "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+          "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "this nails it: "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
-            "kind": "note",
-            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
+              "kind": "event",
+              "primary_id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8": {
@@ -566,16 +654,19 @@
             "kind": 1,
             "tags": [],
             "content": "Relays are a CDN you forgot you were running.",
-            "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+            "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "Relays are a CDN you forgot you were running."
               }
-            ]
+            ],
+            "roots": [
+              0
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         }
@@ -594,7 +685,7 @@
           "kind": 1,
           "tags": [],
           "content": "context: nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
-          "sig": "0a016fb358abebba4c84ca7c49577629f036be353f2e64ca73a4e9a63640e578305de4121b91b3f16cca30db3e28e7d21d1d4814e3502dc3b4d0b0937aa33fd6"
+          "sig": "f15f92879243c9c7b4b62935f253d11077d479f5f2efa8bd69fb0ac1d4864fac7ae75861d342eda9501bf4ef04e20d7fc00c148b1888e3b92f7c2c9b9dc74e81"
         },
         {
           "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
@@ -603,23 +694,34 @@
           "kind": 1,
           "tags": [],
           "content": "Relays are a CDN you forgot you were running.",
-          "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+          "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "context: "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
-            "kind": "nevent",
-            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
+              "kind": "event",
+              "primary_id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "event_kind": 1
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82": {
@@ -631,16 +733,19 @@
             "kind": 1,
             "tags": [],
             "content": "Relays are a CDN you forgot you were running.",
-            "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+            "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "Relays are a CDN you forgot you were running."
               }
-            ]
+            ],
+            "roots": [
+              0
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         }
@@ -659,7 +764,7 @@
           "kind": 1,
           "tags": [],
           "content": "see nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
-          "sig": "b32bdc9fb0b50c1456a9719e725f3e94ff7de114f44e79e6ba0ac53580967c1fbacbc649148da11c231745502da0f0ef7d2d4a13eeec8e855f41ffa62ae12d01"
+          "sig": "7dfd5d59ae2db449a21b0478a667d7c9119675ccfe81705619e61b2d888e0250789c519569d559b15eb7673ec9040dec84a7b516abc1e57f987012331166f1d3"
         },
         {
           "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
@@ -668,23 +773,32 @@
           "kind": 1,
           "tags": [],
           "content": "agree with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd here",
-          "sig": "e390189addbd963738b23a38c7ba3bd598965029e6db4770d05c268f79c4226113fec71f2ecf47831175426b73d91589bf630f80910b4e447a3dea5b9a352b6d"
+          "sig": "177a12d53febd52c7380233d1445b5c1100c298525f895a466e157727c675ae65ddeadc763dad04ac4884aef644000586876b814b76640642909a9cb427097bd"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "see "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
-            "kind": "note",
-            "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
+              "kind": "event",
+              "primary_id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7": {
@@ -696,26 +810,36 @@
             "kind": 1,
             "tags": [],
             "content": "agree with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd here",
-            "sig": "e390189addbd963738b23a38c7ba3bd598965029e6db4770d05c268f79c4226113fec71f2ecf47831175426b73d91589bf630f80910b4e447a3dea5b9a352b6d"
+            "sig": "177a12d53febd52c7380233d1445b5c1100c298525f895a466e157727c675ae65ddeadc763dad04ac4884aef644000586876b814b76640642909a9cb427097bd"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "agree with "
               },
               {
-                "type": "mention",
-                "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-                "kind": "npub",
-                "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+                "kind": "mention",
+                "uri": {
+                  "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+                  "kind": "profile",
+                  "primary_id": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               },
               {
-                "type": "text",
+                "kind": "text",
                 "text": " here"
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1,
+              2
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -740,7 +864,7 @@
           "kind": 1,
           "tags": [],
           "content": "thread of thought nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
-          "sig": "2dba4d63bbad9c5c3eb5f4e0ae38f7d58640f69bc6f4745752d5d60adb57d8cd842517b8aa07d03e06ce5d3a16ef28480374ba87e819c921ba7870db1596b83b"
+          "sig": "58e34f3d434faf810406e25344dc5b543c480a52a6ea317d2c72c5ec2921714637129c4560f13032f3b565ea4cb700402a69861322154576090968392225fe0e"
         },
         {
           "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
@@ -749,7 +873,7 @@
           "kind": 1,
           "tags": [],
           "content": "strongly agree nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
-          "sig": "646c7d4ae2177968a6a468bc0e9be100b2be323d67b334db881187937635ebd950ba50500aad58a804ceb5c34276209cebdfcf7c8a5fdb1573fd43433b266b3d"
+          "sig": "b665670a3cde420f0e39df58d03d5fb6c910e61f9cd503030d96df8f72b7b940df4fe7e3d7f5fa1dfebfbe5881987ef78160f0cff2422fbb1bcb9032991d63b6"
         },
         {
           "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
@@ -758,7 +882,7 @@
           "kind": 1,
           "tags": [],
           "content": "+1 nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
-          "sig": "63cc72ea3a5ee3f0653e857bd8982f931909b645bce65b951607de89b22b202168716e23fa8f408594eb78545f73a13873a8c56e6d96e0149f7c6e0f38b2deb3"
+          "sig": "7d7b4a5ebb7496f82b0861a599b4adbfafe21a1430da3928479a03943315666e1655d62f0ae39970fc00cb53339ed16b218cdf7e12b6f16ee684789cc380eb71"
         },
         {
           "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
@@ -767,23 +891,32 @@
           "kind": 1,
           "tags": [],
           "content": "Root insight: backpressure is a feature.",
-          "sig": "9a54ea866e1765faf2d30ce0c2f9cce8df9ef75a7ebd009fc978dbb4bca7efcf45c35dd2fe002897347eee7951a85b5498667d4b17790b2ce7eeb2d26c4f8916"
+          "sig": "024c0512c027705f23373f1a3fd0bfb2338793feaf920cdefa04856adf425540ab8fe55d5ad70e503f20a7d71456222850789005be5d5b0c01261ad86fdcb441"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "thread of thought "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
-            "kind": "note",
-            "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
+              "kind": "event",
+              "primary_id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl": {
@@ -795,22 +928,31 @@
             "kind": 1,
             "tags": [],
             "content": "+1 nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
-            "sig": "63cc72ea3a5ee3f0653e857bd8982f931909b645bce65b951607de89b22b202168716e23fa8f408594eb78545f73a13873a8c56e6d96e0149f7c6e0f38b2deb3"
+            "sig": "7d7b4a5ebb7496f82b0861a599b4adbfafe21a1430da3928479a03943315666e1655d62f0ae39970fc00cb53339ed16b218cdf7e12b6f16ee684789cc380eb71"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "+1 "
               },
               {
-                "type": "eventRef",
-                "uri": "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
-                "kind": "note",
-                "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92"
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
+                  "kind": "event",
+                  "primary_id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -823,16 +965,19 @@
             "kind": 1,
             "tags": [],
             "content": "Root insight: backpressure is a feature.",
-            "sig": "9a54ea866e1765faf2d30ce0c2f9cce8df9ef75a7ebd009fc978dbb4bca7efcf45c35dd2fe002897347eee7951a85b5498667d4b17790b2ce7eeb2d26c4f8916"
+            "sig": "024c0512c027705f23373f1a3fd0bfb2338793feaf920cdefa04856adf425540ab8fe55d5ad70e503f20a7d71456222850789005be5d5b0c01261ad86fdcb441"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "Root insight: backpressure is a feature."
               }
-            ]
+            ],
+            "roots": [
+              0
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -845,22 +990,31 @@
             "kind": 1,
             "tags": [],
             "content": "strongly agree nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
-            "sig": "646c7d4ae2177968a6a468bc0e9be100b2be323d67b334db881187937635ebd950ba50500aad58a804ceb5c34276209cebdfcf7c8a5fdb1573fd43433b266b3d"
+            "sig": "b665670a3cde420f0e39df58d03d5fb6c910e61f9cd503030d96df8f72b7b940df4fe7e3d7f5fa1dfebfbe5881987ef78160f0cff2422fbb1bcb9032991d63b6"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "strongly agree "
               },
               {
-                "type": "eventRef",
-                "uri": "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
-                "kind": "note",
-                "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e"
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
+                  "kind": "event",
+                  "primary_id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         }
@@ -879,7 +1033,7 @@
           "kind": 1,
           "tags": [],
           "content": "L0 root nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44",
-          "sig": "a0db7cb1568a217b31848d0fa1283a1a5d79128b8f1a2fbd9b0ed6fe8f2906203a919fd259af67bd38271d7888bc9da86cf3f55711dbe1d129bad62382513280"
+          "sig": "7eef8e884d123ba6eaec8e0bdf5c901fdcd5a149b229bbce3a7eb2a15ae068d384b01d208a226f06ce3bd6071a208f88854a86788208928ae899554370a40bf1"
         },
         {
           "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
@@ -888,7 +1042,7 @@
           "kind": 1,
           "tags": [],
           "content": "L1 nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
-          "sig": "1ea404364ecf94821bf61fd38e5a8f5b8e4906b68160a5b6b95af80b547422f08bc7a4fbd9cf857fcb127c4bd49a0aa7b1ca2cbc571acebd821ba330933c62c5"
+          "sig": "721702c3a422bc04a66600fca53a0fb480ffcaaa3866502fe4bd42a6e759fa3c9bedea3bb6758c432aa9e43a352c25b28d70a9b84c02ce9284b3c14b65233f58"
         },
         {
           "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
@@ -897,7 +1051,7 @@
           "kind": 1,
           "tags": [],
           "content": "L2 nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
-          "sig": "de8c1ef3eaa6a8bf719429c83e374f975e49d92d758c620e750aa5c94f31717bfb2ba103cc942bc15c857b15f8fa28a303eb000729bb0a86aa3eb59aeff71ec1"
+          "sig": "684b6b46c8dba1557ed70c51d1b74fcf4258527af37a540788fce0dcac7669652ba8814c9368504085a8cdfad82d1fef96d5f5455a45aeeafc45d0cc14b69a87"
         },
         {
           "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
@@ -906,7 +1060,7 @@
           "kind": 1,
           "tags": [],
           "content": "L3 nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
-          "sig": "7cba96bc93ae417dcef5e2da4cf7cb5e9b6ceee75ed608abf34f9dbd7958a7e462fe40011b61255a6c8acca5ba693d5233caa33dde91dd625c556534e39f468e"
+          "sig": "5e226d91830cdce462599be842bc1ed6eeac684d79117454b3551d2f91b9e137643ce71f60cd5b044fc17338f1a41d53f3d45fb7012db2c3a20c2028aa53c969"
         },
         {
           "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
@@ -915,7 +1069,7 @@
           "kind": 1,
           "tags": [],
           "content": "L4 nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
-          "sig": "c0ec70fd8810571fea16977160e293a593794fb51b7ff19e2335edc7170c55a04f1bd2c4dba7206edce4db44e1688f0281a75198aa4d043ad40af4cc9d9eddc1"
+          "sig": "6192cd3dd10dced6f1b6f881b59ecc2488425a647432b5f1ca9b001cc0881f54d9c44697a615d2731976c1e38f981e6472e21b41f450e96ca347d73bafa66b1c"
         },
         {
           "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
@@ -924,23 +1078,32 @@
           "kind": 1,
           "tags": [],
           "content": "L5 deepest leaf",
-          "sig": "3aad5870676d5618371188d139fee60aeb764526b61ff3d0e1b3429cd46496e36acbf7ea253aa8640cea7b461e82cccda92ceeed08b93c6686554ee387fa408d"
+          "sig": "a75c3e4d284e47ef102a2d72107fd1a46a6d19a46b201771947230c5438f40df58022f7027e1ef63cf34ebf0723c646576f7cda1297e4860707831f105131289"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "L0 root "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44",
-            "kind": "note",
-            "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44",
+              "kind": "event",
+              "primary_id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809": {
@@ -952,22 +1115,31 @@
             "kind": 1,
             "tags": [],
             "content": "L3 nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
-            "sig": "7cba96bc93ae417dcef5e2da4cf7cb5e9b6ceee75ed608abf34f9dbd7958a7e462fe40011b61255a6c8acca5ba693d5233caa33dde91dd625c556534e39f468e"
+            "sig": "5e226d91830cdce462599be842bc1ed6eeac684d79117454b3551d2f91b9e137643ce71f60cd5b044fc17338f1a41d53f3d45fb7012db2c3a20c2028aa53c969"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "L3 "
               },
               {
-                "type": "eventRef",
-                "uri": "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
-                "kind": "note",
-                "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e"
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
+                  "kind": "event",
+                  "primary_id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -980,22 +1152,31 @@
             "kind": 1,
             "tags": [],
             "content": "L1 nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
-            "sig": "1ea404364ecf94821bf61fd38e5a8f5b8e4906b68160a5b6b95af80b547422f08bc7a4fbd9cf857fcb127c4bd49a0aa7b1ca2cbc571acebd821ba330933c62c5"
+            "sig": "721702c3a422bc04a66600fca53a0fb480ffcaaa3866502fe4bd42a6e759fa3c9bedea3bb6758c432aa9e43a352c25b28d70a9b84c02ce9284b3c14b65233f58"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "L1 "
               },
               {
-                "type": "eventRef",
-                "uri": "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
-                "kind": "note",
-                "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf"
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
+                  "kind": "event",
+                  "primary_id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -1008,22 +1189,31 @@
             "kind": 1,
             "tags": [],
             "content": "L2 nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
-            "sig": "de8c1ef3eaa6a8bf719429c83e374f975e49d92d758c620e750aa5c94f31717bfb2ba103cc942bc15c857b15f8fa28a303eb000729bb0a86aa3eb59aeff71ec1"
+            "sig": "684b6b46c8dba1557ed70c51d1b74fcf4258527af37a540788fce0dcac7669652ba8814c9368504085a8cdfad82d1fef96d5f5455a45aeeafc45d0cc14b69a87"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "L2 "
               },
               {
-                "type": "eventRef",
-                "uri": "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
-                "kind": "note",
-                "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50"
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
+                  "kind": "event",
+                  "primary_id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -1036,22 +1226,31 @@
             "kind": 1,
             "tags": [],
             "content": "L4 nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
-            "sig": "c0ec70fd8810571fea16977160e293a593794fb51b7ff19e2335edc7170c55a04f1bd2c4dba7206edce4db44e1688f0281a75198aa4d043ad40af4cc9d9eddc1"
+            "sig": "6192cd3dd10dced6f1b6f881b59ecc2488425a647432b5f1ca9b001cc0881f54d9c44697a615d2731976c1e38f981e6472e21b41f450e96ca347d73bafa66b1c"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "L4 "
               },
               {
-                "type": "eventRef",
-                "uri": "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
-                "kind": "note",
-                "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342"
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
+                  "kind": "event",
+                  "primary_id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": null
+                }
               }
-            ]
+            ],
+            "roots": [
+              0,
+              1
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         },
@@ -1064,16 +1263,19 @@
             "kind": 1,
             "tags": [],
             "content": "L5 deepest leaf",
-            "sig": "3aad5870676d5618371188d139fee60aeb764526b61ff3d0e1b3429cd46496e36acbf7ea253aa8640cea7b461e82cccda92ceeed08b93c6686554ee387fa408d"
+            "sig": "a75c3e4d284e47ef102a2d72107fd1a46a6d19a46b201771947230c5438f40df58022f7027e1ef63cf34ebf0723c646576f7cda1297e4860707831f105131289"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": [
+            "nodes": [
               {
-                "type": "text",
+                "kind": "text",
                 "text": "L5 deepest leaf"
               }
-            ]
+            ],
+            "roots": [
+              0
+            ],
+            "mode": "Plain"
           },
           "collapsed": false
         }
@@ -1092,7 +1294,7 @@
           "kind": 1,
           "tags": [],
           "content": "recursive pair: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
-          "sig": "25eed9cbcc96fe2ab87cb28995c4de60cb4ef865636c49ae9a2df984a0459621f9ef39ae6a61a747a341518820ea1d7490b9c2d49f0bc37bc38a8babe6817cee"
+          "sig": "2378f82ee4a4a7cdd283bc4ad4d71e4c05caffb1583137428ca9857301590a2000de2360aae393c78df8a68d6318854d43abbaba1136dafaf0ec8991e8d97e8a"
         },
         {
           "id": "8a711a07eac3bb621ec3e1e44a5a68a7f9e7adf53fada2bb206a56b0aae326a7",
@@ -1110,7 +1312,7 @@
             ]
           ],
           "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch\n",
-          "sig": "d049a70cb56902e95fc08b5f330ae6c8a26e14955c9cd64966ea6e565043ce74770721367463db5ad8112b9bcf40f51e490f817d8b7a299ee3923e53e32e87b8"
+          "sig": "362980f3999d0e9ec668da0355ea2e6c2295b05631fe1a1f4faf4f1af4cdcb92519f13ea9ccae4f61cbf2d37752c337d424da8d4ae76cee439516c9413f4c2bf"
         },
         {
           "id": "2d957edb4c4e15f04ab7032ff16e45378c5255e52482a7f8cfae64bfb06a748d",
@@ -1128,23 +1330,32 @@
             ]
           ],
           "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd\n",
-          "sig": "25807703a91d6ac718fcc0000c68583a91cc64703e46984a609a99f2157a1b7a0ec9f8e3c39d509792f1edcc144947689baeede7acbff95bb96532c23dbd8550"
+          "sig": "3117723a7142c7e7dad2b5fae24bf2098415279240bc1b0d0543e1e3c8f4d9d2b46a36eaee7323e0f348fc5d2ca93d96edaca48055ffb64d6314168bd4d6d581"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "recursive pair: "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
-            "kind": "naddr",
-            "id": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+              "kind": "address",
+              "primary_id": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "relays": [],
+              "author": null,
+              "event_kind": 30023
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd": {
@@ -1165,52 +1376,49 @@
               ]
             ],
             "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch\n",
-            "sig": "d049a70cb56902e95fc08b5f330ae6c8a26e14955c9cd64966ea6e565043ce74770721367463db5ad8112b9bcf40f51e490f817d8b7a299ee3923e53e32e87b8"
+            "sig": "362980f3999d0e9ec668da0355ea2e6c2295b05631fe1a1f4faf4f1af4cdcb92519f13ea9ccae4f61cbf2d37752c337d424da8d4ae76cee439516c9413f4c2bf"
           },
           "rendered": {
-            "mode": "Markdown",
-            "segments": [
+            "nodes": [
               {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "heading",
-                  "level": 1,
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Cycle A"
-                      }
-                    }
-                  ]
+                "kind": "text",
+                "text": "Cycle A"
+              },
+              {
+                "kind": "heading",
+                "level": 1,
+                "children": [
+                  0
+                ]
+              },
+              {
+                "kind": "text",
+                "text": "See the other side: "
+              },
+              {
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch",
+                  "kind": "address",
+                  "primary_id": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": 30023
                 }
               },
               {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "See the other side: "
-                      }
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "eventRef",
-                        "uri": "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch",
-                        "kind": "naddr",
-                        "id": "30023:2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4:cycle-b"
-                      }
-                    }
-                  ]
-                }
+                "kind": "paragraph",
+                "children": [
+                  2,
+                  3
+                ]
               }
-            ]
+            ],
+            "roots": [
+              1,
+              4
+            ],
+            "mode": "Markdown"
           },
           "collapsed": false
         },
@@ -1232,1000 +1440,51 @@
               ]
             ],
             "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd\n",
-            "sig": "25807703a91d6ac718fcc0000c68583a91cc64703e46984a609a99f2157a1b7a0ec9f8e3c39d509792f1edcc144947689baeede7acbff95bb96532c23dbd8550"
+            "sig": "3117723a7142c7e7dad2b5fae24bf2098415279240bc1b0d0543e1e3c8f4d9d2b46a36eaee7323e0f348fc5d2ca93d96edaca48055ffb64d6314168bd4d6d581"
           },
           "rendered": {
-            "mode": "Markdown",
-            "segments": [
+            "nodes": [
               {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "heading",
-                  "level": 1,
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Cycle B"
-                      }
-                    }
-                  ]
+                "kind": "text",
+                "text": "Cycle B"
+              },
+              {
+                "kind": "heading",
+                "level": 1,
+                "children": [
+                  0
+                ]
+              },
+              {
+                "kind": "text",
+                "text": "Back to the start: "
+              },
+              {
+                "kind": "event_ref",
+                "uri": {
+                  "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+                  "kind": "address",
+                  "primary_id": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                  "relays": [],
+                  "author": null,
+                  "event_kind": 30023
                 }
               },
               {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Back to the start: "
-                      }
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "eventRef",
-                        "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
-                        "kind": "naddr",
-                        "id": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a"
-                      }
-                    }
-                  ]
-                }
+                "kind": "paragraph",
+                "children": [
+                  2,
+                  3
+                ]
               }
-            ]
+            ],
+            "roots": [
+              1,
+              4
+            ],
+            "mode": "Markdown"
           },
           "collapsed": false
-        }
-      }
-    },
-    {
-      "id": "S-A01",
-      "category": "articles",
-      "title": "kind:30023 rich CommonMark article",
-      "exercises": "real nmp-nip23 decode + tokenize_with_kind Markdown (PD-012/D8)",
-      "events": [
-        {
-          "id": "01ac957ed958e97a9112687098164cc44c88bea04741135b18ebbcc123cc068c",
-          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-          "created_at": 1700030000,
-          "kind": 30023,
-          "tags": [
-            [
-              "d",
-              "reconnect-strategy"
-            ],
-            [
-              "title",
-              "Reconnect Strategy"
-            ],
-            [
-              "summary",
-              "Exponential backoff with jitter for relay reconnects."
-            ],
-            [
-              "published_at",
-              "1700030000"
-            ]
-          ],
-          "content": "# Reconnect Strategy\n\n## Background\n\nThe relay layer needs **exponential backoff** with *jitter*, and ***both*** matter under load.\n\n### Steps\n\n1. Detect disconnect\n2. Schedule retry\n   - with jitter\n   - capped at 30s\n3. Resume subscriptions\n\nUse `reconnect()` directly:\n\n```rust\nfn reconnect() { /* backoff */ }\n```\n\n> Backpressure is a feature.\n>\n> > Even nested.\n\nSee the [spec](https://nmp.test/spec) and credit nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd.\n\n![Figure 1](https://nmp.test/img/figure.png \"Figure 1\")\n\n---\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAlso ~~deprecated~~ approach noted.\n",
-          "sig": "7e56a4b1739c1d00e6b716f179fb84bb4403693fd355d68c8a7912e77cd5b23a4c3e45755a2915105082eea10f6b6aedd5a94bc515cf39526434540bb01f4edd"
-        }
-      ],
-      "rendered": {
-        "mode": "Markdown",
-        "segments": [
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "heading",
-              "level": 1,
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "Reconnect Strategy"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "heading",
-              "level": 2,
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "Background"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "paragraph",
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "The relay layer needs "
-                  }
-                },
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "exponential backoff"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": " with "
-                  }
-                },
-                {
-                  "type": "emphasis",
-                  "children": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "jitter"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": ", and "
-                  }
-                },
-                {
-                  "type": "emphasis",
-                  "children": [
-                    {
-                      "type": "strong",
-                      "children": [
-                        {
-                          "type": "inline",
-                          "segment": {
-                            "type": "text",
-                            "text": "both"
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": " matter under load."
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "heading",
-              "level": 3,
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "Steps"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "list",
-              "ordered_start": 1,
-              "items": [
-                [
-                  {
-                    "type": "paragraph",
-                    "inlines": [
-                      {
-                        "type": "inline",
-                        "segment": {
-                          "type": "text",
-                          "text": "Detect disconnect"
-                        }
-                      }
-                    ]
-                  }
-                ],
-                [
-                  {
-                    "type": "list",
-                    "ordered_start": null,
-                    "items": [
-                      [
-                        {
-                          "type": "paragraph",
-                          "inlines": [
-                            {
-                              "type": "inline",
-                              "segment": {
-                                "type": "text",
-                                "text": "Schedule retry"
-                              }
-                            },
-                            {
-                              "type": "inline",
-                              "segment": {
-                                "type": "text",
-                                "text": "with jitter"
-                              }
-                            }
-                          ]
-                        }
-                      ],
-                      [
-                        {
-                          "type": "paragraph",
-                          "inlines": [
-                            {
-                              "type": "inline",
-                              "segment": {
-                                "type": "text",
-                                "text": "capped at 30s"
-                              }
-                            }
-                          ]
-                        }
-                      ]
-                    ]
-                  }
-                ],
-                [
-                  {
-                    "type": "paragraph",
-                    "inlines": [
-                      {
-                        "type": "inline",
-                        "segment": {
-                          "type": "text",
-                          "text": "Resume subscriptions"
-                        }
-                      }
-                    ]
-                  }
-                ]
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "paragraph",
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "Use "
-                  }
-                },
-                {
-                  "type": "code",
-                  "text": "reconnect()"
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": " directly:"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "codeBlock",
-              "info": "rust",
-              "body": "fn reconnect() { /* backoff */ }\n"
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "blockQuote",
-              "blocks": [
-                {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Backpressure is a feature."
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "blockQuote",
-                  "blocks": [
-                    {
-                      "type": "paragraph",
-                      "inlines": [
-                        {
-                          "type": "inline",
-                          "segment": {
-                            "type": "text",
-                            "text": "Even nested."
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "paragraph",
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "See the "
-                  }
-                },
-                {
-                  "type": "link",
-                  "label": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "spec"
-                      }
-                    }
-                  ],
-                  "href": "https://nmp.test/spec"
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": " and credit "
-                  }
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "mention",
-                    "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-                    "kind": "npub",
-                    "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
-                  }
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "."
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "paragraph",
-              "inlines": [
-                {
-                  "type": "image",
-                  "alt": "Figure 1",
-                  "title": "Figure 1",
-                  "src": "https://nmp.test/img/figure.png"
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "rule"
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "paragraph",
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "| a | b |"
-                  }
-                },
-                {
-                  "type": "softBreak"
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "| - | - |"
-                  }
-                },
-                {
-                  "type": "softBreak"
-                },
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "| 1 | 2 |"
-                  }
-                }
-              ]
-            }
-          },
-          {
-            "type": "markdownBlock",
-            "node": {
-              "type": "paragraph",
-              "inlines": [
-                {
-                  "type": "inline",
-                  "segment": {
-                    "type": "text",
-                    "text": "Also ~~deprecated~~ approach noted."
-                  }
-                }
-              ]
-            }
-          }
-        ]
-      },
-      "embeds": {
-        "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
-          "resolved_kind": 0,
-          "collapsed": true,
-          "collapse_reason": "dangling"
-        }
-      }
-    },
-    {
-      "id": "S-A02",
-      "category": "articles",
-      "title": "naddr -> kind:30023 preview card (Medium-like)",
-      "exercises": "Segment::EventRef(Naddr) -> compact article preview",
-      "events": [
-        {
-          "id": "d00dabaf7f522dde8e15612a5e43a72f4bd4e571c2af87aec3947deee93c4c09",
-          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-          "created_at": 1700030001,
-          "kind": 1,
-          "tags": [],
-          "content": "must-read: nostr:naddr1qqf8yetrdahxuetrwskhxarjv96x2emeqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqqa28whvewl",
-          "sig": "6274e13d80a576e56c0575f91dcd117106dc8bd4b64c995491f9429df71a692e7b546c0c93cf56a27eca195f7655cce88c6a65f324469c2d12c64d3d079a7602"
-        },
-        {
-          "id": "01ac957ed958e97a9112687098164cc44c88bea04741135b18ebbcc123cc068c",
-          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-          "created_at": 1700030000,
-          "kind": 30023,
-          "tags": [
-            [
-              "d",
-              "reconnect-strategy"
-            ],
-            [
-              "title",
-              "Reconnect Strategy"
-            ],
-            [
-              "summary",
-              "Exponential backoff with jitter for relay reconnects."
-            ],
-            [
-              "published_at",
-              "1700030000"
-            ]
-          ],
-          "content": "# Reconnect Strategy\n\n## Background\n\nThe relay layer needs **exponential backoff** with *jitter*, and ***both*** matter under load.\n\n### Steps\n\n1. Detect disconnect\n2. Schedule retry\n   - with jitter\n   - capped at 30s\n3. Resume subscriptions\n\nUse `reconnect()` directly:\n\n```rust\nfn reconnect() { /* backoff */ }\n```\n\n> Backpressure is a feature.\n>\n> > Even nested.\n\nSee the [spec](https://nmp.test/spec) and credit nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd.\n\n![Figure 1](https://nmp.test/img/figure.png \"Figure 1\")\n\n---\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAlso ~~deprecated~~ approach noted.\n",
-          "sig": "7e56a4b1739c1d00e6b716f179fb84bb4403693fd355d68c8a7912e77cd5b23a4c3e45755a2915105082eea10f6b6aedd5a94bc515cf39526434540bb01f4edd"
-        }
-      ],
-      "rendered": {
-        "mode": "Plain",
-        "segments": [
-          {
-            "type": "text",
-            "text": "must-read: "
-          },
-          {
-            "type": "eventRef",
-            "uri": "nostr:naddr1qqf8yetrdahxuetrwskhxarjv96x2emeqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqqa28whvewl",
-            "kind": "naddr",
-            "id": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
-          }
-        ]
-      },
-      "embeds": {
-        "nostr:naddr1qqf8yetrdahxuetrwskhxarjv96x2emeqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqqa28whvewl": {
-          "resolved_kind": 30023,
-          "event": {
-            "id": "01ac957ed958e97a9112687098164cc44c88bea04741135b18ebbcc123cc068c",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700030000,
-            "kind": 30023,
-            "tags": [
-              [
-                "d",
-                "reconnect-strategy"
-              ],
-              [
-                "title",
-                "Reconnect Strategy"
-              ],
-              [
-                "summary",
-                "Exponential backoff with jitter for relay reconnects."
-              ],
-              [
-                "published_at",
-                "1700030000"
-              ]
-            ],
-            "content": "# Reconnect Strategy\n\n## Background\n\nThe relay layer needs **exponential backoff** with *jitter*, and ***both*** matter under load.\n\n### Steps\n\n1. Detect disconnect\n2. Schedule retry\n   - with jitter\n   - capped at 30s\n3. Resume subscriptions\n\nUse `reconnect()` directly:\n\n```rust\nfn reconnect() { /* backoff */ }\n```\n\n> Backpressure is a feature.\n>\n> > Even nested.\n\nSee the [spec](https://nmp.test/spec) and credit nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd.\n\n![Figure 1](https://nmp.test/img/figure.png \"Figure 1\")\n\n---\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAlso ~~deprecated~~ approach noted.\n",
-            "sig": "7e56a4b1739c1d00e6b716f179fb84bb4403693fd355d68c8a7912e77cd5b23a4c3e45755a2915105082eea10f6b6aedd5a94bc515cf39526434540bb01f4edd"
-          },
-          "rendered": {
-            "mode": "Markdown",
-            "segments": [
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "heading",
-                  "level": 1,
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Reconnect Strategy"
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "heading",
-                  "level": 2,
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Background"
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "The relay layer needs "
-                      }
-                    },
-                    {
-                      "type": "strong",
-                      "children": [
-                        {
-                          "type": "inline",
-                          "segment": {
-                            "type": "text",
-                            "text": "exponential backoff"
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": " with "
-                      }
-                    },
-                    {
-                      "type": "emphasis",
-                      "children": [
-                        {
-                          "type": "inline",
-                          "segment": {
-                            "type": "text",
-                            "text": "jitter"
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": ", and "
-                      }
-                    },
-                    {
-                      "type": "emphasis",
-                      "children": [
-                        {
-                          "type": "strong",
-                          "children": [
-                            {
-                              "type": "inline",
-                              "segment": {
-                                "type": "text",
-                                "text": "both"
-                              }
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": " matter under load."
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "heading",
-                  "level": 3,
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Steps"
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "list",
-                  "ordered_start": 1,
-                  "items": [
-                    [
-                      {
-                        "type": "paragraph",
-                        "inlines": [
-                          {
-                            "type": "inline",
-                            "segment": {
-                              "type": "text",
-                              "text": "Detect disconnect"
-                            }
-                          }
-                        ]
-                      }
-                    ],
-                    [
-                      {
-                        "type": "list",
-                        "ordered_start": null,
-                        "items": [
-                          [
-                            {
-                              "type": "paragraph",
-                              "inlines": [
-                                {
-                                  "type": "inline",
-                                  "segment": {
-                                    "type": "text",
-                                    "text": "Schedule retry"
-                                  }
-                                },
-                                {
-                                  "type": "inline",
-                                  "segment": {
-                                    "type": "text",
-                                    "text": "with jitter"
-                                  }
-                                }
-                              ]
-                            }
-                          ],
-                          [
-                            {
-                              "type": "paragraph",
-                              "inlines": [
-                                {
-                                  "type": "inline",
-                                  "segment": {
-                                    "type": "text",
-                                    "text": "capped at 30s"
-                                  }
-                                }
-                              ]
-                            }
-                          ]
-                        ]
-                      }
-                    ],
-                    [
-                      {
-                        "type": "paragraph",
-                        "inlines": [
-                          {
-                            "type": "inline",
-                            "segment": {
-                              "type": "text",
-                              "text": "Resume subscriptions"
-                            }
-                          }
-                        ]
-                      }
-                    ]
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Use "
-                      }
-                    },
-                    {
-                      "type": "code",
-                      "text": "reconnect()"
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": " directly:"
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "codeBlock",
-                  "info": "rust",
-                  "body": "fn reconnect() { /* backoff */ }\n"
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "blockQuote",
-                  "blocks": [
-                    {
-                      "type": "paragraph",
-                      "inlines": [
-                        {
-                          "type": "inline",
-                          "segment": {
-                            "type": "text",
-                            "text": "Backpressure is a feature."
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "blockQuote",
-                      "blocks": [
-                        {
-                          "type": "paragraph",
-                          "inlines": [
-                            {
-                              "type": "inline",
-                              "segment": {
-                                "type": "text",
-                                "text": "Even nested."
-                              }
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "See the "
-                      }
-                    },
-                    {
-                      "type": "link",
-                      "label": [
-                        {
-                          "type": "inline",
-                          "segment": {
-                            "type": "text",
-                            "text": "spec"
-                          }
-                        }
-                      ],
-                      "href": "https://nmp.test/spec"
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": " and credit "
-                      }
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "mention",
-                        "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-                        "kind": "npub",
-                        "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
-                      }
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "."
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "image",
-                      "alt": "Figure 1",
-                      "title": "Figure 1",
-                      "src": "https://nmp.test/img/figure.png"
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "rule"
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "| a | b |"
-                      }
-                    },
-                    {
-                      "type": "softBreak"
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "| - | - |"
-                      }
-                    },
-                    {
-                      "type": "softBreak"
-                    },
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "| 1 | 2 |"
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "type": "markdownBlock",
-                "node": {
-                  "type": "paragraph",
-                  "inlines": [
-                    {
-                      "type": "inline",
-                      "segment": {
-                        "type": "text",
-                        "text": "Also ~~deprecated~~ approach noted."
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "collapsed": false,
-          "article": {
-            "title": "Reconnect Strategy",
-            "summary": "Exponential backoff with jitter for relay reconnects.",
-            "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "d_tag": "reconnect-strategy"
-          }
-        },
-        "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
-          "resolved_kind": 0,
-          "collapsed": true,
-          "collapse_reason": "dangling"
         }
       }
     },
@@ -2242,7 +1501,7 @@
           "kind": 1,
           "tags": [],
           "content": "curated devs: nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
-          "sig": "c67c4f0642e2597f9369b8e401f3b4aae6645f5727f3ddf305d0eb63a57bf52267377a3bc893effc54a3da32a9a468b742dd46e25687e58ced1801ed7c249979"
+          "sig": "7761dfb68b539c044f9c93ad3d926fdf4b1444b0e91832ca82f89c1eb154bf1958a022aff23478ee8c5bd2ded72b2240f52a8662b2a223ca5ed94293d8862829"
         },
         {
           "id": "36dc688a8b310db3e75aff1fc146057651e309be12e4eff9598431a48bcb928d",
@@ -2268,23 +1527,32 @@
             ]
           ],
           "content": "",
-          "sig": "47786942cd65106b55ec92c6a670e56bf070d95a4b7e81c2db1b904aad852483f602cc023a734e0cee4834a039b8104aaf1c38525522ebce84ea0c5d131219d9"
+          "sig": "14316fa677e42f44f7e5d97eb14b3624a60ea40af3dc49379f43add517126757e33672e0f7af2651894cc416c5941a92a02d8a59a6ccb7d396f44d5233c83f75"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "curated devs: "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
-            "kind": "naddr",
-            "id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:nostr-core"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
+              "kind": "address",
+              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "relays": [],
+              "author": null,
+              "event_kind": 30000
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm": {
@@ -2313,11 +1581,12 @@
               ]
             ],
             "content": "",
-            "sig": "47786942cd65106b55ec92c6a670e56bf070d95a4b7e81c2db1b904aad852483f602cc023a734e0cee4834a039b8104aaf1c38525522ebce84ea0c5d131219d9"
+            "sig": "14316fa677e42f44f7e5d97eb14b3624a60ea40af3dc49379f43add517126757e33672e0f7af2651894cc416c5941a92a02d8a59a6ccb7d396f44d5233c83f75"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": []
+            "nodes": [],
+            "roots": [],
+            "mode": "Plain"
           },
           "collapsed": false,
           "list": {
@@ -2353,7 +1622,7 @@
           "kind": 1,
           "tags": [],
           "content": "my reading list nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
-          "sig": "3fe5c8f892b9ef89a66a6496e2fab3e720aba2825623b10264c1ef360ff1814d06e87588bc92783bebcc33b039a320fbd1f542989adc35da84d29a739dfd6c15"
+          "sig": "38a3119e277974d33324ecc3c0d7cb40c266b17b67f71527c9a49798211b17df01a5f4997c0c92acc7f595aa1c2bafc3ac887caede34db3f607c62a51c2065d8"
         },
         {
           "id": "03909df1522498408282c1e4f3c86d2eb00db372a9255196de70c812e06fcb15",
@@ -2383,23 +1652,32 @@
             ]
           ],
           "content": "",
-          "sig": "6fd2d30ae2977c71073da58bef9fb862d8c78bb1d819a17b69aa701204da4a1e820354136275d9d084ed4a42846c3b4a13690ef1f94322d3e5203d9b936c7f1b"
+          "sig": "21ed7bff961490f9cde720a7c81e401ba4bcaf8c9736440c603f206489146e180f2cb8903f6462d85cc6e027f351ba3ba15f8c7f5e8cc627a3c277e29b4bde88"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "my reading list "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
-            "kind": "naddr",
-            "id": "30003:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reading"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
+              "kind": "address",
+              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "relays": [],
+              "author": null,
+              "event_kind": 30003
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg": {
@@ -2432,11 +1710,12 @@
               ]
             ],
             "content": "",
-            "sig": "6fd2d30ae2977c71073da58bef9fb862d8c78bb1d819a17b69aa701204da4a1e820354136275d9d084ed4a42846c3b4a13690ef1f94322d3e5203d9b936c7f1b"
+            "sig": "21ed7bff961490f9cde720a7c81e401ba4bcaf8c9736440c603f206489146e180f2cb8903f6462d85cc6e027f351ba3ba15f8c7f5e8cc627a3c277e29b4bde88"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": []
+            "nodes": [],
+            "roots": [],
+            "mode": "Plain"
           },
           "collapsed": false,
           "list": {
@@ -2472,7 +1751,7 @@
           "kind": 1,
           "tags": [],
           "content": "caro's relays nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
-          "sig": "37bd83db1c4d0b2cf4619c712a24c5f7b17723e4353f56ed72765e92e538cbfa56b10d16a138f0def299a27da3ad2a90d56e104acc4e780b6701f2d905db0faf"
+          "sig": "fa3c5207bcef0c3627cc49af78065808e58a2fbfdcb50455dfbb4c572b658ed6145efde6e1192ce39c85dddc5a6c12990d23c03260de49d2b6e8d2c257247dbb"
         },
         {
           "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
@@ -2491,23 +1770,34 @@
             ]
           ],
           "content": "",
-          "sig": "9bc63ba597f2a040890888ad839ce576af75dda8e9fad669cc8b8441e776fb5489df96b136a2d7a348801f8b9b73475dbe8a5ba6f4cab0c4b6348b9689a9c7c3"
+          "sig": "b35686ed3fdba971d597c1d531a1482abd977f2552566c4ed5f5ff27745e9ddbd4b17c64c58fae56cebe63bafbde79b207688b9a9cc0c727ffa524234b1d32fe"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "caro's relays "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
-            "kind": "nevent",
-            "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
+              "kind": "event",
+              "primary_id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "event_kind": 10002
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn": {
@@ -2529,11 +1819,12 @@
               ]
             ],
             "content": "",
-            "sig": "9bc63ba597f2a040890888ad839ce576af75dda8e9fad669cc8b8441e776fb5489df96b136a2d7a348801f8b9b73475dbe8a5ba6f4cab0c4b6348b9689a9c7c3"
+            "sig": "b35686ed3fdba971d597c1d531a1482abd977f2552566c4ed5f5ff27745e9ddbd4b17c64c58fae56cebe63bafbde79b207688b9a9cc0c727ffa524234b1d32fe"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": []
+            "nodes": [],
+            "roots": [],
+            "mode": "Plain"
           },
           "collapsed": false,
           "list": {
@@ -2557,6 +1848,485 @@
       }
     },
     {
+      "id": "S-MD01",
+      "category": "media",
+      "title": "Single image URL -> media block",
+      "exercises": "grouper post-pass -> Segment::Media { kind: Image }",
+      "events": [
+        {
+          "id": "0499e95554ad54d15a34d6d6366e3d3caa657b21d9743848303b43afc69129ec",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700060000,
+          "kind": 1,
+          "tags": [],
+          "content": "field notes from the install https://nmp.test/img/install.jpg",
+          "sig": "9b0764cecf4aec5567cecb044e4ac0952a39e86c4d0bf8165a6fd96520e8ef3ecc78acc6e30d2a164ea8753253e20c4ab8330a1567a1f4a33741817107e47d13"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "field notes from the install "
+          },
+          {
+            "kind": "media",
+            "urls": [
+              "https://nmp.test/img/install.jpg"
+            ],
+            "media_kind": "Image"
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-MD02",
+      "category": "media",
+      "title": "Single video URL -> media block",
+      "exercises": "grouper post-pass -> Segment::Media { kind: Video }",
+      "events": [
+        {
+          "id": "6541bd78a4d3e44b9acbda7eb6541cd15b316bdaf64dfb2d2b33ee60020fca9c",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700060001,
+          "kind": 1,
+          "tags": [],
+          "content": "demo reel https://nmp.test/v/demo.mp4",
+          "sig": "b3bbd24ddc1d9054216fbab0b3833d1e6a986c3278734a6da7eaec910d2d59e1327ea509ce92f0e87bfbca383b3029b11482cf6445588d9538892885e56d0d15"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "demo reel "
+          },
+          {
+            "kind": "media",
+            "urls": [
+              "https://nmp.test/v/demo.mp4"
+            ],
+            "media_kind": "Video"
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-MD03",
+      "category": "media",
+      "title": "Single audio URL -> media block",
+      "exercises": "grouper post-pass -> Segment::Media { kind: Audio }",
+      "events": [
+        {
+          "id": "c8e1b660e1ef4aaeb06cb889d822cfbdf3f7def50f64c3c0efe1aa4c8179aac7",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700060002,
+          "kind": 1,
+          "tags": [],
+          "content": "voice memo https://nmp.test/a/memo.mp3",
+          "sig": "0dfa5351292c4e74502805edee48b48929a0c559c534c60ec129b0c4bdbb2cf0ede13b93beb08c9381b92da94448de10dd874410662307295a7c1f213f5561eb"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "voice memo "
+          },
+          {
+            "kind": "media",
+            "urls": [
+              "https://nmp.test/a/memo.mp3"
+            ],
+            "media_kind": "Audio"
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-L01",
+      "category": "links",
+      "title": "Plain URL (non-media)",
+      "exercises": "Segment::Url — bare URL, not classified as media",
+      "events": [
+        {
+          "id": "7bb87d7194f31bed99568ce0f7b26abaeebbefcf815daaeb4d845850cb97fd10",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700070000,
+          "kind": 1,
+          "tags": [],
+          "content": "spec lives at https://github.com/nostr-protocol/nips",
+          "sig": "c1790a195fe86e26cc1994d1e4ad72c8ac6717ac0d9c0e3a3ead9466306b5374858995ad967adbb7e3440579e442a5d8e7b2535d842988204968d0d003a2b782"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "spec lives at "
+          },
+          {
+            "kind": "url",
+            "url": "https://github.com/nostr-protocol/nips"
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-L02",
+      "category": "links",
+      "title": "Markdown link with valid href",
+      "exercises": "MarkdownInline::Link { href: Some(_) } -> WireNode::Link",
+      "events": [
+        {
+          "id": "cb9343d54d3577c459507a92cfa02a502f29574b92ddc7e844f03a95a9c4d18d",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700070001,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "links"
+            ],
+            [
+              "title",
+              "On Links"
+            ]
+          ],
+          "content": "# On Links\n\nThe spec lives [on GitHub](https://github.com/nostr-protocol/nips).\n",
+          "sig": "bf9de8ff3f80fed1aa00b283ba3f05a523dbfd5ef336b5869511294786a33701c4f16cb0444247805b8e59c166de3f9ff97e7d14a48ab8eeac6d0ad4c444528e"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "On Links"
+          },
+          {
+            "kind": "heading",
+            "level": 1,
+            "children": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "The spec lives "
+          },
+          {
+            "kind": "text",
+            "text": "on GitHub"
+          },
+          {
+            "kind": "link",
+            "children": [
+              3
+            ],
+            "href": "https://github.com/nostr-protocol/nips"
+          },
+          {
+            "kind": "text",
+            "text": "."
+          },
+          {
+            "kind": "paragraph",
+            "children": [
+              2,
+              4,
+              5
+            ]
+          }
+        ],
+        "roots": [
+          1,
+          6
+        ],
+        "mode": "Markdown"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-L03",
+      "category": "links",
+      "title": "Markdown link with no valid href (D1 best-effort)",
+      "exercises": "Unparseable href -> CommonMark emits no Link node; bracket/paren tokens survive as inline WireNode::Text runs under the paragraph",
+      "events": [
+        {
+          "id": "e5e8e586a24919e7f4c52775e90b9f7095d3d49bf798745861e4c8d1382e104a",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700070002,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "broken-link"
+            ],
+            [
+              "title",
+              "Broken Link"
+            ]
+          ],
+          "content": "# Broken Link\n\nSee [this thing](not a url) for context.\n",
+          "sig": "d7d68fd022ef1cbc684ddb3ef7d160bdd57dc49926669fc9e91e888b66b0f556275b3bf50e12b184fe36c1b584665deb1712c8fe9a1903f140b759c4766385d1"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "Broken Link"
+          },
+          {
+            "kind": "heading",
+            "level": 1,
+            "children": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "See "
+          },
+          {
+            "kind": "text",
+            "text": "["
+          },
+          {
+            "kind": "text",
+            "text": "this thing"
+          },
+          {
+            "kind": "text",
+            "text": "]"
+          },
+          {
+            "kind": "text",
+            "text": "(not a url) for context."
+          },
+          {
+            "kind": "paragraph",
+            "children": [
+              2,
+              3,
+              4,
+              5,
+              6
+            ]
+          }
+        ],
+        "roots": [
+          1,
+          7
+        ],
+        "mode": "Markdown"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-H01",
+      "category": "hashtags",
+      "title": "Single hashtag",
+      "exercises": "Segment::Hashtag — leading # stripped, lowercased",
+      "events": [
+        {
+          "id": "6c530967fbad664dc078155c82bd7137fecfb77666d516ff0ad90dc043c580c1",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700080000,
+          "kind": 1,
+          "tags": [
+            [
+              "t",
+              "nostr"
+            ]
+          ],
+          "content": "shipped #Nostr",
+          "sig": "ed635f0cf559b3fa115f1709d70269615818987ec5e814db36ea704a6de7932bbac40a67ed5d21d1153e5f5f08360bf5ebee530d83960bf5bf5b41ac450e5dc0"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "shipped "
+          },
+          {
+            "kind": "hashtag",
+            "tag": "nostr"
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-H02",
+      "category": "hashtags",
+      "title": "Multiple hashtags mixed with text (incl. non-ascii)",
+      "exercises": "tokenizer run-of-text <-> hashtag transitions; unicode tag preserved",
+      "events": [
+        {
+          "id": "6a9dc9155beadd0e125fcf05a6e0b8fb511ef2daf0e2881654441f9d8c8be0fd",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700080001,
+          "kind": 1,
+          "tags": [
+            [
+              "t",
+              "nostr"
+            ],
+            [
+              "t",
+              "nip01"
+            ],
+            [
+              "t",
+              "café"
+            ]
+          ],
+          "content": "morning thoughts #Nostr while debugging #NIP01 from the #café",
+          "sig": "2e203762f9494040d4f8ac532060f0db1681524e9586e97aabbb08e4d5eb87184a41548dcff2c41d695c6ec430f4edee90971c70f7e941d73dbaf516a912aa43"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "morning thoughts "
+          },
+          {
+            "kind": "hashtag",
+            "tag": "nostr"
+          },
+          {
+            "kind": "text",
+            "text": " while debugging "
+          },
+          {
+            "kind": "hashtag",
+            "tag": "nip01"
+          },
+          {
+            "kind": "text",
+            "text": " from the "
+          },
+          {
+            "kind": "hashtag",
+            "tag": "café"
+          }
+        ],
+        "roots": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-H03",
+      "category": "hashtags",
+      "title": "Hashtag inside a markdown article body",
+      "exercises": "MarkdownInline::Inline(Segment::Hashtag) under WireNode::Paragraph",
+      "events": [
+        {
+          "id": "06ad93df9eb22e68de199bcdab380ac2724d5295ba9f72d4799f117954560ca1",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700080002,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "hashtag-essay"
+            ],
+            [
+              "title",
+              "On Hashtags"
+            ],
+            [
+              "t",
+              "nostr"
+            ]
+          ],
+          "content": "# On Hashtags\n\nTags like #Nostr remain inline hashtags inside markdown bodies.\n",
+          "sig": "e613913c3251d3704a37955d7734afc48e7a0be1db9ce8db144f766f14a557f7e2e4a46c34ed0eedf37767f6513e6ee919e2a6d9af22cfa1e6803aa1b6a12f64"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "On Hashtags"
+          },
+          {
+            "kind": "heading",
+            "level": 1,
+            "children": [
+              0
+            ]
+          },
+          {
+            "kind": "text",
+            "text": "Tags like "
+          },
+          {
+            "kind": "hashtag",
+            "tag": "nostr"
+          },
+          {
+            "kind": "text",
+            "text": " remain inline hashtags inside markdown bodies."
+          },
+          {
+            "kind": "paragraph",
+            "children": [
+              2,
+              3,
+              4
+            ]
+          }
+        ],
+        "roots": [
+          1,
+          5
+        ],
+        "mode": "Markdown"
+      },
+      "embeds": {}
+    },
+    {
       "id": "S-E01",
       "category": "fallback",
       "title": "Malformed bech32 entity",
@@ -2569,17 +2339,20 @@
           "kind": 1,
           "tags": [],
           "content": "broken nostr:npub1thisisnotvalidbech32 still readable",
-          "sig": "481304b54cba2bdfc1d9fae785ad882b779e9f38069cf809dbd92210d5b0e80dd1341ff1e7c8b18ab31234420339a5e85548b0cc54f5bc4fa79ff8e605ee8787"
+          "sig": "6d55c536a9cbdf30fd408c37abd0066c82dd894896fe6fc624559e1b80eb298e2dd11373bdc38cf38be3977fd3a58f20a8a57671bd198d794e741bfa4f894cee"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "broken nostr:npub1thisisnotvalidbech32 still readable"
           }
-        ]
+        ],
+        "roots": [
+          0
+        ],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -2596,7 +2369,7 @@
           "kind": 1,
           "tags": [],
           "content": "listen: nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
-          "sig": "ececd8fe46074e97e0205e4a86e991b2c67b79b9f4643dc110913352a0602d6a53c193b394f2d6b83bb6f53d364f70c920fd6bfe0357f8c1d0bcca995a4c659d"
+          "sig": "acf2589a0f429552747f6269c8d27914a0b29639cac0f174162c212fef993f35ff5a380851de475ab0da78ba52f3a4e8455895c1bf82ced98007832e99a5cfdc"
         },
         {
           "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
@@ -2610,23 +2383,34 @@
             ]
           ],
           "content": "audio track event body",
-          "sig": "68e9a93cb89fb982c55fb9d95b533185fec86d263b76111c16d8d297a7bf494f207f7fabf693381896023078fd425079f859208e3173cd79510be991f230e9b2"
+          "sig": "91feac24383fb1e69a26d0287bb163a0475a18bb3348f3d377cfdbc4fab877304e6c4d46863e05b0cd7a5c08f6a341c14dcbfa1ea5665c57663c1367bfe99777"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "listen: "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
-            "kind": "nevent",
-            "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
+              "kind": "event",
+              "primary_id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "event_kind": 31337
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z": {
@@ -2643,7 +2427,7 @@
               ]
             ],
             "content": "audio track event body",
-            "sig": "68e9a93cb89fb982c55fb9d95b533185fec86d263b76111c16d8d297a7bf494f207f7fabf693381896023078fd425079f859208e3173cd79510be991f230e9b2"
+            "sig": "91feac24383fb1e69a26d0287bb163a0475a18bb3348f3d377cfdbc4fab877304e6c4d46863e05b0cd7a5c08f6a341c14dcbfa1ea5665c57663c1367bfe99777"
           },
           "collapsed": true,
           "collapse_reason": "unsupported"
@@ -2663,23 +2447,34 @@
           "kind": 1,
           "tags": [],
           "content": "ghost quote nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
-          "sig": "6ce8a61d8c84cd23c64a6fbb0f5adabbadc377bcf9b2f589d588865a833744261558a9c90b3ced8792d0d21750ef8cc7f960c669a6e2f82fe9b6ddb04ac5f9e8"
+          "sig": "9283f6511a50944b54a44628ccae31a6d89b8b475fb47788be1f07b690adc8acf67917b06135ff5f7cc3fbff8aa2be8e3394cfa099ba35ee7e8ed6ef7a32d241"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "ghost quote "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
-            "kind": "nevent",
-            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
+              "kind": "event",
+              "primary_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "event_kind": 1
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07": {
@@ -2702,23 +2497,32 @@
           "kind": 1,
           "tags": [],
           "content": "hello nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-          "sig": "2093333515426f55164c9a3d29ab6f7654ed03a88922a623f292966f611a01599b16c76b018c6de48343f30b07a9a40167708ed88f8e29a3411739b9956aa07c"
+          "sig": "a6b8691de6ba919327e8288a2dc468ef37bde25cca03d028c7ba3db86b5236368934276d1cdc0c2846f7fe5dfaf4814876ea488e92454baac9e20f7bbc5d7dfb"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "hello "
           },
           {
-            "type": "mention",
-            "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-            "kind": "npub",
-            "pubkey": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13"
+            "kind": "mention",
+            "uri": {
+              "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+              "kind": "profile",
+              "primary_id": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
@@ -2741,12 +2545,13 @@
           "kind": 1,
           "tags": [],
           "content": "",
-          "sig": "d88afc1c8abf0a4d5e864de59065d730a50c888b582e89903d4550d5d40136bc1ddd3d2979d0d22c9847f0c3f0ae9a0a62f29c1ae017fb5ceac1e845b63e0a45"
+          "sig": "f6c672804e9bbe09e277b294bdfea87c6efd6776f20e75edf2bf3d01d1fc01e517b46941251ebe5e07bdebe26d325ac7c1a7545dd8ac97f8428754f18d0d1d51"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": []
+        "nodes": [],
+        "roots": [],
+        "mode": "Plain"
       },
       "embeds": {}
     },
@@ -2754,7 +2559,7 @@
       "id": "S-E06",
       "category": "fallback",
       "title": "Article with empty body but valid metadata",
-      "exercises": "nmp-nip23 decode ok, body empty -> header-only render (D8)",
+      "exercises": "kind:30023 empty body -> tokenize_with_kind renders header-only (D8)",
       "events": [
         {
           "id": "82f9a9670b29bf14e153be3470b7d58a695606c28b4a6b59afc1271d242e7ce8",
@@ -2776,12 +2581,13 @@
             ]
           ],
           "content": "",
-          "sig": "9b3376b8e4dba6c626faa2f59bffb1bc1c2f016257798acc24ac2837423315dc500d8839c824a0dc1fa69801b4a7a1be738b8fbcfeb1eaf843cf6960dee8ec3e"
+          "sig": "dbcd55a8aa7a433604deed4b61041f40e065290efc0199fa69f69db4d82d8b9828c72b468d08f3edee4c3bde407c9d25c0501da5662abe8c477a84169d955845"
         }
       ],
       "rendered": {
-        "mode": "Markdown",
-        "segments": []
+        "nodes": [],
+        "roots": [],
+        "mode": "Markdown"
       },
       "embeds": {}
     },
@@ -2798,7 +2604,7 @@
           "kind": 1,
           "tags": [],
           "content": "empty list nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
-          "sig": "4fa70b676929d3b0de0654732334b37465b3695ec528164ffdb25da037fd32af6f10264f397592e6ea7580091685de47a3159c32910a0016f5c2f1cdbafecda3"
+          "sig": "29e89c0943c76b9d9f980578ade28a9d3c136c2e1ac93ae93e7cb2cdc09738937cb50aa5a33d1be11daa6d042f86b7fe7105340750760d25a1f972ac732ac2f2"
         },
         {
           "id": "c6d0ba54a906d84547babeeb585ba973b48abfbfbcc5d76204e836798971e11c",
@@ -2816,23 +2622,32 @@
             ]
           ],
           "content": "",
-          "sig": "a8f831af9709296d0d552d58b6c4be9eb6ef5a6e69f1de99720b4bfca52477369d452a2a303bf419febaa395fd713829b193119cdee5aba95be210ca7034cab0"
+          "sig": "339b991cae7ef0e4ebafb3360eab6a3c712544ac9b8d70ea5c25f6acf0789252cb9861b5c0a86a7a5499ace36a78797af5f62e489f35924e8a70150dfd78f72b"
         }
       ],
       "rendered": {
-        "mode": "Plain",
-        "segments": [
+        "nodes": [
           {
-            "type": "text",
+            "kind": "text",
             "text": "empty list "
           },
           {
-            "type": "eventRef",
-            "uri": "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
-            "kind": "naddr",
-            "id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:empty"
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
+              "kind": "address",
+              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "relays": [],
+              "author": null,
+              "event_kind": 30000
+            }
           }
-        ]
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
       },
       "embeds": {
         "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4": {
@@ -2853,11 +2668,12 @@
               ]
             ],
             "content": "",
-            "sig": "a8f831af9709296d0d552d58b6c4be9eb6ef5a6e69f1de99720b4bfca52477369d452a2a303bf419febaa395fd713829b193119cdee5aba95be210ca7034cab0"
+            "sig": "339b991cae7ef0e4ebafb3360eab6a3c712544ac9b8d70ea5c25f6acf0789252cb9861b5c0a86a7a5499ace36a78797af5f62e489f35924e8a70150dfd78f72b"
           },
           "rendered": {
-            "mode": "Plain",
-            "segments": []
+            "nodes": [],
+            "roots": [],
+            "mode": "Plain"
           },
           "collapsed": false,
           "list": {
