@@ -15,17 +15,46 @@ use super::action::{PublishHandle, PublishTarget, RelayUrl};
 use super::state::{PerRelayState, RelayAck};
 use crate::substrate::SignedEvent;
 
-/// A relay URL paired with the human-readable reason it was selected.
-/// The reason string is pre-formatted by the resolver; callers render it verbatim.
+/// Structured reason a relay was added to a publish set.
+///
+/// Display-free — human-readable formatting happens only at the kernel
+/// projection boundary (`crate::kernel::publish_outbox::format_relay_reason`).
+/// Keeping the internal pipeline typed means the resolver never owns
+/// English strings, persistence stores a stable enum payload, and tests
+/// assert against variants instead of fragile reason strings.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum RelaySelectionReason {
+    /// Relay listed as a `write` (or unmarked) entry in the author's NIP-65
+    /// kind:10002 — the canonical write target.
+    AuthorWriteRelay,
+    /// Active account has no kind:10002 yet; the relay was pulled from local
+    /// app configuration as a write fallback.
+    LocalConfigRelay,
+    /// Discovery indexer fan-out for replaceable / profile / contacts kinds
+    /// (kind:0, kind:3, kind:10000–19999). Carries the originating kind so
+    /// the projection can render it diagnostically.
+    DiscoveryIndexer { kind: u32 },
+    /// Recipient inbox relay pulled from a `#p`-tagged author's kind:10002
+    /// read list. Carries the recipient hex pubkey so the projection can
+    /// short-format it (e.g. `Inbox relay for npub1abc…`).
+    RecipientInbox { pubkey: String },
+    /// Caller passed `PublishTarget::Explicit { relays }` — the user or app
+    /// chose this relay directly.
+    Explicit,
+}
+
+/// A relay URL paired with the structured reason it was selected.
 ///
 /// Returned from [`OutboxResolver::resolve`]. The same canonical URL may appear
 /// more than once with different reasons (e.g. a relay that is both the
 /// author's NIP-65 write relay and a discovery indexer). The publish engine
-/// deduplicates by canonical URL and joins distinct reason strings with `"; "`.
+/// deduplicates by canonical URL and collects distinct reasons into a
+/// `Vec<RelaySelectionReason>` per URL; the kernel projection formats each
+/// reason into a single English string at the wire boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolvedRelay {
     pub url: RelayUrl,
-    pub reason: String,
+    pub reason: RelaySelectionReason,
 }
 
 // ---------------- Signer (M6 / task #43) ----------------
@@ -112,7 +141,7 @@ impl OutboxResolver for StaticOutbox {
                 .iter()
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: "Explicit relay".to_string(),
+                    reason: RelaySelectionReason::Explicit,
                 })
                 .collect();
         }
@@ -122,15 +151,18 @@ impl OutboxResolver for StaticOutbox {
                 for url in writes {
                     out.push(ResolvedRelay {
                         url: url.clone(),
-                        reason: "Static author write relay".to_string(),
+                        reason: RelaySelectionReason::AuthorWriteRelay,
                     });
                 }
             }
             _ => {
+                // Indexer fallback for a static stub is closest in spirit to
+                // the production `LocalConfigRelay` lane — the relay didn't
+                // come from a NIP-65 list, it came from a configured set.
                 for url in &self.indexer_fallback {
                     out.push(ResolvedRelay {
                         url: url.clone(),
-                        reason: "Static indexer fallback".to_string(),
+                        reason: RelaySelectionReason::LocalConfigRelay,
                     });
                 }
             }
@@ -150,7 +182,9 @@ impl OutboxResolver for StaticOutbox {
                     for url in reads {
                         out.push(ResolvedRelay {
                             url: url.clone(),
-                            reason: "Static p-tag read relay".to_string(),
+                            reason: RelaySelectionReason::RecipientInbox {
+                                pubkey: p.clone(),
+                            },
                         });
                     }
                 }
@@ -177,7 +211,7 @@ impl OutboxResolver for NoopOutboxResolver {
                 .iter()
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: "Explicit relay".to_string(),
+                    reason: RelaySelectionReason::Explicit,
                 })
                 .collect();
         }
@@ -322,15 +356,18 @@ pub struct PublishRecord {
     /// keep deserialising.
     #[serde(default)]
     pub pending_retries: Vec<(RelayUrl, u64)>,
-    /// Per-relay selection rationale (`relay_url → reason`). Persisted at
-    /// publish time so the human-readable "why was this relay targeted?"
-    /// string survives kernel restart and is available to the snapshot
-    /// projection without re-running the outbox resolver. Defaults to empty
-    /// so older serialised rows keep deserialising; in that case the relay
-    /// rows project with an empty `relay_reason` (the projection's
-    /// `skip_serializing_if = "String::is_empty"` keeps the JSON shape).
+    /// Per-relay selection rationale (`relay_url → [reason]`). Persisted at
+    /// publish time so the structured "why was this relay targeted?" payload
+    /// survives kernel restart and is available to the snapshot projection
+    /// without re-running the outbox resolver. The `Vec<RelaySelectionReason>`
+    /// shape captures the case where one canonical URL was selected for
+    /// multiple reasons (e.g. a relay that is both the author's NIP-65 write
+    /// relay AND a discovery indexer). Defaults to empty so older serialised
+    /// rows keep deserialising; in that case the relay rows project with an
+    /// empty `relay_reason` (the projection's `skip_serializing_if =
+    /// "String::is_empty"` keeps the JSON shape).
     #[serde(default)]
-    pub relay_reasons: Vec<(RelayUrl, String)>,
+    pub relay_reasons: Vec<(RelayUrl, Vec<RelaySelectionReason>)>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

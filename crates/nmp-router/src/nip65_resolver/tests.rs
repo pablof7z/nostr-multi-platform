@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
-use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
+use nmp_core::publish::{OutboxResolver, PublishTarget, RelaySelectionReason, ResolvedRelay};
 use nmp_core::slots::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
@@ -49,13 +49,10 @@ fn urls_of(resolved: &[ResolvedRelay]) -> BTreeSet<String> {
     resolved.iter().map(|r| r.url.clone()).collect()
 }
 
-/// Test helper — find the first `reason` string for the given URL, or None
+/// Test helper — find the first `reason` variant for the given URL, or None
 /// if the URL was not selected.
-fn find_reason<'a>(resolved: &'a [ResolvedRelay], url: &str) -> Option<&'a str> {
-    resolved
-        .iter()
-        .find(|r| r.url == url)
-        .map(|r| r.reason.as_str())
+fn find_reason<'a>(resolved: &'a [ResolvedRelay], url: &str) -> Option<&'a RelaySelectionReason> {
+    resolved.iter().find(|r| r.url == url).map(|r| &r.reason)
 }
 
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -345,8 +342,9 @@ fn nip65_resolver_invalid_author_hex_returns_empty() {
 // ---------------- ResolvedRelay::reason coverage ----------------
 
 /// Code path 1 — author kind:10002 write relays carry the
-/// `"NIP-65 write relay"` rationale. Apps render this verbatim, so the
-/// exact wording is part of the resolver contract.
+/// `RelaySelectionReason::AuthorWriteRelay` variant. The variant is the
+/// resolver contract; the kernel projection formats it into English at the
+/// wire boundary (`publish_outbox::format_relay_reason`).
 #[test]
 fn resolve_returns_nip65_write_relay_reason() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
@@ -361,15 +359,15 @@ fn resolve_returns_nip65_write_relay_reason() {
     );
     let resolver = mk_resolver(store);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
-    assert_eq!(
+    assert!(matches!(
         find_reason(&out, "wss://write.example"),
-        Some("NIP-65 write relay"),
-    );
+        Some(RelaySelectionReason::AuthorWriteRelay)
+    ));
 }
 
 /// Code path 2 — when no kind:10002 is on file, the active account's locally
 /// configured write relays appear with the
-/// `"App relay (local config)"` rationale.
+/// `RelaySelectionReason::LocalConfigRelay` variant.
 #[test]
 fn resolve_returns_app_relay_reason_when_no_kind10002() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
@@ -380,16 +378,17 @@ fn resolve_returns_app_relay_reason_when_no_kind10002() {
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
     );
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
-    assert_eq!(
+    assert!(matches!(
         find_reason(&out, "wss://local-write.example"),
-        Some("App relay (local config)"),
-    );
+        Some(RelaySelectionReason::LocalConfigRelay)
+    ));
 }
 
 /// Code path 3 — discovery kinds (kind:0 / kind:3 / kind:10000–19999) fan out
-/// to indexer relays with a `"Discovery indexer (kind N)"` rationale that
-/// includes the originating kind so the user can tell whether the relay was
-/// targeted for the profile (kind:0), contacts (kind:3), or a NIP replaceable.
+/// to indexer relays with a `RelaySelectionReason::DiscoveryIndexer { kind }`
+/// variant carrying the originating kind so the user can tell whether the
+/// relay was targeted for the profile (kind:0), contacts (kind:3), or a NIP
+/// replaceable.
 #[test]
 fn resolve_returns_discovery_indexer_reason_for_kind0() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
@@ -400,16 +399,16 @@ fn resolve_returns_discovery_indexer_reason_for_kind0() {
         indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 0);
-    assert_eq!(
+    assert!(matches!(
         find_reason(&out, "wss://indexer.example"),
-        Some("Discovery indexer (kind 0)"),
-    );
+        Some(RelaySelectionReason::DiscoveryIndexer { kind: 0 })
+    ));
 }
 
-/// Code path 4 — recipient-inbox fan-out from `#p` tags carries an
-/// `"Inbox relay for npub1abc…"` rationale. The recipient pubkey is shortened
-/// via [`nmp_core::display::short_npub`] so the reason fits on one line in
-/// the shell.
+/// Code path 4 — recipient-inbox fan-out from `#p` tags carries a
+/// `RelaySelectionReason::RecipientInbox { pubkey }` variant. The raw hex
+/// pubkey rides on the variant; the kernel projection abbreviates it via
+/// `short_npub` at the wire boundary.
 #[test]
 fn resolve_returns_inbox_relay_reason_for_p_tags() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
@@ -440,20 +439,20 @@ fn resolve_returns_inbox_relay_reason_for_p_tags() {
     );
     let reason = find_reason(&out, "wss://recipient-read.example")
         .expect("recipient read relay must be present");
-    assert!(
-        reason.starts_with("Inbox relay for "),
-        "expected 'Inbox relay for <npub>' rationale, got {reason:?}",
-    );
-    // The recipient pubkey should be shortened to a bech32 npub form — the
-    // reason MUST NOT smuggle the raw 64-char hex into UI strings.
-    assert!(
-        !reason.contains(RECIPIENT_HEX),
-        "raw hex pubkey leaked into reason string: {reason:?}",
-    );
+    match reason {
+        RelaySelectionReason::RecipientInbox { pubkey } => {
+            assert_eq!(
+                pubkey, RECIPIENT_HEX,
+                "recipient pubkey rides verbatim on the variant; \
+                 abbreviation is the projection's responsibility"
+            );
+        }
+        other => panic!("expected RecipientInbox, got {other:?}"),
+    }
 }
 
 /// Code path 5 — explicit targets short-circuit and every relay carries the
-/// `"Explicit relay"` rationale.
+/// `RelaySelectionReason::Explicit` variant.
 #[test]
 fn resolve_returns_explicit_relay_reason() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
@@ -472,6 +471,9 @@ fn resolve_returns_explicit_relay_reason() {
     );
     assert_eq!(out.len(), 2);
     for url in &explicit {
-        assert_eq!(find_reason(&out, url), Some("Explicit relay"));
+        assert!(matches!(
+            find_reason(&out, url),
+            Some(RelaySelectionReason::Explicit)
+        ));
     }
 }

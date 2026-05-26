@@ -12,6 +12,7 @@ pub mod post_detail;
 mod post_detail_rich;
 pub mod post_list;
 pub mod profile_pane;
+mod outbox;
 pub mod relay_panel;
 pub mod settings;
 mod shared_snapshot_lines;

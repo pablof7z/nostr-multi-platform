@@ -257,7 +257,6 @@ fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLine> {
         })
         .take(20)
         .map(|row| {
-            let kind = row.get("kind").and_then(Value::as_u64).unwrap_or(1) as u32;
             let relays = row
                 .get("relay_outcomes")
                 .and_then(Value::as_array)
@@ -272,29 +271,15 @@ fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLine> {
                 .collect();
             PublishHistoryLine {
                 event_id: string_field(row, "event_id"),
-                title: publish_kind_label(kind),
+                // Pre-formatted by the kernel (`PublishQueueEntry.title`) —
+                // the TUI no longer owns a kind→label mapping (RMP bible
+                // commandment #4: backend owns display strings).
+                title: string_field(row, "title"),
                 status: string_field(row, "status"),
                 relays,
             }
         })
         .collect()
-}
-
-/// English label for a published event kind. Mirrors the closed set in
-/// `nmp_core::kernel::publish_outbox::publish_event_title` (which feeds the
-/// in-flight `OutboxLine.title`) but extends it with reposts (kind 6) which
-/// the publish-queue history can also see. Falls back to `kind:N` for any
-/// unrecognised kind so the history row stays render-stable.
-fn publish_kind_label(kind: u32) -> String {
-    match kind {
-        0 => "Profile".to_string(),
-        1 => "Note".to_string(),
-        3 => "Contact list".to_string(),
-        6 => "Repost".to_string(),
-        7 => "Reaction".to_string(),
-        10002 => "Relay list".to_string(),
-        _ => format!("kind:{kind}"),
-    }
 }
 
 fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {

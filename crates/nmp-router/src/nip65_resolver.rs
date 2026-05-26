@@ -43,8 +43,9 @@
 
 use std::sync::Arc;
 
-use nmp_core::display::short_npub;
-use nmp_core::publish::{OutboxResolver, PublishTarget, RelayUrl, ResolvedRelay};
+use nmp_core::publish::{
+    OutboxResolver, PublishTarget, RelaySelectionReason, RelayUrl, ResolvedRelay,
+};
 use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
@@ -167,7 +168,7 @@ impl OutboxResolver for Nip65OutboxResolver {
                 .iter()
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: "Explicit relay".to_string(),
+                    reason: RelaySelectionReason::Explicit,
                 })
                 .collect();
         }
@@ -187,7 +188,7 @@ impl OutboxResolver for Nip65OutboxResolver {
             for url in writes {
                 out.push(ResolvedRelay {
                     url,
-                    reason: "NIP-65 write relay".to_string(),
+                    reason: RelaySelectionReason::AuthorWriteRelay,
                 });
             }
         }
@@ -196,7 +197,7 @@ impl OutboxResolver for Nip65OutboxResolver {
                 for url in guard.as_slice().iter().cloned() {
                     out.push(ResolvedRelay {
                         url,
-                        reason: "App relay (local config)".to_string(),
+                        reason: RelaySelectionReason::LocalConfigRelay,
                     });
                 }
             }
@@ -213,7 +214,7 @@ impl OutboxResolver for Nip65OutboxResolver {
                 for url in guard.as_slice().iter().cloned() {
                     out.push(ResolvedRelay {
                         url,
-                        reason: format!("Discovery indexer (kind {kind})"),
+                        reason: RelaySelectionReason::DiscoveryIndexer { kind },
                     });
                 }
             }
@@ -228,7 +229,9 @@ impl OutboxResolver for Nip65OutboxResolver {
                     for url in reads {
                         out.push(ResolvedRelay {
                             url,
-                            reason: format!("Inbox relay for {}", short_npub(p)),
+                            reason: RelaySelectionReason::RecipientInbox {
+                                pubkey: p.clone(),
+                            },
                         });
                     }
                 }

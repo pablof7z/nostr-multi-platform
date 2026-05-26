@@ -36,7 +36,7 @@
 use std::sync::Arc;
 
 use super::action::{PublishTarget, RelayUrl};
-use super::traits::{OutboxResolver, ResolvedRelay};
+use super::traits::{OutboxResolver, RelaySelectionReason, ResolvedRelay};
 use crate::store::{EventStore, PubKey};
 
 #[derive(Clone)]
@@ -132,7 +132,7 @@ impl OutboxResolver for TestKind10002OutboxResolver {
                 .iter()
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: "Explicit relay".to_string(),
+                    reason: RelaySelectionReason::Explicit,
                 })
                 .collect();
         }
@@ -141,7 +141,7 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         for url in writes {
             out.push(ResolvedRelay {
                 url,
-                reason: "NIP-65 write relay".to_string(),
+                reason: RelaySelectionReason::AuthorWriteRelay,
             });
         }
 
@@ -154,7 +154,7 @@ impl OutboxResolver for TestKind10002OutboxResolver {
                     for url in guard.as_slice().iter().cloned() {
                         out.push(ResolvedRelay {
                             url,
-                            reason: "App relay (local config)".to_string(),
+                            reason: RelaySelectionReason::LocalConfigRelay,
                         });
                     }
                 }
@@ -171,24 +171,15 @@ impl OutboxResolver for TestKind10002OutboxResolver {
                 for url in reads {
                     out.push(ResolvedRelay {
                         url,
-                        reason: format!("Inbox relay for {}", short_pubkey(p)),
+                        reason: RelaySelectionReason::RecipientInbox {
+                            pubkey: p.clone(),
+                        },
                     });
                 }
             }
         }
         out
     }
-}
-
-/// Test-resolver-local short pubkey abbreviation: first 8 chars + `"…"`.
-/// `nmp_core::display::short_npub` does bech32-encoding which would pull the
-/// nostr crate into the dependency surface of this test resolver — keep it
-/// local instead so the test resolver stays self-contained.
-fn short_pubkey(hex: &str) -> String {
-    if hex.len() <= 12 {
-        return hex.to_string();
-    }
-    format!("{}…", &hex[..8])
 }
 
 fn hex_to_pubkey(hex: &str) -> Option<PubKey> {

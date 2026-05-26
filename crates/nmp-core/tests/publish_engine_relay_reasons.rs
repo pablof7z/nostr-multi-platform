@@ -11,9 +11,9 @@
 //!   - The snapshot's `EventPublishStatus.relay_reasons` carries the same
 //!     map (parallel key set to `per_relay`).
 //!   - When the resolver returns the same canonical URL with multiple
-//!     distinct reasons, the engine joins them with `"; "` so the projection
-//!     surfaces both rationales (e.g. NIP-65 write relay AND a discovery
-//!     indexer for kind:0).
+//!     distinct reasons, the engine collects them into a `Vec` so the
+//!     projection surfaces both rationales (e.g. NIP-65 write relay AND a
+//!     discovery indexer for kind:0).
 //!
 //! These live in `tests/` (not in-crate) because they exercise the public
 //! engine API and the public projection contract. No relay sockets are used;
@@ -23,7 +23,8 @@ use std::sync::Arc;
 
 use nmp_core::publish::{
     InMemoryPublishStore, NoopSigner, OutboxResolver, PublishAction, PublishEngine, PublishStore,
-    PublishTarget, RelayDispatcher, RelayUrl, ReplayDispatcher, ResolvedRelay, RetryPolicy,
+    PublishTarget, RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher,
+    ResolvedRelay, RetryPolicy,
 };
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 
@@ -73,7 +74,7 @@ impl OutboxResolver for FixedResolver {
                 .iter()
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: "Explicit relay".to_string(),
+                    reason: RelaySelectionReason::Explicit,
                 })
                 .collect();
         }
@@ -83,17 +84,19 @@ impl OutboxResolver for FixedResolver {
 
 /// `InFlight.relay_reasons` is populated at publish time and surfaced on the
 /// snapshot's `EventPublishStatus.relay_reasons` field with the exact reason
-/// strings the resolver returned.
+/// variants the resolver returned.
 #[test]
 fn relay_reasons_are_threaded_from_resolver_through_snapshot() {
     let outbox = Arc::new(FixedResolver(vec![
         ResolvedRelay {
             url: "wss://write.example".to_string(),
-            reason: "NIP-65 write relay".to_string(),
+            reason: RelaySelectionReason::AuthorWriteRelay,
         },
         ResolvedRelay {
             url: "wss://inbox.example".to_string(),
-            reason: "Inbox relay for npub1abc…".to_string(),
+            reason: RelaySelectionReason::RecipientInbox {
+                pubkey: "abc".repeat(21) + "a", // 64-char-ish placeholder
+            },
         },
     ]));
     let dispatcher = Arc::new(ReplayDispatcher::new());
@@ -119,17 +122,23 @@ fn relay_reasons_are_threaded_from_resolver_through_snapshot() {
         "exactly one in-flight publish row"
     );
     let row = &snapshot.in_flight[0];
-    let reasons: std::collections::BTreeMap<RelayUrl, String> =
+    let reasons: std::collections::BTreeMap<RelayUrl, Vec<RelaySelectionReason>> =
         row.relay_reasons.iter().cloned().collect();
-    assert_eq!(
-        reasons.get("wss://write.example").map(String::as_str),
-        Some("NIP-65 write relay"),
-        "write-relay reason must thread through to the snapshot verbatim",
+    assert!(
+        matches!(
+            reasons.get("wss://write.example").map(Vec::as_slice),
+            Some([RelaySelectionReason::AuthorWriteRelay])
+        ),
+        "write-relay reason must thread through to the snapshot verbatim, got {:?}",
+        reasons.get("wss://write.example"),
     );
-    assert_eq!(
-        reasons.get("wss://inbox.example").map(String::as_str),
-        Some("Inbox relay for npub1abc…"),
-        "inbox-relay reason must thread through to the snapshot verbatim",
+    assert!(
+        matches!(
+            reasons.get("wss://inbox.example").map(Vec::as_slice),
+            Some([RelaySelectionReason::RecipientInbox { .. }])
+        ),
+        "inbox-relay reason must thread through to the snapshot verbatim, got {:?}",
+        reasons.get("wss://inbox.example"),
     );
     // Per-relay state map keys MUST be a subset of the relay-reasons keys —
     // every relay tracked for status carries an annotated rationale.
@@ -144,18 +153,19 @@ fn relay_reasons_are_threaded_from_resolver_through_snapshot() {
 /// Engine-side dedup: when the resolver emits the same canonical URL with two
 /// distinct reasons (e.g. a relay that is BOTH the author's NIP-65 write
 /// relay AND a discovery indexer for kind:0), the engine deduplicates the
-/// URL and joins the reasons with `"; "` so the projection carries both.
-/// A future regression that silently drops one reason would surface here.
+/// URL and collects both reasons into the `Vec` so the projection carries
+/// both. A future regression that silently drops one reason would surface
+/// here.
 #[test]
 fn relay_reasons_merge_when_same_url_appears_with_two_reasons() {
     let outbox = Arc::new(FixedResolver(vec![
         ResolvedRelay {
             url: "wss://shared.example".to_string(),
-            reason: "NIP-65 write relay".to_string(),
+            reason: RelaySelectionReason::AuthorWriteRelay,
         },
         ResolvedRelay {
             url: "wss://shared.example".to_string(),
-            reason: "Discovery indexer (kind 0)".to_string(),
+            reason: RelaySelectionReason::DiscoveryIndexer { kind: 0 },
         },
     ]));
     let dispatcher = Arc::new(ReplayDispatcher::new());
@@ -177,7 +187,8 @@ fn relay_reasons_merge_when_same_url_appears_with_two_reasons() {
     let snapshot = engine.snapshot();
     let row = &snapshot.in_flight[0];
     // Exactly one per-relay entry (the URL was deduplicated by canonical
-    // identity) and exactly one reason entry carrying both rationales joined.
+    // identity) and exactly one reasons entry carrying both rationales in
+    // the Vec.
     assert_eq!(
         row.per_relay.len(),
         1,
@@ -188,36 +199,37 @@ fn relay_reasons_merge_when_same_url_appears_with_two_reasons() {
         1,
         "same canonical URL must dedupe to one reasons entry"
     );
-    let (url, reason) = &row.relay_reasons[0];
+    let (url, reasons) = &row.relay_reasons[0];
     assert_eq!(url, "wss://shared.example");
-    assert!(
-        reason.contains("NIP-65 write relay"),
-        "merged reason must retain the write-relay rationale: {reason}",
-    );
-    assert!(
-        reason.contains("Discovery indexer (kind 0)"),
-        "merged reason must retain the discovery-indexer rationale: {reason}",
-    );
     assert_eq!(
-        reason, "NIP-65 write relay; Discovery indexer (kind 0)",
-        "merge uses `\"; \"` as the separator so the join is parseable",
+        reasons.len(),
+        2,
+        "both rationales must be preserved: {reasons:?}",
+    );
+    assert!(
+        reasons.contains(&RelaySelectionReason::AuthorWriteRelay),
+        "merged reasons must retain AuthorWriteRelay: {reasons:?}",
+    );
+    assert!(
+        reasons.contains(&RelaySelectionReason::DiscoveryIndexer { kind: 0 }),
+        "merged reasons must retain DiscoveryIndexer{{kind:0}}: {reasons:?}",
     );
 }
 
-/// Duplicate reasons are NOT joined to themselves — the engine checks for
-/// exact existing chunks before appending. Without this guard a relay that
-/// the resolver listed twice with the same rationale would produce a
-/// noisy `"foo; foo"` projection.
+/// Duplicate reasons are NOT pushed twice — the engine checks for an
+/// existing identical variant before appending. Without this guard a relay
+/// that the resolver listed twice with the same rationale would produce a
+/// noisy `[Reason, Reason]` projection.
 #[test]
 fn relay_reasons_do_not_duplicate_identical_reasons() {
     let outbox = Arc::new(FixedResolver(vec![
         ResolvedRelay {
             url: "wss://dup.example".to_string(),
-            reason: "NIP-65 write relay".to_string(),
+            reason: RelaySelectionReason::AuthorWriteRelay,
         },
         ResolvedRelay {
             url: "wss://dup.example".to_string(),
-            reason: "NIP-65 write relay".to_string(),
+            reason: RelaySelectionReason::AuthorWriteRelay,
         },
     ]));
     let dispatcher = Arc::new(ReplayDispatcher::new());
@@ -238,9 +250,10 @@ fn relay_reasons_do_not_duplicate_identical_reasons() {
 
     let snapshot = engine.snapshot();
     let row = &snapshot.in_flight[0];
-    let (_url, reason) = &row.relay_reasons[0];
+    let (_url, reasons) = &row.relay_reasons[0];
     assert_eq!(
-        reason, "NIP-65 write relay",
+        reasons.as_slice(),
+        &[RelaySelectionReason::AuthorWriteRelay],
         "duplicate identical reasons must NOT be appended to themselves"
     );
 }
@@ -253,7 +266,7 @@ fn relay_reasons_do_not_duplicate_identical_reasons() {
 fn relay_reason_survives_availability_cycle() {
     let outbox = Arc::new(FixedResolver(vec![ResolvedRelay {
         url: "wss://oscillating.example".to_string(),
-        reason: "NIP-65 write relay".to_string(),
+        reason: RelaySelectionReason::AuthorWriteRelay,
     }]));
     let dispatcher = Arc::new(ReplayDispatcher::new());
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
@@ -272,7 +285,7 @@ fn relay_reason_survives_availability_cycle() {
         .expect("publish accepted by engine");
 
     // Initial snapshot carries the resolved reason.
-    let reason_before: String = engine
+    let reasons_before: Vec<RelaySelectionReason> = engine
         .snapshot()
         .in_flight
         .iter()
@@ -292,7 +305,7 @@ fn relay_reason_survives_availability_cycle() {
         .mark_relay_available("wss://oscillating.example", 300)
         .expect("mark available");
 
-    let reason_after: String = engine
+    let reasons_after: Vec<RelaySelectionReason> = engine
         .snapshot()
         .in_flight
         .iter()
@@ -305,7 +318,7 @@ fn relay_reason_survives_availability_cycle() {
         .expect("relay must still carry its reason after the availability cycle");
 
     assert_eq!(
-        reason_before, reason_after,
+        reasons_before, reasons_after,
         "reason is write-once at publish time — availability transitions must NOT mutate it"
     );
 }

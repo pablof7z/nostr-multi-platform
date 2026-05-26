@@ -109,6 +109,12 @@ pub(crate) struct AccountSummary {
 pub(crate) struct PublishQueueEntry {
     pub(crate) event_id: String,
     pub(crate) kind: u32,
+    /// Pre-formatted English label for `kind` (e.g. `"Note"`, `"Reaction"`).
+    /// Mirrors the in-flight `PublishOutboxItem.title` so apps render a
+    /// consistent kind label across the active outbox and the settled
+    /// history pane. Owned by the kernel — apps render verbatim and never
+    /// reimplement a kind→label mapping (RMP bible commandment #4).
+    pub(crate) title: String,
     pub(crate) target_relays: usize,
     pub(crate) status: String,
     /// Per-relay terminal outcomes, in insertion order. Empty while

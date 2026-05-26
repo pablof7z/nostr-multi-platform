@@ -4,7 +4,8 @@
 //! module only projects that state into a compact UI shape and exposes
 //! user-triggered retry/cancel commands back through the engine.
 
-use crate::publish::{PerRelayState, PublishAction};
+use crate::display::short_npub;
+use crate::publish::{PerRelayState, PublishAction, RelaySelectionReason};
 use crate::relay::{OutboundMessage, RelayRole};
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
@@ -26,24 +27,24 @@ impl Kernel {
         });
         rows.into_iter()
             .map(|row| {
-                // Build a quick canonical-URL → reason lookup so the per_relay
+                // Build a quick canonical-URL → reasons lookup so the per_relay
                 // iteration stays O(n + m) instead of O(n*m). Keys match the
                 // canonicalization already applied by the engine, so a direct
                 // `.get()` against `url.as_str()` is sufficient.
-                let relay_reasons_map: std::collections::HashMap<&str, &str> = row
-                    .relay_reasons
-                    .iter()
-                    .map(|(k, v)| (k.as_str(), v.as_str()))
-                    .collect();
+                let relay_reasons_map: std::collections::HashMap<&str, &Vec<RelaySelectionReason>> =
+                    row.relay_reasons
+                        .iter()
+                        .map(|(k, v)| (k.as_str(), v))
+                        .collect();
                 let relays = row
                     .per_relay
                     .iter()
                     .map(|(url, state)| {
                         let reason = relay_reasons_map
                             .get(url.as_str())
-                            .copied()
-                            .unwrap_or("");
-                        publish_outbox_relay(url, state, reason)
+                            .map(|reasons| format_relay_reasons(reasons))
+                            .unwrap_or_default();
+                        publish_outbox_relay(url, state, &reason)
                     })
                     .collect::<Vec<_>>();
                 let status = publish_outbox_status(&row.per_relay);
@@ -162,6 +163,37 @@ impl Kernel {
         self.set_publish_entry_terminal(&handle, "cancelled", Vec::new());
         self.changed_since_emit = true;
     }
+}
+
+/// Format a single structured selection reason into the human-readable string
+/// the shell renders verbatim. This is the **only** place in the codebase
+/// where `RelaySelectionReason` becomes English — the resolver, the engine,
+/// the view, and persistence all carry the typed enum. Apps that need a
+/// different wording must change this function (and nothing else).
+pub(super) fn format_relay_reason(reason: &RelaySelectionReason) -> String {
+    match reason {
+        RelaySelectionReason::AuthorWriteRelay => "NIP-65 write relay".to_string(),
+        RelaySelectionReason::LocalConfigRelay => "App relay (local config)".to_string(),
+        RelaySelectionReason::DiscoveryIndexer { kind } => {
+            format!("Discovery indexer (kind {kind})")
+        }
+        RelaySelectionReason::RecipientInbox { pubkey } => {
+            format!("Inbox relay for {}", short_npub(pubkey))
+        }
+        RelaySelectionReason::Explicit => "Explicit relay".to_string(),
+    }
+}
+
+/// Format the per-relay reason list. Joins distinct reasons with `"; "` —
+/// the wire-shape contract `PublishOutboxRelay.relay_reason` callers parse.
+/// Empty input → empty string (the projection's `skip_serializing_if` then
+/// drops the field).
+pub(super) fn format_relay_reasons(reasons: &[RelaySelectionReason]) -> String {
+    reasons
+        .iter()
+        .map(format_relay_reason)
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn publish_outbox_relay(
@@ -323,7 +355,7 @@ fn publish_outbox_status(per_relay: &[(String, PerRelayState)]) -> String {
     "queued".to_string()
 }
 
-fn publish_event_title(kind: u32) -> String {
+pub(super) fn publish_event_title(kind: u32) -> String {
     match kind {
         0 => "Profile",
         1 => "Note",
