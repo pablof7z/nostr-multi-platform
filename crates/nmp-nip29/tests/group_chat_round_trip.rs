@@ -31,7 +31,7 @@
 //! delivered from injected events. A two-instance relay-bridged test is left
 //! for when that harness is available.
 
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_void, CStr, CString};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -48,14 +48,22 @@ use nmp_nip29::register::{register_actions, wire_group_chat};
 // actor threads that do not cleanly isolate across parallel test processes.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-// Kernel snapshot strings collected by the update callback.
+// Kernel snapshot JSON payloads collected by the update callback.
 static SNAPSHOTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-extern "C" fn collect_snapshot(_ctx: *mut c_void, json: *const c_char) {
-    // SAFETY: `json` is a valid nul-terminated C string owned by the listener
-    // thread for the duration of this call.
-    let s = unsafe { CStr::from_ptr(json) }.to_str().unwrap_or("").to_string();
-    SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner()).push(s);
+extern "C" fn collect_snapshot(_ctx: *mut c_void, bytes: *const u8, len: usize) {
+    if bytes.is_null() {
+        return;
+    }
+    // SAFETY: the FFI listener owns `bytes` for the duration of this call.
+    let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let Ok(snapshot) = nmp_core::decode_snapshot_payload(frame) else {
+        return;
+    };
+    SNAPSHOTS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .push(snapshot.to_string());
 }
 
 /// Build a minimal kind:9 group-chat event for injection.
@@ -90,10 +98,8 @@ fn wait_for_group_message(content: &str) -> bool {
             let snaps = SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner());
             for json in snaps.iter() {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-                    // The kernel wraps snapshots as {"t":"snapshot","v":{…}}.
-                    // Projections live under v["v"]["projections"].
                     if let Some(msgs) =
-                        v["v"]["projections"]["nmp.nip29.group_chat"]["messages"].as_array()
+                        v["projections"]["nmp.nip29.group_chat"]["messages"].as_array()
                     {
                         if msgs.iter().any(|m| m["content"].as_str() == Some(content)) {
                             return true;
@@ -188,7 +194,10 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // Wire the GroupChatProjection for "test-room".
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
     let app_ref = unsafe { &*app };
-    wire_group_chat(app_ref, GroupId::new("wss://groups.example.com", "test-room"));
+    wire_group_chat(
+        app_ref,
+        GroupId::new("wss://groups.example.com", "test-room"),
+    );
 
     // Inject the target event: kind:9 with h-tag "test-room".
     let target = VerifiedEvent::from_raw_unchecked(raw_chat_event(
@@ -222,11 +231,12 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
         let snaps = SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner());
         for json in snaps.iter() {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-                if let Some(msgs) =
-                    v["v"]["projections"]["nmp.nip29.group_chat"]["messages"].as_array()
+                if let Some(msgs) = v["projections"]["nmp.nip29.group_chat"]["messages"].as_array()
                 {
                     assert!(
-                        !msgs.iter().any(|m| m["content"].as_str() == Some("should not appear")),
+                        !msgs
+                            .iter()
+                            .any(|m| m["content"].as_str() == Some("should not appear")),
                         "decoy event for 'other-room' must not appear in 'test-room' projection"
                     );
                 }
