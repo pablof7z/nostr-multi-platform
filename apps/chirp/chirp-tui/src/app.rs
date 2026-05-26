@@ -103,6 +103,12 @@ pub struct AppState {
     /// flag. Mirrors the iOS/Swift host pattern documented in
     /// `nmp-nip57/src/lnurl/mod.rs` (V-43 future fix: kernel auto-pay).
     pub pending_zap_pay: bool,
+    /// Recipient pubkey carried across the palette → input-bar → dispatch
+    /// boundary for the `"zap-amount"` input bar action.
+    pub pending_zap_pubkey: Option<String>,
+    /// Event id for the same boundary — produces the `e` tag on a targeted
+    /// zap. `None` for a profile-only zap.
+    pub pending_zap_event_id: Option<String>,
 }
 
 impl Default for AppState {
@@ -151,6 +157,8 @@ impl Default for AppState {
             group_compose_buf: String::new(),
             settings_cursor: 0,
             pending_zap_pay: false,
+            pending_zap_pubkey: None,
+            pending_zap_event_id: None,
         }
     }
 }

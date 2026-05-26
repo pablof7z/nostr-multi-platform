@@ -1452,6 +1452,15 @@ impl Kernel {
         self.claim_drops_total
     }
 
+    /// Return the lightning address / LNURL from the author's cached kind:0
+    /// profile, or `None` if the profile hasn't arrived yet or has no
+    /// lightning address. Used by `ProtocolCommandContext::lnurl_for_pubkey`
+    /// so `FetchLnurlInvoiceCommand` can resolve the destination without
+    /// the shell having to carry or know about LNURL.
+    pub(crate) fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
+        self.profiles.get(pubkey)?.lnurl.clone()
+    }
+
     #[cfg(test)]
     pub(crate) fn profile_claims_len_for_test(&self, pubkey: &str) -> usize {
         self.profile_claims

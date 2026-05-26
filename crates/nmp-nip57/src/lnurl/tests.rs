@@ -387,7 +387,8 @@ fn run_with_no_local_keys(sink: &Sink, correlation_id: Option<String>) {
         unsigned: unsigned_for(vec![
             vec!["p".to_string(), RECIPIENT_HEX.to_string()],
         ]),
-        lnurl_or_address: "alice@example.com".to_string(),
+        recipient_pubkey: RECIPIENT_HEX.to_string(),
+        lnurl_or_address: Some("alice@example.com".to_string()),
         amount_msats: 21_000,
         correlation_id,
     });
@@ -463,7 +464,8 @@ fn run_restamps_created_at_from_context_clock() {
         unsigned: unsigned_for(vec![
             vec!["p".to_string(), RECIPIENT_HEX.to_string()],
         ]),
-        lnurl_or_address: "alice@example.com".to_string(),
+        recipient_pubkey: RECIPIENT_HEX.to_string(),
+        lnurl_or_address: Some("alice@example.com".to_string()),
         amount_msats: 21_000,
         correlation_id: None,
     });

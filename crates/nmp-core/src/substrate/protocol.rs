@@ -540,6 +540,18 @@ impl<'a> ProtocolCommandContext<'a> {
         }))
         .unwrap_or_default()
     }
+
+    /// Return the lightning address / LNURL from the author's cached kind:0
+    /// profile. `None` when the kernel is unavailable, the profile hasn't
+    /// arrived yet, or the profile has no lightning address. Lets protocol
+    /// commands resolve the zap destination without the shell carrying it.
+    #[must_use]
+    pub fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
+        let kernel = self.kernel.as_deref()?;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| kernel.lnurl_for_pubkey(pubkey)))
+            .ok()
+            .flatten()
+    }
 }
 
 /// Open-seam command dispatched as [`ActorCommand::Protocol`].
