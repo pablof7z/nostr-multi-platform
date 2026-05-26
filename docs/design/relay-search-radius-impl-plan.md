@@ -988,3 +988,238 @@ Plus three new items raised by this retarget:
    `kernel/ingest/eose.rs` extraction as its first commit, or should
    a separate refactor PR land first? (Recommendation: land it as W3
    commit 1; small and self-contained.)
+
+---
+
+## 8. Reviewer amendments applied (2026-05-27)
+
+Agent B's review (`docs/design/relay-search-radius-review.md`) raised
+four blockers and several follow-ups. This section is the
+authoritative resolution; §0–§7 are unchanged for traceability but
+where they conflict with §8, this section wins.
+
+### 8.1 Blocker #1 — W3 failure-callback file
+
+Reviewer §D.W3 + §F.1: the failure-handler path is
+`crates/nmp-core/src/kernel/requests/relay_lifecycle.rs::relay_failed`
+at line 73 (verified). `FailedAfterRetries` is publish-engine
+terminology (15+ refs under `publish_engine_*.rs`), NOT a transport
+seam.
+
+**Retarget.** Replace W3's bullet:
+
+> **MODIFY** `crates/nmp-core/src/kernel/relay_transport.rs` —
+> `FailedAfterRetries` handler …
+
+with:
+
+> **MODIFY** `crates/nmp-core/src/kernel/requests/relay_lifecycle.rs`
+> — extend `Kernel::relay_failed` (line 73). After the existing
+> per-URL row eviction work, walk `pending_claims` (per §8.3 —
+> `BTreeMap<InterestId, PendingClaim>`) and call
+> `record_claim_outcome(claim.author, relay_url,
+> ClaimOutcome::Failed)` for every claim whose `attempted:
+> BTreeSet<RelayUrl>` contains `relay_url`. +25 LOC.
+
+Test plan adds:
+`relay_failed_records_failed_outcome_for_each_claim_that_attempted_the_relay`.
+
+### 8.2 Blocker #2 — Phase 2 fan-out via hints, not per-candidate interests
+
+Reviewer §E.1 + §F.2: §W5 + §0 Q9 propose "one new `LogicalInterest`
+per Phase 2 candidate", which inflates `oneshot.in_flight()` against
+the existing `MAX_DISCOVERY_CONCURRENCY = 2` cap at
+`crates/nmp-core/src/kernel/discovery.rs:65`. The conflation is
+between **wire sub_id** (where per-relay attribution lives) and
+**InterestId** (where dedup lives).
+
+**Retarget.** Phase 2 fans out through **hint consumption (W7)**,
+not through interest multiplicity:
+
+- A single `LogicalInterest` per claim, with
+  `hints: Vec<RelayHint>` populated with up to
+  `MAX_EXPANSION_CONCURRENCY` Phase-2 candidates.
+- W7's hint-walk in `case_a_authors.rs` and `case_b_addresses.rs`
+  emits one `RelayEntry` per hint (with `RoutingSource::Hint`); the
+  partitioner already assigns distinct wire `sub_id`s per
+  `(relay, canonical_filter_hash)`.
+- W3 score-attribution keys on `sub_id → relay_url` (the
+  `wire.subs` map, which already exists), NOT on `interest_id`.
+
+This collapses the W5 / W7 design (one seam, not two). The
+`oneshot.in_flight()` counter stays at 1 per active claim.
+
+§0 Q9 row is superseded.
+
+### 8.3 Blocker #3 — `pending_claims` shape
+
+Reviewer §F.3: `Vec<PendingClaim>` is wrong for the hot path. Every
+EVENT/EOSE ingest does a sub_id lookup; O(N) scan is unacceptable.
+
+**Retarget.** Two indexed maps on `Kernel`:
+
+```rust
+pending_claims: BTreeMap<InterestId, PendingClaim>,
+claim_sub_index: BTreeMap<String /* sub_id */, InterestId>,
+```
+
+The reverse index is populated through the **existing**
+`register_planner_wire_frames` bridge (`kernel/mod.rs:654-672`
+documents this for `pending_discovery_oneshots`). When the planner
+compiles the claim's interest into one or more `WireFrame::Req`s,
+the bridge inserts `(sub_id, interest_id)` entries for each emitted
+sub_id. W3 looks up `claim_sub_index[sub_id]` to find the
+originating claim's author.
+
+W5 §"Files touched" `struct PendingClaim` retains its fields but
+gains `in_flight_subs: BTreeSet<String>` (the sub_ids we expect
+EOSE/EVENT on; populated by the bridge).
+
+### 8.4 Blocker #4 — Q3 reconnect-backoff justification
+
+Reviewer §A.3: `RELAY_RECONNECT_DELAY_INITIAL =
+Duration::from_secs(3)` at
+`crates/nmp-network/src/relay_protocol.rs:32`. The plan's claim
+that "8 s sits inside one reconnect backoff" is wrong (8 s = 2.6×
+the initial backoff).
+
+**Retarget.** The values stand; justification corrected:
+
+- `PHASE_1_BUDGET_MS = 1500` — well inside one `KEEPALIVE_IDLE = 30s`
+  window (`crates/nmp-network/src/relay_worker/mod.rs:171`), below
+  the relay's typical EOSE p95. No measured tree data; revisit when
+  W8 telemetry lands.
+- `PER_RELAY_REQ_TIMEOUT_MS = 5000` — pessimistic upper bound for
+  EOSE on a healthy relay.
+- `PER_CLAIM_TOTAL_BUDGET_MS = 8000` — 2 × ~3 s reconnect cycles
+  (per `RELAY_RECONNECT_DELAY_INITIAL` actual value) + Phase 1
+  budget. A1's acceptance "~5 s" sits inside.
+
+### 8.5 Adopt E.2 — score on Failed only, neutral on EoseNoMatch
+
+Reviewer §E.2: the plan's `EoseNoMatch → failures += 1` decrements
+good-but-narrow relays out of the warm pool. Gigi math: 10 hits /
+40 niche EoseNoMatches → weight = 10/51 ≈ 0.196, below
+WARM_THRESHOLD = 0.40 — the publisher's own outbox drops out of
+Phase 1.
+
+**Retarget.** W3's delta table:
+
+| Outcome | Successes | Failures | last_used_unix_s |
+|---|---|---|---|
+| `Hit` | +1 | (unchanged) | = `now` |
+| `EoseNoMatch` | (unchanged) | (unchanged) | = `now` (neutral; touches recency only) |
+| `Failed` | (unchanged) | +3 | = `now` |
+
+W3 test 2 becomes `eose_no_match_is_neutral_no_score_change` (asserts
+failures count is unchanged after EoseNoMatch).
+
+### 8.6 Adopt A.5 — `&self` lookup, not `Arc<dyn …>`
+
+Reviewer §A.5: `Arc<RelayAuthorScoreLookup>` makes A6 same-tick
+visibility break by construction (planner reads frozen snapshot from
+tick-start).
+
+**Retarget.** `RelayAuthorScoreLookup` is implemented `for Kernel`
+directly via `&self`; the planner consults the kernel's live
+in-memory map via this read-only seam. W4's `KernelMailboxes` change
+collapses to a `&Kernel` borrow (or a tiny `ScoreLookupRef<'a>` for
+borrow-shape). No `Arc`.
+
+### 8.7 Adopt A.4 — same-tick race contract
+
+Reviewer §A.4: same-tick Phase-1-hit-and-budget-elapsed needs an
+explicit contract.
+
+**Retarget.** `Kernel::poll_claim_expansion` (W5) preflight per claim:
+
+```rust
+if kernel.event_already_known(&claim.primary_id) {
+    claim.phase = Phase::Terminal(ClaimTermination::Hit);
+    continue;
+}
+```
+
+`event_already_known` exists at
+`crates/nmp-core/src/kernel/requests/event.rs:282`. This is the
+load-bearing invariant — eliminates the race regardless of tick
+ordering between EVENT ingest and idle-tick poll.
+
+W5 test case 9: `phase1_hit_same_tick_as_budget_does_not_emit_phase2`.
+
+### 8.8 Adopt B.4 — cache env-gate in `OnceLock<bool>`
+
+Reviewer §B.4: `env::var_os` syscall per `record_claim_outcome` is
+on the hot ingest path.
+
+**Retarget.** W8 helper:
+
+```rust
+fn claim_log_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("NMP_CLAIM_LOG").is_some())
+}
+```
+
+One atomic load per call. R5 supersedes "measure first" — always cache.
+
+### 8.9 Adopt A.2 item 2 — 32-byte raw pubkey LMDB key
+
+Reviewer §A.2: hex form is 64 bytes, not 32. Existing LMDB keys use
+raw bytes (`event.id.as_bytes()` at
+`crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs:363`).
+
+**Retarget.** W2 key encoding:
+- 32 raw bytes (pubkey, hex-decoded once on write)
+- 1 byte length prefix for the URL (`u8`; URLs > 255 chars are
+  rejected — none observed in-tree)
+- N bytes UTF-8 URL (post-canonicalization, §8.10)
+
+Roundtrip test: `[32-byte pk][1-byte len][N-byte url]` restores the
+original `(Pubkey, RelayUrl)`.
+
+### 8.10 Adopt C.E14 — canonicalize URL before scoring
+
+Reviewer §C.E14: scoring under `wss://r.example.com/` and reading
+under `wss://r.example.com` would be a cell miss.
+
+**Retarget.** `record_claim_outcome` and `is_warm` both call
+`CanonicalRelayUrl::parse_or_raw`
+(`crates/nmp-core/src/kernel/ingest/mod.rs:144` precedent) on
+`relay_url` before keying the map. W1 test 7:
+`canonicalization_consolidates_trailing_slash_to_one_cell`.
+
+### 8.11 Non-blockers tracked for inline notes
+
+- **§B.5** (Article VII citation does not resolve) — spec patch deferred;
+  follow-up issue (not Phase 3).
+- **§C.E12** (empty NIP-65 outbox) — W5 test 10:
+  `phase2_with_empty_outbox_terminates_exhausted`.
+- **§C.E13** (NIP-65 arrives mid-claim) — W5 builds candidate queue
+  lazily at Phase-2 entry, not at claim registration.
+- **§C.E15** (AUTH-required Phase 2 relay) — v1 out of scope.
+  Recommended spec amendment: AUTH-pause → neutral, not Failed.
+  Follow-up issue.
+- **§C.E16** (`release_event` mid-Phase-2) — Phase 2 in-flight
+  continues on release (matches Q7 background-complete). Test 11:
+  `release_mid_phase2_continues_score_writeback`.
+- **§D.W4** wildcard-author preservation — added to W4 test plan.
+- **§D.W8** emitted-line shape — W9 reads same fixture W8 writes
+  against; no hand-typed grep.
+- **§D.W9** stub-relay budget — A5 adds ~100 LOC under
+  `crates/nmp-testing/tests/common/`; W9 budget grows to ~+700.
+
+### 8.12 Workstream dependency view — updated
+
+After §8.2 (Phase 2 via hints), the critical path collapses:
+
+```
+W1 → W7 → W3 → W5 → W6 → W9
+       ↑         ↑
+       W4 (parallel after W1)
+       W2 (parallel after W1)
+       W8 (parallel; required by W3, W5)
+```
+
+W7 becomes a blocker for W5 (was: parallel). W5's "+450 LOC" budget
+drops to ~380 LOC (no per-candidate interest registration logic).
