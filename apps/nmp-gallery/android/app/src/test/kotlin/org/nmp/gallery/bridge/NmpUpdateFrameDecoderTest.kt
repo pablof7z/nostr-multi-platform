@@ -20,7 +20,7 @@ class NmpUpdateFrameDecoderTest {
 
     // Canonical fixture lives at crates/nmp-core/tests/fixtures/update_frame_snapshot_v1.fb.hex
     // and is mirrored into src/test/resources/fixtures/ to keep the test classpath-relative.
-    // Update both files together; ci/check-flatbuffers-version-pins.sh is the consistency gate.
+    // Keep the two copies in sync manually — no CI gate exists today.
     private fun loadFixtureBytes(): ByteArray {
         val stream = javaClass.classLoader!!.getResourceAsStream(
             "fixtures/update_frame_snapshot_v1.fb.hex",
