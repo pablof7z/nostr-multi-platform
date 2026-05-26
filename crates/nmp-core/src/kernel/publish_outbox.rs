@@ -278,6 +278,16 @@ fn publish_outbox_status(per_relay: &[(String, PerRelayState)]) -> String {
     {
         return "sending".to_string();
     }
+    // At least one relay already accepted: the event is published. Remaining
+    // Pending entries are secondary fanout relays still waiting for a
+    // connection — surface as "queued" so the user isn't misled into thinking
+    // the publish failed.
+    if per_relay
+        .iter()
+        .any(|(_, state)| matches!(state, PerRelayState::Ok { .. }))
+    {
+        return "queued".to_string();
+    }
     if per_relay
         .iter()
         .any(|(_, state)| matches!(state, PerRelayState::Pending))
