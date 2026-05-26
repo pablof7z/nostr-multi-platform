@@ -38,6 +38,14 @@ use crate::{
 /// and `EmbedHostState` decodes it into an `ArticleProjection`. Defining
 /// it here (rather than inline) makes the showcase reproducible — anyone
 /// running the gallery TUI claims THIS naddr.
+/// Gigi's "What's left of the internet?" (kind:30023, d="the-internet-left-me")
+/// — the canonical kind-dispatch demo. Loads cleanly when the kernel queries
+/// relay.primal.net before NIP-65 hydration kicks in (visible via NMP_WIRE_LOG).
+/// After NIP-65 routes the OneshotApi REQ exclusively to Gigi's outbox relays
+/// (atlas.nostr.land, eden.nostr.land) which don't carry it, so a cold cache
+/// post-hydration sees the loading placeholder. The renderer + projection
+/// path is exercised in either case (smoke verifies cache-hit → resolved
+/// envelope in 700ms).
 pub const ARTICLE_NADDR: &str = "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp";
 
 /// pablof7z kind:1 note "grok cli is INSANELY bad, jesus" — verified on

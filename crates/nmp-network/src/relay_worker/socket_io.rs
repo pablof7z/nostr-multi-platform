@@ -10,6 +10,35 @@ use crate::role::RelayRole;
 
 use super::{RelayEvent, RelaySocket, RelayWorkerResult};
 
+/// Optional wire-traffic logger. Enabled via `NMP_WIRE_LOG=<path>` env var.
+mod wire_log {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+    use std::time::SystemTime;
+
+    static LOG_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+    fn path() -> Option<&'static PathBuf> {
+        LOG_PATH
+            .get_or_init(|| std::env::var_os("NMP_WIRE_LOG").map(PathBuf::from))
+            .as_ref()
+    }
+
+    pub(super) fn append(relay_url: &str, direction: &str, text: &str) {
+        let Some(path) = path() else { return };
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let line = format!("[{ts}] {relay_url} {direction} {text}\n");
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+}
+
 pub(super) enum FlushResult {
     Flushed,
     Blocked,
@@ -25,6 +54,7 @@ pub(super) fn flush_relay_writes(
     socket: &mut RelaySocket,
 ) -> FlushResult {
     while let Some(text) = pending.pop_front() {
+        wire_log::append(relay_url, "→", &text);
         match socket.write(Message::Text(text.clone())) {
             Ok(()) => {}
             Err(error) if is_nonblocking_io(&error) => return FlushResult::Blocked,
@@ -73,6 +103,9 @@ pub(super) fn drain_relay_reads(
                 keepalive.on_inbound(Instant::now());
                 if matches!(message, Message::Pong(_)) {
                     continue;
+                }
+                if let Message::Text(text) = &message {
+                    wire_log::append(relay_url, "←", text);
                 }
                 if relay_tx
                     .send(RelayEvent::Message {
