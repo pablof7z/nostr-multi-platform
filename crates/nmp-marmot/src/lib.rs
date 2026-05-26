@@ -81,9 +81,8 @@ pub mod view;
 // ── C-ABI shell ──────────────────────────────────────────────────────────
 //
 // The `ffi` / `fetch` / `identity` / `credential_store` modules expose the
-// `nmp_marmot_*` C-ABI symbols (plus the legacy `nmp_app_chirp_identity_*`
-// names tracked for rename in Opus reviews #50 / #68). The surviving
-// cluster (`nmp_marmot_register{,_active}`, `_snapshot`, `_group_messages`,
+// `nmp_marmot_*` C-ABI symbols. The surviving cluster
+// (`nmp_marmot_register{,_active}`, `_snapshot`, `_group_messages`,
 // `_string_free`, `_unregister`, `_fetch_key_packages`) is kernel-shaped
 // per-app FFI (observer / projection / opaque-handle lifecycle) — NOT a
 // `dispatch_action` violation; the ADR-0025 bespoke write-side dispatch
@@ -91,11 +90,12 @@ pub mod view;
 // retired. The C-ABI shell follows the same pattern Chirp's
 // `nmp_app_chirp_*` cluster uses; Marmot lives at `crates/nmp-marmot/`
 // (step 12 — returned from `apps/marmot/` 2026-05-25) as a Layer-4 NIP
-// crate, with the per-app FFI cluster as its host-bridge surface.
-// Chirp's iOS shell links the symbols transparently: `nmp-marmot` is
-// pulled in as an `rlib`, and its `#[no_mangle]` symbols flow through
-// `libnmp_app_chirp.a` (the staticlib the iOS target actually links
-// against).
+// crate, with the per-app FFI cluster as its host-bridge surface. App-owned
+// identity/keyring wrappers stay in app crates; this crate only provides
+// caller-supplied keyring helpers. Chirp's iOS shell links the symbols
+// transparently: `nmp-marmot` is pulled in as an `rlib`, and its
+// `#[no_mangle]` symbols flow through `libnmp_app_chirp.a` (the staticlib
+// the iOS target actually links against).
 //
 // Feature-gated behind `ffi` so consumers that only want the protocol
 // types (in-process REPL, headless tests) do not have to pull in

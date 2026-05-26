@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **3ce6f45c** (2026-05-26). Update this file in every PR that touches
+> Verified against HEAD **07da8f49** (2026-05-26). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -50,8 +50,10 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
 1. **P1 — remove upward dependencies and app policy from reusable crates.**
    `crates/nmp-signer-broker/Cargo.toml:17-23` depends on `nmp-core`/`nmp-ffi` while the
    crate is meant to be a reusable broker; `crates/nmp-router/Cargo.toml:13-17` depends on
-   `nmp-ffi` for registration; and `crates/nmp-marmot/src/identity.rs:1-6`, `:15`, and
-   `:31` keep Chirp identity naming/keyring policy inside a generic Marmot crate.
+   `nmp-ffi` for registration. The Marmot identity/keyring leak formerly tracked here is
+   closed: Chirp's `nmp_app_chirp_identity_*` wrappers and `chirp.marmot.cached_secret`
+   account id now live in `apps/chirp/nmp-app-chirp/src/ffi/identity.rs`, while
+   `crates/nmp-marmot/src/identity.rs` only exposes caller-supplied keyring helpers.
    **Next step:** split pure protocol/broker crates from app/FFI adapters, starting with the
    signer-broker and router registration seams.
 2. **P2 — move protocol policy back out of `nmp-core`.**
