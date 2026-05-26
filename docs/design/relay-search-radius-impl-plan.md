@@ -785,3 +785,181 @@ follow-ups, none silently absorbed**:
 - **Whether to split `kernel/ingest/mod.rs`** if W3's EOSE arm changes
   push it past 500 LOC. Recommendation: extract `kernel/ingest/eose.rs`
   in a separate small refactor PR *before* W3 lands.
+
+---
+
+## 7. Post-#599 retarget (2026-05-27)
+
+PR #599 merged after Agent A authored §0–§6. It shifted the baseline this
+plan was written against. This section is the **authoritative delta**;
+where it conflicts with §0–§6, this section wins.
+
+### 7.1 What PR #599 already landed
+
+Three items §5 listed as out-of-scope **now exist on master**:
+
+1. **`nmp_app_claim_event` FFI symbol** —
+   `crates/nmp-ffi/src/timeline.rs:133`. Re-exported in
+   `crates/nmp-ffi/src/lib.rs:107`. Symmetric with `nmp_app_claim_profile`
+   at `timeline.rs:76`.
+2. **Kernel `claim_event` / `release_event`** —
+   `crates/nmp-core/src/kernel/requests/event.rs:56` and `:215`. Parses
+   `nostr:` URI → `InterestShape` (NIP-01 §3.7 `{kinds, authors, "#d"}`
+   for naddr, `{ids}` for nevent) → `OneshotApi::request` →
+   `pending_discovery_oneshots.insert(interest_id, token)` →
+   `event_claim_requested.insert(primary_id)` →
+   `CompileTrigger::ViewOpened`.
+3. **Operator-pinned `AppRelay` selection bypass** —
+   `crates/nmp-planner/src/selection.rs:84-95` (`is_app_relay`) and
+   `:117-146` (the bypass in `apply_selection`). This is the planner half
+   of issue #632; the spec already references this as commit `680666a0`
+   (now merged on master as part of #599).
+
+`NMP_WIRE_LOG` **also exists on master** but with different semantics
+than W8 proposed — see §7.4 below.
+
+### 7.2 §5 out-of-scope ledger — supersedes items 1 and 3
+
+- **Item §5.1 (claim_event FFI absent)** — superseded. The feature
+  hooks `claim_event` at `requests/event.rs:197` directly, NOT
+  `kernel_action.rs::open_uri`. See §7.3.
+- **Item §5.3 (`LogicalInterest.hints` unconsumed)** — still applies.
+  Verified at `interest.rs:280`; the four partition cases still set
+  `hints: Vec::new()`. W7 is unchanged.
+- **Items §5.2, §5.4, §5.5** — unchanged.
+
+### 7.3 W5 entry point — supersedes §W5 "Files touched" first bullet
+
+§W5 says: "called from `crates/nmp-core/src/kernel_action.rs::open_uri`
+(line 62) right after the existing `ensure_sub` call at line 100."
+
+**Retarget.** The claim-expansion controller now hooks
+`crates/nmp-core/src/kernel/requests/event.rs::claim_event` immediately
+after the existing line `:199`:
+
+```
+self.pending_discovery_oneshots.insert(interest_id, token);
+self.event_claim_requested.insert(primary_id);
+// ←  W5 INSERTION POINT
+//    self.register_claim_expansion(interest_id, primary_id.clone(), shape.clone(), now)
+```
+
+Rationale:
+- This is the single registration site for event claims on master.
+  `kernel_action.rs::open_uri` is the *generic* URI dispatcher; for
+  `nevent`/`naddr` it now delegates routing through the same
+  `OneshotApi::request` path via `resolve_open_uri` (verify in
+  `kernel/app/uri.rs` if implementing).
+- The new hook point already has `interest_id`, `primary_id`, and
+  `shape` in scope — no extra plumbing needed.
+- `claim_profile` (`requests/profile.rs`) is the **out-of-scope twin**.
+  Profile expansion follows the indexer lane (NIP-65 inbox), not author
+  outbox; the spec is event-centric.
+
+`PendingClaim.interest_id` now stores the `InterestId` returned by
+`oneshot.request`. The author for `EventRx`/`EoseNoMatch` scoring comes
+from the `InterestShape.authors` set for naddr claims (single-author by
+construction at `requests/event.rs:125`) and from the **EVENT pubkey**
+for nevent claims (the URI carries no author — the score row is created
+lazily on the first EVENT arrival).
+
+### 7.4 W8 env-var rename — supersedes §W8 entirely on the env var
+
+§W8 proposes `NMP_WIRE_LOG` as an env-gated **stderr structured
+emitter** of `WireLogEvent::{ReqEmit, EoseRx, EventRx,
+ClaimPhaseAdvance, ScoreUpdate}` JSON lines.
+
+**Conflict.** `NMP_WIRE_LOG` is already taken at
+`crates/nmp-network/src/relay_worker/socket_io.rs:13-40` as a
+**file-path-based raw-frame logger** (`NMP_WIRE_LOG=/tmp/wire.log`,
+appends `[ts] <relay> → <text>\n` per write/read frame). The two
+semantics are not compatible — one is "wire frames to a file", the
+other is "semantic claim events to stderr". They log different things
+at different layers.
+
+**Retarget.** W8 uses a distinct env var:
+
+- **New name**: `NMP_CLAIM_LOG` (env-gated, stderr, structured JSON).
+- **Rationale**: matches "claim expansion" (the feature) rather than
+  "wire frames" (the lower transport seam). The two can coexist; A1's
+  acceptance test reads `NMP_CLAIM_LOG`, A5 can read both.
+- **Alternative considered**: piggyback on `NMP_WIRE_LOG` by detecting
+  a non-path value (e.g. `NMP_WIRE_LOG=1`). Rejected: the existing
+  impl unconditionally calls `PathBuf::from` on the value and tries to
+  open it — adding a sentinel would require a second seam in
+  `socket_io.rs`, breaking D0 layering (semantic claim events belong
+  in `nmp-core`, not in `nmp-network`).
+
+All other W8 internals (event enum, JSON encoding,
+`unwrap_or_default`, `OnceLock<bool>` early-bailout cache) stand.
+
+A1/A2/A3/A5/A6 acceptance tests in W9 read `NMP_CLAIM_LOG` for
+semantic-event assertions; they may **additionally** set
+`NMP_WIRE_LOG=<tmpfile>` to capture raw frames for cross-checking
+(belt-and-braces — useful for debugging A5's mid-claim disconnect).
+
+### 7.5 §1 workstream table — adjusted LOC
+
+W5's "+450 LOC" budget previously included a private `lookup_sub_author`
+helper. With `pending_discovery_oneshots: HashMap<InterestId, String>`
+(`kernel/mod.rs:672`) already mapping `interest_id → token`, the lookup
+becomes a `PendingClaim.author: Pubkey` lookup keyed off the same
+`interest_id` — no kernel-wide helper needed. Net delta: −20 LOC on
+W5, no W3 change.
+
+### 7.6 §1 file-size drift
+
+§W5 says `kernel/mod.rs` is 1877 LOC. Current count: **1952 LOC**
+(`wc -l crates/nmp-core/src/kernel/mod.rs`). The R2 risk (mod.rs LOC
+drift) is now sharper: every field/mod-line addition is on top of an
+already-larger pre-existing violation. Strict no-impls-in-mod.rs rule
+stands; budget the entire feature at ≤25 mod.rs additions.
+
+§W3's caution about `kernel/ingest/mod.rs` exceeding 500 LOC is now
+**already realised**: `wc -l` reports **645 LOC**. The extraction to
+`kernel/ingest/eose.rs` recommended in §6 is no longer optional — W3
+must land it as a prerequisite refactor (own commit) to avoid further
+inflating the violation.
+
+### 7.7 §1 line-number drift catalog
+
+Non-load-bearing but worth recording for the implementer's grep:
+
+| Plan ref | Plan line | Master line | Notes |
+|---|---|---|---|
+| `selection.rs::apply_selection` | `:118` | `:133` | unchanged signature |
+| `selection.rs` operator-bypass | (commit `680666a0`) | `:117-146` | now landed on master |
+| `oneshot.rs::request` | `:97-137` | `:97-…` | unchanged |
+| `interest.rs::hints` | `:280` | `:280` | unchanged |
+| `kernel_action.rs::open_uri` | `:62-103` | `:62-…` | unchanged but no longer the hook (see §7.3) |
+| `kernel/mod.rs` | 1877 LOC | 1952 LOC | drifted up |
+| `kernel/ingest/mod.rs` | "~500" | 645 LOC | over ceiling — pre-extract |
+| `kernel/discovery.rs` | 251 LOC | 251 LOC | unchanged |
+| `lmdb/mod.rs additional_dbs` | `:131-146` | `:114, :135, :140` | API stable, lines shifted |
+
+### 7.8 Reviewer note for Agent B
+
+The four items §6 deferred to Agent B remain on the table:
+
+1. NIP-11 tiebreaker — confirm no NIP-11 cache exists; if found, choose
+   intersection over lex-DESC.
+2. `sub_id → author` lookup placement — §7.3 now proposes `PendingClaim`
+   carries the author directly (interest_id keys both maps). Confirm or
+   suggest the kernel-wide `BTreeMap<String, Pubkey>` alternative.
+3. Actor idle-tick call-site — implementer greps
+   `pending_sign.rs::poll`; reviewer confirms the right grep target.
+4. Ingest/mod.rs split — §7.6 elevates from "if it overflows" to
+   "required pre-refactor"; reviewer confirms scope.
+
+Plus three new items raised by this retarget:
+
+5. **§7.3 author lookup for nevent claims** — the URI carries no
+   author; the score row gets created on the first EVENT. Is the
+   "create-on-first-EVENT" semantics OK, or should nevent claims skip
+   scoring entirely (they have no author signal until they resolve)?
+6. **§7.4 env-var rename** — `NMP_CLAIM_LOG` vs. piggyback vs. some
+   third option (e.g. `NMP_TRACE=claim,wire,...` comma-list). Pick.
+7. **§7.6 ingest/mod.rs pre-extraction** — should W3 land the
+   `kernel/ingest/eose.rs` extraction as its first commit, or should
+   a separate refactor PR land first? (Recommendation: land it as W3
+   commit 1; small and self-contained.)
