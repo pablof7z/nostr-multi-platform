@@ -95,6 +95,29 @@ const CONTENT_COMPONENTS: &[ComponentSpec] = &[
     },
 ];
 
+const EMBED_COMPONENTS: &[ComponentSpec] = &[
+    ComponentSpec {
+        id: "embed-article",
+        label: "Embedded Article",
+        description: "Real kind:30023 referenced inside surrounding text (card preview)",
+    },
+    ComponentSpec {
+        id: "embed-profile",
+        label: "Embedded Profile",
+        description: "nostr:npub mention rendered inline",
+    },
+    ComponentSpec {
+        id: "embed-note",
+        label: "Embedded Note",
+        description: "kind:1 nevent as a block card with proper content",
+    },
+    ComponentSpec {
+        id: "embed-highlight",
+        label: "Embedded Highlight",
+        description: "NIP-84 highlight as a styled embed",
+    },
+];
+
 pub const REGISTRY_SECTIONS: &[RegistrySectionSpec] = &[
     RegistrySectionSpec {
         label: "User",
@@ -103,6 +126,10 @@ pub const REGISTRY_SECTIONS: &[RegistrySectionSpec] = &[
     RegistrySectionSpec {
         label: "Content",
         components: CONTENT_COMPONENTS,
+    },
+    RegistrySectionSpec {
+        label: "Embeds & Kinds",
+        components: EMBED_COMPONENTS,
     },
 ];
 

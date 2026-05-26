@@ -4,6 +4,8 @@ pub mod content_kind_registry;
 pub mod content_render_data;
 #[path = "../../../../crates/nmp-cli/registry/tui/content-core/content_tree_wire.rs"]
 pub mod content_tree_wire;
+#[path = "../../../../crates/nmp-cli/registry/tui/content-kind-registry/mod.rs"]
+pub mod content_kind_registry;
 #[path = "../../../../crates/nmp-cli/registry/tui/content-view/nostr_content_view.rs"]
 pub mod nostr_content_view;
 #[path = "../../../../crates/nmp-cli/registry/tui/content-media-grid/nostr_media_grid.rs"]
@@ -32,5 +34,4 @@ pub mod profile_wire;
 
 pub mod data;
 pub mod gallery;
-mod live;
 pub mod render;

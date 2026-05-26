@@ -36,15 +36,15 @@ impl NostrKindRegistry {
         }
     }
 
-    /// Registers the built-in short-note + unknown fallback handlers.
-    /// Additional handlers are added by calling the `set_*` methods
-    /// (typically after `nmp add component tui/content-kind-30023` etc.).
+    /// Installs the built-in default renderer for each known projection variant,
+    /// plus `DefaultUnknownRenderer` as the fallback for unregistered numeric kinds.
+    /// Replace any slot with `set_*` to swap in a richer handler (e.g. F-CR-09).
     pub fn make_default() -> Self {
-        let short_note: KindRendererRef = Arc::new(DefaultShortNoteRenderer);
-        let unknown_fallback: KindRendererRef = Arc::new(DefaultUnknownRenderer);
-
-        let mut reg = Self::new(unknown_fallback);
-        reg.short_note = Some(short_note);
+        let mut reg = Self::new(Arc::new(DefaultUnknownRenderer));
+        reg.short_note = Some(Arc::new(DefaultShortNoteRenderer));
+        reg.article = Some(Arc::new(DefaultArticleRenderer));
+        reg.highlight = Some(Arc::new(DefaultHighlightRenderer));
+        reg.profile = Some(Arc::new(DefaultProfileRenderer));
         reg
     }
 
@@ -91,7 +91,7 @@ impl NostrKindRegistry {
     }
 }
 
-/// Default renderer used for `ShortNoteProjection`.
+/// Default renderer for `ShortNoteProjection` (kind:1 quoted notes).
 pub struct DefaultShortNoteRenderer;
 
 impl KindRenderer for DefaultShortNoteRenderer {
@@ -103,41 +103,144 @@ impl KindRenderer for DefaultShortNoteRenderer {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
-        let (header, body) = match projection {
-            EmbedKindProjection::ShortNote(note) => {
-                let author = note
-                    .author_display_name
-                    .clone()
-                    .unwrap_or_else(|| short_id(&note.author_pubkey));
-                let header = format!("quote · {}", author);
-                let body = tree_text(&note.content_tree);
-                (header, body)
-            }
-            _ => ("embedded".to_string(), String::new()),
+        let EmbedKindProjection::ShortNote(note) = projection else {
+            return;
         };
-
-        let lines = vec![
-            Line::from(Span::styled(
-                header,
-                Style::default().fg(Color::Rgb(148, 163, 184)),
-            )),
-            Line::from(Span::raw(body)),
-        ];
-        Paragraph::new(lines)
-            .wrap(Wrap { trim: true })
-            .render(area, buf);
+        let author = note
+            .author_display_name
+            .clone()
+            .unwrap_or_else(|| short_id(&note.author_pubkey));
+        render_two_line(
+            &format!("note · {author}"),
+            &tree_text(&note.content_tree),
+            area,
+            buf,
+        );
     }
 
     fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
-        let body = match projection {
-            EmbedKindProjection::ShortNote(note) => tree_text(&note.content_tree),
-            _ => String::new(),
+        let EmbedKindProjection::ShortNote(note) = projection else {
+            return 2;
         };
-        text_height(&body, width).saturating_add(1).max(2)
+        text_height(&tree_text(&note.content_tree), width)
+            .saturating_add(1)
+            .max(2)
     }
 }
 
-/// Separate default for truly unknown kinds (can be registered per-kind later).
+/// Default renderer for `ArticleProjection` (kind:30023).
+/// Shows title + summary. Replace via `registry.set_article(...)` for a richer card (F-CR-09).
+pub struct DefaultArticleRenderer;
+
+impl KindRenderer for DefaultArticleRenderer {
+    fn render(
+        &self,
+        projection: &EmbedKindProjection,
+        _ctx: &nmp_content::context::RenderContext,
+        _registry: &NostrKindRegistry,
+        area: ratatui::layout::Rect,
+        buf: &mut ratatui::buffer::Buffer,
+    ) {
+        let EmbedKindProjection::Article(article) = projection else {
+            return;
+        };
+        let author = article
+            .author_display_name
+            .clone()
+            .unwrap_or_else(|| short_id(&article.author_pubkey));
+        let title = article.title.as_deref().unwrap_or("article");
+        let summary = article
+            .summary
+            .clone()
+            .unwrap_or_else(|| tree_text(&article.content_tree));
+        render_two_line(&format!("{title} · {author}"), &summary, area, buf);
+    }
+
+    fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
+        let EmbedKindProjection::Article(article) = projection else {
+            return 2;
+        };
+        let summary = article
+            .summary
+            .clone()
+            .unwrap_or_else(|| tree_text(&article.content_tree));
+        text_height(&summary, width).saturating_add(1).max(2)
+    }
+}
+
+/// Default renderer for `HighlightProjection` (kind:9802).
+/// Shows highlighted text + source. Replace via `registry.set_highlight(...)` for F-CR-10.
+pub struct DefaultHighlightRenderer;
+
+impl KindRenderer for DefaultHighlightRenderer {
+    fn render(
+        &self,
+        projection: &EmbedKindProjection,
+        _ctx: &nmp_content::context::RenderContext,
+        _registry: &NostrKindRegistry,
+        area: ratatui::layout::Rect,
+        buf: &mut ratatui::buffer::Buffer,
+    ) {
+        let EmbedKindProjection::Highlight(highlight) = projection else {
+            return;
+        };
+        let author = highlight
+            .author_display_name
+            .clone()
+            .unwrap_or_else(|| short_id(&highlight.author_pubkey));
+        render_two_line(
+            &format!("highlight · {author}"),
+            &highlight.highlighted_text,
+            area,
+            buf,
+        );
+    }
+
+    fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
+        let EmbedKindProjection::Highlight(highlight) = projection else {
+            return 2;
+        };
+        text_height(&highlight.highlighted_text, width)
+            .saturating_add(1)
+            .max(2)
+    }
+}
+
+/// Default renderer for `ProfileProjection` (kind:0).
+/// Shows display name + about. Replace via `registry.set_profile(...)` for F-CR-11.
+pub struct DefaultProfileRenderer;
+
+impl KindRenderer for DefaultProfileRenderer {
+    fn render(
+        &self,
+        projection: &EmbedKindProjection,
+        _ctx: &nmp_content::context::RenderContext,
+        _registry: &NostrKindRegistry,
+        area: ratatui::layout::Rect,
+        buf: &mut ratatui::buffer::Buffer,
+    ) {
+        let EmbedKindProjection::Profile(profile) = projection else {
+            return;
+        };
+        let label = profile
+            .display_name
+            .clone()
+            .unwrap_or_else(|| short_id(&profile.pubkey));
+        let about = profile.about.clone().unwrap_or_default();
+        render_two_line("profile", &format!("{label} — {about}"), area, buf);
+    }
+
+    fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
+        let EmbedKindProjection::Profile(profile) = projection else {
+            return 2;
+        };
+        let about = profile.about.clone().unwrap_or_default();
+        text_height(&about, width).saturating_add(1).max(2)
+    }
+}
+
+/// Fallback renderer for `EmbedKindProjection::Unknown` — numeric Nostr kinds
+/// that have no registered handler. Knows nothing about named variants.
 pub struct DefaultUnknownRenderer;
 
 impl KindRenderer for DefaultUnknownRenderer {
@@ -149,87 +252,45 @@ impl KindRenderer for DefaultUnknownRenderer {
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
-        let (header, body) = match projection {
-            EmbedKindProjection::Unknown(unknown) => {
-                let author = unknown
-                    .author_display_name
-                    .clone()
-                    .unwrap_or_else(|| short_id(&unknown.author_pubkey));
-                let body = if unknown.content.is_empty() {
-                    tree_text(&unknown.content_tree)
-                } else {
-                    unknown.content.clone()
-                };
-                (format!("quote kind:{} · {}", unknown.kind, author), body)
-            }
-            EmbedKindProjection::Article(article) => {
-                let author = article
-                    .author_display_name
-                    .clone()
-                    .unwrap_or_else(|| short_id(&article.author_pubkey));
-                let title = article.title.as_deref().unwrap_or("article");
-                let summary = article
-                    .summary
-                    .clone()
-                    .unwrap_or_else(|| tree_text(&article.content_tree));
-                (format!("{title} · {}", author), summary)
-            }
-            EmbedKindProjection::Highlight(highlight) => {
-                let author = highlight
-                    .author_display_name
-                    .clone()
-                    .unwrap_or_else(|| short_id(&highlight.author_pubkey));
-                (
-                    format!("highlight · {}", author),
-                    highlight.highlighted_text.clone(),
-                )
-            }
-            EmbedKindProjection::Profile(profile) => {
-                let label = profile
-                    .display_name
-                    .clone()
-                    .unwrap_or_else(|| short_id(&profile.pubkey));
-                (
-                    "profile".to_string(),
-                    profile.about.clone().unwrap_or(label),
-                )
-            }
-            EmbedKindProjection::ShortNote(_) => {
-                return DefaultShortNoteRenderer.render(projection, _ctx, _registry, area, buf);
-            }
+        let EmbedKindProjection::Unknown(unknown) = projection else {
+            return;
         };
-
-        let lines = vec![
-            Line::from(Span::styled(
-                header,
-                Style::default().fg(Color::Rgb(148, 163, 184)),
-            )),
-            Line::from(Span::raw(body)),
-        ];
-        Paragraph::new(lines)
-            .wrap(Wrap { trim: true })
-            .render(area, buf);
+        let author = unknown
+            .author_display_name
+            .clone()
+            .unwrap_or_else(|| short_id(&unknown.author_pubkey));
+        let body = if unknown.content.is_empty() {
+            tree_text(&unknown.content_tree)
+        } else {
+            unknown.content.clone()
+        };
+        render_two_line(&format!("kind:{} · {author}", unknown.kind), &body, area, buf);
     }
 
     fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
-        let body = match projection {
-            EmbedKindProjection::ShortNote(note) => tree_text(&note.content_tree),
-            EmbedKindProjection::Article(article) => article
-                .summary
-                .clone()
-                .unwrap_or_else(|| tree_text(&article.content_tree)),
-            EmbedKindProjection::Highlight(highlight) => highlight.highlighted_text.clone(),
-            EmbedKindProjection::Profile(profile) => profile.about.clone().unwrap_or_default(),
-            EmbedKindProjection::Unknown(unknown) => {
-                if unknown.content.is_empty() {
-                    tree_text(&unknown.content_tree)
-                } else {
-                    unknown.content.clone()
-                }
-            }
+        let EmbedKindProjection::Unknown(unknown) = projection else {
+            return 2;
+        };
+        let body = if unknown.content.is_empty() {
+            tree_text(&unknown.content_tree)
+        } else {
+            unknown.content.clone()
         };
         text_height(&body, width).saturating_add(1).max(2)
     }
+}
+
+fn render_two_line(header: &str, body: &str, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+    let lines = vec![
+        Line::from(Span::styled(
+            header.to_string(),
+            Style::default().fg(Color::Rgb(148, 163, 184)),
+        )),
+        Line::from(Span::raw(body.to_string())),
+    ];
+    Paragraph::new(lines)
+        .wrap(Wrap { trim: true })
+        .render(area, buf);
 }
 
 fn tree_text(tree: &ContentTreeWire) -> String {

@@ -7,6 +7,7 @@ use ratatui::{
 use ratatui_image::protocol::Protocol;
 
 use crate::{
+    content_kind_registry::NostrKindRegistry,
     content_tree_wire::WireNode,
     data::{ContentExample, GalleryData},
     nostr_avatar::NostrAvatar,
@@ -20,6 +21,7 @@ use crate::{
     nostr_quote_card::NostrQuoteCard,
     nostr_user_card::NostrUserCard,
 };
+
 
 pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
     match id {
@@ -62,6 +64,9 @@ pub fn render_body(id: &str, area: Rect, buf: &mut Buffer, data: &GalleryData) {
         }
         "content-quote-card" => {
             render_quote_card(area, buf, &data.content_quote_card, &media_images)
+        }
+        "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
+            render_embed_showcase(id, area, buf, data, &media_images)
         }
         "user-avatar" => render_avatar(area, buf, data),
         "user-name" => NostrProfileName::new(&data.primary_profile).render(area, buf),
@@ -240,6 +245,31 @@ fn media_refs(data: &GalleryData) -> Vec<(&str, &Protocol)> {
         .collect()
 }
 
+fn render_embed_showcase(
+    id: &str,
+    area: Rect,
+    buf: &mut Buffer,
+    data: &GalleryData,
+    media_images: &[(&str, &Protocol)],
+) {
+    let example = match id {
+        "embed-article" => &data.embed_article,
+        "embed-profile" => &data.embed_profile,
+        "embed-note" => &data.embed_note,
+        "embed-highlight" => &data.embed_highlight,
+        _ => &data.content_view,
+    };
+
+    let registry = NostrKindRegistry::make_default();
+
+    NostrContentView::new(&example.tree)
+        .render_data(Some(&example.render_data))
+        .media_images(media_images)
+        .kind_registry(Some(&registry))
+        .embedded_events(Some(&example.embedded_events))
+        .render(area, buf);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +309,48 @@ mod tests {
             lines.contains("Quoted event body from render data"),
             "{lines}"
         );
+    }
+
+    #[test]
+    fn embed_note_has_envelope_keyed_by_event_id() {
+        let data = GalleryData::render_test_data();
+        // The embed_note ContentExample must carry a ShortNote envelope so that
+        // NostrContentView can look it up by primary_id when it encounters the
+        // EventRef node produced by tokenising the synthetic content string.
+        assert!(
+            !data.embed_note.embedded_events.is_empty(),
+            "embed_note must have at least one envelope"
+        );
+        let has_short_note = data.embed_note.embedded_events.values().any(|env| {
+            matches!(
+                env.projection,
+                nmp_content::embed_projection::EmbedKindProjection::ShortNote(_)
+            )
+        });
+        assert!(has_short_note, "embed_note envelope must be a ShortNote projection");
+    }
+
+    #[test]
+    fn embed_article_has_article_projection() {
+        let data = GalleryData::render_test_data();
+        let has_article = data.embed_article.embedded_events.values().any(|env| {
+            matches!(
+                env.projection,
+                nmp_content::embed_projection::EmbedKindProjection::Article(_)
+            )
+        });
+        assert!(has_article, "embed_article envelope must be an Article projection");
+    }
+
+    #[test]
+    fn embed_highlight_has_highlight_projection() {
+        let data = GalleryData::render_test_data();
+        let has_highlight = data.embed_highlight.embedded_events.values().any(|env| {
+            matches!(
+                env.projection,
+                nmp_content::embed_projection::EmbedKindProjection::Highlight(_)
+            )
+        });
+        assert!(has_highlight, "embed_highlight envelope must be a Highlight projection");
     }
 }

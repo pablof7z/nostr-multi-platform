@@ -34,7 +34,7 @@ fn main() -> io::Result<()> {
     let data = match GalleryData::load(!args.dump_lines) {
         Ok(data) => data,
         Err(error) => {
-            eprintln!("failed to load live NmpGallery data: {error}");
+            eprintln!("failed to load NmpGallery data: {error}");
             std::process::exit(1);
         }
     };
