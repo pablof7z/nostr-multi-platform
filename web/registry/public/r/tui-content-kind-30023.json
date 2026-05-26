@@ -1,8 +1,8 @@
 {
   "name": "tui-content-kind-30023",
   "type": "registry:ui",
-  "title": "Article Embed — kind:30023 (TUI)",
-  "description": "Long-form article (NIP-23) embed renderer for Ratatui — hero image protocol slot, title heading, summary paragraph, author byline. Registered automatically by NostrKindRegistry::with_defaults().",
+  "title": "Content Kind 30023 (tui)",
+  "description": "Long-form article (NIP-23, kind:30023) — DefaultArticleRenderer shipped inside tui/content-kind-registry.",
   "dependencies": [],
   "registryDependencies": [
     "tui-content-kind-registry"

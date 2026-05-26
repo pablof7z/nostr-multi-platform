@@ -1,8 +1,8 @@
 {
   "name": "tui-content-kind-9802",
   "type": "registry:ui",
-  "title": "Highlight Embed — kind:9802 (TUI)",
-  "description": "Highlight (NIP-84) embed renderer for Ratatui — yellow accent block over the highlighted text, optional context line, source footer branching on r/e/a tags. Registered automatically by NostrKindRegistry::with_defaults().",
+  "title": "Content Kind 9802 (tui)",
+  "description": "Highlight (NIP-84, kind:9802) — DefaultHighlightRenderer shipped inside tui/content-kind-registry.",
   "dependencies": [],
   "registryDependencies": [
     "tui-content-kind-registry"

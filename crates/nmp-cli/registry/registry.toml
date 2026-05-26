@@ -368,6 +368,26 @@ source = "tui/content-kind-registry/embedded_event.rs"
 target = "src/components/nostr_content/content_kind_registry/embedded_event.rs"
 role = "source"
 [[components]]
+id = "tui/content-kind-30023"
+version = "0.1.0"
+target = "tui"
+description = "Long-form article (NIP-23, kind:30023) — DefaultArticleRenderer shipped inside tui/content-kind-registry."
+dependencies = ["tui/content-kind-registry"]
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+[[components]]
+id = "tui/content-kind-9802"
+version = "0.1.0"
+target = "tui"
+description = "Highlight (NIP-84, kind:9802) — DefaultHighlightRenderer shipped inside tui/content-kind-registry."
+dependencies = ["tui/content-kind-registry"]
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+[[components]]
 id = "tui/content-view"
 version = "0.1.3"
 target = "tui"
