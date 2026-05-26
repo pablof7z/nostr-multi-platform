@@ -29,6 +29,15 @@ void nmp_app_open_thread(void *app, const char *event_id);
 void nmp_app_open_firehose_tag(void *app, const char *tag);
 void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
+// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
+// `consumer_id`; the kernel fetches the event over the OneshotApi (single-
+// writer interest registration — D4) when not yet in the store, and surfaces
+// it in `snapshot.projections.claimed_events` keyed by `primary_id` (event-id
+// hex for `nevent`/`note`; `"kind:pubkey:d"` for `naddr`). FFI-clean (D6):
+// null/invalid arguments are silent no-ops, never panics. D8: forwards to the
+// actor; no polling, no sync wait.
+void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id);
+void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 void nmp_app_close_author(void *app, const char *pubkey);
 void nmp_app_close_thread(void *app, const char *event_id);
 
