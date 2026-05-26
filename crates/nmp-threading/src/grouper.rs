@@ -14,8 +14,8 @@
 //!      up `Event` ids that are in the store and not yet `seen`. `Address`
 //!      / `External` parents terminate the walk and become the module's
 //!      `root` pointer.
-//!   5. Wrap the chain in a `TimelineBlock` and insert at the head of
-//!      `blocks` (newest-first).
+//!   5. Wrap the chain in a `TimelineBlock`; `blocks` is kept sorted by
+//!      newest event timestamp, regardless of relay arrival order.
 //!   6. If the parent is unknown locally, buffer the child in `orphans`
 //!      keyed by the missing parent id. Parent arrival replays children.
 //!
@@ -50,7 +50,7 @@ use self::collapse::{gap_between, root_id_mismatched};
 /// view-module `Delta` type (typically a 1:1 forward).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum GroupDelta {
-    /// A new block was inserted at the head of the timeline.
+    /// A new block was inserted at the given display index.
     BlockInserted(usize),
     /// A block at the given index was replaced (length / membership /
     /// `has_gap` changed). Wrappers re-emit the full block from
@@ -126,7 +126,7 @@ impl<R: ParentResolver> Grouper<R> {
         // after we've placed this event itself.
         let waiting = self.orphans.remove(&event.id).unwrap_or_default();
 
-        let delta = self.place_event(event);
+        let mut delta = self.place_event(event);
 
         // Replay waiting children. Each replay may release further orphans.
         let mut replay_queue: Vec<EventId> = waiting.into_iter().collect();
@@ -143,7 +143,15 @@ impl<R: ParentResolver> Grouper<R> {
             }
         }
 
+        self.sort_blocks_newest_first();
         self.collapse_adjacent();
+        self.sort_blocks_newest_first();
+        if matches!(
+            delta,
+            Some(GroupDelta::BlockInserted(_) | GroupDelta::BlockReplaced(_))
+        ) {
+            delta = delta.and_then(|d| self.reindex_delta(d, &event.id));
+        }
         delta
     }
 
@@ -196,9 +204,11 @@ impl<R: ParentResolver> Grouper<R> {
         if let Some(idx) = removed_idx {
             self.blocks.remove(idx);
             self.collapse_adjacent();
+            self.sort_blocks_newest_first();
             Some(GroupDelta::BlockRemoved(idx))
         } else {
             self.collapse_adjacent();
+            self.sort_blocks_newest_first();
             block_replaced_idx.map(GroupDelta::BlockReplaced)
         }
     }
@@ -241,13 +251,13 @@ impl<R: ParentResolver> Grouper<R> {
 
             if let Some(idx) = self.find_block_with_leaf(parent_id) {
                 let parent_kev = self.by_id.get(parent_id).cloned();
-                let extended = self.try_extend_block(idx, event, parent_kev.as_ref(), root_hint.as_ref());
+                let extended =
+                    self.try_extend_block(idx, event, parent_kev.as_ref(), root_hint.as_ref());
                 if extended {
                     self.seen.insert(event.id.clone());
                     self.orphaned.remove(&event.id);
                     self.pending_ancestor_ids.remove(&event.id);
-                    self.move_to_front(idx);
-                    return Some(GroupDelta::BlockReplaced(0));
+                    return Some(GroupDelta::BlockReplaced(idx));
                 }
             }
         }
@@ -439,11 +449,43 @@ impl<R: ParentResolver> Grouper<R> {
         (chain, terminal_root, has_gap)
     }
 
-    fn move_to_front(&mut self, idx: usize) {
-        if idx == 0 {
-            return;
-        }
-        let block = self.blocks.remove(idx);
-        self.blocks.insert(0, block);
+    fn sort_blocks_newest_first(&mut self) {
+        let by_id = &self.by_id;
+        self.blocks
+            .sort_by(|a, b| block_sort_key(b, by_id).cmp(&block_sort_key(a, by_id)));
+    }
+
+    fn reindex_delta(&self, delta: GroupDelta, event_id: &str) -> Option<GroupDelta> {
+        let idx = self.find_block_containing(event_id)?;
+        Some(match delta {
+            GroupDelta::BlockInserted(_) => GroupDelta::BlockInserted(idx),
+            GroupDelta::BlockReplaced(_) => GroupDelta::BlockReplaced(idx),
+            GroupDelta::BlockRemoved(idx) => GroupDelta::BlockRemoved(idx),
+        })
+    }
+
+    fn find_block_containing(&self, event_id: &str) -> Option<usize> {
+        self.blocks.iter().position(|block| match block {
+            TimelineBlock::Standalone(id) => id == event_id,
+            TimelineBlock::Module { events, .. } => events.iter().any(|id| id == event_id),
+        })
+    }
+}
+
+fn block_sort_key(block: &TimelineBlock, by_id: &BTreeMap<EventId, KernelEvent>) -> (u64, EventId) {
+    match block {
+        TimelineBlock::Standalone(id) => by_id
+            .get(id)
+            .map(|event| (event.created_at, event.id.clone()))
+            .unwrap_or_else(|| (0, id.clone())),
+        TimelineBlock::Module { events, .. } => events
+            .iter()
+            .filter_map(|id| {
+                by_id
+                    .get(id)
+                    .map(|event| (event.created_at, event.id.clone()))
+            })
+            .max()
+            .unwrap_or_else(|| (0, events.first().cloned().unwrap_or_default())),
     }
 }

@@ -90,9 +90,7 @@ impl ParentResolver for FakeResolver {
                 relay: None,
                 kind: None,
             }),
-            (Some(k), Some(v)) if k == "i_root" => {
-                Some(ThreadPointer::External { uri: v.clone() })
-            }
+            (Some(k), Some(v)) if k == "i_root" => Some(ThreadPointer::External { uri: v.clone() }),
             _ => None,
         })
     }
@@ -130,11 +128,13 @@ fn two_message_merge_promotes_standalone_to_module() {
     let mut g = fresh();
     let parent = ev("P", 1, None, None);
     let reply = ev("R", 2, Some("P"), Some("P"));
-    g.on_insert(&parent);
-    g.on_insert(&reply);
+    let _ = g.on_insert(&parent);
+    let _ = g.on_insert(&reply);
     assert_eq!(g.blocks().len(), 1);
     match &g.blocks()[0] {
-        TimelineBlock::Module { events, has_gap, .. } => {
+        TimelineBlock::Module {
+            events, has_gap, ..
+        } => {
             assert_eq!(events, &vec!["P".to_string(), "R".to_string()]);
             assert!(!has_gap);
         }
@@ -151,7 +151,7 @@ fn reply_without_parent_buffers_until_arrival() {
     assert!(g.pending_ancestor_ids().contains("P"));
 
     let parent = ev("P", 1, None, None);
-    g.on_insert(&parent);
+    let _ = g.on_insert(&parent);
     assert_eq!(g.blocks().len(), 1);
     match &g.blocks()[0] {
         TimelineBlock::Module { events, .. } => {
@@ -171,12 +171,17 @@ fn out_of_order_ancestor_arrival_stitches_full_chain() {
 
     assert!(g.on_insert(&grandchild).is_none());
     assert!(g.on_insert(&child).is_none());
-    g.on_insert(&parent);
+    let _ = g.on_insert(&parent);
 
     assert_eq!(g.blocks().len(), 1);
     match &g.blocks()[0] {
-        TimelineBlock::Module { events, has_gap, .. } => {
-            assert_eq!(events, &vec!["P".to_string(), "C".to_string(), "G".to_string()]);
+        TimelineBlock::Module {
+            events, has_gap, ..
+        } => {
+            assert_eq!(
+                events,
+                &vec!["P".to_string(), "C".to_string(), "G".to_string()]
+            );
             assert!(!has_gap);
         }
         other => panic!("expected Module, got {other:?}"),
@@ -186,11 +191,11 @@ fn out_of_order_ancestor_arrival_stitches_full_chain() {
 #[test]
 fn module_size_capped_at_policy_max() {
     let mut g = fresh(); // default max_module_size = 3
-    g.on_insert(&ev("A", 1, None, None));
-    g.on_insert(&ev("B", 2, Some("A"), Some("A")));
-    g.on_insert(&ev("C", 3, Some("B"), Some("A")));
+    let _ = g.on_insert(&ev("A", 1, None, None));
+    let _ = g.on_insert(&ev("B", 2, Some("A"), Some("A")));
+    let _ = g.on_insert(&ev("C", 3, Some("B"), Some("A")));
     // Fourth event must NOT join the same module — it spawns a new block.
-    g.on_insert(&ev("D", 4, Some("C"), Some("A")));
+    let _ = g.on_insert(&ev("D", 4, Some("C"), Some("A")));
     let module_count = g
         .blocks()
         .iter()
@@ -206,15 +211,40 @@ fn module_size_capped_at_policy_max() {
 }
 
 #[test]
+fn older_backfill_stays_below_newer_blocks() {
+    let mut g = fresh();
+    let _ = g.on_insert(&ev("NEW", 200, None, None));
+    let delta = g.on_insert(&ev("OLD", 10, None, None));
+
+    assert!(matches!(delta, Some(GroupDelta::BlockInserted(1))));
+    assert_eq!(block_ids(&g.blocks()[0]), vec!["NEW"]);
+    assert_eq!(block_ids(&g.blocks()[1]), vec!["OLD"]);
+}
+
+#[test]
+fn older_thread_backfill_does_not_jump_to_top() {
+    let mut g = fresh();
+    let _ = g.on_insert(&ev("NEW", 200, None, None));
+    let _ = g.on_insert(&ev("OLD-P", 10, None, None));
+    let _ = g.on_insert(&ev("OLD-R", 11, Some("OLD-P"), Some("OLD-P")));
+
+    assert_eq!(block_ids(&g.blocks()[0]), vec!["NEW"]);
+    assert_eq!(block_ids(&g.blocks()[1]), vec!["OLD-P", "OLD-R"]);
+}
+
+#[test]
 fn addressable_parent_terminates_walk() {
     let mut g = fresh();
     let comment = ev_addr_root("C", 1, None, "30023:alice:intro");
-    assert!(matches!(g.on_insert(&comment), Some(GroupDelta::BlockInserted(0))));
+    assert!(matches!(
+        g.on_insert(&comment),
+        Some(GroupDelta::BlockInserted(0))
+    ));
     assert_eq!(g.blocks().len(), 1);
     assert!(matches!(g.blocks()[0], TimelineBlock::Standalone(_)));
 
     let reply = ev_addr_root("R", 2, Some("C"), "30023:alice:intro");
-    g.on_insert(&reply);
+    let _ = g.on_insert(&reply);
     assert_eq!(g.blocks().len(), 1);
     match &g.blocks()[0] {
         TimelineBlock::Module { events, root, .. } => {
@@ -229,8 +259,8 @@ fn addressable_parent_terminates_walk() {
 fn external_uri_root_drives_collapse() {
     let mut g = fresh();
     // Two separate chains anchored to the same external URI.
-    g.on_insert(&ev_uri_root("P1", 1, None, "https://x.com/a"));
-    g.on_insert(&ev_uri_root("R1", 2, Some("P1"), "https://x.com/a"));
+    let _ = g.on_insert(&ev_uri_root("P1", 1, None, "https://x.com/a"));
+    let _ = g.on_insert(&ev_uri_root("R1", 2, Some("P1"), "https://x.com/a"));
     // Now there is a Module [P1, R1] with root = External.
     let pre_module_count = g
         .blocks()
@@ -240,8 +270,8 @@ fn external_uri_root_drives_collapse() {
     assert_eq!(pre_module_count, 1);
 
     // Add a parallel chain — also two events, also same URI root.
-    g.on_insert(&ev_uri_root("P2", 10, None, "https://x.com/a"));
-    g.on_insert(&ev_uri_root("R2", 11, Some("P2"), "https://x.com/a"));
+    let _ = g.on_insert(&ev_uri_root("P2", 10, None, "https://x.com/a"));
+    let _ = g.on_insert(&ev_uri_root("R2", 11, Some("P2"), "https://x.com/a"));
 
     // With default max_module_size=3 the merged length (4) doesn't fit so
     // collapse cannot fold both modules. The first (newest) Module exists
@@ -275,10 +305,10 @@ fn external_uri_root_collapses_when_combined_fits() {
             ..ModulePolicy::default()
         },
     );
-    g.on_insert(&ev_uri_root("P1", 1, None, "uri"));
-    g.on_insert(&ev_uri_root("R1", 2, Some("P1"), "uri"));
-    g.on_insert(&ev_uri_root("P2", 10, None, "uri"));
-    g.on_insert(&ev_uri_root("R2", 11, Some("P2"), "uri"));
+    let _ = g.on_insert(&ev_uri_root("P1", 1, None, "uri"));
+    let _ = g.on_insert(&ev_uri_root("R1", 2, Some("P1"), "uri"));
+    let _ = g.on_insert(&ev_uri_root("P2", 10, None, "uri"));
+    let _ = g.on_insert(&ev_uri_root("R2", 11, Some("P2"), "uri"));
 
     let modules: Vec<&TimelineBlock> = g
         .blocks()
@@ -306,10 +336,10 @@ fn collapse_disabled_keeps_modules_separate() {
             ..ModulePolicy::default()
         },
     );
-    g.on_insert(&ev_uri_root("A", 1, None, "uri"));
-    g.on_insert(&ev_uri_root("B", 2, Some("A"), "uri"));
-    g.on_insert(&ev_uri_root("C", 10, None, "uri"));
-    g.on_insert(&ev_uri_root("D", 11, Some("C"), "uri"));
+    let _ = g.on_insert(&ev_uri_root("A", 1, None, "uri"));
+    let _ = g.on_insert(&ev_uri_root("B", 2, Some("A"), "uri"));
+    let _ = g.on_insert(&ev_uri_root("C", 10, None, "uri"));
+    let _ = g.on_insert(&ev_uri_root("D", 11, Some("C"), "uri"));
     let modules = g
         .blocks()
         .iter()
@@ -322,9 +352,9 @@ fn collapse_disabled_keeps_modules_separate() {
 fn dedup_same_id_never_appears_twice() {
     let mut g = fresh();
     let e = ev("X", 1, None, None);
-    g.on_insert(&e);
-    g.on_insert(&e);
-    g.on_insert(&e);
+    let _ = g.on_insert(&e);
+    let _ = g.on_insert(&e);
+    let _ = g.on_insert(&e);
     assert_eq!(g.blocks().len(), 1);
 
     let mut count = 0;
@@ -341,7 +371,7 @@ fn dedup_same_id_never_appears_twice() {
 #[test]
 fn on_remove_drops_standalone_block() {
     let mut g = fresh();
-    g.on_insert(&ev("A", 1, None, None));
+    let _ = g.on_insert(&ev("A", 1, None, None));
     let d = g.on_remove(&"A".to_string());
     assert!(matches!(d, Some(GroupDelta::BlockRemoved(0))));
     assert!(g.blocks().is_empty());
@@ -350,12 +380,14 @@ fn on_remove_drops_standalone_block() {
 #[test]
 fn on_remove_mid_module_introduces_gap() {
     let mut g = fresh();
-    g.on_insert(&ev("A", 1, None, None));
-    g.on_insert(&ev("B", 2, Some("A"), Some("A")));
-    g.on_insert(&ev("C", 3, Some("B"), Some("A")));
-    g.on_remove(&"B".to_string());
+    let _ = g.on_insert(&ev("A", 1, None, None));
+    let _ = g.on_insert(&ev("B", 2, Some("A"), Some("A")));
+    let _ = g.on_insert(&ev("C", 3, Some("B"), Some("A")));
+    let _ = g.on_remove(&"B".to_string());
     match &g.blocks()[0] {
-        TimelineBlock::Module { events, has_gap, .. } => {
+        TimelineBlock::Module {
+            events, has_gap, ..
+        } => {
             assert_eq!(events, &vec!["A".to_string(), "C".to_string()]);
             assert!(*has_gap);
         }
@@ -366,26 +398,23 @@ fn on_remove_mid_module_introduces_gap() {
 #[test]
 fn on_replace_swaps_event_in_chain() {
     let mut g = fresh();
-    g.on_insert(&ev("A", 1, None, None));
-    g.on_insert(&ev("B", 2, Some("A"), Some("A")));
+    let _ = g.on_insert(&ev("A", 1, None, None));
+    let _ = g.on_insert(&ev("B", 2, Some("A"), Some("A")));
     // Replace A with a new event (different id).
     let new_a = ev("A2", 5, None, None);
-    g.on_replace(&"A".to_string(), &new_a);
+    let _ = g.on_replace(&"A".to_string(), &new_a);
     let any_a2 = g.blocks().iter().any(|b| block_ids(b).contains(&"A2"));
     assert!(any_a2);
-    let any_a_original = g
-        .blocks()
-        .iter()
-        .any(|b| block_ids(b).contains(&"A"));
+    let any_a_original = g.blocks().iter().any(|b| block_ids(b).contains(&"A"));
     assert!(!any_a_original);
 }
 
 #[test]
 fn lookback_gap_marks_has_gap() {
     let mut g = fresh(); // 72h threshold
-    g.on_insert(&ev("A", 1, None, None));
+    let _ = g.on_insert(&ev("A", 1, None, None));
     let way_later = 1 + 72 * 3600 + 100;
-    g.on_insert(&ev("B", way_later, Some("A"), Some("A")));
+    let _ = g.on_insert(&ev("B", way_later, Some("A"), Some("A")));
     match &g.blocks()[0] {
         TimelineBlock::Module { has_gap, .. } => assert!(*has_gap),
         _ => panic!("expected Module"),
@@ -396,9 +425,9 @@ fn lookback_gap_marks_has_gap() {
 fn mismatched_root_id_marks_has_gap() {
     // Reply declares a root id that doesn't match the chain top.
     let mut g = fresh();
-    g.on_insert(&ev("MID", 1, None, None));
+    let _ = g.on_insert(&ev("MID", 1, None, None));
     // R's parent is MID (in store), root is "ROOT" (not in store, not in chain).
-    g.on_insert(&ev("R", 2, Some("MID"), Some("ROOT")));
+    let _ = g.on_insert(&ev("R", 2, Some("MID"), Some("ROOT")));
     match &g.blocks()[0] {
         TimelineBlock::Module { has_gap, .. } => assert!(*has_gap),
         TimelineBlock::Standalone(_) => {
