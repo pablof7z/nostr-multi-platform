@@ -149,6 +149,7 @@ impl Kernel {
                 claim_drops_total: self.claim_drops_total(),
                 make_update_us: self.last_make_update_us,
                 serialize_us: self.last_serialize_us,
+                update_frame_degradations_total: self.update_frame_degradations_total,
             },
             relay_status: self.relay_status(),
             relay_statuses: self.relay_statuses(),
@@ -201,7 +202,29 @@ impl Kernel {
         // below uses this tick's true length so the diagnostic stays accurate.
         // Capture the encode start so we can report "build" vs "encode" time.
         let before_serialize = Instant::now();
-        let snapshot = serde_json::to_value(&update).unwrap_or_else(|_| serde_json::json!({}));
+        let snapshot = match serde_json::to_value(&update) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.update_frame_degradations_total =
+                    self.update_frame_degradations_total.saturating_add(1);
+                self.log(format!(
+                    "NMP_DEGRADATION update_snapshot_to_value_failed rev={} error={error}",
+                    self.rev
+                ));
+                serde_json::json!({
+                    "schema_version": KERNEL_SCHEMA_VERSION,
+                    "rev": self.rev,
+                    "last_tick_ms": last_tick_ms,
+                    "update_kind": "ViewBatch",
+                    "running": running,
+                    "metrics": {
+                        "update_frame_degradations_total": self.update_frame_degradations_total
+                    },
+                    "last_error_category": "transport",
+                    "last_error_toast": "Update transport degraded"
+                })
+            }
+        };
         let encoded = encode_snapshot_value(snapshot);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous

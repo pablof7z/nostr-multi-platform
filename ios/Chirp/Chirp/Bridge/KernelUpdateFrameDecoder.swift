@@ -144,9 +144,27 @@ private struct FlatBufferKeyedContainer<Key: CodingKey>: KeyedDecodingContainerP
 
     private static func convertFromSnakeCase(_ key: String) -> String {
         guard key.contains("_") else { return key }
+        // Match the subset of JSONDecoder.convertFromSnakeCase used by Rust
+        // snapshot keys: underscores between words are removed, while leading
+        // and trailing underscores are preserved so future private-looking
+        // fields cannot alias public names.
+        let leading = key.prefix(while: { $0 == "_" })
+        var trailingCount = 0
+        var cursor = key.endIndex
+        while cursor > key.startIndex {
+            let previous = key.index(before: cursor)
+            guard key[previous] == "_" else { break }
+            trailingCount += 1
+            cursor = previous
+        }
+        let trailing = key.suffix(trailingCount)
+        let start = key.index(key.startIndex, offsetBy: leading.count)
+        let end = key.index(key.endIndex, offsetBy: -trailingCount)
+        guard start < end else { return key }
+        let body = key[start..<end]
         var result = ""
         var capitalizeNext = false
-        for character in key {
+        for character in body {
             if character == "_" {
                 capitalizeNext = !result.isEmpty
                 continue
@@ -158,7 +176,7 @@ private struct FlatBufferKeyedContainer<Key: CodingKey>: KeyedDecodingContainerP
                 result.append(character)
             }
         }
-        return result
+        return String(leading) + result + String(trailing)
     }
 }
 

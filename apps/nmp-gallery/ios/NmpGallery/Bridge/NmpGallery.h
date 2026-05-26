@@ -16,6 +16,8 @@
 void *nmp_app_new(void);
 void nmp_app_free(void *app);
 
+// Borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes. The pointer is valid
+// only for the callback duration; Swift copies before decoding.
 typedef void (*NmpUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);
 void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);
 
@@ -85,8 +87,8 @@ void nmp_app_signin_nsec(void *app, const char *secret);
 //
 // Profile-data flow (CRITICAL): profile data does NOT travel through
 // `nmp_app_gallery_snapshot`. Profile data arrives via the push callback
-// registered with `nmp_app_set_update_callback`; the JSON the kernel passes
-// to that callback carries the full snapshot including `profiles: {…}`.
+// registered with `nmp_app_set_update_callback`; the FlatBuffers update frame
+// the kernel passes to that callback carries the full snapshot.
 // Identical to Chirp's update-channel pattern.
 //
 // `nmp_app_gallery_snapshot` returns a minimal status envelope only:
@@ -96,8 +98,8 @@ void nmp_app_signin_nsec(void *app, const char *secret);
 // Flow:
 // 1. Call `nmp_app_gallery_register(app)` once after `nmp_app_new()` succeeds
 //    and BEFORE `nmp_app_start`. Silent no-op on a NULL app (D6).
-// 2. Register the push callback via `nmp_app_set_update_callback`. Profile
-//    JSON arrives on every emit tick.
+// 2. Register the push callback via `nmp_app_set_update_callback`.
+//    FlatBuffers update frames arrive on every emit tick.
 // 3. `nmp_app_gallery_snapshot(app)` is for status only; the shell owns the
 //    returned pointer until it calls `nmp_app_gallery_snapshot_free(ptr)`.
 //    The snapshot accessor takes the same `app` pointer (there is no

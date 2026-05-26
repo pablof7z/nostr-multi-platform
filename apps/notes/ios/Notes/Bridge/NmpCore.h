@@ -13,6 +13,8 @@
 
 void *nmp_app_new(void);
 void nmp_app_free(void *app);
+// Borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes. The pointer is valid
+// only for the callback duration; Swift copies before decoding.
 typedef void (*NmpUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);
 void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);
 // Persistent storage directory for the LMDB EventStore backend. Must be

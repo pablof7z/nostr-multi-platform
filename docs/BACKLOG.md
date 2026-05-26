@@ -1791,6 +1791,15 @@ shims, and explicit test tooling.
 - Legacy JSON update callback code is deleted or isolated behind documented
   migration/test-only entry points.
 
+**PR #582 measurement:** local debug `snapshot_perf_firehose_gate` on 2026-05-26
+with 1,000 synthetic events and `visible_limit=500`: master JSON frame
+`payload_bytes=480296`, `make_update_us=18016`, `serialize_us=11361`; PR #582
+generic FlatBuffers value tree `payload_bytes=873200`, `make_update_us=42075`,
+`serialize_us=35501`. This is still below the 4 Hz tick budget and existing CI
+ceilings, but it confirms the generic value tree is an interim transport shape;
+typed snapshot tables are the next F-10 performance step if foreground logs show
+`make_update_us` or payload size approaching budget.
+
 **Required work:**
 
 1. **Expose provenance in the projection** — `TimelineItem` already carries `relay_count: u32`. Add a `relay_provenance: Vec<String>` field (list of relay URLs) to `TimelineItem` and `TimelineEventCard`. Populate from `store.provenance_for(&event.id)` in `Kernel::timeline_item` (`crates/nmp-core/src/kernel/update.rs:464`). Keep `relay_count` as the cheap badge signal; `relay_provenance` is the detail payload. Consider making it opt-in via a projection flag to avoid bloating every timeline row snapshot.

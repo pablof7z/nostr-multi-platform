@@ -40,6 +40,7 @@ pub enum UpdateEnvelope {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateFrameDecodeError {
     InvalidFlatbuffer(String),
+    InvalidValue(String),
     MissingSnapshotPayload,
     MissingPanicPayload,
     UnexpectedPanicFrame(String),
@@ -49,6 +50,7 @@ impl fmt::Display for UpdateFrameDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidFlatbuffer(msg) => write!(f, "invalid update frame: {msg}"),
+            Self::InvalidValue(msg) => write!(f, "invalid update value: {msg}"),
             Self::MissingSnapshotPayload => write!(f, "snapshot frame missing payload"),
             Self::MissingPanicPayload => write!(f, "panic frame missing payload"),
             Self::UnexpectedPanicFrame(msg) => write!(f, "expected snapshot, got panic: {msg}"),
@@ -116,7 +118,7 @@ pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDe
             let payload = snapshot
                 .payload()
                 .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
-            Ok(UpdateEnvelope::Snapshot(decode_value(payload)))
+            Ok(UpdateEnvelope::Snapshot(decode_value(payload)?))
         }
         kind if kind == fb::FrameKind::Panic => {
             let panic = frame
@@ -251,42 +253,62 @@ fn encode_number<'bldr>(
     }
 }
 
-fn decode_value(value: fb::Value<'_>) -> Value {
+fn decode_value(value: fb::Value<'_>) -> Result<Value, UpdateFrameDecodeError> {
     match value.kind() {
-        kind if kind == fb::ValueKind::Null => Value::Null,
-        kind if kind == fb::ValueKind::Bool => Value::Bool(value.bool_value()),
-        kind if kind == fb::ValueKind::Int => Value::Number(Number::from(value.int_value())),
-        kind if kind == fb::ValueKind::UInt => Value::Number(Number::from(value.uint_value())),
-        kind if kind == fb::ValueKind::Float => Number::from_f64(value.float_value())
-            .map(Value::Number)
-            .unwrap_or(Value::Null),
-        kind if kind == fb::ValueKind::String => value
-            .string_value()
-            .map(|value| Value::String(value.to_string()))
-            .unwrap_or(Value::Null),
+        kind if kind == fb::ValueKind::Null => Ok(Value::Null),
+        kind if kind == fb::ValueKind::Bool => Ok(Value::Bool(value.bool_value())),
+        kind if kind == fb::ValueKind::Int => Ok(Value::Number(Number::from(value.int_value()))),
+        kind if kind == fb::ValueKind::UInt => {
+            Ok(Value::Number(Number::from(value.uint_value())))
+        }
+        kind if kind == fb::ValueKind::Float => {
+            let float = value.float_value();
+            if !float.is_finite() {
+                return Err(UpdateFrameDecodeError::InvalidValue(
+                    "non-finite float value".to_string(),
+                ));
+            }
+            Number::from_f64(float)
+                .map(Value::Number)
+                .ok_or_else(|| UpdateFrameDecodeError::InvalidValue("invalid float".to_string()))
+        }
+        kind if kind == fb::ValueKind::String => {
+            let string = value.string_value().ok_or_else(|| {
+                UpdateFrameDecodeError::InvalidValue(
+                    "string value missing string_value".to_string(),
+                )
+            })?;
+            Ok(Value::String(string.to_string()))
+        }
         kind if kind == fb::ValueKind::List => {
-            let values = value
-                .list()
-                .map(|list| {
-                    (0..list.len())
-                        .map(|index| decode_value(list.get(index)))
-                        .collect()
-                })
-                .unwrap_or_default();
-            Value::Array(values)
+            let list = value.list().ok_or_else(|| {
+                UpdateFrameDecodeError::InvalidValue("list value missing list".to_string())
+            })?;
+            let values = (0..list.len())
+                .map(|index| decode_value(list.get(index)))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Value::Array(values))
         }
         kind if kind == fb::ValueKind::Map => {
             let mut values = Map::new();
-            if let Some(map) = value.map() {
-                for index in 0..map.len() {
-                    let pair = map.get(index);
-                    let value = pair.value().map(decode_value).unwrap_or(Value::Null);
-                    values.insert(pair.key().to_string(), value);
-                }
+            let map = value.map().ok_or_else(|| {
+                UpdateFrameDecodeError::InvalidValue("map value missing map".to_string())
+            })?;
+            for index in 0..map.len() {
+                let pair = map.get(index);
+                let value = pair.value().ok_or_else(|| {
+                    UpdateFrameDecodeError::InvalidValue(format!(
+                        "map pair at index {index} missing value"
+                    ))
+                })?;
+                values.insert(pair.key().to_string(), decode_value(value)?);
             }
-            Value::Object(values)
+            Ok(Value::Object(values))
         }
-        _ => Value::Null,
+        other => Err(UpdateFrameDecodeError::InvalidValue(format!(
+            "unknown value kind {}",
+            other.0
+        ))),
     }
 }
 
@@ -305,17 +327,81 @@ pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn snapshot_frame_has_flatbuffer_identifier_and_round_trips() {
-        let payload = serde_json::json!({
+    fn golden_snapshot_payload() -> Value {
+        serde_json::json!({
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
             "rev": 42,
             "running": true,
             "projections": { "timeline": [{ "id": "a", "score": 1.5 }] }
-        });
+        })
+    }
+
+    fn decode_hex_fixture(input: &str) -> Vec<u8> {
+        let compact: String = input.chars().filter(|ch| !ch.is_whitespace()).collect();
+        assert_eq!(compact.len() % 2, 0, "hex fixture must contain full bytes");
+        compact
+            .as_bytes()
+            .chunks(2)
+            .map(|pair| {
+                let hex = std::str::from_utf8(pair).expect("fixture is ascii hex");
+                u8::from_str_radix(hex, 16).expect("fixture is valid hex")
+            })
+            .collect()
+    }
+
+    fn encode_hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    #[test]
+    fn snapshot_frame_has_flatbuffer_identifier_and_round_trips() {
+        let payload = golden_snapshot_payload();
         let wire = encode_snapshot_value(payload.clone());
         assert!(fb::update_frame_buffer_has_identifier(&wire));
         assert_eq!(decode_snapshot_payload(&wire).expect("decode"), payload);
+    }
+
+    #[test]
+    fn snapshot_v1_wire_fixture_is_stable() {
+        let wire = encode_snapshot_value(golden_snapshot_payload());
+        let expected =
+            decode_hex_fixture(include_str!("../tests/fixtures/update_frame_snapshot_v1.fb.hex"));
+        if wire != expected {
+            eprintln!("actual snapshot_v1 fixture hex:\n{}", encode_hex(&wire));
+        }
+        assert_eq!(wire, expected, "snapshot v1 FlatBuffers wire fixture drifted");
+    }
+
+    #[test]
+    fn non_finite_float_fails_decode_instead_of_degrading_to_null() {
+        let mut builder = FlatBufferBuilder::new();
+        let payload = fb::Value::create(
+            &mut builder,
+            &fb::ValueArgs {
+                kind: fb::ValueKind::Float,
+                float_value: f64::NAN,
+                ..Default::default()
+            },
+        );
+        let snapshot = fb::SnapshotFrame::create(
+            &mut builder,
+            &fb::SnapshotFrameArgs {
+                schema_version: SNAPSHOT_SCHEMA_VERSION,
+                payload: Some(payload),
+            },
+        );
+        let root = fb::UpdateFrame::create(
+            &mut builder,
+            &fb::UpdateFrameArgs {
+                kind: fb::FrameKind::Snapshot,
+                snapshot: Some(snapshot),
+                panic: None,
+            },
+        );
+        fb::finish_update_frame_buffer(&mut builder, root);
+
+        let err = decode_snapshot_payload(builder.finished_data()).expect_err("must reject NaN");
+        assert!(matches!(err, UpdateFrameDecodeError::InvalidValue(_)));
     }
 
     #[test]

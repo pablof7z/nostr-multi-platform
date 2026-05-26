@@ -716,6 +716,11 @@ pub(crate) struct Metrics {
     /// tick (one-tick lag). Combined with `make_update_us` this lets callers
     /// separate "building the snapshot tree" from "encoding it for transport".
     pub(super) serialize_us: u128,
+    /// Count of update-frame encoding/decoding degradations observed by the
+    /// Rust transport boundary. This is intentionally monotonic for the kernel
+    /// lifetime so malformed or impossible value-shape drift becomes visible in
+    /// diagnostics instead of collapsing to an empty/null snapshot.
+    pub(super) update_frame_degradations_total: u64,
 }
 
 // ── Update envelope ───────────────────────────────────────────────────────────

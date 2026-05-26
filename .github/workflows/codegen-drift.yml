@@ -30,6 +30,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Check FlatBuffers runtime pins
+        run: bash ci/check-flatbuffers-version-pins.sh
+
       # Compile + run the schema dump bin once; pipe its output into the
       # emitter's `--check` mode. The bin requires the `codegen-schema`
       # feature; the emitter does not (it is a plain Rust binary).

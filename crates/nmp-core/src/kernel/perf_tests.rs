@@ -2,13 +2,13 @@
 //!
 //! `Kernel::make_update` is the hot path called at up to 4 Hz on every
 //! actor tick. It builds the full `KernelSnapshot` (timeline diff, every
-//! registered projection, identity + views clusters) and serializes it to
-//! JSON exactly once. Two timing fields are recorded on every call:
+//! registered projection, identity + views clusters) and encodes it into the
+//! canonical FlatBuffers update frame exactly once. Two timing fields are
+//! recorded on every call:
 //!
 //! - `last_make_update_us` — total microseconds from `emit_started` through
-//!   `serde_json::to_string`. Covers projection builds + serialize.
-//! - `last_serialize_us`   — microseconds spent in `serde_json::to_string`
-//!   alone (the encode tail of `last_make_update_us`).
+//!   the FlatBuffers frame encode. Covers projection builds + encode.
+//! - `last_serialize_us`   — microseconds spent in the encode tail alone.
 //!
 //! Both are surfaced through the snapshot's `metrics` field (one-tick lag,
 //! same pattern as `last_payload_bytes`) and the `NMP_PERF` log line in
@@ -72,11 +72,11 @@ const VISIBLE_LIMIT: usize = 500;
 /// neighbor-noise jitter. See the module-level threshold rationale.
 const MAX_MAKE_UPDATE_US: u128 = 250_000;
 
-/// Upper bound for `serialize_us` (the JSON encode tail alone). 150 ms = ≈
-/// 10 × the observed dev-hardware baseline (~15 ms debug). Same rationale as
-/// `MAX_MAKE_UPDATE_US`: a 150 ms encode on a 1k-event snapshot indicates
-/// the projections map or `KernelSnapshot` shape has regressed past
-/// acceptable steady-state.
+/// Upper bound for `serialize_us` (the FlatBuffers encode tail alone). 150 ms
+/// = ≈ 10 × the observed pre-FlatBuffers dev-hardware JSON baseline (~15 ms
+/// debug). Same rationale as `MAX_MAKE_UPDATE_US`: a 150 ms encode on a
+/// 1k-event snapshot indicates the projections map or `KernelSnapshot` shape
+/// has regressed past acceptable steady-state.
 const MAX_SERIALIZE_US: u128 = 150_000;
 
 /// Pre-generate `count` signed kind:1 events under a single throwaway
@@ -151,10 +151,11 @@ fn snapshot_perf_firehose_gate() {
     // `make_update` (`self.last_make_update_us = this_make_update_us;`)
     // means `last_*_us` reflect THIS tick's measurements immediately, not
     // the previous tick's (the one-tick lag only affects the `Metrics`
-    // struct embedded in the JSON, where the assignment is read before
-    // write). Reading the fields directly avoids a JSON round-trip and a
+    // struct embedded in the decoded snapshot, where the assignment is read
+    // before write). Reading the fields directly avoids a decode round-trip and a
     // second emit just to surface the value.
-    let _serialized = kernel.make_update(true);
+    let serialized = kernel.make_update(true);
+    let payload_bytes = serialized.len();
 
     let make_update_us = kernel.last_make_update_us;
     let serialize_us = kernel.last_serialize_us;
@@ -166,7 +167,7 @@ fn snapshot_perf_firehose_gate() {
     // investigating a flaky run — it should never be removed.
     eprintln!(
         "OBSERVED snapshot_perf_firehose_gate events={EVENT_COUNT} visible_limit={VISIBLE_LIMIT} \
-         make_update_us={make_update_us} serialize_us={serialize_us} \
+         payload_bytes={payload_bytes} make_update_us={make_update_us} serialize_us={serialize_us} \
          build_us={build_us}",
         build_us = make_update_us.saturating_sub(serialize_us)
     );
