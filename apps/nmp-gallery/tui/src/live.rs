@@ -45,9 +45,8 @@ const CONSUMER_ID: &str = "nmp-gallery-tui.preview";
 
 const RELAYS: &[(&str, &str)] = &[
     ("wss://purplepag.es", "indexer"),
-    ("wss://nos.lol", "both"),
-    ("wss://relay.damus.io", "both"),
-    ("wss://relay.nostr.band", "both"),
+    ("wss://relay.primal.net", "indexer"),
+    ("wss://relay.primal.net", "both"),
 ];
 
 pub struct LiveGallerySource {
@@ -159,31 +158,76 @@ impl LiveGallerySource {
     /// items the user-* component pages need, and return a `(LiveFacts,
     /// LiveKernel)` pair. The kernel STAYS ALIVE — caller owns it for the
     /// lifetime of the program. Embeds are NOT pre-warmed.
+    ///
+    /// Soft-fail: per-fetch failures (relay doesn't have the hardcoded
+    /// fixture event, timeout, etc.) degrade to empty `LiveProfile` /
+    /// `LiveItem` placeholders so the TUI still launches. Only kernel-init
+    /// failure (FFI null, relay-add NUL) is fatal. The embed showcase
+    /// pages do NOT depend on these bootstrap fetches — the renderer
+    /// triggers article/note claims on demand via `EventClaimSink`.
     pub fn bootstrap(&self) -> Result<(LiveFacts, LiveKernel), String> {
         let kernel = LiveKernel::new()?;
-        let primary = kernel.wait_for_author(PRIMARY_PUBKEY, &[], self.timeout)?;
-        let mention_item = kernel.wait_for_event(MENTION_EVENT_ID, None, self.timeout)?;
-        let media_item = kernel.wait_for_event(MEDIA_EVENT_ID, None, self.timeout)?;
-        let quote_source_item = kernel.wait_for_event(QUOTE_SOURCE_EVENT_ID, None, self.timeout)?;
+        let short = std::time::Duration::from_secs(8);
+        let primary = kernel
+            .wait_for_author(PRIMARY_PUBKEY, &[], short)
+            .ok()
+            .map(|v| v.profile)
+            .unwrap_or_else(|| empty_profile(PRIMARY_PUBKEY));
+        let mention_item = kernel
+            .wait_for_event(MENTION_EVENT_ID, None, short)
+            .ok()
+            .unwrap_or_else(|| empty_item(MENTION_EVENT_ID, PRIMARY_PUBKEY));
+        let media_item = kernel
+            .wait_for_event(MEDIA_EVENT_ID, None, short)
+            .ok()
+            .unwrap_or_else(|| empty_item(MEDIA_EVENT_ID, PRIMARY_PUBKEY));
+        let quote_source_item = kernel
+            .wait_for_event(QUOTE_SOURCE_EVENT_ID, None, short)
+            .ok()
+            .unwrap_or_else(|| empty_item(QUOTE_SOURCE_EVENT_ID, PRIMARY_PUBKEY));
 
-        let (mention_profile_uri, mention_pubkey) = first_profile_uri(&mention_item.content)
-            .ok_or_else(|| "live mention event did not contain a nostr profile URI".to_string())?;
-        let mention_profile = kernel
-            .wait_for_author(&mention_pubkey, &[], self.timeout)?
-            .profile;
+        let mention_profile_uri = first_profile_uri(&mention_item.content)
+            .map(|(uri, _)| uri)
+            .unwrap_or_default();
+        let mention_pubkey = first_profile_uri(&mention_item.content)
+            .map(|(_, pk)| pk)
+            .unwrap_or_default();
+        let mention_profile = if mention_pubkey.is_empty() {
+            empty_profile("")
+        } else {
+            kernel
+                .wait_for_author(&mention_pubkey, &[], short)
+                .ok()
+                .map(|v| v.profile)
+                .unwrap_or_else(|| empty_profile(&mention_pubkey))
+        };
 
-        let (quote_event_uri, quote_event_id) = first_event_uri(&quote_source_item.content)
-            .ok_or_else(|| {
-                "live quote source event did not contain a nostr event URI".to_string()
-            })?;
-        let quote_target_item =
-            kernel.wait_for_event(&quote_event_id, Some(&quote_event_uri), self.timeout)?;
-        let quote_target_profile = kernel
-            .wait_for_author(&quote_target_item.author_pubkey, &[], self.timeout)?
-            .profile;
+        let quote_event_uri = first_event_uri(&quote_source_item.content)
+            .map(|(uri, _)| uri)
+            .unwrap_or_default();
+        let quote_event_id = first_event_uri(&quote_source_item.content)
+            .map(|(_, id)| id)
+            .unwrap_or_default();
+        let quote_target_item = if quote_event_id.is_empty() {
+            empty_item("", PRIMARY_PUBKEY)
+        } else {
+            kernel
+                .wait_for_event(&quote_event_id, Some(&quote_event_uri), short)
+                .ok()
+                .unwrap_or_else(|| empty_item(&quote_event_id, PRIMARY_PUBKEY))
+        };
+        let quote_target_profile = if quote_target_item.author_pubkey.is_empty() {
+            empty_profile("")
+        } else {
+            kernel
+                .wait_for_author(&quote_target_item.author_pubkey, &[], short)
+                .ok()
+                .map(|v| v.profile)
+                .unwrap_or_else(|| empty_profile(&quote_target_item.author_pubkey))
+        };
 
         let facts = LiveFacts {
-            primary_profile: primary.profile,
+            primary_profile: primary,
             mention_profile,
             quote_target_profile,
             mention_item,
@@ -194,6 +238,27 @@ impl LiveGallerySource {
             quote_event_uri,
         };
         Ok((facts, kernel))
+    }
+}
+
+fn empty_profile(pubkey: &str) -> LiveProfile {
+    LiveProfile {
+        pubkey: pubkey.to_string(),
+        display_name: None,
+        picture_url: None,
+        nip05: None,
+        about: None,
+    }
+}
+
+fn empty_item(id: &str, author_pubkey: &str) -> LiveItem {
+    LiveItem {
+        id: id.to_string(),
+        author_pubkey: author_pubkey.to_string(),
+        kind: 1,
+        content: String::new(),
+        content_preview: String::new(),
+        created_at: 0,
     }
 }
 

@@ -496,7 +496,7 @@ impl Kernel {
             if let Some(stored) = self.lookup_for_primary_id(key) {
                 claimed_events.insert(
                     key.clone(),
-                    ClaimedEventDto::from_stored(key.clone(), stored),
+                    ClaimedEventDto::from_stored(key.clone(), &stored),
                 );
             }
         }
@@ -516,21 +516,54 @@ impl Kernel {
     /// d-tags may legally contain `:` (rare but spec-allowed); the
     /// split is bounded to the first two colons so a d-tag like
     /// `"foo:bar"` round-trips correctly.
-    pub(super) fn lookup_for_primary_id(&self, key: &str) -> Option<&StoredEvent> {
+    pub(super) fn lookup_for_primary_id(&self, key: &str) -> Option<StoredEvent> {
+        // Try the in-memory timeline cache first (kind:1 / kind:6 are inserted
+        // here by `ingest_timeline_event`). The addressable / unknown-kind
+        // path below needs to query the EventStore which returns owned
+        // values, so the function standardizes on owned `StoredEvent` for
+        // both branches.
         if is_hex64_lower(key) {
-            return self.events.get(key);
+            if let Some(e) = self.events.get(key) {
+                return Some(e.clone());
+            }
+            // Other kinds (kind:30023 articles, kind:9802 highlights, ...)
+            // are persisted via `verify_and_persist` into `self.store` but
+            // NOT mirrored into `self.events`. Fall back to the EventStore
+            // so the `claimed_events` projection surfaces ALL kinds.
+            let id_bytes = hex64_to_bytes32(key)?;
+            return self
+                .store
+                .get_by_id(&id_bytes)
+                .ok()
+                .flatten()
+                .map(nmp_store_to_kernel_stored);
         }
         let mut parts = key.splitn(3, ':');
         let kind = parts.next().and_then(|s| s.parse::<u32>().ok())?;
         let pubkey = parts.next()?;
         let d_tag = parts.next()?;
-        self.events.values().find(|e| {
-            e.kind == kind
-                && e.author == pubkey
-                && e.tags
-                    .iter()
-                    .any(|t| t.len() >= 2 && t[0] == "d" && t[1] == d_tag)
-        })
+        // Addressable lookup: try the EventStore's indexed
+        // `(pubkey, kind, d_tag) → current addressable` path first; fall
+        // back to scanning the in-memory cache for the (rare) case where an
+        // addressable-kind event also landed in `self.events`.
+        if let Some(pubkey_bytes) = hex64_to_bytes32(pubkey) {
+            if let Ok(Some(e)) = self
+                .store
+                .get_param_replaceable(&pubkey_bytes, kind, d_tag.as_bytes())
+            {
+                return Some(nmp_store_to_kernel_stored(e));
+            }
+        }
+        self.events
+            .values()
+            .find(|e| {
+                e.kind == kind
+                    && e.author == pubkey
+                    && e.tags
+                        .iter()
+                        .any(|t| t.len() >= 2 && t[0] == "d" && t[1] == d_tag)
+            })
+            .cloned()
     }
 
     pub(super) fn visible_items(&self) -> Vec<TimelineItem> {
@@ -964,6 +997,40 @@ mod repost_inner_tests {
 /// pubkey, etc. — total length differs from 64 in every legal case).
 fn is_hex64_lower(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn hex64_to_bytes32(s: &str) -> Option<[u8; 32]> {
+    if !is_hex64_lower(s) {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        let hi = nibble(s.as_bytes()[i * 2])?;
+        let lo = nibble(s.as_bytes()[i * 2 + 1])?;
+        *byte = (hi << 4) | lo;
+    }
+    Some(out)
+}
+
+#[inline]
+fn nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        _ => None,
+    }
+}
+
+fn nmp_store_to_kernel_stored(e: nmp_store::StoredEvent) -> StoredEvent {
+    StoredEvent {
+        id: e.raw.id.clone(),
+        author: e.raw.pubkey.clone(),
+        kind: e.raw.kind,
+        created_at: e.raw.created_at,
+        tags: e.raw.tags.clone(),
+        content: e.raw.content.clone(),
+        relay_count: 1,
+    }
 }
 
 fn format_previous_count_label(count: usize) -> String {

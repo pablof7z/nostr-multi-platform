@@ -100,19 +100,41 @@ impl Kernel {
                 kind,
                 ..
             } => {
-                let coord = NaddrCoord {
-                    pubkey: pubkey.clone(),
-                    kind,
-                    d_tag: identifier.clone(),
-                };
+                // Per NIP-01 §3.7 (addressable events), the canonical filter
+                // for "fetch the event at coordinate (kind, pubkey, d_tag)" is
+                //   {kinds:[K], authors:[A], "#d":[D], limit:1}
+                //
+                // We MUST NOT populate `InterestShape.addresses` here: that
+                // field serializes as `#a` (events that REFERENCE the
+                // coordinate via an `a` tag — bookmark lists, reposts).
+                // Addressable events do NOT carry their own coordinate as an
+                // `a` tag, so combining `#a` with `kinds`/`authors`/`#d`
+                // produces an empty set on the relay. We use `authors` for
+                // outbox routing (the planner's NIP-65 mailbox lookup keys
+                // off `authors` just as well as `NaddrCoord::pubkey`).
+                let mut tags: std::collections::BTreeMap<
+                    String,
+                    std::collections::BTreeSet<String>,
+                > = std::collections::BTreeMap::new();
+                tags.insert(
+                    "d".to_string(),
+                    std::iter::once(identifier.clone()).collect(),
+                );
                 let shape = InterestShape {
-                    addresses: std::iter::once(coord).collect(),
+                    kinds: std::iter::once(kind).collect(),
+                    authors: std::iter::once(pubkey.clone()).collect(),
+                    tags,
                     limit: Some(1),
                     ..Default::default()
                 };
                 // Stable coordinate form — must match the renderer-side
                 // `WireUri.primary_id`.
                 let primary_id = format!("{kind}:{pubkey}:{identifier}");
+                let _ = NaddrCoord {
+                    pubkey: pubkey.clone(),
+                    kind,
+                    d_tag: identifier.clone(),
+                };
                 (primary_id, shape)
             }
         };
