@@ -154,10 +154,11 @@ use nmp_core::__ffi_internal::{
 // `register_snapshot_projection("wallet", …)` itself.
 use nmp_core::slots::{
     new_active_local_keys_slot, new_dm_inbox_observer_id_slot, new_mls_local_nsec_slot,
-    new_publish_resolver_slot, new_routing_substrate_slot, new_routing_trace_slot,
-    new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveLocalKeysSlot,
-    DmInboxObserverIdSlot, MlsLocalNsecSlot, PublishResolverSlot, RoutingSubstrateSlot,
-    RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
+    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
+    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
+    ActiveLocalKeysSlot, DmInboxObserverIdSlot, MlsLocalNsecSlot, PublishResolverSlot,
+    RawEventForwardPolicySlot, RoutingSubstrateSlot, RoutingTraceSlot,
+    SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::{
@@ -342,6 +343,10 @@ pub struct NmpApp {
     /// (fail-closed). Mirrors `routing_substrate` exactly so the actor
     /// pair-applies both factories in one block.
     publish_resolver: PublishResolverSlot,
+    /// Raw signed-event forwarding policy factory slot. The actor owns the
+    /// native pool send and reads this slot to install policy objects that
+    /// decide which accepted inbound signed events should be forwarded.
+    raw_event_forward_policy: RawEventForwardPolicySlot,
     /// One-shot account-creation intent: when true, the app-level MLS
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
@@ -644,6 +649,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // applies the produced resolver via `Kernel::set_publish_resolver`.
     let publish_resolver: PublishResolverSlot = new_publish_resolver_slot();
     let actor_publish_resolver = Arc::clone(&publish_resolver);
+    // Raw signed-event forwarding policy factory slot. Default `None`; the
+    // app template installs the indexer-republish policy through this seam.
+    let raw_event_forward_policy: RawEventForwardPolicySlot = new_raw_event_forward_policy_slot();
+    let actor_raw_event_forward_policy = Arc::clone(&raw_event_forward_policy);
     let feed_registry = nmp_feed::new_feed_registry_slot();
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
@@ -787,6 +796,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // `Kernel::set_publish_resolver`. `None` leaves the
                 // kernel's `NoopOutboxResolver` default in place.
                 actor_publish_resolver,
+                actor_raw_event_forward_policy,
             );
         }));
         if let Err(e) = result {
@@ -834,6 +844,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         routing_trace,
         routing_substrate,
         publish_resolver,
+        raw_event_forward_policy,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
@@ -1248,6 +1259,26 @@ impl NmpApp {
             + 'static,
     {
         if let Ok(mut slot) = self.publish_resolver.lock() {
+            *slot = Some(std::sync::Arc::new(factory));
+        }
+    }
+
+    /// Install the raw signed-event forwarding policy factory.
+    ///
+    /// The actor owns the generic observer + `Pool` send path. Production
+    /// composition installs policy objects here so reusable crates can decide
+    /// target relays using kernel-owned read handles without `nmp-core`
+    /// depending on those crates.
+    pub fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
+    where
+        F: Fn(
+                nmp_core::substrate::RawEventForwardPolicyContext,
+            ) -> Vec<std::sync::Arc<dyn nmp_core::substrate::RawEventForwardPolicy>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        if let Ok(mut slot) = self.raw_event_forward_policy.lock() {
             *slot = Some(std::sync::Arc::new(factory));
         }
     }
@@ -1752,10 +1783,7 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::register_ingest_parser(self, kind, parser);
     }
 
-    fn set_dm_inbox_relay_lookup(
-        &self,
-        lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
-    ) {
+    fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         NmpApp::set_dm_inbox_relay_lookup(self, lookup);
     }
 
@@ -1786,6 +1814,18 @@ impl nmp_core::substrate::AppHost for NmpApp {
             + 'static,
     {
         NmpApp::set_publish_resolver_factory(self, factory);
+    }
+
+    fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
+    where
+        F: Fn(
+                nmp_core::substrate::RawEventForwardPolicyContext,
+            ) -> Vec<Arc<dyn nmp_core::substrate::RawEventForwardPolicy>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        NmpApp::set_raw_event_forward_policy_factory(self, factory);
     }
 
     fn active_local_keys(&self) -> nmp_core::slots::ActiveLocalKeysSlot {

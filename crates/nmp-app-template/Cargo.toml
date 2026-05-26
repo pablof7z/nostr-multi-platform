@@ -3,7 +3,7 @@ name = "nmp-app-template"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Canonical composition root for an NMP-based Nostr application. One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-57 zap, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), the canonical DM-inbox + zap-receipts runtimes, and the D2 coverage hook. Closes V-48 (step 10 of `docs/architecture/crate-boundaries.md` §5)."
+description = "Canonical composition root for an NMP-based Nostr application. One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-57 zap, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), indexer-republish policy, the canonical DM-inbox + zap-receipts runtimes, and the D2 coverage hook. Closes V-48 (step 10 of `docs/architecture/crate-boundaries.md` §5)."
 
 [dependencies]
 # Kernel substrate — `ActorCommand`, observer traits, the routing

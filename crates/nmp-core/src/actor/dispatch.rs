@@ -273,14 +273,13 @@ pub(super) struct ActorContext<'a> {
     /// the rebuilt kernel's fresh handles so the production
     /// `nmp_router::Nip65OutboxResolver` survives a state wipe.
     pub(super) publish_resolver_slot: &'a crate::slots::PublishResolverSlot,
-    /// Indexer-republish observer id slot. The pipeline holds an
-    /// `IndexerRelaysSlot` + `EventStore` handle pinned to a specific
-    /// kernel; on `Reset` the kernel is rebuilt with fresh handles, so
-    /// the prior pipeline registration goes stale. The `Reset` arm
-    /// unregisters the stale id (stored in this slot) and re-registers
-    /// a fresh pipeline against the rebuilt kernel.
-    pub(super) indexer_republish_observer_id:
-        &'a crate::actor::indexer_republish::IndexerRepublishObserverIdSlot,
+    /// Raw-event forwarding observer ids. Policies receive kernel handles,
+    /// so `Reset` unregisters observers pinned to the discarded kernel and
+    /// re-registers them against fresh handles.
+    pub(super) raw_event_forward_observer_ids:
+        &'a crate::actor::raw_event_forwarder::RawEventForwardObserverIdSlot,
+    /// Policy factory slot used when registering raw-event forwarders.
+    pub(super) raw_event_forward_policy_slot: &'a crate::slots::RawEventForwardPolicySlot,
     /// Shared raw-event tap slot — held in the actor scope and threaded
     /// through here so the `Reset` arm can re-register the pipeline
     /// observer against the same `RawEventObserverSlot` (which itself
@@ -1211,20 +1210,16 @@ pub(super) fn dispatch_command(
                 );
                 ctx.kernel.set_publish_resolver(resolver);
             }
-            // Re-register the indexer-republish pipeline against the rebuilt
-            // kernel. The old pipeline (held in `raw_event_observers_handle`
-            // by id) captured the previous kernel's `IndexerRelaysSlot` +
-            // `EventStore` `Arc`s; without re-registration those slots
-            // would orphan and the pipeline would silently stop seeing
-            // configured indexers / fresh provenance. The helper
-            // unregisters the stale id and installs a fresh observer in
-            // one pass. Mirrors the routing/publish-resolver re-apply
-            // pattern above.
-            crate::actor::indexer_republish::register_indexer_republish_pipeline(
+            // Re-register injected raw-event forwarding policies against the
+            // rebuilt kernel. The prior observers captured handles from the
+            // discarded kernel; re-running the factory preserves policy
+            // registrations while keeping target selection out of core.
+            crate::actor::raw_event_forwarder::register_raw_event_forward_policies(
                 ctx.kernel,
                 ctx.raw_event_observers_handle,
                 ctx.pool,
-                ctx.indexer_republish_observer_id,
+                ctx.raw_event_forward_observer_ids,
+                ctx.raw_event_forward_policy_slot,
             );
             *ctx.startup_sent = false;
             if *ctx.running {
