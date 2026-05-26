@@ -262,11 +262,18 @@ fn render_embed_showcase(
 
     let registry = NostrKindRegistry::make_default();
 
+    // M16 / ADR-0034: drive `nmp_app_claim_event` via the renderer→host
+    // bridge. In fixture mode `live_sink` is `None`, so `as_deref()` yields
+    // `None` and the claim path is a back-compat no-op (W4). In live mode
+    // (W7) the sink calls `nmp_app_claim_event(uri, consumer_id)` so the
+    // kernel fetches the embedded event over the OneshotApi.
     NostrContentView::new(&example.tree)
         .render_data(Some(&example.render_data))
         .media_images(media_images)
         .kind_registry(Some(&registry))
         .embedded_events(Some(&example.embedded_events))
+        .claim_sink(data.live_sink.as_deref())
+        .consumer_id(Some("nmp-gallery-tui.embed"))
         .render(area, buf);
 }
 

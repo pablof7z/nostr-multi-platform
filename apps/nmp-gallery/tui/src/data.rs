@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::{IsTerminal, Read},
+    sync::Arc,
     time::Duration,
 };
 
@@ -9,7 +10,7 @@ use nmp_content::{
         ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope, HighlightProjection,
         RenderContextWire, ShortNoteProjection,
     },
-    tokenize_with_kind, RenderMode,
+    tokenize_with_kind, EventClaimSink, RenderMode,
 };
 use nmp_core::display::{short_hex, short_npub, to_npub};
 use ratatui::layout::Size;
@@ -79,6 +80,12 @@ pub struct GalleryData {
     pub embed_profile: ContentExample,
     pub embed_note: ContentExample,
     pub embed_highlight: ContentExample,
+
+    /// Optional host-side bridge that lets the embed renderer drive
+    /// `nmp_app_claim_event` (ADR-0034 / M16). `None` in fixture mode —
+    /// the upcoming live-mode constructor (W7) populates it with a
+    /// `LiveKernelSink` so embed render passes trigger kernel fetches.
+    pub live_sink: Option<Arc<dyn EventClaimSink>>,
 }
 
 pub struct ContentExample {
@@ -268,6 +275,9 @@ impl GalleryData {
                     projection,
                 )?
             },
+            // Fixture mode: no live kernel — the embed envelopes above
+            // already resolve via `embedded_events` without a fetch.
+            live_sink: None,
         })
     }
 
@@ -428,6 +438,7 @@ impl GalleryData {
                 embed_highlight_projection,
             )
             .expect("test data is valid"),
+            live_sink: None,
         }
     }
 }
