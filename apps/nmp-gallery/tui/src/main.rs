@@ -13,6 +13,14 @@ struct Args {
     dump_lines: bool,
     hold_ms: Option<u64>,
     list: bool,
+    /// When true, spin up an `nmp_app_*` kernel and pre-warm the embedded
+    /// article through the new `claim_event` primitive (ADR-0034 / M16).
+    /// Default `false` — the gallery boots from fixture data without
+    /// touching relays.
+    live: bool,
+    /// Optional override for the live-mode timeout (default 30s). Wraps
+    /// `--live-timeout-secs N`.
+    live_timeout_secs: u64,
 }
 
 fn main() -> io::Result<()> {
@@ -31,11 +39,21 @@ fn main() -> io::Result<()> {
         std::process::exit(2);
     }
 
-    let data = match GalleryData::load(!args.dump_lines) {
-        Ok(data) => data,
-        Err(error) => {
-            eprintln!("failed to load NmpGallery data: {error}");
-            std::process::exit(1);
+    let data = if args.live {
+        match GalleryData::live(Duration::from_secs(args.live_timeout_secs)) {
+            Ok(data) => data,
+            Err(error) => {
+                eprintln!("failed to load NmpGallery data (--live): {error}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        match GalleryData::load(!args.dump_lines) {
+            Ok(data) => data,
+            Err(error) => {
+                eprintln!("failed to load NmpGallery data: {error}");
+                std::process::exit(1);
+            }
         }
     };
     if args.dump_lines {
@@ -53,6 +71,8 @@ fn parse_args() -> Args {
     let mut dump_lines = false;
     let mut hold_ms = None;
     let mut list = false;
+    let mut live = false;
+    let mut live_timeout_secs = 30u64;
 
     let mut iter = std::env::args().skip(1).peekable();
     while let Some(arg) = iter.next() {
@@ -67,6 +87,12 @@ fn parse_args() -> Args {
                 hold_ms = iter.next().and_then(|value| value.parse::<u64>().ok());
             }
             "--list" => list = true,
+            "--live" => live = true,
+            "--live-timeout-secs" => {
+                if let Some(value) = iter.next().and_then(|v| v.parse::<u64>().ok()) {
+                    live_timeout_secs = value;
+                }
+            }
             value if !value.starts_with('-') => component = value.to_string(),
             _ => {}
         }
@@ -77,6 +103,8 @@ fn parse_args() -> Args {
         dump_lines,
         hold_ms,
         list,
+        live,
+        live_timeout_secs,
     }
 }
 

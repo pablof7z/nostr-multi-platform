@@ -10,9 +10,10 @@ use nmp_content::{
         ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope, HighlightProjection,
         RenderContextWire, ShortNoteProjection,
     },
-    tokenize_with_kind, EventClaimSink, RenderMode,
+    resolve_embed_projection, tokenize_with_kind, EventClaimSink, RenderContext, RenderMode,
 };
 use nmp_core::display::{short_hex, short_npub, to_npub};
+use nmp_core::substrate::KernelEvent;
 use ratatui::layout::Size;
 use ratatui_image::{picker::Picker, picker::ProtocolType, protocol::Protocol, Resize};
 use serde_json::{json, Map, Value};
@@ -279,6 +280,68 @@ impl GalleryData {
             // already resolve via `embedded_events` without a fetch.
             live_sink: None,
         })
+    }
+
+    /// Live-mode constructor: spins up an `nmp_app_*` kernel via
+    /// `LiveGallerySource::load`, pre-warms the embedded article through the
+    /// new `claim_event` primitive (W1/W2), and overrides `embed_article`'s
+    /// envelope with the real kind:30023 returned by relays.
+    ///
+    /// Other showcase components keep their fixture data in this PR — the
+    /// canonical real-fetch demo per the user brief is `embed_article`.
+    ///
+    /// Soft-fail: if the article doesn't arrive in time (relays down, naddr
+    /// nonexistent), the fixture envelope is preserved so the gallery still
+    /// renders something useful.
+    ///
+    /// `live_sink` stays `None` even here because `LiveKernel` drops at the
+    /// end of `load`; long-running-kernel mode (renderer-triggered claims
+    /// via the W4/W5 wiring) is a follow-up PR.
+    pub fn live(timeout: Duration) -> Result<Self, String> {
+        let facts = crate::live::LiveGallerySource::new(timeout).load()?;
+        let mut data = Self::load(true)?;
+
+        if let Some(article) = facts.embedded_article {
+            // Route the real fetched event through the same dispatch point
+            // ADR-0034 uses for all kinds — no special-casing in the gallery.
+            let event = KernelEvent {
+                id: article.id.clone(),
+                author: article.author_pubkey.clone(),
+                kind: article.kind,
+                created_at: article.created_at,
+                tags: article.tags.clone(),
+                content: article.content.clone(),
+            };
+            let ctx = RenderContext::new();
+            let projection = resolve_embed_projection(&event, &ctx);
+
+            let envelope = EmbeddedEventEnvelope {
+                uri: crate::live::ARTICLE_NADDR.to_string(),
+                primary_id: article.primary_id.clone(),
+                render_context: RenderContextWire {
+                    depth: 0,
+                    max_depth: 4,
+                    visited: Vec::new(),
+                },
+                projection,
+                collapsed: false,
+                collapse_reason: None,
+            };
+
+            // Replace the fixture entries with the live envelope. Renderer's
+            // `envelope_for(uri)` does `events.get(&uri.primary_id).or_else(|| events.get(&uri.uri))`,
+            // so we key under both so either lookup hits.
+            data.embed_article.embedded_events.clear();
+            data.embed_article
+                .embedded_events
+                .insert(article.primary_id.clone(), envelope.clone());
+            data.embed_article
+                .embedded_events
+                .insert(crate::live::ARTICLE_NADDR.to_string(), envelope);
+            data.embed_article.title = "Embedded Article (kind:30023, LIVE)".to_string();
+        }
+
+        Ok(data)
     }
 
     #[cfg(test)]
