@@ -11,12 +11,9 @@ description = "NIP-17 private direct messages — kind:14 chat-message rumor bui
 # drops straight into `ActorCommand::SendGiftWrappedDm` with no conversion.
 # It also supplies the `RawEventObserver` / `KindFilter` ingest seam the
 # `DmInboxProjection` plugs into and the `ActionModule` substrate trait the
-# `nmp.nip17.send` action implements.
+# `nmp.nip17.send` action implements, plus the app-neutral `AppHost`
+# registration seam.
 nmp-core = { path = "../nmp-core" }
-# C-ABI handle owner (`NmpApp`) — moved out of `nmp-core::ffi` in step
-# 11-final. `register_actions` takes `&mut NmpApp`, so this crate names
-# the handle through `nmp-ffi`.
-nmp-ffi = { path = "../nmp-ffi" }
 # `nmp-nip59` owns the gift-wrap primitives — the inbox calls
 # `unwrap_gift_wrap` to unseal an incoming kind:1059 envelope.
 nmp-nip59 = { path = "../nmp-nip59" }

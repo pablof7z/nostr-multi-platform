@@ -8,8 +8,8 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against HEAD **07da8f49** (2026-05-26). Update this file in every PR that touches
-> an item listed here.
+> Verified against `origin/master` **9e36f0ec** plus PR #587 integration
+> (2026-05-26). Update this file in every PR that touches an item listed here.
 
 ---
 
@@ -47,15 +47,13 @@ findings below are ordered by architectural risk. When a slice gets a dedicated 
 or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
 
 **Priority order:**
-1. **P1 — remove upward dependencies and app policy from reusable crates.**
-   `crates/nmp-signer-broker/Cargo.toml:17-23` depends on `nmp-core`/`nmp-ffi` while the
-   crate is meant to be a reusable broker; `crates/nmp-router/Cargo.toml:13-17` depends on
-   `nmp-ffi` for registration. The Marmot identity/keyring leak formerly tracked here is
-   closed: Chirp's `nmp_app_chirp_identity_*` wrappers and `chirp.marmot.cached_secret`
-   account id now live in `apps/chirp/nmp-app-chirp/src/ffi/identity.rs`, while
-   `crates/nmp-marmot/src/identity.rs` only exposes caller-supplied keyring helpers.
-   **Next step:** split pure protocol/broker crates from app/FFI adapters, starting with the
-   signer-broker and router registration seams.
+1. **P1 — CLOSED: remove upward dependencies and app policy from reusable crates.**
+   Closed by PR #580, which removed the `nmp-signer-broker` dependency on `nmp-core`/`nmp-ffi`;
+   PR #583 moved the Gallery app crate from `crates/` to `apps/`; PR #586 moved
+   Chirp identity/keyring policy out of `nmp-marmot`; and PR #587 moved router
+   registration onto `nmp_core::substrate::{ActionRegistrar, AppHost}` so
+   `nmp-router` and `nmp-app-template` no longer need `nmp-ffi` for reusable Rust
+   registration. No P1 slices remain; the next V-57 item is P2 below.
 2. **P2 — move protocol policy back out of `nmp-core`.**
    `crates/nmp-core/src/actor/commands/relays.rs:29-35` duplicates NIP-65 kind `10002`
    publishing policy; `crates/nmp-core/src/actor/commands/publish.rs:16-21`, `:297-305`,

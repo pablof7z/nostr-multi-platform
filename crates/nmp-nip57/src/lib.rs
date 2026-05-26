@@ -33,7 +33,7 @@ pub use lnurl::{
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
-pub fn register_actions(app: &mut nmp_ffi::NmpApp) {
+pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
     app.register_action::<ZapAction>();
 }
 

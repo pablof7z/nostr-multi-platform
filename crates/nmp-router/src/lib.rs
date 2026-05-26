@@ -25,7 +25,7 @@
 //!    an `EventStore` (crate-boundary spec §271; moved out of
 //!    `nmp-core::publish::nip65` so the substrate stays NIP-neutral per D0).
 //!    Production composition installs it via
-//!    `NmpApp::set_publish_resolver_factory` →
+//!    `AppHost::set_publish_resolver_factory` →
 //!    `Kernel::set_publish_resolver`; the kernel default is
 //!    `nmp_core::publish::NoopOutboxResolver` so a kernel without the
 //!    router-side resolver is still a clean no-op (fail-closed).

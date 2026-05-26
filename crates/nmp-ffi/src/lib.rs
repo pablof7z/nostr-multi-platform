@@ -1682,6 +1682,133 @@ impl NmpApp {
     }
 }
 
+impl nmp_core::substrate::ActionRegistrar for NmpApp {
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
+        NmpApp::register_action::<M>(self);
+    }
+}
+
+impl nmp_core::substrate::AppHost for NmpApp {
+    fn register_snapshot_projection<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn() -> serde_json::Value + Send + Sync + 'static,
+    {
+        NmpApp::register_snapshot_projection(self, key, f);
+    }
+
+    fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
+        NmpApp::set_coverage_hook(self, hook);
+    }
+
+    fn set_req_frame_interceptor(
+        &self,
+        interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
+    ) {
+        NmpApp::set_req_frame_interceptor(self, interceptor);
+    }
+
+    fn add_relay_text_interceptor(
+        &self,
+        interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
+    ) {
+        NmpApp::add_relay_text_interceptor(self, interceptor);
+    }
+
+    fn register_ingest_parser(
+        &self,
+        kind: u32,
+        parser: Arc<dyn nmp_core::substrate::IngestParser>,
+    ) {
+        NmpApp::register_ingest_parser(self, kind, parser);
+    }
+
+    fn set_dm_inbox_relay_lookup(
+        &self,
+        lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
+    ) {
+        NmpApp::set_dm_inbox_relay_lookup(self, lookup);
+    }
+
+    fn set_routing_substrate<F>(&self, factory: F)
+    where
+        F: Fn(
+                Arc<dyn nmp_core::substrate::RoutingTraceObserver>,
+            ) -> (
+                Arc<dyn nmp_core::substrate::OutboxRouter>,
+                Arc<dyn nmp_core::substrate::MailboxCache>,
+            ) + Send
+            + Sync
+            + 'static,
+    {
+        NmpApp::set_routing_substrate(self, factory);
+    }
+
+    fn set_publish_resolver_factory<F>(&self, factory: F)
+    where
+        F: Fn(
+                Arc<dyn nmp_core::store::EventStore>,
+                nmp_core::slots::IndexerRelaysSlot,
+                nmp_core::slots::LocalWriteRelaysSlot,
+                nmp_core::slots::ActiveAccountSlot,
+            ) -> Arc<dyn nmp_core::publish::OutboxResolver>
+            + Send
+            + Sync
+            + 'static,
+    {
+        NmpApp::set_publish_resolver_factory(self, factory);
+    }
+
+    fn active_local_keys(&self) -> nmp_core::slots::ActiveLocalKeysSlot {
+        NmpApp::active_local_keys(self)
+    }
+
+    fn actor_sender(&self) -> Sender<ActorCommand> {
+        NmpApp::actor_sender(self)
+    }
+
+    fn register_event_observer(
+        &self,
+        observer: Arc<dyn KernelEventObserver>,
+    ) -> KernelEventObserverId {
+        NmpApp::register_event_observer(self, observer)
+    }
+
+    fn unregister_event_observer(&self, id: KernelEventObserverId) {
+        NmpApp::unregister_event_observer(self, id);
+    }
+
+    fn swap_singleton_event_observer(
+        &self,
+        new: Option<KernelEventObserverId>,
+    ) -> Option<KernelEventObserverId> {
+        NmpApp::swap_singleton_event_observer(self, new)
+    }
+
+    fn register_raw_event_observer(
+        &self,
+        kinds: KindFilter,
+        observer: Arc<dyn RawEventObserver>,
+    ) -> RawEventObserverId {
+        NmpApp::register_raw_event_observer(self, kinds, observer)
+    }
+
+    fn unregister_raw_event_observer(&self, id: RawEventObserverId) {
+        NmpApp::unregister_raw_event_observer(self, id);
+    }
+
+    fn swap_nip17_dm_inbox_observer(
+        &self,
+        new: Option<RawEventObserverId>,
+    ) -> Option<RawEventObserverId> {
+        NmpApp::swap_nip17_dm_inbox_observer(self, new)
+    }
+
+    fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {
+        NmpApp::relay_edit_rows_handle(self)
+    }
+}
+
 // SAFETY: `app` is a raw pointer from `nmp_app_new()`. The function is `extern "C"` (callable
 // from Swift/C) so it cannot be marked `unsafe` at the Rust level; the caller guarantees the
 // pointer contract. The `allow` suppresses the clippy::not_unsafe_ptr_arg_deref lint which

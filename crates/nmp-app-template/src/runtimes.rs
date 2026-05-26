@@ -39,10 +39,10 @@
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
+use nmp_core::substrate::AppHost;
 use nmp_core::{
     read_eligible_relay_urls, ActorCommand, RawEventObserver, RelayEditRowsSlot,
 };
-use nmp_ffi::NmpApp;
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
@@ -66,7 +66,7 @@ use serde::Serialize;
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the DM
 /// runtime by itself.
-pub fn register_dm_runtime(app: &NmpApp) {
+pub fn register_dm_runtime(app: &impl AppHost) {
     register_inbox_projection(app);
 
     let controller = Arc::new(DmRuntimeController {
@@ -78,7 +78,7 @@ pub fn register_dm_runtime(app: &NmpApp) {
     app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || controller.snapshot_json());
 }
 
-fn register_inbox_projection(app: &NmpApp) {
+fn register_inbox_projection(app: &impl AppHost) {
     let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
     let observer_id = app.register_raw_event_observer(
         DmInboxProjection::kind_filter(),
@@ -180,7 +180,7 @@ struct DmRelayListSnapshot {
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the zap
 /// subscription by itself.
-pub fn register_zap_receipts_runtime(app: &NmpApp) {
+pub fn register_zap_receipts_runtime(app: &impl AppHost) {
     let controller = Arc::new(ZapReceiptsRuntimeController {
         local_keys: app.active_local_keys(),
         tx: app.actor_sender(),

@@ -7,15 +7,8 @@ description = "Canonical composition root for an NMP-based Nostr application. On
 
 [dependencies]
 # Kernel substrate — `ActorCommand`, observer traits, the routing
-# substrate factory seam, and the action-registry entry point. `NmpApp`
-# (the C-ABI handle) moved to `nmp-ffi` in step 11-final of
-# `docs/architecture/crate-boundaries.md` §5.
+# substrate factory seam, and the app-neutral `AppHost` registration trait.
 nmp-core = { path = "../nmp-core" }
-# C-ABI surface owner (extracted from `nmp-core::ffi`). The template
-# composition root takes `&mut NmpApp` so callers reach it through this
-# crate. `register_defaults` itself names `NmpApp`, `nmp_app_*` symbols,
-# and slot constructors all through here.
-nmp-ffi = { path = "../nmp-ffi" }
 # Layer-2 routing: `GenericOutboxRouter`, `InMemoryMailboxCache`, and the
 # `nmp.nip65.publish_relay_list` action module the template registers.
 nmp-router = { path = "../nmp-router" }

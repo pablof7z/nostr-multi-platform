@@ -51,9 +51,8 @@
 //! action_json)`. This crate plugs into the same registry that the publish
 //! engine, NIP-17, NIP-57, NIP-65, and NIP-29 use.
 
-use nmp_core::substrate::ActionModule;
+use nmp_core::substrate::{ActionModule, ActionRegistrar};
 use nmp_core::ActorCommand;
-use nmp_ffi::NmpApp;
 use serde::{Deserialize, Serialize};
 
 pub mod projection;
@@ -195,8 +194,8 @@ impl ActionModule for ReactModule {
 /// migration).
 ///
 /// Registration MUST happen before `nmp_app_start` because
-/// `NmpApp::register_action` requires `&mut self`.
-pub fn register_actions(app: &mut NmpApp) {
+/// the host-side action registrar requires `&mut self`.
+pub fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_action::<FollowModule>();
     app.register_action::<UnfollowModule>();
     app.register_action::<ReactModule>();

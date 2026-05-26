@@ -7,8 +7,8 @@
 //! # What this crate is
 //!
 //! A single function — [`register_defaults`] — that, given a freshly
-//! constructed [`NmpApp`], wires every registration a generic Nostr app
-//! needs to participate in the standard NMP composition:
+//! constructed host implementing [`AppHost`], wires every registration a
+//! generic Nostr app needs to participate in the standard NMP composition:
 //!
 //! 1. **Action modules** for the common NIPs:
 //!    * `nmp.follow` / `nmp.unfollow` / `nmp.nip25.react` — [`nmp_nip02`]
@@ -25,11 +25,11 @@
 //!      kernel — the `Kind10002Parser` is the cache's single writer).
 //! 3. **Production routing substrate** — a factory closure that returns
 //!    `(Arc<GenericOutboxRouter>, Arc<InMemoryMailboxCache>)` is installed
-//!    via [`NmpApp::set_routing_substrate`]. The kernel re-invokes the
+//!    via [`AppHost::set_routing_substrate`]. The kernel re-invokes the
 //!    factory on `Reset` so the production routing survives a state wipe.
 //! 4. **Production publish resolver** — a factory closure that returns
 //!    `Arc<Nip65OutboxResolver>` is installed via
-//!    [`NmpApp::set_publish_resolver_factory`] (spec §271, 2026-05-25).
+//!    [`AppHost::set_publish_resolver_factory`] (spec §271, 2026-05-25).
 //!    The kernel re-invokes the factory on `Reset` so the production
 //!    resolver survives a state wipe. Mirrors the routing factory — both
 //!    deliberately live in `nmp-router` (Layer 2) so `nmp-core` (Layer 3)
@@ -80,10 +80,10 @@
 //! All registrations need to be visible to the kernel when the first event
 //! arrives — late wiring is dropped silently per `D6`.
 //!
-//! [`NmpApp`]: nmp_ffi::NmpApp
-//! [`NmpApp::set_routing_substrate`]: nmp_ffi::NmpApp::set_routing_substrate
-//! [`NmpApp::set_publish_resolver_factory`]: nmp_ffi::NmpApp::set_publish_resolver_factory
-//! [`NmpApp::set_coverage_hook`]: nmp_ffi::NmpApp::set_coverage_hook
+//! [`AppHost`]: nmp_core::substrate::AppHost
+//! [`AppHost::set_routing_substrate`]: nmp_core::substrate::AppHost::set_routing_substrate
+//! [`AppHost::set_publish_resolver_factory`]: nmp_core::substrate::AppHost::set_publish_resolver_factory
+//! [`AppHost::set_coverage_hook`]: nmp_core::substrate::AppHost::set_coverage_hook
 //! [`CoverageGate`]: nmp_coverage_gate::CoverageGate
 
 use std::sync::Arc;
@@ -91,9 +91,8 @@ use std::sync::Arc;
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
-use nmp_core::substrate::{MailboxCache, OutboxRouter, RoutingTraceObserver};
+use nmp_core::substrate::{AppHost, MailboxCache, OutboxRouter, RoutingTraceObserver};
 use nmp_coverage_gate::CoverageGate;
-use nmp_ffi::NmpApp;
 use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Nip65OutboxResolver};
 
 pub mod runtimes;
@@ -118,12 +117,12 @@ pub mod runtimes;
 ///
 /// # `app` borrow
 ///
-/// Most NIP-crate `register_actions` calls take `&mut NmpApp` (the action
+/// Most NIP-crate `register_actions` calls take `&mut AppHost` (the action
 /// registry is a `&mut`-only surface — registrations happen at init, never
 /// concurrently with `dispatch_action`). The substrate-routing factory +
-/// coverage-hook installation paths take `&NmpApp` (shared); the unique
+/// coverage-hook installation paths take `&AppHost` (shared); the unique
 /// borrow on the action-registry side is released before they run.
-pub fn register_defaults(app: &mut NmpApp) {
+pub fn register_defaults(app: &mut impl AppHost) {
     // ── Action modules ───────────────────────────────────────────────────
     //
     // NIP-02: kind:3 follow/unfollow + kind:7 reactions. Substrate-level

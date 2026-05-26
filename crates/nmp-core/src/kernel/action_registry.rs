@@ -37,7 +37,9 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
-use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection, ActionResult};
+use crate::substrate::{
+    ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
+};
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -300,6 +302,12 @@ impl ActionRegistry {
     #[cfg(test)]
     pub fn contains(&self, namespace: &str) -> bool {
         self.modules.contains_key(namespace)
+    }
+}
+
+impl ActionRegistrar for ActionRegistry {
+    fn register_action<M: ActionModule + 'static>(&mut self) {
+        self.register::<M>();
     }
 }
 

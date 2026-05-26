@@ -35,7 +35,7 @@
 //! stays in `nmp_core::publish::traits` so the kernel can carry an `Arc<dyn
 //! OutboxResolver>` without naming a NIP. Production composition
 //! (`nmp-app-template::register_defaults`) wires a `Nip65OutboxResolver`
-//! into the kernel via `NmpApp::set_publish_resolver_factory` →
+//! into the kernel via `AppHost::set_publish_resolver_factory` →
 //! `Kernel::set_publish_resolver`. This keeps `nmp-core` protocol-neutral
 //! (D0) and reflects the fact that NIP-65 outbox resolution is the same
 //! algorithmic concern as the substrate `OutboxRouter`
