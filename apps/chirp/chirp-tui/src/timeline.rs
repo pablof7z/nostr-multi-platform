@@ -62,6 +62,15 @@ impl TimelineRow {
         self.author_profile.display()
     }
 
+    pub fn media_urls(&self) -> Vec<String> {
+        let mut urls = Vec::new();
+        if let Some(tree) = self.content_tree.as_ref() {
+            push_unique_urls(&mut urls, tree.media_urls());
+        }
+        push_unique_urls(&mut urls, self.content_render.media_urls());
+        urls
+    }
+
     fn from_card(card: &Value, depth: usize, has_gap: bool) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
@@ -106,6 +115,14 @@ fn author_profile_from_card(pubkey: &str, card: &Value) -> ProfileWire {
             .or_else(|| optional_string(Some(card), "author_npub"))
             .unwrap_or_else(|| to_npub(pubkey)),
         npub_short: short_npub(pubkey),
+    }
+}
+
+fn push_unique_urls(out: &mut Vec<String>, urls: Vec<String>) {
+    for url in urls {
+        if !out.iter().any(|existing| existing == &url) {
+            out.push(url);
+        }
     }
 }
 
@@ -403,6 +420,52 @@ mod tests {
         });
         let rows = TimelineRow::from_snapshot(&snapshot);
         assert!(rows[0].mention_pubkeys.is_empty());
+    }
+
+    #[test]
+    fn media_urls_include_direct_and_quoted_event_media() {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "x",
+                "created_at": 1,
+                "content": "media note",
+                "content_tree": {
+                    "nodes": [{
+                        "kind": "media",
+                        "media_kind": "image",
+                        "urls": ["https://example.com/direct.jpg"],
+                    }],
+                    "roots": [0],
+                    "mode": "plaintext"
+                },
+                "content_render": {
+                    "events": {
+                        "quoted": {
+                            "id": "quoted",
+                            "author_pubkey": "y",
+                            "content_tree": {
+                                "nodes": [{
+                                    "kind": "image",
+                                    "alt": "",
+                                    "src": "https://example.com/quote.webp",
+                                }],
+                                "roots": [0],
+                                "mode": "plaintext"
+                            }
+                        }
+                    }
+                }
+            }]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert_eq!(
+            rows[0].media_urls(),
+            vec![
+                "https://example.com/direct.jpg".to_string(),
+                "https://example.com/quote.webp".to_string(),
+            ]
+        );
     }
 
     #[test]

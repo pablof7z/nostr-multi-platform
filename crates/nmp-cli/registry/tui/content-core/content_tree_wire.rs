@@ -133,6 +133,22 @@ impl ContentTreeWire {
         out.into_iter().collect()
     }
 
+    pub fn media_urls(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for node in &self.nodes {
+            match node {
+                WireNode::Media { urls, .. } => {
+                    for url in urls {
+                        push_unique(&mut out, url);
+                    }
+                }
+                WireNode::Image { src: Some(src), .. } => push_unique(&mut out, src),
+                _ => {}
+            }
+        }
+        out
+    }
+
     pub fn node(&self, index: usize) -> Option<&WireNode> {
         self.nodes.get(index)
     }
@@ -341,6 +357,12 @@ fn indices_array(value: &Value) -> Vec<usize> {
 
 fn is_hex_id_64(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn push_unique(out: &mut Vec<String>, value: &str) {
+    if !value.is_empty() && !out.iter().any(|existing| existing == value) {
+        out.push(value.to_string());
+    }
 }
 
 fn short_id(id: &str) -> String {
