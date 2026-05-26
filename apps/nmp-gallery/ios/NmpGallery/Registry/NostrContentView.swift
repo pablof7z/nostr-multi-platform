@@ -213,7 +213,7 @@ public struct NostrContentView: View {
 
     @ViewBuilder
     private func eventRefView(_ uri: NostrWireUri) -> some View {
-        if embedHost != nil || embedClaimSink != nil {
+        if let registry = nostrKindRegistry, embedHost != nil || embedClaimSink != nil {
             // Kind-dispatch path (ADR-0034 / M16). `EmbeddedEvent` owns the
             // claim/release lifecycle via `task(id:)` + `onDisappear`; the
             // registry picks the renderer for the resolved projection. The
@@ -223,32 +223,39 @@ public struct NostrContentView: View {
                 uri: uri.uri,
                 envelope: embedHost?.envelopeForPrimaryID(uri.primaryId)
                     ?? embedHost?.envelopeForURI(uri.uri),
-                registry: nostrKindRegistry,
+                registry: registry,
                 claimSink: embedClaimSink
             )
         } else {
             // Legacy quote-card path. Kept so existing content-quote-card
             // showcases keep working — the new embed environment opts in
             // when an EmbedHost is bound by the gallery shell.
-            let providedModel = quoteCardProvider?(uri)
-            let variant: NostrQuoteCardVariant
-            let model: NostrQuoteCardModel
-            if quoteCardProvider == nil {
-                variant = .collapsed
-                model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-            } else if let providedModel {
-                variant = .rich
-                model = providedModel
-            } else {
-                variant = .missing
-                model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-            }
-            NostrQuoteCard(
-                model: model,
-                variant: variant,
-                onTap: { renderer.callbacks.onEventRefTap(uri.primaryId) }
-            )
+            legacyQuoteCardView(uri)
         }
+    }
+
+    /// Legacy `eventRefView` body — split into its own helper so the parent
+    /// `@ViewBuilder` doesn't see the `let variant: ... if {} else {}`
+    /// pattern (Swift's ViewBuilder treats the assignments as Views).
+    private func legacyQuoteCardView(_ uri: NostrWireUri) -> NostrQuoteCard {
+        let providedModel = quoteCardProvider?(uri)
+        let variant: NostrQuoteCardVariant
+        let model: NostrQuoteCardModel
+        if quoteCardProvider == nil {
+            variant = .collapsed
+            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
+        } else if let providedModel {
+            variant = .rich
+            model = providedModel
+        } else {
+            variant = .missing
+            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
+        }
+        return NostrQuoteCard(
+            model: model,
+            variant: variant,
+            onTap: { renderer.callbacks.onEventRefTap(uri.primaryId) }
+        )
     }
 
     private func codeBlockView(info: String?, body: String) -> some View {

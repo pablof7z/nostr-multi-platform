@@ -265,7 +265,12 @@ private struct EmbedClaimSinkKey: EnvironmentKey {
 }
 
 private struct NostrKindRegistryKey: EnvironmentKey {
-    @MainActor static let defaultValue: NostrKindRegistry = NostrKindRegistry.makeDefault()
+    // Optional default — the gallery shell installs a real registry via
+    // `.environment(\.nostrKindRegistry, …)` in NmpGalleryApp. Keeping the
+    // default optional sidesteps Swift 6's main-actor-isolation rule for
+    // `EnvironmentKey.defaultValue` (it must be nonisolated, but
+    // `NostrKindRegistry.makeDefault()` is `@MainActor`).
+    static let defaultValue: NostrKindRegistry? = nil
 }
 
 extension EnvironmentValues {
@@ -279,7 +284,7 @@ extension EnvironmentValues {
         set { self[EmbedClaimSinkKey.self] = newValue }
     }
 
-    var nostrKindRegistry: NostrKindRegistry {
+    var nostrKindRegistry: NostrKindRegistry? {
         get { self[NostrKindRegistryKey.self] }
         set { self[NostrKindRegistryKey.self] = newValue }
     }

@@ -264,11 +264,14 @@ final class GalleryModel {
 
     /// Concrete `EventClaimSinkProtocol` impl forwarded into the SwiftUI
     /// environment so `EmbeddedEvent` views can fire `claim`/`release` against
-    /// the gallery's live kernel.
-    private(set) lazy var embedClaimSink: EventClaimSinkProtocol = KernelEventClaimSink(kernel: kernel)
+    /// the gallery's live kernel. Stored (not computed / lazy) so the
+    /// `@Observable` macro can synthesize storage.
+    let embedClaimSink: EventClaimSinkProtocol
 
     init() {
-        self.kernel = GalleryKernelHandle()
+        let kernel = GalleryKernelHandle()
+        self.kernel = kernel
+        self.embedClaimSink = KernelEventClaimSink(kernel: kernel)
     }
 
     /// One-shot bootstrap. Wires the push callback, starts the kernel actor,
