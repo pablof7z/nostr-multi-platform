@@ -91,8 +91,9 @@ The Marmot FFI cluster is a **permanent, bounded exception** to the generic
   access (gift-wrap requires `nostr::Keys`), but that access must be mediated by
   a new `ActorCommand::SendGiftWrappedDm` kernel command, not by a bespoke
   `nmp_app_chirp_dm_*` cluster.
-- This ADR does not cover `nmp_app_chirp_identity_*` symbols; those are a
-  separate surface and should be audited independently.
+- This ADR does not cover Chirp's `nmp_app_chirp_identity_*` symbols. Those
+  are app-owned wrappers in `nmp-app-chirp`, and reusable Marmot code receives
+  a caller-supplied keyring account id instead of hardcoding Chirp policy.
 
 ## Bounded exception — the raw-nsec slot
 

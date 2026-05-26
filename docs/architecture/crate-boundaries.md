@@ -1048,15 +1048,16 @@ Strict dependency order. Each step has a prerequisite cited.
     ported to the generic `nmp_app_dispatch_action("nmp.marmot", …)` seam
     in ADR-0025 PR 3 (2026-05-23). The remaining `nmp_marmot_*` symbols
     (register, snapshot, group_messages, string_free, unregister,
-    fetch_key_packages, plus the legacy `nmp_app_chirp_identity_*` names)
-    are kernel-shaped per-app FFI — observer / projection / opaque-handle
-    lifecycle — and follow the same pattern as Chirp's `nmp_app_chirp_*`
-    cluster. That pattern is sanctioned for Layer-4 NIP crates whose
-    runtime needs a stateful handle (per ADR-0025 update 2026-05-23).
-    Done as Path B from the step-12 brief: per-app FFI accepted as-is,
-    crate moved to `crates/nmp-marmot/`, workspace + dependent path
-    deps + CI header-drift gate updated; the FFI surface (ABI, header,
-    Swift bridge) is byte-stable.
+    fetch_key_packages) are kernel-shaped per-app FFI — observer /
+    projection / opaque-handle lifecycle — and follow the same pattern as
+    Chirp's `nmp_app_chirp_*` cluster. That pattern is sanctioned for
+    Layer-4 NIP crates whose runtime needs a stateful handle (per ADR-0025
+    update 2026-05-23). App-specific identity/keyring wrappers belong in
+    app crates and call Marmot's caller-supplied keyring helpers. Done as
+    Path B from the step-12 brief: per-app FFI accepted as-is, crate moved
+    to `crates/nmp-marmot/`, workspace + dependent path deps + CI
+    header-drift gate updated; the Marmot FFI surface (ABI, header, Swift
+    bridge) is byte-stable.
 
 ---
 

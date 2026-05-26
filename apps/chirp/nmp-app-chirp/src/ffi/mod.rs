@@ -22,6 +22,11 @@
 //!   string.
 //! - [`nmp_app_chirp_unregister`] — drop the observer registration and free
 //!   the handle. Idempotent.
+//! - `nmp_app_chirp_identity_restore`,
+//!   `nmp_app_chirp_identity_sign_in_nsec`, and
+//!   `nmp_app_chirp_identity_remove_account` — Chirp-owned identity/keyring
+//!   wrappers that register the reusable Marmot projection without leaking
+//!   Chirp policy into `nmp-marmot`.
 //!
 //! ## Doctrine
 //!
@@ -44,6 +49,8 @@
 mod actions;
 mod handle;
 mod helpers;
+#[cfg(feature = "marmot")]
+mod identity;
 mod register;
 mod snapshot;
 
@@ -51,6 +58,11 @@ mod snapshot;
 mod tests;
 
 pub use handle::ChirpHandle;
+#[cfg(feature = "marmot")]
+pub use identity::{
+    nmp_app_chirp_identity_remove_account, nmp_app_chirp_identity_restore,
+    nmp_app_chirp_identity_sign_in_nsec,
+};
 pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
