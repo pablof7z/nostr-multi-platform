@@ -50,6 +50,7 @@ mod keyring;
 mod host_op_handler;
 pub mod placeholder;
 mod protocol;
+mod raw_event_forwarding;
 mod req_intercept;
 mod relay_intercept;
 mod routing;
@@ -87,6 +88,9 @@ pub use protocol::{
     NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
     NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
     ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
+};
+pub use raw_event_forwarding::{
+    RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
 };
 pub use req_intercept::{
     new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor,

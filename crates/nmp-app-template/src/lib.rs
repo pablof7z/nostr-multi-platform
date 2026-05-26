@@ -34,10 +34,13 @@
 //!    resolver survives a state wipe. Mirrors the routing factory — both
 //!    deliberately live in `nmp-router` (Layer 2) so `nmp-core` (Layer 3)
 //!    stays NIP-neutral (D0).
-//! 5. **D2 coverage + NIP-77 hooks** — a [`CoverageGate`]-based hook trims
+//! 5. **Indexer republish policy** — a factory closure returns
+//!    [`nmp_router::IndexerRepublishPolicy`] through the generic raw-event
+//!    forwarding seam. `nmp-core` owns only observer dispatch + pool send.
+//! 6. **D2 coverage + NIP-77 hooks** — a [`CoverageGate`]-based hook trims
 //!    oversized relay plans, and [`nmp_nip77::NegentropySyncRuntime`] replaces
 //!    eligible large one-shot author×kind REQs with NIP-77 negentropy.
-//! 6. **Canonical runtime controllers** — see [`runtimes`] — for WOT
+//! 7. **Canonical runtime controllers** — see [`runtimes`] — for WOT
 //!    bootstrap, the NIP-17 DM-inbox subscription/projection, and the NIP-57
 //!    self-zap-receipts subscription. These are pure host-side
 //!    reconcilers; the kernel ships zero WOT/DM/zap nouns (D0).
@@ -83,6 +86,7 @@
 //! [`AppHost`]: nmp_core::substrate::AppHost
 //! [`AppHost::set_routing_substrate`]: nmp_core::substrate::AppHost::set_routing_substrate
 //! [`AppHost::set_publish_resolver_factory`]: nmp_core::substrate::AppHost::set_publish_resolver_factory
+//! [`AppHost::set_raw_event_forward_policy_factory`]: nmp_core::substrate::AppHost::set_raw_event_forward_policy_factory
 //! [`AppHost::set_coverage_hook`]: nmp_core::substrate::AppHost::set_coverage_hook
 //! [`CoverageGate`]: nmp_coverage_gate::CoverageGate
 
@@ -91,9 +95,13 @@ use std::sync::Arc;
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::store::EventStore;
-use nmp_core::substrate::{AppHost, MailboxCache, OutboxRouter, RoutingTraceObserver};
+use nmp_core::substrate::{
+    AppHost, MailboxCache, OutboxRouter, RawEventForwardPolicy, RoutingTraceObserver,
+};
 use nmp_coverage_gate::CoverageGate;
-use nmp_router::{GenericOutboxRouter, InMemoryMailboxCache, Nip65OutboxResolver};
+use nmp_router::{
+    GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy, Nip65OutboxResolver,
+};
 
 pub mod runtimes;
 
@@ -240,6 +248,19 @@ pub fn register_defaults(app: &mut impl AppHost) {
             ))
         },
     );
+
+    // ── Raw-event forwarding policy ─────────────────────────────────────
+    //
+    // The kernel's raw-event forwarder is deliberately generic: it registers
+    // a policy as a `RawEventObserver`, wraps accepted events in
+    // `["EVENT", ...]`, and sends through the native pool. The
+    // replaceable-kind/indexer policy belongs in `nmp-router` beside the
+    // rest of the indexer-lane routing rules, so default composition injects
+    // it here. The factory is re-invoked on `Reset` with the rebuilt
+    // kernel's fresh store/provenance + indexer-relay handles.
+    app.set_raw_event_forward_policy_factory(|context| {
+        vec![Arc::new(IndexerRepublishPolicy::enabled(context)) as Arc<dyn RawEventForwardPolicy>]
+    });
 
     // ── D2 coverage + NIP-77 sync hooks ─────────────────────────────────
     //

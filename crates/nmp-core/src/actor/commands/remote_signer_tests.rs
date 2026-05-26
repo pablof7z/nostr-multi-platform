@@ -592,6 +592,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // `Kernel::with_storage_path`) gives the kernel a working
             // `Nip65OutboxResolver` regardless of this slot.
             Arc::new(std::sync::Mutex::new(None)),
+            // Test wiring; no raw-event forwarding policy installed.
+            crate::slots::new_raw_event_forward_policy_slot(),
         );
     });
 

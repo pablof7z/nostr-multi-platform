@@ -1,6 +1,6 @@
 //! `nmp-router` — Layer-2 routing (`docs/architecture/crate-boundaries.md` §3).
 //!
-//! Four responsibilities:
+//! Six responsibilities:
 //!
 //! 1. [`InMemoryMailboxCache`] — the NIP-65 / kind:10002 cache the substrate
 //!    [`nmp_core::substrate::MailboxCache`] trait points at. The kind:10002
@@ -29,6 +29,10 @@
 //!    `Kernel::set_publish_resolver`; the kernel default is
 //!    `nmp_core::publish::NoopOutboxResolver` so a kernel without the
 //!    router-side resolver is still a clean no-op (fail-closed).
+//! 6. [`IndexerRepublishPolicy`] — the pure policy object for forwarding
+//!    accepted replaceable events to indexer relays. `nmp-core` owns the
+//!    generic raw-event observer and pool send; this crate owns the
+//!    replaceable-kind, provenance, source-skip, and bounded-dedup rules.
 //!
 //! Step 3 cuts the kernel over to `Arc<dyn OutboxRouter>` injection,
 //! deletes `nmp_core::kernel::outbox`, and replaces the kernel's
@@ -36,6 +40,7 @@
 //! [`InMemoryMailboxCache`] held as `Arc<dyn MailboxCache>`.
 
 mod cache;
+mod indexer_republish;
 mod ingest;
 mod nip65_resolver;
 mod router;
@@ -43,6 +48,7 @@ mod router;
 pub mod publish_relay_list;
 
 pub use cache::InMemoryMailboxCache;
+pub use indexer_republish::IndexerRepublishPolicy;
 pub use ingest::Kind10002Parser;
 pub use nip65_resolver::{
     is_discovery_kind, Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD,

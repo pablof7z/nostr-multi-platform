@@ -134,19 +134,38 @@ pub fn new_publish_resolver_slot() -> PublishResolverSlot {
     Arc::new(Mutex::new(None))
 }
 
+// ─── Raw-event forwarding policy factory ──────────────────────────────────
+//
+// Per-app raw signed-event forwarding policy factory. `nmp-core` owns the
+// generic dispatch seam and native pool send; reusable policy crates provide
+// the target-selection policy through this slot.
+pub type RawEventForwardPolicyFactory = dyn Fn(
+        crate::substrate::RawEventForwardPolicyContext,
+    ) -> Vec<Arc<dyn crate::substrate::RawEventForwardPolicy>>
+    + Send
+    + Sync;
+
+/// Slot wrapper for [`RawEventForwardPolicyFactory`]. `None` leaves the
+/// generic raw-event forwarder uninstalled.
+pub type RawEventForwardPolicySlot = Arc<Mutex<Option<Arc<RawEventForwardPolicyFactory>>>>;
+
+/// Construct a fresh, empty [`RawEventForwardPolicySlot`].
+#[must_use]
+pub fn new_raw_event_forward_policy_slot() -> RawEventForwardPolicySlot {
+    Arc::new(Mutex::new(None))
+}
+
 /// Typed slot for the previously-installed NIP-17 DM-inbox raw-event observer id.
 ///
 /// Used by the idempotent `NmpApp::swap_nip17_dm_inbox_observer` seam so
 /// per-app crates can re-register on account-switch without stacking observers.
-pub type DmInboxObserverIdSlot =
-    Arc<Mutex<Option<crate::RawEventObserverId>>>;
+pub type DmInboxObserverIdSlot = Arc<Mutex<Option<crate::RawEventObserverId>>>;
 
 /// Typed slot for the singleton kernel-event observer id.
 ///
 /// Used by the idempotent `NmpApp::swap_singleton_event_observer` seam so
 /// per-app crates can re-register on account-switch without stacking observers.
-pub type SingletonEventObserverIdSlot =
-    Arc<Mutex<Option<crate::KernelEventObserverId>>>;
+pub type SingletonEventObserverIdSlot = Arc<Mutex<Option<crate::KernelEventObserverId>>>;
 
 /// Construct a fresh, empty [`DmInboxObserverIdSlot`].
 #[must_use]
