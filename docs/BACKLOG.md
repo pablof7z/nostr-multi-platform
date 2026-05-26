@@ -8,8 +8,8 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against `origin/master` **e5b3639e** plus PR #588 integration
-> (2026-05-26). Update this file in every PR that touches an item listed here.
+> Verified against `origin/master` **9fe2aced** (2026-05-27). Update this file
+> in every PR that touches an item listed here.
 
 ---
 
