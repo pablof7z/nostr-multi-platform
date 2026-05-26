@@ -492,7 +492,7 @@ impl Kernel {
         let relays_discovery = self.route_outbox_subscription_relays(
             stable_hash64(("author-relays", pubkey.as_str(), seq)),
             pubkey.as_str(),
-            10002,
+            crate::kinds::KIND_RELAY_LIST,
             BootstrapSeed::Discovery,
         );
         let profile_discovery = self.route_outbox_subscription_relays(
@@ -516,7 +516,7 @@ impl Kernel {
                 seed.clone(),
                 &format!("author-relays-{seq}-{tag}"),
                 &format!("selected author NIP-65 {}", short_hex(&pubkey)),
-                json!({"kinds":[10002],"authors":[pubkey.clone()],"limit":1}),
+                json!({"kinds":[crate::kinds::KIND_RELAY_LIST],"authors":[pubkey.clone()],"limit":1}),
             ));
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,

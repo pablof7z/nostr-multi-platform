@@ -289,11 +289,11 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// path. Threading it makes the publish engine report THAT id in
 /// `action_results` via `correlation_id_override` — explicit symmetry with
 /// `publish_note`. `None` for non-dispatch callers (the kernel-internal
-/// `NmpApp::publish_signed_explicit` Marmot seam + conformance harnesses
-/// land on this `None` path; the deleted `nmp_app_publish_signed_event*`
-/// C-ABI symbols used to land here too, always with `None`); the engine
-/// then falls back to the publish handle (== event id), preserving the
-/// prior behaviour.
+/// `NmpApp::publish_signed_explicit` workspace-internal seam + conformance
+/// harnesses land on this `None` path; the deleted
+/// `nmp_app_publish_signed_event*` C-ABI symbols used to land here too,
+/// always with `None`); the engine then falls back to the publish handle
+/// (== event id), preserving the prior behaviour.
 ///
 /// **D10 defensive guard.** A kind:1059 gift-wrap envelope with
 /// `PublishTarget::Auto` is REFUSED — the Auto branch below would

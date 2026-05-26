@@ -856,7 +856,7 @@ pub(crate) fn create_account(
     if let (false, Some(author)) = (relay_tags.is_empty(), identity.active_pubkey()) {
         let unsigned_relay = UnsignedEvent {
             pubkey: author,
-            kind: 10002,
+            kind: crate::kinds::KIND_RELAY_LIST,
             tags: relay_tags,
             content: String::new(),
             created_at: kernel.now_secs(),

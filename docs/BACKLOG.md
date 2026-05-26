@@ -59,20 +59,26 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    as a D0 leak; the owner reframed this on 2026-05-27 — integer kind numbers
    are wire-protocol data, not app/protocol *nouns*, and centralising the
    integers in one place removes the duplication risk without growing the
-   kernel's semantic surface. `crates/nmp-core/src/actor/commands/relays.rs:29-35`
-   and `crates/nmp-core/src/actor/commands/publish.rs:16-21` no longer hold
-   local `const KIND_RELAY_LIST` / `const KIND_GIFT_WRAP` duplicates — they
-   import `KIND_RELAY_LIST` / `KIND_GIFT_WRAP` from `nmp_core::kinds` (the
-   canonical workspace registry created in this slice). The doc-prose and log
-   strings in those files no longer name `NIP-17`, kind `10050`, or `Marmot`;
-   the kind:1059 D10 guard now refers to "the author's public-relay outbox"
-   in substrate-neutral terms. **Next step:** Create `nmp_core::kinds` module
-   centralizing all Nostr kind constants; protocol crates import from it.
-   Follow-up: migrate the remaining private duplicates in `nmp-nip59` /
-   `nmp-nip17` / `nmp-nip29` / `nmp-nip57` / `nmp-marmot` / `nmp-router` /
-   `nmp-wot` to re-export from `nmp_core::kinds` once the dependency edges
-   are confirmed compatible with the boundary spec (out of scope for the
-   current slice; tracked as V-57 P2 stage 2).
+   kernel's semantic surface.
+
+   **Stage 1 — DONE.** `crates/nmp-core/src/kinds.rs` is the new canonical
+   workspace registry for the kind integers `nmp-core` actively names
+   (`KIND_PROFILE_METADATA`, `KIND_SHORT_TEXT_NOTE`, `KIND_CONTACT_LIST`,
+   `KIND_REACTION`, `KIND_CHAT_MESSAGE`, `KIND_GIFT_WRAP`, `KIND_RELAY_LIST`).
+   `actor/commands/{publish,relays}.rs`, `actor/commands/identity.rs`,
+   `kernel/{discovery,publish_outbox,requests/profile}.rs`, and
+   `subs/recompile.rs` all use the constants from this module — no production
+   `nmp-core` code path holds a hand-rolled `1059` / `10002` literal any
+   more. The doc-prose and log strings in `publish.rs` no longer name `NIP-17`,
+   kind `10050`, or `Marmot`; the kind:1059 D10 guard now refers to "the
+   author's public-relay outbox" in substrate-neutral terms.
+
+   **Next step (Stage 2).** Migrate the remaining private duplicates in
+   `nmp-nip59` (`KIND_GIFT_WRAP`), `nmp-nip17` (`KIND_DM_RELAY_LIST` +
+   `KIND_CHAT_MESSAGE`), `nmp-nip29`, `nmp-nip57`, `nmp-marmot`,
+   `nmp-router::publish_relay_list::KIND_RELAY_LIST`, and `nmp-wot` to
+   re-export from `nmp_core::kinds` once the dependency edges are confirmed
+   compatible with the boundary spec. Out of scope for the current slice.
 3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
    `apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses and builds
    zap input in the TUI; the host-side zap auto-pay loop was removed so Rust owns the
