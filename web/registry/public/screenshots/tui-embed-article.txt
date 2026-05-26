@@ -5,7 +5,7 @@
 ││  NostrProfileName              │ │                                                                                                                                                                                     ││
 ││  NostrNip05Badge               │ │                                                                                                                                                                                     ││
 ││  NostrNpubChip                 │ │hey, check out my article                                                                                                                                                            ││
-││  NostrUserCard                 │ ││ What's left of the internet? · 6e468422                                                                                                                                            ││
+││  NostrUserCard                 │ ││ What's left of the internet? · Gigi                                                                                                                                                ││
 ││                                │ ││ I didn't leave the internet. The internet left me.                                                                                                                                 ││
 ││Content                         │ │                                                                                                                                                                                     ││
 ││  ContentTreeWire               │ │I hope you enjoy it!                                                                                                                                                                 ││
