@@ -321,9 +321,9 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
         "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
         "Reply" => state.start_reply(),
         "Zap" => {
-            state.status =
-                "use :zap <lightning-address> <sats> [comment] (requires :wallet connect first)"
-                    .to_string()
+            state.pending_zap_pubkey = Some(author_pubkey);
+            state.pending_zap_event_id = Some(note_id);
+            state.start_input_bar("sats [comment]", false, "zap-amount");
         }
         _ => {}
     }
@@ -409,6 +409,45 @@ fn dispatch_input_bar_action(
             Ok(()) => state.push_toast("\u{2713} relay add requested"),
             Err(e) => state.push_toast(&format!("\u{2717} add relay failed: {e}")),
         },
+        "zap-amount" => {
+            let pubkey = match state.pending_zap_pubkey.take() {
+                Some(p) => p,
+                None => {
+                    state.push_toast("\u{2717} zap context lost");
+                    return;
+                }
+            };
+            let event_id = state.pending_zap_event_id.take();
+            let trimmed = value.trim();
+            let (sats_str, comment) = trimmed
+                .split_once(char::is_whitespace)
+                .map(|(s, c)| (s, c.trim()))
+                .unwrap_or((trimmed, ""));
+            let sats: u64 = match sats_str.parse() {
+                Ok(n) if n > 0 => n,
+                _ => {
+                    state.push_toast("\u{2717} enter a positive number of sats");
+                    return;
+                }
+            };
+            let mut body = serde_json::json!({
+                "recipient_pubkey": pubkey,
+                "amount_msats": sats * 1000,
+            });
+            if let Some(id) = event_id {
+                body["target_event_id"] = serde_json::Value::String(id);
+            }
+            if !comment.is_empty() {
+                body["comment"] = serde_json::Value::String(comment.to_string());
+            }
+            match runtime.zap(&body) {
+                Ok(cid) => {
+                    state.pending_zap_pay = true;
+                    state.track_action(cid, &format!("zap {sats} sat"));
+                }
+                Err(e) => state.push_toast(&format!("\u{2717} zap failed: {e}")),
+            }
+        }
         "dm-npub" => {
             state.push_toast("\u{2717} DM open not yet wired");
         }

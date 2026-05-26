@@ -41,22 +41,22 @@ use crate::lnurl::FetchLnurlInvoiceCommand;
 /// {
 ///   "recipient_pubkey": "<hex>",
 ///   "amount_msats": 21000,
-///   "lnurl": "alice@walletofsatoshi.com",
-///   "relays": [],
 ///   "target_event_id": "<hex>",
 ///   "comment": "🤙"
 /// }
 /// ```
 ///
+/// `lnurl` is optional. When omitted the kernel resolves the recipient's
+/// lightning address from its cached kind:0 profile and fails with a clear
+/// toast if none is found. Shells SHOULD omit `lnurl` — it is a protocol
+/// detail the kernel owns, not the app. When provided (e.g. by the `:zap`
+/// power-user command that lets the caller override the destination) it is
+/// used verbatim.
+///
 /// `relays` is optional (`[]` or omitted) — the actor injects via the
 /// substrate `RecipientRelayLookup` capability (kernel-side adapter
 /// routes through `outbox_router` with a synthetic kind:9735 publish to
 /// resolve the recipient's NIP-65 write set) before signing (V-07).
-///
-/// `lnurl` carries the receiver's LNURL-pay endpoint in any of three
-/// shapes: a lightning address (`user@domain`), a bech32 LNURL
-/// (`lnurl1…`), or a bare `https://` URL — `crate::lnurl::pay`
-/// decodes all three per LUD-01/06/16.
 ///
 /// `target_event_id` and `comment` are optional. A zap to a profile (no
 /// target event) omits `target_event_id`. `relays` may be empty, in which
@@ -69,9 +69,11 @@ pub struct ZapInput {
     /// Amount in millisatoshis. Must be > 0.
     pub amount_msats: u64,
     /// Receiver's LNURL-pay endpoint — lightning address, bech32 LNURL, or
-    /// bare https URL. Required by NIP-57: a zap intent without the LN
-    /// destination cannot fetch the bolt11.
-    pub lnurl: String,
+    /// bare https URL. When `None` the kernel resolves it from the
+    /// recipient's cached kind:0 profile (`lud16` / `lud06`). Shells
+    /// SHOULD omit this field; it is a protocol detail.
+    #[serde(default)]
+    pub lnurl: Option<String>,
     /// Relay URLs for the kind:9734 `relays` tag. When empty the actor
     /// auto-selects from the recipient's kind:10002 (NIP-65) write/both
     /// relays — relay selection is policy that lives in the kernel, never
@@ -104,11 +106,12 @@ impl ActionModule for ZapAction {
     /// Validate a zap request. Rejects:
     /// - empty `recipient_pubkey`
     /// - `amount_msats == 0`
-    /// - empty `lnurl` (receiver LN destination is required)
     ///
-    /// `relays` may be empty: the actor auto-selects from the recipient's
-    /// kind:10002 (NIP-65) write list before signing (V-07). Relay choice
-    /// is policy that lives in the kernel, not the shell.
+    /// `lnurl` may be omitted — the kernel resolves it from the recipient's
+    /// cached kind:0 profile at execute time. `relays` may be empty: the
+    /// actor auto-selects from the recipient's kind:10002 (NIP-65) write
+    /// list before signing (V-07). Relay choice is policy that lives in the
+    /// kernel, not the shell.
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -121,11 +124,6 @@ impl ActionModule for ZapAction {
         if action.amount_msats == 0 {
             return Err(ActionRejection::Invalid(
                 "zap amount must be greater than 0 msats".into(),
-            ));
-        }
-        if action.lnurl.trim().is_empty() {
-            return Err(ActionRejection::Invalid(
-                "zap requires the receiver's LNURL-pay endpoint (lightning address, bech32 LNURL, or https URL)".into(),
             ));
         }
         Ok(())
@@ -192,6 +190,7 @@ impl ActionModule for ZapAction {
             .map_err(|e| format!("build kind:9734 zap request: {e}"))?;
         send(ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand {
             unsigned,
+            recipient_pubkey: action.recipient_pubkey,
             lnurl_or_address: action.lnurl,
             amount_msats: action.amount_msats,
             correlation_id: Some(correlation_id.to_string()),
@@ -228,7 +227,18 @@ mod tests {
         ZapInput {
             recipient_pubkey: RECIPIENT.to_string(),
             amount_msats: 21_000,
-            lnurl: LNURL.to_string(),
+            lnurl: Some(LNURL.to_string()),
+            relays: vec![RELAY.to_string()],
+            target_event_id: None,
+            comment: None,
+        }
+    }
+
+    fn well_formed_input_no_lnurl() -> ZapInput {
+        ZapInput {
+            recipient_pubkey: RECIPIENT.to_string(),
+            amount_msats: 21_000,
+            lnurl: None,
             relays: vec![RELAY.to_string()],
             target_event_id: None,
             comment: None,
@@ -288,15 +298,11 @@ mod tests {
     }
 
     #[test]
-    fn start_rejects_empty_lnurl() {
-        let input = ZapInput {
-            lnurl: "   ".to_string(),
-            ..well_formed_input()
-        };
-        assert!(matches!(
-            ZapAction::start(&mut ctx(), input),
-            Err(ActionRejection::Invalid(_))
-        ));
+    fn start_accepts_no_lnurl_kernel_resolves() {
+        // Shells that know only the pubkey and amount pass `lnurl: None`.
+        // The kernel resolves the address from the cached kind:0 profile at
+        // execute time — `start` must not reject it.
+        assert!(ZapAction::start(&mut ctx(), well_formed_input_no_lnurl()).is_ok());
     }
 
     /// V-07: empty relays is VALID — the actor injects the recipient's

@@ -96,7 +96,10 @@ const LNURL_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// The substrate-level [`ProtocolCommand`] that drives the LNURL-pay
 /// round-trip. Dispatched as `ActorCommand::Protocol(Box::new(...))` by
-/// `ZapAction::execute` (see `crate::action`).
+/// `ZapAction::execute` (see `crate::action`). When `lnurl_or_address` is
+/// `None` the command resolves the recipient's lightning address from the
+/// kernel's cached kind:0 profile via
+/// [`ProtocolCommandContext::lnurl_for_pubkey`].
 ///
 /// The fields mirror the legacy `ActorCommand::FetchLnurlInvoice` variant
 /// payload one-for-one — every field is consumed inside [`Self::run`].
@@ -106,10 +109,15 @@ pub struct FetchLnurlInvoiceCommand {
     /// `created_at` field is the D7 sentinel `0`; this command re-stamps
     /// from the kernel clock before signing.
     pub unsigned: UnsignedEvent,
+    /// Recipient's Nostr pubkey (hex). Used as the fallback key for
+    /// kernel-side lnurl resolution when `lnurl_or_address` is `None`.
+    pub recipient_pubkey: String,
     /// LN-side destination. One of three shapes (LUD-01 / LUD-06 / LUD-16):
     /// a lightning address (`user@domain`), a bech32 LNURL (`lnurl1…`), or
-    /// a bare `https://` URL. Decoded by [`pay::lnurl_to_well_known_url`].
-    pub lnurl_or_address: String,
+    /// a bare `https://` URL. `None` means the kernel should resolve it from
+    /// the recipient's cached kind:0 profile. Decoded by
+    /// [`pay::lnurl_to_well_known_url`].
+    pub lnurl_or_address: Option<String>,
     /// Zap amount in millisatoshis. Bounded against the LN provider's
     /// `minSendable` / `maxSendable` on leg 1.
     pub amount_msats: u64,
@@ -128,10 +136,34 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
     ) -> Result<(), ProtocolCommandError> {
         let Self {
             mut unsigned,
+            recipient_pubkey,
             lnurl_or_address,
             amount_msats,
             correlation_id,
         } = *self;
+
+        // Resolve the LN destination. Shells may omit `lnurl_or_address`
+        // (pass `None`) — when they do, the kernel looks up the recipient's
+        // lightning address from its cached kind:0 profile. Shells that DO
+        // provide an explicit value (e.g. the `:zap` power-user command) use
+        // it verbatim to allow overriding the on-profile address.
+        let lnurl_or_address = match lnurl_or_address {
+            Some(v) if !v.trim().is_empty() => v,
+            _ => match ctx.lnurl_for_pubkey(&recipient_pubkey) {
+                Some(v) => v,
+                None => {
+                    let reason = "this user has no lightning address in their profile";
+                    ctx.send(ActorCommand::ShowToast { message: reason.to_string() });
+                    if let Some(cid) = correlation_id {
+                        ctx.send(ActorCommand::RecordActionFailure {
+                            correlation_id: cid,
+                            reason: reason.to_string(),
+                        });
+                    }
+                    return Ok(());
+                }
+            },
+        };
 
         // Track the `Requested` stage against the host's correlation id
         // (mirrors the legacy `FetchLnurlInvoice` dispatch arm). The
