@@ -33,7 +33,10 @@ mod profile;
 mod timeline;
 mod timeline_order;
 
-use super::{json, NostrEvent, Kernel, RelayRole, RelayFrame, OutboundMessage, CanonicalRelayUrl, Value, truncate, Instant};
+use super::{
+    json, truncate, CanonicalRelayUrl, Instant, Kernel, NostrEvent, OutboundMessage, RelayFrame,
+    RelayRole, Value,
+};
 
 /// Returns up to the first 16 chars of an event id, safe for any length.
 fn event_short_id(id: &str) -> &str {
@@ -382,12 +385,15 @@ impl Kernel {
         // Kinds 1|6 handle their own store.insert inside ingest_timeline_event.
         // For replaceable kinds (0, 3) we gate local cache mutations on the
         // store outcome: only Inserted | Replaced means this event is now
-        // canonical (D4). Every other kind — including the former kind:10002
-        // arm (deleted 2026-05-25 alongside `kernel/ingest/relay_list.rs`
-        // when the substrate parser was wired in `nmp-app-template`) —
-        // routes through the wildcard arm, which fans through the
-        // `EventIngestDispatcher` inside `verify_and_persist` and then
-        // observes any substrate mailbox-cache mutation kind-agnostically.
+        // canonical (D4), and the same accepted event is fanned to
+        // KernelEventObservers so app projections can react to kind:0/3
+        // metadata without polling or app-local fetch logic. Every other
+        // kind — including the former kind:10002 arm (deleted 2026-05-25
+        // alongside `kernel/ingest/relay_list.rs` when the substrate parser
+        // was wired in `nmp-app-template`) — routes through the wildcard arm,
+        // which fans through the `EventIngestDispatcher` inside
+        // `verify_and_persist` and then observes any substrate mailbox-cache
+        // mutation kind-agnostically.
         match event.kind {
             1 | 6 => self.ingest_timeline_event(role, relay_url, sub_id, event),
             0 => {
@@ -397,7 +403,9 @@ impl Kernel {
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
                 ) {
+                    let kernel_event = kernel_event_from_nostr(&event);
                     self.ingest_profile(event);
+                    self.notify_event_observers(&kernel_event);
                 }
                 self.changed_since_emit = true;
             }
@@ -408,7 +416,9 @@ impl Kernel {
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
                 ) {
+                    let kernel_event = kernel_event_from_nostr(&event);
                     self.ingest_contacts(event);
+                    self.notify_event_observers(&kernel_event);
                 }
                 self.changed_since_emit = true;
             }
@@ -454,14 +464,7 @@ impl Kernel {
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
                 ) {
-                    let kernel_event = crate::substrate::KernelEvent {
-                        id: event.id.clone(),
-                        author: author.clone(),
-                        kind: event.kind,
-                        created_at: event.created_at,
-                        tags: event.tags.clone(),
-                        content: event.content.clone(),
-                    };
+                    let kernel_event = kernel_event_from_nostr(&event);
                     self.notify_event_observers(&kernel_event);
                     let after = self.mailbox_cache().snapshot(&author);
                     if before != after {
@@ -623,6 +626,17 @@ impl Kernel {
                 created_at,
             });
         self.refresh_profile_after_mailbox(author);
+    }
+}
+
+fn kernel_event_from_nostr(event: &NostrEvent) -> crate::substrate::KernelEvent {
+    crate::substrate::KernelEvent {
+        id: event.id.clone(),
+        author: event.pubkey.clone(),
+        kind: event.kind,
+        created_at: event.created_at,
+        tags: event.tags.clone(),
+        content: event.content.clone(),
     }
 }
 
