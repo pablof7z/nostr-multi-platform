@@ -38,6 +38,14 @@ import tuiKindRegistryRust from "../../../../crates/nmp-cli/registry/tui/content
 import tuiEmbedChromeRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/embed_chrome_container.rs?raw";
 import tuiEmbeddedEventRust from "../../../../crates/nmp-cli/registry/tui/content-kind-registry/embedded_event.rs?raw";
 
+// Content — SwiftUI kind-dispatch registry + per-kind components
+import swiftuiEmbedKindProjectionSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/EmbedKindProjection.swift?raw";
+import swiftuiEmbedChromeContainerSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/EmbedChromeContainer.swift?raw";
+import swiftuiNostrKindRegistrySwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/NostrKindRegistry.swift?raw";
+import swiftuiEmbeddedEventSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-registry/EmbeddedEvent.swift?raw";
+import swiftuiArticleEmbedSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
+import swiftuiHighlightEmbedSwift from "../../../../crates/nmp-cli/registry/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
+
 export const contentComponents: Component[] = [
   {
     slug: "content-core",
@@ -208,6 +216,26 @@ export const contentComponents: Component[] = [
     version: "0.1.0",
     description: "Kind-dispatch registry for embedded Nostr events.",
     platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/content-kind-registry",
+        version: "0.1.0",
+        dependencies: ["content-core", "user-avatar"],
+        longDescription:
+          "Swift mirror of `tui/content-kind-registry`. `NostrKindRegistry` is a SwiftUI-friendly @MainActor dispatch table mapping `EmbedKindProjection` variants to `KindRenderer` implementations. `EmbeddedEvent` owns the claim/release lifecycle (via `.task(id:)` + `.onDisappear`), reads the resolved envelope from the app's `EmbedHost`, and dispatches through the registry. `EmbedChromeContainer` mirrors the TUI's depth-graded accent stripe so nested embeds visually scale identically across platforms.",
+        files: [
+          { source: "swiftui/content-kind-registry/EmbedKindProjection.swift", target: "Components/NostrContent/EmbedKindProjection.swift", role: "source", content: swiftuiEmbedKindProjectionSwift },
+          { source: "swiftui/content-kind-registry/EmbedChromeContainer.swift", target: "Components/NostrContent/EmbedChromeContainer.swift", role: "source", content: swiftuiEmbedChromeContainerSwift },
+          { source: "swiftui/content-kind-registry/NostrKindRegistry.swift", target: "Components/NostrContent/NostrKindRegistry.swift", role: "source", content: swiftuiNostrKindRegistrySwift },
+          { source: "swiftui/content-kind-registry/EmbeddedEvent.swift", target: "Components/NostrContent/EmbeddedEvent.swift", role: "source", content: swiftuiEmbeddedEventSwift },
+        ],
+        screenshots: ["swiftui-content-kind-registry-preview.png"],
+        customization: [
+          "Build the registry once at app start with `NostrKindRegistry.makeDefault()` then `registry.setArticle(ArticleEmbed())` / `registry.setHighlight(HighlightEmbed())` to swap in richer per-kind components.",
+          "Inject it into the SwiftUI environment via `.environment(\\.nostrKindRegistry, registry)` — `NostrContentView` and `EmbeddedEvent` both read from there.",
+          "Implement `EventClaimSinkProtocol` against your kernel FFI and inject it as `.environment(\\.embedClaimSink, sink)`; the embed view owns lifecycle, not your app code.",
+        ],
+      },
       tui: {
         status: "stable",
         installId: "tui/content-kind-registry",
@@ -226,6 +254,54 @@ export const contentComponents: Component[] = [
         customization: [
           "Register additional `KindRenderer` implementations at app startup for event kinds your app cares about.",
           "Keep projection data in Rust; TUI renderers should only choose layout and styling for the typed envelope they receive.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "content-kind-30023",
+    routeId: "content-kind-30023",
+    version: "0.1.0",
+    description: "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author chip.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/content-kind-30023",
+        version: "0.1.0",
+        dependencies: ["content-kind-registry", "user-avatar"],
+        longDescription:
+          "`ArticleEmbed` is the canonical NIP-23 card. Install via `registry.setArticle(ArticleEmbed())` on a `NostrKindRegistry`. Renders the article's `image` tag as a 16:9 hero, `title` as the headline, optional `summary` line, then an author byline with `NostrAvatar` + display name. The host's `EmbedHost` decodes the kind:30023 event into an `ArticleProjection` via the same `resolve_embed_projection` branch the Rust kernel uses.",
+        files: [
+          { source: "swiftui/content-kind-30023/ArticleEmbed.swift", target: "Components/NostrContent/ArticleEmbed.swift", role: "source", content: swiftuiArticleEmbedSwift },
+        ],
+        screenshots: ["swiftui-content-kind-30023-preview.png"],
+        customization: [
+          "Replace the hero `AsyncImage` with your own loader (Nuke / Kingfisher) — the rest of the layout stays untouched.",
+          "Bind a tap callback by wrapping the returned `AnyView` with `.onTapGesture` at the call site; the renderer itself is purely declarative.",
+        ],
+      },
+    },
+  },
+  {
+    slug: "content-kind-9802",
+    routeId: "content-kind-9802",
+    version: "0.1.0",
+    description: "Highlight (NIP-84, kind:9802) embed renderer — pull-quote, optional context line, source footer.",
+    platforms: {
+      swiftui: {
+        status: "stable",
+        installId: "swiftui/content-kind-9802",
+        version: "0.1.0",
+        dependencies: ["content-kind-registry"],
+        longDescription:
+          "`HighlightEmbed` renders a NIP-84 highlight as a pull-quote: italic body inside a yellow-accented box, optional surrounding `context` line, and a source footer that branches on the highlight's `r` (URL), `e` (event id), or `a` (addressable event) tag. Install via `registry.setHighlight(HighlightEmbed())`.",
+        files: [
+          { source: "swiftui/content-kind-9802/HighlightEmbed.swift", target: "Components/NostrContent/HighlightEmbed.swift", role: "source", content: swiftuiHighlightEmbedSwift },
+        ],
+        screenshots: ["swiftui-content-kind-9802-preview.png"],
+        customization: [
+          "Tweak the accent colour by editing the literal `Color.yellow.opacity(0.7)` — it merges cleanly on `nmp update component`.",
+          "Extend `sourceFooter` to render rich previews when an `e` tag's referenced note has already been claimed.",
         ],
       },
     },
