@@ -91,7 +91,7 @@ pub struct SnapshotProjectionEntry {
 /// order. Order is load-bearing (the generated file is byte-diffed against
 /// the committed copy by the `codegen-drift` CI gate).
 ///
-/// The hand-written declaration carries 28 fields; this slice has 28
+/// The hand-written declaration carries 31 fields; this slice has 31
 /// entries. Adding or removing a member here changes the generated Swift —
 /// the CI gate will refuse stale output until the regenerated file is
 /// committed.
@@ -288,17 +288,17 @@ mod tests {
     use super::*;
 
     /// Locks the registry size — the hand-written `SnapshotProjections`
-    /// declaration in `KernelBridge.swift` carries 30 fields. Anyone
+    /// declaration in `KernelBridge.swift` carries 31 fields. Anyone
     /// adding or removing an entry changes the generated Swift; this test
     /// makes that change explicit rather than silent.
     #[test]
     fn registry_size_is_locked() {
-        // The current hand-written declaration: 30 entries. Bump this
+        // The current hand-written declaration: 31 entries. Bump this
         // (and add a new SnapshotProjectionEntry above) when a new
         // projection is wired.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            30,
+            31,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }
