@@ -120,6 +120,15 @@ pub trait ActionModule: Send + Sync + 'static {
     ) -> Result<(), String>;
 }
 
+/// App-neutral action registration seam.
+///
+/// Reusable protocol crates use this trait instead of naming the concrete
+/// `nmp-ffi::NmpApp` C-ABI host handle. The host decides where the registry
+/// lives; modules only require "register this typed action module".
+pub trait ActionRegistrar {
+    fn register_action<M: ActionModule + 'static>(&mut self);
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ActionRejection {
     Invalid(String),

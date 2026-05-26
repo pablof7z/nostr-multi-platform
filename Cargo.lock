@@ -4115,7 +4115,6 @@ name = "nmp-nip17"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "nmp-nip59",
  "nostr",
  "serde",
@@ -4267,7 +4266,6 @@ name = "nmp-router"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "serde",
  "serde_json",
 ]
@@ -4379,7 +4377,6 @@ name = "nmp-wot"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
- "nmp-ffi",
  "nmp-nip77",
  "nostr",
  "serde",

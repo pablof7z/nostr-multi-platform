@@ -4,9 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::LogicalInterest;
 use nmp_core::slots::ActiveLocalKeysSlot;
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{AppHost, KernelEvent};
 use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId};
-use nmp_ffi::NmpApp;
 use serde::Serialize;
 
 use crate::interest::{
@@ -15,7 +14,7 @@ use crate::interest::{
 use crate::score::WotGraph;
 
 /// Register the WOT graph observer and bootstrap controller.
-pub fn register_runtime(app: &NmpApp) {
+pub fn register_runtime(app: &impl AppHost) {
     let runtime = Arc::new(WotBootstrapRuntime::new(
         app.active_local_keys(),
         app.actor_sender(),

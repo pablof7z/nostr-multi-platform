@@ -14,12 +14,8 @@ crate-type = ["rlib"]
 # `Unfollow` — kept generic in core because the actor owns the kind:3/kind:7
 # build + sign step on its thread per D7), the `KernelEvent` /
 # `KernelEventObserver` ingest seam the `FollowListProjection` plugs into,
-# and the `NmpApp::register_action` seam `register_actions` calls.
+# and the app-neutral `ActionRegistrar` seam `register_actions` calls.
 nmp-core = { path = "../nmp-core" }
-# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
-# `nmp-core::ffi` in step 11-final). `register_actions` takes
-# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
-nmp-ffi = { path = "../nmp-ffi" }
 # `nostr` supplies `PublicKey::parse` + `ToBech32` for the npub display
 # helpers the `FollowListProjection` uses to pre-format follow rows for the
 # host shell. Only `std` is needed — no crypto features (NIP-44 / NIP-59) are

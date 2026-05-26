@@ -39,6 +39,7 @@
 //! - a per-app crate registering an observer: `nmp-app-chirp/src/ffi.rs`
 
 mod action;
+mod app_host;
 mod bounded;
 mod capability;
 mod dm_inbox_relays;
@@ -56,8 +57,9 @@ mod routing_trace;
 mod view;
 
 pub use action::{
-    ActionContext, ActionId, ActionModule, ActionRejection, ActionResult,
+    ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
+pub use app_host::AppHost;
 pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use dm_inbox_relays::{

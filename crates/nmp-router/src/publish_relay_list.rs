@@ -65,7 +65,9 @@
 //! The action namespace is `nmp.nip65.publish_relay_list` — byte-stable
 //! across the move from `nmp-nip65` so callers do not need to change.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionRegistrar, ActionRejection, UnsignedEvent,
+};
 use nmp_core::{canonical_relay_url, ActorCommand};
 use serde::{de, Deserialize, Deserializer, Serialize};
 
@@ -310,7 +312,7 @@ impl ActionModule for PublishRelayListAction {
 }
 
 /// Register the `nmp.nip65.publish_relay_list` action module on the app.
-pub fn register_actions(app: &mut nmp_ffi::NmpApp) {
+pub fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_action::<PublishRelayListAction>();
 }
 

@@ -7,10 +7,6 @@ description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptReco
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
-# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
-# `nmp-core::ffi` in step 11-final). `register_actions` takes
-# `&mut NmpApp`, so this crate names the handle through `nmp-ffi`.
-nmp-ffi = { path = "../nmp-ffi" }
 # V-43: zap-pay chain — after fetching the bolt11, `FetchLnurlInvoiceCommand`
 # auto-dispatches `WalletPayInvoiceCommand` using the process-global
 # `active_wallet_runtime()`. The correlation_id threads through so the
