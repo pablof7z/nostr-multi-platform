@@ -18,7 +18,7 @@ data class EmbedEntry(
     @SerialName("profile_name") val profileName: String? = null,
     @SerialName("profile_picture") val profilePicture: String? = null,
     val event: SignedEventJson? = null,
-    val rendered: ContentTreeDto? = null,
+    val rendered: ContentTreeWire? = null,
     val collapsed: Boolean = false,
     @SerialName("collapse_reason") val collapseReason: String? = null,
     val article: ArticleHeaderDto? = null,

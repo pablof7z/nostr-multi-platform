@@ -26,6 +26,7 @@ import org.nmp.gallery.model.EmbedEntry
 import org.nmp.gallery.model.ListDto
 import org.nmp.gallery.model.ListRowDto
 import org.nmp.gallery.model.RenderContext
+import org.nmp.gallery.model.WireNostrUri
 import org.nmp.gallery.model.visitedKey
 
 /**
@@ -35,8 +36,22 @@ import org.nmp.gallery.model.visitedKey
  * blank, never a spinner).
  */
 @Composable
+fun EmbeddedEvent(
+    uri: WireNostrUri,
+    entry: EmbedEntry?,
+    embeds: Map<String, EmbedEntry>,
+    ctx: RenderContext,
+) {
+    EmbedCard(
+        refId = uri.primaryId,
+        entry = entry,
+        embeds = embeds,
+        ctx = ctx,
+    )
+}
+
+@Composable
 fun EmbedCard(
-    uri: String,
     refId: String,
     entry: EmbedEntry?,
     embeds: Map<String, EmbedEntry>,
@@ -120,7 +135,7 @@ private fun CardBody(
         val body = entry.rendered
         if (body != null && entry.article == null && entry.list == null) {
             val childCtx = entry.event?.let { ctx.descend(visitedKey(it)) } ?: ctx
-            SegmentDtoView(tree = body, embeds = embeds, ctx = childCtx)
+            WireNodeView(tree = body, embeds = embeds, ctx = childCtx)
         }
     }
 }
