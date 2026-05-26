@@ -141,6 +141,7 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             _ => {}
         },
         KeyCode::Char('r') => state.start_reply(),
+        KeyCode::Char('z') => handle_z_key(state, runtime),
         KeyCode::Char('+') => react_to_selected(state, runtime),
         KeyCode::Char('f') => follow_selected(state, runtime, true),
         KeyCode::Char('F') => follow_selected(state, runtime, false),
@@ -334,6 +335,14 @@ fn short(value: &str) -> String {
         value.to_string()
     } else {
         format!("{}...{}", &value[..8], &value[value.len() - 4..])
+    }
+}
+
+fn handle_z_key(state: &mut AppState, _runtime: &AppRuntime) {
+    if let Some(row) = state.selected_row().cloned() {
+        state.pending_zap_pubkey = Some(row.author_pubkey);
+        state.pending_zap_event_id = Some(row.id);
+        state.start_input_bar("sats [comment]", false, "zap-amount");
     }
 }
 

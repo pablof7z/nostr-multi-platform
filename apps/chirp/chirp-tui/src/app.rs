@@ -350,7 +350,9 @@ impl AppState {
     }
 
     pub fn close_palette(&mut self) {
-        self.mode = Mode::Normal;
+        if matches!(self.mode, Mode::Palette { .. }) {
+            self.mode = Mode::Normal;
+        }
     }
 
     pub fn start_compose(&mut self) {
