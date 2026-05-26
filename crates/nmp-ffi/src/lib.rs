@@ -235,7 +235,7 @@ pub struct NmpApp {
     /// Previously-installed NIP-17 DM-inbox raw-event observer id, for the
     /// idempotent re-invoke contract on the per-app crate's
     /// `register_dm_inbox` entry point. The per-app crate (e.g. `nmp-app-chirp`)
-    /// swaps the slot atomically via [`Self::swap_nip17_dm_inbox_observer`]:
+    /// swaps the slot atomically via [`Self::swap_dm_inbox_observer`]:
     /// the previous id is taken out, the new observer is registered, and the
     /// new id is stored back — so a re-invoke unregisters the prior observer
     /// before installing the new one, instead of stacking a fresh observer on
@@ -587,7 +587,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
     // Per-app idempotency slots — track the previously-installed observer id
     // for single-instance auxiliary observer registrations a per-app crate
-    // (e.g. `nmp-app-chirp`) wires through `swap_nip17_dm_inbox_observer` /
+    // (e.g. `nmp-app-chirp`) wires through `swap_dm_inbox_observer` /
     // `swap_singleton_event_observer`. NOT shared with the actor thread —
     // the actor never reads these; only the FFI side calls the swap
     // accessors. Owned by `NmpApp`, dropped with it (so the slot dies with
@@ -1563,7 +1563,7 @@ impl NmpApp {
     /// ```ignore
     /// let new_id = app.register_raw_event_observer(filter, projection);
     /// if new_id.0 == 0 { return; }
-    /// if let Some(prev) = app.swap_nip17_dm_inbox_observer(Some(new_id)) {
+    /// if let Some(prev) = app.swap_dm_inbox_observer(Some(new_id)) {
     ///     app.unregister_raw_event_observer(prev);
     /// }
     /// ```
@@ -1574,7 +1574,7 @@ impl NmpApp {
     /// single lock acquisition makes the previous id impossible to lose to a
     /// concurrent re-invoke. A poisoned mutex degrades to `None` (D6).
     #[must_use]
-    pub fn swap_nip17_dm_inbox_observer(
+    pub fn swap_dm_inbox_observer(
         &self,
         new: Option<RawEventObserverId>,
     ) -> Option<RawEventObserverId> {
@@ -1587,7 +1587,7 @@ impl NmpApp {
     /// Atomically swap the per-app's singleton kernel-event observer-id slot:
     /// store `new` and return whatever was previously installed there.
     ///
-    /// Mirrors [`Self::swap_nip17_dm_inbox_observer`] for the typed
+    /// Mirrors [`Self::swap_dm_inbox_observer`] for the typed
     /// [`KernelEventObserver`] fan-out (in contrast to the raw signed-event
     /// tap). Same idempotent-re-invoke contract: a per-app crate that wires
     /// exactly one auxiliary `KernelEventObserver` per app uses this slot
@@ -1946,11 +1946,11 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::unregister_raw_event_observer(self, id);
     }
 
-    fn swap_nip17_dm_inbox_observer(
+    fn swap_dm_inbox_observer(
         &self,
         new: Option<RawEventObserverId>,
     ) -> Option<RawEventObserverId> {
-        NmpApp::swap_nip17_dm_inbox_observer(self, new)
+        NmpApp::swap_dm_inbox_observer(self, new)
     }
 
     fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {

@@ -69,12 +69,12 @@ fn register_dm_inbox_null_app_is_silent_noop() {
 /// also wires the runtime eagerly.
 ///
 /// Asserted observably through the per-app
-/// `swap_nip17_dm_inbox_observer` slot — the host-side handle that lets
+/// `swap_dm_inbox_observer` slot — the host-side handle that lets
 /// the function "remember the previous id and unregister it before
 /// installing the new one":
 ///
 /// 1. The first register installs an id in the slot (the fix path
-///    actively writes through `swap_nip17_dm_inbox_observer(Some(id1))`).
+///    actively writes through `swap_dm_inbox_observer(Some(id1))`).
 ///    Before the fix the slot was never written, so this assertion alone
 ///    fails on the buggy code.
 /// 2. The second register installs a FRESH id, distinct from the first —
@@ -96,24 +96,24 @@ fn register_dm_inbox_is_idempotent_on_re_invoke() {
 
     // Pre-condition: the per-app slot starts empty.
     assert!(
-        app_ref.swap_nip17_dm_inbox_observer(None).is_none(),
+        app_ref.swap_dm_inbox_observer(None).is_none(),
         "slot must start empty (no DM inbox registered yet)"
     );
 
     // First registration.
     nmp_app_chirp_register_dm_inbox(app);
     let id1 = app_ref
-        .swap_nip17_dm_inbox_observer(None)
+        .swap_dm_inbox_observer(None)
         .expect("first register must install a raw-observer id in the per-app slot");
     // Put id1 back so the SECOND register sees it as the "previous" id
     // and unregisters it before installing its own.
-    let prev = app_ref.swap_nip17_dm_inbox_observer(Some(id1));
+    let prev = app_ref.swap_dm_inbox_observer(Some(id1));
     assert!(prev.is_none(), "we just swap-took, slot was empty");
 
     // Second registration — compatibility re-invoke case.
     nmp_app_chirp_register_dm_inbox(app);
     let id2 = app_ref
-        .swap_nip17_dm_inbox_observer(None)
+        .swap_dm_inbox_observer(None)
         .expect("second register must install a fresh id in the per-app slot");
 
     // Distinct ids: the slot was overwritten with the second register's

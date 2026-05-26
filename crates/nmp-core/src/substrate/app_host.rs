@@ -98,7 +98,7 @@ pub trait AppHost: ActionRegistrar {
 
     fn unregister_raw_event_observer(&self, id: RawEventObserverId);
 
-    fn swap_nip17_dm_inbox_observer(
+    fn swap_dm_inbox_observer(
         &self,
         new: Option<RawEventObserverId>,
     ) -> Option<RawEventObserverId>;
