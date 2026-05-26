@@ -30,7 +30,7 @@ fn registered_projection_surfaces_through_make_update() {
         .register("test.counter", || serde_json::json!({ "count": 42 }));
     kernel.set_snapshot_projection_handle(slot);
 
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
 
@@ -60,7 +60,7 @@ fn multiple_projections_each_get_their_namespace() {
     kernel.set_snapshot_projection_handle(slot);
 
     let parsed: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     let projections = parsed.get("projections").expect("projections object");
     assert_eq!(
         projections.get("market.listings"),
@@ -86,7 +86,7 @@ fn multiple_projections_each_get_their_namespace() {
 fn no_host_projection_leaves_only_the_builtin_projections() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let parsed: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     let projections = parsed
         .get("projections")
         .expect("the built-in projections keep the projections map on the wire");
@@ -144,7 +144,7 @@ fn projection_registered_after_binding_still_fires() {
     // First tick: no host projection registered yet — the map carries only
     // the kernel-owned built-in publish cluster, never the `late.value` key.
     let first: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     assert!(
         first
             .get("projections")
@@ -160,7 +160,7 @@ fn projection_registered_after_binding_still_fires() {
 
     // Next tick picks it up.
     let second: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     assert_eq!(
         second
             .get("projections")
@@ -206,8 +206,8 @@ fn panicking_projection_is_contained_and_others_survive() {
     kernel.set_snapshot_projection_handle(slot);
 
     // First tick: the panic must not propagate out of `make_update`.
-    let first: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json survives a panic");
+    let first: serde_json::Value = serde_json::from_str(&kernel.make_update_json_for_test(true))
+        .expect("snapshot json survives a panic");
     let projections = first
         .get("projections")
         .expect("the surviving projection must still produce a projections object");
@@ -223,12 +223,10 @@ fn panicking_projection_is_contained_and_others_survive() {
 
     // Second tick: the kernel is still alive and still emits a valid
     // snapshot — the panic did not unwind the actor / kernel.
-    let second: serde_json::Value = serde_json::from_str(&kernel.make_update(true))
+    let second: serde_json::Value = serde_json::from_str(&kernel.make_update_json_for_test(true))
         .expect("the kernel must survive a panicking projection and keep ticking");
     assert_eq!(
-        second
-            .get("projections")
-            .and_then(|p| p.get("good.value")),
+        second.get("projections").and_then(|p| p.get("good.value")),
         Some(&serde_json::json!({ "ok": true })),
         "the good projection must keep firing on every subsequent tick",
     );
@@ -253,23 +251,22 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         // contributing `null` when no wallet is connected (D6: a poisoned
         // mutex also collapses to `null`).
         let wallet_status = wallet_status.clone();
-        projection_slot.lock().unwrap().register("wallet", move || {
-            match wallet_status.lock() {
+        projection_slot
+            .lock()
+            .unwrap()
+            .register("wallet", move || match wallet_status.lock() {
                 Ok(slot) => slot
                     .as_ref()
-                    .map(|status| {
-                        serde_json::to_value(status).unwrap_or(serde_json::Value::Null)
-                    })
+                    .map(|status| serde_json::to_value(status).unwrap_or(serde_json::Value::Null))
                     .unwrap_or(serde_json::Value::Null),
                 Err(_) => serde_json::Value::Null,
-            }
-        });
+            });
     }
     kernel.set_snapshot_projection_handle(projection_slot);
 
     // No wallet connected → projections["wallet"] is JSON null.
     let before: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     assert!(
         before
             .get("projections")
@@ -297,7 +294,7 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         is_connected: true,
     });
     let connected: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     let wallet = connected
         .get("projections")
         .and_then(|p| p.get("wallet"))
@@ -313,7 +310,9 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         "the wallet relay URL must be projected",
     );
     assert_eq!(
-        wallet.get("balance_msats").and_then(serde_json::Value::as_u64),
+        wallet
+            .get("balance_msats")
+            .and_then(serde_json::Value::as_u64),
         Some(21_000),
         "the wallet balance must be projected when known",
     );
@@ -321,17 +320,23 @@ fn _wallet_projection_moved_to_nmp_nip47() {
     // display string, the abbreviated npub, and the boolean status helpers so
     // the iOS shell never derives any of these in Swift.
     assert_eq!(
-        wallet.get("balance_sats").and_then(serde_json::Value::as_u64),
+        wallet
+            .get("balance_sats")
+            .and_then(serde_json::Value::as_u64),
         Some(21),
         "balance_sats must be projected alongside balance_msats (V-23)",
     );
     assert_eq!(
-        wallet.get("balance_sats_display").and_then(serde_json::Value::as_str),
+        wallet
+            .get("balance_sats_display")
+            .and_then(serde_json::Value::as_str),
         Some("21"),
         "balance_sats_display must be projected for the shell (V-23)",
     );
     assert_eq!(
-        wallet.get("wallet_npub_short").and_then(serde_json::Value::as_str),
+        wallet
+            .get("wallet_npub_short")
+            .and_then(serde_json::Value::as_str),
         Some("npub1walle…xample"),
         "wallet_npub_short must replace Swift shortNpub() (V-23)",
     );
@@ -341,7 +346,9 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         "is_ready must be projected to replace Swift derivation (V-23)",
     );
     assert_eq!(
-        wallet.get("is_connected").and_then(serde_json::Value::as_bool),
+        wallet
+            .get("is_connected")
+            .and_then(serde_json::Value::as_bool),
         Some(true),
         "is_connected must be projected to replace Swift derivation (V-23)",
     );
@@ -349,7 +356,7 @@ fn _wallet_projection_moved_to_nmp_nip47() {
     // Disconnect → the projection clears back to null, not a stale `ready`.
     *wallet_status.lock().unwrap() = None;
     let disconnected: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     assert!(
         disconnected
             .get("projections")

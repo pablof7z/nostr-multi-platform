@@ -249,9 +249,8 @@ fn kernel() -> Kernel {
 /// Pull the `action_lifecycle` projection out of the kernel's snapshot
 /// JSON. Returns `None` when the projection is absent (steady state).
 fn lifecycle_proj(kernel: &mut Kernel) -> Option<serde_json::Value> {
-    let snapshot_json = kernel.make_update(true);
-    let snap: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("update JSON parses");
+    let snapshot_json = kernel.make_update_json_for_test(true);
+    let snap: serde_json::Value = serde_json::from_str(&snapshot_json).expect("update JSON parses");
     snap.get("projections")
         .and_then(|p| p.get("action_lifecycle"))
         .cloned()
@@ -376,15 +375,10 @@ fn lifecycle_and_stages_share_terminal_in_same_tick() {
     // collapse. A terminal recorded once must appear in both surfaces on
     // the SAME snapshot tick (single `record_action_stage` call).
     let mut k = kernel();
-    k.record_action_stage(
-        "corr-both",
-        ActionStage::Accepted,
-        None,
-    );
+    k.record_action_stage("corr-both", ActionStage::Accepted, None);
 
-    let snapshot_json = k.make_update(true);
-    let snap: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("update JSON parses");
+    let snapshot_json = k.make_update_json_for_test(true);
+    let snap: serde_json::Value = serde_json::from_str(&snapshot_json).expect("update JSON parses");
     let projections = snap.get("projections").unwrap();
 
     let stages = projections.get("action_stages").expect("stages emitted");

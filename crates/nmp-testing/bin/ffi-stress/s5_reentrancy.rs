@@ -26,7 +26,7 @@ use crate::ffi::{
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
-use std::ffi::{c_char, c_void};
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -55,7 +55,7 @@ struct ReentryState {
     revs: Vec<u64>,
 }
 
-extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const c_char) {
+extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
     let t_entry_ms = EPOCH
         .get()
         .map(|e| e.elapsed().as_millis() as u64)
@@ -73,8 +73,8 @@ extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const c_char) {
             return;
         };
         let pk = state.pubkeys[emit_n as usize % state.pubkeys.len()].clone();
-        let rev = if !payload.is_null() {
-            let bytes = unsafe { std::ffi::CStr::from_ptr(payload) }.to_bytes();
+        let rev = if !payload.is_null() && payload_len > 0 {
+            let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
             extract_rev(bytes).unwrap_or(0)
         } else {
             0
@@ -236,8 +236,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
             .with_note("G-S5: listener thread CPU per emit avg <= 2 ms"),
     );
     report.gates.push(
-        Gate::eq("dispatch_loss", dispatch_loss as f64, 0.0)
-            .with_note("G-S5: dispatch loss == 0"),
+        Gate::eq("dispatch_loss", dispatch_loss as f64, 0.0).with_note("G-S5: dispatch loss == 0"),
     );
 
     report.notes.push(format!(

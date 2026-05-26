@@ -18,14 +18,14 @@ use crate::ffi::{
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{c_void, CString};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Shared callback counter — we only need to know the listener is alive.
 static CALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
 
-extern "C" fn sink_cb(_ctx: *mut c_void, _payload: *const c_char) {
+extern "C" fn sink_cb(_ctx: *mut c_void, _payload: *const u8, _payload_len: usize) {
     CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
 }
 
@@ -129,7 +129,11 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     // transient per-cycle allocations (CString, etc.) that are immediately freed
     // do not fail the D8 gate; only RETAINED growth fails.
     let net_heap_delta = ss_snap_after.net_heap_delta(&ss_snap_before);
-    let net_heap_slope = if ss_elapsed > 0.0 { net_heap_delta as f64 / ss_elapsed } else { 0.0 };
+    let net_heap_slope = if ss_elapsed > 0.0 {
+        net_heap_delta as f64 / ss_elapsed
+    } else {
+        0.0
+    };
     // Keep gross bytes for informational measurement.
     let ss_bytes = ss_snap_after.bytes_since(&ss_snap_before);
 
@@ -188,8 +192,12 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     // Wall time gate: within 5 s of target
     let target_secs = cfg.duration.as_secs_f64();
     report.gates.push(
-        Gate::lte("wall_seconds_over", (wall_elapsed - target_secs).max(0.0), 5.0)
-            .with_note("G-S1: wall duration == target ± 5 s"),
+        Gate::lte(
+            "wall_seconds_over",
+            (wall_elapsed - target_secs).max(0.0),
+            5.0,
+        )
+        .with_note("G-S1: wall duration == target ± 5 s"),
     );
 
     report.notes.push(format!(

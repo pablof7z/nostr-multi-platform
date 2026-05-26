@@ -20,12 +20,12 @@ caller thread ──────► │ nmp_app_*() FFI entry    │
                       │ - owns Kernel state      │
                       │ - bridges commands+relays│
                       └────────┬─────────────────┘
-                               ▼   (mpsc::Sender<String> JSON)
+                               ▼   (mpsc::Sender<Vec<u8>> FlatBuffers)
                       ┌──────────────────────────┐
                       │ Listener OS thread       │
                       │ - invokes UpdateCallback │
                       └────────┬─────────────────┘
-                               ▼   (extern "C" fn, *const c_char)
+                               ▼   (extern "C" fn, *const u8, usize)
                       ┌──────────────────────────┐
                       │ caller-supplied callback │
                       │ (Swift hops to MainActor)│

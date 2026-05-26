@@ -30,7 +30,7 @@ use crate::substrate::{SignedEvent, UnsignedEvent};
 /// conditionally inserted (only when a terminal settled this tick), so absence
 /// is reported here as `Null`.
 fn action_results(kernel: &mut Kernel) -> serde_json::Value {
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
     parsed

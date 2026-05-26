@@ -1,6 +1,7 @@
 # 17 — iOS shell: SwiftUI consumes the kernel
 
-**Status: SHIPS** (raw C FFI) · Audience: builders
+**Status: SHIPS** (legacy raw C FFI on master) · FlatBuffers transport target
+in progress · Audience: builders
 
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
@@ -8,13 +9,15 @@ gates content on "is it loaded yet?". This section shows the exact bridge that
 ships today in `ios/Chirp` (the active kernel-wired iOS app) and the rules
 that keep it doctrine-clean.
 
-## The bridge — raw C FFI today
+## The bridge — legacy raw C FFI today, FlatBuffers target
 
 There is no UniFFI on master (that is M14; see
 [15 — Codegen and FFI](15-codegen-and-ffi.md)). iOS calls the hand-written
 `extern "C"` surface in `crates/nmp-core/src/ffi.rs:44-275`
 (`nmp_app_new`, `nmp_app_start`, `nmp_app_open_author`, `nmp_app_close_thread`,
-…). One C callback delivers updates as a single JSON string.
+…). On master, one C callback delivers updates as a single JSON string. The
+transport migration replaces that callback payload with the canonical
+FlatBuffers update schema; JSON is not retained as a runtime fallback.
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
@@ -41,7 +44,7 @@ final class KernelHandle {
     func openAuthor(pubkey: String) {                  // a command. NO return value.
         pubkey.withCString { nmp_app_open_author(raw, $0) }   // fire-and-forget
     }
-    // decode(): String(cString:) → JSONDecoder (.convertFromSnakeCase) → KernelUpdate
+    // decode(): update bytes → generated FlatBuffers reader → KernelUpdate shadow
 }
 ```
 
@@ -51,8 +54,9 @@ later, via the callback, as a fresh snapshot. That is the actor model (see
 [04 — RMP + actor model](04-actor-and-tea.md)) crossing FFI intact.
 
 The C callback (`KernelBridge.swift:101-110`) is invoked **on a Rust thread**.
-It decodes JSON then `KernelModel` hops to `@MainActor` before touching any
-`@Published` (`KernelModel.swift:48-53`):
+In the legacy path it decodes JSON; in the FlatBuffers target it reads the
+generated buffer. In both cases `KernelModel` hops to `@MainActor` before
+touching any `@Published` (`KernelModel.swift:48-53`):
 
 ```swift
 kernel.listen { [weak self] result in
@@ -66,10 +70,10 @@ kernel.listen { [weak self] result in
 relay frame → kernel actor ingests → reverse-index delta → emit pacer
    │  (one snapshot per emit tick, paced by emit_hz)
    ▼
-serialize ENTIRE KernelUpdate to JSON string
+encode `AppUpdate` / `KernelUpdate` as a FlatBuffers frame
    │
-   ▼  extern "C" callback(context, *const c_char)   ── Rust thread
-KernelHandle.decode(): String(cString:) → JSONDecoder → KernelUpdateResult
+   ▼  callback(context, bytes)                       ── Rust thread
+KernelHandle.decode(): generated FlatBuffers reader → KernelUpdateResult
    │
    ▼  Task { @MainActor }                            ── hop to main
 KernelModel.apply(result):
@@ -86,11 +90,11 @@ The kernel emits a **whole snapshot** (`KernelUpdate`,
 `removed`). SwiftUI's own structural diffing turns "replace the array" into
 minimal row updates — you do not hand-patch.
 
-## JSON-update shape + the rev guard
+## FlatBuffers update shape + the rev guard
 
-`KernelUpdate` is one flat decodable struct keyed by `rev: UInt64`. The guard in
-`KernelModel.apply` (`KernelModel.swift:138-141`) is the entire concurrency
-correctness story:
+`KernelUpdate` remains the decoded shadow model keyed by `rev: UInt64`; the
+runtime frame that carries it is FlatBuffers. The guard in `KernelModel.apply`
+(`KernelModel.swift:138-141`) is the entire concurrency correctness story:
 
 ```swift
 private func apply(result: KernelUpdateResult) {
@@ -167,7 +171,7 @@ of the iOS path is drift; see [27 — Doc/code discrepancies](27-discrepancies.m
 - Annotated `KernelHandle` snippet — opaque ptr, fire-and-forget commands,
   ordered teardown, unmanaged callback box.
 - Rust emit → SwiftUI re-render sequence with the rev guard placed exactly.
-- JSON-update shape + rev-guard code; per-iOS-app status box.
+- FlatBuffers update shape + rev-guard code; per-iOS-app status box.
 
 See also: [04 — RMP + actor model (TEA on one thread)](04-actor-and-tea.md) ·
 [15 — Codegen and FFI](15-codegen-and-ffi.md) ·

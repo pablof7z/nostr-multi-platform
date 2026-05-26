@@ -74,6 +74,12 @@ pub fn file_is_test_only(path: &Path) -> bool {
     if s.contains("/tests/") || s.contains("/examples/") {
         return true;
     }
+    // Generated bindings are reproducible output from external tools; scanning
+    // their internal unwraps as hand-authored D6 violations creates churn
+    // without changing production error handling.
+    if s.contains("/generated/") {
+        return true;
+    }
     // Test-only crate source: `nmp-testing` (test harnesses, stress binaries)
     // and `nmp-content-fixtures` (fixture builders) are never linked into
     // production artifacts. Using `.expect()` there is appropriate.
@@ -88,10 +94,22 @@ pub fn file_is_test_only(path: &Path) -> bool {
 }
 
 const BANNED_PATTERNS: &[(&str, &str)] = &[
-    ("panic!(", "return `Err` or set a toast field; bubble up via `Result`"),
-    ("unreachable!(", "return `Err(KernelError::Invariant(...))` and document the supposedly-impossible state"),
-    ("unimplemented!(", "stub with `Err(KernelError::NotImplemented)` or guard behind a feature flag"),
-    ("todo!(", "delete or implement before merging; D6 forbids reachable `todo!`"),
+    (
+        "panic!(",
+        "return `Err` or set a toast field; bubble up via `Result`",
+    ),
+    (
+        "unreachable!(",
+        "return `Err(KernelError::Invariant(...))` and document the supposedly-impossible state",
+    ),
+    (
+        "unimplemented!(",
+        "stub with `Err(KernelError::NotImplemented)` or guard behind a feature flag",
+    ),
+    (
+        "todo!(",
+        "delete or implement before merging; D6 forbids reachable `todo!`",
+    ),
 ];
 
 /// Per-file scanner state. Tracks the previous non-comment line's trailing
@@ -145,7 +163,10 @@ pub fn check(
         if let Some(rel) = line.find(token) {
             hits.push((
                 rel + 1,
-                format!("`{}` violates D6 — errors must not cross FFI as exceptions", token.trim_end_matches('(')),
+                format!(
+                    "`{}` violates D6 — errors must not cross FFI as exceptions",
+                    token.trim_end_matches('(')
+                ),
                 (*suggested).to_string(),
             ));
         }
@@ -160,7 +181,8 @@ pub fn check(
             hits.push((
                 rel + 1,
                 "`.unwrap()` violates D6 — return `Result` or default and toast".to_string(),
-                "use `?` to propagate `Result`, or `.unwrap_or(default)` for fallible defaults".to_string(),
+                "use `?` to propagate `Result`, or `.unwrap_or(default)` for fallible defaults"
+                    .to_string(),
             ));
         }
     }
@@ -173,7 +195,8 @@ pub fn check(
             hits.push((
                 rel + 1,
                 "`.expect(...)` violates D6 — return `Result` or default and toast".to_string(),
-                "use `?` with a meaningful `KernelError` variant; if invariant, prefer `assert!`".to_string(),
+                "use `?` with a meaningful `KernelError` variant; if invariant, prefer `assert!`"
+                    .to_string(),
             ));
         }
     }
@@ -252,7 +275,11 @@ mod tests {
         let _ = check(&mut state, "        self.optional_thing", false, false);
         let _ = check(&mut state, "            .as_ref()", false, false);
         let hits = check(&mut state, "            .unwrap()", false, false);
-        assert_eq!(hits.len(), 1, "multi-line chain not via lock() is still a hit");
+        assert_eq!(
+            hits.len(),
+            1,
+            "multi-line chain not via lock() is still a hit"
+        );
     }
 
     #[test]
@@ -275,7 +302,9 @@ mod tests {
     fn test_only_filename_exemption_matches_suffix_prefix_and_exacts() {
         use std::path::Path;
         // Exact-name list.
-        assert!(file_is_test_only(Path::new("crates/nmp-core/src/kernel/tests.rs")));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/tests.rs"
+        )));
         // `test_fixtures.rs` — exact-name exemption added by T154.
         assert!(file_is_test_only(Path::new(
             "crates/nmp-core/src/store/lmdb/test_fixtures.rs"
@@ -298,7 +327,9 @@ mod tests {
         assert!(file_is_test_only(Path::new(
             "crates/nmp-core/src/kernel/auth_tests.rs"
         )));
-        assert!(file_is_test_only(Path::new("foo/bar/some_feature_tests.rs")));
+        assert!(file_is_test_only(Path::new(
+            "foo/bar/some_feature_tests.rs"
+        )));
         // `tests_*.rs` prefix — T154: files like `tests_kind5.rs` whose
         // `#[cfg(all(test, ...))] mod tests_kind5;` declaration lives in the
         // parent and is invisible to the line walker.
@@ -307,9 +338,13 @@ mod tests {
         )));
         assert!(file_is_test_only(Path::new("foo/bar/tests_scenario.rs")));
         // `/tests/` directory.
-        assert!(file_is_test_only(Path::new("crates/x/tests/integration.rs")));
+        assert!(file_is_test_only(Path::new(
+            "crates/x/tests/integration.rs"
+        )));
         // `/examples/` directory — standalone binary examples use `.expect()` by idiom.
-        assert!(file_is_test_only(Path::new("crates/nmp-core/examples/outbox_perf/main.rs")));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/examples/outbox_perf/main.rs"
+        )));
         // Negatives: production files must NOT be exempted.
         assert!(!file_is_test_only(Path::new(
             "crates/nmp-core/src/ffi/capability.rs"

@@ -224,15 +224,6 @@ private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
-/// Optional `{ "t":"snapshot", "v": GallerySnapshot }` outer envelope. The
-/// Chirp kernel update channel wraps payloads in this shape; the parallel
-/// gallery crate may follow the same convention. We try the direct
-/// `GallerySnapshot` decode first and fall back to the envelope.
-private struct GalleryEnvelope: Decodable {
-    let t: String?
-    let v: GallerySnapshot
-}
-
 /// Minimal `accounts` row decoder. Phase 1 doesn't render accounts but
 /// keeping a typed slot here means phase 2 (sign-in demo) can wire UI
 /// without re-writing the model.
@@ -256,9 +247,9 @@ struct AccountWire: Decodable, Equatable {
     }
 }
 
-/// `@Observable` mirror of the gallery snapshot. The kernel pushes JSON
-/// updates through `GalleryKernelHandle.listen`; this class decodes them
-/// and republishes for SwiftUI consumption.
+/// `@Observable` mirror of the gallery snapshot. The kernel pushes
+/// FlatBuffers update frames through `GalleryKernelHandle.listen`; this class
+/// decodes them and republishes for SwiftUI consumption.
 @MainActor
 @Observable
 final class GalleryModel {
@@ -280,7 +271,7 @@ final class GalleryModel {
         // state.
         kernel.listen { [weak self] payload in
             Task { @MainActor [weak self] in
-                self?.decode(payload: payload)
+                self?.decode(frame: payload)
             }
         }
         kernel.start()
@@ -307,44 +298,15 @@ final class GalleryModel {
         kernel.openAuthor(pubkey: DEMO_PUBKEY_HEX)
     }
 
-    /// Decode a snapshot JSON payload received from the push callback.
-    /// Detects the Chirp-style `{ "t":"snapshot", "v":{…} }` envelope first —
-    /// the gallery's `register_defaults` composition ships every tick wrapped
-    /// in that envelope (the field-name discriminator is the `t` key). Direct
-    /// `GallerySnapshot` decode is the legacy / test-fixture fallback.
-    ///
-    /// A decode failure logs and keeps the previous snapshot intact (soft-fail).
-    func decode(payload: String) {
-        guard !payload.isEmpty else { return }
-        let data = Data(payload.utf8)
+    /// Decode a FlatBuffers update frame received from the push callback. A
+    /// decode failure logs and keeps the previous snapshot intact (soft-fail).
+    func decode(frame: Data) {
+        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
+            return
+        }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        // Envelope-vs-direct discriminator. The kernel's update-channel
-        // payload always carries a top-level `t` key when wrapped (every
-        // production tick does). A payload without `t` is treated as a
-        // direct `GallerySnapshot` (legacy / test fixtures).
-        let isEnvelope: Bool = {
-            guard
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return false }
-            return json["t"] != nil && json["v"] is [String: Any]
-        }()
-
-        if isEnvelope {
-            do {
-                let envelope = try decoder.decode(GalleryEnvelope.self, from: data)
-                self.snapshot = envelope.v
-                self.lastDecodeError = nil
-            } catch {
-                let msg = "GallerySnapshot envelope decode failed: \(error.localizedDescription)"
-                gmLog.error("\(msg, privacy: .public)")
-                self.lastDecodeError = msg
-            }
-            return
-        }
-
-        // Direct payload — `{ running, projections, accounts }`.
         do {
             let next = try decoder.decode(GallerySnapshot.self, from: data)
             self.snapshot = next

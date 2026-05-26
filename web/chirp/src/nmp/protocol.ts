@@ -42,7 +42,7 @@ export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
   | { type: "runtime_status"; status: RuntimeStatus; correlation_id?: string }
   | { type: "action_accepted"; action_type: string; correlation_id: string }
-  | { type: "update"; envelope: unknown }
+  | { type: "update_bytes"; bytes: Uint8Array | number[] }
   | {
       type: "capability_failure";
       capability: string;
@@ -67,7 +67,7 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
     case "error":
       return event.correlation_id;
     case "hello_accepted":
-    case "update":
+    case "update_bytes":
       return undefined;
   }
 }

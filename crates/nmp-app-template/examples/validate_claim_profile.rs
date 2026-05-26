@@ -23,35 +23,34 @@
 //! `BootstrapSeed::IndexerOnly`. Both hit the same `purplepag.es`
 //! fallback; the snapshot can't tell which leg delivered first.
 //!
-//! Wire frame: `{"t":"snapshot","v":<KernelSnapshot>}` — see
-//! `nmp_core::update_envelope::wrap_snapshot`.
+//! Runtime wire frame: FlatBuffers `nmp.transport.UpdateFrame`. The example
+//! converts the decoded snapshot to JSON only for its local CLI assertions.
 
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_free, nmp_app_new, nmp_app_open_author,
     nmp_app_set_update_callback, nmp_app_start,
 };
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_void, CString};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-const PABLOF7Z_PUBKEY: &str =
-    "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+const PABLOF7Z_PUBKEY: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
 const CONSUMER_ID: &str = "validate-test";
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-extern "C" fn update_cb(context: *mut c_void, payload: *const c_char) {
+extern "C" fn update_cb(context: *mut c_void, payload: *const u8, len: usize) {
     if context.is_null() || payload.is_null() {
         return;
     }
-    // SAFETY: `payload` is a borrowed nul-terminated C string for the
-    // callback's lifetime (nmp-ffi listener contract); `context` is the
-    // leaked `Box<Sender<String>>` from `main` and stays valid program-wide.
-    let s = match unsafe { CStr::from_ptr(payload) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return,
+    // SAFETY: `payload` is borrowed for the callback lifetime; `context` is
+    // the leaked `Box<Sender<String>>` from `main` and stays valid program-wide.
+    let bytes = unsafe { std::slice::from_raw_parts(payload, len) };
+    let Ok(snapshot) = nmp_core::decode_snapshot_payload(bytes) else {
+        return;
     };
     let tx = unsafe { &*(context as *const Sender<String>) };
-    let _ = tx.send(s.to_owned());
+    let envelope = serde_json::json!({ "t": "snapshot", "v": snapshot });
+    let _ = tx.send(envelope.to_string());
 }
 
 fn find_display_name(payload: &str, pubkey: &str) -> Option<String> {
@@ -88,14 +87,18 @@ fn dump_last_snapshot(payload: &str) {
         eprintln!(
             "  metrics: profile_events={}, generated_events={}, frames_rx={}",
             m.get("profile_events").unwrap_or(&serde_json::Value::Null),
-            m.get("generated_events").unwrap_or(&serde_json::Value::Null),
+            m.get("generated_events")
+                .unwrap_or(&serde_json::Value::Null),
             m.get("frames_rx").unwrap_or(&serde_json::Value::Null),
         );
     }
     if let Some(statuses) = snapshot.get("relay_statuses") {
         eprintln!("  relay_statuses = {statuses}");
     }
-    if let Some(av) = snapshot.get("projections").and_then(|p| p.get("author_view")) {
+    if let Some(av) = snapshot
+        .get("projections")
+        .and_then(|p| p.get("author_view"))
+    {
         eprintln!("  projections.author_view = {av}");
     }
 }
@@ -127,7 +130,9 @@ fn main() -> std::process::ExitCode {
     let mut exit_code = std::process::ExitCode::from(1);
 
     loop {
-        let Some(remaining) = TIMEOUT.checked_sub(started.elapsed()).filter(|r| !r.is_zero())
+        let Some(remaining) = TIMEOUT
+            .checked_sub(started.elapsed())
+            .filter(|r| !r.is_zero())
         else {
             eprintln!(
                 "FAIL: timed out after {:?} (ticks={ticks})",

@@ -1,6 +1,7 @@
 # 15 — Codegen: `nmp gen modules` + per-app FFI crate
 
-**Status: SHIPS** (codegen + raw C FFI) · UniFFI/`nmp init` are PLANNED · Audience: both
+**Status: SHIPS** (codegen + legacy raw C FFI) · FlatBuffers transport
+migration is in progress · UniFFI/`nmp init` are PLANNED · Audience: both
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. Each
 layer contributes typed `Action`/`Update`/`ViewSpec` variants. The FFI boundary
@@ -8,8 +9,9 @@ needs **concrete closed enums** (ADR-0010 rejected a type-erased registry). You
 do not hand-write that aggregation — `nmp-codegen` generates it from a manifest.
 
 This section covers the manifest format, the generated outputs, and — critically
-— the gap between **what ships today** (raw C JSON-over-string FFI) and **what
-the design targets** (UniFFI at M14, `nmp init` at M16).
+— the gap between **what ships today** (legacy raw C JSON-over-string FFI on
+master) and **what the design targets** (FlatBuffers as the canonical runtime
+update transport, UniFFI for bindings/lifecycle at M14, `nmp init` at M16).
 
 ## The manifest: `nmp.toml`
 
@@ -98,17 +100,25 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 
 ```
 ┌─ TODAY (SHIPS) ─────────────────────────────────────────────────────┐
-│ Raw C FFI. crates/nmp-core/src/ffi.rs:44-275 exports `nmp_app_*`     │
+│ Legacy raw C FFI. crates/nmp-core/src/ffi.rs exports `nmp_app_*`     │
 │ extern "C" fns (nmp_app_new, nmp_app_start, nmp_app_open_author …).  │
-│ Updates cross as ONE JSON string via an extern "C" callback.        │
+│ On master, updates still cross as one JSON string via a callback.    │
+│ That is the historical transport being retired, not a fallback path. │
 │ The GENERATED FfiApp (generate.rs:158) is a STUB: dispatch() just   │
 │ bumps `rev` and returns KernelUpdate::Diagnostics. It does not yet  │
 │ wire to the live actor — the live actor is reached through the      │
 │ hand-written raw C FFI in nmp-core, which ios/Chirp consumes.       │
+├─ FlatBuffers runtime transport (IN PROGRESS) ───────────────────────┤
+│ One canonical schema carries `FullState`, `ViewBatch`, and effects   │
+│ from Rust to frontend shells. JSON is allowed only for Nostr relay    │
+│ frames, diagnostics/goldens, legacy raw-C migration shims, or tests. │
+│ There is no runtime "try FlatBuffers, fall back to JSON" mode.       │
 ├─ M14 — UniFFI (PLANNED, docs/plan/m14-uniffi.md) ───────────────────┤
 │ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +       │
-│ `#[derive(uniffi::Enum)]` (see ADR-0010 §Codegen output). iOS stops │
-│ importing NmpCore.h; imports the generated Swift module. NOT built. │
+│ lifecycle/binding wrappers (see ADR-0010 §Codegen output). iOS stops │
+│ importing NmpCore.h; imports the generated Swift module. UniFFI owns │
+│ object lifetime, callbacks, and capability interfaces; it is not the │
+│ hot update payload format. NOT built.                               │
 ├─ M16 — `nmp init` CLI (PLANNED, docs/plan/m16-cli-starter.md) ──────┤
 │ `nmp init`, `nmp add module`, `nmp gen modules`, `nmp doctor`.      │
 │ There is NO `nmp` binary today — codegen is a library API           │
@@ -119,7 +129,8 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 ADR-0010 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
 `bindings/{swift,kotlin,typescript}/` tree. **That is the M14 target shape, not
 master.** Master emits plain `#[derive(Clone, Debug, PartialEq)]` and no
-bindings dir. Any doc or agent claiming UniFFI ships today is drift — file it
+bindings dir. Any doc or agent claiming UniFFI ships today, or claiming JSON
+remains a runtime fallback after the FlatBuffers migration, is drift — file it
 into [27 — Doc/code discrepancies](27-discrepancies.md).
 
 ## Why generated enums, not a registry (ADR-0010)
@@ -136,21 +147,25 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
 1. **Hand-editing generated files.** `generate_modules` calls
    `fs::remove_dir_all(out_dir)` (`generate.rs:14-16`) on every run — your edits
    are deleted. Add a real module crate and a manifest entry instead.
-2. **Expecting UniFFI today.** The generated `FfiApp` is a stub returning
-   `Diagnostics`. The live path is raw C (`nmp-core/src/ffi.rs`). UniFFI is M14.
-3. **Assuming an `nmp` binary exists.** `nmp gen modules` / `nmp init` are
+2. **Expecting UniFFI to carry hot update payloads.** UniFFI is the planned
+   generated binding/lifecycle surface. Runtime updates are FlatBuffers.
+3. **Adding a JSON runtime fallback.** JSON may exist in legacy raw-C shims,
+   relay protocol frames, fixtures, and diagnostics. It must not be a second
+   production update transport.
+4. **Assuming an `nmp` binary exists.** `nmp gen modules` / `nmp init` are
    PLANNED names. Today you call `nmp_codegen::generate_modules` from Rust.
-4. **Putting domain types in `nmp-core` to "simplify codegen."** Module variant
+5. **Putting domain types in `nmp-core` to "simplify codegen."** Module variant
    types belong in protocol/app crates; `nmp-core` stays noun-free (D0). Codegen
    composes — it never hosts app types.
-5. **Relying on `[platforms]` in `nmp.toml`.** The parser ignores it today;
+6. **Relying on `[platforms]` in `nmp.toml`.** The parser ignores it today;
    gating builds on those keys silently no-ops.
 
 ## Concrete deliverables recap
 
 - Annotated `nmp.toml` (above) — the five keys the parser actually reads.
 - Before/after `AppAction` diff — what one `[modules]` line adds, hands-free.
-- Current-vs-future FFI box — raw C JSON today, UniFFI M14, `nmp init` M16.
+- Current-vs-future FFI box — legacy raw C JSON today, FlatBuffers runtime
+  transport target, UniFFI M14, `nmp init` M16.
 
 See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·

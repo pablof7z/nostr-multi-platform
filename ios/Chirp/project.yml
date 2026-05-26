@@ -10,12 +10,18 @@ settings:
     GENERATE_INFOPLIST_FILE: NO
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 456SHKPP26
+packages:
+  FlatBuffers:
+    url: https://github.com/google/flatbuffers.git
+    from: 25.12.19
 targets:
   Chirp:
     type: application
     platform: iOS
     sources:
       - path: Chirp
+    dependencies:
+      - package: FlatBuffers
     info:
       path: Chirp/Info.plist
       properties:

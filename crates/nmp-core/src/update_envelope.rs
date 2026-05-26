@@ -1,119 +1,296 @@
-//! The canonical wire envelope for the single `update_tx` channel.
+//! Canonical FlatBuffers update frames for the single kernel→host channel.
 //!
-//! Every frame on the channel is one tagged outer object:
+//! Every runtime frame is a binary `nmp.transport.UpdateFrame` with file
+//! identifier `NMPU`. The frame has exactly two variants:
 //!
-//! ```json
-//! {"t":"snapshot","v":<snapshot>}
-//! {"t":"panic","v":{"msg":<thread panic message>}}
-//! ```
+//! - `Snapshot`: carries the full `KernelSnapshot` as a FlatBuffers value tree.
+//! - `Panic`: terminal actor-thread death signal.
 //!
-//! so every consumer decodes exactly **one** discriminated type ([`UpdateEnvelope`]).
-//!
-//! D6 (FFI clean): the tag *is* the discriminant — no exceptions, no key
-//! sniffing. D8 (no extra per-event alloc): the snapshot is already a
-//! serialized `String`; it is re-attached by **borrowed** [`RawValue`] (no
-//! re-parse, no clone of the payload), so wrapping costs a single outer
-//! allocation.
-//!
-//! ## Actor-death contract (D7)
-//!
-//! The actor thread runs the kernel loop. If it panics or exits, every
-//! subsequent `send_cmd` is silently dropped (the command channel closes with
-//! no signal to the host). To make that failure observable, the FFI actor
-//! supervisor emits exactly one [`UpdateEnvelope::Panic`] frame on the update
-//! channel **before** the channel closes. Hosts MUST treat a `Panic` frame as
-//! terminal: the kernel is gone and will not recover within this process —
-//! surface a fatal error to the user; do not keep sending commands.
+//! The payload is deliberately not a JSON string embedded in a binary wrapper.
+//! Host-extensible projections still need a generic value representation, so
+//! the schema models JSON-like primitives as FlatBuffers tables instead of
+//! pinning every app projection into `nmp-core`.
 
-use serde::{Deserialize, Serialize};
-use serde_json::value::RawValue;
+use crate::transport::wire as fb;
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use serde_json::{Map, Number, Value};
+use std::fmt;
 
-/// Schema version of the periodic snapshot payload (the `{"rev":…,"items":…}`
-/// object inside an [`UpdateEnvelope::Snapshot`] frame). Bump on **any**
-/// breaking change to a snapshot field — a rename, a removal, or a type change.
-///
-/// Every emitted snapshot carries this value in its `schema_version` field.
-///
-/// If `schema_version` doesn't match the version the host was compiled
-/// against, the host should show an error and refuse to decode further —
-/// **do not silently ignore unknown fields**. A renamed or retyped field
-/// decodes to wrong/null data with no diagnostic signal otherwise; a loud
-/// mismatch is the only safe failure mode.
+/// Schema version of the periodic snapshot payload. Bump on any breaking
+/// snapshot field change.
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
-/// Carrier for the [`UpdateEnvelope::Panic`] payload — the actor-thread death
-/// signal (D7). `msg` is the captured panic message when the runtime could
-/// downcast it (`&str` / `String` payloads); a non-string panic payload
-/// degrades to a stable placeholder rather than dropping the frame.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Owned bytes for one FlatBuffers `nmp.transport.UpdateFrame`.
+pub type UpdateFrameBytes = Vec<u8>;
+
+/// Actor-thread death payload. Terminal: hosts must stop sending commands.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PanicFrame {
-    /// Thread panic message, best-effort. Always populated — never empty.
     pub msg: String,
 }
 
-/// Borrowing **emit-side** envelope. Used only to *serialize* a frame onto the
-/// channel; the snapshot half borrows its already-serialized JSON so wrapping
-/// never re-parses or clones the (large) payload (D8).
-#[derive(Debug, Serialize)]
-#[serde(tag = "t", content = "v", rename_all = "snake_case")]
-pub enum WireEnvelope<'a> {
-    /// The periodic `Kernel::make_update` snapshot, already serialized.
-    Snapshot(&'a RawValue),
-    /// Actor-thread death (D7) — the kernel loop panicked or exited.
-    Panic(&'a PanicFrame),
-}
-
-/// Owning **consumer-side** envelope. This is the single discriminated type
-/// every host (and every `nmp-codegen`-projected shell) decodes the channel
-/// into. The snapshot interior stays opaque ([`serde_json::Value`]) on
-/// purpose: the contract this type models is the *discriminator*, not the
-/// ~30-field snapshot's internals (which remain a crate-internal struct).
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "t", content = "v", rename_all = "snake_case")]
+/// Decoded view used by Rust consumers and tests. Runtime transport remains
+/// FlatBuffers bytes; this enum is not the wire shape.
+#[derive(Clone, Debug, PartialEq)]
 pub enum UpdateEnvelope {
-    /// A full snapshot — the host replaces its rendered state.
-    Snapshot(serde_json::Value),
-    /// The actor thread died (panicked or exited). Terminal: the kernel is
-    /// gone for this process. Hosts MUST surface a fatal error and stop
-    /// sending commands — see the actor-death contract above.
+    Snapshot(Value),
     Panic(PanicFrame),
 }
 
-/// Wrap an **already-serialized** snapshot JSON string as
-/// `{"t":"snapshot","v":…}` without re-parsing it (D8 — one outer alloc).
-///
-/// D6: if the snapshot string is somehow not valid JSON the frame is dropped
-/// (`None`) rather than panicking.
-#[must_use] 
-pub fn wrap_snapshot(snapshot_json: String) -> Option<String> {
-    let raw = RawValue::from_string(snapshot_json).ok()?;
-    serde_json::to_string(&WireEnvelope::Snapshot(&raw)).ok()
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum UpdateFrameDecodeError {
+    InvalidFlatbuffer(String),
+    MissingSnapshotPayload,
+    MissingPanicPayload,
+    UnexpectedPanicFrame(String),
 }
 
-/// Build the actor-death frame `{"t":"panic","v":{"msg":…}}` (D7).
-///
-/// `msg` is the best-effort thread panic message. The result decodes cleanly
-/// into [`UpdateEnvelope::Panic`] — unlike an ad-hoc `{"t":"panic","m":…}`
-/// string, which does NOT match the envelope's `tag`/`content` schema and
-/// would fail `UpdateEnvelope` deserialization.
-///
-/// D6: this is infallible in practice — a `String` always serializes — but a
-/// serialization failure degrades to a hand-written constant frame so the
-/// host still receives a decodable terminal signal rather than nothing.
-pub fn wrap_panic(msg: impl Into<String>) -> String {
-    let frame = PanicFrame { msg: msg.into() };
-    serde_json::to_string(&WireEnvelope::Panic(&frame))
-        .unwrap_or_else(|_| r#"{"t":"panic","v":{"msg":"actor thread died"}}"#.to_string())
+impl fmt::Display for UpdateFrameDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidFlatbuffer(msg) => write!(f, "invalid update frame: {msg}"),
+            Self::MissingSnapshotPayload => write!(f, "snapshot frame missing payload"),
+            Self::MissingPanicPayload => write!(f, "panic frame missing payload"),
+            Self::UnexpectedPanicFrame(msg) => write!(f, "expected snapshot, got panic: {msg}"),
+        }
+    }
 }
 
-/// Best-effort message extraction from a [`std::panic::catch_unwind`] error
-/// payload (D7). `panic!("…")`, `unwrap`, and `expect` all produce a `String`
-/// or `&'static str` payload; anything else (a non-string `panic_any`)
-/// degrades to a stable placeholder so the actor-death frame still fires.
-///
-/// Factored out of the FFI actor supervisor so the downcast logic — the only
-/// part of the actor-death path with a branch — is unit-testable without
-/// spawning a thread or crossing the C ABI.
+impl std::error::Error for UpdateFrameDecodeError {}
+
+/// Encode a full snapshot payload as one FlatBuffers update frame.
+#[must_use]
+pub fn encode_snapshot_value(snapshot: Value) -> UpdateFrameBytes {
+    let mut builder = FlatBufferBuilder::new();
+    let payload = encode_value(&mut builder, &snapshot);
+    let snapshot = fb::SnapshotFrame::create(
+        &mut builder,
+        &fb::SnapshotFrameArgs {
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            payload: Some(payload),
+        },
+    );
+    let root = fb::UpdateFrame::create(
+        &mut builder,
+        &fb::UpdateFrameArgs {
+            kind: fb::FrameKind::Snapshot,
+            snapshot: Some(snapshot),
+            panic: None,
+        },
+    );
+    fb::finish_update_frame_buffer(&mut builder, root);
+    builder.finished_data().to_vec()
+}
+
+/// Encode the terminal actor-death signal as one FlatBuffers update frame.
+#[must_use]
+pub fn encode_panic(msg: impl Into<String>) -> UpdateFrameBytes {
+    let mut builder = FlatBufferBuilder::new();
+    let msg = builder.create_string(&msg.into());
+    let panic = fb::PanicFrame::create(&mut builder, &fb::PanicFrameArgs { msg: Some(msg) });
+    let root = fb::UpdateFrame::create(
+        &mut builder,
+        &fb::UpdateFrameArgs {
+            kind: fb::FrameKind::Panic,
+            snapshot: None,
+            panic: Some(panic),
+        },
+    );
+    fb::finish_update_frame_buffer(&mut builder, root);
+    builder.finished_data().to_vec()
+}
+
+pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDecodeError> {
+    if !fb::update_frame_buffer_has_identifier(bytes) {
+        return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
+            "missing NMPU file identifier".to_string(),
+        ));
+    }
+    let frame = fb::root_as_update_frame(bytes)
+        .map_err(|err| UpdateFrameDecodeError::InvalidFlatbuffer(format!("{err:?}")))?;
+    match frame.kind() {
+        kind if kind == fb::FrameKind::Snapshot => {
+            let snapshot = frame
+                .snapshot()
+                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+            let payload = snapshot
+                .payload()
+                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+            Ok(UpdateEnvelope::Snapshot(decode_value(payload)))
+        }
+        kind if kind == fb::FrameKind::Panic => {
+            let panic = frame
+                .panic()
+                .ok_or(UpdateFrameDecodeError::MissingPanicPayload)?;
+            Ok(UpdateEnvelope::Panic(PanicFrame {
+                msg: panic.msg().to_string(),
+            }))
+        }
+        other => Err(UpdateFrameDecodeError::InvalidFlatbuffer(format!(
+            "unknown frame kind {}",
+            other.0
+        ))),
+    }
+}
+
+pub fn decode_snapshot_payload(bytes: &[u8]) -> Result<Value, UpdateFrameDecodeError> {
+    match decode_update_frame(bytes)? {
+        UpdateEnvelope::Snapshot(value) => Ok(value),
+        UpdateEnvelope::Panic(panic) => {
+            Err(UpdateFrameDecodeError::UnexpectedPanicFrame(panic.msg))
+        }
+    }
+}
+
+fn encode_value<'bldr>(
+    builder: &mut FlatBufferBuilder<'bldr>,
+    value: &Value,
+) -> WIPOffset<fb::Value<'bldr>> {
+    match value {
+        Value::Null => fb::Value::create(
+            builder,
+            &fb::ValueArgs {
+                kind: fb::ValueKind::Null,
+                ..Default::default()
+            },
+        ),
+        Value::Bool(v) => fb::Value::create(
+            builder,
+            &fb::ValueArgs {
+                kind: fb::ValueKind::Bool,
+                bool_value: *v,
+                ..Default::default()
+            },
+        ),
+        Value::Number(v) => encode_number(builder, v),
+        Value::String(v) => {
+            let string = builder.create_string(v);
+            fb::Value::create(
+                builder,
+                &fb::ValueArgs {
+                    kind: fb::ValueKind::String,
+                    string_value: Some(string),
+                    ..Default::default()
+                },
+            )
+        }
+        Value::Array(values) => {
+            let offsets: Vec<_> = values
+                .iter()
+                .map(|value| encode_value(builder, value))
+                .collect();
+            let list = builder.create_vector(&offsets);
+            fb::Value::create(
+                builder,
+                &fb::ValueArgs {
+                    kind: fb::ValueKind::List,
+                    list: Some(list),
+                    ..Default::default()
+                },
+            )
+        }
+        Value::Object(values) => {
+            let offsets: Vec<_> = values
+                .iter()
+                .map(|(key, value)| {
+                    let key = builder.create_string(key);
+                    let value = encode_value(builder, value);
+                    fb::Pair::create(
+                        builder,
+                        &fb::PairArgs {
+                            key: Some(key),
+                            value: Some(value),
+                        },
+                    )
+                })
+                .collect();
+            let map = builder.create_vector(&offsets);
+            fb::Value::create(
+                builder,
+                &fb::ValueArgs {
+                    kind: fb::ValueKind::Map,
+                    map: Some(map),
+                    ..Default::default()
+                },
+            )
+        }
+    }
+}
+
+fn encode_number<'bldr>(
+    builder: &mut FlatBufferBuilder<'bldr>,
+    value: &Number,
+) -> WIPOffset<fb::Value<'bldr>> {
+    if let Some(v) = value.as_i64() {
+        fb::Value::create(
+            builder,
+            &fb::ValueArgs {
+                kind: fb::ValueKind::Int,
+                int_value: v,
+                ..Default::default()
+            },
+        )
+    } else if let Some(v) = value.as_u64() {
+        fb::Value::create(
+            builder,
+            &fb::ValueArgs {
+                kind: fb::ValueKind::UInt,
+                uint_value: v,
+                ..Default::default()
+            },
+        )
+    } else {
+        fb::Value::create(
+            builder,
+            &fb::ValueArgs {
+                kind: fb::ValueKind::Float,
+                float_value: value.as_f64().unwrap_or_default(),
+                ..Default::default()
+            },
+        )
+    }
+}
+
+fn decode_value(value: fb::Value<'_>) -> Value {
+    match value.kind() {
+        kind if kind == fb::ValueKind::Null => Value::Null,
+        kind if kind == fb::ValueKind::Bool => Value::Bool(value.bool_value()),
+        kind if kind == fb::ValueKind::Int => Value::Number(Number::from(value.int_value())),
+        kind if kind == fb::ValueKind::UInt => Value::Number(Number::from(value.uint_value())),
+        kind if kind == fb::ValueKind::Float => Number::from_f64(value.float_value())
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        kind if kind == fb::ValueKind::String => value
+            .string_value()
+            .map(|value| Value::String(value.to_string()))
+            .unwrap_or(Value::Null),
+        kind if kind == fb::ValueKind::List => {
+            let values = value
+                .list()
+                .map(|list| {
+                    (0..list.len())
+                        .map(|index| decode_value(list.get(index)))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Value::Array(values)
+        }
+        kind if kind == fb::ValueKind::Map => {
+            let mut values = Map::new();
+            if let Some(map) = value.map() {
+                for index in 0..map.len() {
+                    let pair = map.get(index);
+                    let value = pair.value().map(decode_value).unwrap_or(Value::Null);
+                    values.insert(pair.key().to_string(), value);
+                }
+            }
+            Value::Object(values)
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Best-effort message extraction from a `catch_unwind` payload.
 pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(s) = payload.downcast_ref::<String>() {
         s.clone()
@@ -128,87 +305,34 @@ pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 mod tests {
     use super::*;
 
-    /// The on-wire tag value MUST be exactly `"snapshot"` (snake_case), never
-    /// the Rust variant casing — hosts pin this string.
     #[test]
-    fn tag_strings_are_snake_case_lowercase() {
-        let snap = wrap_snapshot(r#"{"rev":7,"open_views":2}"#.to_string())
-            .expect("snapshot serializes");
-        assert!(
-            snap.starts_with(r#"{"t":"snapshot","v":"#),
-            "snapshot frame must be tagged t=snapshot: {snap}"
-        );
+    fn snapshot_frame_has_flatbuffer_identifier_and_round_trips() {
+        let payload = serde_json::json!({
+            "schema_version": SNAPSHOT_SCHEMA_VERSION,
+            "rev": 42,
+            "running": true,
+            "projections": { "timeline": [{ "id": "a", "score": 1.5 }] }
+        });
+        let wire = encode_snapshot_value(payload.clone());
+        assert!(fb::update_frame_buffer_has_identifier(&wire));
+        assert_eq!(decode_snapshot_payload(&wire).expect("decode"), payload);
     }
 
-    /// Round-trip the **snapshot** shape through the consumer envelope; the
-    /// inner JSON survives byte-for-byte (no lossy re-typing).
     #[test]
-    fn round_trip_snapshot_shape() {
-        let inner = r#"{"rev":42,"open_views":3,"items":[]}"#;
-        let wire = wrap_snapshot(inner.to_string()).expect("serialize");
-        let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
-        match decoded {
-            UpdateEnvelope::Snapshot(v) => {
-                assert_eq!(v["rev"], serde_json::json!(42));
-                assert_eq!(v["open_views"], serde_json::json!(3));
-                assert_eq!(v["items"], serde_json::json!([]));
-            }
-            other => panic!("misclassified snapshot frame: {other:?}"),
+    fn panic_frame_round_trips() {
+        let wire = encode_panic(r#"actor "panicked" \ boom"#);
+        assert!(fb::update_frame_buffer_has_identifier(&wire));
+        match decode_update_frame(&wire).expect("decode") {
+            UpdateEnvelope::Panic(panic) => assert_eq!(panic.msg, r#"actor "panicked" \ boom"#),
+            other => panic!("expected panic frame, got {other:?}"),
         }
     }
 
-    /// D7 — the actor-death frame must be tagged `t=panic` and decode into the
-    /// envelope's `Panic` variant. This is the contract that makes
-    /// actor-thread death visible to the host instead of a silently dropped
-    /// command.
-    #[test]
-    fn panic_frame_is_tagged_and_round_trips() {
-        let wire = wrap_panic("actor panicked: boom");
-        assert!(
-            wire.starts_with(r#"{"t":"panic","v":"#),
-            "panic frame must be tagged t=panic: {wire}"
-        );
-        let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
-        match decoded {
-            UpdateEnvelope::Panic(p) => assert_eq!(p.msg, "actor panicked: boom"),
-            other => panic!("expected Panic, got {other:?}"),
-        }
-    }
-
-    /// The panic frame must survive a substring scan for `"t":"panic"` — the
-    /// fast pre-decode check `KernelBridge.swift` performs on every payload.
-    /// Changing the wire shape must not break that host-side discriminator.
-    #[test]
-    fn panic_frame_contains_panic_tag_substring() {
-        let wire = wrap_panic("kernel loop died");
-        assert!(
-            wire.contains(r#""t":"panic""#),
-            "host substring check relies on this exact tag: {wire}"
-        );
-    }
-
-    /// A panic message containing quotes / backslashes must not corrupt the
-    /// frame — serde escapes it, and it round-trips byte-for-byte.
-    #[test]
-    fn panic_frame_escapes_hostile_message() {
-        let nasty = r#"weird "quoted" \ panic"#;
-        let wire = wrap_panic(nasty);
-        let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
-        match decoded {
-            UpdateEnvelope::Panic(p) => assert_eq!(p.msg, nasty),
-            other => panic!("expected Panic, got {other:?}"),
-        }
-    }
-
-    /// The snapshot schema version starts at `1`. A bump is a deliberate,
-    /// breaking-change act; this guards against an accidental edit.
     #[test]
     fn snapshot_schema_version_is_one() {
         assert_eq!(SNAPSHOT_SCHEMA_VERSION, 1);
     }
 
-    /// `panic_message` recovers the message from the two payload shapes
-    /// `catch_unwind` actually yields for `panic!` / `unwrap` / `expect`.
     #[test]
     fn panic_message_extracts_string_and_str_payloads() {
         let from_string = std::panic::catch_unwind(|| panic!("{}", "owned panic".to_string()))
@@ -220,8 +344,6 @@ mod tests {
         assert_eq!(panic_message(&*from_str), "static str panic");
     }
 
-    /// A non-string panic payload (`panic_any`) degrades to a stable
-    /// placeholder — `panic_message` never itself panics (D6).
     #[test]
     fn panic_message_degrades_non_string_payload() {
         let payload =
@@ -229,49 +351,32 @@ mod tests {
         assert_eq!(panic_message(&*payload), "unknown panic in actor thread");
     }
 
-    /// D7 end-to-end: the exact actor-supervisor sequence — `catch_unwind`
-    /// around a panicking closure, then `panic_message` + `wrap_panic`, then
-    /// `send` on the update channel — must deliver one decodable `Panic`
-    /// frame before the channel closes. This mirrors the closure in
-    /// `ffi/mod.rs::nmp_app_new` so a regression in either helper fails here.
     #[test]
     fn actor_death_emits_decodable_panic_frame_on_channel() {
         use std::sync::mpsc;
 
-        let (tx, rx) = mpsc::channel::<String>();
+        let (tx, rx) = mpsc::channel::<UpdateFrameBytes>();
         let supervisor_tx = tx.clone();
-
-        // Stand in for the spawned actor thread: it panics inside the same
-        // `catch_unwind` guard the real supervisor uses.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            // Drop the actor's own sender, mirroring `update_tx` being
-            // moved into `run_actor_with_observers`.
             drop(tx);
             panic!("kernel loop exploded");
         }));
 
-        // Supervisor recovery path — identical to `ffi/mod.rs`.
         if let Err(e) = result {
             let msg = panic_message(&*e);
-            let frame = wrap_panic(format!("actor thread died: {msg}"));
+            let frame = encode_panic(format!("actor thread died: {msg}"));
             let _ = supervisor_tx.send(frame);
         }
         drop(supervisor_tx);
 
-        // The host receives exactly one terminal, decodable panic frame.
         let frame = rx.recv().expect("panic frame must reach the host");
-        match serde_json::from_str::<UpdateEnvelope>(&frame).expect("frame decodes") {
+        match decode_update_frame(&frame).expect("frame decodes") {
             UpdateEnvelope::Panic(p) => {
-                assert!(
-                    p.msg.contains("actor thread died")
-                        && p.msg.contains("kernel loop exploded"),
-                    "panic frame must carry diagnostic context: {}",
-                    p.msg
-                );
+                assert!(p.msg.contains("actor thread died"));
+                assert!(p.msg.contains("kernel loop exploded"));
             }
             other => panic!("expected Panic frame, got {other:?}"),
         }
-        // Channel closes after the single frame — no further frames.
-        assert!(rx.recv().is_err(), "channel must close after the panic frame");
+        assert!(rx.recv().is_err(), "channel must close after panic frame");
     }
 }

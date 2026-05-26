@@ -9,9 +9,12 @@ import {
 } from "./actions";
 import { createNmpClient } from "./client";
 import { DegradedRuntime } from "./degradedRuntime";
+import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
-import { protocolVersion } from "./protocol";
+import { eventCorrelationId, protocolVersion } from "./protocol";
 import { chirpTimelineFromEnvelope, displayRows, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
+import { FrameKind, Pair, SnapshotFrame, UpdateFrame, Value, ValueKind } from "./generated/nmp/transport";
+import { decodeUpdateFrameBytes } from "./updateFrame";
 
 type WorkerHarness = {
   onmessage: ((message: MessageEvent<WorkerRequest>) => void) | null;
@@ -115,6 +118,17 @@ describe("createNmpClient fallback", () => {
 });
 
 describe("shared Chirp web semantics", () => {
+  it("treats binary update events as out-of-band snapshot transport", () => {
+    expect(eventCorrelationId({ type: "update_bytes", bytes: new Uint8Array([1, 2, 3]) })).toBeUndefined();
+  });
+
+  it("decodes generated FlatBuffers snapshot updates without JSON fallback", () => {
+    const bytes = makeSnapshotBytes({ rev: 7, running: true });
+    const decoded = decodeUpdateFrameBytes(bytes);
+
+    expect(decoded).toEqual({ type: "snapshot", payload: { rev: 7, running: true } });
+  });
+
   it("sends a Chirp intent and lets Rust map it to the kernel publish action", () => {
     expect(publishNoteAction("hello web")).toEqual({
       action: "publish_note",
@@ -281,4 +295,41 @@ async function sendWorkerRequest(harness: WorkerHarness, request: WorkerRequest)
     throw new Error("worker did not register an onmessage handler");
   }
   await harness.onmessage({ data: request } as MessageEvent<WorkerRequest>);
+}
+
+function makeSnapshotBytes(payload: Record<string, unknown>): Uint8Array {
+  const builder = new flatbuffers.Builder(128);
+  const payloadOffset = buildValue(builder, payload);
+  SnapshotFrame.startSnapshotFrame(builder);
+  SnapshotFrame.addSchemaVersion(builder, 1);
+  SnapshotFrame.addPayload(builder, payloadOffset);
+  const snapshotOffset = SnapshotFrame.endSnapshotFrame(builder);
+  UpdateFrame.startUpdateFrame(builder);
+  UpdateFrame.addKind(builder, FrameKind.Snapshot);
+  UpdateFrame.addSnapshot(builder, snapshotOffset);
+  const frameOffset = UpdateFrame.endUpdateFrame(builder);
+  UpdateFrame.finishUpdateFrameBuffer(builder, frameOffset);
+  return builder.asUint8Array();
+}
+
+function buildValue(builder: flatbuffers.Builder, value: unknown): flatbuffers.Offset {
+  if (typeof value === "boolean") {
+    return Value.createValue(builder, ValueKind.Bool, value, BigInt(0), BigInt(0), 0, 0, 0, 0);
+  }
+  if (typeof value === "number") {
+    return Value.createValue(builder, ValueKind.UInt, false, BigInt(0), BigInt(value), 0, 0, 0, 0);
+  }
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const pairs = Object.entries(value).map(([key, nested]) => {
+      const nestedOffset = buildValue(builder, nested);
+      const keyOffset = builder.createString(key);
+      Pair.startPair(builder);
+      Pair.addKey(builder, keyOffset);
+      Pair.addValue(builder, nestedOffset);
+      return Pair.endPair(builder);
+    });
+    const mapOffset = Value.createMapVector(builder, pairs);
+    return Value.createValue(builder, ValueKind.Map, false, BigInt(0), BigInt(0), 0, 0, 0, mapOffset);
+  }
+  return Value.createValue(builder, ValueKind.Null, false, BigInt(0), BigInt(0), 0, 0, 0, 0);
 }

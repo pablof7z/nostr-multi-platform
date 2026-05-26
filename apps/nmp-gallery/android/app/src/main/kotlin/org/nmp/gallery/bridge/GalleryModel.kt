@@ -13,14 +13,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import org.nmp.gallery.registry.ProfileWire
 
 /**
  * Tiny ViewModel that owns the [KernelBridge] for the gallery's lifetime,
- * drains the kernel's push-callback channel via `nextUpdate`, and
+ * drains the kernel's FlatBuffers push-callback channel via `nextUpdate`, and
  * republishes the decoded profile slice as a [StateFlow] for Compose.
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
@@ -77,16 +76,13 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Decode one frame. Envelope: `{"t":"snapshot","v":<KernelSnapshot>}`.
+     * Decode one FlatBuffers snapshot frame.
      * Profile is assembled from `projections.author_view.profile` (primary)
      * and `projections.mention_profiles` (secondary), mirroring the iOS
      * GallerySnapshot decoder.
      */
-    private fun applyFrame(raw: String) {
-        val outer = runCatching { json.parseToJsonElement(raw).jsonObject }
-            .getOrNull() ?: return
-        if (outer["t"]?.jsonPrimitive?.content != "snapshot") return
-        val v = (outer["v"] as? JsonObject) ?: return
+    private fun applyFrame(raw: ByteArray) {
+        val v = NmpUpdateFrameDecoder.decodeSnapshot(raw) ?: return
         val projections = (v["projections"] as? JsonObject) ?: return
 
         val assembled = mutableMapOf<String, ProfileWire>()

@@ -242,7 +242,7 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     );
 
     let snap: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
     // D0: the profile card is no longer a typed `KernelSnapshot.profile` field
     // — it is a built-in entry in the `projections` map under `"profile"`.
     assert_eq!(
@@ -933,7 +933,10 @@ fn publish_signed_event_refuses_kind_1059_with_empty_vec_relays() {
     // constructed.
     let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
-    assert!(outbound.is_empty(), "PublishTarget::Auto must trigger the guard");
+    assert!(
+        outbound.is_empty(),
+        "PublishTarget::Auto must trigger the guard"
+    );
     assert!(
         kernel.last_error_toast_snapshot().is_some(),
         "the guard must set a toast for the empty Vec case too"
@@ -989,7 +992,7 @@ fn publish_signed_event_kind_1059_guard_records_action_failure_for_correlation()
 
     // The guard must surface a terminal `failed` verdict under the dispatch
     // correlation_id so the host's spinner can be cleared.
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value = serde_json::from_str(&snapshot_json).unwrap();
     let results = parsed
         .get("projections")
@@ -1189,8 +1192,14 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
         content: String::new(),
         created_at: 1_700_000_000,
     };
-    let outbound =
-        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, Vec::new(), None, &mut Vec::new());
+    let outbound = publish_unsigned_event_to_relays(
+        &id,
+        &mut kernel,
+        unsigned,
+        Vec::new(),
+        None,
+        &mut Vec::new(),
+    );
 
     assert!(
         outbound.is_empty(),
@@ -1813,7 +1822,7 @@ fn snapshot_json_carries_new_projections() {
         &mut Vec::new(),
     );
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
-    let json = kernel.make_update(true);
+    let json = kernel.make_update_json_for_test(true);
     assert!(json.contains("\"accounts\""));
     assert!(json.contains("\"active_account\""));
     assert!(json.contains("\"last_error_toast\""));

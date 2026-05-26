@@ -9,17 +9,17 @@
 //! D8 (reactivity contract, <=60 Hz/view): actor mpsc backlog never exceeds 10,000.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
 
+use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free, nmp_app_new,
     nmp_app_open_author, nmp_app_release_profile, nmp_app_set_update_callback, process_rss_bytes,
     test_pubkeys, NmpApp,
 };
-use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use crate::s2_latency_hist::LatencyHistogram;
 use serde_json::json;
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{c_void, CString};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
@@ -27,20 +27,21 @@ use std::time::{Duration, Instant};
 static CALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Last-snapshot capture for T114b counter readout. We only care about the
-/// FINAL post-drain payload; replacing the slot per callback keeps the
-/// channel-residency footprint bounded to a single CString worth of bytes.
+/// final post-drain decoded snapshot; replacing the slot per callback keeps
+/// channel-residency bounded to one snapshot value.
 static LAST_PAYLOAD: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
-extern "C" fn sink_cb(_ctx: *mut c_void, payload: *const c_char) {
+extern "C" fn sink_cb(_ctx: *mut c_void, payload: *const u8, payload_len: usize) {
     CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
-    if payload.is_null() {
+    if payload.is_null() || payload_len == 0 {
         return;
     }
-    // SAFETY: payload is a valid null-terminated string emitted by the kernel
-    // through its update channel; we copy out so the callback's borrow ends.
-    let s = unsafe { std::ffi::CStr::from_ptr(payload) }
-        .to_string_lossy()
-        .into_owned();
+    // SAFETY: the callback receives a borrowed FlatBuffers frame whose lifetime
+    // ends when the callback returns; copy/parse before storing anything.
+    let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
+    let Some(s) = crate::common::snapshot_value(bytes).map(|value| value.to_string()) else {
+        return;
+    };
     if let Ok(mut slot) = LAST_PAYLOAD.lock() {
         *slot = Some(s);
     }
@@ -232,8 +233,12 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     // honestly rather than weakening the gate.
     let min_dispatches = nominal;
     report.gates.push(
-        Gate::gte("dispatches_submitted", total_dispatches as f64, min_dispatches as f64)
-            .with_note("G-S2: dispatches_submitted >= 100% of nominal (spec)"),
+        Gate::gte(
+            "dispatches_submitted",
+            total_dispatches as f64,
+            min_dispatches as f64,
+        )
+        .with_note("G-S2: dispatches_submitted >= 100% of nominal (spec)"),
     );
     report.gates.push(
         Gate::lte("send_latency_p99_ms", p99_ms, 1.0)
@@ -311,8 +316,12 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     report.notes.push(format!(
         "S2-drain: peak_net_heap={} B, retained_after_drain={} B, \
          reclaimed_by_drain={} B, drain={:.1}s ({} samples). Verdict: {}",
-        peak_net_heap, retained_after_drain, reclaimed_by_drain, drain_seconds,
-        drain_curve.len(), verdict,
+        peak_net_heap,
+        retained_after_drain,
+        reclaimed_by_drain,
+        drain_seconds,
+        drain_curve.len(),
+        verdict,
     ));
 
     // T114b — surface the bounded-channel + per-pubkey claim drop counters
@@ -320,11 +329,20 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     // (D6 fire-and-forget bookkeeping) and quantify per-dispatch pressure.
     let (dispatch_drops_total, claim_drops_total) = {
         let last = LAST_PAYLOAD.lock().ok().and_then(|guard| guard.clone());
-        match last.as_deref().and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()) {
+        match last
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        {
             Some(v) => {
-                let metrics = v.pointer("/v/metrics").cloned().unwrap_or_default();
-                let dd = metrics.get("dispatch_drops_total").and_then(|x| x.as_u64()).unwrap_or(0);
-                let cd = metrics.get("claim_drops_total").and_then(|x| x.as_u64()).unwrap_or(0);
+                let metrics = v.get("metrics").cloned().unwrap_or_default();
+                let dd = metrics
+                    .get("dispatch_drops_total")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0);
+                let cd = metrics
+                    .get("claim_drops_total")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0);
                 (dd, cd)
             }
             None => (0, 0),

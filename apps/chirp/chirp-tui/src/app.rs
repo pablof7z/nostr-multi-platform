@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::bridge::NmpEvent;
+use crate::bridge::{NmpEvent, UpdatePayload};
 use crate::feature_snapshot::FeatureSnapshot;
 use crate::features::FeatureTab;
 pub use crate::runtime::AppRuntime;
@@ -23,7 +23,9 @@ pub enum Mode {
     /// `commands::execute` pipeline still has a parking spot for power-user
     /// callers that want to drive it directly.
     Command,
-    Palette { cursor: usize },
+    Palette {
+        cursor: usize,
+    },
     /// Bottom-bar single-field input (Pattern A — nsec import, relay add, …).
     InputBar,
     /// Multi-field centered overlay (Pattern D — create account, bunker
@@ -166,12 +168,12 @@ impl Default for AppState {
 impl AppState {
     pub fn apply_nmp_event(&mut self, runtime: &AppRuntime, event: NmpEvent) {
         self.update_count += 1;
-        let shared = crate::snapshot::SharedSnapshot::from_payload(&event.payload);
+        let shared = crate::snapshot::SharedSnapshot::from_transport_payload(&event.payload);
         self.metrics = shared.metrics;
         self.relays = shared.relays;
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
-        self.features = FeatureSnapshot::from_payload(&event.payload);
+        self.features = FeatureSnapshot::from_transport_payload(&event.payload);
 
         // `nmp.nip57.zap` is async-completing: the LNURL fetcher surfaces
         // the bolt11 via `ShowToast { "Zap invoice: <bolt11>" }`, which
@@ -180,7 +182,7 @@ impl AppState {
         // (V-43 will move auto-pay into the kernel; until then the host
         // bridges the two-leg flow.)
         if self.pending_zap_pay {
-            if let Some(toast) = parse_last_error_toast(&event.payload) {
+            if let Some(toast) = parse_last_error_toast_from_transport(&event.payload) {
                 if let Some(bolt11) = toast.strip_prefix("Zap invoice: ") {
                     let bolt11 = bolt11.trim().to_string();
                     match runtime.wallet_pay_invoice(&bolt11, None) {
@@ -614,13 +616,21 @@ impl AppState {
 
 use crate::short_id;
 
-/// Pull `last_error_toast` out of a snapshot payload. Snapshots arrive
-/// wrapped as `{"t":"snapshot","v":<snapshot>}` — the toast lives inside
-/// `v`. Falls back to the bare snapshot shape for parity with test
-/// fixtures (mirrors `SharedSnapshot::from_payload`).
-fn parse_last_error_toast(payload: &str) -> Option<String> {
+fn parse_last_error_toast_from_transport(payload: &UpdatePayload) -> Option<String> {
+    let value = crate::snapshot::value_from_transport_payload(payload)?;
+    parse_last_error_toast_value(&value)
+}
+
+/// Pull `last_error_toast` out of a JSON snapshot fixture. Runtime update
+/// transport goes through `UpdatePayload::FlatBuffers`; this JSON parser is
+/// retained only for tests that pin the legacy envelope shape.
+fn parse_last_error_toast_json_fixture(payload: &str) -> Option<String> {
     let value: Value = serde_json::from_str(payload).ok()?;
     let root = value.get("v").unwrap_or(&value);
+    parse_last_error_toast_value(root)
+}
+
+fn parse_last_error_toast_value(root: &Value) -> Option<String> {
     root.get("last_error_toast")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
@@ -651,9 +661,8 @@ mod tests {
         assert_eq!(state.mode, Mode::Normal);
     }
 
-    // `parse_last_error_toast` is the seam the zap auto-pay watches; pin
-    // every shape it must handle so a future snapshot envelope change
-    // fails loudly.
+    // Pin the legacy fixture shapes separately from the runtime FlatBuffers
+    // transport seam.
 
     #[test]
     fn parse_last_error_toast_unwraps_snapshot_envelope() {
@@ -663,7 +672,7 @@ mod tests {
         })
         .to_string();
         assert_eq!(
-            parse_last_error_toast(&payload),
+            parse_last_error_toast_json_fixture(&payload),
             Some("Zap invoice: lnbcDEAD".to_string())
         );
     }
@@ -675,7 +684,7 @@ mod tests {
         })
         .to_string();
         assert_eq!(
-            parse_last_error_toast(&payload),
+            parse_last_error_toast_json_fixture(&payload),
             Some("Zap failed: bunker signing not yet supported".to_string())
         );
     }
@@ -683,7 +692,7 @@ mod tests {
     #[test]
     fn parse_last_error_toast_returns_none_when_missing() {
         let payload = serde_json::json!({ "t": "snapshot", "v": {} }).to_string();
-        assert_eq!(parse_last_error_toast(&payload), None);
+        assert_eq!(parse_last_error_toast_json_fixture(&payload), None);
     }
 
     #[test]
@@ -693,11 +702,18 @@ mod tests {
             "v": { "last_error_toast": "" }
         })
         .to_string();
-        assert_eq!(parse_last_error_toast(&payload), None);
+        assert_eq!(parse_last_error_toast_json_fixture(&payload), None);
     }
 
     #[test]
     fn parse_last_error_toast_returns_none_for_invalid_json() {
-        assert_eq!(parse_last_error_toast("not json"), None);
+        assert_eq!(parse_last_error_toast_json_fixture("not json"), None);
+    }
+
+    #[test]
+    fn parse_last_error_toast_does_not_parse_json_bytes_as_transport() {
+        let payload =
+            UpdatePayload::flatbuffers(b"{\"last_error_toast\":\"Zap invoice: lnbc\"}".to_vec());
+        assert_eq!(parse_last_error_toast_from_transport(&payload), None);
     }
 }

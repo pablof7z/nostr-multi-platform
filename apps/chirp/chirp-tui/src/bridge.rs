@@ -1,11 +1,37 @@
-use std::ffi::CStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use nmp_ffi::NmpApp;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NmpEvent {
-    pub payload: String,
+    pub payload: UpdatePayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdatePayload {
+    FlatBuffers(Vec<u8>),
+    JsonFixture(String),
+}
+
+impl UpdatePayload {
+    #[must_use]
+    pub fn flatbuffers(bytes: Vec<u8>) -> Self {
+        Self::FlatBuffers(bytes)
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match self {
+            Self::FlatBuffers(bytes) => bytes.len(),
+            Self::JsonFixture(json) => json.len(),
+        }
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub fn json_fixture(payload: impl Into<String>) -> Self {
+        Self::JsonFixture(payload.into())
+    }
 }
 
 pub struct NmpUpdateBridge {
@@ -13,7 +39,7 @@ pub struct NmpUpdateBridge {
 }
 
 impl NmpUpdateBridge {
-    #[must_use] 
+    #[must_use]
     pub fn channel() -> (Box<Self>, Receiver<NmpEvent>) {
         let (tx, rx) = mpsc::channel();
         (Box::new(Self { tx }), rx)
@@ -29,16 +55,16 @@ pub fn unregister(app: *mut NmpApp) {
     nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
 }
 
-extern "C" fn on_update(context: *mut std::ffi::c_void, payload: *const std::ffi::c_char) {
+extern "C" fn on_update(context: *mut std::ffi::c_void, payload: *const u8, len: usize) {
     if context.is_null() || payload.is_null() {
         return;
     }
 
     let bridge = unsafe { &*(context as *const NmpUpdateBridge) };
-    let text = unsafe { CStr::from_ptr(payload) }
-        .to_string_lossy()
-        .into_owned();
-    let _ = bridge.tx.send(NmpEvent { payload: text });
+    let bytes = unsafe { std::slice::from_raw_parts(payload, len) }.to_vec();
+    let _ = bridge.tx.send(NmpEvent {
+        payload: UpdatePayload::flatbuffers(bytes),
+    });
 }
 
 #[cfg(test)]
@@ -51,14 +77,14 @@ mod tests {
         bridge
             .tx
             .send(NmpEvent {
-                payload: "{\"ok\":true}".to_string(),
+                payload: UpdatePayload::json_fixture("{\"ok\":true}"),
             })
             .unwrap();
 
         assert_eq!(
             rx.recv().unwrap(),
             NmpEvent {
-                payload: "{\"ok\":true}".to_string()
+                payload: UpdatePayload::json_fixture("{\"ok\":true}")
             }
         );
     }

@@ -27,7 +27,7 @@ use crate::ffi::{
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
-use std::ffi::{c_char, c_void};
+use std::ffi::c_void;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -41,14 +41,14 @@ struct CallbackState {
     revs: Vec<u64>,
 }
 
-extern "C" fn measure_cb(ctx: *mut c_void, payload: *const c_char) {
+extern "C" fn measure_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
     let t0 = Instant::now();
 
     let state_ptr = ctx as *mut Mutex<CallbackState>;
     if let Ok(mut state) = unsafe { (*state_ptr).lock() } {
-        let (payload_len, rev) = if !payload.is_null() {
-            let bytes = unsafe { std::ffi::CStr::from_ptr(payload) }.to_bytes();
-            (bytes.len(), extract_rev(bytes).unwrap_or(0))
+        let (payload_len, rev) = if !payload.is_null() && payload_len > 0 {
+            let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
+            (payload_len, extract_rev(bytes).unwrap_or(0))
         } else {
             (0, 0)
         };
@@ -207,14 +207,21 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     // Harness Vec amortisation (~100-500 bytes/emit) is included; kernel-path leaks
     // would show as sustained multi-KiB/emit growth.
     report.gates.push(
-        Gate::lte("net_heap_per_emit_bytes", net_heap_per_emit, alloc_threshold)
-            .with_note("G-S3/D8: net heap per emit <= 2×payload_bytes (gates.md §G-S3 row 5)"),
+        Gate::lte(
+            "net_heap_per_emit_bytes",
+            net_heap_per_emit,
+            alloc_threshold,
+        )
+        .with_note("G-S3/D8: net heap per emit <= 2×payload_bytes (gates.md §G-S3 row 5)"),
     );
 
     report.notes.push(format!(
         "Injected {} signed events (full Schnorr verify); emits observed: {}; \
          burst window: {:.1} s; Hz: {:.1}",
-        cfg.inject_count, emit_count, burst_elapsed.as_secs_f64(), burst_hz
+        cfg.inject_count,
+        emit_count,
+        burst_elapsed.as_secs_f64(),
+        burst_hz
     ));
     report.notes.push(format!(
         "Event injection: {} events via nmp_app_inject_signed_events \

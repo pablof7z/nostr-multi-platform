@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use crate::bridge::UpdatePayload;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SharedSnapshot {
     pub metrics: RuntimeMetrics,
@@ -11,14 +13,21 @@ pub struct SharedSnapshot {
 
 impl SharedSnapshot {
     #[must_use]
-    pub fn from_payload(payload: &str) -> Self {
+    pub fn from_transport_payload(payload: &UpdatePayload) -> Self {
+        value_from_transport_payload(payload)
+            .as_ref()
+            .map(Self::from_value)
+            .unwrap_or_default()
+    }
+
+    #[must_use]
+    pub fn from_json_fixture(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
         };
-        // Snapshots arrive wrapped as `{"t":"snapshot","v":<snapshot>}` —
-        // `KernelSnapshot` (metrics/projections/last_error_toast) lives
-        // under `v`. The `or_else` keeps backwards compatibility with raw
-        // snapshot fixtures used in tests.
+        // JSON fixtures may be wrapped as `{"t":"snapshot","v":<snapshot>}`.
+        // Runtime transport uses FlatBuffers and enters through
+        // `from_transport_payload`.
         let root = value.get("v").unwrap_or(&value);
         Self::from_value(root)
     }
@@ -34,6 +43,19 @@ impl SharedSnapshot {
             action_stages: action_stages_from(projections),
         }
     }
+}
+
+pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<Value> {
+    match payload {
+        UpdatePayload::FlatBuffers(bytes) => decode_flatbuffer_snapshot_value(bytes),
+        UpdatePayload::JsonFixture(json) => serde_json::from_str::<Value>(json)
+            .ok()
+            .map(|value| value.get("v").cloned().unwrap_or(value)),
+    }
+}
+
+fn decode_flatbuffer_snapshot_value(bytes: &[u8]) -> Option<Value> {
+    nmp_core::decode_snapshot_payload(bytes).ok()
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -191,7 +213,7 @@ mod tests {
     fn parses_direct_shared_diagnostics_and_action_projections() {
         let payload = sample_payload().to_string();
 
-        let snapshot = SharedSnapshot::from_payload(&payload);
+        let snapshot = SharedSnapshot::from_json_fixture(&payload);
 
         assert_sample_snapshot(snapshot);
     }
@@ -204,7 +226,7 @@ mod tests {
         })
         .to_string();
 
-        let snapshot = SharedSnapshot::from_payload(&payload);
+        let snapshot = SharedSnapshot::from_json_fixture(&payload);
 
         assert_sample_snapshot(snapshot);
     }
@@ -258,8 +280,9 @@ mod tests {
         assert_eq!(snapshot.action_stages[0].stage, "publishing");
     }
 
-    /// Real-world payloads arrive wrapped as `{"t":"snapshot","v":<snapshot>}`.
-    /// The parser must reach into `v` so `projections`/`metrics` resolve.
+    /// Legacy JSON fixtures may arrive wrapped as
+    /// `{"t":"snapshot","v":<snapshot>}`. The parser must reach into `v` so
+    /// `projections`/`metrics` resolve.
     #[test]
     fn unwraps_snapshot_envelope_when_present() {
         let payload = serde_json::json!({
@@ -291,7 +314,7 @@ mod tests {
         })
         .to_string();
 
-        let snapshot = SharedSnapshot::from_payload(&payload);
+        let snapshot = SharedSnapshot::from_json_fixture(&payload);
 
         assert_eq!(snapshot.metrics.events_rx, 7);
         assert_eq!(snapshot.relays.len(), 1);

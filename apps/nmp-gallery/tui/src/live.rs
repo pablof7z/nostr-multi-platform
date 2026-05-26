@@ -1,5 +1,5 @@
 use std::{
-    ffi::{c_char, c_void, CStr, CString},
+    ffi::{c_void, CString},
     sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
     time::{Duration, Instant},
 };
@@ -277,16 +277,16 @@ impl Drop for LiveKernel {
     }
 }
 
-extern "C" fn on_update(context: *mut c_void, payload: *const c_char) {
+extern "C" fn on_update(context: *mut c_void, payload: *const u8, len: usize) {
     if context.is_null() || payload.is_null() {
         return;
     }
-    let text = match unsafe { CStr::from_ptr(payload) }.to_str() {
-        Ok(text) => text.to_string(),
-        Err(_) => return,
+    let bytes = unsafe { std::slice::from_raw_parts(payload, len) };
+    let Ok(snapshot) = nmp_core::decode_snapshot_payload(bytes) else {
+        return;
     };
     let bridge = unsafe { &*(context as *const UpdateBridge) };
-    let _ = bridge.tx.send(text);
+    let _ = bridge.tx.send(snapshot.to_string());
 }
 
 fn parse_snapshot(payload: &str) -> Option<Value> {

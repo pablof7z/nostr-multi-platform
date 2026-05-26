@@ -1,0 +1,51 @@
+namespace nmp.transport;
+
+enum FrameKind:ubyte {
+  Snapshot = 0,
+  Panic = 1
+}
+
+enum ValueKind:ubyte {
+  Null = 0,
+  Bool = 1,
+  Int = 2,
+  UInt = 3,
+  Float = 4,
+  String = 5,
+  List = 6,
+  Map = 7
+}
+
+table Pair {
+  key:string (required);
+  value:Value;
+}
+
+table Value {
+  kind:ValueKind = Null;
+  bool_value:bool = false;
+  int_value:long = 0;
+  uint_value:ulong = 0;
+  float_value:double = 0.0;
+  string_value:string;
+  list:[Value];
+  map:[Pair];
+}
+
+table SnapshotFrame {
+  schema_version:uint = 1;
+  payload:Value;
+}
+
+table PanicFrame {
+  msg:string (required);
+}
+
+table UpdateFrame {
+  kind:FrameKind = Snapshot;
+  snapshot:SnapshotFrame;
+  panic:PanicFrame;
+}
+
+root_type UpdateFrame;
+file_identifier "NMPU";

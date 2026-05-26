@@ -11,20 +11,20 @@
 //!    snapshot-builder keeps both files comfortably under the limit and gives
 //!    the relay-driven push path a single owner.
 //! 2. The snapshot shape needs to be identical whether the request came in
-//!    via `Start` (host pulls the envelope from `handle()`'s return value)
+//!    via `Start` (host pulls the frame from `handle()`'s return value)
 //!    or via an inbound relay frame (callback push). Putting the build logic
 //!    in one place makes the equivalence syntactic, not aspirational.
 //!
 //! # Substrate-grade (D0)
 //!
-//! No app nouns. The envelope shape mirrors what `wrap_snapshot` does for the
-//! native actor; the `v` payload carries only protocol-neutral fields
+//! No app nouns. The FlatBuffers frame mirrors what the native actor emits;
+//! the snapshot payload carries only protocol-neutral fields
 //! (schema version, kernel rev, started flag, relay diagnostics).
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nmp_core::{wrap_snapshot, KernelReducer, SNAPSHOT_SCHEMA_VERSION};
+use nmp_core::{encode_snapshot_value, KernelReducer, SNAPSHOT_SCHEMA_VERSION};
 use serde_json::Value;
 
 use crate::protocol::RelayBootstrapEntry;
@@ -71,17 +71,25 @@ impl RuntimeMeta {
     }
 }
 
-/// Build the snapshot envelope from the kernel + the runtime's captured
-/// metadata. Returns the canonical `{"t":"snapshot","v":…}` shape every
-/// native host also decodes.
-///
-/// Falls back to a bare snapshot value (no `wrap_snapshot` round-trip) if
-/// serialization somehow fails — preferable to dropping the frame.
-pub(crate) fn build_snapshot_value(
-    _reducer: &KernelReducer,
-    meta: &RuntimeMeta,
-) -> Value {
-    let snapshot = serde_json::json!({
+/// Build the test-only JSON view from the kernel + runtime metadata. Runtime
+/// hosts consume [`build_snapshot_bytes`] instead.
+#[cfg(test)]
+pub(crate) fn build_snapshot_value(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Value {
+    let snapshot = build_snapshot_payload_value(meta);
+
+    serde_json::json!({
+        "t": "snapshot",
+        "v": snapshot,
+    })
+}
+
+pub(crate) fn build_snapshot_bytes(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
+    let snapshot = build_snapshot_payload_value(meta);
+    encode_snapshot_value(snapshot)
+}
+
+fn build_snapshot_payload_value(meta: &RuntimeMeta) -> Value {
+    serde_json::json!({
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "rev": meta.rev,
         "running": meta.started,
@@ -101,16 +109,7 @@ pub(crate) fn build_snapshot_value(
                 })
             }).collect::<Vec<_>>()
         }
-    });
-
-    let snapshot_json = serde_json::to_string(&snapshot)
-        .unwrap_or_else(|_| String::from(r#"{"schema_version":1,"rev":0,"running":false}"#));
-    wrap_snapshot(snapshot_json)
-        .and_then(|wire| serde_json::from_str::<Value>(&wire).ok())
-        .unwrap_or(serde_json::json!({
-            "t": "snapshot",
-            "v": snapshot,
-        }))
+    })
 }
 
 /// Push a snapshot envelope through the JS callback the host registered via
@@ -136,10 +135,10 @@ pub(crate) fn push_snapshot_if_callback(
     let Some(callback_fn) = callback_ref.as_ref() else {
         return;
     };
-    let envelope = build_snapshot_value(&reducer.borrow(), &meta.borrow());
+    let bytes = build_snapshot_bytes(&reducer.borrow(), &meta.borrow());
     let event = serde_json::json!({
-        "type": "update",
-        "envelope": envelope,
+        "type": "update_bytes",
+        "bytes": bytes,
     });
     let json = match serde_json::to_string(&event) {
         Ok(s) => s,
@@ -147,7 +146,10 @@ pub(crate) fn push_snapshot_if_callback(
         // would require a side channel; the next inbound recovers.
         Err(_) => return,
     };
-    let _ = callback_fn.call1(&wasm_bindgen::JsValue::NULL, &wasm_bindgen::JsValue::from_str(&json));
+    let _ = callback_fn.call1(
+        &wasm_bindgen::JsValue::NULL,
+        &wasm_bindgen::JsValue::from_str(&json),
+    );
 }
 
 /// Native no-op kept for symmetry with the wasm32 surface. Never invoked

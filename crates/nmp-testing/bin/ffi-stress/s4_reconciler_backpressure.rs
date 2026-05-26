@@ -17,14 +17,14 @@
 //! D1 (best-effort rendering): on stall release, emit order is monotonic.
 //! Bible #1 (monotonic rev): enforced via rev extraction in callback.
 
-use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
+use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_value};
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
-use std::ffi::{c_char, c_void};
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -42,23 +42,20 @@ struct StallState {
     emit_ts_ms: Vec<u64>,
     /// Epoch: set once at scenario start.
     epoch: Option<Instant>,
-    /// Per-emit actor_queue_depth values (extracted from JSON payload).
+    /// Per-emit actor_queue_depth values (extracted from the update payload).
     /// The kernel hardcodes this to 0 until the actor thread populates it;
     /// tracked for completeness — gate added so spec compliance is visible.
     actor_queue_depths: Vec<u64>,
 }
 
-/// Extract `"actor_queue_depth":N` from a JSON byte slice without a full parse.
 fn extract_actor_queue_depth(bytes: &[u8]) -> Option<u64> {
-    let s = std::str::from_utf8(bytes).ok()?;
-    let key = "\"actor_queue_depth\":";
-    let pos = s.find(key)?;
-    let rest = &s[pos + key.len()..];
-    let end = rest.find([',', '}', ' ', '\n']).unwrap_or(rest.len());
-    rest[..end].trim().parse::<u64>().ok()
+    snapshot_value(bytes)?
+        .get("metrics")?
+        .get("actor_queue_depth")?
+        .as_u64()
 }
 
-extern "C" fn stall_cb(ctx: *mut c_void, payload: *const c_char) {
+extern "C" fn stall_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {
     EMIT_COUNT.fetch_add(1, Ordering::Relaxed);
 
     // Simulate blocked main thread during stall window.
@@ -68,8 +65,8 @@ extern "C" fn stall_cb(ctx: *mut c_void, payload: *const c_char) {
 
     let state_ptr = ctx as *mut Mutex<StallState>;
     if let Ok(mut state) = unsafe { (*state_ptr).lock() } {
-        let (rev, actor_queue_depth) = if !payload.is_null() {
-            let bytes = unsafe { std::ffi::CStr::from_ptr(payload) }.to_bytes();
+        let (rev, actor_queue_depth) = if !payload.is_null() && payload_len > 0 {
+            let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
             (
                 extract_rev(bytes).unwrap_or(0),
                 extract_actor_queue_depth(bytes).unwrap_or(0),
@@ -211,10 +208,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // These represent emits buffered during a stall that arrive out of expected order.
     let stale_rev_pairs: usize = {
         let non_zero: Vec<u64> = state.revs.iter().copied().filter(|&r| r > 0).collect();
-        non_zero
-            .windows(2)
-            .filter(|w| w[1] <= w[0])
-            .count()
+        non_zero.windows(2).filter(|w| w[1] <= w[0]).count()
     };
 
     // G-S4 spec: "Stale-rev filter drops counted >= 1 per stall (12 total)".
@@ -294,12 +288,11 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // metric is now wired to the command-channel straddle counter, so the gate
     // observes real occupancy rather than a hardcoded 0.
     report.gates.push(
-        Gate::lte("actor_queue_depth_peak", max_actor_queue_depth as f64, 50.0)
-            .with_note(
-                "G-S4 row 2: actor_queue_depth peak during stall <= 50 \
+        Gate::lte("actor_queue_depth_peak", max_actor_queue_depth as f64, 50.0).with_note(
+            "G-S4 row 2: actor_queue_depth peak during stall <= 50 \
                  (wired to the Arc<AtomicU64> command-channel straddle counter — \
                  send_cmd increments, the actor decrements per dequeued command)",
-            ),
+        ),
     );
     report.gates.push(
         Gate::lte(
@@ -334,23 +327,26 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // The gate passes if the callback was invoked for every queued emit.
     // A future implementation can add a listener-side dropped-emit counter if
     // the update_rx channel is bounded (currently unbounded mpsc).
-    report.gates.push(
-        Gate::eq("listener_emit_drops", 0.0, 0.0)
-            .with_note(
-                "G-S4 row 6: total emits dropped (listener-side) == 0 \
+    report
+        .gates
+        .push(Gate::eq("listener_emit_drops", 0.0, 0.0).with_note(
+            "G-S4 row 6: total emits dropped (listener-side) == 0 \
                  (unbounded mpsc; callback invoked for all queued emits)",
-            ),
-    );
+        ));
     // Actor non-blocking verification: configure() measured mid-stall while the callback
     // is sleeping 250 ms on the listener thread.  Actor dispatches to mpsc channel and
     // returns; sleeping callback does NOT block configure() (D4 single-writer invariant).
     // Gate: p99 configure latency during stall <= 10 ms (10,000 µs).
     report.gates.push(
-        Gate::lte("configure_during_stall_p99_us", configure_p99_us as f64, 10_000.0)
-            .with_note(
-                "G-S4: configure() p99 latency during 250ms stall <= 10 ms \
+        Gate::lte(
+            "configure_during_stall_p99_us",
+            configure_p99_us as f64,
+            10_000.0,
+        )
+        .with_note(
+            "G-S4: configure() p99 latency during 250ms stall <= 10 ms \
                  (actor enqueues to mpsc, not blocked by sleeping callback)",
-            ),
+        ),
     );
     // G-S4: stale_rev_pairs == 0.
     // Stale-rev pairs (non-monotonic adjacent revs) should be zero: the actor
@@ -359,12 +355,8 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // Note: revs_monotonic already covers this; the explicit gate provides a
     // dedicated metric name matching the spec row.
     report.gates.push(
-        Gate::eq(
-            "stale_rev_pairs",
-            stale_rev_pairs as f64,
-            0.0,
-        )
-        .with_note("G-S4: stale_rev_pairs == 0 (no non-monotonic rev pairs in emits)"),
+        Gate::eq("stale_rev_pairs", stale_rev_pairs as f64, 0.0)
+            .with_note("G-S4: stale_rev_pairs == 0 (no non-monotonic rev pairs in emits)"),
     );
 
     // G-S4 row 7: Apply-after-resume burst max <= 33 ms.
@@ -374,21 +366,19 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     // This prevents apply_burst_ms=0 from vacuously passing when no stalls
     // completed or no post-resume emits were captured.
     if emit_count < 100 {
-        report.gates.push(
-            Gate::eq("apply_burst_ms", -1.0, 0.0)
-                .with_note(format!(
-                    "G-S4 row 7: FAIL — insufficient evidence: only {emit_count} emits \
+        report
+            .gates
+            .push(Gate::eq("apply_burst_ms", -1.0, 0.0).with_note(format!(
+                "G-S4 row 7: FAIL — insufficient evidence: only {emit_count} emits \
                      observed (need >= 100 before apply_burst_ms gate is meaningful). \
                      Verify stalls completed and configure_interval is correct."
-                )),
-        );
+            )));
     } else {
         report.gates.push(
-            Gate::lte("apply_burst_ms", apply_burst_ms as f64, 33.0)
-                .with_note(
-                    "G-S4 row 7: apply-after-resume burst max <= 33 ms \
+            Gate::lte("apply_burst_ms", apply_burst_ms as f64, 33.0).with_note(
+                "G-S4 row 7: apply-after-resume burst max <= 33 ms \
                      (latency from STALLING=false to first post-stall emit; spec §G-S4)",
-                ),
+            ),
         );
     }
 
@@ -402,9 +392,16 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         "Injected {} signed events; stalls: {}; max backlog: {}; expected <= {}; \
          emits total: {}; stale-rev pairs: {}; total_stall_backlog: {}; \
          stalls_with_backlog: {}; configure_p99_us: {}; apply_burst_ms: {}",
-        cfg.inject_count, stalls_injected, max_backlog_emits, expected_max,
-        emit_count, stale_rev_pairs, total_stall_backlog, stalls_with_backlog,
-        configure_p99_us, apply_burst_ms,
+        cfg.inject_count,
+        stalls_injected,
+        max_backlog_emits,
+        expected_max,
+        emit_count,
+        stale_rev_pairs,
+        total_stall_backlog,
+        stalls_with_backlog,
+        configure_p99_us,
+        apply_burst_ms,
     ));
     report.notes.push(
         "Stall simulated via callback sleep (250 ms) on listener thread.  \

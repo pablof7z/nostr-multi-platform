@@ -1771,6 +1771,26 @@ exact byte set as the M16 cross-platform wire-contract truth.
 
 Show the user which relays delivered a given event. The data is already tracked: `EventStore::provenance_for(event_id)` (`crates/nmp-store/src/events.rs:288`) returns `Vec<ProvenanceEntry>` with `relay_url`, `first_seen_ms`, `last_seen_ms`, and a `primary: bool` flag (up to 32 relays per event, persisted in LMDB).
 
+### F-10 · Canonical FlatBuffers runtime update transport [V1 INFRA · in progress]
+
+Replace the Rust-to-frontend JSON update payload with one canonical
+FlatBuffers schema for `FullState`, `ViewBatch`, and side-effect frames.
+UniFFI remains the generated binding, object lifecycle, callback, and
+capability surface; it is not the hot payload format.
+
+**Rule:** no production JSON runtime fallback. JSON remains valid only for
+Nostr relay frames, diagnostics/golden fixtures, historical raw-C migration
+shims, and explicit test tooling.
+
+**Acceptance:**
+
+- iOS, Android, desktop, and wasm shells consume the same FlatBuffers update
+  schema.
+- The stale-`rev` guard, snapshot-default path, and `ViewBatch` delta path are
+  preserved across all shells.
+- Legacy JSON update callback code is deleted or isolated behind documented
+  migration/test-only entry points.
+
 **Required work:**
 
 1. **Expose provenance in the projection** — `TimelineItem` already carries `relay_count: u32`. Add a `relay_provenance: Vec<String>` field (list of relay URLs) to `TimelineItem` and `TimelineEventCard`. Populate from `store.provenance_for(&event.id)` in `Kernel::timeline_item` (`crates/nmp-core/src/kernel/update.rs:464`). Keep `relay_count` as the cheap badge signal; `relay_provenance` is the detail payload. Consider making it opt-in via a projection flag to avoid bloating every timeline row snapshot.

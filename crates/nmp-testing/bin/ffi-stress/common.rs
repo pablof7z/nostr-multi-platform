@@ -27,14 +27,17 @@ pub(crate) fn configure_and_settle(app: *mut NmpApp, settle_ms: u64) {
     std::thread::sleep(Duration::from_millis(settle_ms));
 }
 
-/// Extract the `"rev":N` field from a JSON byte slice without a full parse.
+/// Extract the `rev` field from a FlatBuffers update frame.
 pub(crate) fn extract_rev(bytes: &[u8]) -> Option<u64> {
-    let s = std::str::from_utf8(bytes).ok()?;
-    let key = "\"rev\":";
-    let pos = s.find(key)?;
-    let rest = &s[pos + key.len()..];
-    let end = rest.find([',', '}', ' ', '\n']).unwrap_or(rest.len());
-    rest[..end].trim().parse::<u64>().ok()
+    nmp_core::decode_snapshot_payload(bytes)
+        .ok()?
+        .get("rev")?
+        .as_u64()
+}
+
+/// Decode an update frame into the JSON-like value tree used by stress gates.
+pub(crate) fn snapshot_value(bytes: &[u8]) -> Option<serde_json::Value> {
+    nmp_core::decode_snapshot_payload(bytes).ok()
 }
 
 /// Return `true` if the non-zero elements of `revs` are strictly increasing.

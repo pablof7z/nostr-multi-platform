@@ -8,11 +8,13 @@ import {
   type ChirpAction,
 } from "./protocol";
 import type { RuntimeCommand } from "./actions";
+import { decodeUpdateFrameBytes } from "./updateFrame";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
   events: WorkerEvent[];
   latestUpdate?: unknown;
+  latestUpdateBytes?: Uint8Array;
 };
 
 export type RuntimeConnection = {
@@ -48,11 +50,17 @@ export function createNmpClient(): NmpClient {
 abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
   private latestUpdate: unknown;
+  private latestUpdateBytes: Uint8Array | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
   snapshot(): RuntimeSnapshot {
-    return { status: this.status, events: [...this.events], latestUpdate: this.latestUpdate };
+    return {
+      status: this.status,
+      events: [...this.events],
+      latestUpdate: this.latestUpdate,
+      latestUpdateBytes: this.latestUpdateBytes,
+    };
   }
 
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void {
@@ -65,8 +73,15 @@ abstract class BaseClient implements NmpClient {
     if (event.type === "runtime_status" || event.type === "hello_accepted") {
       this.status = event.status;
     }
-    if (event.type === "update") {
-      this.latestUpdate = event.envelope;
+    if (event.type === "update_bytes") {
+      const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
+      this.latestUpdateBytes = bytes;
+      const decoded = decodeUpdateFrameBytes(bytes);
+      this.latestUpdate =
+        decoded?.type === "snapshot" ? { t: "snapshot", v: decoded.payload } : undefined;
+      if (decoded?.type === "panic") {
+        this.status = { degraded: "browser_actor_driver_missing" };
+      }
     }
     this.events = [event, ...this.events].slice(0, 8);
     const snapshot = this.snapshot();

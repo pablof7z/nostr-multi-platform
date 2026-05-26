@@ -26,9 +26,8 @@ fn kernel() -> Kernel {
 /// `snapshot_registry_tests.rs` pattern — drive `make_update(true)` and read
 /// out of the `projections` map.
 fn stages_proj(kernel: &mut Kernel) -> Option<serde_json::Value> {
-    let snapshot_json = kernel.make_update(true);
-    let snap: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("update JSON parses");
+    let snapshot_json = kernel.make_update_json_for_test(true);
+    let snap: serde_json::Value = serde_json::from_str(&snapshot_json).expect("update JSON parses");
     snap.get("projections")
         .and_then(|p| p.get("action_stages"))
         .cloned()
@@ -178,9 +177,9 @@ fn failed_stage_survives_action_results_drain() {
     // stage entry in `action_stages` (mirror — until ack).
     let mut k = kernel();
     k.record_action_failure("corr-x".to_string(), "x".to_string());
-    let _first = k.make_update(true);
+    let _first = k.make_update_json_for_test(true);
     // Second tick — action_results is gone, action_stages persists.
-    let snapshot_json = k.make_update(true);
+    let snapshot_json = k.make_update_json_for_test(true);
     let snap: serde_json::Value = serde_json::from_str(&snapshot_json).unwrap();
     let projections = snap.get("projections").unwrap();
     assert!(
@@ -195,9 +194,12 @@ fn failed_stage_survives_action_results_drain() {
     // Ack closes the lifecycle.
     k.ack_action_stage("corr-x");
     let snap2: serde_json::Value =
-        serde_json::from_str(&k.make_update(true)).unwrap();
+        serde_json::from_str(&k.make_update_json_for_test(true)).unwrap();
     let projections2 = snap2.get("projections").unwrap();
-    assert!(projections2.get("action_stages").is_none(), "ack drops the mirror entry");
+    assert!(
+        projections2.get("action_stages").is_none(),
+        "ack drops the mirror entry"
+    );
 }
 
 #[test]

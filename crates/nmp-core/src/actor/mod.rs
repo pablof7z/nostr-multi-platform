@@ -116,9 +116,9 @@ pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PH
 // for per-app Rust crates and the FFI wire-shape). `KernelEventObserverRegistration`
 // only reaches the outside world through `lib.rs::__ffi_internal`, which is
 // `#[cfg(feature = "native")]`; gate the registration type re-export to match.
-pub use commands::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
 #[cfg(feature = "native")]
 pub use commands::KernelEventObserverRegistration;
+pub use commands::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
 // Raw signed-event tap — re-export the slot helpers (crate-private) so
 // `ffi/raw_event_tap.rs` and the actor entry point reach the shared slot,
 // and the public wire shapes so per-app Rust crates + Swift / Kotlin
@@ -138,19 +138,19 @@ pub use commands::register_c_raw_observer;
 // type itself is consumed unconditionally by `kernel/raw_event_observer.rs`
 // (the kernel holds an `Option<RawEventObserverSlot>` field — see `kernel/mod.rs`
 // line 731), so it stays ungated.
+pub use commands::RawEventObserverSlot;
 #[cfg(feature = "native")]
 pub use commands::{
     new_raw_event_observer_slot, register_rust_raw_observer, unregister_raw_observer,
 };
-pub use commands::RawEventObserverSlot;
 // `KindFilter` / `RawEventObserver` / `RawEventObserverFn` / `RawEventObserverId`
 // are re-exported unconditionally from `lib.rs` (the typed observer surface
 // for per-app Rust crates and the FFI wire-shape). `RawEventObserverRegistration`
 // only reaches the outside world through `lib.rs::__ffi_internal`, which is
 // `#[cfg(feature = "native")]`; gate that one re-export to match.
-pub use commands::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
 #[cfg(feature = "native")]
 pub use commands::RawEventObserverRegistration;
+pub use commands::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId};
 // NIP golden-tag conformance harness — re-exported up the (crate-private)
 // `actor` chain so the gated `pub use actor::ConformanceHarness` in `lib.rs`
 // reaches the `tests/nip_tag_conformance.rs` integration test. Gated on
@@ -189,9 +189,9 @@ use crate::kernel::Kernel;
 #[cfg(feature = "native")]
 use crate::relay::RelayRole;
 #[cfg(feature = "native")]
-use crate::subs::PlanCoverageHook;
-#[cfg(feature = "native")]
 use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+#[cfg(feature = "native")]
+use crate::subs::PlanCoverageHook;
 // Step 8 phase F — actor cut-over to the push-model `Pool` API. The legacy
 // `nmp_network::relay_worker::{RelayCommand, RelayEvent, spawn_relay_worker}`
 // entry points are no longer named here; with no out-of-crate consumers
@@ -200,6 +200,8 @@ use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 // the actor talks to is now owned by a process-wide `Pool`; the actor
 // holds a `RelayHandle` per URL in `RelayControl` and consumes `PoolEvent`s
 // on the dedicated relay-event channel below.
+#[cfg(feature = "native")]
+use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot, StoragePathSlot};
 #[cfg(feature = "native")]
 use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayHandle};
 use std::collections::HashMap;
@@ -210,13 +212,11 @@ use std::panic::{self, AssertUnwindSafe};
 #[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "native")]
-use std::sync::mpsc::{Receiver, Sender};
-#[cfg(feature = "native")]
 use std::sync::mpsc::{self, TryRecvError};
 #[cfg(feature = "native")]
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, Sender};
 #[cfg(feature = "native")]
-use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot, StoragePathSlot};
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
@@ -787,7 +787,7 @@ pub fn run_actor(
     // Callers (tests + `lib.rs::spawn_actor`) hand in a clone of the
     // `Sender` they kept after constructing the channel.
     command_tx_self: Sender<ActorCommand>,
-    update_tx: Sender<String>,
+    update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
     run_actor_with_observers(
         command_rx,
@@ -835,7 +835,9 @@ pub fn run_actor(
         // exercise the gift-wrap publish gate or the kind:10050 parser
         // — those use `run_actor_with_observers` directly with shared
         // slots.
-        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+        Arc::new(std::sync::RwLock::new(
+            crate::substrate::EventIngestDispatcher::new(),
+        )),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
         // V-51 phase 4 — no `NmpApp` is wired through this entry, so the
         // routing-trace slot is a private throwaway (the actor still
@@ -866,7 +868,7 @@ pub fn run_actor_with_lifecycle_observer(
     command_rx: Receiver<ActorCommand>,
     // Self-feedback sender — see `run_actor_with_observers`.
     command_tx_self: Sender<ActorCommand>,
-    update_tx: Sender<String>,
+    update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
     lifecycle_observer: LifecycleObserverSlot,
 ) {
     run_actor_with_observers(
@@ -904,7 +906,9 @@ pub fn run_actor_with_lifecycle_observer(
         // `Failed { reason: "no host op handler installed" }` terminal.
         crate::substrate::new_host_op_handler_slot(),
         // V-40 — same private-throwaway pattern as the other slots above.
-        Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+        Arc::new(std::sync::RwLock::new(
+            crate::substrate::EventIngestDispatcher::new(),
+        )),
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
         // V-51 phase 4 — same private-throwaway pattern.
         Arc::new(Mutex::new(None)),
@@ -942,7 +946,7 @@ pub fn run_actor_with_observers(
     // `NmpApp`. The actor itself never `recv`s on this sender — it only
     // hands clones out via `ActorContext::command_tx_self`.
     command_tx_self: Sender<ActorCommand>,
-    update_tx: Sender<String>,
+    update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
     raw_event_observers: RawEventObserverSlot,
@@ -1020,7 +1024,9 @@ pub fn run_actor_with_observers(
     // read side (`NmpApp::routing_trace`); this actor thread is the sole
     // writer, publishing `kernel.routing_trace()` into the slot right after
     // kernel construction (and re-publishing on `Reset`).
-    routing_trace_slot: Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
+    routing_trace_slot: Arc<
+        Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>,
+    >,
     // V-51 phase 5 — per-app substrate-routing factory slot. The `NmpApp`
     // owns the writer side (`NmpApp::set_routing_substrate`); this actor
     // thread reads the current factory after kernel construction (and on
@@ -1164,7 +1170,9 @@ pub fn run_actor_with_observers(
         kernel.lifecycle_mut().set_coverage_hook(hook);
     }
     if let Some(interceptor) = req_frame_interceptor.lock().ok().and_then(|g| g.clone()) {
-        kernel.lifecycle_mut().set_req_frame_interceptor(interceptor);
+        kernel
+            .lifecycle_mut()
+            .set_req_frame_interceptor(interceptor);
     }
     // T146 — bind the shared kernel event observer slot. The kernel calls
     // `notify_event_observers` after every `EventStore::insert` returning
@@ -1231,7 +1239,9 @@ pub fn run_actor_with_observers(
             registry.register("bunker_handshake", move || {
                 // D6: a poisoned bunker-handshake mutex recovers via
                 // `into_inner` rather than panicking inside the snapshot tick.
-                let slot = projection_slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                let slot = projection_slot
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 slot.as_ref().map_or(serde_json::Value::Null, |dto| {
                     serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
                 })
@@ -1289,7 +1299,9 @@ pub fn run_actor_with_observers(
     let mut next_relay_generation = 1;
     let mut running = false;
     let mut emit_hz = DEFAULT_EMIT_HZ;
-    let mut last_emit = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or_else(Instant::now);
+    let mut last_emit = Instant::now()
+        .checked_sub(Duration::from_secs(1))
+        .unwrap_or_else(Instant::now);
     let mut startup_sent = false;
     // Remote (NIP-46) sign ops parked off the blocking path. `dispatch_command`
     // pushes a `PendingSign` when a publish-command sign goes `Pending`; the

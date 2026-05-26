@@ -22,7 +22,7 @@ mod runtime;
 // are always-compiled (no `cfg(wasm32)`): the signer slot is a `Signer`
 // trait object usable on any target (Nip07Signer.sign() returns Unsupported
 // off-wasm, which is the same honest answer the runtime would give anyway).
-// snapshot.rs builds the envelope on both targets; the JS-callback push
+// snapshot.rs builds the binary update frame on both targets; the JS-callback push
 // inside it is `cfg(target_arch = "wasm32")`-gated, with a native no-op
 // shim so call sites stay shim-free.
 mod dispatch_routing;
@@ -37,9 +37,9 @@ mod signer_slot;
 mod snapshot;
 
 pub use protocol::{
-    ActionDispatch, AppAction, AppActionDispatch, CapabilityFailure, CapabilityResult,
-    ClientHello, DegradedMode, RelayBootstrapEntry, RuntimeStatus, SetSigner, StartConfig,
-    WorkerEvent, WorkerRequest,
+    ActionDispatch, AppAction, AppActionDispatch, CapabilityFailure, CapabilityResult, ClientHello,
+    DegradedMode, RelayBootstrapEntry, RuntimeStatus, SetSigner, StartConfig, WorkerEvent,
+    WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};
 
@@ -84,8 +84,7 @@ mod bindings {
         /// a relay-driven kernel mutation produces a fresh snapshot.
         ///
         /// The callback receives one string argument: the JSON-serialized
-        /// `WorkerEvent::Update` envelope (`{"type":"update","envelope":{…}}`)
-        /// with the same `v` payload `handle_json("start")` returns. JS hosts
+        /// `WorkerEvent::UpdateBytes` wrapper around FlatBuffers bytes. JS hosts
         /// install one callback at app boot; replacing the callback (calling
         /// `set_snapshot_callback` again) atomically swaps it.
         ///

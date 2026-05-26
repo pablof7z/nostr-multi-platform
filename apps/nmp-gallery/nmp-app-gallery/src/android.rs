@@ -5,14 +5,15 @@
 //! `crates/nmp-android-ffi` which does the same for the Chirp app.
 //!
 //! Doctrine: no business logic or cached state (D5/D8) — pure transport.
-//! Errors never cross FFI (D6); outcomes arrive in the next JSON snapshot.
+//! Errors never cross FFI (D6); outcomes arrive in the next FlatBuffers
+//! snapshot frame.
 
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_void, CStr, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use jni::objects::{JClass, JString};
-use jni::sys::{jint, jlong, jstring};
+use jni::sys::{jbyteArray, jint, jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_ffi::{
@@ -32,8 +33,8 @@ const BOOTSTRAP_RELAYS: &[&str] = &[
 /// kernel callback. Freed exactly once in `nativeFree`.
 pub(crate) struct GallerySession {
     pub(crate) app: *mut NmpApp,
-    rx: Receiver<String>,
-    tx: *mut Sender<String>,
+    rx: Receiver<Vec<u8>>,
+    tx: *mut Sender<Vec<u8>>,
 }
 
 // SAFETY: GallerySession is transferred to Kotlin as a jlong handle; access
@@ -41,16 +42,14 @@ pub(crate) struct GallerySession {
 // nativeNextUpdate on one reader thread).
 unsafe impl Send for GallerySession {}
 
-/// Callback — runs on the kernel's listener thread. Copies the borrowed JSON
-/// into an owned `String` before handing it to the channel (§3 contract).
-extern "C" fn on_update(context: *mut c_void, json: *const c_char) {
-    if context.is_null() || json.is_null() {
+/// Callback — runs on the kernel's listener thread. Copies the borrowed
+/// FlatBuffers frame before handing it to the channel.
+extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
+    if context.is_null() || bytes.is_null() {
         return;
     }
-    let tx = unsafe { &*(context as *const Sender<String>) };
-    let owned = unsafe { CStr::from_ptr(json) }
-        .to_string_lossy()
-        .into_owned();
+    let tx = unsafe { &*(context as *const Sender<Vec<u8>>) };
+    let owned = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
     let _ = tx.send(owned);
 }
 
@@ -78,7 +77,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     if app.is_null() {
         return 0;
     }
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     let tx = Box::into_raw(Box::new(tx));
     nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
     let session = Box::new(GallerySession { app, rx, tx });
@@ -213,15 +212,15 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNextUpdate
     _class: JClass<'l>,
     handle: jlong,
     timeout_ms: jlong,
-) -> jstring {
+) -> jbyteArray {
     let null = std::ptr::null_mut();
     let Some(s) = session_ref(handle) else {
         return null;
     };
     let timeout = Duration::from_millis(timeout_ms.max(0) as u64);
     match s.rx.recv_timeout(timeout) {
-        Ok(json) => match env.new_string(json) {
-            Ok(js) => js.into_raw(),
+        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+            Ok(array) => array.into_raw(),
             Err(_) => null,
         },
         Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => null,

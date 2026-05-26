@@ -30,7 +30,11 @@ fn nip42_kernel_auth_required_for_read() {
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
     // Inbound AUTH challenge from the content relay.
-    let outbound = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+    let outbound = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
 
     assert_eq!(*calls.lock().unwrap(), 1, "signer invoked exactly once");
     assert_eq!(
@@ -94,7 +98,11 @@ fn nip42_kernel_auth_failed_surfaces_relay_status() {
     let (signer, _) = make_signer(AUTH_EVENT_ID);
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
     assert_eq!(
         auth_state_of(&kernel, RelayRole::Content),
         RelayAuthState::Authenticating
@@ -139,7 +147,11 @@ fn nip42_auth_failure_stamps_error_category_on_snapshot() {
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
     // Drive the NIP-42 handshake into Authenticating.
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
 
     // Before any failure the lane carries no category.
     assert_eq!(
@@ -201,8 +213,8 @@ fn last_error_category_projects_into_snapshot_and_clears_on_legacy_toast() {
 
     // A categorized toast surfaces both fields in the snapshot JSON.
     kernel.set_error_toast_with_category("publish store error".to_string(), ERR_PERMANENT);
-    let snap: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot is valid JSON");
+    let snap: serde_json::Value = serde_json::from_str(&kernel.make_update_json_for_test(true))
+        .expect("snapshot is valid JSON");
     assert_eq!(
         snap["last_error_toast"].as_str(),
         Some("publish store error"),
@@ -217,8 +229,8 @@ fn last_error_category_projects_into_snapshot_and_clears_on_legacy_toast() {
     // A subsequent legacy (uncategorized) toast must clear the stale category
     // so iOS never branches on a class that no longer matches the toast.
     kernel.set_last_error_toast(Some("something else went wrong".to_string()));
-    let snap: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot is valid JSON");
+    let snap: serde_json::Value = serde_json::from_str(&kernel.make_update_json_for_test(true))
+        .expect("snapshot is valid JSON");
     assert_eq!(
         snap["last_error_toast"].as_str(),
         Some("something else went wrong")
@@ -245,7 +257,11 @@ fn nip42_kernel_replays_pending_reqs_on_auth() {
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
     // Drive into ChallengeReceived → Authenticating.
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
     assert!(kernel.relay_auth_paused(RelayRole::Content));
 
     // Caller dispatches a REQ; the partition routine pulls it into deferred.
@@ -262,7 +278,11 @@ fn nip42_kernel_replays_pending_reqs_on_auth() {
     // by itself does not flush the deferred queue (M5+M2+M8: lifecycle
     // owns the flush trigger; the actor's next tick reads
     // `pending_view_requests` which drains).
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &ok_frame(AUTH_EVENT_ID, true, ""));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, true, ""),
+    );
     assert_eq!(
         auth_state_of(&kernel, RelayRole::Content),
         RelayAuthState::Authenticated
@@ -301,7 +321,11 @@ fn nip42_kernel_publish_retry_on_auth_required() {
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
     // First challenge → AUTH sent → relay rejects.
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
     let _ = kernel.handle_text(
         RelayRole::Content,
         RelayRole::Content.url(),
@@ -340,7 +364,11 @@ fn nip42_kernel_publish_retry_on_auth_required() {
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer2);
 
     // Relay re-prompts (publish-side AUTH-REQUIRED retry equivalent).
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch2"));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch2"),
+    );
     assert_eq!(
         auth_state_of(&kernel, RelayRole::Content),
         RelayAuthState::Authenticating
@@ -348,7 +376,11 @@ fn nip42_kernel_publish_retry_on_auth_required() {
     assert_eq!(*calls2.lock().unwrap(), 1, "signer re-invoked on re-AUTH");
 
     // Accept the second handshake.
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &ok_frame(AUTH_EVENT_ID_2, true, ""));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID_2, true, ""),
+    );
     assert_eq!(
         auth_state_of(&kernel, RelayRole::Content),
         RelayAuthState::Authenticated
@@ -383,8 +415,16 @@ fn nip42_kernel_auth_does_not_bump_view_rev() {
     let (signer, _) = make_signer(AUTH_EVENT_ID);
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
-    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &ok_frame(AUTH_EVENT_ID, true, ""));
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, true, ""),
+    );
     assert_eq!(
         kernel.rev, rev_before,
         "AUTH transitions must not directly bump kernel.rev (only make_update does)"
@@ -393,7 +433,11 @@ fn nip42_kernel_auth_does_not_bump_view_rev() {
     // Auth-pause re-defer invariant: simulate ChallengeReceived → 10 ticks
     // of `pending_view_requests` (each drains + re-defers the held REQ).
     // The dirty flag must NOT keep getting set or the actor will busy-emit.
-    let _ = kernel.handle_text(RelayRole::Indexer, RelayRole::Indexer.url(), &auth_frame("ch-idx"));
+    let _ = kernel.handle_text(
+        RelayRole::Indexer,
+        RelayRole::Indexer.url(),
+        &auth_frame("ch-idx"),
+    );
     let _ = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Indexer,
         relay_url: RelayRole::Indexer.url().to_string(),
@@ -418,7 +462,11 @@ fn nip42_kernel_auth_does_not_bump_view_rev() {
 #[test]
 fn nip42_kernel_auth_without_signer_holds_in_challenge_received() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let outbound = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+    let outbound = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
     assert!(outbound.is_empty(), "no signer = no wire frame emitted");
     assert_eq!(
         auth_state_of(&kernel, RelayRole::Content),
@@ -444,7 +492,11 @@ fn nip42_kernel_view_open_reqs_routed_through_auth_gate() {
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
     // Drive Indexer into ChallengeReceived → Authenticating.
-    let _ = kernel.handle_text(RelayRole::Indexer, RelayRole::Indexer.url(), &auth_frame("ch1"));
+    let _ = kernel.handle_text(
+        RelayRole::Indexer,
+        RelayRole::Indexer.url(),
+        &auth_frame("ch1"),
+    );
     assert!(kernel.relay_auth_paused(RelayRole::Indexer));
 
     // Open an author view. open_author() emits REQs across Content +
@@ -521,7 +573,8 @@ fn nip42_kind_22242_tags_delivering_relay_url_not_bootstrap() {
     );
     let relay_tag_a = extract_relay_tag(&auth_frame_a.text);
     assert_eq!(
-        relay_tag_a, url_a,
+        relay_tag_a,
+        url_a,
         "T125: kind:22242 `relay` tag must equal the delivering URL per \
          NIP-42 (anti-replay binds AUTH to the issuing relay); pre-T125 \
          this stamped role.url() = bootstrap ({:?})",

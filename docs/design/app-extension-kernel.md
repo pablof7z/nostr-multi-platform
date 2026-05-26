@@ -235,7 +235,8 @@ For example, NMP may know how to parse and validate NIP-73 artifact references. 
 
 For each app module, NMP should generate:
 
-- UniFFI records/enums for exposed specs, payloads, deltas, actions, and capability reports,
+- generated FlatBuffers schema/readers for runtime update payloads plus UniFFI
+  records/enums for lifecycle, actions, and capability reports,
 - Swift/Kotlin/TypeScript platform-shadow dictionaries keyed by the module's view keys,
 - refcounted wrappers such as `useRoomHome(groupId)` or `@RoomHome`,
 - bridge routing from `ViewBatch` to typed platform caches,

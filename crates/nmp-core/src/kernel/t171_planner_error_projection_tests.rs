@@ -35,7 +35,7 @@ fn t171_forced_planner_error_is_observable_through_ffi_projection() {
         .lifecycle_mut()
         .set_planner_error_for_test("invalid shape: until < since");
 
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
 
@@ -60,7 +60,7 @@ fn t171_forced_planner_error_is_observable_through_ffi_projection() {
 fn t171_no_planner_error_projects_null() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    let snapshot_json = kernel.make_update(true);
+    let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
 

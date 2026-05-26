@@ -28,6 +28,13 @@
 
 **What works on master** (~140k LOC, 33 crates): kernel substrate (`nmp-core`, mostly NIP-clean post-migration) · LMDB persistence (`nmp-store`) · planner (`nmp-planner`) · single-algorithm router (`nmp-router`) with NIP-65 outbox + Indexer (discovery kinds) + AppRelay fallback + blocked-relay filter + `explicit_targets` override seam · push-model `Pool` with generational `RelayHandle` + `PoolEvent` channel in `nmp-network` · routing-trace observability projection (FFI + wasm) · NIP-77 negentropy · NIP-42 relay auth (wire/FSM split across `nmp-network` + `nmp-nip42` + `nmp-core::subs::AuthGate`) · signers (local / NIP-07 / NIP-46) + write path · multi-account + `switch_active` · NWC wallet (NIP-47, still in `nmp-core` — V-38 deprioritized) · NIP-57 zaps (LNURL fetcher in `nmp-nip57`) · NIP-17 DMs (full stack in `nmp-nip17`, bunker NIP-46 sealing seamed) · Marmot/MLS encrypted groups · NIP-29 generic group infra · NIP-59 gift-wrap · content rendering · codegen tool · iOS Chirp + Android Chirp shells · desktop shell · LMDB CI · android-ffi `cargo check` · chirp-repl `routing-trace` subcommand + `scripts/validate-routing.sh` end-to-end smoke · `nmp_app_recent_routing_decisions` FFI + wasm surface for iOS/web inspectors.
 
+**Active transport migration (2026-05-26):** the intended Rust-to-frontend
+runtime update transport is one canonical FlatBuffers schema for `FullState`,
+`ViewBatch`, and side-effect frames. UniFFI remains the generated
+binding/lifecycle/capability surface; it is not the hot payload format. Legacy
+JSON update payloads are historical raw-C/migration surface only, not a
+production fallback. Track under [F-10](BACKLOG.md#f-10--canonical-flatbuffers-runtime-update-transport-v1-infra--in-progress).
+
 **What does not work yet** (v1 blockers):
 1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool (Stage 3, PR #375), NIP-07 signer + async snapshot push (Stage 3b, PR #378), publish-path wire + multi-role bootstrap (Stage 3c, PR #385 — merged 2026-05-24). **Only F-01 IndexedDB persistence remains v1-blocking.** No persistent chirp-web features may be added until F-01 lands.
 2. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).

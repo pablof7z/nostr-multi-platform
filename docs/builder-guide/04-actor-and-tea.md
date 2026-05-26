@@ -15,7 +15,7 @@ This section translates the bible into the vocabulary you will actually see in
 | `AppAction` | `KernelAction` (`Start`/`OpenView`/`OpenUri`/…) | `app.rs:21-36` |
 | message in | `ActorCommand` (internal) | `actor/mod.rs:26-51` |
 | `handle_message` | `dispatch_command(...)` | `actor/mod.rs:162-` |
-| state emission | `KernelUpdate` / JSON snapshot via `update_tx` | `app.rs:38-48`, `tick.rs:53-62` |
+| state emission | `AppUpdate` frame via `update_tx`; canonical runtime payload is FlatBuffers | `app.rs:38-48`, `tick.rs:53-62` |
 
 Data flow is **strictly unidirectional** (`aim.md:29`): user interaction →
 action dispatch → actor processes synchronously → state emission → platform
@@ -38,9 +38,9 @@ mutation, no race conditions.
    │  next_actor_msg() recv        (tick.rs:11-43)
    │  dispatch_command()           mutates Kernel, bumps rev (actor/mod.rs:162)
    │  kernel.open_*/start/...      builds Vec<OutboundMessage>
-   │  emit_now()                   kernel.make_update() → JSON String
+   │  emit_now()                   kernel.make_update() → FlatBuffers frame
    ▼
- update_tx : Sender<String>        snapshot by default (aim.md:58)
+update_tx                         snapshot by default (aim.md:58)
    │
    ▼
  listener / reconciler (host)      hops to UI thread
@@ -71,7 +71,7 @@ There is **one** writer (the actor). Everything else is a courier.
 > async I/O. The shipped kernel realizes the same TEA contract with
 > `std::sync::mpsc` channels, `std::thread`, and blocking `tungstenite`
 > sockets — no `flume`, no tokio runtime. The *contract* (single-writer actor,
-> fire-and-forget dispatch, snapshot emit) is identical; the transport
+> fire-and-forget dispatch, snapshot emit) is identical; the thread/channel
 > primitives differ. Build against the contract, not the bible's prose.
 
 ## The four load-bearing invariants (bible §47-58, in NMP terms)
@@ -86,9 +86,11 @@ There is **one** writer (the actor). Everything else is a courier.
    protocol-neutral primitives; fallible paths resolve to a typed update such
    as `KernelUpdate::UriRejected { uri, reason }` (`app.rs:46-48`,
    `app.rs:183`), never a panic across the seam.
-4. **Snapshot-default emit.** State crosses FFI as a full snapshot string by
-   default (`emit_now`, `tick.rs:53-62`); granular deltas are an optimization
-   layered on top (see [06]), not the default.
+4. **Snapshot-default emit.** State crosses the runtime bridge as a full
+   snapshot frame by default (`emit_now`, `tick.rs:53-62`); granular
+   `ViewBatch` deltas are an optimization layered on top (see [06]), not the
+   default. The canonical hot payload format is FlatBuffers, not JSON and not
+   UniFFI records.
 
 ## Organizing TEA code
 

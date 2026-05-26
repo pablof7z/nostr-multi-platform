@@ -80,21 +80,19 @@ final class KernelHandle {
             nmpCapabilityCallback)
     }
 
-    /// Wire the Rust update callback. `handler` runs on every snapshot frame;
-    /// `onPanic` runs exactly once if/when the actor thread dies and the Rust
-    /// supervisor emits an `{"t":"panic",...}` envelope on the update channel
-    /// (D7 actor-death contract — see `crates/nmp-core/src/update_envelope.rs`).
-    /// After `onPanic` fires the kernel is terminally dead for this process:
-    /// no further snapshots will arrive and every subsequent FFI command is a
-    /// silent no-op. The host (`KernelModel`) flips its `kernelIsDead`
-    /// `@Published` flag and shows the red banner from `RootShell`.
+    /// Wire the Rust update callback. `handler` runs on every snapshot frame.
+    /// Snapshot updates are binary-only FlatBuffers `nmp.transport.UpdateFrame`
+    /// bytes. There is no runtime JSON fallback path.
     func listen(
         _ handler: @escaping (KernelUpdateResult) -> Void,
         onPanic: @escaping () -> Void = {}
     ) {
         let sink = KernelUpdateSink(handler: handler, onPanic: onPanic)
         updateSink = sink
-        nmp_app_set_update_callback(raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
+        nmp_app_set_update_callback(
+            raw,
+            Unmanaged.passUnretained(sink).toOpaque(),
+            nmpUpdateCallback)
     }
 
     /// Actor-liveness probe (D7 pull-side, ADR-0028). Returns `true` when the
@@ -508,68 +506,47 @@ final class KernelHandle {
         nmp_app_lifecycle_background(raw)
     }
 
-    fileprivate static func decode(pointer: UnsafePointer<CChar>) -> KernelUpdateResult? {
+    fileprivate static func decodeFlatBuffer(bytes: UnsafeRawPointer, count: Int) -> KernelDecodedUpdateFrame? {
         let start = ContinuousClock.now
-        let payload = String(cString: pointer)
-        let data = Data(payload.utf8)
-        // Single-pass decode: wrap the outer `{"t":…,"v":{…}}` envelope in a
-        // typed struct so one JSONDecoder pass handles both the tag check and
-        // the KernelUpdate decode. The previous triple-parse pattern was:
-        //   1. JSONSerialization.jsonObject → outer [String: Any]
-        //   2. JSONSerialization.data → re-serialise inner back to Data
-        //   3. JSONDecoder.decode → decode KernelUpdate from that Data
-        // At 4 Hz × ~12 KB payload the redundant passes added ~150 KB/s of
-        // avoidable JSON work on the main thread.
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let data = Data(bytes: bytes, count: count)
         do {
-            let envelope = try decoder.decode(SnapshotEnvelope.self, from: data)
-            // Panic frames (t=panic) are intercepted earlier in
-            // `nmpUpdateCallback` and never reach this decoder. Anything else
-            // is a wire-format regression — log loudly so it surfaces in CI.
-            guard envelope.t == "snapshot" else {
-                kbLog.error("unknown envelope tag=\(envelope.t) bytes=\(data.count)")
+            let frame = try KernelUpdateFrameDecoder.decode(data)
+            guard case let .snapshot(frameSchemaVersion, update) = frame else {
+                if case let .panic(message) = frame {
+                    kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
+                    return .panic(message)
+                }
                 return nil
             }
-            let update = envelope.v
             // Enforce the schema version contract: a mismatch means Rust's
             // field layout changed in a way the host cannot safely interpret.
             // Return nil so the update is dropped rather than misparsed.
-            guard update.schemaVersion == KERNEL_SCHEMA_VERSION else {
-                kbLog.error("schema version mismatch: kernel=\(update.schemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
+            guard frameSchemaVersion == KERNEL_SCHEMA_VERSION,
+                  update.schemaVersion == KERNEL_SCHEMA_VERSION else {
+                kbLog.error("schema version mismatch: frame=\(frameSchemaVersion) payload=\(update.schemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
                 return nil
             }
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
-            return KernelUpdateResult(
-                update: update,
-                payloadBytes: data.count,
-                callbackReceivedAt: start,
-                decodeMicros: duration.microseconds
+            return .snapshot(
+                KernelUpdateResult(
+                    update: update,
+                    payloadBytes: data.count,
+                    callbackReceivedAt: start,
+                    decodeMicros: duration.microseconds
+                )
             )
         } catch {
-            kbLog.error("envelope decode error: \(error.localizedDescription) bytes=\(data.count)")
+            kbLog.error("FlatBuffers snapshot decode error: \(error.localizedDescription) bytes=\(data.count)")
             return nil
         }
     }
 }
 
-/// Typed envelope for the outer `{"t":…,"v":{…}}` wire frame so the
-/// snapshot decode path needs only one JSONDecoder pass.
-private struct SnapshotEnvelope: Decodable {
-    let t: String
-    let v: KernelUpdate
-}
-
 private final class KernelUpdateSink {
     let handler: (KernelUpdateResult) -> Void
-    /// D7 actor-death hook. Runs exactly once when the Rust supervisor closure
-    /// emits the `{"t":"panic",...}` envelope on the update channel before
-    /// the actor thread (and the channel itself) drops. The host uses this to
-    /// flip a `@Published` flag and show a fatal-error banner; the closure is
-    /// the only Swift-side path that learns about an actor-thread panic from
-    /// the update callback (since `nmpUpdateCallback` is a C `let` and cannot
-    /// capture `self`).
+    /// D7 actor-death hook. Rust emits a FlatBuffers panic frame before the
+    /// update channel closes; the host flips its fatal-error UI from here.
     let onPanic: () -> Void
 
     init(
@@ -579,6 +556,11 @@ private final class KernelUpdateSink {
         self.handler = handler
         self.onPanic = onPanic
     }
+}
+
+enum KernelDecodedUpdateFrame {
+    case snapshot(KernelUpdateResult)
+    case panic(String)
 }
 
 /// C capability callback — receives `CapabilityRequest` JSON from Rust and
@@ -599,22 +581,18 @@ private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSO
     return resultStr.withCString { strdup($0) }
 }
 
-private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
-    guard let context, let pointer else { return }
-    let payload = String(cString: pointer)
+private let nmpUpdateCallback: NmpUpdateCallback = { context, bytes, count in
+    guard let context, let bytes, count > 0 else { return }
     let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
-    // D7 actor-death contract: the Rust supervisor emits exactly one
-    // `{"t":"panic","v":{"msg":...}}` envelope before the channel closes.
-    // The substring scan matches the wire shape pinned by the kernel test
-    // `panic_frame_contains_panic_tag_substring` — that test is the source
-    // of truth and is the contract this branch consumes.
-    if payload.contains("\"t\":\"panic\"") {
-        kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(payload.utf8.count)")
-        sink.onPanic()
+    guard let frame = KernelHandle.decodeFlatBuffer(bytes: UnsafeRawPointer(bytes), count: Int(count)) else {
         return
     }
-    guard let result = KernelHandle.decode(pointer: pointer) else { return }
-    sink.handler(result)
+    switch frame {
+    case let .snapshot(result):
+        sink.handler(result)
+    case .panic:
+        sink.onPanic()
+    }
 }
 
 // ─── Swift-side timing wrapper ────────────────────────────────────────────

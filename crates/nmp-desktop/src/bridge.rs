@@ -2,8 +2,9 @@
 //!
 //! The desktop shell runs the kernel actor on its own thread (Rust→Rust — no
 //! FFI boundary) and talks to it through the generic `ActorCommand` channel,
-//! exactly as the iOS FFI layer does. A reader thread drains JSON snapshots,
-//! decodes them into [`Snapshot`], and parks the freshest one behind a mutex.
+//! exactly as the iOS FFI layer does. A reader thread drains FlatBuffers
+//! update frames, decodes snapshots into [`Snapshot`], and parks the freshest
+//! one behind a mutex.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
@@ -11,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::UpdateEnvelope;
+use nmp_core::{decode_update_frame, UpdateEnvelope};
 
 use crate::snapshot::Snapshot;
 
@@ -34,11 +35,11 @@ impl KernelBridge {
 
         let reader_latest = Arc::clone(&latest);
         thread::spawn(move || {
-            // Actor emits tagged envelopes: {"t":"snapshot","v":{...}} or
-            // {"t":"panic","v":{"msg":...}}. We only care about snapshot frames;
-            // panic frames are terminal (D7) and surface elsewhere.
-            for line in rx {
-                let env: UpdateEnvelope = match serde_json::from_str(&line) {
+            // Actor emits FlatBuffers update frames. We only care about
+            // snapshot frames; panic frames are terminal (D7) and surface
+            // elsewhere.
+            for frame in rx {
+                let env: UpdateEnvelope = match decode_update_frame(&frame) {
                     Ok(e) => e,
                     Err(_) => continue,
                 };

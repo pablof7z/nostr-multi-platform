@@ -33,8 +33,8 @@ single line of the M11 podcast app is written.
 
 ### 1.2 Non-goals
 
-- **Changing the FFI shape.** The current surface (14 raw `extern "C"`
-  functions in `crates/nmp-core/src/ffi.rs`, JSON-string update callback) is
+- **Changing the FFI shape.** The current surface (raw `extern "C"`
+  functions in `crates/nmp-core/src/ffi.rs`, FlatBuffers update callback) is
   what we harden. Migrating to UniFFI + per-app generated enums per
   ADR-0010 is **M14**, not M10.5.
 - **New domain features.** No new view kinds, no new actions, no new
@@ -74,16 +74,15 @@ and enforced by at least one harness scenario.
 ### 2.1 Callback contract (`UpdateCallback`)
 
 ```rust
-type UpdateCallback = extern "C" fn(*mut c_void, *const c_char);
+type UpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);
 ```
 
 - Invoked **from the dedicated listener OS thread** (ffi.rs:52–62), never
   from the actor thread, never from a relay-worker thread.
-- The `*const c_char` payload is a JSON-serialized `KernelUpdate`. The
-  `CString` backing it is allocated in the listener thread and dropped
-  **at the end of the callback invocation** — the pointer dangles after
-  the callback returns. Callers must `String::from(cString)` (or
-  equivalent) inside the callback if they need to retain the data.
+- The `*const u8, usize` payload is a FlatBuffers `nmp.transport.UpdateFrame`
+  with file identifier `NMPU`. The borrowed buffer is valid only until the
+  callback returns. Callers must copy the bytes inside the callback if they
+  need to retain the data.
 - The `*mut c_void` context is whatever was passed to
   `nmp_app_set_update_callback`. Per ffi.rs:13–16 it is round-tripped via
   `as usize` to satisfy `Send` for the `Arc<Mutex<...>>` registration
@@ -226,16 +225,16 @@ The debt-inventory's D3 audit (lines 317–334) concludes the same:
 errors-as-data crosses FFI via `RelayStatus.last_error` and
 `RelayStatus.last_notice`, which is correct, but **app-action error
 paths (invalid input dropped) have no equivalent surface**. M10.5
-adds a `toast: Option<String>` field to the JSON update payload
-(placed alongside `logs: Vec<String>` as a sibling of `metrics` in the
-`KernelUpdate` serialization — see `crates/nmp-core/src/kernel/update.rs`)
-and populates it from S7's validation failure paths. The schema change
-is additive (older Swift readers ignore an unknown field) so this is not
-a breaking FFI change.
+adds a `toast: Option<String>` field to the update payload (placed alongside
+`logs: Vec<String>` as a sibling of `metrics` in the logical `KernelUpdate`
+shape — see `crates/nmp-core/src/kernel/update.rs`) and populates it from S7's
+validation failure paths. In the legacy raw-C path this was an additive JSON
+field; in the canonical FlatBuffers transport it is an additive schema field.
 
 This is intentionally surfaced in the design doc, not papered over.
-The M14 UniFFI migration moves the surface to typed `Result`-shaped
-returns; M10.5 ships the interim toast-field bridge.
+The M14 UniFFI migration owns bindings/lifecycle. It does not replace the
+FlatBuffers update payload with UniFFI records; M10.5 ships the interim
+toast-field bridge.
 
 ## 8. Doctrine review checklist
 

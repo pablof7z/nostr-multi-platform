@@ -16,7 +16,7 @@
 void *nmp_app_new(void);
 void nmp_app_free(void *app);
 
-typedef void (*NmpUpdateCallback)(void *context, const char *json);
+typedef void (*NmpUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);
 void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);
 
 // Persistent storage directory for the LMDB EventStore backend. Must be called

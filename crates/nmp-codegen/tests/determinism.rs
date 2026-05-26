@@ -33,13 +33,11 @@ fn generation_is_byte_deterministic() {
     fs::remove_dir_all(root).unwrap();
 }
 
-/// Pins the generated update-channel envelope wire contract from the codegen
-/// side: the host `UpdateEnvelope` MUST be the tagged union T103 specifies
-/// (`t`/`v`, snake_case, Update + Snapshot + Panic arms). A refactor of
-/// `envelope_rs` that drifts from `nmp_core::UpdateEnvelope` would silently
-/// break every host.
+/// Pins the generated update-channel frame contract from the codegen side.
+/// Generated host crates re-export the kernel-owned FlatBuffers frame
+/// decoders instead of minting a second transport envelope.
 #[test]
-fn generated_envelope_models_the_tagged_union() {
+fn generated_envelope_reexports_flatbuffer_helpers() {
     let root = test_root("nmp-codegen-envelope");
     let manifest = root.join("nmp.toml");
     let out = root.join("out");
@@ -63,23 +61,16 @@ fn generated_envelope_models_the_tagged_union() {
     let envelope = fs::read_to_string(out.join("src/envelope.rs")).unwrap();
 
     assert!(
-        envelope.contains(r#"#[serde(tag = "t", content = "v", rename_all = "snake_case")]"#),
-        "generated envelope must use the canonical t/v snake_case tagging:\n{envelope}"
+        envelope.contains("decode_update_frame"),
+        "generated envelope must expose the canonical FlatBuffers decoder:\n{envelope}"
     );
     assert!(
-        envelope.contains("Snapshot(serde_json::Value)"),
-        "generated envelope must carry the opaque snapshot:\n{envelope}"
+        envelope.contains("UpdateFrameBytes"),
+        "generated envelope must expose the binary frame carrier:\n{envelope}"
     );
     assert!(
-        envelope.contains("Panic(nmp_core::PanicFrame)"),
-        "generated envelope must carry the D7 actor-death panic frame:\n{envelope}"
-    );
-    // The discrete-update arm (`Update(nmp_core::DeltaEnvelope)`) was deleted
-    // as shipped-but-inert — every host bridge only consumed snapshots, and
-    // the kernel no longer emits a discrete frame.
-    assert!(
-        !envelope.contains("DeltaEnvelope"),
-        "generated envelope must NOT carry the deleted Update arm:\n{envelope}"
+        !envelope.contains("serde(tag"),
+        "generated envelope must not recreate the legacy JSON envelope:\n{envelope}"
     );
 
     let lib = fs::read_to_string(out.join("src/lib.rs")).unwrap();

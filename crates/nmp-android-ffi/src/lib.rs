@@ -1,12 +1,12 @@
 //! JNI shim: Android ⇄ the nmp-core kernel via Rust-path function calls.
 //!
 //! Doctrine: no business logic or cached state here (D5/D8) — pure transport.
-//! Errors never cross FFI (D6): the kernel reports via the JSON snapshot; these
-//! entrypoints return only a handle / a string / void. The kernel's update
+//! Errors never cross FFI (D6): the kernel reports via update frames; these
+//! entrypoints return only a handle / bytes / void. The kernel's update
 //! callback fires on its own listener thread with a pointer valid ONLY for the
-//! call's duration (`docs/ffi-surface.md` §3), so we copy it into an owned
-//! `String` before handing it to a channel. A Kotlin thread drains the channel
-//! via `nativeNextUpdate` (blocking, timed) — this sidesteps JNI
+//! call's duration (`docs/ffi-surface.md` §3), so we copy it into owned bytes
+//! before handing it to a channel. A Kotlin thread drains the channel via
+//! `nativeNextUpdate` (blocking, timed) — this sidesteps JNI
 //! thread-attach/global-ref complexity while staying a faithful mirror of the
 //! iOS push model.
 //!
@@ -18,12 +18,12 @@
 //! `nmp_ffi::nmp_app_new()` (enabled by the `android-ffi` feature) is the
 //! portable fix that makes rustc include the bodies.
 
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_void, CStr, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use jni::objects::{JClass, JString};
-use jni::sys::{jint, jlong, jstring};
+use jni::sys::{jbyteArray, jint, jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_app_chirp::{
@@ -42,8 +42,8 @@ use nmp_ffi::{
 pub(crate) struct Session {
     pub(crate) app: *mut NmpApp,
     chirp: *mut ChirpHandle,
-    rx: Receiver<String>,
-    tx: *mut Sender<String>,
+    rx: Receiver<Vec<u8>>,
+    tx: *mut Sender<Vec<u8>>,
 }
 
 // SAFETY: Session is sent across threads only inside a Box whose ownership is
@@ -52,18 +52,17 @@ pub(crate) struct Session {
 unsafe impl Send for Session {}
 
 /// Update callback — runs on the kernel's listener thread. `context` is the
-/// `*mut Sender<String>` we registered; `json` is borrowed for this call only.
-extern "C" fn on_update(context: *mut c_void, json: *const c_char) {
-    if context.is_null() || json.is_null() {
+/// `*mut Sender<Vec<u8>>` we registered; the FlatBuffers payload is borrowed
+/// for this call only.
+extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
+    if context.is_null() || bytes.is_null() {
         return;
     }
     // SAFETY: `context` is the pointer passed to `nmp_app_set_update_callback`,
     // alive until `nativeFree` clears the callback before reclaiming it.
-    let tx = unsafe { &*(context as *const Sender<String>) };
+    let tx = unsafe { &*(context as *const Sender<Vec<u8>>) };
     // Copy out of the borrowed buffer before it is invalidated (§3).
-    let owned = unsafe { CStr::from_ptr(json) }
-        .to_string_lossy()
-        .into_owned();
+    let owned = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
     let _ = tx.send(owned); // dead receiver ⇒ silent no-op (D6)
 }
 
@@ -76,7 +75,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     if app.is_null() {
         return 0;
     }
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     let tx = Box::into_raw(Box::new(tx));
     nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
     let chirp = nmp_app_chirp_register(app, std::ptr::null());
@@ -147,21 +146,35 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     }
 }
 
-/// Blocking drain with a 250 ms timeout so the Kotlin reader thread stays
-/// responsive to cancellation. Returns `null` on timeout / closed channel.
+/// Blocking binary drain with a 250 ms timeout so the Kotlin reader thread
+/// stays responsive to cancellation. Returns `null` on timeout / closed
+/// channel.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdateBytes<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+) -> jbyteArray {
+    next_update_byte_array(env, handle)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdate<'l>(
     env: JNIEnv<'l>,
     _class: JClass<'l>,
     handle: jlong,
-) -> jstring {
+) -> jbyteArray {
+    next_update_byte_array(env, handle)
+}
+
+fn next_update_byte_array<'l>(env: JNIEnv<'l>, handle: jlong) -> jbyteArray {
     let null = std::ptr::null_mut();
     let Some(s) = session_ref(handle) else {
         return null;
     };
     match s.rx.recv_timeout(Duration::from_millis(250)) {
-        Ok(json) => match env.new_string(json) {
-            Ok(js) => js.into_raw(),
+        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+            Ok(array) => array.into_raw(),
             Err(_) => null,
         },
         Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => null,

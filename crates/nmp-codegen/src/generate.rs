@@ -28,11 +28,14 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
     // (covers the `nmp init`-scaffolded standalone workspace). `None` from
     // both is the temp-dir test case — `cargo_toml` falls back to the
     // legacy template, which remains string-test-stable.
-    let layout = WorkspaceLayout::discover(manifest_path)
-        .or_else(|| WorkspaceLayout::discover(out_dir));
+    let layout =
+        WorkspaceLayout::discover(manifest_path).or_else(|| WorkspaceLayout::discover(out_dir));
 
     let files = vec![
-        ("Cargo.toml", cargo_toml(&manifest, layout.as_ref(), out_dir)),
+        (
+            "Cargo.toml",
+            cargo_toml(&manifest, layout.as_ref(), out_dir),
+        ),
         ("src/lib.rs", lib_rs()),
         ("src/action.rs", action_rs(&manifest)),
         ("src/update.rs", update_rs(&manifest)),
@@ -57,11 +60,7 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
     })
 }
 
-fn cargo_toml(
-    manifest: &AppManifest,
-    layout: Option<&WorkspaceLayout>,
-    out_dir: &Path,
-) -> String {
+fn cargo_toml(manifest: &AppManifest, layout: Option<&WorkspaceLayout>, out_dir: &Path) -> String {
     // `nmp_app_new`, `nmp_app_free`, `nmp_app_dispatch_action` are re-exported
     // under the default `native` feature since PR #356 — no explicit feature
     // flag is needed for the generated app crate's dependency.
@@ -133,34 +132,17 @@ fn update_rs(manifest: &AppManifest) -> String {
     )
 }
 
-/// The canonical update-channel envelope, projected for the host crate.
+/// The canonical update-channel frame helpers, projected for the host crate.
 ///
-/// Every frame on the single update channel is one tagged outer object —
-/// `{"t":"snapshot","v":<snapshot>}` or `{"t":"panic","v":{"msg":<message>}}` —
-/// so the host decodes exactly **one** discriminated type. This MUST stay
-/// byte-identical to `nmp_core::UpdateEnvelope`'s serde contract (tag `t`,
-/// content `v`, snake_case variants); see
-/// `docs/design/0001-ffi-update-channel-envelope.md`.
-///
-/// The snapshot interior is intentionally opaque (`serde_json::Value`) — this
-/// type models the discriminator, not the snapshot's ~30 internal fields.
-///
-/// The `Panic` arm (D7) is the actor-death signal: the kernel loop panicked
-/// or exited and the host must surface a fatal error rather than keep sending
-/// commands. It reuses `nmp_core::PanicFrame` so the host carrier matches the
-/// kernel's exactly.
+/// Runtime update delivery is FlatBuffers-only. Generated app crates re-export
+/// the kernel-owned frame type and decoders instead of minting a parallel
+/// JSON envelope.
 fn envelope_rs() -> String {
     [
-        "use serde::{Deserialize, Serialize};",
-        "",
-        "#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]",
-        "#[serde(tag = \"t\", content = \"v\", rename_all = \"snake_case\")]",
-        "pub enum UpdateEnvelope {",
-        "    /// A full snapshot — replace rendered state.",
-        "    Snapshot(serde_json::Value),",
-        "    /// Actor-thread death (D7) — terminal; surface a fatal error.",
-        "    Panic(nmp_core::PanicFrame),",
-        "}",
+        "pub use nmp_core::{",
+        "    decode_snapshot_payload, decode_update_frame, panic_message, PanicFrame, UpdateEnvelope,",
+        "    UpdateFrameBytes, UpdateFrameDecodeError,",
+        "};",
         "",
     ]
     .join("\n")
@@ -349,8 +331,20 @@ mod tests {
         // Same manifest in → byte-identical source out. No map iteration, no
         // clock, no env — the generator's core invariant.
         let m = manifest(&["nmp-nip01", "nmp-nip22"], &["fixture-todo-core"]);
-        let a = enum_file("AppAction", "nmp_core::KernelAction", &m, "Action", "pub fn namespace(&self) -> &'static str");
-        let b = enum_file("AppAction", "nmp_core::KernelAction", &m, "Action", "pub fn namespace(&self) -> &'static str");
+        let a = enum_file(
+            "AppAction",
+            "nmp_core::KernelAction",
+            &m,
+            "Action",
+            "pub fn namespace(&self) -> &'static str",
+        );
+        let b = enum_file(
+            "AppAction",
+            "nmp_core::KernelAction",
+            &m,
+            "Action",
+            "pub fn namespace(&self) -> &'static str",
+        );
         assert_eq!(a, b);
     }
 
@@ -422,9 +416,18 @@ mod tests {
         // stable.
         let out = lib_rs();
         for module in [
-            "action", "capability", "domain", "envelope", "ffi", "update", "view_spec",
+            "action",
+            "capability",
+            "domain",
+            "envelope",
+            "ffi",
+            "update",
+            "view_spec",
         ] {
-            assert!(out.contains(&format!("pub mod {module};")), "missing mod {module}");
+            assert!(
+                out.contains(&format!("pub mod {module};")),
+                "missing mod {module}"
+            );
         }
         assert!(out.contains("pub use action::AppAction;"));
         assert!(out.contains("pub use envelope::UpdateEnvelope;"));
@@ -433,21 +436,13 @@ mod tests {
     }
 
     #[test]
-    fn envelope_rs_pins_the_tagged_union_wire_contract() {
-        // The host update-channel envelope must use the canonical t/v
-        // snake_case tagging and carry the snapshot + panic arms. This mirrors
+    fn envelope_rs_reexports_flatbuffer_helpers() {
+        // Runtime delivery is FlatBuffers-only. This mirrors
         // `tests/determinism.rs` but at the pure-formatter level, so a refactor
         // of `envelope_rs` is caught without disk I/O.
         let out = envelope_rs();
-        assert!(out.contains(r#"#[serde(tag = "t", content = "v", rename_all = "snake_case")]"#));
-        assert!(out.contains("Snapshot(serde_json::Value),"));
-        assert!(out.contains("Panic(nmp_core::PanicFrame),"));
-        // The discrete-update arm (`Update(nmp_core::DeltaEnvelope)`) was
-        // deleted as shipped-but-inert — every host bridge only consumed
-        // snapshots, and the kernel no longer emits a discrete frame.
-        assert!(
-            !out.contains("DeltaEnvelope"),
-            "envelope must NOT carry the deleted Update arm: {out}"
-        );
+        assert!(out.contains("decode_update_frame"));
+        assert!(out.contains("UpdateFrameBytes"));
+        assert!(!out.contains("serde(tag"));
     }
 }
