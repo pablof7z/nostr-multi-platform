@@ -14,4 +14,5 @@ This document is split into focused sections to keep each hand-authored file und
 - Section 6: [API surface](product-spec/api-surface.md)
 - Section 7: [subsystems](product-spec/subsystems.md)
 - Sections 8-14: [CLI, toolchain, phasing, open questions, glossary](product-spec/cli-toolchain-phasing.md)
+- Principles: [offline-first and flaky-relay resilience](product-spec/offline-first.md)
 - Appendices: [FFI details and NIP glossary](product-spec/appendices.md)
