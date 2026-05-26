@@ -4,7 +4,12 @@
 //! `Nip59Error` rather than panicking — silent crypto-wrapping bugs are the
 //! primary risk this crate must guard against.
 
-use nmp_nip59::{gift_wrap, unwrap_gift_wrap, Nip59Error};
+use std::sync::Arc;
+
+use nmp_nip59::{
+    gift_wrap_with_signer, unwrap_gift_wrap, Nip59Error, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT,
+};
+use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{EventBuilder, Keys, Timestamp, UnsignedEvent};
 
 const RUMOR_SENTINEL_TS: u64 = 1_600_000_000;
@@ -13,6 +18,16 @@ fn pinned_rumor(author: &Keys, content: &str) -> UnsignedEvent {
     EventBuilder::text_note(content)
         .custom_created_at(Timestamp::from(RUMOR_SENTINEL_TS))
         .build(author.public_key())
+}
+
+/// Test-only shorthand. The blanket `SignerForSeal` impl on `Keys`
+/// resolves every step synchronously.
+fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
+    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
+    let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+    gift_wrap_with_signer(&signer, receiver, rumor, tweaked)
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift_wrap_with_signer should succeed")
 }
 
 #[test]
@@ -41,8 +56,7 @@ fn unwrap_with_wrong_key_returns_err_not_panic() {
     let charlie = Keys::generate();
     let rumor = pinned_rumor(&alice, "secret for bob only");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     let result = unwrap_gift_wrap(&charlie, &wrapped);
 
@@ -67,8 +81,7 @@ fn unwrap_sender_cannot_decrypt_own_gift_wrap() {
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "for bob");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     let result = unwrap_gift_wrap(&alice, &wrapped);
     assert!(
@@ -85,8 +98,7 @@ fn unwrap_tampered_content_returns_err() {
     let bob = Keys::generate();
     let rumor = pinned_rumor(&alice, "integrity check");
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     // Rebuild the event JSON with a corrupted content field, re-sign with a
     // fresh ephemeral key so the outer signature stays valid but the

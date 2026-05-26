@@ -2,9 +2,18 @@
 //! unwrap_gift_wrap recovers the identical rumor and the correct sender.
 //!
 //! Exit gate: this test is the headless integration proof for nmp-nip59.
+//!
+//! Note: `gift_wrap_with_expiration` (covered the legacy `expiration:
+//! Option<Timestamp>` parameter) was removed when `gift_wrap` was tightened
+//! to `pub(crate)` and the public surface migrated to
+//! `gift_wrap_with_signer`. The new surface has no expiration parameter
+//! (no production caller used it); restoring that feature is a deliberate
+//! API change tracked outside this migration.
 
-use nostr::{EventBuilder, Keys, Kind, UnsignedEvent};
-use nmp_nip59::{gift_wrap, unwrap_gift_wrap};
+use std::sync::Arc;
+
+use nostr::{EventBuilder, Keys, Kind, Timestamp, UnsignedEvent};
+use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
 
 fn alice_keys() -> Keys {
     Keys::parse("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e").unwrap()
@@ -19,15 +28,24 @@ fn make_rumor(alice: &Keys) -> UnsignedEvent {
     EventBuilder::text_note("Hello, Bob! This is a secret.").build(alice.public_key())
 }
 
+/// Test-only shorthand: wrap `rumor` for `receiver` via the
+/// `SignerForSeal` seam. `Keys` has a blanket impl that resolves every
+/// `SignerOp` synchronously, so `.wait` returns immediately.
+fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
+    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
+    gift_wrap_with_signer(&signer, receiver, rumor, Timestamp::now())
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift_wrap_with_signer should succeed")
+}
+
 #[test]
 fn gift_wrap_round_trip() {
     let alice = alice_keys();
     let bob = bob_keys();
     let rumor = make_rumor(&alice);
 
-    // Alice wraps the rumor for Bob — no expiration.
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), None)
-        .expect("gift_wrap should succeed");
+    // Alice wraps the rumor for Bob.
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     // Verify the outer envelope is kind:1059 (GiftWrap).
     assert_eq!(wrapped.kind, Kind::GiftWrap, "outer event must be kind 1059");
@@ -52,32 +70,9 @@ fn wrong_key_cannot_unwrap() {
     let charlie = Keys::parse("5b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e").unwrap();
 
     let rumor = make_rumor(&alice);
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor, None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     // Charlie (wrong key) must fail to unwrap.
     let result = unwrap_gift_wrap(&charlie, &wrapped);
     assert!(result.is_err(), "unwrapping with wrong key must fail");
-}
-
-#[test]
-fn gift_wrap_with_expiration() {
-    let alice = alice_keys();
-    let bob = bob_keys();
-    let rumor = make_rumor(&alice);
-    let expiry = nostr::Timestamp::from(9_999_999_999u64);
-
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), Some(expiry))
-        .expect("gift_wrap with expiration should succeed");
-
-    // The expiration tag must be present on the outer event.
-    let has_expiry = wrapped.tags.iter().any(|t: &nostr::Tag| {
-        t.kind() == nostr::TagKind::Expiration
-    });
-    assert!(has_expiry, "gift-wrap event must carry expiration tag");
-
-    // Bob can still unwrap.
-    let unwrapped = unwrap_gift_wrap(&bob, &wrapped)
-        .expect("unwrap_gift_wrap with expiration should succeed");
-    assert_eq!(unwrapped.rumor.content, rumor.content);
 }

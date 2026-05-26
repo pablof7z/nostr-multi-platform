@@ -13,8 +13,11 @@
 //! These pin the contract from inside the crate so a refactor cannot regress
 //! it without a red test.
 
-use nmp_nip59::{gift_wrap, unwrap_gift_wrap};
-use nostr::{EventBuilder, EventId, Keys, Kind, Tag, Timestamp};
+use std::sync::Arc;
+
+use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
+use nostr::{EventBuilder, EventId, Keys, Kind, Tag, Timestamp, UnsignedEvent};
 
 /// Sentinel `created_at` chosen far in the past so it cannot be confused
 /// with the gift-wrap envelope's randomised `now() - 0..172800` timestamp.
@@ -26,6 +29,16 @@ const RUMOR_SENTINEL_TS: u64 = 1_600_000_000;
 const WELCOME_E_TAG_HEX: &str =
     "0000000000000000000000000000000000000000000000000000000077656c63";
 
+/// Test-only shorthand. The blanket `SignerForSeal` impl on `Keys`
+/// resolves every step synchronously.
+fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
+    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
+    let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+    gift_wrap_with_signer(&signer, receiver, rumor, tweaked)
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift_wrap_with_signer should succeed")
+}
+
 #[test]
 fn round_trip_preserves_rumor_created_at() {
     let alice = Keys::generate();
@@ -34,8 +47,7 @@ fn round_trip_preserves_rumor_created_at() {
         .custom_created_at(Timestamp::from(RUMOR_SENTINEL_TS))
         .build(alice.public_key());
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped = unwrap_gift_wrap(&bob, &wrapped).expect("unwrap should succeed");
 
     assert_eq!(
@@ -90,8 +102,7 @@ fn round_trip_preserves_rumor_tags() {
         .custom_created_at(Timestamp::from(RUMOR_SENTINEL_TS))
         .build(alice.public_key());
 
-    let wrapped = gift_wrap(&alice, &bob.public_key(), rumor.clone(), None)
-        .expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped = unwrap_gift_wrap(&bob, &wrapped).expect("unwrap should succeed");
 
     // Tag count must match — no tag may be added, dropped, or reordered.
@@ -131,8 +142,7 @@ fn round_trip_preserves_rumor_kind_content_created_at_and_tags_together() {
         .custom_created_at(Timestamp::from(RUMOR_SENTINEL_TS))
         .build(alice.public_key());
 
-    let wrapped =
-        gift_wrap(&alice, &bob.public_key(), rumor, None).expect("gift_wrap should succeed");
+    let wrapped = wrap(&alice, &bob.public_key(), &rumor);
     let unwrapped = unwrap_gift_wrap(&bob, &wrapped).expect("unwrap should succeed");
 
     assert_eq!(unwrapped.rumor.kind, welcome_kind, "kind must round-trip");

@@ -385,7 +385,7 @@ fn wrap_and_publish_welcomes(
         let receiver = kp.pubkey;
         let wrapped = h
             .service()
-            .wrap_welcome(&receiver, rumor.clone(), None)
+            .wrap_welcome(&receiver, rumor.clone())
             .map_err(|e| e.to_string())?;
         // kind:1059 is ALREADY signed (NIP-59 ephemeral key) — publish
         // verbatim, never re-sign. Inbox approximation → group relays

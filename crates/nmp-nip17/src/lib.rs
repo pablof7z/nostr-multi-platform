@@ -31,12 +31,11 @@
 //!   keys, and projects the decrypted conversation list. Crypto here is the
 //!   NIP-44 unseal inside `nmp_nip59::unwrap_gift_wrap`.
 //!
-//! The actor's `SendGiftWrappedDm` arm is a **local-keys-only MVP**: a remote
-//! (NIP-46 / bunker) signer cannot gift-wrap because `nmp_nip59::gift_wrap`
-//! needs raw `nostr::Keys` for the NIP-44 seal. The `RemoteSignerHandle`
-//! NIP-44 seam (ADR-0026) is built — wiring it into the seal step is the
-//! bunker-DM phase. This rumor-builder crate is signer-agnostic and unaffected
-//! by that gap.
+//! The actor's gift-wrap path routes through the ADR-0026 `SignerForSeal`
+//! seam (`nmp_nip59::gift_wrap_with_signer`), so BOTH local-key accounts AND
+//! NIP-46 / bunker remote signers can send DMs — the same code path resolves
+//! `SignerOp::Ready` for local and `SignerOp::Pending` for remote. This
+//! rumor-builder crate is signer-agnostic.
 //!
 //! # D7: `created_at` sentinel
 //!

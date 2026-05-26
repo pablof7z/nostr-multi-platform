@@ -555,6 +555,7 @@ fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
 ///
 /// Signs the kind:9734 zap request with `keys`, does the two-leg LNURL-pay
 /// round-trip, and returns the bolt11 invoice string on success.
+#[allow(dead_code)] // Reference impl retained for the zap-smoke tool's docs.
 pub(crate) fn fetch_bolt11_for_zap(
     keys: &Keys,
     lnurl_or_address: &str,

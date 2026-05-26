@@ -29,16 +29,21 @@ pub struct UnwrappedGift {
 ///
 /// `gift_wrap` is a **local-keys primitive**: it requires the caller to hold
 /// the sender's raw `Keys` and performs the NIP-44 seal/wrap in-process.
-/// Callers that need remote-signer support (NIP-46 bunker, hardware) must NOT
-/// use this function — they must go through the signer NIP-44 seam (ADR-0026,
-/// `RemoteSignerHandle::nip44_encrypt`). Callers with an explicit ADR-0025
-/// raw-key exception may call this primitive directly.
+/// As of the offline-first audit (PR #631) this primitive is `pub(crate)` —
+/// the only public surface is [`crate::gift_wrap_with_signer`], which routes
+/// through the ADR-0026 `SignerForSeal` seam and supports BOTH local-keys
+/// (synchronous, via the blanket impl on `Keys`) AND remote signers
+/// (NIP-46 / NIP-07 / hardware via the pending `SignerOp` shape). Callers
+/// that previously held an ADR-0025 raw-key exception now construct an
+/// `Arc<dyn SignerForSeal>` over their `Keys` and dispatch through the
+/// signer seam.
 ///
 /// # Errors
 ///
 /// Returns `Nip59Error` if the NIP-59 seal or wrap construction fails.
+#[allow(dead_code)] // Retained as a reference impl of the legacy local-keys path.
 #[must_use]
-pub fn gift_wrap(
+pub(crate) fn gift_wrap(
     sender: &Keys,
     receiver: &PublicKey,
     rumor: UnsignedEvent,

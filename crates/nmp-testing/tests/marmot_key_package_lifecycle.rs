@@ -63,7 +63,7 @@ fn key_package_lifecycle_publish_validate_create_group_join() {
 
     // ── Step 4: Alice NIP-59 gift-wraps the Welcome and sends it to Bob ──────
     let gift = alice
-        .wrap_welcome(&bob_keys.public_key(), bob_rumor, None)
+        .wrap_welcome(&bob_keys.public_key(), bob_rumor)
         .expect("alice wrap_welcome");
     assert_eq!(gift.kind, Kind::GiftWrap, "outer gift-wrap must be kind:1059");
 

@@ -126,7 +126,7 @@ pub fn setup_two_member_group(
 
     // Gift-wrap the welcome.
     let gift = alice
-        .wrap_welcome(&bob_keys.public_key(), bob_rumor, None)
+        .wrap_welcome(&bob_keys.public_key(), bob_rumor)
         .expect("alice gift-wraps welcome");
 
     // Merge the create commit.

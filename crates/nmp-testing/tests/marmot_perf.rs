@@ -92,7 +92,7 @@ fn perf_group_messages_cold_render_10_members_100_msgs() {
         .zip(member_keys.iter().zip(members.iter()))
     {
         let gift = admin
-            .wrap_welcome(&mk.public_key(), rumor, None)
+            .wrap_welcome(&mk.public_key(), rumor)
             .expect("gift wrap");
         let (w, _) = ms.unwrap_and_process_welcome(&gift).expect("unwrap welcome");
         ms.accept_welcome(&w).expect("accept welcome");
@@ -278,7 +278,7 @@ fn perf_invite_member_create_welcome_peer_join() {
 
         // wrap_welcome
         let gift = alice
-            .wrap_welcome(&carol_keys.public_key(), carol_rumor, None)
+            .wrap_welcome(&carol_keys.public_key(), carol_rumor)
             .expect("wrap_welcome");
 
         // commit the add
