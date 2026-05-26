@@ -1635,9 +1635,26 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     let message: String
     /// Pre-formatted English reason the relay was targeted — empty string on
     /// old kernels. Shell renders verbatim with no branching.
+    /// `skip_serializing_if = "String::is_empty"` on the Rust side means the
+    /// key is absent when empty; `decodeIfPresent` handles that transparently.
     let relayReason: String
 
     var id: String { relayUrl }
+
+    private enum CodingKeys: String, CodingKey {
+        case relayUrl, status, statusLabel, attempt, attemptLabel, message, relayReason
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        relayUrl = try c.decode(String.self, forKey: .relayUrl)
+        status = try c.decode(String.self, forKey: .status)
+        statusLabel = try c.decode(String.self, forKey: .statusLabel)
+        attempt = try c.decode(UInt32.self, forKey: .attempt)
+        attemptLabel = try c.decode(String.self, forKey: .attemptLabel)
+        message = try c.decode(String.self, forKey: .message)
+        relayReason = try c.decodeIfPresent(String.self, forKey: .relayReason) ?? ""
+    }
 }
 
 /// Pre-formatted outbox-summary header (title + subtitle) plus per-status
