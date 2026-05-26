@@ -35,8 +35,10 @@ pub enum RelaySelectionReason {
     /// the projection can render it diagnostically.
     DiscoveryIndexer { kind: u32 },
     /// Recipient inbox relay pulled from a `#p`-tagged author's kind:10002
-    /// read list. Carries the recipient hex pubkey so the projection can
-    /// short-format it (e.g. `Inbox relay for npub1abc…`).
+    /// read list. Carries the recipient hex pubkey verbatim — the kernel
+    /// projection formats it as `Inbox relay for <hex pubkey>` and the
+    /// shell/display layer is responsible for any abbreviation (D6 — backend
+    /// projections never call `display::*` helpers).
     RecipientInbox { pubkey: String },
     /// Caller passed `PublishTarget::Explicit { relays }` — the user or app
     /// chose this relay directly.

@@ -407,8 +407,9 @@ fn resolve_returns_discovery_indexer_reason_for_kind0() {
 
 /// Code path 4 — recipient-inbox fan-out from `#p` tags carries a
 /// `RelaySelectionReason::RecipientInbox { pubkey }` variant. The raw hex
-/// pubkey rides on the variant; the kernel projection abbreviates it via
-/// `short_npub` at the wire boundary.
+/// pubkey rides on the variant verbatim and is emitted unchanged by the
+/// kernel projection — D6 forbids backend projections from calling
+/// `display::*` abbreviation helpers; the shell renders its own short form.
 #[test]
 fn resolve_returns_inbox_relay_reason_for_p_tags() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
@@ -443,8 +444,9 @@ fn resolve_returns_inbox_relay_reason_for_p_tags() {
         RelaySelectionReason::RecipientInbox { pubkey } => {
             assert_eq!(
                 pubkey, RECIPIENT_HEX,
-                "recipient pubkey rides verbatim on the variant; \
-                 abbreviation is the projection's responsibility"
+                "recipient pubkey rides verbatim on the variant; the kernel \
+                 projection emits the raw hex (D6 — abbreviation lives in the \
+                 shell, never in projections)"
             );
         }
         other => panic!("expected RecipientInbox, got {other:?}"),

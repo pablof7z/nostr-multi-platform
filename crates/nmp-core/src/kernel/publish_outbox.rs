@@ -4,7 +4,6 @@
 //! module only projects that state into a compact UI shape and exposes
 //! user-triggered retry/cancel commands back through the engine.
 
-use crate::display::short_npub;
 use crate::publish::{PerRelayState, PublishAction, RelaySelectionReason};
 use crate::relay::{OutboundMessage, RelayRole};
 
@@ -178,7 +177,11 @@ pub(super) fn format_relay_reason(reason: &RelaySelectionReason) -> String {
             format!("Discovery indexer (kind {kind})")
         }
         RelaySelectionReason::RecipientInbox { pubkey } => {
-            format!("Inbox relay for {}", short_npub(pubkey))
+            // D6 — backend projections carry raw identifiers across the wire
+            // boundary; the shell/display layer abbreviates (`short_npub`,
+            // bech32 encoding, etc.) according to its own UX rules. The raw
+            // hex pubkey is emitted verbatim here.
+            format!("Inbox relay for {pubkey}")
         }
         RelaySelectionReason::Explicit => "Explicit relay".to_string(),
     }
