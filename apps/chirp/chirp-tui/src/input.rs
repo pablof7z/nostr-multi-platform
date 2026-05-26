@@ -102,26 +102,35 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('1') => state.focus(Pane::Feed),
         KeyCode::Char('2') => state.focus(Pane::Detail),
         KeyCode::Char('3') => state.focus(Pane::Profile),
-        KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => {
-            match state.tab {
-                crate::features::FeatureTab::Chats => state.chat_select_next(),
-                crate::features::FeatureTab::Groups => state.group_select_next(),
-                crate::features::FeatureTab::Settings => state.settings_account_select_next(),
-                _ => state.select_next(),
+        KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => match state.tab {
+            crate::features::FeatureTab::Chats => state.chat_select_next(),
+            crate::features::FeatureTab::Groups => state.group_select_next(),
+            crate::features::FeatureTab::Settings => state.settings_account_select_next(),
+            _ => {
+                state.select_next();
+                state.load_older_timeline_if_needed(runtime);
+            }
+        },
+        KeyCode::Up | KeyCode::Char('k') if state.focused != Pane::Detail => match state.tab {
+            crate::features::FeatureTab::Chats => state.chat_select_previous(),
+            crate::features::FeatureTab::Groups => state.group_select_previous(),
+            crate::features::FeatureTab::Settings => state.settings_account_select_previous(),
+            _ => state.select_previous(),
+        },
+        KeyCode::PageDown => {
+            state.select_page_down();
+            if state.tab == FeatureTab::Home {
+                state.load_older_timeline_if_needed(runtime);
             }
         }
-        KeyCode::Up | KeyCode::Char('k') if state.focused != Pane::Detail => {
-            match state.tab {
-                crate::features::FeatureTab::Chats => state.chat_select_previous(),
-                crate::features::FeatureTab::Groups => state.group_select_previous(),
-                crate::features::FeatureTab::Settings => state.settings_account_select_previous(),
-                _ => state.select_previous(),
-            }
-        }
-        KeyCode::PageDown => state.select_page_down(),
         KeyCode::PageUp => state.select_page_up(),
         KeyCode::Home => state.select_first(),
-        KeyCode::End => state.select_last(),
+        KeyCode::End => {
+            state.select_last();
+            if state.tab == FeatureTab::Home {
+                state.load_older_timeline(runtime);
+            }
+        }
         KeyCode::Enter => open_selected_thread(state, runtime),
         KeyCode::Char('p') => {
             if state.tab == FeatureTab::Wallet {
@@ -285,19 +294,18 @@ fn handle_palette_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent)
 }
 
 fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRuntime) {
-    let (note_id, author_pubkey) =
-        if state.focused == Pane::Detail && state.detail_cursor > 0 {
-            let reply_idx = state.selected.saturating_add(state.detail_cursor);
-            if let Some(row) = state.rows.get(reply_idx) {
-                (row.id.clone(), row.author_pubkey.clone())
-            } else {
-                return;
-            }
-        } else if let Some(row) = state.selected_row().cloned() {
+    let (note_id, author_pubkey) = if state.focused == Pane::Detail && state.detail_cursor > 0 {
+        let reply_idx = state.selected.saturating_add(state.detail_cursor);
+        if let Some(row) = state.rows.get(reply_idx) {
             (row.id.clone(), row.author_pubkey.clone())
         } else {
             return;
-        };
+        }
+    } else if let Some(row) = state.selected_row().cloned() {
+        (row.id.clone(), row.author_pubkey.clone())
+    } else {
+        return;
+    };
 
     match action {
         "View profile" => {
@@ -520,8 +528,7 @@ fn handle_account_switcher_key(state: &mut AppState, runtime: &AppRuntime, key: 
         }
         KeyCode::Char('k') | KeyCode::Up => {
             if n > 0 {
-                state.account_switcher_cursor =
-                    state.account_switcher_cursor.saturating_sub(1);
+                state.account_switcher_cursor = state.account_switcher_cursor.saturating_sub(1);
             }
         }
         KeyCode::Enter => {

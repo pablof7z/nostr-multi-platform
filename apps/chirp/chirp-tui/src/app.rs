@@ -1,3 +1,4 @@
+use nmp_app_chirp::{DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT};
 use serde_json::Value;
 
 use crate::bridge::{NmpEvent, UpdatePayload};
@@ -46,6 +47,8 @@ pub struct AppState {
     pub blocks: usize,
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
+    pub timeline_window_limit: usize,
+    pub timeline_has_more: bool,
     pub metrics: RuntimeMetrics,
     pub relays: Vec<RelayRow>,
     pub interests: Vec<InterestRow>,
@@ -125,6 +128,8 @@ impl Default for AppState {
             blocks: 0,
             cards: 0,
             rows: Vec::new(),
+            timeline_window_limit: DEFAULT_TIMELINE_WINDOW_LIMIT,
+            timeline_has_more: false,
             metrics: RuntimeMetrics::default(),
             relays: Vec::new(),
             interests: Vec::new(),
@@ -222,25 +227,7 @@ impl AppState {
             self.settings_account_selected = account_len - 1;
         }
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
-        if let Some(snapshot) = runtime.chirp_snapshot() {
-            self.blocks = snapshot
-                .get("blocks")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            self.cards = snapshot
-                .get("cards")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            self.rows = TimelineRow::from_snapshot(&snapshot);
-            let previous_selected = self.selected;
-            if self.selected >= self.rows.len() {
-                self.selected = self.rows.len().saturating_sub(1);
-            }
-            if self.selected != previous_selected {
-                self.detail_cursor = 0;
-                self.detail_scroll = 0;
-            }
-        }
+        self.refresh_timeline(runtime);
         if !applied_action_result {
             self.status = format!(
                 "received NMP update #{} ({} bytes)",
@@ -340,6 +327,28 @@ impl AppState {
 
     pub fn select_last(&mut self) {
         self.selected = self.rows.len().saturating_sub(1);
+    }
+
+    pub fn load_older_timeline_if_needed(&mut self, runtime: &AppRuntime) {
+        if self.timeline_has_more && self.selected.saturating_add(5) >= self.rows.len() {
+            self.load_older_timeline(runtime);
+        }
+    }
+
+    pub fn load_older_timeline(&mut self, runtime: &AppRuntime) {
+        if !self.timeline_has_more {
+            return;
+        }
+        let next_limit = self
+            .timeline_window_limit
+            .saturating_add(DEFAULT_TIMELINE_WINDOW_LIMIT)
+            .min(MAX_TIMELINE_WINDOW_LIMIT);
+        if next_limit == self.timeline_window_limit {
+            self.timeline_has_more = false;
+            return;
+        }
+        self.timeline_window_limit = next_limit;
+        self.refresh_timeline(runtime);
     }
 
     #[must_use]
@@ -611,6 +620,34 @@ impl AppState {
             self.last_action_result = Some(result);
         }
         true
+    }
+
+    fn refresh_timeline(&mut self, runtime: &AppRuntime) {
+        let Some(snapshot) = runtime.chirp_snapshot_window(self.timeline_window_limit) else {
+            return;
+        };
+        self.blocks = snapshot
+            .get("blocks")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.cards = snapshot
+            .get("cards")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        self.timeline_has_more = snapshot
+            .get("page")
+            .and_then(|page| page.get("has_more"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        self.rows = TimelineRow::from_snapshot(&snapshot);
+        let previous_selected = self.selected;
+        if self.selected >= self.rows.len() {
+            self.selected = self.rows.len().saturating_sub(1);
+        }
+        if self.selected != previous_selected {
+            self.detail_cursor = 0;
+            self.detail_scroll = 0;
+        }
     }
 }
 

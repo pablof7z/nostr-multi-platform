@@ -22,8 +22,9 @@
 //!    every kind:1 the kernel ingests fans out to the projection.
 //! 3. Returns an opaque handle the shell keeps for snapshots / unregister.
 //!
-//! On each render tick the shell calls [`ffi::nmp_app_chirp_snapshot`],
-//! decodes the JSON, and renders `[TimelineBlock]` over the home timeline.
+//! On each render tick the shell calls [`ffi::nmp_app_chirp_snapshot_window`],
+//! decodes the bounded JSON window, and renders `[TimelineBlock]` over the
+//! home timeline.
 //!
 //! ## Doctrine
 //!
@@ -38,7 +39,7 @@ mod wallet_runtime;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_unregister, ChirpHandle,
+    nmp_app_chirp_snapshot_window, nmp_app_chirp_unregister, ChirpHandle,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
@@ -47,6 +48,10 @@ pub use nmp_ffi::{
 pub use nmp_nip01::{
     ModularTimelineProjection as ChirpModularTimeline,
     ModularTimelineSnapshot as ChirpTimelineSnapshot, TimelineEventCard as ChirpEventCard,
+    TimelineWindowCursor as ChirpTimelineWindowCursor,
+    TimelineWindowPage as ChirpTimelineWindowPage,
+    TimelineWindowRequest as ChirpTimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT,
+    MAX_TIMELINE_WINDOW_LIMIT,
 };
 
 // ── Marmot (MLS encrypted groups) projection ─────────────────────────────

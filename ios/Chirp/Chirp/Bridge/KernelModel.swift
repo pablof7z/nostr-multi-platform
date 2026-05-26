@@ -310,6 +310,22 @@ final class KernelModel: ObservableObject {
         kernel.configure(visibleLimit: visibleLimit, emitHz: emitHz)
     }
 
+    func loadOlderTimeline() {
+        guard modularTimeline.page?.hasMore == true else { return }
+        let nextLimit = min(visibleLimit + 80, 500)
+        guard nextLimit != visibleLimit else { return }
+        visibleLimit = nextLimit
+        applyConfiguration()
+        refreshModularTimeline()
+    }
+
+    private func refreshModularTimeline() {
+        let nextTimeline = kernel.chirpSnapshot(limit: visibleLimit)
+        if nextTimeline != modularTimeline {
+            modularTimeline = nextTimeline
+        }
+    }
+
     // ── View/Author/Thread open + close ──────────────────────────────────
 
     func openAuthor(pubkey: String) { kernel.openAuthor(pubkey: pubkey) }
@@ -550,10 +566,7 @@ final class KernelModel: ObservableObject {
         // oneshots — those events don't change the visible `items` window, so
         // gating on `items` left embedded-event embeds as collapsed placeholders.
         // The equality check below prevents spurious SwiftUI re-renders.
-        let nextTimeline = kernel.chirpSnapshot()
-        if nextTimeline != modularTimeline {
-            modularTimeline = nextTimeline
-        }
+        refreshModularTimeline()
 
         let activeAccountChanged = update.activeAccount != priorActiveAccount
         if marmotRegistrationRequested, activeAccountChanged {

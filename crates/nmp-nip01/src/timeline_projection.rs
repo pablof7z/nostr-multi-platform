@@ -18,8 +18,13 @@ use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
 use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
-use crate::profile_display::{
-    profile_from_event, should_replace, AuthorDisplay, ProfileDisplay,
+use crate::profile_display::{profile_from_event, should_replace, AuthorDisplay, ProfileDisplay};
+
+mod window;
+
+pub use window::{
+    TimelineWindowCursor, TimelineWindowPage, TimelineWindowRequest, DEFAULT_TIMELINE_WINDOW_LIMIT,
+    MAX_TIMELINE_WINDOW_LIMIT,
 };
 
 /// One render-ready event card surfaced through the modular timeline
@@ -212,6 +217,8 @@ fn content_preview(content: &str, n: usize) -> String {
 pub struct ModularTimelineSnapshot {
     pub blocks: Vec<TimelineBlock>,
     pub cards: Vec<TimelineEventCard>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<TimelineWindowPage>,
 }
 
 impl ModularTimelineSnapshot {
@@ -220,6 +227,7 @@ impl ModularTimelineSnapshot {
         Self {
             blocks: Vec::new(),
             cards: Vec::new(),
+            page: None,
         }
     }
 }
@@ -255,12 +263,47 @@ impl ModularTimelineProjection {
         let Ok(inner) = self.inner.lock() else {
             return ModularTimelineSnapshot::empty();
         };
-        let ctx = ViewContext::default();
-        let payload: ModularTimelinePayload =
-            Nip10ModularTimelineView::snapshot(&ctx, &inner.state);
+        let blocks = sorted_projection_blocks(&inner);
         ModularTimelineSnapshot {
-            blocks: payload.blocks,
+            blocks,
             cards: inner.cards.values().cloned().collect(),
+            page: None,
+        }
+    }
+
+    #[must_use]
+    pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
+        let Ok(inner) = self.inner.lock() else {
+            return ModularTimelineSnapshot::empty();
+        };
+        let blocks = sorted_projection_blocks(&inner);
+        let total_blocks = blocks.len();
+        let limit = request.bounded_limit();
+        let start = request
+            .cursor
+            .as_ref()
+            .map(|cursor| window::page_start_after_cursor(&blocks, &inner.cards, cursor))
+            .unwrap_or(0);
+        let end = start.saturating_add(limit).min(total_blocks);
+        let page_blocks = blocks[start..end].to_vec();
+        let has_more = end < total_blocks;
+        let next_cursor = if has_more {
+            page_blocks
+                .last()
+                .map(|block| window::block_window_cursor(block, &inner.cards))
+        } else {
+            None
+        };
+        let cards = window::cards_for_blocks(&page_blocks, &inner.cards);
+        ModularTimelineSnapshot {
+            blocks: page_blocks,
+            cards,
+            page: Some(TimelineWindowPage {
+                limit,
+                next_cursor,
+                has_more,
+                total_blocks,
+            }),
         }
     }
 }
@@ -331,7 +374,8 @@ impl Inner {
             lookup
         };
         for card in self.cards.values_mut() {
-            card.content_render = content_render_for_snapshot(&card.content_tree, profiles, &card_lookup);
+            card.content_render =
+                content_render_for_snapshot(&card.content_tree, profiles, &card_lookup);
         }
     }
 
@@ -370,6 +414,12 @@ fn content_render_for_snapshot(
         }
     }
     data
+}
+
+fn sorted_projection_blocks(inner: &Inner) -> Vec<TimelineBlock> {
+    let ctx = ViewContext::default();
+    let payload: ModularTimelinePayload = Nip10ModularTimelineView::snapshot(&ctx, &inner.state);
+    window::sorted_blocks(payload.blocks, &inner.cards)
 }
 
 #[cfg(test)]

@@ -9,13 +9,13 @@
 //! `nmp-core`'s public `actor_sender()` exposes this for cross-crate tests
 //! (the production wire path makes the same `ActorCommand` enqueue).
 
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_app_chirp::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_unregister, ChirpTimelineSnapshot,
+    nmp_app_chirp_snapshot_window, nmp_app_chirp_unregister, ChirpTimelineSnapshot,
 };
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
@@ -41,6 +41,22 @@ fn raw_note(id: &str, author: &str, ts: u64, tags: Vec<Vec<String>>, content: &s
 fn snapshot_for(handle: *mut nmp_app_chirp::ChirpHandle) -> ChirpTimelineSnapshot {
     let ptr = nmp_app_chirp_snapshot(handle);
     assert!(!ptr.is_null(), "snapshot returned null");
+    // SAFETY: ptr is a valid C string from our own CString.
+    let json = unsafe { CStr::from_ptr(ptr) }
+        .to_str()
+        .expect("snapshot JSON is utf8")
+        .to_owned();
+    nmp_app_chirp_snapshot_free(ptr);
+    serde_json::from_str(&json).expect("snapshot deserializes")
+}
+
+fn window_snapshot_for(
+    handle: *mut nmp_app_chirp::ChirpHandle,
+    request_json: &str,
+) -> ChirpTimelineSnapshot {
+    let request = CString::new(request_json).expect("request contains no nul");
+    let ptr = nmp_app_chirp_snapshot_window(handle, request.as_ptr());
+    assert!(!ptr.is_null(), "window snapshot returned null");
     // SAFETY: ptr is a valid C string from our own CString.
     let json = unsafe { CStr::from_ptr(ptr) }
         .to_str()
@@ -126,6 +142,35 @@ fn standalone_note_renders_as_standalone_block() {
     assert_eq!(snap.blocks.len(), 1);
     assert!(matches!(snap.blocks[0], TimelineBlock::Standalone(_)));
     assert_eq!(snap.cards.len(), 1);
+
+    nmp_app_chirp_unregister(handle);
+    nmp_app_free(app);
+}
+
+#[test]
+fn window_snapshot_returns_bounded_newest_blocks() {
+    let _g = SERIAL.lock().unwrap();
+
+    let app = nmp_app_new();
+    nmp_app_start(app, 0, 80, 4);
+    let handle = nmp_app_chirp_register(app, std::ptr::null());
+
+    let author = "c".repeat(64);
+    let old_id = "4".repeat(64);
+    let new_id = "5".repeat(64);
+    let old = VerifiedEvent::from_raw_unchecked(raw_note(&old_id, &author, 1, vec![], "old"));
+    let new = VerifiedEvent::from_raw_unchecked(raw_note(&new_id, &author, 2, vec![], "new"));
+    inject(app, vec![new, old]);
+    std::thread::sleep(Duration::from_millis(500));
+
+    let snap = window_snapshot_for(handle, r#"{"limit":1}"#);
+    assert_eq!(snap.blocks.len(), 1);
+    assert!(matches!(&snap.blocks[0], TimelineBlock::Standalone(id) if id == &new_id));
+    assert_eq!(snap.cards.len(), 1);
+    let page = snap.page.expect("window snapshot carries page metadata");
+    assert!(page.has_more);
+    assert_eq!(page.total_blocks, 2);
+    assert_eq!(page.next_cursor.expect("cursor").id, new_id);
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);

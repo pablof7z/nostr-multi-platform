@@ -11,7 +11,7 @@ import Foundation
 //     Idempotent: safe to call when `chirpHandle` is nil OR already set.
 //   • `KernelHandle.unregisterChirpProjectionIfNeeded()` — drops the
 //     projection before `nmp_app_free` (FFI contract).
-//   • `KernelHandle.chirpSnapshot()` — JSON snapshot decoded into
+//   • `KernelHandle.chirpSnapshot(limit:cursor:)` — JSON window decoded into
 //     `ChirpTimelineSnapshot`. Returns `.empty` on any failure (D6).
 //   • `KernelHandle.reregisterChirpProjection()` — used by
 //     `KernelModel.resetAndRestart()` so the projection's grouper state
@@ -48,9 +48,22 @@ extension KernelHandle {
     /// `ChirpTimelineSnapshot.empty` when the projection handle is unset
     /// (registration failed) or when JSON parse fails (D6 — never throws
     /// across the bridge; logs and continues).
-    func chirpSnapshot() -> ChirpTimelineSnapshot {
+    func chirpSnapshot(
+        limit: UInt32,
+        cursor: TimelineWindowCursor? = nil
+    ) -> ChirpTimelineSnapshot {
         guard let handle = chirpHandle else { return .empty }
-        guard let ptr = nmp_app_chirp_snapshot(handle) else { return .empty }
+        let request = TimelineWindowRequest(limit: limit, cursor: cursor)
+        guard
+            let data = try? JSONEncoder().encode(request),
+            let requestJSON = String(data: data, encoding: .utf8)
+        else {
+            return .empty
+        }
+        let ptr = requestJSON.withCString { requestPtr in
+            nmp_app_chirp_snapshot_window(handle, requestPtr)
+        }
+        guard let ptr else { return .empty }
         defer { nmp_app_chirp_snapshot_free(ptr) }
         let payload = String(cString: ptr)
         guard let data = payload.data(using: .utf8) else { return .empty }

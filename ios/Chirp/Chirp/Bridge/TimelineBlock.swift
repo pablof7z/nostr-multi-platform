@@ -4,8 +4,8 @@ import Foundation
 // T146 — Swift mirror of `nmp_threading::TimelineBlock` + the per-event
 // metadata `nmp_app_chirp` ships alongside the blocks.
 //
-// Wire shape produced by `nmp_app_chirp_snapshot(handle)`:
-//   { "blocks": [TimelineBlock], "cards": [ChirpEventCard] }
+// Wire shape produced by `nmp_app_chirp_snapshot_window(handle, request)`:
+//   { "blocks": [TimelineBlock], "cards": [ChirpEventCard], "page": ... }
 //
 // `TimelineBlock` is a tagged enum on the Rust side (serde default
 // representation). The two variants are:
@@ -230,12 +230,42 @@ enum RelationCount: Decodable, Equatable, Sendable {
     }
 }
 
+struct TimelineWindowCursor: Codable, Equatable, Sendable {
+    let createdAt: UInt64
+    let id: String
+
+    private enum CodingKeys: String, CodingKey {
+        case createdAt = "created_at"
+        case id
+    }
+}
+
+struct TimelineWindowPage: Decodable, Equatable, Sendable {
+    let limit: UInt
+    let nextCursor: TimelineWindowCursor?
+    let hasMore: Bool
+    let totalBlocks: UInt
+
+    private enum CodingKeys: String, CodingKey {
+        case limit
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+        case totalBlocks = "total_blocks"
+    }
+}
+
+struct TimelineWindowRequest: Encodable {
+    let limit: UInt32
+    let cursor: TimelineWindowCursor?
+}
+
 /// Decoded `nmp_app_chirp_snapshot` payload.
 struct ChirpTimelineSnapshot: Decodable, Equatable {
     let blocks: [TimelineBlock]
     let cards: [ChirpEventCard]
+    let page: TimelineWindowPage?
 
-    static let empty = ChirpTimelineSnapshot(blocks: [], cards: [])
+    static let empty = ChirpTimelineSnapshot(blocks: [], cards: [], page: nil)
 }
 
 // ─── nmp-content ContentTreeWire mirror ─────────────────────────────────
