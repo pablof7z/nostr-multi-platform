@@ -110,6 +110,14 @@ pub mod routing_trace_dto;
 // future regressions on the field shape.
 mod relay_frame;
 mod relay_projection;
+// W1 — substrate-pure RelayAuthorScore type + per-author/relay scoring
+// map. Consumed by W3 (score-update seams) and W4 (planner warm-relay
+// preference). LMDB hydration/flush is W2. See
+// `docs/design/relay-search-radius-impl-plan.md` §0/§W1 with §8.5/§8.10
+// amendments applied.
+mod relay_score;
+#[cfg(test)]
+mod relay_score_tests;
 mod raw_event_observer;
 #[cfg(test)]
 mod raw_event_observer_tests;
