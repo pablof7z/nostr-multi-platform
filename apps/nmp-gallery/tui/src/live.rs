@@ -45,8 +45,12 @@ const CONSUMER_ID: &str = "nmp-gallery-tui.preview";
 
 const RELAYS: &[(&str, &str)] = &[
     ("wss://purplepag.es", "indexer"),
-    ("wss://relay.primal.net", "indexer"),
-    ("wss://relay.primal.net", "both"),
+    // Primal serves as BOTH content AND indexer. Combined role on a
+    // single RelayEditRow so `read_eligible_relay_urls` (which feeds
+    // `lifecycle.set_app_relays`) picks it up. Otherwise a second
+    // `add_relay` for the same URL replaces the prior role rather than
+    // unioning, leaving app_relays missing.
+    ("wss://relay.primal.net", "both,indexer"),
 ];
 
 pub struct LiveGallerySource {
