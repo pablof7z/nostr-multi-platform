@@ -99,6 +99,13 @@ pub struct ZapInput {
 /// HTTP round-trip (D8 — no blocking on the actor thread).
 pub struct ZapAction;
 
+fn record_action_failure(send: &dyn Fn(ActorCommand), correlation_id: &str, reason: String) {
+    send(ActorCommand::RecordActionFailure {
+        correlation_id: correlation_id.to_string(),
+        reason,
+    });
+}
+
 impl ActionModule for ZapAction {
     const NAMESPACE: &'static str = "nmp.nip57.zap";
     type Action = ZapInput;
@@ -112,10 +119,7 @@ impl ActionModule for ZapAction {
     /// actor auto-selects from the recipient's kind:10002 (NIP-65) write
     /// list before signing (V-07). Relay choice is policy that lives in the
     /// kernel, not the shell.
-    fn start(
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
+    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.recipient_pubkey.trim().is_empty() {
             return Err(ActionRejection::Invalid(
                 "zap requires a recipient pubkey".into(),
@@ -144,7 +148,7 @@ impl ActionModule for ZapAction {
     /// NWC pay-invoice on a fetched invoice, or records `Failed` on LNURL /
     /// missing-wallet errors. The NIP-47 kind:23195 response closes the
     /// original zap action's `correlation_id` on wallet confirmation.
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (crate::lnurl records Requested via ProtocolCommandContext and Failed on pre-payment errors)
+    fn is_async_completing() -> bool {
         true
     }
 
@@ -193,9 +197,17 @@ impl ActionModule for ZapAction {
         // carries it through unchanged but `sign_zap_request` re-signs
         // from the active `Keys` (its pubkey is what `EventBuilder` stamps).
         // `created_at = 0` is the D7 sentinel — re-stamped in `run()`.
-        let unsigned = builder
-            .build(String::new(), 0)
-            .map_err(|e| format!("build kind:9734 zap request: {e}"))?;
+        let unsigned = match builder.build(String::new(), 0) {
+            Ok(unsigned) => unsigned,
+            Err(e) => {
+                record_action_failure(
+                    send,
+                    correlation_id,
+                    format!("build kind:9734 zap request: {e}"),
+                );
+                return Ok(());
+            }
+        };
         send(ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand {
             unsigned,
             recipient_pubkey: action.recipient_pubkey,
@@ -222,8 +234,7 @@ mod tests {
         Ok(captured.into_inner())
     }
 
-    const RECIPIENT: &str =
-        "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+    const RECIPIENT: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
     const RELAY: &str = "wss://relay.damus.io";
     const LNURL: &str = "alice@walletofsatoshi.com";
 
@@ -359,8 +370,13 @@ mod tests {
 
     #[test]
     fn execute_emits_protocol_lnurl_command_with_zap_request() {
-        let cmds = run_execute(well_formed_input()).expect("execute must succeed for well-formed input");
-        assert_eq!(cmds.len(), 1, "executor must emit exactly one command, got {cmds:?}");
+        let cmds =
+            run_execute(well_formed_input()).expect("execute must succeed for well-formed input");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "executor must emit exactly one command, got {cmds:?}"
+        );
         let cmd = cmds.into_iter().next().unwrap();
         let ActorCommand::Protocol(boxed) = cmd else {
             panic!("expected ActorCommand::Protocol(...), got something else");
@@ -374,14 +390,26 @@ mod tests {
             dbg.contains("FetchLnurlInvoiceCommand"),
             "expected FetchLnurlInvoiceCommand, got: {dbg}"
         );
-        assert!(dbg.contains(LNURL), "lnurl must surface in command Debug: {dbg}");
+        assert!(
+            dbg.contains(LNURL),
+            "lnurl must surface in command Debug: {dbg}"
+        );
         assert!(dbg.contains("21000"), "amount must surface: {dbg}");
-        assert!(dbg.contains("cid-deadbeef"), "correlation_id must surface: {dbg}");
+        assert!(
+            dbg.contains("cid-deadbeef"),
+            "correlation_id must surface: {dbg}"
+        );
         // kind:9734 + builder tags surface through the embedded
         // UnsignedEvent's Debug.
         assert!(dbg.contains("kind: 9734"), "kind 9734 must surface: {dbg}");
-        assert!(dbg.contains("\"relays\""), "relays tag key must surface: {dbg}");
-        assert!(dbg.contains("\"amount\""), "amount tag key must surface: {dbg}");
+        assert!(
+            dbg.contains("\"relays\""),
+            "relays tag key must surface: {dbg}"
+        );
+        assert!(
+            dbg.contains("\"amount\""),
+            "amount tag key must surface: {dbg}"
+        );
         assert!(dbg.contains("\"p\""), "p tag key must surface: {dbg}");
         // The D7 sentinel: executor must pass created_at=0 (the protocol
         // command re-stamps from `ctx.now_secs()` in its `run`).
@@ -400,13 +428,18 @@ mod tests {
             ..well_formed_input()
         };
         let cmds = run_execute(input).unwrap();
-        let ActorCommand::Protocol(boxed) =
-            cmds.into_iter().next().expect("executor must emit a command")
+        let ActorCommand::Protocol(boxed) = cmds
+            .into_iter()
+            .next()
+            .expect("executor must emit a command")
         else {
             panic!("expected ActorCommand::Protocol(...)");
         };
         let dbg = format!("{boxed:?}");
-        assert!(dbg.contains("\"e\""), "expected `e` tag for targeted zap: {dbg}");
+        assert!(
+            dbg.contains("\"e\""),
+            "expected `e` tag for targeted zap: {dbg}"
+        );
     }
 
     /// Comment lands in the kind:9734 `content` per NIP-57.
@@ -418,12 +451,39 @@ mod tests {
             ..well_formed_input()
         };
         let cmds = run_execute(input).unwrap();
-        let ActorCommand::Protocol(boxed) =
-            cmds.into_iter().next().expect("executor must emit a command")
+        let ActorCommand::Protocol(boxed) = cmds
+            .into_iter()
+            .next()
+            .expect("executor must emit a command")
         else {
             panic!("expected ActorCommand::Protocol(...)");
         };
         let dbg = format!("{boxed:?}");
-        assert!(dbg.contains("nice post"), "expected comment content in: {dbg}");
+        assert!(
+            dbg.contains("nice post"),
+            "expected comment content in: {dbg}"
+        );
+    }
+
+    #[test]
+    fn execute_records_failure_when_zap_request_build_fails() {
+        let input = ZapInput {
+            recipient_pubkey: String::new(),
+            ..well_formed_input()
+        };
+        let cmds = run_execute(input).expect("build failure should settle through action failure");
+        assert_eq!(cmds.len(), 1, "expected one terminal command, got {cmds:?}");
+        let ActorCommand::RecordActionFailure {
+            correlation_id,
+            reason,
+        } = &cmds[0]
+        else {
+            panic!("expected RecordActionFailure, got {:?}", cmds[0]);
+        };
+        assert_eq!(correlation_id, "cid-deadbeef");
+        assert!(
+            reason.contains("build kind:9734 zap request"),
+            "failure should explain build error: {reason}"
+        );
     }
 }
