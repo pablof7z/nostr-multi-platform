@@ -288,11 +288,16 @@ impl Kernel {
                     // If this frame's `interest_id` belongs to a pending claim,
                     // map the planner-assigned `sub_id` → `interest_id` so the
                     // ingest seam can look up the originating claim in O(log N).
+                    // B4: also record (canonical_relay, sub_id) in in_flight_attempts
+                    // so EOSE attribution is per-relay, not per-sub_id alone.
                     if self.pending_claims.contains_key(interest_id) {
                         self.claim_sub_index
                             .insert(sub_id.clone(), interest_id.clone());
                         if let Some(claim) = self.pending_claims.get_mut(interest_id) {
-                            claim.in_flight_subs.insert(sub_id.clone());
+                            let canonical_relay = key.as_str().to_string();
+                            claim
+                                .in_flight_attempts
+                                .insert((canonical_relay, sub_id.clone()));
                         }
                     }
                     // PD-033-C Stage 0: route through the single-writer helper.

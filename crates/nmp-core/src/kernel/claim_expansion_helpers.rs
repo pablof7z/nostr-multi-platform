@@ -9,7 +9,8 @@ use std::time::Instant;
 use crate::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, LogicalInterest, RelayHint,
 };
-use crate::subs::CompileTrigger;
+use crate::relay::CanonicalRelayUrl;
+use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 use super::{
     claim_expansion::{
@@ -40,7 +41,6 @@ impl Kernel {
         let phase = claim.phase.clone();
         let existing_attempted = claim.attempted.clone();
         let existing_queue = claim.candidate_queue.clone();
-        let existing_in_flight = claim.in_flight_subs.len();
 
         // Build fresh candidate queue from URI hints (§8.2: Phase 2 fans out
         // through W7 hints on the existing LogicalInterest). The planner
@@ -67,8 +67,17 @@ impl Kernel {
         });
         candidates.dedup();
 
-        // How many open slots?
-        let open_slots = MAX_EXPANSION_CONCURRENCY.saturating_sub(existing_in_flight);
+        // Count unique in-flight relays (not tuples) for concurrency limit.
+        let in_flight_relay_count = {
+            let mut relay_set = std::collections::BTreeSet::new();
+            if let Some(claim) = self.pending_claims.get(&iid) {
+                for (relay, _) in &claim.in_flight_attempts {
+                    relay_set.insert(relay.clone());
+                }
+            }
+            relay_set.len()
+        };
+        let open_slots = MAX_EXPANSION_CONCURRENCY.saturating_sub(in_flight_relay_count);
         let remaining_budget = MAX_RELAYS_TRIED_PER_CLAIM.saturating_sub(existing_attempted.len());
         let to_pick = open_slots.min(remaining_budget).min(candidates.len());
 
@@ -104,9 +113,11 @@ impl Kernel {
 
         // Update claim state
         if let Some(claim) = self.pending_claims.get_mut(&iid) {
-            // Mark picked relays as attempted
+            // B5: canonicalize URLs at WRITE time into attempted set
+            // (previously only canonicalized at lookup time in relay_failed).
             for url in &picked {
-                claim.attempted.insert(url.clone());
+                let canonical = CanonicalRelayUrl::parse_or_raw(url).into_string();
+                claim.attempted.insert(canonical);
             }
             // Remove picked from candidate queue
             claim.candidate_queue.retain(|url| !picked.contains(url));
@@ -128,17 +139,42 @@ impl Kernel {
                 });
             }
 
-            // Re-push the LogicalInterest with updated hints so the planner
-            // emits the new REQs. §8.2: `registry.push()` upserts by id.
+            // B2: §8.2 single-LogicalInterest — update hints on the EXISTING
+            // OneshotApi slot rather than creating a second registry slot.
+            //
+            // The claim's interest_id was returned by `OneshotApi::request` as
+            // `InterestId(shape_key.0)` where `shape_key =
+            // stable_hash64(("oneshot", SubScope::Global, shape))`. We
+            // reconstruct the same SubIdentity and call `set_sub` (upsert) so
+            // the slot's hints are replaced in-place.
+            //
+            // This keeps `oneshot.in_flight() == 1` across Phase 1 → Phase 2
+            // because no new OneshotToken is created — only the hints change.
+            let interest_id = claim.interest_id.clone();
+            let shape = claim.shape.clone();
             let updated_interest = LogicalInterest {
-                id: claim.interest_id.clone(),
+                id: interest_id.clone(),
                 scope: InterestScope::Global,
-                shape: claim.shape.clone(),
+                shape: shape.clone(),
                 hints,
                 lifecycle: InterestLifecycle::OneShot,
                 is_indexer_discovery: false,
             };
-            self.lifecycle.registry_mut().push(updated_interest);
+            // Reconstruct the SubIdentity that OneshotApi originally used.
+            // The key is derived from (scope, shape); we must use the SAME
+            // key derivation so we update the right slot (not create a new one).
+            // OneshotApi uses: SubKey(stable_hash64(("oneshot", sub_scope, shape)))
+            // which equals InterestId(key.0) for the returned interest_id.
+            // Therefore: SubKey(interest_id.0) is the correct key.
+            let sub_key = SubKey(interest_id.0);
+            // The owner is per-token; using the same synthetic owner ensures we
+            // update rather than add a new owner. In practice `set_sub` attaches
+            // the owner AND replaces the interest — so any valid owner works here.
+            let owner = SubOwnerKey::new(("claim-expansion-hint-update", interest_id.0));
+            let identity = SubIdentity::new(owner, sub_key, SubScope::Global);
+            self.lifecycle
+                .registry_mut()
+                .set_sub(identity, updated_interest);
         }
 
         // Trigger a planner recompile to emit the new hints as REQs (W7).
@@ -148,6 +184,10 @@ impl Kernel {
     }
 
     /// Mark a claim as terminal and emit a wire-log transition.
+    ///
+    /// B3: cleans up all `claim_sub_index` entries pointing to this claim,
+    /// so the reverse index never accumulates stale entries. A debug_assert
+    /// at the end verifies the index invariant.
     pub(super) fn terminate_claim(&mut self, iid: InterestId, reason: ClaimTermination) {
         let Some(claim) = self.pending_claims.get_mut(&iid) else {
             return;
@@ -170,5 +210,18 @@ impl Kernel {
             reason: to,
         });
         claim.phase = Phase::Terminal(reason);
+
+        // B3: remove all reverse-index entries pointing to this claim
+        self.claim_sub_index.retain(|_, v| *v != iid);
+
+        // B3 invariant: every remaining claim_sub_index value must point to
+        // an existing pending_claim (after terminal entries are removed in the
+        // caller's retain pass, this holds; here we assert the forward direction).
+        debug_assert!(
+            self.claim_sub_index
+                .values()
+                .all(|id| self.pending_claims.contains_key(id)),
+            "claim_sub_index drift: some entries point to non-existent claims"
+        );
     }
 }
