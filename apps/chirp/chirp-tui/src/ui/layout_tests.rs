@@ -1,8 +1,10 @@
-use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::Terminal;
 
 use crate::app::AppState;
-use crate::feature_snapshot::AccountLine;
+use crate::feature_snapshot::{AccountLine, RelayEditLine};
+use crate::features::FeatureTab;
+use crate::snapshot::{RelayRow, RelayWireSubRow};
 use crate::timeline::TimelineRow;
 use crate::ui::layout::render;
 use crate::ui::nostr_user::profile_wire::ProfileWire;
@@ -88,6 +90,44 @@ fn home_tab_handles_narrow_terminal_without_panicking() {
 
     assert!(rendered.contains("chirp"));
     assert!(rendered.contains("Compose"));
+}
+
+#[test]
+fn settings_tab_renders_all_relay_inventory_and_raw_filters() {
+    let mut state = state_with_account();
+    state.set_tab(FeatureTab::Settings);
+    state.features.relay_edit_rows.push(RelayEditLine {
+        url: "wss://relay.example".to_string(),
+        role_label: "both,indexer".to_string(),
+    });
+    state.relays.push(RelayRow {
+        relay_url: "wss://relay.example".to_string(),
+        short_url: "relay.example".to_string(),
+        role_label: "Content".to_string(),
+        connection_label: "Connected".to_string(),
+        total_sub_count: 1,
+        active_sub_count: 1,
+        total_events_rx: 12,
+        total_events_display: "12".to_string(),
+        wire_subs: vec![RelayWireSubRow {
+            short_wire_id: "sub-feed".to_string(),
+            filter_summary: r#"{"kinds":[1],"limit":20}"#.to_string(),
+            state_label: "Open".to_string(),
+            consumer_count_label: "1 consumer".to_string(),
+            opened_display: "1s ago".to_string(),
+            events_rx_display: Some("12".to_string()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+
+    let rendered = render_state(150, 40, state);
+
+    assert!(rendered.contains("All Relays 1"));
+    assert!(rendered.contains("relay.example"));
+    assert!(rendered.contains("both,indexer"));
+    assert!(rendered.contains("raw"));
+    assert!(rendered.contains("\"kinds\""));
 }
 
 fn render_state(width: u16, height: u16, state: AppState) -> String {

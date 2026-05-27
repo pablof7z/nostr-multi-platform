@@ -45,6 +45,30 @@ impl AppState {
         self.settings_account_selected = self.settings_account_selected.saturating_sub(1);
     }
 
+    pub fn settings_relay_select_next(&mut self) {
+        if !self.relays.is_empty() && self.settings_relay_selected + 1 < self.relays.len() {
+            self.settings_relay_selected += 1;
+        }
+    }
+
+    pub fn settings_relay_select_previous(&mut self) {
+        self.settings_relay_selected = self.settings_relay_selected.saturating_sub(1);
+    }
+
+    pub fn settings_section_next(&mut self) {
+        self.settings_cursor = (self.settings_cursor + 1).min(2);
+        if self.settings_cursor != 2 {
+            self.outbox_selected = None;
+        }
+    }
+
+    pub fn settings_section_previous(&mut self) {
+        self.settings_cursor = self.settings_cursor.saturating_sub(1);
+        if self.settings_cursor != 2 {
+            self.outbox_selected = None;
+        }
+    }
+
     pub fn select_page_down(&mut self) {
         self.selected = (self.selected + 10).min(self.rows.len().saturating_sub(1));
     }

@@ -7,16 +7,17 @@ pub mod home;
 pub mod layout;
 pub mod nostr_content;
 pub mod nostr_user;
+mod outbox;
 pub mod palette;
 pub mod post_detail;
 mod post_detail_rich;
 pub mod post_list;
 pub mod profile_pane;
-mod outbox;
+pub mod raw_event_modal;
 pub mod relay_panel;
+mod relay_settings;
 pub mod settings;
 mod shared_snapshot_lines;
-pub mod raw_event_modal;
 pub mod wallet;
 
 #[cfg(test)]

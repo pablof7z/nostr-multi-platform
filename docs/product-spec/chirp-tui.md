@@ -181,8 +181,10 @@ animations.
 - Command palette fuzzy search over display names / npubs via nucleo
 
 ### F8 — Relay management
-- Status bar: per-relay health dot (●/○)
-- `/relay status` pane: latency, event counts
+- Title bar: connected/total relay count; Home relay pane labels preview/total count
+- Settings relay inventory: all active relays grouped by role/source, not only app relays
+- Settings relay detail: why connected, raw REQ filters, per-sub/session event counts,
+  EOSE/close/error state, traffic, and reconnect counters
 - `/relay add` / `/relay rm`
 
 ### F9 — Animations & polish

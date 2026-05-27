@@ -82,15 +82,46 @@ impl RuntimeMetrics {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RelayRow {
+    pub relay_url: String,
     pub short_url: String,
     pub role_label: String,
+    pub role_tone: String,
     pub connection_label: String,
+    pub connection_tone: String,
+    pub auth_label: String,
+    pub auth_tone: String,
+    pub total_sub_count: u64,
     pub active_sub_count: u64,
+    pub eosed_sub_count: u64,
+    pub total_events_rx: u64,
     pub total_events_display: String,
+    pub reconnect_count: u64,
+    pub bytes_rx_display: Option<String>,
+    pub bytes_tx_display: Option<String>,
+    pub last_connected_display: Option<String>,
     pub last_event_display: Option<String>,
+    pub last_notice: Option<String>,
     pub last_error: Option<String>,
+    pub wire_subs: Vec<RelayWireSubRow>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RelayWireSubRow {
+    pub wire_id: String,
+    pub short_wire_id: String,
+    pub relay_url: String,
+    pub filter_summary: String,
+    pub state_label: String,
+    pub state_tone: String,
+    pub consumer_count_label: String,
+    pub events_rx_display: Option<String>,
+    pub eose_observed: bool,
+    pub opened_display: String,
+    pub last_event_display: Option<String>,
+    pub eose_display: Option<String>,
+    pub close_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,13 +154,53 @@ fn relays_from(projections: Option<&Value>) -> Vec<RelayRow> {
         .into_iter()
         .flatten()
         .map(|row| RelayRow {
+            relay_url: string_field(row, "relay_url"),
             short_url: string_field(row, "short_url"),
             role_label: string_field(row, "role_label"),
+            role_tone: string_field(row, "role_tone"),
             connection_label: string_field(row, "connection_label"),
+            connection_tone: string_field(row, "connection_tone"),
+            auth_label: string_field(row, "auth_label"),
+            auth_tone: string_field(row, "auth_tone"),
+            total_sub_count: number_field(row, "total_sub_count"),
             active_sub_count: number_field(row, "active_sub_count"),
+            eosed_sub_count: number_field(row, "eosed_sub_count"),
+            total_events_rx: number_field(row, "total_events_rx"),
             total_events_display: string_field(row, "total_events_display"),
+            reconnect_count: number_field(row, "reconnect_count"),
+            bytes_rx_display: optional_string(row, "bytes_rx_display"),
+            bytes_tx_display: optional_string(row, "bytes_tx_display"),
+            last_connected_display: optional_string(row, "last_connected_display"),
             last_event_display: optional_string(row, "last_event_display"),
+            last_notice: optional_string(row, "last_notice"),
             last_error: optional_string(row, "last_error"),
+            wire_subs: relay_wire_subs_from(row),
+        })
+        .collect()
+}
+
+fn relay_wire_subs_from(row: &Value) -> Vec<RelayWireSubRow> {
+    row.get("wire_subs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|sub| RelayWireSubRow {
+            wire_id: string_field(sub, "wire_id"),
+            short_wire_id: string_field(sub, "short_wire_id"),
+            relay_url: string_field(sub, "relay_url"),
+            filter_summary: string_field(sub, "filter_summary"),
+            state_label: string_field(sub, "state_label"),
+            state_tone: string_field(sub, "state_tone"),
+            consumer_count_label: string_field(sub, "consumer_count_label"),
+            events_rx_display: optional_string(sub, "events_rx_display"),
+            eose_observed: sub
+                .get("eose_observed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            opened_display: string_field(sub, "opened_display"),
+            last_event_display: optional_string(sub, "last_event_display"),
+            eose_display: optional_string(sub, "eose_display"),
+            close_reason: optional_string(sub, "close_reason"),
         })
         .collect()
 }
@@ -234,49 +305,86 @@ mod tests {
     }
 
     fn sample_payload() -> Value {
-        serde_json::json!({
-            "metrics": {
-                "events_rx": 5,
-                "visible_items": 2,
-                "actor_queue_depth": 1,
-                "update_sequence": 9
-            },
-            "projections": {
-                "relay_diagnostics": {
-                    "relays": [{
-                        "short_url": "relay.example",
-                        "role_label": "Read/Write",
-                        "connection_label": "Open",
-                        "active_sub_count": 3,
-                        "total_events_display": "42",
-                        "last_event_display": "now",
-                        "last_error": null
-                    }],
-                    "interests": [{
-                        "key": "home",
-                        "state": "active",
-                        "refcount": 1,
-                        "cache_coverage": "live"
-                    }]
+        serde_json::from_str(
+            r#"{
+                "metrics": {
+                    "events_rx": 5,
+                    "visible_items": 2,
+                    "actor_queue_depth": 1,
+                    "update_sequence": 9
                 },
-                "action_results": [{
-                    "correlation_id": "corr-1",
-                    "status": "published",
-                    "error": null
-                }],
-                "action_stages": {
-                    "corr-2": [
-                        {"stage": "requested", "at_ms": 1},
-                        {"stage": "publishing", "at_ms": 2}
-                    ]
+                "projections": {
+                    "relay_diagnostics": {
+                        "relays": [{
+                            "relay_url": "wss://relay.example",
+                            "short_url": "relay.example",
+                            "role_label": "Read/Write",
+                            "role_tone": "primary",
+                            "connection_label": "Open",
+                            "connection_tone": "ok",
+                            "auth_label": "OK",
+                            "auth_tone": "ok",
+                            "total_sub_count": 4,
+                            "active_sub_count": 3,
+                            "eosed_sub_count": 1,
+                            "total_events_rx": 42,
+                            "total_events_display": "42",
+                            "reconnect_count": 2,
+                            "bytes_rx_display": "1 KB",
+                            "bytes_tx_display": "128 B",
+                            "last_connected_display": "3s ago",
+                            "last_event_display": "now",
+                            "last_notice": "NOTICE text",
+                            "last_error": null,
+                            "wire_subs": [{
+                                "wire_id": "sub-filter-json",
+                                "short_wire_id": "sub-filt...",
+                                "relay_url": "wss://relay.example",
+                                "filter_summary": "{\"kinds\":[1],\"limit\":20}",
+                                "state_label": "Open",
+                                "state_tone": "ok",
+                                "consumer_count_label": "1 consumer",
+                                "events_rx_display": "12",
+                                "eose_observed": true,
+                                "opened_display": "5s ago",
+                                "last_event_display": "now",
+                                "eose_display": "1s ago",
+                                "close_reason": null
+                            }]
+                        }],
+                        "interests": [{
+                            "key": "home",
+                            "state": "active",
+                            "refcount": 1,
+                            "cache_coverage": "live"
+                        }]
+                    },
+                    "action_results": [{
+                        "correlation_id": "corr-1",
+                        "status": "published",
+                        "error": null
+                    }],
+                    "action_stages": {
+                        "corr-2": [
+                            {"stage": "requested", "at_ms": 1},
+                            {"stage": "publishing", "at_ms": 2}
+                        ]
+                    }
                 }
-            }
-        })
+            }"#,
+        )
+        .expect("valid sample payload")
     }
 
     fn assert_sample_snapshot(snapshot: SharedSnapshot) {
         assert_eq!(snapshot.metrics.events_rx, 5);
         assert_eq!(snapshot.relays[0].connection_label, "Open");
+        assert_eq!(snapshot.relays[0].relay_url, "wss://relay.example");
+        assert_eq!(snapshot.relays[0].total_sub_count, 4);
+        assert_eq!(
+            snapshot.relays[0].wire_subs[0].filter_summary,
+            "{\"kinds\":[1],\"limit\":20}"
+        );
         assert_eq!(snapshot.interests[0].cache_coverage, "live");
         assert_eq!(snapshot.action_results[0].correlation_id, "corr-1");
         assert_eq!(snapshot.action_stages[0].stage, "publishing");
