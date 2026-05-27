@@ -40,17 +40,22 @@ action policy; the TUI renders projections and dispatches the same shared FFI or
 | Wallet | Disconnect wallet | `:wallet disconnect` |
 | Settings | Account list, active account | `Settings` tab |
 | Settings | Switch/remove account | `:account switch <id>`, `:account remove <id>` |
-| Settings | Relay list/editor | `Settings` tab, `:relay add/remove` |
+| Settings | Active relay inventory + relay list/editor | `Settings` tab, `:relay add/remove` |
 | Settings | Publish outbox and settled history detail | `Settings` tab, `Enter` opens active or Published rows |
 | Settings | Retry/cancel/clear publish handle | `r` / `d` in outbox detail, `:outbox retry <handle>`, `:outbox cancel <handle>` |
 | Settings | Relay diagnostics/interests | `Settings` tab diagnostics and status bar |
 
-Relay diagnostics rows render Rust-owned fields only: configured role, active
-subscription count, durable session event count, and status/error text. A zero
-event count must be explainable as no active REQ, active REQ with no matches,
-EOSE/no matches, or a routing/configuration anomaly. Configured indexer relays
-must visibly participate in discovery-kind routing (`0`, `3`, `10002`, and
-other `10000..19999` lists) or expose why they did not.
+Relay diagnostics rows render Rust-owned fields only: runtime role/category,
+configured app-relay role when present, active subscription count, durable
+session event count, and status/error text. Settings must show every active
+relay, grouped by category/source, and selecting a relay must expose why the
+client is connected, raw REQ filter JSON for each wire subscription, per-sub
+event counts, EOSE/close state, reconnect/traffic counters, and the same
+session event count shown in the relay preview. A zero event count must be
+explainable as no active REQ, active REQ with no matches, EOSE/no matches, or a
+routing/configuration anomaly. Configured indexer relays must visibly
+participate in discovery-kind routing (`0`, `3`, `10002`, and other
+`10000..19999` lists) or expose why they did not.
 
 ## Notes
 
