@@ -19,7 +19,7 @@ This rules out:
 - Business logic written in Swift, Kotlin, or TypeScript instead of once in Rust.
 - Apps poisoning each other through the shared core.
 
-*Implementation detail: `nmp-core` enforces this via module traits. App nouns (including NIP-specific domain terms) are banned from `nmp-core` by the doctrine lint. Internal test surface is gated behind `#[cfg(any(test, feature = "test-support"))]` so production builds export no actor internals.*
+*Implementation detail: `nmp-core` enforces this via module traits. App-domain nouns, and protocol-specific nouns that smuggle app policy into the substrate, are banned from `nmp-core` by the doctrine lint. Generic protocol primitives such as shared kind constants stay in substrate-owned modules when they are reusable infrastructure. Internal test surface is gated behind `#[cfg(any(test, feature = "test-support"))]` so production builds export no actor internals.*
 
 ---
 
@@ -148,7 +148,7 @@ This rules out, by construction:
 
 ## D9. Timestamps are the kernel's call, not the relay's
 
-Which version of a profile is "newer", whether an event has expired, what timestamp goes on something you publish — all of these are decisions the kernel makes using its own clock. Relays cannot manipulate these by sending events with different timestamps. The same logic runs under test with a fixed clock, so behavior is deterministic and reproducible.
+The kernel owns timestamp policy. Replaceable events decide which version of a profile is "newer" by comparing the event's signed `created_at` field; expiration and publish timestamps use the kernel's injected clock. Relays cannot change either without invalidating the event signature. The same logic runs under test with a fixed clock, so behavior is deterministic and reproducible.
 
 This rules out:
 
