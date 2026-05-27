@@ -16,14 +16,20 @@ cargo test  -p microblog-core      # exercises the module_descriptors() registry
 
 ### 2. Regenerate the per-app FFI crate
 
-The codegen binary is `nmp` (defined in
-[`crates/nmp-codegen/src/main.rs:16`](../../crates/nmp-codegen/src/main.rs)).
-It reads `nmp.toml` and writes `apps/{name}/{app_crate_name}/src/*`:
+Two ways to run codegen. The `nmp` CLI (`crates/nmp-cli`, the user-facing
+binary) and the `nmp-codegen` crate binary both support `gen modules`. Inside
+the monorepo, use `cargo run -p nmp-codegen` directly:
 
 ```sh
 cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml
 # verify nothing drifted (CI uses this):
 cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml --check
+```
+
+Or, with the CLI installed (`cargo install --path crates/nmp-cli`):
+
+```sh
+nmp gen modules --manifest apps/microblog/nmp.toml
 ```
 
 > **Honest framing.** This is exactly the command that *regenerates the
@@ -35,7 +41,7 @@ cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml --che
 > [19a](19a-walkthrough-microblog.md)), then run `gen modules` to produce
 > the FFI crate. The `--out` directory defaults to
 > `apps/{name}/{app_crate_name}` per
-> [`main.rs:45-51`](../../crates/nmp-codegen/src/main.rs).
+> [`nmp-codegen/src/main.rs:57-63`](../../crates/nmp-codegen/src/main.rs).
 
 ### 3. Build the FFI library + run on the iOS simulator
 
