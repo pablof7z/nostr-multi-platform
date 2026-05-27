@@ -1656,6 +1656,7 @@ pub fn run_actor_with_observers(
             sweep_temporary_idle_relays(
                 &mut relay_controls,
                 &mut slot_to_url,
+                &mut connected_urls,
                 &pool,
                 &mut kernel,
                 Instant::now(),
