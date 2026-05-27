@@ -122,7 +122,7 @@ A change that cannot satisfy all five is either an escape hatch (named in `docs/
 
 - Relay implementations (we depend on `relay-builder` for tests; we do not ship a production relay).
 - New NIP authorship.
-- Game engines, AR, low-latency audio/video pipelines (the bible's Pika has these because it has voice/video calls; we do not adopt that scope).
+- Game engines, AR, low-latency audio/video pipelines (voice/video calls are out of scope for v1).
 - Non-Nostr protocol support (Bluesky, ActivityPub, etc.).
 
 ---
@@ -151,7 +151,7 @@ Across the four platform shells of the starter app, total non-generated platform
 |----------|----------------------------|
 | iOS (SwiftUI) | ≤ 400 |
 | Android (Compose) | ≤ 400 |
-| Desktop (iced) | ≤ 600 (iced is more verbose; this is the bible's pattern) |
+| Desktop (iced) | ≤ 600 (iced is more verbose than SwiftUI/Compose) |
 | Web (wasm + TS/JSX shell) | ≤ 400 |
 
 Exceeding any budget is a framework-design failure: it means rendering logic is being forced to compensate for missing surface in the core.
@@ -266,7 +266,7 @@ The proof app is the substrate for cross-platform consistency tests (§3.5): the
 | `docs/nips.md` | NIP support matrix with version pins | Iterates |
 | `docs/migration.md` | Upgrade guidance per minor/major | Iterates |
 
-The bible itself stays upstream at `rust-multiplatform/rmp`; we link, not vendor.
+The architectural foundation stays upstream at `rust-multiplatform/rmp`; we link, not vendor.
 
 ---
 
