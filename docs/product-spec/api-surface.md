@@ -4,7 +4,7 @@
 
 ## 6. The framework API surface
 
-This section specifies what the developer sees. Implementation lives behind it.
+One opaque handle, one callback, one dispatch function. Relay routing, cache invalidation, subscription lifecycle, signing orchestration — all invisible by design. This is what the developer sees; the kernel owns everything else.
 
 The concrete FFI API is per-app generated. `nmp-core` defines kernel primitives and extension traits; `nmp gen modules` composes the selected kernel, protocol modules, and app modules into a generated `nmp-app-<name>` crate that exposes closed typed enums to Swift/Kotlin/TypeScript.
 
