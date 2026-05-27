@@ -125,6 +125,7 @@ mod inner {
 // ─── LmdbEventStore ──────────────────────────────────────────────────────────
 
 /// Production LMDB-backed `EventStore`.
+#[derive(Clone)]
 pub struct LmdbEventStore {
     #[allow(dead_code)] // path retained for diagnostics + future re-open.
     path: PathBuf,

@@ -56,3 +56,55 @@ impl RelayAuthorScoreStore for NoopRelayAuthorScoreStore {
         Ok(())
     }
 }
+
+#[cfg(feature = "lmdb-backend")]
+pub struct LmdbRelayAuthorScoreStore {
+    backend: LmdbRelayAuthorScoreBackend,
+}
+
+#[cfg(feature = "lmdb-backend")]
+enum LmdbRelayAuthorScoreBackend {
+    Store(crate::store::LmdbEventStore),
+    Path(std::path::PathBuf),
+}
+
+#[cfg(feature = "lmdb-backend")]
+impl LmdbRelayAuthorScoreStore {
+    #[must_use]
+    pub fn new(path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            backend: LmdbRelayAuthorScoreBackend::Path(path.into()),
+        }
+    }
+
+    #[must_use]
+    pub fn from_event_store(store: crate::store::LmdbEventStore) -> Self {
+        Self {
+            backend: LmdbRelayAuthorScoreBackend::Store(store),
+        }
+    }
+
+    fn with_store<T>(
+        &self,
+        f: impl FnOnce(&crate::store::LmdbEventStore) -> Result<T, crate::store::StoreError>,
+    ) -> Result<T, crate::store::StoreError> {
+        match &self.backend {
+            LmdbRelayAuthorScoreBackend::Store(store) => f(store),
+            LmdbRelayAuthorScoreBackend::Path(path) => {
+                let store = crate::store::LmdbEventStore::open(path)?;
+                f(&store)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "lmdb-backend")]
+impl RelayAuthorScoreStore for LmdbRelayAuthorScoreStore {
+    fn load_all(&self) -> Result<Vec<ScoreCell>, Box<dyn std::error::Error>> {
+        Ok(self.with_store(crate::store::relay_scores::load_all_raw)?)
+    }
+
+    fn put_batch(&mut self, cells: Vec<ScoreCell>) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(self.with_store(|store| crate::store::relay_scores::put_batch_raw(store, cells))?)
+    }
+}

@@ -839,7 +839,7 @@ pub struct Kernel {
     /// W2 — in-memory relay-author score map. D4: the kernel is the sole
     /// writer. W3 will record outcomes via `record_*`; W2 flushes to LMDB
     /// on actor idle via `flush_relay_scores_if_dirty`. Default: empty.
-    pub(crate) relay_score_map: relay_score::RelayAuthorScoreMap,
+    relay_score_map: relay_score::RelayAuthorScoreMap,
     /// W2 — pluggable relay-author-score persistence store. `None` when the
     /// kernel is constructed in-memory-only (tests, CI without lmdb-backend).
     /// Set by `set_relay_score_store` after construction. D4: the kernel
@@ -847,6 +847,11 @@ pub struct Kernel {
     relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
+}
+
+struct EventStoreBundle {
+    store: Arc<dyn EventStore>,
+    relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
 }
 
 /// Construct the kernel's `EventStore`.
@@ -868,7 +873,7 @@ pub struct Kernel {
 /// suites) the in-memory store is used. If the LMDB store cannot be
 /// opened, the function falls back to the in-memory store silently — D6:
 /// library code performs no I/O side effects / stderr writes.
-fn build_event_store(storage_path: Option<&str>) -> Arc<dyn EventStore> {
+fn build_event_store(storage_path: Option<&str>) -> EventStoreBundle {
     #[cfg(feature = "lmdb-backend")]
     {
         // Priority 1: FFI-supplied path. Priority 2: env-var fallback.
@@ -878,14 +883,22 @@ fn build_event_store(storage_path: Option<&str>) -> Arc<dyn EventStore> {
         if let Some(path) = resolved {
             // D6: silent fallback to the in-memory store if the open fails.
             if let Ok(s) = crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
-                return Arc::new(s);
+                let relay_score_store =
+                    crate::substrate::LmdbRelayAuthorScoreStore::from_event_store(s.clone());
+                return EventStoreBundle {
+                    store: Arc::new(s),
+                    relay_score_store: Some(Box::new(relay_score_store)),
+                };
             }
         }
     }
     // `storage_path` is unused when the `lmdb-backend` feature is off.
     #[cfg(not(feature = "lmdb-backend"))]
     let _ = storage_path;
-    Arc::new(MemEventStore::new())
+    EventStoreBundle {
+        store: Arc::new(MemEventStore::new()),
+        relay_score_store: None,
+    }
 }
 
 /// Choose the [`PublishStore`](crate::publish::PublishStore) backing the
@@ -915,9 +928,7 @@ fn resolve_publish_store(
     storage_path: Option<&str>,
     event_store: &Arc<dyn EventStore>,
 ) -> Arc<dyn crate::publish::PublishStore> {
-    let resolved: Option<String> = storage_path
-        .map(str::to_owned)
-        .or_else(|| std::env::var("NMP_LMDB_PATH").ok());
+    let resolved = resolve_storage_path(storage_path);
     if let Some(path) = resolved {
         // Durable, feature-flag-independent: offline intents survive restart.
         return Arc::new(crate::publish::FsPublishStore::new(path));
@@ -932,6 +943,12 @@ fn resolve_publish_store(
         },
         |store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>,
     )
+}
+
+fn resolve_storage_path(storage_path: Option<&str>) -> Option<String> {
+    storage_path
+        .map(str::to_owned)
+        .or_else(|| std::env::var("NMP_LMDB_PATH").ok())
 }
 
 fn load_profile_intents(
@@ -1047,6 +1064,7 @@ impl Kernel {
         &mut self,
         store: Box<dyn crate::substrate::RelayAuthorScoreStore>,
     ) {
+        self.relay_score_map = relay_score::RelayAuthorScoreMap::new();
         // Hydrate the in-memory map from persistent state.
         match store.load_all() {
             Ok(cells) => {
@@ -1082,7 +1100,6 @@ impl Kernel {
                         ))
                     },
                 );
-                self.relay_score_map = relay_score::RelayAuthorScoreMap::new();
                 self.relay_score_map.bulk_load(substrate_cells);
             }
             Err(e) => {
@@ -1130,10 +1147,10 @@ impl Kernel {
     /// Production code must not gate behaviour on this flag — the map is
     /// dirty or clean as a side-effect of `record_relay_score` /
     /// `flush_relay_scores_if_dirty`. Tests use it to assert flush semantics.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn test_relay_score_dirty(&self) -> bool {
-        self.relay_score_map.dirty
+        self.relay_score_map.is_dirty()
     }
 
     /// Borrow the kernel's `EventStore` handle.
@@ -1232,9 +1249,10 @@ impl Kernel {
         publish_store: Option<Arc<dyn crate::publish::PublishStore>>,
         storage_path: Option<&str>,
     ) -> Self {
-        let store: Arc<dyn EventStore> = build_event_store(storage_path);
-        let publish_store =
-            publish_store.unwrap_or_else(|| resolve_publish_store(storage_path, &store));
+        let store_bundle = build_event_store(storage_path);
+        let store = store_bundle.store;
+        let publish_store = publish_store
+            .unwrap_or_else(|| resolve_publish_store(storage_path, &store));
         let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         // Typed-slot constructors so the slot's purpose is visible at
@@ -1360,7 +1378,7 @@ impl Kernel {
         #[cfg(any(test, feature = "test-support"))]
         publish_engine.set_outbox(test_publish_resolver);
 
-        Self {
+        let mut kernel = Self {
             store,
             clock: Arc::new(SystemClock),
             rev: 0,
@@ -1450,7 +1468,11 @@ impl Kernel {
             relay_score_map: relay_score::RelayAuthorScoreMap::new(),
             relay_score_store: None,
             _not_send: PhantomData,
+        };
+        if let Some(store) = store_bundle.relay_score_store {
+            kernel.set_relay_score_store(store);
         }
+        kernel
     }
 
     /// Swap the kernel's wall-clock. Test / replay seam: production never

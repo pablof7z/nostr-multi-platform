@@ -14,10 +14,6 @@
 //! - §8.10: URLs are canonicalized via `CanonicalRelayUrl::parse_or_raw`
 //!   *before* reaching the store layer.
 
-use crate::substrate::RelayAuthorScoreStore;
-
-use super::relay_score::{RelayAuthorScore, RelayAuthorScoreMap};
-
 impl super::Kernel {
     /// Flush dirty score cells to the injected `RelayAuthorScoreStore`.
     ///
@@ -28,7 +24,7 @@ impl super::Kernel {
         let Some(store) = self.relay_score_store.as_mut() else {
             return;
         };
-        if !self.relay_score_map.dirty {
+        if !self.relay_score_map.is_dirty() {
             return;
         }
         let cells: Vec<([u8; 32], String, u32, u32, u64)> = self
@@ -73,8 +69,8 @@ impl super::Kernel {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use crate::kernel::relay_score::{ClaimOutcome, RelayAuthorScoreMap};
-    use crate::substrate::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore};
+    use crate::kernel::relay_score::ClaimOutcome;
+    use crate::substrate::RelayAuthorScoreStore;
 
     /// Minimal capturing store for flush tests. Records every `put_batch` call
     /// so tests can assert batch contents without a real LMDB env.
@@ -87,14 +83,6 @@ mod tests {
             Self {
                 calls: Arc::new(Mutex::new(Vec::new())),
             }
-        }
-
-        fn call_count(&self) -> usize {
-            self.calls.lock().unwrap().len()
-        }
-
-        fn last_batch(&self) -> Option<Vec<([u8; 32], String, u32, u32, u64)>> {
-            self.calls.lock().unwrap().last().cloned()
         }
     }
 
