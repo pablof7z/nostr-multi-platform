@@ -13,10 +13,10 @@
 
 ## Context
 
-`docs/aim.md` and the RMP bible both name **UniFFI** as the framework's
+`docs/aim.md` names **UniFFI** as the framework's
 binding strategy. The aim doc says so in five places:
 
-- §2 (line 60) — the bible's reference layout includes a `uniffi-bindgen/`
+- §2 (line 60) — the reference layout in `docs/aim.md` includes a `uniffi-bindgen/`
   binding generator crate.
 - §4.14 (line 171) — `<framework> init` scaffolds the per-platform shells
   on top of UniFFI bindings.

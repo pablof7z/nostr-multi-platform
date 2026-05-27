@@ -91,7 +91,7 @@ This discipline is non-negotiable. A PR that introduces a duplicate planning fil
 
 ## Architecture: Rust owns all logic; native is rendering + capabilities only
 
-Per the RMP bible (§2, commandment #4 — `docs/aim.md`):
+Per `docs/aim.md` §2 (architectural north star, commandment #4):
 
 > **No native business logic.** If you would write an `if` statement in Swift, Kotlin, or any native language that decides what the app should *do* (not how it should *look*), that logic belongs in Rust. Native is rendering plus capability execution. Nothing else.
 
