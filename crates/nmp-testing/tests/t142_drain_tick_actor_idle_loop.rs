@@ -45,6 +45,7 @@ fn interest_for(id: u64, author: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 

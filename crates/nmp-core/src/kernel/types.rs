@@ -411,7 +411,9 @@ pub(super) struct PublishOutboxRelay {
     /// Pre-formatted "why was this relay targeted?" string, computed by the
     /// outbox resolver at publish time and carried verbatim through the
     /// snapshot. Examples: `"NIP-65 write relay"`, `"App relay (local config)"`,
-    /// `"Inbox relay for npub1abc…"`. Empty when the publish predates this
+    /// `"Inbox relay for <hex pubkey>"` (raw hex — D6 forbids backend
+    /// projections from calling `display::*` abbreviation helpers; the shell
+    /// applies its own `short_npub` / bech32 rendering). Empty when the publish predates this
     /// projection field (older persisted rows) — `skip_serializing_if` keeps
     /// the JSON payload shape unchanged in that case so apps that don't yet
     /// read the field stay forward-compatible.

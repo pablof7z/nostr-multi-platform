@@ -1,8 +1,8 @@
 import type { Component } from "./types";
 
 // Relay — SwiftUI
-import nostrRelayListSwift from "../../../../crates/nmp-cli/registry/swiftui/relay-list/NostrRelayList.swift?raw";
-import nostrRelayListPreviewSwift from "../../../../crates/nmp-cli/registry/swiftui/relay-list/Examples/NostrRelayListPreview.swift?raw";
+import nostrRelayListSwift from "../vendor/swiftui/relay-list/NostrRelayList.swift?raw";
+import nostrRelayListPreviewSwift from "../vendor/swiftui/relay-list/Examples/NostrRelayListPreview.swift?raw";
 
 export const relayComponents: Component[] = [
   {

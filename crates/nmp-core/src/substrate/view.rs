@@ -88,6 +88,9 @@ impl ViewDependencies {
             },
             hints: Vec::new(),
             lifecycle,
+            // View-module interests are reactive readers; they ride NIP-65
+            // outbox routing and never want the indexer fallback.
+            is_indexer_discovery: false,
         }
     }
 }

@@ -1,5 +1,7 @@
 # Repository Guidance
 
+This is the authoritative contributor guide for the repository — for agents and humans equally. It covers worktree discipline, PR workflow, test scope, planning rules, and the doctrine corollaries that govern every implementation decision. Everything here is enforced, not suggested. `CLAUDE.md` defers to this file.
+
 ## Agent workflow
 
 - All implementation work must happen in a git worktree owned by the agent doing the work.
@@ -13,6 +15,21 @@
   - any subjective decisions made, including tradeoffs or assumptions.
 - Do not open completed work as a draft pull request. If the work is ready and validated, open it as ready for review. Use draft PRs only when explicitly asked or when the work is intentionally incomplete.
 - After opening the PR, clean up the agent-owned worktree before completing the task.
+
+## User product corrections
+
+When the user gives any correction or instruction about how the NMP product
+should work, treat it as a possible product-authority update, not just an
+implementation request. Before making code changes, delegate a separate agent
+to research whether the correction should be represented in product specs,
+doctrine, canonical docs, `docs/plan.md`, `docs/BACKLOG.md`, ADRs under
+`docs/decisions/`, or another existing authoritative document.
+
+The delegated research must report where the instruction already lives, where
+it should live if it is missing, and whether the code change should be blocked
+until the documentation/source-of-truth update is made. If documentation needs
+to change, make that update in the same PR as the implementation unless the
+user explicitly scopes the work to docs only.
 
 ### Test scope — local vs. CI vs. merge
 
@@ -91,7 +108,7 @@ This discipline is non-negotiable. A PR that introduces a duplicate planning fil
 
 ## Architecture: Rust owns all logic; native is rendering + capabilities only
 
-Per the RMP bible (§2, commandment #4 — `docs/aim.md`):
+Per `docs/aim.md` §2 (architectural north star, commandment #4):
 
 > **No native business logic.** If you would write an `if` statement in Swift, Kotlin, or any native language that decides what the app should *do* (not how it should *look*), that logic belongs in Rust. Native is rendering plus capability execution. Nothing else.
 

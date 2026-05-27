@@ -1,28 +1,28 @@
 import type { Component } from "./types";
 
 // User profile — SwiftUI
-import profileWireSwift from "../../../../crates/nmp-cli/registry/swiftui/user-avatar/ProfileWire.swift?raw";
-import nostrAvatarSwift from "../../../../crates/nmp-cli/registry/swiftui/user-avatar/NostrAvatar.swift?raw";
-import nostrProfileNameSwift from "../../../../crates/nmp-cli/registry/swiftui/user-name/NostrProfileName.swift?raw";
-import nostrNip05BadgeSwift from "../../../../crates/nmp-cli/registry/swiftui/user-nip05/NostrNip05Badge.swift?raw";
-import nostrNpubChipSwift from "../../../../crates/nmp-cli/registry/swiftui/user-npub/NostrNpubChip.swift?raw";
-import nostrUserCardSwift from "../../../../crates/nmp-cli/registry/swiftui/user-card/NostrUserCard.swift?raw";
+import profileWireSwift from "../vendor/swiftui/user-avatar/ProfileWire.swift?raw";
+import nostrAvatarSwift from "../vendor/swiftui/user-avatar/NostrAvatar.swift?raw";
+import nostrProfileNameSwift from "../vendor/swiftui/user-name/NostrProfileName.swift?raw";
+import nostrNip05BadgeSwift from "../vendor/swiftui/user-nip05/NostrNip05Badge.swift?raw";
+import nostrNpubChipSwift from "../vendor/swiftui/user-npub/NostrNpubChip.swift?raw";
+import nostrUserCardSwift from "../vendor/swiftui/user-card/NostrUserCard.swift?raw";
 
 // User profile — Compose
-import profileWireKotlin from "../../../../crates/nmp-cli/registry/compose/user-avatar/ProfileWire.kt?raw";
-import nostrAvatarKotlin from "../../../../crates/nmp-cli/registry/compose/user-avatar/NostrAvatar.kt?raw";
-import nostrProfileNameKotlin from "../../../../crates/nmp-cli/registry/compose/user-name/NostrProfileName.kt?raw";
-import nostrNip05BadgeKotlin from "../../../../crates/nmp-cli/registry/compose/user-nip05/NostrNip05Badge.kt?raw";
-import nostrNpubChipKotlin from "../../../../crates/nmp-cli/registry/compose/user-npub/NostrNpubChip.kt?raw";
-import nostrUserCardKotlin from "../../../../crates/nmp-cli/registry/compose/user-card/NostrUserCard.kt?raw";
+import profileWireKotlin from "../vendor/compose/user-avatar/ProfileWire.kt?raw";
+import nostrAvatarKotlin from "../vendor/compose/user-avatar/NostrAvatar.kt?raw";
+import nostrProfileNameKotlin from "../vendor/compose/user-name/NostrProfileName.kt?raw";
+import nostrNip05BadgeKotlin from "../vendor/compose/user-nip05/NostrNip05Badge.kt?raw";
+import nostrNpubChipKotlin from "../vendor/compose/user-npub/NostrNpubChip.kt?raw";
+import nostrUserCardKotlin from "../vendor/compose/user-card/NostrUserCard.kt?raw";
 
 // User profile — Ratatui
-import profileWireRust from "../../../../crates/nmp-cli/registry/tui/user-core/profile_wire.rs?raw";
-import nostrAvatarRust from "../../../../crates/nmp-cli/registry/tui/user-avatar/nostr_avatar.rs?raw";
-import nostrProfileNameRust from "../../../../crates/nmp-cli/registry/tui/user-name/nostr_profile_name.rs?raw";
-import nostrNip05BadgeRust from "../../../../crates/nmp-cli/registry/tui/user-nip05/nostr_nip05_badge.rs?raw";
-import nostrNpubChipRust from "../../../../crates/nmp-cli/registry/tui/user-npub/nostr_npub_chip.rs?raw";
-import nostrUserCardRust from "../../../../crates/nmp-cli/registry/tui/user-card/nostr_user_card.rs?raw";
+import profileWireRust from "../vendor/tui/user-core/profile_wire.rs?raw";
+import nostrAvatarRust from "../vendor/tui/user-avatar/nostr_avatar.rs?raw";
+import nostrProfileNameRust from "../vendor/tui/user-name/nostr_profile_name.rs?raw";
+import nostrNip05BadgeRust from "../vendor/tui/user-nip05/nostr_nip05_badge.rs?raw";
+import nostrNpubChipRust from "../vendor/tui/user-npub/nostr_npub_chip.rs?raw";
+import nostrUserCardRust from "../vendor/tui/user-card/nostr_user_card.rs?raw";
 
 export const userComponents: Component[] = [
   {

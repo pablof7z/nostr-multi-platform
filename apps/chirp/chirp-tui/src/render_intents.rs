@@ -82,6 +82,7 @@ mod tests {
             content_render: Default::default(),
             mention_pubkeys,
             repost: None,
+            raw_card: String::new(),
         }
     }
 

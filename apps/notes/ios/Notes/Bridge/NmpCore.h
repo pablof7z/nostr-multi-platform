@@ -30,6 +30,8 @@ void nmp_app_open_thread(void *app, const char *event_id);
 void nmp_app_open_firehose_tag(void *app, const char *tag);
 void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
+void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id);
+void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 void nmp_app_close_author(void *app, const char *pubkey);
 void nmp_app_close_thread(void *app, const char *event_id);
 

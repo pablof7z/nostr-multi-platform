@@ -34,6 +34,7 @@ fn interest_for(authors: &[&str]) -> LogicalInterest {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     }
 }
 
@@ -85,6 +86,7 @@ fn interest_for_kinds(authors: &[&str], kinds: &[u32]) -> LogicalInterest {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     }
 }
 

@@ -1,7 +1,8 @@
 # 15 — Codegen: `nmp gen modules` + per-app FFI crate
 
 **Status: SHIPS** (codegen + legacy raw C FFI) · FlatBuffers transport
-migration is in progress · UniFFI/`nmp init` are PLANNED · Audience: both
+migration is in progress · UniFFI M14 PLANNED · `nmp init` basic scaffold ships ·
+full starter M16 PLANNED · Audience: both
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. Each
 layer contributes typed `Action`/`Update`/`ViewSpec` variants. The FFI boundary
@@ -119,10 +120,12 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 │ importing NmpCore.h; imports the generated Swift module. UniFFI owns │
 │ object lifetime, callbacks, and capability interfaces; it is not the │
 │ hot update payload format. NOT built.                               │
-├─ M16 — `nmp init` CLI (PLANNED, docs/plan/m16-cli-starter.md) ──────┤
-│ `nmp init`, `nmp add module`, `nmp gen modules`, `nmp doctor`.      │
-│ There is NO `nmp` binary today — codegen is a library API           │
-│ (`generate_modules`/`check_modules`) invoked from tests/build.rs.   │
+├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
+│ `nmp init <app>` scaffolds a Rust workspace (nmp.toml + app-core    │
+│ crate skeleton; compiles immediately). `nmp gen modules` invokes     │
+│ nmp-codegen. `nmp add/update component` manages native source        │
+│ components. Full multi-platform starter (iOS/Android shell           │
+│ scaffolding) is a future milestone, not in scope today.             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -152,8 +155,12 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
 3. **Adding a JSON runtime fallback.** JSON may exist in legacy raw-C shims,
    relay protocol frames, fixtures, and diagnostics. It must not be a second
    production update transport.
-4. **Assuming an `nmp` binary exists.** `nmp gen modules` / `nmp init` are
-   PLANNED names. Today you call `nmp_codegen::generate_modules` from Rust.
+4. **Expecting `nmp init` to scaffold an iOS/Android project.** `nmp init`
+   ships today and scaffolds a Rust workspace (`Cargo.toml`, `nmp.toml`,
+   starter app-core crate). It does **not** create an Xcode project or
+   Compose module — that's M16's full multi-platform starter. For now, wire
+   the Rust core into your platform shell manually (see
+   [17 — iOS shell](17-ios-shell.md)).
 5. **Putting domain types in `nmp-core` to "simplify codegen."** Module variant
    types belong in protocol/app crates; `nmp-core` stays noun-free (D0). Codegen
    composes — it never hosts app types.
@@ -165,7 +172,7 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
 - Annotated `nmp.toml` (above) — the five keys the parser actually reads.
 - Before/after `AppAction` diff — what one `[modules]` line adds, hands-free.
 - Current-vs-future FFI box — legacy raw C JSON today, FlatBuffers runtime
-  transport target, UniFFI M14, `nmp init` M16.
+  transport target, UniFFI M14, `nmp init` CLI ships.
 
 See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·

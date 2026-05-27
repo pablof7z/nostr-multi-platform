@@ -40,7 +40,7 @@
 
 mod action;
 mod app_host;
-// W2 — relay-author-score persistence trait.
+mod blocked_relays;
 mod bounded;
 mod capability;
 mod dm_inbox_relays;
@@ -63,6 +63,9 @@ pub use action::{
     ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
 pub use app_host::AppHost;
+pub use blocked_relays::{
+    empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup,
+};
 pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 #[cfg(any(test, feature = "test-support"))]

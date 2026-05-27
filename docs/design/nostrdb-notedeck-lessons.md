@@ -301,7 +301,7 @@ Concrete commitments by milestone:
 
 | Item | Notedeck approach | NMP approach | Why |
 |---|---|---|---|
-| UI framework | egui (immediate mode, host-Rust) | SwiftUI / Compose / iced / wasm-bound (retained mode, native) | Per the bible: native UX quality is the invariant. egui in production iOS would be a doctrine violation. |
+| UI framework | egui (immediate mode, host-Rust) | SwiftUI / Compose / iced / wasm-bound (retained mode, native) | D5: native UX quality is the invariant. egui in production iOS would be a doctrine violation. |
 | State ownership | App holds nostrdb txn + state; egui re-renders synchronously | Actor owns all state; native gets snapshots / deltas via FFI | Per ADR-0009 + ADR-0005. Notedeck is single-process Rust; NMP crosses FFI to native UIs. |
 | Subscription dispatch | Direct `set_sub` calls in app code | `dispatch(OpenView)` action through the kernel | Per doctrine D0: native code is dumb; intent crosses as actions. |
 | Cross-platform | One Rust binary with egui everywhere | One Rust kernel + four native shells | Per the framing concern. Notedeck chose simplicity; we chose native UX. |

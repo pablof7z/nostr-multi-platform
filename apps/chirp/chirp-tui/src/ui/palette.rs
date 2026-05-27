@@ -21,6 +21,7 @@ const ALL_ACTIONS: &[&str] = &[
     "Repost",
     "Reply",
     "Zap",
+    "View raw event",
 ];
 
 /// Return the context-appropriate action list for the current app state.

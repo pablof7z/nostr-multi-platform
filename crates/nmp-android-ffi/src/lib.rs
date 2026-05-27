@@ -147,8 +147,21 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
 }
 
 /// Blocking binary drain with a 250 ms timeout so the Kotlin reader thread
-/// stays responsive to cancellation. Returns `null` on timeout / closed
-/// channel.
+/// stays responsive to cancellation.
+///
+/// Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery — the two
+/// `recv_timeout` arms have distinct meanings and must NOT be conflated):
+///
+/// * [`RecvTimeoutError::Timeout`] — normal idle tick. Returns `null`; the
+///   Kotlin caller loops back into `nextUpdate`. This is the steady state
+///   between snapshot emits at `emit_hz`.
+/// * [`RecvTimeoutError::Disconnected`] — the boxed [`Sender`] inside this
+///   [`Session`] has been dropped. The only drop site is
+///   [`Java_org_nmp_android_KernelBridge_nativeFree`], which calls
+///   `nmp_app_free` (joining the actor thread) before dropping the boxed
+///   sender. Surfaces as a JNI `java.lang.IllegalStateException` so the
+///   Kotlin reader coroutine breaks out of its `while (isActive)` loop
+///   instead of busy-spinning on a dead channel.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdateBytes<'l>(
     env: JNIEnv<'l>,
@@ -167,7 +180,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdate<'l>(
     next_update_byte_array(env, handle)
 }
 
-fn next_update_byte_array<'l>(env: JNIEnv<'l>, handle: jlong) -> jbyteArray {
+fn next_update_byte_array<'l>(mut env: JNIEnv<'l>, handle: jlong) -> jbyteArray {
     let null = std::ptr::null_mut();
     let Some(s) = session_ref(handle) else {
         return null;
@@ -177,7 +190,19 @@ fn next_update_byte_array<'l>(env: JNIEnv<'l>, handle: jlong) -> jbyteArray {
             Ok(array) => array.into_raw(),
             Err(_) => null,
         },
-        Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => null,
+        // Normal idle tick — Kotlin caller loops back into `nextUpdate`.
+        Err(RecvTimeoutError::Timeout) => null,
+        // Sender dropped: raise a JNI exception so the Kotlin reader breaks
+        // out of its polling loop instead of spinning on a dead channel.
+        // Per the JNI contract, we do no further env calls after `throw_new`
+        // and return null; the JVM honours the pending exception on return.
+        Err(RecvTimeoutError::Disconnected) => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "kernel update channel closed",
+            );
+            null
+        }
     }
 }
 

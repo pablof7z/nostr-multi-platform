@@ -103,6 +103,7 @@ fn timeline_compiles_to_per_relay_union() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -154,6 +155,7 @@ fn timeline_compiles_to_per_relay_union() {
             },
             hints: vec![],
             lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
         }])
         .expect("compile #2");
     assert_eq!(
@@ -202,6 +204,7 @@ fn address_pointer_dedup_across_two_interests() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler
@@ -272,6 +275,7 @@ fn unknown_author_with_no_app_relays_becomes_unroutable() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -340,6 +344,7 @@ fn interest_with_authors_and_addresses_preserves_both() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -388,6 +393,7 @@ fn plan_id_stable_under_repeated_compile() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }];
 
     let plan_a = compiler.compile(&interests).expect("compile a");
@@ -428,6 +434,7 @@ fn plan_id_changes_when_interest_set_changes() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
     let interest_b = LogicalInterest {
         id: interest_id(2),
@@ -439,6 +446,7 @@ fn plan_id_changes_when_interest_set_changes() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan_one = compiler

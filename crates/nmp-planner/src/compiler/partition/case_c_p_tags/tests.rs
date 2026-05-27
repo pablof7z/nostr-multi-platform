@@ -52,6 +52,7 @@ fn p_tag_interest(
         },
         hints: Vec::new(),
         lifecycle,
+        is_indexer_discovery: false,
     }
 }
 

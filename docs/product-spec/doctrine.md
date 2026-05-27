@@ -1,14 +1,16 @@
 # Cardinal Doctrines D0–D10
 
-[Back to Product Spec: Overview And Developer Experience](./overview-and-dx.md)
+These are not guidelines. They are the reasons why certain bugs are impossible to introduce through the safe API.
 
-Eleven named principles that subsume the rest of the spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+When you try to route a DM to a public relay, D10 stops you. When you want a spinner while a profile loads, D1 stops you. When you try to pick relays per-publish, D3 stops you. The framework doesn't document footguns — it refuses to expose the API that lets you make those mistakes.
 
-**Two kinds of doctrine.** D0–D5 and D10 are *policy* doctrines — they govern user-facing semantics (what the framework promises, what it forbids). D6–D9 are *substrate invariants* — they govern how the runtime is allowed to be implemented (what crosses FFI, how state changes propagate, what the hot path can do, how time is decided). Both kinds are equally binding; their distinction is the kind of review they enforce. Policy review flags "this API choice violates a user-facing principle"; substrate review flags "this implementation choice will leak across FFI / hide policy on the native side / degrade reactivity / trust a value the kernel must own."
+Eleven principles in total. Every API decision answers to at least one; conflicts resolve in the order listed (D0 outranks D1, D1 outranks D2, and so on).
+
+**Two kinds.** D0–D5 and D10 are *policy* doctrines — they govern what the framework promises and forbids. D6–D9 are *substrate invariants* — they govern how the runtime is implemented: what crosses FFI, how state propagates, what the hot path may do, who owns time. Both are equally binding. The split only changes the kind of review question: "does this API choice violate a user-facing promise?" (policy) vs. "does this implementation leak across the boundary, degrade reactivity, or trust something the kernel must own?" (substrate).
 
 ## D0. Kernel + extension modules — no app nouns in `nmp-core`
 
-Per ADR-0009, NMP is a Nostr-native app kernel plus extension modules. The kernel provides substrate; protocol modules and app modules contribute typed variants via `ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, and `IdentityModule`. If implementing a real app requires adding domain nouns to `nmp-core`, the kernel boundary is wrong and must change.
+`nmp-core` is substrate. Protocol behavior and app behavior live in typed modules — `ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule` — that contribute variants to the kernel. App nouns (Chirp, Notes, Highlighter, podcast, group-chat) are banned from `nmp-core`. If implementing a real app requires adding domain nouns to the kernel, the kernel boundary is wrong and must change.
 
 This rules out:
 
@@ -35,7 +37,7 @@ This rules out, by construction, the most common Nostr-client failure modes:
 
 NIP-77 negentropy reconciliation is the default backfill mechanism. Every `(filter, relay)` pair the app touches is treated as a tracked sync target with a watermark. Live REQ remains the tailing path, but historical gaps consult coverage first and prefer sync over REQ scans when relays support it.
 
-This is not a product feature you opt into later; it is a subscription policy built on explicit coverage metadata. See §7.8.
+This is not a product feature you opt into later; it is a subscription policy built on explicit coverage metadata.
 
 ## D3. Outbox routing is automatic; manual relay selection is the opt-out
 
@@ -56,7 +58,7 @@ The "single source of truth" doctrine does not mean one cache — there are five
 
 ## D5. Snapshots bounded by what's open
 
-What crosses FFI is the projection through currently-open views, not the underlying event store. `AppState` carries small screen-shaped data plus a map of `ViewId → ViewPayload` for views currently in use. Closing a view evicts its payload from the snapshot. The event store itself never crosses FFI. See §6.2 and the FFI architecture appendix (§A1).
+What crosses FFI is the projection through currently-open views, not the underlying event store. `AppState` carries small screen-shaped data plus a map of `ViewId → ViewPayload` for views currently in use. Closing a view evicts its payload from the snapshot. The event store itself never crosses FFI.
 
 ## D6. Errors never cross FFI as exceptions
 
@@ -66,9 +68,7 @@ This rules out, by construction:
 
 - Swift / Kotlin code wrapping framework calls in `do { try }` or `try { } catch`.
 - Per-operation error-type proliferation across UniFFI.
-- Silent failure: every error has at least one observable state field carrying its consequences (a toast, a `busy` flag clearing, a diagnostic record per ADR-0007).
-
-Per RMP bible invariant #2 (`docs/aim.md` §2).
+- Silent failure: every error has at least one observable state field carrying its consequences (a toast, a `busy` flag clearing, a diagnostic record).
 
 ## D7. Capabilities report; never decide policy
 
@@ -79,8 +79,6 @@ This rules out, by construction:
 - Capability bridges holding cached state beyond transient OS handles (Keychain handle, audio session token, network monitor, push registration).
 - Native code making decisions that the kernel should reproduce identically across platforms.
 - Capability lifecycles that aren't idempotent: start / stop / restart of any bridge must be safe N times.
-
-Per RMP bible cardinal rule #6 (`docs/aim.md` §2) and idempotence invariant #7.
 
 ## D8. Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded
 
@@ -95,7 +93,7 @@ This rules out, by construction:
 - Memory growth that tracks history depth instead of working set.
 - A view re-rendering at greater than 60 Hz regardless of upstream burst.
 
-Per ADRs 0001 (composite dependency keys), 0002 (per-view delta budget), 0003 (working-set memory), and 0004 (allocation measurement), all in `docs/decisions/`. Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).
+Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).
 
 ## D9. The kernel owns time; relay-supplied `created_at` is untrusted
 
@@ -113,8 +111,6 @@ This rules out, by construction:
 
 A relay **cannot** tamper with an inbound event's `created_at`: the Schnorr signature covers `[0, pubkey, created_at, kind, tags, content]`, so any change to the timestamp invalidates the signature and the event is rejected by signature verification. A future-dated event can therefore only have been produced by the author's own signing client — there is no inbound future-timestamp threat to gate against, and NMP performs no such ingest-time rejection.
 
-Implementation: the clock seam is `crates/nmp-core/src/kernel/clock.rs` (`Clock` trait, `SystemClock`, `FixedClock`).
-
 ## D10. Provenance — private events never escape to public relays
 
 The kernel tracks where every event came from and respects that origin for routing. Two invariants:
@@ -127,5 +123,3 @@ This is the provenance half of D3 (D3 owns *which* relays a write routes to; D10
 - Republishing a privately-delivered event to a public relay because it happened to land in the store.
 - A kind:1059 gift-wrap leaking onto a non-DM relay (or onto an indexer fallback set when the recipient's inbox relays are unknown).
 - Cross-relay forwarding of received events as an implicit side effect of having cached them.
-
-Implementation: per-event provenance is `ProvenanceEntry` (`relay_url`, `first_seen_ms`, `last_seen_ms`, `primary`) with a 32-entry LRU in both store backends (`crates/nmp-core/src/store/lmdb/provenance.rs`, `crates/nmp-core/src/store/mem/mod.rs`); gift-wrap routing is `crates/nmp-marmot/src/interest.rs` + `crates/nmp-marmot/src/projection/publish.rs` (explicit DM-relay targets). Per `docs/aim.md` §6 rule #10 ("Provenance preserved").

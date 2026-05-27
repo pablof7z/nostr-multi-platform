@@ -316,6 +316,7 @@ mod tests {
             },
             hints: Vec::new(),
             lifecycle: lc,
+            is_indexer_discovery: false,
         }
     }
 

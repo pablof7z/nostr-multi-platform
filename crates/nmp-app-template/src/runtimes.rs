@@ -87,7 +87,7 @@ fn register_inbox_projection(app: &impl AppHost) {
     if observer_id.0 == 0 {
         return;
     }
-    if let Some(prev) = app.swap_nip17_dm_inbox_observer(Some(observer_id)) {
+    if let Some(prev) = app.swap_dm_inbox_observer(Some(observer_id)) {
         app.unregister_raw_event_observer(prev);
     }
     app.register_snapshot_projection("nmp.nip17.dm_inbox", move || projection.snapshot_json());

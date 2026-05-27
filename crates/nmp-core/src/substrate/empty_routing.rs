@@ -232,6 +232,7 @@ mod tests {
             },
             hints: vec![],
             lifecycle: InterestLifecycle::OneShot,
+            is_indexer_discovery: false,
         }
     }
 

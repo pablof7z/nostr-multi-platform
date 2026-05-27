@@ -177,7 +177,13 @@ impl Kernel {
             let (batch, remainder) = pubkeys.split_at(pubkeys.len().min(Self::DISCOVERY_BATCH));
             let shape = InterestShape {
                 authors: batch.iter().cloned().collect(),
-                kinds: [0u32, 3, 10002].into_iter().collect(),
+                kinds: [
+                    crate::kinds::KIND_PROFILE_METADATA,
+                    crate::kinds::KIND_CONTACT_LIST,
+                    crate::kinds::KIND_RELAY_LIST,
+                ]
+                .into_iter()
+                .collect(),
                 limit: Some(batch.len() as u32 * 3),
                 ..Default::default()
             };

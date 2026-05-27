@@ -66,8 +66,8 @@ queues). Actor thread is the bottleneck under test.
 
 **Assertions.**
 1. No dispatch call takes > **1 ms** at p99 (Swift→Rust channel send
-   latency; this is the bible-#3 "fire-and-forget" guarantee
-   quantified).
+   latency; this is the "fire-and-forget" guarantee
+   quantified — `dispatch()` never blocks).
 2. Main thread (XCUITest variant) is never blocked > **16 ms**
    (measured via XCTest's `XCTHitchMetric`).
 3. Actor mpsc backlog never exceeds **10,000 messages** (configurable
@@ -102,7 +102,7 @@ serialization + main-thread apply** path.
 **Assertions.**
 1. Per-emit JSON serialization wall-time p99 ≤ **20 ms** (Rust side).
 2. Payload size ≤ **2 MiB** (if it exceeds, the harness fails and
-   asks for bible-#10 granular-update variants).
+   asks for granular-update variants instead of full snapshots).
 3. Swift `apply_us` (already instrumented in `KernelModel.apply`) p99
    ≤ **16 ms**.
 4. End-to-end reconciler frequency stays ≤ **60 Hz** (configured cap
@@ -141,7 +141,7 @@ Repeat every 5 s for the 60-s window → **12 stalls total**.
    × emit_hz ⌉ + 1 = **2** messages (at 4 Hz default) or **4** (at 12
    Hz max).
 3. On stall release, the main thread applies all backlogged emits in
-   monotonic `rev` order (bible #1).
+   monotonic `rev` order (D6: snapshots carry a monotonic rev).
 4. Stale-rev filter in `KernelModel.apply` correctly drops any
    intermediate revs (already implemented at KernelModel.swift:139;
    harness validates).

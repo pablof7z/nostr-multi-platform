@@ -37,6 +37,7 @@ fn author_interest(
         },
         hints: Vec::new(),
         lifecycle,
+        is_indexer_discovery: false,
     }
 }
 
@@ -260,6 +261,7 @@ fn same_interest_on_one_relay_via_two_lanes_dedupes_originating_id() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -463,6 +465,7 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
         shape: InterestShape::timeline_for([pk("alice")].into_iter().collect()),
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
     let profile = LogicalInterest {
         id: InterestId(2),
@@ -470,6 +473,7 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
         shape: InterestShape::profile_for(pk("alice")),
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[timeline, profile]).expect("compile");
@@ -541,6 +545,7 @@ fn address_pointer_interest_routes_coord_to_authors_write_relay() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");

@@ -405,6 +405,13 @@ impl PublishEngine {
         &self.view.snapshot
     }
 
+    pub(crate) fn has_active_relay(&self, relay_url: &str) -> bool {
+        let key = helpers::canonical_relay_identity(relay_url);
+        self.in_flight
+            .values()
+            .any(|row| row.per_relay.contains_key(&key) || row.pending_retries.contains_key(&key))
+    }
+
     /// D6 FFI mapping path: convert a `PublishEngineError` into a snapshot
     /// `RecentFailure` row and bump the view rev. The actor / FFI adapter
     /// calls this for any error returned from `start_publish` /

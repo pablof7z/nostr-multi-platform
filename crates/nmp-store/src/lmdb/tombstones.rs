@@ -236,18 +236,6 @@ pub(super) fn kind5_row(
     }
 }
 
-#[allow(dead_code)] // Reserved for future direct callers; gc.rs inlines its own.
-pub(super) fn nip40_row(target_id: EventId, deleted_at: u64) -> TombstoneRow {
-    TombstoneRow {
-        target_id,
-        kind5_event_id: None,
-        deleter_pubkey: None,
-        deleted_at,
-        sources: vec![],
-        origin: TombstoneOrigin::NIP40Expiry,
-    }
-}
-
 /// Compose the address-tombstone key. Matches mem-side format
 /// (`mem/insert.rs:81-86`): `"{kind}:{pubkey_hex}:{dtag}"`.
 pub(super) fn addr_key(kind: u32, pubkey_hex: &str, dtag_bytes: &[u8]) -> Vec<u8> {

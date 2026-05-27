@@ -6,10 +6,9 @@ use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
 use nmp_app_chirp::{
-    nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec,
-    nmp_marmot_register_active,
-    nmp_marmot_snapshot, nmp_marmot_string_free,
-    nmp_marmot_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
+    nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec, nmp_app_nostrconnect_uri,
+    nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_snapshot,
+    nmp_marmot_string_free, nmp_marmot_unregister,
 };
 use nmp_ffi::{
     nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_firehose_tag,
@@ -35,6 +34,7 @@ unsafe extern "C" {
 
 impl AppRuntime {
     pub fn sign_in_nsec(&self, nsec: &str) -> Result<()> {
+        self.unregister_marmot();
         self.with_cstr(nsec, |c| nmp_app_signin_nsec(self.app_ptr(), c.as_ptr()))
     }
 
@@ -53,6 +53,7 @@ impl AppRuntime {
     }
 
     pub fn sign_in_bunker(&self, uri: &str) -> Result<()> {
+        self.unregister_marmot();
         self.with_cstr(uri, |c| unsafe {
             nmp_app_signin_bunker(self.app_ptr().cast(), c.as_ptr())
         })
@@ -63,13 +64,14 @@ impl AppRuntime {
     }
 
     pub fn nostrconnect_uri(&self) -> Result<String> {
-        let callback = CString::new("chirp://nip46")
-            .map_err(|_| "callback contains NUL byte".to_string())?;
+        let callback =
+            CString::new("chirp://nip46").map_err(|_| "callback contains NUL byte".to_string())?;
         let ptr = nmp_app_nostrconnect_uri(self.app_ptr(), ptr::null(), callback.as_ptr());
         take_broker_string(ptr, "nostrconnect uri")
     }
 
     pub fn create_account(&self, name: &str, relays: &[String], mls: bool) -> Result<()> {
+        self.unregister_marmot();
         let profile = CString::new(json!({ "name": name }).to_string())
             .map_err(|_| "profile JSON contains NUL byte".to_string())?;
         let relays_json: Vec<Value> = relays
@@ -83,12 +85,14 @@ impl AppRuntime {
     }
 
     pub fn switch_account(&self, identity_id: &str) -> Result<()> {
+        self.unregister_marmot();
         self.with_cstr(identity_id, |c| unsafe {
             nmp_app_switch_active(self.app_ptr().cast(), c.as_ptr())
         })
     }
 
     pub fn remove_account(&self, identity_id: &str) -> Result<()> {
+        self.unregister_marmot();
         self.with_cstr(identity_id, |c| unsafe {
             nmp_app_remove_account(self.app_ptr().cast(), c.as_ptr())
         })
@@ -199,6 +203,25 @@ impl AppRuntime {
         self.dispatch_action_value("nmp.nip29.discover", &json!({ "relay_url": relay }))
     }
 
+    pub fn create_public_group(
+        &self,
+        relay: &str,
+        local_id: &str,
+        name: &str,
+        about: Option<&str>,
+    ) -> Result<String> {
+        let mut body = json!({
+            "group": { "host_relay_url": relay, "local_id": local_id },
+            "name": name,
+        });
+        if let Some(about) = about.map(str::trim).filter(|value| !value.is_empty()) {
+            body["about"] = Value::String(about.to_string());
+        }
+        let correlation_id = self.dispatch_action_value("nmp.nip29.create_public_group", &body)?;
+        self.register_group_chat(relay, local_id)?;
+        Ok(correlation_id)
+    }
+
     pub fn join_group(&self, relay: &str, local_id: &str) -> Result<String> {
         self.dispatch_action_value(
             "nmp.nip29.join",
@@ -269,6 +292,26 @@ impl AppRuntime {
         Ok(value.to_string())
     }
 
+    pub fn marmot_create_group(
+        &self,
+        name: &str,
+        relays: &[String],
+        invitee_text: Option<&str>,
+    ) -> Result<String> {
+        let mut body = json!({
+            "op": "create_group",
+            "name": name,
+            "relays": relays,
+        });
+        if let Some(invitees) = invitee_text
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            body["invitee_text"] = Value::String(invitees.to_string());
+        }
+        self.marmot_dispatch_json(body)
+    }
+
     pub fn marmot_snapshot_text(&self) -> Result<String> {
         self.marmot_register_active()?;
         let ptr = nmp_marmot_snapshot(self.marmot.get());
@@ -284,8 +327,12 @@ impl AppRuntime {
 }
 
 fn marmot_db_dir() -> String {
-    std::env::temp_dir()
-        .join(format!("chirp-tui-marmot-{}", std::process::id()))
+    crate::keyring::chirp_data_dir()
+        .map(|p| p.join("marmot"))
+        .and_then(|p| std::fs::create_dir_all(&p).ok().map(|_| p))
+        .unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("chirp-tui-marmot-{}", std::process::id()))
+        })
         .to_string_lossy()
         .into_owned()
 }

@@ -155,9 +155,9 @@ pub fn new_raw_event_forward_policy_slot() -> RawEventForwardPolicySlot {
     Arc::new(Mutex::new(None))
 }
 
-/// Typed slot for the previously-installed NIP-17 DM-inbox raw-event observer id.
+/// Typed slot for the previously-installed DM-inbox observer raw-event observer id.
 ///
-/// Used by the idempotent `NmpApp::swap_nip17_dm_inbox_observer` seam so
+/// Used by the idempotent `NmpApp::swap_dm_inbox_observer` seam so
 /// per-app crates can re-register on account-switch without stacking observers.
 pub type DmInboxObserverIdSlot = Arc<Mutex<Option<crate::RawEventObserverId>>>;
 

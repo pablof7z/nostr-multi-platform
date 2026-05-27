@@ -56,6 +56,7 @@ fn active_dm_inbox_interest(pubkey: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 

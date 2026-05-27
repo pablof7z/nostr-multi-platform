@@ -1,15 +1,17 @@
 # Recipe: Nostr Content Rendering with NMP Components
 
-This guide covers three common patterns for rendering Nostr content in SwiftUI
-apps using the NMP component registry. Components are installed as app-owned
-source files — you copy them, edit them, and update them safely.
+Nostr content arrives as plaintext with embedded NIP-27 mentions, hashtags, and note references. Rendering it correctly — on every screen, in every context — is exactly the detail you should not be reimplementing per app.
+
+Three patterns. Copy the component, edit to taste, ship.
 
 ## Prerequisites
 
-Install the NMP CLI:
+Clone the NMP repo and install the CLI:
 
 ```sh
-cargo install nmp-cli
+git clone https://github.com/pablof7z/nostr-multi-platform
+cd nostr-multi-platform
+cargo install --path crates/nmp-cli
 ```
 
 ## Recipe 1 — Minimal Inline Text

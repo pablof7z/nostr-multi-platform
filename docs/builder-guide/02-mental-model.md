@@ -13,8 +13,7 @@ concrete "where does X live?" map. It is the map for the whole guide.
 
 ## The 4-layer stack
 
-ADR-0009 (`docs/decisions/0009-app-extension-kernel-boundary.md:44-62`) fixes
-four layers with strict ownership. Built from the bottom up:
+Four layers, strict ownership. Built from the bottom up:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -58,7 +57,7 @@ product shell.
 - **D0 (kernel/extension boundary).** The dividing line *is* this section.
   `nmp-core` provides generic infrastructure only — actor runtime, verified
   event store, planner, publish pipeline, signer plumbing, the five trait
-  registries (`0009-app-extension-kernel-boundary.md:22-62`). It contains
+  registries. It contains
   **no** `Profile`/`Timeline`/`Episode`/`Highlight`/`Project` types. The rule:
   *if shipping your app requires adding a domain noun to `nmp-core`, the
   boundary is wrong and the kernel changes — never the app.*
@@ -72,8 +71,7 @@ product shell.
 
 ## The 5 trait families in one paragraph each
 
-`nmp-core` defines five extension trait families
-(`crates/nmp-core/src/substrate/mod.rs:1-79`). An extension crate implements
+`nmp-core` defines five extension trait families. An extension crate implements
 one or more; the kernel runtime knows only that a module conforms to a trait
 and contributes to the generated per-app enums.
 
@@ -134,14 +132,14 @@ been converted (see [27 — Discrepancies](27-discrepancies.md)).
 |---|---|---|
 | `VerifiedEvent`, `CompiledPlan` | `nmp-core` | generic Nostr infra |
 | `Signer`, `IdentityScopeKind` | `nmp-signers` | identity is a protocol module (D0) |
-| NIP-29 `GroupId`, group views | `nmp-nip29` | protocol noun (`crates/nmp-nip29/src/lib.rs:11-19`) |
+| NIP-29 `GroupId`, group views | `nmp-nip29` | protocol noun |
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
 | Media `Episode`, feed records | future media app crate | app noun; keep it outside `nmp-core` |
 | `TodoRecord` | `fixture-todo-core` | app noun (non-Nostr proof) |
 | SwiftUI list cell, OS audio handle | `ios/Chirp` / shell | rendering / OS execution |
 
 The single test of correctness: a future app module can be added with **zero
-changes to `nmp-core`** (ADR-0009 acceptance criterion 3).
+changes to `nmp-core`**.
 
 ## Anti-patterns
 
@@ -162,12 +160,7 @@ changes to `nmp-core`** (ADR-0009 acceptance criterion 3).
    A new family is a kernel change that requires its own ADR, not an ad-hoc
    trait dropped into `substrate/`.
 
-## Deliverables
-
-- **ASCII stack diagram** (above) with the six shipped crates labelled in
-  their layer and D0/D4/D5 callouts.
-- **"Where does X live?" map** (above) — paste it next to any PR that adds a
-  new type and answer the column "why" before merging.
+Paste the **"Where does X live?" map** next to any PR that adds a new type and answer the "why" column before merging.
 
 See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·

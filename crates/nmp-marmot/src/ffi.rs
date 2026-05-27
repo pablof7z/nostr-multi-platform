@@ -229,42 +229,26 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
             Ok(s) => s,
             Err(_) => {
-                // Stale DB: if the keyring was uninitialized on first creation,
-                // the SQLite file exists but has no encryption key entry. Delete
-                // the DB (+ WAL/SHM) and retry exactly once.
-                let _ = std::fs::remove_file(db_path);
-                let _ = std::fs::remove_file(format!("{}-wal", db_path));
-                let _ = std::fs::remove_file(format!("{}-shm", db_path));
-                match MarmotService::new(
-                    db_path,
-                    KEYRING_SERVICE_ID,
-                    KEYRING_DB_KEY_ID,
-                    keys.clone(),
-                ) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        // If the Apple store failed because of missing entitlements
-                        // on the simulator, the retry above also fails. Switch to
-                        // the mock store and try one final time.
-                        if !use_mock {
-                            // D6: mock store construction can fail — never
-                            // `unwrap()` across the FFI; degrade to a null handle.
-                            if crate::credential_store::install_mock_store().is_none() {
-                                return std::ptr::null_mut();
-                            }
-                            match MarmotService::new(
-                                db_path,
-                                KEYRING_SERVICE_ID,
-                                KEYRING_DB_KEY_ID,
-                                keys.clone(),
-                            ) {
-                                Ok(s) => s,
-                                Err(_) => return std::ptr::null_mut(),
-                            }
-                        } else {
-                            return std::ptr::null_mut();
-                        }
+                if !use_mock {
+                    // If the Apple store failed because of missing entitlements
+                    // on the simulator, switch to the mock store and try one
+                    // final time. Do not delete an existing persistent DB on
+                    // open failure; transient keychain or file-lock failures
+                    // must not destroy MLS ratchet state.
+                    if crate::credential_store::install_mock_store().is_none() {
+                        return std::ptr::null_mut();
                     }
+                    match MarmotService::new(
+                        db_path,
+                        KEYRING_SERVICE_ID,
+                        KEYRING_DB_KEY_ID,
+                        keys.clone(),
+                    ) {
+                        Ok(s) => s,
+                        Err(_) => return std::ptr::null_mut(),
+                    }
+                } else {
+                    return std::ptr::null_mut();
                 }
             }
         };

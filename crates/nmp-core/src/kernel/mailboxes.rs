@@ -74,6 +74,24 @@ use crate::substrate::{
 use crate::util::sort_dedup;
 
 impl Kernel {
+    /// Snapshot the active account's blocked-relay set from the
+    /// [`crate::substrate::BlockedRelayLookup`] handle. The returned
+    /// [`BlockedRelaySet`] is stack-local — callers pass it to
+    /// [`Self::build_routing_context`] and drop it at the end of the
+    /// routing call (no `Arc`s held across awaits / actor ticks).
+    ///
+    /// When no active account is set (cold-start, post-logout), or the
+    /// account has never declared any blocks, returns an empty set — the
+    /// router's subtractive blocked-set post-pass is a no-op in either
+    /// case, matching the pre-V-40 four `BlockedRelaySet::new()` call
+    /// sites byte-for-byte.
+    pub(crate) fn snapshot_blocked_relays(&self) -> BlockedRelaySet {
+        match self.active_account.as_deref() {
+            Some(pk) => self.blocked_relays_arc().blocked_relays(pk),
+            None => BlockedRelaySet::new(),
+        }
+    }
+
     /// Resolve a pubkey's DM-inbox relays through the substrate
     /// [`DmInboxRelayLookup`] handle.
     ///
@@ -204,13 +222,19 @@ impl Kernel {
             shape,
             hints: vec![],
             lifecycle: InterestLifecycle::OneShot,
+            // The kernel-driven discovery-direction REQs (profile claim,
+            // NIP-65 probe, contacts) are exactly the bootstrap-indexer
+            // fallback's reason to exist — opt in so case_a_authors routes
+            // them through `bootstrap_indexer_relays` when the author
+            // mailbox is unknown.
+            is_indexer_discovery: true,
         };
         let app_relays = self.bootstrap_seed_urls(seed);
         // V-50: indexer URLs feed router lane 6 (always-on for discovery
         // kinds). Cheap to populate unconditionally — the router only
         // consults the slice when `is_discovery_kind` matches.
         let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
-        let blocked = BlockedRelaySet::new();
+        let blocked = self.snapshot_blocked_relays();
         let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_subscription(&interest, &ctx) {
             Ok(routed) => {
@@ -283,7 +307,7 @@ impl Kernel {
         // kind:10002 / kind:0 fetches need this too: the synthetic
         // event's `kind` field drives the lane check.
         let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
-        let blocked = BlockedRelaySet::new();
+        let blocked = self.snapshot_blocked_relays();
         let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_publish(&synthetic, &ctx) {
             Ok(routed) => {
@@ -324,7 +348,7 @@ impl Kernel {
         let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let bootstrap_app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
         let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
-        let blocked = BlockedRelaySet::new();
+        let blocked = self.snapshot_blocked_relays();
         for id in ids {
             let relays = match self.events.get(id) {
                 Some(event) => {
@@ -394,7 +418,7 @@ impl Kernel {
         };
         let app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
         let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
-        let blocked = BlockedRelaySet::new();
+        let blocked = self.snapshot_blocked_relays();
         let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_publish(&synthetic, &ctx) {
             Ok(routed) => {

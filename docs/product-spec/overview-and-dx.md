@@ -8,19 +8,19 @@
 
 > **Status:** Draft 0, revised for ADR-0009 and ADR-0010. The kernel/module split is now architectural ground truth; product modules still graduate by the phased plan in [`docs/plan.md`](../plan.md).
 
-> **Required prior reading:** `docs/aim.md`, then `rmp-architecture-bible.md` upstream at `rust-multiplatform/rmp`.
+> **Required prior reading:** `docs/aim.md`.
 
 ---
 
 ## 1. Product summary
 
-A Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a codegen tool (`nmp gen modules`) that produces per-app concrete FFI enums/wrappers, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells.
+The framework treats common Nostr-correctness failures — stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns — as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
+
+NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a codegen tool (`nmp gen modules`) that produces per-app concrete FFI enums/wrappers, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells.
 
 The kernel composes the `rust-nostr` crate family plus OS capability crates into a substrate. It owns actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform shadow/codegen machinery, diagnostics, and test harnesses.
 
 The kernel does **not** own Profile, Timeline, Thread, Reactions, Conversation, Wallet, DM, Blossom, or app-specific domain concepts. Those live in reusable protocol modules or app crates. Platform code renders state and dispatches user intents — nothing else.
-
-The framework treats common Nostr-correctness failures (stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns) as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
 
 ---
 
@@ -103,7 +103,7 @@ A change that cannot satisfy all five is either an escape hatch (named in `docs/
 
 ## 2. Audience and use cases
 
-**Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, desktop, and web — including LLM-driven and inexperienced developers who lack the protocol literacy to navigate Nostr's footguns unaided.
+**Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, desktop, and web — including LLM-driven developers and teams who want to ship correct Nostr apps without becoming Nostr protocol experts first.
 
 **Secondary audience.** Existing Nostr client teams considering a port to Rust + multi-platform, who want a substrate they can compose rather than reimplement.
 
@@ -122,7 +122,7 @@ A change that cannot satisfy all five is either an escape hatch (named in `docs/
 
 - Relay implementations (we depend on `relay-builder` for tests; we do not ship a production relay).
 - New NIP authorship.
-- Game engines, AR, low-latency audio/video pipelines (the bible's Pika has these because it has voice/video calls; we do not adopt that scope).
+- Game engines, AR, low-latency audio/video pipelines (voice/video calls are out of scope for v1).
 - Non-Nostr protocol support (Bluesky, ActivityPub, etc.).
 
 ---
@@ -151,7 +151,7 @@ Across the four platform shells of the starter app, total non-generated platform
 |----------|----------------------------|
 | iOS (SwiftUI) | ≤ 400 |
 | Android (Compose) | ≤ 400 |
-| Desktop (iced) | ≤ 600 (iced is more verbose; this is the bible's pattern) |
+| Desktop (iced) | ≤ 600 (iced is more verbose than SwiftUI/Compose) |
 | Web (wasm + TS/JSX shell) | ≤ 400 |
 
 Exceeding any budget is a framework-design failure: it means rendering logic is being forced to compensate for missing surface in the core.
@@ -255,7 +255,7 @@ The proof app also ships a **performance overlay** (toggleable, debug-build defa
 
 The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on all four platforms and decoded `AppState` snapshots must match. Any JSON in that harness is a comparison artifact, not the runtime update transport.
 
-### 4.5 Documentation set
+### 4.6 Documentation set
 
 | Document | Purpose | Owner |
 |---|---|---|
@@ -266,7 +266,7 @@ The proof app is the substrate for cross-platform consistency tests (§3.5): the
 | `docs/nips.md` | NIP support matrix with version pins | Iterates |
 | `docs/migration.md` | Upgrade guidance per minor/major | Iterates |
 
-The bible itself stays upstream at `rust-multiplatform/rmp`; we link, not vendor.
+The architectural foundation stays upstream at `rust-multiplatform/rmp`; we link, not vendor.
 
 ---
 

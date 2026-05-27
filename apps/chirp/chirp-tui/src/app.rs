@@ -33,6 +33,8 @@ pub enum Mode {
     ModalForm,
     /// Account list overlay invoked from the `a` key.
     AccountSwitcher,
+    /// Read-only overlay showing the raw JSON card for the selected event.
+    RawEventModal { scroll: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +107,9 @@ pub struct AppState {
     /// Settings tab's j/k continues to navigate the accounts column.
     pub outbox_selected: Option<usize>,
 
+    /// Raw card JSON shown in the `RawEventModal` overlay.
+    pub raw_event_content: String,
+
     /// Recipient pubkey carried across the palette → input-bar → dispatch
     /// boundary for the `"zap-amount"` input bar action.
     pub pending_zap_pubkey: Option<String>,
@@ -162,6 +167,7 @@ impl Default for AppState {
             outbox_selected: None,
             pending_zap_pubkey: None,
             pending_zap_event_id: None,
+            raw_event_content: String::new(),
         }
     }
 }
@@ -524,6 +530,32 @@ impl AppState {
         self.modal_cursor = 0;
         self.modal_action.clear();
         self.push_toast("canceled");
+    }
+
+    // -----------------------------------------------------------------
+    // Raw event modal
+    // -----------------------------------------------------------------
+
+    pub fn open_raw_event_modal(&mut self, content: String) {
+        self.raw_event_content = content;
+        self.mode = Mode::RawEventModal { scroll: 0 };
+    }
+
+    pub fn close_raw_event_modal(&mut self) {
+        self.mode = Mode::Normal;
+        self.raw_event_content.clear();
+    }
+
+    pub fn scroll_raw_modal_down(&mut self) {
+        if let Mode::RawEventModal { ref mut scroll } = self.mode {
+            *scroll = scroll.saturating_add(1);
+        }
+    }
+
+    pub fn scroll_raw_modal_up(&mut self) {
+        if let Mode::RawEventModal { ref mut scroll } = self.mode {
+            *scroll = scroll.saturating_sub(1);
+        }
     }
 
     // -----------------------------------------------------------------

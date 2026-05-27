@@ -37,6 +37,12 @@ impl AppRuntime {
         }
         nmp_signer_broker_init(app);
 
+        nmp_ffi::nmp_app_set_capability_callback(
+            app,
+            ptr::null_mut(),
+            Some(crate::keyring::keyring_handler),
+        );
+
         let chirp = nmp_app_chirp_register(app, ptr::null());
         if chirp.is_null() {
             nmp_app_free(app);
@@ -48,6 +54,7 @@ impl AppRuntime {
         nmp_app_chirp_register_dm_inbox(app);
         nmp_app_chirp_register_follow_list(app, ptr::null());
         nmp_app_start(app, 0, 200, 10);
+
         nmp_app_open_timeline(app);
 
         Ok((

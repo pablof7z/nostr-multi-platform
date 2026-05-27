@@ -119,6 +119,12 @@ impl OneshotApi {
             shape,
             hints: Vec::new(),
             lifecycle: InterestLifecycle::OneShot,
+            // `OneshotApi::request` is the legacy discovery-direction
+            // fan-out (`kernel/discovery.rs::drain_unknown_oneshots`); opt
+            // into the planner-extension bootstrap-indexer fallback so the
+            // cold-start author-unknown case keeps landing instead of
+            // collapsing to `unroutable` (PD-033-C invariant).
+            is_indexer_discovery: true,
         };
         // `ensure_sub`: register-if-absent. A re-request never clobbers an
         // in-flight filter (§3.3); it just attaches this token's owner.

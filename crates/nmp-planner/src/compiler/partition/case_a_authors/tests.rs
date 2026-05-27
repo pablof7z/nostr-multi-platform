@@ -19,6 +19,7 @@ fn timeline_interest(id: u64, authors: &[&str]) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 
@@ -251,6 +252,7 @@ fn pd033c_case_a_oneshot_global_no_nip65_routes_to_bootstrap_indexer() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: true,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -306,6 +308,7 @@ fn pd033c_case_a_cold_start_uses_bootstrap_indexer_not_raw_indexer() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: true,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -356,11 +359,12 @@ fn pd033c_case_a_tailing_no_nip65_remains_unroutable() {
     );
 }
 
-/// Counterpoint: a `OneShot + Account(x)` profile fetch is account-scoped
-/// (it ultimately resolves to a concrete account context). Today it stays
-/// `unroutable` rather than diverting to the indexer — gate is OneShot AND
-/// Global, not OneShot alone. This prevents account-scoped interests from
-/// being mistakenly placed on the cold-start indexer lane.
+/// Counterpoint: a `OneShot + Account(x)` profile fetch with
+/// `is_indexer_discovery: false` (the default) stays `unroutable` rather
+/// than diverting to the indexer — the gate is now the explicit
+/// `is_indexer_discovery` flag, not a structural inference from
+/// lifecycle/scope. Account-scoped interests that do NOT opt in remain
+/// off the cold-start indexer lane.
 #[test]
 fn pd033c_case_a_account_scoped_oneshot_does_not_indexer_fallback() {
     let cache = InMemoryMailboxCache::new();
@@ -385,12 +389,16 @@ fn pd033c_case_a_account_scoped_oneshot_does_not_indexer_fallback() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        // `is_indexer_discovery: false` is the new gate: an account-scoped
+        // OneShot that did NOT opt in to the discovery lane stays unroutable.
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
     assert!(
         plan.per_relay.get("wss://purplepag.es").is_none(),
-        "Account-scoped OneShot must NOT divert to the bootstrap indexer lane"
+        "Account-scoped OneShot without is_indexer_discovery must NOT divert \
+         to the bootstrap indexer lane"
     );
     assert!(plan.unroutable_authors.contains(&pk("bob")));
 }
@@ -424,6 +432,7 @@ fn pd033c_case_a_oneshot_global_with_app_relays_skips_bootstrap_indexer() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: true,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -473,6 +482,7 @@ fn pd033c_case_a_mixed_authors_partial_nip65_landed_via_bootstrap_indexer() {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: true,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");

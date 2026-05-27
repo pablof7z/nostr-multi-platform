@@ -6,7 +6,7 @@
 
 ### A1. Why snapshots + ViewBatch (and not other patterns)
 
-The bible mandates snapshots over FFI. For a Nostr client with timelines of thousands of events, naive full-snapshots are wasteful. We deviate as follows:
+The framework mandates snapshots over FFI (D5). For a Nostr client with timelines of thousands of events, naive full-snapshots are wasteful. We deviate as follows:
 
 **`AppState` is bounded by what's open.** It does not contain the event store, the gossip cache, the working set, or anything proportional to the local cache size. It contains:
 
@@ -18,7 +18,7 @@ The event store, gossip cache, sync watermarks, working set, and signer state al
 
 **Two outbound variants, one ordering.** `AppUpdate` carries either a full snapshot or a batch of view deltas. Both carry a monotonic `rev` and are encoded in the same canonical FlatBuffers runtime schema. Platforms apply only updates with `rev > last_applied`; out-of-order delivery is impossible to render. Mixing `FullState` and `ViewBatch` is safe: a `FullState` at rev=N supersedes any pending `ViewBatch` with rev<N.
 
-**The planner batches at ≤60Hz.** 500 reactions arriving in 100ms become ≤6 batched deltas, not 500 callbacks. Bible commandment 9 (no high-frequency FFI loops) is honored by construction.
+**The planner batches at ≤60Hz.** 500 reactions arriving in 100ms become ≤6 batched deltas, not 500 callbacks. No high-frequency FFI loops — D8 is honored by construction.
 
 **No platform polling for app data.** Lower-frequency summaries, progress, and view data flow through the same callback-driven `AppUpdate` stream. Ultra-high-frequency native surfaces must stay native-owned and report bounded summaries back to Rust; they do not introduce platform polling for framework state.
 
@@ -44,7 +44,7 @@ This is a v2 decision gated on Phase 9 data. v1 ships with snapshots+ViewBatch o
 
 ### A3. Why `ViewBatch` from day one (vs. snapshot-only MVP)
 
-The bible's stated default is "start with `FullState` everywhere; add granular updates only when profiling demands." We deviate because:
+The conservative default would be "start with `FullState` everywhere; add granular updates only when profiling demands." We deviate because:
 
 - Nostr timeline shape is fundamentally chatty: a single popular event arriving triggers reaction, repost, and zap-receipt events at hundreds per second.
 - Full-state churn under that load is wasteful per individual update and harmful in aggregate.

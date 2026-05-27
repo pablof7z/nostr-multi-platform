@@ -63,8 +63,10 @@ capabilities compose the same way.
 | **D6** | substrate | Errors never cross FFI as exceptions — `toast: Option<String>` |
 | **D7** | substrate | Capabilities report; never decide policy |
 | **D8** | substrate | Composite reverse index · ≤60 Hz/view · working-set bounded · 0 hot-path allocs after warmup |
+| **D9** | substrate | Kernel owns time — injected `Clock`; relay `created_at` is untrusted for policy |
+| **D10** | policy | Provenance — private events (kind:1059 gift-wrap) never escape to public relays |
 
-Conflicts resolve in listed order (D0 wins over D8).
+Conflicts resolve in listed order (D0 wins over D10).
 
 ## Card 5 — Planner pipeline + merge lattice
 

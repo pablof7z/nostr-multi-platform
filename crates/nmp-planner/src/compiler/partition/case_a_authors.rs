@@ -92,16 +92,17 @@ pub(super) fn route(
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
-    // PD-033-C: gates the kernel-driven discovery-oneshot fallback. The two
-    // conjuncts (`OneShot` + `Global`) intentionally match
-    // `kernel/discovery.rs::drain_unknown_oneshots`'s shape exactly —
-    // `oneshot.request(registry, InterestScope::Global, shape)` always
-    // constructs an interest with `lifecycle: OneShot` (see
-    // `subs/oneshot.rs::request`). Account-scoped profile fetches and tailing
-    // follow-feed interests both fail this gate and retain their
-    // pre-PD-033-C unroutable behaviour.
-    let is_discovery_oneshot = matches!(interest.lifecycle, InterestLifecycle::OneShot)
-        && matches!(interest.scope, InterestScope::Global);
+    // PD-033-C: gates the kernel-driven discovery-direction fallback. The flag
+    // is set by the call site (today: the kernel's active-account bootstrap
+    // path for kind:0 / kind:3 / kind:10002 / kind:10050 self-fetches; the
+    // `kernel/discovery.rs::drain_unknown_oneshots` profile-oneshot arm). The
+    // pre-flag gate was `OneShot + Global`, which conflated "discovery probe"
+    // with "wire lifecycle" — it forced every discovery interest to be a
+    // one-shot, blocking the reactive tailing self-kind subscription the
+    // bootstrap path now wants. Reactive subscriptions (view modules,
+    // follow-feed registrations) leave the flag at `false` and retain the
+    // standard unroutable-toast semantics.
+    let is_discovery_oneshot = interest.is_indexer_discovery;
     // Accumulate per-relay (authors, addresses, sources) before pushing
     // RelayEntry objects. This lets multiple authors share a relay without
     // creating separate entries — Stage 3 merge operates on the combined set.

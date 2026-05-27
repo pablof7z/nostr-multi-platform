@@ -77,7 +77,7 @@ observers.
 fixed kind:1 probe template, calls `signer.sign(probe)`, then refuses
 the account if the returned pubkey ≠ claimed **or** the returned id ≠
 expected. This catches malicious/buggy signers that mutate the event
-before signing (synthesis §1.1; `docs/research/sessions/synthesis.md`).
+before signing.
 `add_unverified()` (`manager.rs:134-143`) is the restore-path escape for
 signers that cannot sign eagerly (NIP-46 with no connected transport) —
 callers **must** run their own verification before relying on it.

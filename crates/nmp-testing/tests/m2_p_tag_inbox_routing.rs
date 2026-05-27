@@ -79,6 +79,7 @@ fn authors_plus_p_tag_emits_both_outbox_and_inbox() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -140,6 +141,7 @@ fn inbox_split_preserves_original_authors() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -209,6 +211,7 @@ fn overlapping_outbox_inbox_relay_dedupes_interest_id() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -258,6 +261,7 @@ fn p_tag_unknown_inbox_fails_closed_no_indexer_fallback() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -306,6 +310,7 @@ fn p_tag_inbox_uses_both_relays_when_no_explicit_reads() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
@@ -362,6 +367,7 @@ fn multi_p_tag_scopes_filter_per_tagged_pubkey() {
         },
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");

@@ -134,7 +134,10 @@ pub(crate) struct RelayAckOutcome {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub(crate) message: String,
     /// Per-relay selection rationale captured at publish time (e.g.
-    /// `"NIP-65 write relay"`, `"Inbox relay for npub1abc…"`). Mirrors the
+    /// `"NIP-65 write relay"`, `"Inbox relay for <hex pubkey>"`). The raw hex
+    /// pubkey is emitted verbatim by the kernel projection — D6 forbids
+    /// `display::*` abbreviation helpers in the projection layer; the shell
+    /// applies any `short_npub` / bech32 rendering it wants. Mirrors the
     /// in-flight `publish_outbox` field so the settled `publish_queue`
     /// projection can render the same "why was this relay targeted?" string
     /// after the publish has completed. Empty when the engine had no

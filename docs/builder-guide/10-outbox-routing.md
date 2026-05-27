@@ -139,12 +139,10 @@ the view module consumes the active account's follow-set internally
 (`docs/design/framework-magic/kind3.md`). This structurally forbids the
 classic NDK-era bug: app listens for kind:3, manually closes subs, re-derives
 authors, re-issues REQs, and races itself or leaks the old REQ. NDK's
-`refreshRelayConnections` only *adds* relays and never removes stale ones
-(`docs/research/ndk/outbox.md` "Live subscription refresh"); Applesauce's
-`OutboxModel` switchMaps each contact into its own mailbox sub but leaves
-debounce to the caller (`docs/research/applesauce/outbox.md` §2). NMP's
-wire-emitter diff (CLOSE removed slices, REQ added slices) avoids the
-race window entirely.
+`refreshRelayConnections` only adds relays and never removes stale ones;
+Applesauce's `OutboxModel` switchMaps each contact into its own mailbox sub
+but leaves debounce to the caller. NMP's wire-emitter diff (CLOSE removed
+slices, REQ added slices) avoids the race window entirely.
 
 ## Reality check: what's still on the constant relay
 

@@ -187,6 +187,7 @@ fn build_and_wire(store: ArticleStore) -> *mut NmpApp {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     });
 
     app_ptr

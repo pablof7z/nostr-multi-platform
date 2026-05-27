@@ -4,13 +4,13 @@
 
 ## 6. The framework API surface
 
-This section specifies what the developer sees. Implementation lives behind it.
+One opaque handle, one callback, one dispatch function. Relay routing, cache invalidation, subscription lifecycle, signing orchestration — all invisible by design. This is what the developer sees; the kernel owns everything else.
 
 The concrete FFI API is per-app generated. `nmp-core` defines kernel primitives and extension traits; `nmp gen modules` composes the selected kernel, protocol modules, and app modules into a generated `nmp-app-<name>` crate that exposes closed typed enums to Swift/Kotlin/TypeScript.
 
 ### 6.1 The App handle
 
-`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. Per RMP bible, it is a `uniffi::Object` constructed once per process. UniFFI owns object lifetime, callback registration, and capability interfaces; the hot Rust-to-frontend update payload is the canonical FlatBuffers schema, not UniFFI records.
+`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. It is a `uniffi::Object` constructed once per process. UniFFI owns object lifetime, callback registration, and capability interfaces; the hot Rust-to-frontend update payload is the canonical FlatBuffers schema, not UniFFI records.
 
 ```rust
 #[derive(uniffi::Object)]
@@ -163,7 +163,7 @@ Doctrine:
 
 ### 6.4 AppUpdate
 
-`AppUpdate` is the outbound stream. Bible doctrine: snapshots by default; granular variants only where profiling warrants. The canonical runtime encoding is FlatBuffers, with this logical schema:
+`AppUpdate` is the outbound stream. Snapshots by default (D5); granular variants only where profiling warrants. The canonical runtime encoding is FlatBuffers, with this logical schema:
 
 ```rust
 #[derive(Clone, uniffi::Enum)]
@@ -192,7 +192,7 @@ Decisions captured here for `aim.md` §7.1:
 
 ### 6.5 Capabilities
 
-Each capability is a Rust trait with `#[uniffi::export(callback_interface)]`. Native implements it; Rust calls it. Bible-pure: native reports raw data, Rust decides policy. v1 capabilities:
+Each capability is a Rust trait with `#[uniffi::export(callback_interface)]`. Native implements it; Rust calls it. Native reports raw data; Rust decides policy (D7). v1 capabilities:
 
 ```rust
 #[uniffi::export(callback_interface)]

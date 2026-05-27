@@ -1,6 +1,8 @@
 # Product Specification - Nostr Multi-Platform Framework
 
-This document is split into focused sections to keep each hand-authored file under the repository LOC ceiling.
+The product spec defines what NMP promises, what it forbids, and why. It covers the developer experience, the API surface, subsystem contracts, the CLI, and the doctrines that make incorrect Nostr behavior structurally unrepresentable. It is the agreement between the framework and its builders — when it says something is ruled out by construction, the implementation makes that true.
+
+This file is an index. Each section lives in its own file to stay within the repository's LOC ceiling.
 
 - [Product Spec: Overview And Developer Experience](product-spec/overview-and-dx.md)
 - [Product Spec: API Surface](product-spec/api-surface.md)

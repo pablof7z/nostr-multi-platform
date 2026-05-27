@@ -8,8 +8,9 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against `origin/master` **e5b3639e** plus PR #588 integration
-> (2026-05-26). Update this file in every PR that touches an item listed here.
+> Verified against `origin/master` **9fe2aced** (2026-05-27). Update this file
+> in every PR that touches an item listed here. (Cleanup pass 2026-05-27 — completed
+> items removed; see git history for prior state.)
 
 ---
 
@@ -41,25 +42,39 @@ without a `file:line` citation confirmed against the current tree.
 
 ### V-57 · 2026-05-26 architecture audit follow-up queue [HIGH · priority tracker]
 
+**ARCH ASSESSMENT CLOSED 2026-05-27.** Codex confirmed **ARCHITECTURE IS IN VERY GOOD STANDING** (all 6 checks passed) against master commit `7213d7ba` (PR #656). Two additional P1 violations found by the assessment were fixed and merged: D0 — `swap_nip17_dm_inbox_observer` renamed to `swap_dm_inbox_observer` in `AppHost` substrate trait (PR #654); D6 — `display::short_npub` removed from `publish_outbox` kernel projection (PR #655). P2–P6 items below remain as ongoing debt tracked here.
+
 **Scope:** this is the canonical roll-up for the six-agent architecture audit run on
 2026-05-26. PR #578 removes the duplicate planning/status authorities; the remaining
 findings below are ordered by architectural risk. When a slice gets a dedicated V/PD entry
 or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
 
 **Priority order:**
-1. **P1 — CLOSED: remove upward dependencies and app policy from reusable crates.**
-   Closed by PR #580, which removed the `nmp-signer-broker` dependency on `nmp-core`/`nmp-ffi`;
-   PR #583 moved the Gallery app crate from `crates/` to `apps/`; PR #586 moved
-   Chirp identity/keyring policy out of `nmp-marmot`; and PR #587 moved router
-   registration onto `nmp_core::substrate::{ActionRegistrar, AppHost}` so
-   `nmp-router` and `nmp-app-template` no longer need `nmp-ffi` for reusable Rust
-   registration. No P1 slices remain; the next V-57 item is P2 below.
-2. **P2 — move protocol policy back out of `nmp-core`.**
-   `crates/nmp-core/src/actor/commands/relays.rs:29-35` duplicates NIP-65 kind `10002`
-   publishing policy; `crates/nmp-core/src/actor/commands/publish.rs:16-21`, `:297-305`,
-   and `:377-389` hardcode kind `1059` gift-wrap routing policy. **Next step:** protocol
-   crates should declare publish/routing constraints as typed policy data; core should enforce
-   the abstract constraint without naming NIP kinds.
+2. **P2 — centralise Nostr kind constants in `nmp-core`.** _Direction changed
+   2026-05-27._ The original framing treated `nmp-core` naming `1059` / `10002`
+   as a D0 leak; the owner reframed this on 2026-05-27 — integer kind numbers
+   are wire-protocol data, not app/protocol *nouns*, and centralising the
+   integers in one place removes the duplication risk without growing the
+   kernel's semantic surface.
+
+   **Stage 1 — DONE.** `crates/nmp-core/src/kinds.rs` is the new canonical
+   workspace registry for the kind integers `nmp-core` actively names
+   (`KIND_PROFILE_METADATA`, `KIND_SHORT_TEXT_NOTE`, `KIND_CONTACT_LIST`,
+   `KIND_REACTION`, `KIND_CHAT_MESSAGE`, `KIND_GIFT_WRAP`, `KIND_RELAY_LIST`).
+   `actor/commands/{publish,relays}.rs`, `actor/commands/identity.rs`,
+   `kernel/{discovery,publish_outbox,requests/profile}.rs`, and
+   `subs/recompile.rs` all use the constants from this module — no production
+   `nmp-core` code path holds a hand-rolled `1059` / `10002` literal any
+   more. The doc-prose and log strings in `publish.rs` no longer name `NIP-17`,
+   kind `10050`, or `Marmot`; the kind:1059 D10 guard now refers to "the
+   author's public-relay outbox" in substrate-neutral terms.
+
+   **Next step (Stage 2).** Migrate the remaining private duplicates in
+   `nmp-nip59` (`KIND_GIFT_WRAP`), `nmp-nip17` (`KIND_DM_RELAY_LIST` +
+   `KIND_CHAT_MESSAGE`), `nmp-nip29`, `nmp-nip57`, `nmp-marmot`,
+   `nmp-router::publish_relay_list::KIND_RELAY_LIST`, and `nmp-wot` to
+   re-export from `nmp_core::kinds` once the dependency edges are confirmed
+   compatible with the boundary spec. Out of scope for the current slice.
 3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
    `apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses and builds
    zap input in the TUI; the host-side zap auto-pay loop was removed so Rust owns the
@@ -74,141 +89,30 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    `Result<JsValue, JsValue>`; `crates/nmp-wasm/src/lib.rs:165-170` rejects a promise for
    invalid JSON. **Next step:** route wasm snapshots through the canonical kernel update path
    and return caller-visible failures as data envelopes.
+
+   **Additional publish-path gaps found (2026-05-27 research pass):**
+   - `crates/nmp-wasm/src/publish_path.rs:57` — `// TODO: wire AppAction variants` (action
+     dispatch not plumbed for wasm).
+   - `crates/nmp-wasm/src/publish_path.rs:81` — `// TODO: NIP-46 bunker signing not wired —
+     blocked on a wasm-native async transport for the bunker RPC`.
+   - `crates/nmp-wasm/src/runtime.rs:32` — `// TODO: in-process publish path missing on wasm
+     — ActorCommand is feature="native"-gated`. The wasm runtime has no equivalent of the
+     native actor command channel for synchronous publish.
+   - `crates/nmp-wasm/src/signer_slot.rs:32` — `// TODO: certain signer kinds not yet
+     recognised` in the wasm signer-slot dispatch.
+   - `crates/nmp-wasm/src/lib.rs:200` — `// TODO: wasm32 tests TBD` — no
+     `wasm-bindgen-test` infrastructure is set up; the wasm publish path and signer
+     wiring have zero automated coverage.
 5. **P5 — close native update-loop and envelope discipline gaps.**
    `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
    polls for updates; `apps/nmp-gallery/nmp-app-gallery/src/android.rs:221-228` returns `null` on
-   `recv_timeout`; and `ios/Chirp/Chirp/Bridge/KernelBridge.swift:603-618` identifies panic
-   frames by substring before decoding the envelope. **Next step:** use blocking/pushed update
+   `recv_timeout`. **Next step:** use blocking/pushed update
    delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.
 6. **P6 — strengthen enforcement so these regressions trip earlier.**
    V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
    dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
-
-### V-01 · nmp-wasm stub — multi-platform claim is false [CRITICAL · staged fix in progress]
-
-**Verified:** `crates/nmp-wasm/Cargo.toml` has zero `nmp-core` dependency (only
-`nmp-chirp-config`, `serde`, `serde_json`, `wasm-bindgen`). `src/runtime.rs` is a ~295-line
-stub with a hardcoded `"browser-local"` pubkey and synthesized snapshot JSON.
-
-**Impact:** `apps/chirp-web` and `.github/workflows/chirp-web.yml` build against this stub.
-Every "one source of truth, four delivery paths" claim is structurally false until this is
-fixed. Each sprint that adds chirp-web features on top of the stub incurs divergence that
-makes the eventual fix harder.
-
-**Staged fix plan:**
-- Phase 1a ✅ DONE: `native` Cargo feature added to `nmp-core` gating tungstenite, ureq,
-  heed, nostr-database, mio, rustls, chrono/clock. `mod ffi` gated behind
-  `#[cfg(feature = "native")]`. Default build unchanged. (commit `5e36e158`)
-- Phase 1b ✅ DONE (PR #343): `nmp-core = { default-features = false }` dep wired in
-  `nmp-wasm/Cargo.toml`. **Regression noted 2026-05-23:** between PR #343 and Stage 2,
-  five `super::format_timestamp` / `super::now_hms` / `super::UNIX_EPOCH` imports in
-  `kernel/{nostr,mod,update,status,publish_outbox}.rs` were left ungated even though the
-  items they pulled from are `#[cfg(feature = "native")]`. `cargo check -p nmp-wasm`
-  failed on HEAD until Stage 2 (PR pending) restored the gates.
-- Phase 1c ✅ DONE (PR #341): `RelayFrame` enum introduced; `actor/` and `relay_worker/` gated
-  behind `#[cfg(feature = "native")]`; `cargo check -p nmp-core --no-default-features` passes
-  (after the Stage 2 import-gating fixup above).
-- Stage 2 ✅ DONE (PR #372 — merged 2026-05-23): `WasmRuntime` rewritten on `nmp_core::KernelReducer` — the
-  pure protocol kernel now drives `Start`/`Stop`/snapshot envelopes. `LocalNote` stub deleted.
-  `cargo check --target wasm32-unknown-unknown -p nmp-wasm` passes; relay transport remains
-  Stage 3 (app-level intents return `browser_actor_driver_missing` honestly).
-- Stage 3 (read path) ✅ DONE (PR #375 — merged 2026-05-23): `BrowserRelayDriver` in `nmp-wasm` owns one
-  `web_sys::WebSocket` per (URL, role) pair; inbound frames flow through
-  `KernelReducer::handle_relay_frame` → kernel state; outbound fans back over the same sockets.
-  Shared substrate primitives (backoff constants, jitter, HTTP-denial classifier) moved into
-  always-compiled `nmp_core::relay_protocol`. `RelayFrame` / `OutboundMessage` / `RelayRole`
-  promoted to `pub`. The native `relay_worker` thread is unchanged. Auto-reconnect uses the
-  exact same exponential backoff + per-URL jitter constants the native worker does.
-- Stage 3b ✅ DONE (PR #378 — merged 2026-05-23): NIP-07 signer + async snapshot push.
-  `Nip07Signer::sign()` on wasm32 bridges `window.nostr.signEvent(...)` via
-  `wasm-bindgen-futures::spawn_local` with cached-pubkey cross-check. Two-state honest error:
-  `signer_not_installed` vs. `publish_path_not_wired`. `NmpWasmRuntime::set_snapshot_callback`
-  pushes a JSON frame to JS after every inbound relay frame. New files: `dispatch_routing.rs`,
-  `signer_slot.rs`, `snapshot.rs` (all under 500-LOC ceiling).
-- Stage 3c ✅ DONE (PR #385 — merged 2026-05-24): `KernelReducer::publish_signed_event` with
-  correlation_id threading; `nmp_signers::sign_event_via_extension` (async, wasm32+wasm-feature);
-  `publish_path.rs` (268 LOC); `NmpWasmRuntime::dispatch_app_action_async` Promise wrapper;
-  extracted `nip07/wasm.rs` via `#[path]`. chirp-web now supports NIP-07 PublishNote end-to-end.
-  Multi-role bootstrap parsing done (roles_for_entry + spawn_drivers). See F-01 for IndexedDB.
-
-No chirp-web persistence features may be added until F-01 IndexedDB lands.
-
-### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
-
-**Verified:** `crates/nmp-marmot/` exists (~4,096 LOC). ADR-0025 explicitly states Marmot
-opts out of the NMP substrate seam. It is an application feature, not a protocol primitive.
-Protocol crates live in `crates/`; application feature bundles belong in `apps/`.
-
-Moved to `apps/marmot/nmp-app-marmot/` — crate name unchanged (`nmp-marmot`). All dependent
-path references updated (nmp-repl, nmp-app-chirp, nmp-testing). All `cargo check` passes.
-
-### V-03 · ~~wallet_status app noun in nmp-core~~ CLOSED — see Appendix
-
-### V-04 · Two subscription systems coexist — D4 single-writer violation [DONE — PR #430]
-
-**Verified:** `crates/nmp-core/src/kernel/mod.rs:361` documents that the M1 hand-rolled
-`req()` path is still authoritative. The `InterestRegistry`/`LogicalInterest` infrastructure
-is live but parallel, not a replacement. Two systems maintaining separate state for the same
-concern violates D4 (single-writer-per-fact).
-
-**Correct fix:** designate `InterestRegistry` as canonical; migrate all M1 `req()` call sites
-to it; delete the hand-rolled path.
-
-**Staged fix plan (PD-033-C):**
-- Stage 1 ✅ DONE (PR #368 — merged 2026-05-23): Deleted M1 dual-write (`self.req(...)`) from
-  `kernel/discovery.rs` (`drain_unknown_oneshots`). Required three load-bearing pieces: the
-  deletion itself, a `CompileTrigger::ViewOpened` enqueue (drain_tick short-circuits on empty
-  inbox), and a planner sub_id bridge (`OneshotApi::request` → `(OneshotToken, InterestId)`,
-  `register_planner_wire_frames` re-keys `oneshot_subs` from the planner-assigned `sub-<hash>`
-  id). All 1040 nmp-core tests pass.
-- Stage 2 precursor — planner Case C bootstrap-content inbox extension
-  (PR pending — `worktree-agent-adff1381808c9be39`): adds a gated fallback in
-  `planner::compiler::partition::case_c_p_tags::route_bootstrap_content_inbox`
-  for `Tailing + Global + #p (Nip65ReadRelays)` interests whose tagged pubkeys all
-  lack a cached NIP-65 inbox. Mirrors M1's `req(RelayRole::Content, …)` cold-start
-  emission for the self zap-receipts subscription (`kind:9735 #p=[self_pk]`,
-  `kernel/requests/startup.rs`). Without this gate, Stage 2 deletion of the M1
-  helper would silently lose every #p Tailing REQ until kind:10002 arrives — the
-  F-04 zap-receipts contract would break on every cold-start sign-in. NIP-17 DM
-  routing is intentionally EXCLUDED (gift-wraps must stay fail-closed). All 1065
-  nmp-core tests pass.
-- Stage 2 ✅ DONE (PR #422 — merged 2026-05-24): Migrated the 4 remaining `self.req(...)` call
-  sites in `kernel/requests/startup.rs::active_account_bootstrap_requests` (self
-  kind:0/3/10002/10050 via Indexer) onto `InterestRegistry::ensure_sub` +
-  `CompileTrigger::ViewOpened`. Added `Kernel::drain_lifecycle_outbound()` in
-  `kernel/outbox.rs` so the wasm `KernelReducer` drains inline (no actor idle loop).
-  `KernelReducer::handle_relay_connected` now calls `drain_lifecycle_outbound` after startup.
-  1067 nmp-core tests pass. `Kernel::req` now has zero in-tree callers (kept under
-  `#[allow(dead_code)]` — PD-033-C will retire it in Stage 4).
-- Stage 3 ✅ SUBSUMED by Stage 2 (PR #422 — merged 2026-05-24): the audit before
-  Stage 4 confirmed `profile.rs` / `thread.rs` carry no `self.req(...)` callers;
-  the production helper migration is complete after Stage 2.
-- Stage 4 ✅ DONE: Deleted the M1 `req()` helper from `kernel/requests/mod.rs` and the
-  `ONESHOT_SUB_PREFIX` retirement-gate constant from `kernel/discovery.rs`. The lone
-  remaining test caller (`auth_tests.rs::nip42_kernel_auth_required_for_read`)
-  was migrated to `req_for_relay`; the discovery retirement-gate test inlines the
-  `"oneshot-disc-"` literal instead of referencing the deleted constant.
-
-### V-05 · D2 enforcement gap — coverage_hook never installed [DONE]
-
-**Verified FIXED (PR #347 — merged 2026-05-23):** All three stages complete.
-- Stage 1 ✅ (PR #346): `nmp-coverage-gate` crate with pure policy data.
-- Stage 2 ✅ (PR #347): `NmpApp` grows `coverage_hook` slot; `run_actor_with_observers`
-  threads it through; `ActorContext` carries it; `Reset` arm re-installs it. `nmp-app-chirp`
-  installs `CoverageGate::default()` closure in `nmp_app_chirp_register`.
-- Stage 3 ✅ (PR #347): `#[ignore]`d sentinel replaced with `d2_coverage_hook_slot_round_trips`
-  real CI test. 5/5 coverage-hook tests pass.
-
-The backstop closure enforces `max_relay_connections = 30` cap (redundant with
-`apply_selection`'s built-in cap — proves seam wired). Client-side NIP-77 steering
-now handles eligible large one-shot author/kind REQs through `nmp-nip77`; non-exact
-filters, tailing subscriptions, and relays that reject negentropy fall back to raw
-REQs.
-The reusable gate now counts author × kind fanout per filter (`2 kinds × 25 authors`
-and `3 kinds × 20 authors` both qualify at the default threshold of 50) and still
-requires known relay support before choosing reconciliation.
 
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
@@ -261,69 +165,7 @@ exist" — both are wrong. Silent degradation with no user-visible signal.
 
 **Deadline:** Stage 3 is post-v1.
 
-### V-07 · Zap relay selection in Swift — D0 policy leak [DONE]
-
-**Verified FIXED:** PR #331 (`fix(zap): auto-select recipient relays from kind:10002 (V-07)`)
-resolved this. `inject_recipient_relays` in `actor/commands/zap.rs` now looks up the
-recipient's kind:10002 write relays from the kernel cache. Swift passes an empty `relays`
-array; relay selection is fully Rust-owned.
-
-**D0 violation:** "if you would write an `if` statement in Swift that decides
-what the app should *do*, that logic belongs in Rust" (AGENTS.md §Architecture).
-
-**Correct fix:**
-- Make `ZapInput.relays` optional (`Option<Vec<String>>` or accept empty vec as
-  "auto-select from recipient's kind:10002").
-- In `handle_fetch_lnurl_invoice` (zap.rs), when relays is empty:
-  1. Look up recipient's mailbox in kernel's `author_relay_lists`.
-  2. Fall back to the actor's configured indexer/content relays.
-  3. Fall back to two compile-time defaults if nothing is available.
-- Remove relay-selection logic from `KernelModel.swift`; pass empty array.
-
-**Deadline:** before v1. This makes zap receipt routing correct: the kind:9734
-`relays` tag tells the LN provider where to broadcast the kind:9735 receipt — the
-correct answer is the RECIPIENT's write/both relays from their kind:10002 (so the
-receipt lands where the recipient listens). Using the sender's own relays is the
-wrong set and produces an under-informed zap flow.
-
-### V-09 · `nmp-app-chirp/src/ffi.rs` split — [DONE]
-
-**Verified FIXED:** PR #332 split `ffi.rs` into `ffi/mod.rs`, `ffi/actions.rs`,
-`ffi/handle.rs`, `ffi/helpers.rs`, `ffi/register.rs`, `ffi/snapshot.rs`, `ffi/tests.rs`.
-All production sub-modules are within the 500-LOC ceiling.
-
-**Follow-up (V-09b) ✅ DONE:** PR #339 split `ffi/tests.rs` (790 LOC) into
-`tests/{mod,helpers,register,social,nip29,nip17,nip57}.rs`. Every sub-file is under
-the 500-LOC ceiling. All 32 lib tests pass.
-
 ### V-12 · Production files above 500-LOC ceiling [MEDIUM · ongoing test extraction]
-
-*Test-extractable — first batch (all merged 2026-05-24):*
-- ~~`crates/nmp-core/src/actor/relay_mgmt.rs`~~ — 806 → 374 LOC (PR #394)
-- ~~`crates/nmp-core/src/actor/commands/raw_event_observer.rs`~~ — 833 → 479 LOC (PR #398)
-- ~~`crates/nmp-core/src/actor/commands/dm.rs`~~ — 680 → 457 LOC (PR #395)
-- ~~`crates/nmp-core/src/actor/commands/zap.rs`~~ — 682 → 429 LOC (PR #401)
-- ~~`crates/nmp-core/src/kernel/outbox.rs`~~ — 713 → 387 LOC (PR #399)
-- ~~`crates/nmp-core/src/publish/state.rs`~~ — 516 → 348 LOC (PR #396)
-- ~~`crates/nmp-core/src/relay.rs`~~ — 516 → 341 LOC (PR #397)
-- ~~`crates/nmp-nip65/src/lib.rs`~~ — 569 → 265 LOC (PR #388)
-- ~~`crates/nmp-nostr-lmdb/src/lib.rs`~~ — 1144 → 269 LOC (PR #400)
-
-*Test-extractable — second batch (most merged 2026-05-24; remaining PRs pending CI):*
-- ~~`crates/nmp-codegen/src/swift.rs`~~ — 918 → 593 LOC (PR #402)
-- ~~`crates/nmp-core/src/kernel/ingest/mod.rs`~~ — 706 → 549 LOC (PR #403)
-- ~~`crates/nmp-core/src/planner/compiler/partition/case_a_authors.rs`~~ — 712 → 253 LOC (PR #404)
-- ~~`crates/nmp-core/src/actor/commands/event_observer.rs`~~ — 543 → 340 LOC (PR #405)
-- ~~`crates/nmp-core/src/planner/compiler/mod.rs`~~ — 864 → 372 LOC (PR #406)
-- ~~`crates/nmp-core/src/kernel/relay_diagnostics.rs`~~ — 611 → 542 LOC (PR #407; production alone 539 LOC — post-v1 split needed)
-- ~~`crates/nmp-content/src/markdown.rs`~~ — 580 → 424 LOC (PR #408)
-- ~~`crates/nmp-core/src/nip19.rs`~~ — 568 → 476 LOC (PR #409)
-- ~~`crates/nmp-core/src/planner/compiler/partition/case_c_p_tags.rs`~~ — 604 → 163 LOC (PR #410)
-- ~~`crates/nmp-core/src/kernel/action_registry.rs`~~ — 937 → 353 LOC (PR #411)
-- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d10.rs`~~ — 725 → 336 LOC (PR #412)
-- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d11.rs`~~ — 618 → 351 LOC (PR #415)
-- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d12.rs`~~ — 569 → 337 LOC (PR #414)
-- ~~`crates/nmp-testing/bin/doctrine-lint/rules/d15.rs`~~ — 672 → 474 LOC (PR #413)
 
 *Production splits needed (no test section to extract; post-v1):*
 - `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
@@ -337,425 +179,12 @@ the 500-LOC ceiling. All 32 lib tests pass.
 - `crates/nmp-core/src/actor/commands/publish.rs` — 803 LOC (no test section)
 - `crates/nmp-core/src/kernel/relay_diagnostics.rs` — 539 LOC production (tests extracted PR #407)
 
-**Completed test extractions:**
-- handle.rs, signer_seal.rs, view.rs (commit 34fc71a1 — 2026-05-23)
-- action_stages.rs, planner/selection.rs, substrate/bounded.rs, nmp-nip65/src/lib.rs, publish/action.rs (PR #388 — 2026-05-24)
-- identity.rs (commit e79f7a90); wallet.rs (PR #376)
-- relay_mgmt.rs, raw_event_observer.rs, dm.rs, zap.rs, outbox.rs, publish/state.rs, nmp-nostr-lmdb/lib.rs, relay.rs (PRs #394-#401 — 2026-05-24)
-- swift.rs, ingest/mod.rs, case_a_authors.rs, event_observer.rs, compiler/mod.rs, nip19.rs (PRs #402-#406, #409 — 2026-05-24)
-- relay_diagnostics.rs, markdown.rs, case_c_p_tags.rs, action_registry.rs, doctrine-lint d10 (PRs #407-#412 — 2026-05-24)
-- doctrine-lint d11/d12/d15 (PRs #413-#415 — 2026-05-24)
-- nmp-nip29/projection/group_chat.rs (813 → 358 LOC), nmp-nip01/timeline_projection.rs (590 → 275 LOC), nmp-core/kernel/identity_state.rs (569 → 471 LOC) — third batch — 2026-05-24
-- nmp-router/src/router.rs (703 → 242 LOC), nmp-core/src/substrate/routing.rs (531 → 346 LOC), nmp-core/src/substrate/protocol.rs (745 → 519 LOC; still 19 LOC over — production split deferred) — fourth batch (PR #480) — 2026-05-25
-
-**Staged fix plan:**
-Production splits of actor/mod.rs, dispatch.rs, kernel/mod.rs, ffi/mod.rs are post-v1
-(ActorCommand closed enum analysis required — Opus review #10).
-
-### V-13 · Broker relay client uses polling — violates D8 / no-polling doctrine [MEDIUM] — **DONE** (PR #431 — Stage 1; step 8 phase D — Stage 2 dedupe)
-
-**Verified:** `crates/nmp-signer-broker/src/relay_client.rs:103` calls
-`set_read_timeout(&mut socket, Duration::from_millis(100))`. The worker loop at
-`:154–217` interleaves `cmd_rx.try_recv()` with a short-timeout blocking read.
-This is exactly the pattern banned by `crates/nmp-core/src/relay_worker/no_polling_tests.rs:1–35`,
-which asserts that `set_read_timeout`, `Duration::from_millis(50)`, and `.try_recv()`
-are absent from `relay_worker/{mod,io_ready,socket_io}.rs`. The banned-token test
-does not cover the broker because it is a different crate, but the doctrine
-(`feedback_no_polling`, AGENTS.md §No polling — ever) is project-wide.
-
-**Impact:** 100 ms polling at 4 Hz snapshot cadence means the broker thread burns
-CPU on every tick whether or not the bunker relay has sent anything. On mobile,
-this contributes to battery drain on any session with a remote signer.
-
-**Correct fix:** extract a generic readiness-driven `RelayConnection` type (the
-primitives are already partially factored in `relay_protocol.rs` by PR #375) and
-replace `TungsteniteRelayClient::run_worker` with it. Both the native relay worker
-and the broker then depend on the same shared primitive.
-
-**Staged fix plan:**
-- Stage 1: Extract `nmp-relay-conn` crate (or `relay_protocol` extension) with a
-  readiness-driven tungstenite socket loop — no polling, no `set_read_timeout`.
-  Stage 1 MUST also bound the connect handshake (`tungstenite::connect` is
-  blocking with the OS-level TCP timeout, ~60 s; this leaks into both
-  `nmp-core::relay_worker` and `nmp-signer-broker::relay_client` as a
-  cancel-during-connect stall). Pattern: resolve URI host/port, call
-  `TcpStream::connect_timeout`, install non-blocking + readiness-driven TLS
-  handshake on the resulting socket.
-- Stage 2: Rewrite `TungsteniteRelayClient::run_worker` (PR #431 — DONE for
-  the readiness loop; still inlines its own boilerplate) to depend on the
-  shared crate; delete the duplicated mio/readiness code in `relay_client.rs`.
-  PR #431 already drains Shutdown between connect attempts as a partial
-  mitigation for the residual stall.
-- **Status (2026-05-25):** Stage 2 dedupe shipped under step 8 phase D
-  (`docs/architecture/crate-boundaries.md` §5 step 8). `relay_client.rs` is
-  now a thin `nmp_network::Pool` adapter (`PoolRelayClient`); the duplicate
-  ~700-line mio/tungstenite readiness loop is gone, the broker's Cargo.toml
-  no longer names `tungstenite` / `mio` / `rustls` directly, and one
-  readiness-driven WebSocket implementation lives in the workspace
-  (`nmp_network::relay_worker`). The connect-timeout (Stage 1 residual) is
-  partially mitigated by `PoolRelayClient::connect`'s 10 s
-  CONNECT_BUDGET, which bounds the broker's per-URL try window so the
-  multi-relay cycle pivots within bounded time. The deeper fix (bound the
-  TCP/TLS handshake inside `nmp_network::relay_worker::open_relay_socket`)
-  still applies workspace-wide and remains open.
-- **Deadline:** before v1-A (any user sign-in via bunker hits this path).
-
 ### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
 
-**Verified:** `crates/nmp-signer-broker/src/relay_client.rs` exposes only `send`
-and `shutdown`. `broker.rs:114` exposes only `cancel`. Neither file has a
-reconnect path. `run_worker` returns on any read or write failure
-(`relay_client.rs:159, 194, 213`). When that thread dies every subsequent
-`signer.sign()` call times out after `REMOTE_SIGN_TIMEOUT` (5s) with a generic
-backend error. V-06 and V-08 post-v1 items cover NIP-42 / DM decryption — they
-do not cover basic transport resilience. **This gap is unticketed.**
+**Remaining:** step b — host-visible `BunkerConnectionState` projection (Connected / Connecting / TransportLost) so the host shell can surface a non-silent indicator.
 
-**Impact:** NIP-46 is listed as a v1 sign-in method in `aim.md` §4.6. Any user
-who signs in via bunker and experiences an intermittent relay drop ends up in a
-state where every publish attempt silently fails until they re-sign-in. No UI
-surface for "bunker connection lost" exists because the broker has no state for it.
-
-**Correct fix:**
-- (a) Reconnect loop in `TungsteniteRelayClient` with the same exponential
-  backoff + per-URL jitter constants from `relay_protocol.rs`.
-- (b) A `BunkerConnectionState::TransportLost { reconnect_in_ms }` variant (or
-  equivalent) on the broker's status projection so the host shell can surface a
-  non-silent indicator.
-
-**Staged fix plan:**
-- Stage 1: Add `BunkerConnectionState` enum (Connected / Connecting /
-  TransportLost) to broker; expose it via the broker's status callback.
-- Stage 2: Implement the reconnect loop (can share V-13 Stage 1 primitive once
-  that lands). **Status (2026-05-24):** PR #431 implements an autonomous
-  reconnect loop with jittered exponential backoff inside
-  `TungsteniteRelayClient` (V-14 step a) and adds subscription replay so the
-  REQ frame survives a flap. The UI-visible `BunkerConnectionState` projection
-  (step b) is NOT yet wired — the host shell still gets only `"ready"` /
-  `"failed"` from the handshake stage.
-- **Status (2026-05-25):** Step 8 phase D migrated the reconnect machinery
-  onto the shared `nmp_network::Pool` primitive (V-13 Stage 2 dedupe).
-  Mid-session reconnect with jittered exponential backoff now lives in
-  `nmp_network::relay_worker`; the broker's dispatcher replays installed
-  subscriptions on every fresh `PoolEvent::Opened` so REQ-survives-flap
-  is preserved end-to-end. V-14 step b (host-visible
-  `BunkerConnectionState`) is still pending and not blocked by this dedupe.
-- **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
-  NIP-46 as a v1 sign-in method.
-
-### V-15 · Real-relay test suite never runs in CI — v1 live-relay claims are unfalsifiable [HIGH] — **DONE** (commit 41feec14)
-
-**Verified:** `.github/workflows/test.yml:41` runs `cargo test --workspace --exclude ...` without
-`--ignored`. Every integration test in `crates/nmp-testing/tests/` (`real_relay_smoke.rs`,
-`real_relay_connect.rs`, `real_relay_nip42.rs`, `real_relay_outbox.rs`, `real_relay_replan.rs`,
-`real_relay_soak.rs`) is `#[ignore = "real-relay smoke (run with --ignored)"]`. CI has never
-opened a socket to a real relay. The "Damus round-trip kind:1" test at `real_relay_smoke.rs:99`
-is the most basic possible end-to-end proof and has not run on a CI box since it was written.
-
-**Impact:** F-02 ("DM cold-start receive-side verification") and F-04 ("Zap E2E round-trip") are
-listed as v1 blockers but their acceptance criteria live only in developer heads. There is no
-place a passing or failing result is recorded automatically. The publish path, AUTH path, outbox
-routing, NIP-77 negentropy sync, and gift-wrap inbox could all be broken on HEAD right now with
-no CI signal.
-
-**Correct fix:** add `.github/workflows/real-relay-nightly.yml` that runs the `real_relay_*`
-suite on a cron (e.g. nightly), posts results, and gates v1 on the suite being green. Add a
-"skip if relay unreachable" guard so the nightly is not flaky on relay downtime. The infrastructure
-already exists — this is one new workflow file.
-
-**Deadline:** before declaring F-02 or F-04 closed. Until this workflow exists, the v1 exit
-criterion for F-02/F-04 is literally unevaluable.
-
-### V-16 · `SearchView.swift` is dead code that ships in the Chirp binary [MEDIUM] — **DONE** (PR #427 merged)
-
-**Verified:** `ios/Chirp/Chirp/Features/SearchView.swift:3` defines `struct SearchView` and is
-compiled into `Chirp.app` (`project.pbxproj:468`). Zero `SearchView()` call sites exist in the
-iOS target. `RootShell.swift:7` documents "search tab removed (Search deferred to toolbar button
-on HomeFeed)" but no HomeFeed toolbar button to `SearchView` exists. The view is also mis-named:
-it is an "open hex pubkey or event id" form (lines 31–47), not a search feature.
-
-**Correct fix:** delete `SearchView.swift` and remove it from `project.pbxproj`, or wire it
-back into HomeFeed's toolbar and rename to `OpenByIdView`.
-
-### V-17 · `MarmotMemberList::snapshot` returns `Vec::new()` — no group-member visibility [HIGH] — **DONE** (PR #429 merged)
-
-**Verified:** `apps/marmot/nmp-app-marmot/src/view/views.rs:270` — `MemberListView::snapshot`
-returns `MemberListPayload { members: Vec::new() }` with a comment "Authoritative member set is
-MDK-side; the service/actor layer fills…". `MarmotGroupChatView.swift` has no UI to view group
-members. The Invite sheet (`MarmotInviteSheet.swift`) accepts npubs but the user cannot see who
-is already in the group.
-
-**Impact:** For an encrypted-group product, "who can read my messages" is the most
-safety-critical question. The answer is currently "the user cannot see." Marmot/MLS is listed as
-"what works on master" in `plan.md` §TL;DR — that is true at the kernel layer, false at the UX
-layer.
-
-**Correct fix:** wire `MDK::get_members()` into `MemberListView::snapshot`; add a members sheet
-to `MarmotGroupChatView`'s toolbar. Gate v1-A Marmot on this.
-
-**Deadline:** before v1-A if Marmot ships. Otherwise move Marmot to a "Labs" tab with a
-disclaimer and remove it from the v1-A feature set.
-
-### V-18 · `PublishOutcome::FailedAfterRetries` has no `set_last_error_toast` — silent failure [DONE — PR #426]
-
-**Verified:** `crates/nmp-core/src/publish/state.rs:172` defines the terminal failure variant.
-The only `set_last_error_toast` call paths from the publish/sign chain were sign-step failures,
-broker timeouts, and relay-management ops — no settle-time toast for a post that failed on every
-relay. **Fixed:** PR #426 adds the toast in `apply_engine_completions` when `status == "failed"`.
-
-### V-19 · `DiagnosticsView` (474 LOC) ships to all users via Settings [DONE — PR #425]
-
-**Verified:** `ios/Chirp/Chirp/Features/SettingsHubView.swift:43` exposed Diagnostics under a
-"Developer" section accessible to every user — no debug build flag. **Fixed:** PR #425 wraps the
-Developer section in `#if DEBUG` and deletes the stale Roadmap DisclosureGroup.
-
-### V-20 · `dmRelativeTime` in Swift — thin-shell doctrine violation [DONE — PR #428]
-
-**Verified:** `ios/Chirp/Chirp/Features/DmListView.swift:284` defined
-`func dmRelativeTime(_ unixSecs: UInt64) -> String`. `DmConversationView.swift:161` and
-`DmListView.swift:127` both called it. The thin-shell rule (aim.md §2) says relative-time
-formatting is Rust-owned; `DiagnosticsView.swift` itself cites this rule. DM messages bypassed
-it. **Fixed:** PR #428 added `created_at_display: String` to `DmMessage` in
-`crates/nmp-nip17/src/inbox.rs` (computed at every snapshot tick via `display::format_ago_secs`)
-and deleted `dmRelativeTime` from Swift.
-
-### V-22 · `GroupChatView.relativeTime` in Swift — thin-shell doctrine violation [DONE]
-
-**Verified:** `ios/Chirp/Chirp/Features/GroupChatView.swift:257` defined
-`func relativeTime(_ unixSecs: UInt64) -> String` using `RelativeDateTimeFormatter`. The kind:9
-NIP-29 group-chat row at line 213 called it for every message timestamp — the same thin-shell
-violation V-20 fixed for DMs. **Fixed:** added `created_at_display: String` to
-`GroupChatMessage` in `crates/nmp-nip29/src/projection/group_chat.rs`, computed at every
-snapshot tick via a `format_ago_secs` helper that mirrors `nmp_nip17::display::format_ago_secs`
-byte-for-byte (deliberate micro-duplication — a NIP crate should not depend on another NIP
-crate just for a trivial bucketed-time formatter). Swift view binds the field directly and the
-`relativeTime` Swift helper is deleted.
-
-### V-23 · `WalletView` thin-shell doctrine violations — **DONE** (PR #434)
-
-`WalletView.swift` computed `balanceSats` (msats÷1000), formatted it with
-`.formatted()`, and abbreviated `walletNpub` using a private `shortNpub()` function.
-All three moved to Rust: `WalletStatus` now carries `balance_sats`, `balance_sats_display`,
-`wallet_npub_short`, `is_ready`, and `is_connected`.
-
-### V-24 · `AccountsView` + `JoinGroupView` thin-shell doctrine violations — **DONE** (PR #435)
-
-**Verified:** `ios/Chirp/Chirp/Features/AccountsView.swift:68,90-93` abbreviated npubs in Swift
-via a private `shortNpub(_:)` helper (`<first10>…<last6>`). `ios/Chirp/Chirp/Features/JoinGroupView.swift:156-178`
-computed `initials`, `displayName`, and `subtitle` from `DiscoveredGroup` projection data inside
-the SwiftUI row view — first-two-char uppercase, name/groupId fallback, and visibility-glyph +
-pluralized member-count assembly all lived in Swift. aim.md §2 thin-shell rule places all
-display formatting in Rust.
-
-**Fixed:** `AccountSummary` (`crates/nmp-core/src/kernel/identity_state.rs`) gains a
-`npub_short: String` field computed by a new `account_npub_short(&str)` helper. The algorithm
-mirrors `profile_npub_short` in `kernel/update.rs` byte-for-byte (deliberate micro-duplication —
-`identity_state.rs` does not reach into `update.rs`'s private helpers; V-22 precedent).
-`DiscoveredGroup` (`crates/nmp-nip29/src/projection/discovered.rs`) gains `initials`,
-`display_name`, and `subtitle` fields populated by a new `finalize_display_fields` pass in
-`DiscoveredGroupsProjection::snapshot`. Visibility glyphs (`#` / `🔒`) and pluralization
-(`"1 member"` / `"N members"`) live in Rust. iOS views bind the new fields verbatim;
-`shortNpub` and the three `JoinGroupView` computed properties are deleted. Swift codegen
-(`KernelTypes.generated.swift`) regenerated to surface `npubShort`.
-
-### V-25 · `GroupChatView` pubkey-derived display strings in Swift — **DONE** (PR #436)
-
-**Verified:** `ios/Chirp/Chirp/Features/GroupChatView.swift` carried three pubkey-derived display
-computations the host had no business doing: `shortPubkey(_:)` at line 183 (`"\(hex.prefix(8))…\(hex.suffix(8))"`,
-called from the chat-row header at line 209 and the reply banner at line 102), `var initials`
-at line 253 (`String(message.pubkey.prefix(2)).uppercased()`), and the avatar colour slice
-`String(message.pubkey.prefix(6))` at line 203. The first two are the same class of
-abbreviated-identity formatting V-22 moved to Rust for timestamps; the third was worse — a
-different algorithm from `nmp_nip17::display::avatar_color_hex` / `nmp_marmot::projection::display::avatar_color_hex`,
-so the **same author** rendered with a **different avatar tint** in DMs vs. NIP-29 group chat.
-
-**Fixed:** added three fields to `GroupChatMessage` in `crates/nmp-nip29/src/projection/group_chat.rs`
-— `author_display`, `author_initials`, `author_color_hex` — populated at ingest from
-`KernelEvent::author` via three new helpers (`pubkey_display`, `pubkey_initials`, `avatar_color_hex`).
-The colour helper is **byte-identical** to `nmp_nip17::display::avatar_color_hex` (djb2 over the
-last 6 bytes), deliberate micro-duplication for the same reason `format_ago_secs` is duplicated
-(a NIP crate must not depend on another NIP crate just to share a trivial helper). Swift
-`GroupChatMessage` mirror in `KernelBridge.swift` gains the three matching camelCase properties;
-the view binds them directly; the three Swift display helpers are deleted. A pinned-vector test
-locks the djb2 output so an algorithm drift cannot silently change every group-chat avatar.
-
-**Behaviour change called out:** the avatar tint for every existing group-chat row will shift
-once on first run — that's the consistency fix, not a regression.
-
-### V-27 · `ModularBlockView` pubkey-derived display strings in Swift — **DONE**
-
-**Verified:** `ios/Chirp/Chirp/Components/ModularBlockView.swift` carried four pubkey/timestamp-derived
-display computations the host had no business doing: `defaultInitials(pubkey:)` at line 319
-(`String(pubkey.prefix(2))` — first-two-chars initials), `defaultColor(pubkey:)` at line 323
-(`"#" + String(pubkey.prefix(6))` — a **different** algorithm from `nmp_nip17::display::avatar_color_hex`
-and the V-25 nmp-nip29 helper, so the same author rendered with a different tint in the modular
-timeline vs. DMs vs. NIP-29 group chat), `displayPubkey(item:card:)` at line 250 (`"\(hex.prefix(6))…\(hex.suffix(4))"`
-— abbreviated hex for the Twitter-style secondary-identifier slot), and `relativeTime(card:)` at line 264
-(`"\(Int(delta))s/m/h/d"` from `card.createdAt` — relative time in Swift, with a different dialect
-from `nmp_nip17::display::format_ago_secs` and the V-22/V-25 helpers).
-
-**Fixed:** added five fields to `TimelineEventCard` in `crates/nmp-nip01/src/timeline_projection.rs`
-— `created_at_display`, `author_avatar_initials`, `author_avatar_color`, `author_pubkey_short`,
-`author_display_name` — populated at `from_event` via four file-local helpers
-(`format_ago_secs`, `pubkey_initials`, `avatar_color_hex`, `pubkey_display`). The colour helper is
-**byte-identical** to `nmp_nip17::display::avatar_color_hex` (djb2 over the last 6 bytes), and the
-short-pubkey helper uses the V-25 `8…8` algorithm so the same author renders with the same tint and
-the same abbreviated handle in every surface. Deliberate micro-duplication for the same reason
-`format_ago_secs` is duplicated (a NIP crate must not depend on another NIP crate just to share a
-trivial helper). `Inner::refresh_author_cards` was extended to keep the flat `author_display_name`
-mirror in sync when a kind:0 arrives after a note is ingested. Swift `ChirpEventCard` in
-`TimelineBlock.swift` gains the five matching camelCase properties; `ModularBlockView` binds them
-directly; the four Swift display helpers are deleted; the test-only `ChirpEventCard(...)`
-constructor in `NoteContentRenderingTests.swift` supplies fixture values for the new fields.
-
-**Behaviour change called out:** every modular-timeline row's avatar tint, avatar initials,
-secondary-identifier caption, and relative-time string will shift once on first run — the tint
-becomes consistent with DMs/NIP-29/Marmot (V-25 fix), initials change from raw-hex-prefix to
-uppercase (matching every other surface), the handle abbreviation widens from `6…4` to `8…8`
-(matching V-25), and the timestamp dialect changes from `"5s"` to `"5s ago"` (matching V-20/V-22).
-None are regressions; all are the consistency fix.
-
-### V-28 · `shortPubkey` / `shortID` / `relativeTime` Swift helpers — thin-shell doctrine violation — **DONE**
-
-**Verified:** three remaining display-string helpers survived the V-22–V-27 sweep in the
-same family of thin-shell violations.
-
-- `ios/Chirp/Chirp/Components/NoteEntityViews.swift:124` called `relativeTime(createdAt: card.createdAt)`
-  inside `embeddedCard` even though V-27 had already added `createdAtDisplay: String` to
-  `ChirpEventCard`. The Swift helper at lines 241-247 carried its own `"Xs/m/h/d"` dialect
-  distinct from the kernel's `"X ago"` dialect.
-- `ios/Chirp/Chirp/Components/NoteRowView.swift:112` called a private `shortPubkey(_ hex:)`
-  returning `"\(hex.prefix(6))…\(hex.suffix(4))"` — the same Twitter-style secondary identifier
-  V-27 had already solved on `ChirpEventCard.author_pubkey_short` (and V-25 on
-  `nmp-nip29`), but `TimelineItem` itself had no equivalent field.
-- `ios/Chirp/Chirp/Features/ComposeView.swift:151` defined `shortID(_:)` and called it from
-  the reply banner (`replyBanner(for: replyToID)` line 133) on a raw 64-char event id, with
-  the same `prefix(6)…suffix(4)` algorithm.
-
-**Fixed:** added two fields to `TimelineItem` in `crates/nmp-core/src/kernel/types.rs` —
-`author_pubkey_short` and `short_id` — populated at `Kernel::timeline_item` construction in
-`crates/nmp-core/src/kernel/update.rs` via a new `kernel::nostr::short_hex_display(value)`
-helper that produces the cross-surface `<first 8>…<last 8>` abbreviation. The new helper is
-distinct from `short_pubkey_display` above (which carries the `npub ` prefix and `..`
-separator used by the kernel's own author display fallback) and matches the algorithm
-already in `nmp_nip01::timeline_projection::pubkey_display`,
-`nmp_nip17::display::pubkey_short`, and `nmp_nip29::projection::group_chat::pubkey_display`
-so the same author / event id renders the same abbreviation across every surface.
-
-Also extended `TimelineEventCard` in `crates/nmp-nip01/src/timeline_projection.rs` with a
-new `short_id: String` field populated via the existing `pubkey_display` helper (works on any
-hex string) so the synthetic `TimelineItem` builder in
-`ios/Chirp/Chirp/Components/ModularBlockView.swift:288` could bind the abbreviation through
-without slicing the raw id — same precedent as V-27's `author_pubkey_short` addition.
-
-Swift codegen (`KernelTypes.generated.swift`) regenerated to surface `authorPubkeyShort` and
-`shortId` on `TimelineItem`. `ChirpEventCard` in `TimelineBlock.swift` gains `shortId` +
-matching `CodingKey`. `ComposeView` gains a parallel `replyToShortID: String? = nil`
-parameter the reply banner binds verbatim — the publish path still receives the raw
-`replyToID` (the Rust kernel needs the full 64-char id to publish the NIP-10 `e` tag).
-`NoteRowView.swift:70` and `ThreadScreen.swift:57/108/200` pass `item.shortId` through
-(via `ReplyTarget.shortID`). All three Swift helpers (`relativeTime`, `shortPubkey`,
-`shortID`) are deleted.
-
-**Behaviour change called out:** the secondary-identifier abbreviation in the home feed
-row and the reply-banner caption widen from `<first 6>…<last 4>` to `<first 8>…<last 8>` —
-deliberate consistency fix, same disclosure pattern V-27 / V-25 already used. The embedded
-event card's timestamp dialect changes from `"5s"` to `"5s ago"` (matches V-20/V-22/V-27).
-
-**Out of scope (V-29 follow-up):** `NoteEntityViews.swift:88-93` `authorProfile(for:)`
-fallback (`initials: String(pubkey.prefix(2))`, `colorHex: "#" + String(pubkey.prefix(6))`)
-— requires Rust to emit fallback `MentionProfile` entries for all referenced pubkeys, not
-just known authors. `NoteEntityViews.swift:263-266` `shortEntity` — used by both the
-fallback initials path and the mention label path; deletable once V-29 lands.
-`MarmotGroupsView.swift:159` `PublicGroupRow.initials` — needs `GroupChatSnapshot`
-group-level display fields (V-30). `DiagnosticsView.swift:440` `shortID` — diagnostics is
-already `#if DEBUG` gated by V-19; cleanup deferred.
-
-### V-26 · `AccountAvatar` extension display logic in Swift — thin-shell doctrine violation — **DONE** (PR #438)
-
-**Verified:** `ios/Chirp/Chirp/Components/AccountAvatar.swift` defined
-`extension AccountSummary { var avatarInitials: String; var avatarColorHex: String }`,
-computing both display strings in-view. `ComposeView.swift:76-77`, `HomeFeedView.swift:125-126`,
-and `AccountsView.swift:60-61` all bound the extension properties. `avatarInitials` did
-first-char-of-each-word + bech32-body fallback; `avatarColorHex` used a hard-coded six-colour
-palette indexed by a unicode-scalar `&* 31 &+ value` hash. The colour case was the same class
-of violation V-25 fixed for `GroupChatMessage` — a different algorithm from
-`nmp_nip17::display::avatar_color_hex` / `nmp_marmot::projection::display::avatar_color_hex`
-/ `nmp_nip29::projection::group_chat::avatar_color_hex`, so the **same author** rendered with
-a **different avatar tint** in the Accounts toolbar / compose row / row avatars vs. DMs vs.
-NIP-29 group chat.
-
-**Fixed:** added two fields to `AccountSummary` in `crates/nmp-core/src/kernel/identity_state.rs`
-— `avatar_initials` and `avatar_color_hex` — populated at construction in
-`actor::commands::identity::sync_accounts_from_identity` via two new helpers
-(`account_avatar_initials`, `account_avatar_color_hex`). The colour helper is **byte-identical**
-to `nmp_nip17::display::avatar_color_hex` (djb2 over the last 6 bytes of the hex pubkey,
-`{:06X}` mask), deliberate micro-duplication for the same reason `account_npub_short` is
-duplicated in this module (V-22 / V-24 / V-25 precedent — `identity_state.rs` must not gain a
-cross-crate dependency on a NIP crate for a trivial helper). The `Kernel::accounts_enriched`
-path also re-runs `account_avatar_initials` whenever a kind:0 `display_name` lands so the
-placeholder initials don't stay stuck on the npub-body fallback after enrichment. Swift codegen
-(`KernelTypes.generated.swift`) regenerated to surface `avatarInitials` + `avatarColorHex` as
-`let` fields on `AccountSummary`; iOS views bind them verbatim; the
-`Components/AccountAvatar.swift` file (which only contained the extension) is deleted along
-with its four `project.pbxproj` entries (V-16 precedent). A pinned-vector test
-(`account_avatar_color_hex_matches_pinned_djb2_vector`, same `"08E60C"` output as the V-25 nip29
-vector) locks the djb2 output so an algorithm drift cannot silently change every account
-avatar tint.
-
-**Behaviour change called out:** the avatar tint for every existing account row will shift
-once on first run — that's the consistency fix (Accounts toolbar avatar now matches the same
-author's DM and group-chat tint), not a regression. Same disclosure pattern as V-25.
-
----
-
-### V-35 · `dispatch_action` namespace catalog missing — framework is undiscoverable — **DONE** (docs/dispatch-actions.md)
-
-**Verified (Opus direction review #16 — 2026-05-24):** The C-ABI surface (48 symbols in
-`crates/nmp-core/src/ffi/`) is wire transport, not the developer-facing API. The real API is
-the `dispatch_action` namespace catalog. Known namespaces are scattered across action-module
-files: `nmp.publish` (`nmp-nip01/src/action.rs`), `nmp.nip17.*` (`nmp-nip17/src/action.rs`),
-`nmp.nip57.*` (`nmp-nip57/src/action.rs`), `nmp.nip65.*` (`nmp-nip65/src/action.rs`),
-`nmp.follow` / `nmp.unfollow` / `nmp.nip25.react` (`nmp-nip02/src/action.rs`),
-`nmp.wallet.pay_invoice` (`nmp-nip57` wallet module). No catalog file exists.
-
-**Impact:** A third developer cannot find what to call, what JSON shape each namespace
-expects, or which projections to subscribe to. PD-039 inventories the C-ABI *symbols*; nothing
-inventories the *contracts*. The Notes spike demonstrates the failure mode: `NotesBridge.swift`
-bypassed `dispatch_action` and wrote raw event handling in Swift because the correct entry point
-was undiscoverable.
-
-**Fix:** Create `docs/dispatch-actions.md` — a single catalog of every registered namespace,
-its JSON request shape, and the projection event it drives. Should be auto-verifiable: a CI
-script greps the action-module files and asserts the catalog is not stale. Companion to F-05
-codegen (typed Swift dispatch API is the end state; the markdown catalog is the immediate
-legibility fix).
-
-**Staleness risk (open):** Every new `ActionModule` registration can silently make
-`docs/dispatch-actions.md` stale within 2 PRs. No CI drift gate exists today.
-The real fix is F-05 codegen sweep — until that lands, every PR adding an `ActionModule`
-must manually update the catalog. Tracked under F-05.
-
----
-
-### V-36 · `nmp-signer-broker` reimplements NIP-46 without an ADR [MEDIUM] — **DONE** (ADR-0031)
-
-**Verified (Opus direction review #16 — 2026-05-24):** `aim.md §3` names `nostr-connect`
-(the rust-nostr NIP-46 crate) as the dependency. NMP shipped `nmp-signer-broker` instead —
-a hand-rolled NIP-46 relay transport (`crates/nmp-signer-broker/`). No ADR was written to
-justify this divergence from the canonical dependency. Post-hoc fixes V-06 (NIP-42
-incompatibility), V-13 (polling relay client), V-14 (no reconnect), V-08 (DM gift-wrap) are
-all *fix* tickets on a *should-this-exist* question.
-
-**Impact:** The framework's own corollary "Use rust-nostr, not scratch crypto" was violated
-without writing down why. Every future NIP-46 bug is evaluated against a codebase whose
-existence is an undocumented divergence from doctrine.
-
-**Required:** Write `docs/adr/ADR-NNNN-signer-broker.md` documenting (a) why `nostr-connect`
-was insufficient for the bunker relay-multiplexing model, (b) what NIP-46 features
-`nmp-signer-broker` owns that `nostr-connect` does not (multi-relay broadcast, `mio`
-event-loop integration), and (c) the long-term exit: either upstream the missing features to
-`nostr-connect` and delete the crate, or declare it canonical and track it as maintained
-infrastructure.
+**Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
+NIP-46 as a v1 sign-in method.
 
 ---
 
@@ -813,7 +242,7 @@ written rationale. V-45 splits sub-item (c) into its own tracked item.
 the workspace exhibits:
 
 - `crates/nmp-core/Cargo.toml:90` — `nmp-nwc = { path = "../nmp-nwc", optional = true }`.
-  Every other NIP crate (`nmp-nip02`, `nmp-nip17`, `nmp-nip57`, `nmp-nip65`) goes
+  Every other NIP crate (`nmp-nip02`, `nmp-nip17`, `nmp-nip57`, `nmp-router`) goes
   `nip-crate → nmp-core`; only NWC inverts this so `nmp-core → nmp-nwc`. The
   module docstring at `actor/commands/wallet.rs:6` says the quiet part out
   loud: *"D0: nmp-core may depend on nmp-nwc (the protocol crate). The
@@ -853,154 +282,14 @@ shims.
 Stage 2 (create `nmp-nip47`, move all wallet code) → Stage 3 (thin-shim FFI bodies) →
 Stage 4 (delete `feature = "wallet"` from `nmp-core/Cargo.toml`).
 
+**Blocked conformance test (2026-05-27):** `crates/nmp-nip47/tests/nip47_tag_conformance.rs:14-16`
+carries `#[ignore = "V-38 follow-up: needs Kernel::new_for_test() public ctor"]`. The test
+cannot run because `Kernel::new_for_test()` is not public (it is gated behind
+`cfg(feature = "test-support")` in `nmp-core` and not re-exported for downstream crate use).
+Unblocking it is a prerequisite for Stage 2: the conformance test must pass against the new
+`nmp-nip47` crate before the wallet migration can be called done.
+
 **Deadline:** post-v1.
-
----
-
-### V-39 · NIP-17 DM send handler + `SendGiftWrappedDm` `ActorCommand` variant in `nmp-core` [HIGH] — **DONE** (PR #458 merged 2026-05-24, commit 852750b2)
-
-**Closed by PR #458** (combined with V-40): `SendGiftWrappedDmCommand` moved
-into `crates/nmp-nip17/src/dm_send.rs` and dispatches through the
-`ProtocolCommand` substrate seam (PR #448). `actor/commands/dm.rs` and the
-`ActorCommand::SendGiftWrappedDm` enum variant are deleted. Bunker NIP-46
-signing regressed and is tracked under V-08 (Phase 2 follow-up: add
-`SignerForSealCapability` to `ProtocolCommandContext`).
-
-#### Original violation (kept for archaeology)
-
-**Verified:** the NIP-17 gift-wrap send orchestration lives entirely in
-`nmp-core`, even though a dedicated `nmp-nip17` crate exists and already
-depends on `nmp-core` (`crates/nmp-nip17/Cargo.toml:15`):
-
-- `crates/nmp-core/src/actor/commands/dm.rs` (457 LOC) — `send_gift_wrapped_dm`
-  resolves the active `SignerForSeal`, calls `nmp_nip59::gift_wrap_with_signer`
-  twice (recipient + self-copy), and dispatches each kind:1059 envelope
-  through `publish_signed_event`. The handler's entire purpose — gating
-  kind:1059 publish on the receivers' kind:10050 DM-inbox relays
-  (`required_dm_relays` → `DmRelayNotReady`) — is a literal NIP-17 §2 wire
-  rule, not a substrate concern.
-- `crates/nmp-core/src/actor/mod.rs:460` — `ActorCommand::SendGiftWrappedDm`
-  variant carries `recipient_pubkey: String` and an `UnsignedEvent` rumor.
-- `crates/nmp-core/src/actor/dispatch.rs:568` — dispatch arm.
-
-**Correct destination:** `crates/nmp-nip17/`. Move `send_gift_wrapped_dm` to
-`nmp-nip17/src/dm_send.rs` as a `DmSendModule: ActionModule`. The
-`ActorCommand::SendGiftWrappedDm` variant deletes. FFI surface unchanged —
-DM send already routes through `nmp_app_dispatch_action` under `nmp.nip17.send`.
-
-**Migration difficulty: MEDIUM-HARD.** Needs the open-ActorCommand seam (V-38
-Stage 1) + a `SignerForSealCapability` trait on the actor context.
-
-**Staged fix plan:** Stage 1 (ride V-38 Stage 1 + add `SignerForSealCapability`)
-→ Stage 2 (move `dm.rs` to `nmp-nip17`, delete `ActorCommand::SendGiftWrappedDm`).
-
-**Deadline:** post-v1. F-02 ships on the current layout.
-
----
-
-### V-40 · NIP-17 kind:10050 ingest + `dm_relay_lists` cache wrongly in kernel [MEDIUM] — **DONE** (PR #458 merged 2026-05-24, commit 852750b2)
-
-**Closed by PR #458** (combined with V-39): kind:10050 parser and DM-inbox
-relay cache moved into `crates/nmp-nip17/`: `Kind10050Parser` implements
-the substrate `IngestParser` trait (PR #447), `DmRelayCache` is owned by
-`nmp-nip17` and exposed back to the kernel via the substrate
-`DmInboxRelayLookup` trait so the kernel never names NIP-17 nouns. The
-old `Kernel::dm_relay_lists` field and `kernel/ingest/dm_relay_list.rs`
-are deleted.
-
-#### Original violation (kept for archaeology)
-
-**Verified:** kernel state and ingest logic for NIP-17's DM-inbox relay
-mechanism live in `nmp-core`:
-
-- `crates/nmp-core/src/kernel/ingest/dm_relay_list.rs` (107 LOC) — parses
-  kind:10050 `["relay", <wss-url>]` tags into `dm_relay_lists`. Module docstring
-  at line 5 names NIP-17 §2 by spec section — pure protocol semantics.
-- `crates/nmp-core/src/kernel/mod.rs:386` — `Kernel` struct carries
-  `dm_relay_lists: HashMap<String, Vec<String>>`. The comment at `:382` cites
-  "NIP-17 gift-wrap envelopes."
-- `crates/nmp-core/src/kernel/outbox.rs:169` — `Kernel::recipient_dm_relays`
-  reader, called by V-39's `send_gift_wrapped_dm`.
-- `crates/nmp-core/src/kernel/ingest/mod.rs:397` — kind:10050 match arm in
-  the kernel's kind-dispatch table alongside routing kinds (0/3/10002).
-- `crates/nmp-core/src/subs/CompileTrigger::DmRelayListChanged` — kernel
-  recompile trigger named after a NIP-17 noun.
-
-The contrast: kinds 0/3/10002 drive the outbox router — a substrate primitive
-every Nostr app uses. kind:10050 drives NIP-17-specific routing. The kernel
-is not entitled to know it.
-
-**Correct destination:** `crates/nmp-nip17/`. kind:10050 parsing moves to
-`nmp-nip17/src/dm_relay_list_ingest.rs`; `dm_relay_lists` cache becomes a
-NIP-17-owned projection; the outbox router consults it through a generic
-projection-lookup hop.
-
-**Migration difficulty: MEDIUM.** Needs an "input-side projection" seam — a
-NIP crate registers `(kind, parser_fn)` with the kernel ingest dispatcher.
-This is the input-side counterpart to the existing snapshot-projection output seam.
-
-**Staged fix plan:** Stage 1 (input-side projection seam) → Stage 2 (move
-`dm_relay_list.rs` to `nmp-nip17`, delete `Kernel::dm_relay_lists` and
-kind:10050 match arm) → Stage 3 (generalise or remove
-`CompileTrigger::DmRelayListChanged`).
-
-**Deadline:** post-v1. F-02 ships with kind:10050 still in the kernel.
-
----
-
-### V-41 · NIP-57 zap LNURL handler + `FetchLnurlInvoice` `ActorCommand` variant in `nmp-core` [HIGH] — **DONE** (PR #456 merged 2026-05-24, commit c9fc728f)
-
-**Closed by PR #456**: `FetchLnurlInvoiceCommand` moved into
-`crates/nmp-nip57/src/lnurl/` and dispatches through the `ProtocolCommand`
-substrate seam (PR #448). `actor/commands/zap.rs` (429 LOC) +
-`zap_lnurl.rs` (252 LOC) deleted; `ActorCommand::FetchLnurlInvoice` enum
-variant deleted; `ureq` dropped from `nmp-core`'s deps. The
-`ZapAction` action module in `nmp-nip57` now dispatches
-`ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand{...}))`.
-
-**Caveat (carried into "make substrate honest" follow-up):** this PR
-widened `ProtocolCommandContext` from 1 to 7 positional closure args
-(`now_secs`, `author_write_relays`, `bootstrap_discovery_relays`,
-`active_local_keys`, `record_action_stage_requested`,
-`command_sender_clone`). Direct cache accessors on the context
-(`author_write_relays`, `bootstrap_discovery_relays`) are arguably
-routing concerns that should go through the router. Scheduled to be
-revisited and bundled into capability traits.
-
-#### Original violation (kept for archaeology)
-
-**Verified:** the NIP-57 LNURL-pay round-trip orchestration lives in
-`nmp-core`, even though `crates/nmp-nip57/` exists and already owns the
-zap-request builder, the kind:9735 receipt decoder, the aggregate
-projection, and the `ZapAction` `ActionModule`:
-
-- `crates/nmp-core/src/actor/commands/zap.rs` (429 LOC) — `handle_fetch_lnurl_invoice`
-  resolves the active `Keys`, signs the kind:9734 zap request, spawns an HTTP
-  worker, and runs the two-leg LNURL-pay round-trip. Every one of these is a
-  NIP-57 concern.
-- `crates/nmp-core/src/actor/commands/zap_lnurl.rs` (252 LOC) — pure
-  LUD-01/LUD-06/LUD-16/bolt11 helpers the kernel has zero need to host.
-- `crates/nmp-core/src/actor/mod.rs:610` — `ActorCommand::FetchLnurlInvoice`
-  variant. NIP-57 protocol noun on the kernel's command enum.
-- `crates/nmp-core/src/actor/dispatch.rs:773` — dispatch arm.
-- `nmp_nip57::ZapAction::execute` (`crates/nmp-nip57/src/action.rs:176`) already
-  enqueues `ActorCommand::FetchLnurlInvoice` — the action side is already in the
-  right crate; only the handler side leaked into `nmp-core`.
-
-**Correct destination:** `crates/nmp-nip57/`. Move `zap.rs` + `zap_lnurl.rs` to
-`nmp-nip57/src/lnurl/`. Delete `ActorCommand::FetchLnurlInvoice` and the dispatch
-arm. FFI surface unchanged — zap already routes through `nmp_app_dispatch_action`
-under `nmp.nip57.zap`.
-
-**Migration difficulty: MEDIUM-HARD.** Same two seams as V-39: the open-ActorCommand
-seam (V-38 Stage 1) + local-signer access via substrate trait.
-
-**Staged fix plan:** Stage 1 (ride V-38 Stage 1 + V-39 Stage 1) → Stage 2 (move
-`zap.rs` + `zap_lnurl.rs` to `nmp-nip57/src/lnurl/`, delete the ActorCommand
-variant) → Stage 3 (confirm wallet auto-pay chain still works via
-`nmp.wallet.pay_invoice` dispatch).
-
-**Deadline:** post-v1. F-04 (zap E2E) ships on the current layout.
 
 ---
 
@@ -1116,46 +405,18 @@ view-dependent keys (`author_view`, `thread_view`, `timeline`, `inserted`, `upda
 
 ---
 
-### V-47 · `register_raw_event_observer` gives FFI callers a lane that defeats all D1/D3/D5/D8 guarantees [MEDIUM · pre-v1 doc fix] — **DONE**
+### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
-**Evidence:** `crates/nmp-core/src/ffi/raw_event_tap.rs` — `nmp_app_register_raw_event_observer`
-with no doc warning. `apps/notes/ios/Notes/Bridge/NotesBridge.swift:73-76` registers it
-without ceremony. The Notes spike proved 96 LOC Swift defeats D3 outbox routing,
-kernel-owned formatting, lifecycle gating, and codegen contracts without leaving the
-public ABI.
+**Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
+— 258 LOC, 8 generated structs. `ios/Chirp/Chirp/Bridge/KernelBridge.swift` — 1,895 LOC,
+~40 handwritten `Decodable` structs. Coverage: 8/48 ≈ 17%. The remaining 40 are exactly
+the types that change most often (snapshot payload, multi-state enums, projection clusters)
+and benefit most from codegen. They're all blocked on tagged-enum support + `legacy_default`
+override + per-field Swift-type overrides — each a separate architectural step.
 
-Three other escape hatches exist: `inject_pre_verified_events`, `inject_signed_event_json`,
-and the host-supplied `NmpSnapshotProjector` callback.
-
-**Resolution:** `aim.md` §1 updated with escape-hatch caveat; `docs/escape-hatches.md`
-created cataloguing all four escape hatches (raw event tap, snapshot projector, action
-module seam, test-only injectors) with decision tree. `raw_event_tap.rs` module doc
-updated with `## Escape-hatch caveat` section listing all bypassed doctrines.
-
----
-
-### V-48 · No `nmp-app-template` crate — second-app developer must read 403 LOC of Chirp to understand registration [HIGH · v1 DX] — **DONE** (PR #467 merged 2026-05-24, commit a079d95f)
-
-**Closed by PR #467**: `crates/nmp-app-template/` ships `register_defaults(&mut NmpApp)` plus a `runtimes` module (DM-inbox + zap-receipts reconcilers). Chirp's `nmp-app-chirp/src/` shrank from 1003 → 456 LOC (−547, −55%) by deleting `dm_runtime.rs` and `zap_receipts_runtime.rs` and routing through the template. The integration test in `crates/nmp-app-template/tests/register_defaults.rs` constructs a real `NmpApp` and proves every canonical action namespace (`nmp.follow`, `nmp.unfollow`, `nmp.nip25.react`, `nmp.nip17.send`, `nmp.nip17.publish_relay_list`, `nmp.nip57.zap`, `nmp.nip65.publish_relay_list`) resolves through `dispatch_action`.
-
-#### Original requirement (kept for archaeology)
-
-
-
-**Evidence:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs` — 403 LOC.
-`docs/dispatch-actions.md` documents *what to call* but not *what to register first*.
-The ordering matters (action registration before `&NmpApp` borrow; observer
-registration before `nmp_app_start`); ordering violations fail silently. The smallest
-existing app (`apps/notes/`) opts out of the framework's seams — so the smallest
-example is also the wrong example.
-
-`aim.md` §4.14 names `nmp init`; `crates/nmp-cli` exists but starter recipes are absent.
-
-**Recommended action:** (1) `nmp-app-template` crate with canonical wiring (action
-registry, default projections for kind:1 + profiles, coverage hook); (2) wire
-`nmp init <appname>` in `nmp-cli` to scaffold the template + minimal iOS shell.
-This is the highest-leverage DX investment before shipping v1 if the framework's
-§1 claim ("one-shot a working Nostr application") is to hold.
+**Recommended action:** split F-05 into "F-05a: Stage 1+2+3-partial (DONE)" + "F-05b:
+tagged-enum emitter + full sweep (post-v1)"; drop "V1 QUALITY" framing on Stage 3.
+The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
@@ -1193,16 +454,16 @@ rather than being handled by the dispatch table that should own it.
 A new crate (analogous to applesauce's `relay` package) owning:
 1. **Per-kind routing dispatch table:** given an unsigned event, select the right relay
    list kind and target pubkey, then resolve to a concrete relay URL set.
-2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in nmp-core, marked
-   "Phase 2: replace with nmp-nip65 implementation" — that future destination is here).
-3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-nip65/` (that crate is
-   too thin to stand alone; absorb it here).
+2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in `crates/nmp-router/src/cache.rs`, marked
+   "Phase 2: replace with nmp-router implementation" — that future destination is here).
+3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-router/src/publish_relay_list.rs`
+   (that file is too thin to stand alone; absorb it here).
 4. **Relay pool lifecycle** — connect/disconnect/reconnect, not just routing math.
 
 `nmp-core` substrate defines `trait OutboxRouter` + `trait MailboxCache`; the kernel holds
 injected `Arc<dyn>` of each. `nmp-relay-pool` provides the concrete implementations.
 
-`crates/nmp-nip65/` is deleted after the ActionModule migrates.
+`crates/nmp-router/src/publish_relay_list.rs` is deleted after the ActionModule migrates.
 
 **Migration difficulty: MEDIUM-HARD.** The `MailboxCache` trait seam exists; `OutboxRouter`
 trait needs to be designed carefully to express the per-kind dispatch without leaking NIP
@@ -1252,101 +513,6 @@ follow-up promotes the router to the decision authority.
 shell consumers of the phase 2 JSON payload (a `RoutingInspectorView`
 long-press target on `ChirpEventCard` / publish-status row + a debug
 toolbar toggle on the wasm host).
-
-#### Original requirement (kept for archaeology)
-
-
-
-**Evidence (architecture-grounded):** the substrate primitive already
-exists. `nmp_core::substrate::RoutedRelaySet` (PR #449) attributes every
-URL to one or more `RoutingSource` lanes (`Nip65{direction}`, `Hint`,
-`Provenance`, `UserConfigured`, `ClassRouted`, `Indexer`,
-`AppRelay{mode}`) precisely so a later "why-this-relay" answer is
-reconstructable. But there is no observation seam that surfaces those
-attributions outside the router call site, no projection that aggregates
-them into a snapshot field, and no FFI surface that exposes them. Today
-an app can see *what* frames went out (via the `RawEventObserver` lane
-— see V-47 — or wire-frame tracing) but not *why* those relay choices
-were made.
-
-**What v1 needs:**
-
-- **Substrate seam.** A `RoutingTraceObserver` (or similar) on
-  `nmp-router` that fires per `route_publish` / `route_subscription`
-  call carrying `(EventOrInterest, RoutedRelaySet, RoutingContext-summary)`.
-  The kernel installs it once at composition time. Per-call cost must be
-  opt-in (debug builds + explicitly enabled in release) — D8 (no
-  per-event alloc) applies; the observer trait takes references the
-  router already has.
-- **Projection.** A bounded ring buffer projection in `nmp-core` (size
-  capped per D5) that records the last N routing decisions per
-  `(event_id | interest_id)` keyed by their correlation. Each entry: the
-  inputs the router saw (kind, pubkey, tag highlights,
-  `explicit_targets` was-set), the output set per URL with its
-  `RoutingSource` lane(s), and a timestamp. Snapshot-bound so the FFI /
-  wasm surface gets it for free.
-- **App-side API.** A `recent_routing_decisions(filter)` snapshot field
-  with stable shape. Optional `route_explain(event_or_interest)` action
-  for ad-hoc replay against current state.
-- **Chirp peek-under-hood UI.** A `RoutingInspectorView` (debug toolbar
-  + long-press on any timeline item / publish-status row) that
-  displays: the input (kind, author, tags), the output set (one row per
-  resolved URL), the lane attribution per URL (e.g., "Nip65/Write +
-  AppRelay/Fallback" with a tooltip explaining each lane), and the
-  blocked-relay drops. Same shell as `DiagnosticsView` (gated by
-  `#if DEBUG` + V-19 pattern) but the projection itself ships in release
-  so a user can opt into diagnostics without a debug build.
-- **Validation tie-in.** This is the substrate the validation programs
-  (route-trace subcommand, chirp-repl smokes, NIP-29 group / DM smokes
-  the user requested 2026-05-24) read from to assert "router routed to
-  the expected URLs and attributed them to the expected lanes." Without
-  the seam, validation tests have to wire ad-hoc dyn-router wrappers;
-  with it, validation reads the same projection the UI reads, ensuring
-  the UI's claims are testable.
-
-**Doctrine:** D5 (bounded snapshot — projection size cap mandatory), D7
-(kernel reports, host renders — the UI does not call the router itself),
-D8 (no per-event alloc — observer fires from data already on the
-stack), D11 (one door per write surface — observer is the read door for
-routing state, paired with the existing publish-engine status
-projection).
-
-**Recommended action:**
-
-1. **Phase 1 — substrate** (post-step-3 cut-over so the seam has a real
-   single producer): add `RoutingTraceObserver` trait to
-   `nmp_core::substrate`, an `Arc<dyn RoutingTraceObserver>` slot on
-   `Kernel`, and the kernel-side ring-buffer projection. New tests
-   exercising lane attribution + bounded retention.
-2. **Phase 2 — FFI/wasm surface:** snapshot-bound
-   `recent_routing_decisions` field. Swift codegen emits the DTO.
-3. **Phase 3 — Chirp inspector UI:** `RoutingInspectorView` long-press
-   target on `ChirpEventCard` / publish-status row. Debug toolbar
-   "show routing trace" toggle.
-4. **Phase 4 — validation harness:** route-trace CLI subcommand on
-   `nmp-repl` and the chirp-repl / chirp-tui smokes that consume the
-   same projection.
-
-**Phase: v1.** Without V-51 the architecture-migration validation goal
-("end-to-end verify the router routes correctly against real pubkeys")
-has no structural answer — every test has to roll its own observer.
-Chirp's "peek under the hood" UI is the durable user-facing payoff;
-the validation harness is the developer-facing one.
-
----
-
-### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
-
-**Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
-— 258 LOC, 8 generated structs. `ios/Chirp/Chirp/Bridge/KernelBridge.swift` — 1,895 LOC,
-~40 handwritten `Decodable` structs. Coverage: 8/48 ≈ 17%. The remaining 40 are exactly
-the types that change most often (snapshot payload, multi-state enums, projection clusters)
-and benefit most from codegen. They're all blocked on tagged-enum support + `legacy_default`
-override + per-field Swift-type overrides — each a separate architectural step.
-
-**Recommended action:** split F-05 into "F-05a: Stage 1+2+3-partial (DONE)" + "F-05b:
-tagged-enum emitter + full sweep (post-v1)"; drop "V1 QUALITY" framing on Stage 3.
-The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
@@ -1480,6 +646,38 @@ a zeroizable key type or mutable erasure hook, then delete the partial-mitigatio
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
 
+### V-58 · Reconnect worker backoff is blind to relay close reason [LOW · reliability]
+
+**Verified:** `crates/nmp-core/src/kernel/ingest/closed.rs:27` and `:149` — two `// TODO` comments note that `last_close_reason` (populated from `CLOSED` relay frames, which may carry machine-readable prefixes such as `"rate-limited"` or `"slow-down"`) is not forwarded to the reconnect worker's backoff logic. The backoff schedule runs at a fixed/jitter cadence regardless of the close reason.
+
+**Impact:** a relay that issues `CLOSED ["rate-limited: …"]` will be reconnected at the same interval as a relay that closed due to a transient network drop. Under active rate-limiting the reconnect worker amplifies the load on the relay rather than backing off.
+
+**Correct fix:** thread `last_close_reason` into the reconnect worker's backoff decision; treat `"rate-limited"` and `"slow-down"` as long-backoff triggers (e.g. 60 s + jitter). The `closed.rs` already records the reason string; the worker needs a `CloseReason`-aware schedule variant rather than a single fixed delay.
+
+---
+
+### V-59 · `EventStore` trait missing kernel clock injection — `SystemTime::now()` in watermarks and queries [LOW · correctness]
+
+**Verified:**
+- `crates/nmp-store/src/types/watermark.rs:59-61` — inline note: "the `EventStore` trait does not yet thread the kernel clock into the store … this is a known transitional site pending the store-clock plumbing tracked for a later milestone."
+- `crates/nmp-store/src/lmdb/query.rs:433` and `src/mem/query.rs:373` — same note verbatim; `SystemTime::now()` substituted for the missing kernel clock.
+
+**Impact:** watermark timestamps and query "current time" are sourced from the OS wall clock, not the kernel's monotonic clock. This creates subtle divergence in test environments (where the kernel clock can be controlled) and in long-running sessions where clock skew could affect expiry and ordering logic.
+
+**Correct fix:** thread a `ClockSource` or `Instant`-provider through the `EventStore` trait so all time reads inside the store use the same clock as the rest of the kernel.
+
+---
+
+### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management]
+
+**Verified:** `crates/nmp-store/src/lmdb/gc.rs:8-10` — module comment: "LRU eviction is not implemented in this milestone — `Mem` doesn't have one either; `gc_step` reports `lru_evicted = 0`. Future work tracked under M4 GC tuning."
+
+**Impact:** a long-running session that ingests a high-throughput feed will grow the LMDB store without bound. The GC step runs on each tick but evicts nothing; no byte or event-count budget is enforced.
+
+**Correct fix:** implement an LRU policy in `gc_step` — track last-access time per event, evict the least-recently-read events when the store exceeds a configurable byte or event-count ceiling. The `mem` store needs the same policy for test consistency. Prerequisite: `EventStore` clock injection (V-59) so eviction timestamps are kernel-clock-sourced.
+
+---
+
 ### V-56 · Content-level profile mentions do not feed profile discovery [MEDIUM · v1 UX]
 
 **Verified:** `crates/nmp-core/src/kernel/ingest/timeline.rs:132-138` only feeds
@@ -1497,6 +695,201 @@ profile pubkeys during ingest and records them through the existing
 `UnknownIds::note_pubkey` path. The kind:0 re-fetch after kind:10002 arrival is
 already implemented via `refresh_profile_after_mailbox`; do not duplicate that
 part of the deleted scratch plan.
+
+---
+
+### V-61 · Marmot `PendingGroupChange::drop` silently clears unresolved MLS commit [HIGH · MLS state divergence]
+
+**Verified:** `crates/nmp-marmot/src/service.rs:172` — `PendingGroupChange::drop` clears the pending MLS commit on drop without surfacing an error. If a panic or early return drops the guard before the commit is resolved, the group's local MLS state is mutated as if the commit were applied, but no kind:445/`commit` event reaches the relay.
+
+**Impact:** group state diverges from the relay-published timeline. Subsequent members joining or syncing see a different epoch than this client. There is no recovery path short of leaving and rejoining the group.
+
+**Correct fix:** the drop path must either (a) roll the pending change back to pre-commit state, or (b) record a typed `MarmotError::OrphanedCommit` on the kernel error toast and refuse further group sends until the operator resolves the divergence. Silent drop is not a doctrined option.
+
+---
+
+### V-62 · Marmot keyring failure silently installs in-memory mock store [HIGH · MLS secret durability]
+
+**Verified:** `crates/nmp-marmot/src/ffi.rs:228-269` — nested fallback: real keyring open fails → delete-and-retry path → on second failure installs the in-memory mock store with no host-visible signal. MLS group secrets thereafter live only in process memory.
+
+**Impact:** the user believes MLS groups are persistent; on next launch the secret material is gone and every group is unjoinable. There is no toast, no error code returned to the host, no metric. Once secrets are lost, group membership cannot be recovered.
+
+**Correct fix:** surface a typed `MarmotInitError::KeyringUnavailable` to the host; let the app decide whether to block group features, prompt the user, or fall back to an explicit ephemeral session. Never install the mock store as an implicit decision inside `ffi.rs`.
+
+---
+
+### V-63 · NIP-47 outbound payment serialization uses `unwrap_or_default` — payment frame can be empty string [HIGH · silent payment failure]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs:222`, `:267`, `:460` — `serde_json::to_string(...).unwrap_or_default()` on the REQ/EVENT/CLOSE frames. If serialization fails, the resulting `""` is pushed onto the outbound queue. For `pay_invoice` (line 460) the `pending_payments` map is populated before the broken frame is sent, so the correlation_id is registered as inflight while the relay never receives a payment request.
+
+**Impact:** the user's pay-invoice action stage hangs indefinitely (or until wallet disconnect drains it as "wallet disconnected", which is a misleading reason). No error surfaces. This is also the most likely path through which a malformed bolt11 or amount could vanish without diagnosis.
+
+**Correct fix:** propagate serialization failure as `Err(NwcError::EncodeFailure)`; never send `""` frames; emit a `record_action_failure` for the correlation_id before dropping the request. Apply the same fix to the REQ filter and CLOSE frames so subscription bring-up failures are visible.
+
+---
+
+### V-64 · NIP-47 has no `pending_payments` timeout sweep — orphaned responses silently dropped [MEDIUM · silent stuck state]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs:392` — the `(_, None) => {}` arm in the response-correlation handler silently discards wallet responses that arrive with no matching `pending_payments` entry. `crates/nmp-nip47/src/runtime.rs:48` defines `pending_payments: HashMap<String, Option<String>>` and the only drain site is `wallet_disconnect_inner` (`:260`). There is no periodic sweep that times out inflight pay_invoice correlations.
+
+**Impact:** if a wallet response arrives after the client has already evicted the entry (or never registers one due to V-63), the response is silently consumed. Combined with the absence of a timeout, a payment can sit "pending" until the user manually disconnects the wallet, at which point the failure reason surfaced to the user is the unrelated string "wallet disconnected".
+
+**Correct fix:** add a wall-clock-gated sweep that records `record_action_failure(cid, "wallet timeout (>Ns)")` for entries older than a configured TTL (default 90 s, kernel-clock-sourced once V-59 lands). Replace the `_ => {}` arm with a `tracing::warn!` and a `WalletAnomaly::OrphanResponse` counter so the receive-without-correlation case becomes observable rather than dropped.
+
+---
+
+### V-65 · `NOSTRCONNECT_DEFAULT_RELAY_URL = "wss://relay.damus.io"` hardcoded in `nmp-core` [MEDIUM · D0 leak + third-party dependency]
+
+**Verified:** `crates/nmp-core/src/actor/relay_roles.rs:5` — `pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";` is a hardcoded third-party relay URL used as a fallback when a user without configured write relays initiates a `nostrconnect://` handshake (NIP-46).
+
+**Impact:** (1) D0 — `nmp-core` should not contain protocol-named third-party endpoints. (2) reliability — if `damus.io` rate-limits or goes offline, every NMP build worldwide that hasn't onboarded write relays cannot complete NIP-46 client-initiated handshakes. (3) policy — choice of bootstrap relay is an app/operator decision, not a framework constant.
+
+**Correct fix:** move the default to host-supplied policy. The host registers a `NostrConnectBootstrapRelays` capability (single URL or weighted list) via `NmpApp::register_capability`; the actor reads from the capability slot. nmp-core retains no hardcoded URL. Until removed, the existing constant must at minimum be flagged on the doctrine-lint banned-token list.
+
+---
+
+### V-66 · `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` activate silently when relay rows are empty [MEDIUM · D3 violation + masked config bug]
+
+**Verified:** `crates/nmp-core/src/kernel/mod.rs:1417,1420` — when `relay_edit_rows` is empty the kernel substitutes `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` for the active routing set. The substitution is silent (no toast, no log, no slot delta) so the host has no way to tell whether the user has zero configured relays or whether their configuration was wiped.
+
+**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62), the loss is invisible until they notice their followers no longer see their notes.
+
+**Correct fix:** distinguish "no rows" from "rows present but degraded". When `relay_edit_rows` is empty the kernel must publish `KernelDiagnostic::NoConfiguredRelays` and either (a) refuse to publish with a typed `NoTargets` error (matches V-50/V-51 fail-closed direction) or (b) require the host to explicitly opt in via a `BootstrapRelaysCapability`. Hardcoded URL constants in nmp-core must not be the production path.
+
+---
+
+### V-67 · Kernel init silently degrades to in-memory store on LMDB open failure [MEDIUM · silent durability loss]
+
+**Verified:** `crates/nmp-core/src/kernel/mod.rs:872` — LMDB open failure during kernel init falls through to an ephemeral in-process store. No `KernelDiagnostic` is emitted; no host callback is invoked. The kernel reports itself as healthy.
+
+**Impact:** the user runs the app, ingests events, publishes notes — and on the next launch every locally-stored event is gone (because the LMDB file was never opened, so the in-memory store was the only persistence layer). Notifications, drafts, profile cache, follow list — all transient without warning. This is one of the harder failure modes to diagnose because everything else works.
+
+**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring): silent mock installation is not a doctrined option.
+
+---
+
+### V-68 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
+
+**Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:446` — `func zap(...) { amountMsats: UInt64 = 21_000, ... }` with a doc-comment at `:433-434` stating "defaults to 21,000 msats (21 sats) until an amount picker lands." Every zap dispatch from the iOS shell that doesn't explicitly pass an amount sends 21 sats.
+
+**Impact:** users expecting a richer zap amount (e.g. 1,000 / 5,000 / 21,000 sats) send 21 sats because no picker exists. The default is in production iOS, not behind a feature flag, and the doc-comment promises a picker that has not landed. This is a user-facing UX defect, not framework debt.
+
+**Correct fix:** ship the amount picker (sheet with 21 / 100 / 500 / 1k / 5k / 21k presets + custom field) and remove the function default. The Rust side (`nmp_nip57::zap`) already accepts `amount_msats`; the gap is purely Swift UI. Until the picker ships, the default should be an explicit `nil` that forces the host to surface a sheet rather than silently dispatching 21 sats.
+
+---
+
+### V-69 · LMDB store silently swallows index-corruption errors via `ok()??` / `filter_map(res.ok())` [MEDIUM · silent query incompleteness]
+
+**Verified:** `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs:958` (`ok()??` double-error swallow in `query_by_scraping`) and the broader pattern `filter_map(|res| { res.ok()? })` on iteration paths in the same module. When a key resolves to a missing or undeserializable value (index points to a dangling event), the iterator silently produces fewer results rather than surfacing a corruption signal.
+
+**Impact:** queries appear to succeed but return incomplete result sets. No metric, no log, no `KernelDiagnostic`. Index corruption (which V-60 GC churn or a crash mid-write could induce) becomes a slow, undiagnosable "why is my note missing" bug. Test coverage for this path does not exist because the failure mode is silent.
+
+**Correct fix:** every `res.ok()?` on a query iteration must increment a typed `StoreAnomaly::OrphanIndexEntry` counter and emit `tracing::warn!` with the offending key. A non-zero counter must be exposed on the diagnostic snapshot so the host (and tests) can assert "no corruption detected". The double-swallow `.ok()??` at line 958 is the worst offender — replace with explicit `match` so the two error classes (missing key vs. deserialize failure) are distinguishable.
+
+---
+
+### V-70 · `hex_to_bytes32` returns all-zeros on malformed hex — `RawEvent::id_bytes/pubkey_bytes` produce valid-shape but wrong IDs [LOW · sharp-edge API]
+
+**Verified:** `crates/nmp-store/src/types/ids.rs:20-34` — `hex_to_bytes32(s)` returns `[0u8; 32]` whenever `s.len() != 64` or any byte is non-hex. `crates/nmp-store/src/types/events.rs:38-46` exposes this via `RawEvent::id_bytes()` and `RawEvent::pubkey_bytes()` with doc-comments that admit the silent-zero behaviour.
+
+**Impact:** `VerifiedEvent::try_from_raw` gates inserts behind Schnorr verification so a malformed `RawEvent` cannot enter the store with a zero ID/pubkey under normal flow. But any caller (current or future) that reads `id_bytes`/`pubkey_bytes` from an unverified `RawEvent` (e.g. for prefiltering, indexing, debug telemetry) silently receives the all-zeros sentinel. The all-zeros pubkey is a valid 32-byte shape, so downstream comparisons (`== local_pubkey`) cannot distinguish "decode failure" from "actually zero".
+
+**Correct fix:** change the signature to `fn hex_to_bytes32(s: &str) -> Option<[u8; 32]>` and propagate through `RawEvent::id_bytes/pubkey_bytes` as `Option<EventId>` / `Option<PubKey>`. Callers must handle the `None` arm explicitly. This is a one-shot mechanical refactor confined to `nmp-store`.
+
+---
+
+### V-71 · `nip65_resolver` module doc claims `tracing::debug!` logging that the code does not perform [LOW · false documentation + missing observability]
+
+**Verified:** `crates/nmp-router/src/nip65_resolver.rs:30` — module doc states "bad-shape kind:10002 tags (missing url, non-wss) are logged via `tracing::debug!` and skipped". A `grep tracing|debug!|warn!` of the file returns only the doc-comment itself; no tracing call exists.
+
+**Impact:** (1) documentation lies — a maintainer reading the module believes there is observability that doesn't exist. (2) the V-51 routing-trace inspector cannot attribute "kind:10002 tag was malformed" as a cause of an empty outbox set, because the malformed-tag path is silent. Diagnosing "why didn't my note publish?" is harder than the doc implies.
+
+**Correct fix:** add the `tracing::debug!(target: "nmp.router.nip65", url=?, reason=?, "skipping malformed kind:10002 tag")` calls at the two skip sites (missing URL, non-`wss://`), and surface a `RouterAnomaly::MalformedRelayTag` counter into V-51's routing-trace snapshot so the inspector can attribute empty-set outcomes.
+
+---
+
+### V-72 · `LocalKeySigner` silently coerces overflowing event `kind` to `u16::MAX` (65535) [LOW · silent overflow]
+
+**Verified:** `crates/nmp-signers/src/signers/local.rs:191` — `u16::try_from(unsigned.kind).unwrap_or(u16::MAX)` for an `unsigned.kind: u32`. NIP-01 kinds beyond 65535 are non-spec but architecturally reachable; the signer silently rebinds to kind 65535.
+
+**Impact:** a caller that passes an out-of-range `kind` gets a signed event with a different kind than they asked for. The signature is valid for kind 65535, so the relay accepts it and the recipient sees the wrong event class. There is no warning at the signer boundary.
+
+**Correct fix:** return `SignerError::KindOutOfRange { kind: u32 }` instead of silently coercing. Callers that genuinely want kind 65535 must pass it as a typed `u16` upstream.
+
+---
+
+### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
+
+**Verified:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs:114` — null or malformed `viewer_pubkey` is replaced with `Pubkey::default()` (32 zero bytes) and the register call proceeds. No error is returned to Swift.
+
+**Impact:** the iOS host believes it registered a logged-in user; the Rust side proceeds with the all-zeros pubkey as the active viewer. Personal-timeline projections, NIP-65 outbox resolution, and DM inbox filtering all run against the zero-pubkey "anonymous" identity. The user appears to be logged in to themselves but is treated as the canonical empty account by every Rust subsystem.
+
+**Correct fix:** the C-ABI `nmp_app_chirp_register` must return `NmpRegisterStatus::InvalidViewerPubkey` on null or non-32-byte input; Swift surfaces the failure to the onboarding flow. There is no doctrined reason for a register call with an invalid identity to silently succeed as anonymous.
+
+---
+
+### V-74 · NIP-47 NWC URI parser drops unknown params silently — misspelled `relay=` vanishes [LOW · silent config drop]
+
+**Verified:** `crates/nmp-nwc/src/parse.rs:135` — the `_ => {}` arm in the URI param match silently discards any param key the parser does not recognise. A user-pasted URI with `relays=wss://...` (note the `s`) or `Relay=wss://...` is accepted as a parse success with no relay configured.
+
+**Impact:** the user pastes a malformed NWC URI, the parse succeeds with a missing relay, the wallet connection fails on the next outbound, and the user has no clue why. This is a textbook silent-config-drop pattern; the URI parser is the right place to surface it.
+
+**Correct fix:** the `_` arm must either (a) return `NwcParseError::UnknownParam { key }` so the host can warn the user, or (b) record the unknown key into a `parse_warnings: Vec<String>` field on the parsed URI which the host surfaces in the wallet-connect sheet. Doctrine prefers (a) for required-shape params (`relay=`, `secret=`) and (b) for unknown extension params.
+
+---
+
+### V-75 · Router Lane 7 (AppRelay) catch-all silent — V-51 routing-trace cannot attribute empty-outbox causes [LOW · routing observability]
+
+**Verified:** `crates/nmp-router/src/router.rs:250-260` and `:377-388` — the AppRelay catch-all fires when all prior lanes (NIP-65, hint cache, recipient inbox, etc.) produce empty sets. No diagnostic is emitted for which lane attempted what; the catch-all is the silent terminator of an empty publish set.
+
+**Impact:** V-51's routing-trace inspector can show "event Y went to relay B via lane N" but cannot show "lanes 1–6 returned empty for reason R". When a publish appears to succeed against an app relay that the user didn't configure, the user has no way to find out why their NIP-65 write relays were skipped.
+
+**Correct fix:** each lane emits a typed `RouteAttempt { lane, outcome }` into the routing-trace ring buffer, including empty-set outcomes. The Lane 7 fallback explicitly attributes itself as `Lane::AppRelayFallback` so the V-51 inspector can show the empty-cause chain. This is a strict extension of V-51, not a duplicate.
+
+---
+
+### V-76 · `web/chirp` silently falls back to `InProcessNmpClient` on Worker construction failure [LOW · web production degradation]
+
+**Verified:** `web/chirp/src/nmp/client.ts:43-47` — Worker construction failure is caught and the client downgrades to `InProcessNmpClient`, which runs nmp-wasm on the main thread. No console warning, no telemetry, no UI signal.
+
+**Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) sees a Chirp web app that "works" but blocks the main thread on every kernel tick. Performance is silently degraded; the diagnostic surface is empty.
+
+**Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "performance-degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
+
+---
+
+### V-77 · `nmp-nwc` defines `MakeInvoice` end-to-end but never dispatches it — dead receive-side API surface [LOW · misleading API surface]
+
+**Verified:** `crates/nmp-nwc/src/types.rs:25` declares `NwcMethod::MakeInvoice`; `crates/nmp-nwc/src/types.rs:50` defines `MakeInvoiceParams`; `crates/nmp-nwc/src/types.rs:99` defines `MakeInvoiceResult`; `crates/nmp-nwc/src/build.rs:160` exports `make_invoice_content(...)`. The only caller is the in-crate test `make_invoice_request_shape` at `build.rs:250`. There is no `make_invoice_result()` parser, no `ActorCommand` or `dispatch_action` namespace, no FFI symbol, and no Swift/Kotlin/TS host caller. The receive-side NIP-47 leg (invoice creation, used by lightning-address resolution, receive flows, and zap-recipient pairing) is wire-protocol-complete but never reachable at runtime.
+
+**Impact:** NMP advertises NIP-47 NWC support (see `docs/plan.md:29` — "NWC wallet (NIP-47, still in nmp-core)") but the receive half is dead. Any host integrator who reads the public type surface (`pub use ... MakeInvoiceParams, MakeInvoiceResult` in `nmp-nwc/src/lib.rs:28`) sees a complete `MakeInvoice` API, attempts to call it, and discovers no entry point exists. This is the misleading-API-surface failure mode the doctrine prohibits: types that exist but cannot be invoked.
+
+**Correct fix:** either (a) finish the receive path — add `MakeInvoiceResult::from_response()`, an `nmp.nwc.make_invoice` dispatch action, and an FFI / wasm symbol — gated on a real receive-flow consumer (zap-recipient or invoice-request UI); or (b) delete `MakeInvoice`, `MakeInvoiceParams`, `MakeInvoiceResult`, and `make_invoice_content` until a caller exists. Doctrine prefers (b) — no scaffolding without a consumer.
+
+---
+
+### V-78 · NIP-57 zap signing requires local keys — bunker (NIP-46) accounts cannot zap [MEDIUM · bunker feature gap]
+
+**Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:195-211` — `ZapAction::execute` short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
+
+**Impact:** users authenticated via bunker can read zaps (kind:9735 receipts decode without keys) but cannot send a zap. The failure is non-silent (toast fires) so this is not a silent-fail violation, but it is a v1-A feature gap that is currently invisible from the BACKLOG. V-08 covers DMs and V-06 covers AUTH; zaps were missing as a tracked sibling.
+
+**Staged fix plan:**
+- Stage 1: surface the bunker-zap gap in onboarding / zap UI before the user attempts a zap (currently they only learn at zap time via toast).
+- Stage 2: broker side — expose `sign_zap_request(unsigned_kind_9734)` RPC. Companion to V-06 Stage 2 (the broker is the same target; both bunker-sign paths land in the same RPC table).
+- Stage 3: `ZapAction::execute` — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
+
+**Deadline:** Stages 2-3 are post-v1. Either this is fixed or v1 copy drops "send zaps" as a v1 capability for bunker accounts.
+
+---
+
+### V-79 · NIP-47 wallet connection has no heartbeat and no reconnect — connection can stale silently [LOW · wallet connection resilience]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs` — no `ping`, `health`, `interval`, `heartbeat`, `reconnect`, `backoff`, or `tokio::time` symbols. On `UNAUTHORIZED` / `RESTRICTED` error codes (`runtime.rs:398-399`) the connection `status` is set to `"error"` but no reconnect is attempted. There is no periodic liveness probe; a wallet that goes offline after the initial handshake leaves the connection in `"ready"` indefinitely. V-14 (which would be the natural home for this) is scoped to NIP-46 bunker reconnect and is marked DONE — NIP-47 NWC is a separate transport with no equivalent tracker.
+
+**Impact:** the user sees the wallet status pill as "ready" while the wallet is in fact unreachable; the first outbound `pay_invoice` after the connection stales fails with a transport error that the user can't pre-empt. There is no diagnostic surface to attribute the failure to a stale connection (the user reads it as a wallet bug). This is the wallet-side analogue of the relay-flap pattern V-14 fixed for bunker.
+
+**Correct fix:** mirror V-14's design for NIP-47 — (a) periodic `get_info` heartbeat at a low cadence (~30s) while the wallet UI is visible, (b) on three consecutive failures, transition `status` to `"connecting"` and re-establish the subscription, (c) project a `nmp.nwc.connection_state` field (Connected / Reconnecting / TransportLost) so the host shell can render a non-silent indicator. Implementation must reuse the relay-flap reconnect primitives from V-14 rather than introducing a parallel timer subsystem.
 
 ---
 
@@ -1523,7 +916,7 @@ artifact found it does NOT use the framework's defining properties:
   D3 outbox routing is bypassed entirely; `KindFilter` (`raw_event_observer.rs:92`) has no
   author dimension.
 - `NoteModel.swift:14` parses the NIP-01 event JSON in Swift (`JSONSerialization →
-  [String: Any]`). The architectural bible's first anti-pattern.
+  [String: Any]`). The first anti-pattern (D5: never parse protocol data in the shell).
 - `NotesBridge.swift:84` orders the timeline in Swift (insertion-order keyed off arrival,
   not `created_at`). The kernel owns no timeline view for this app.
 - `TimelineView.swift:30, 36–38` formats timestamps + shortens pubkeys in Swift.
@@ -1539,15 +932,6 @@ consumes a kernel-owned timeline projection (no JSON in Swift, no list ordering 
 and (c) gates `isSignedIn` on a real handshake-success callback. If that requires new
 framework affordances, those affordances are the real v1-A gap. Milestone: 30-day call from
 Opus direction review #13.
-
-### PD-033-C · Two subscription systems (gates V-04 fix) — DECISION MADE
-
-Decision (2026-05-23): migrate M1 `req()` call sites to InterestRegistry and delete the
-hand-rolled path, staged. Stage 1 complete (PR #368). See V-04 staged fix plan above.
-
-### PD-037 · Stale branch confirmation — CLOSED 2026-05-23
-
-`codex/worker1-nip17-dm-inbox-relays` does not exist on the remote. Already deleted.
 
 ### PD-039 · Bespoke FFI deprecation calendar (D11 expansion) — DECISION MADE 2026-05-23
 
@@ -1611,15 +995,7 @@ autonomous agent picks the topmost item not already in Section 2.
 
 ### F-01 · Fix V-01 — IndexedDB store [V1 BLOCKER · partial]
 
-All prior stages merged. Stage 3c (PR #385 — 2026-05-24) wired the publish path:
-`KernelReducer::publish_signed_event`, `sign_event_via_extension` (async wasm32),
-`dispatch_app_action_async` Promise wrapper. chirp-web now supports NIP-07 PublishNote
-end-to-end (kind:1 write via NIP-07 signer, correlation_id settlement, per-relay terminals).
-
-**Multi-role bootstrap parsing: DONE (PR #385 — 2026-05-24).** `nmp-wasm::relay_pool::roles_for_entry`
-parses `"content"` / `"indexer"` / `"both"` / `"both,indexer"` strings; `spawn_drivers` opens one
-`BrowserRelayDriver` per `(URL, role)` pair. Indexer-lane `RelayHealth` diagnostics are now
-correctly bucketed.
+All prior stages merged (chirp-web now supports NIP-07 PublishNote end-to-end).
 
 **Remaining scope (still V1 BLOCKER):**
 1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl.
@@ -1648,35 +1024,7 @@ The test also gates that cold-start `active_local_keys` seed path works without 
 **Acceptance test:** fresh account → receive a gift-wrapped kind:1059 from a second account →
 message appears in the `nmp.nip17.dm_inbox` snapshot projection.
 
-### F-03a · NIP-65 kind:10002 publish coverage [VERIFIED ✅]
-
-`maybe_publish_relay_list_after_edit` (`actor/dispatch.rs:117`) is called only from `AddRelay`
-and `RemoveRelay` actor commands — never from sign-in or `ingest_relay_list`. A returning user
-with an existing kind:10002 does NOT re-publish on sign-in (correct behavior: relays came from
-the wire, not from user action). The relay-settings-change path is covered.
-
-Verified 2026-05-23: `sign_in_nsec` and `sign_in_bunker` (`actor/commands/identity.rs`) have
-no `maybe_publish_relay_list_after_edit` call. Explicit relay mutations (`AddRelay`/`RemoveRelay`)
-do re-publish as intended.
-
-### F-03b · First-launch defaults — empty timeline [DONE]
-
-`create_account` (`actor/commands/identity.rs:778`) calls `prepopulate_seed_contacts` with
-`DEFAULT_FOLLOWS` (fiatjaf + npub1l2vyh47…), then `publish_initial_follows` publishes kind:3
-to cold-start relays. New accounts have an immediately-populated follow feed. Verified on
-HEAD `3e370bb5`.
-
 ### F-04 · Zap E2E round-trip verification [V1 BLOCKER]
-
-**Structural gaps fixed (B-7 — merged PR #342):**
-1. `handle_event` `_` wildcard never called `notify_event_observers` → kind:9735 events never
-   reached `ZapsAggregateProjection`. Fixed: kind:9735 arm added in `kernel/ingest/mod.rs`.
-2. No kind:9735 subscription interest registered at bootstrap. Fixed: `#p <viewer>` REQ added in
-   `active_account_bootstrap_requests` (5 tests covering F-02 + F-04 pass). Note: the kind:9735
-   REQ was later D0-migrated to a host-side `ZapReceiptsRuntimeController` in `nmp-app-chirp`
-   (PR #421) — the subscription is now pushed as a generic `LogicalInterest` via
-   `nmp_nip57::self_zap_receipts_interest`. The planner's cold-start bootstrap fallback
-   (`Tailing + Global + Nip65ReadRelays`) ensures receipts still flow before kind:10002 lands.
 
 `ZapAction` is implemented and registered. `ZapsAggregateProjection` is registered. The full
 round-trip — dispatch zap → `FetchLnurlInvoice` → bolt11 toast → `WalletPayInvoice` → NWC
@@ -1691,12 +1039,6 @@ NWC `pay_invoice` fires → kind:9735 receipt ingested and reflected in `nmp.nip
 `crates/nmp-codegen` (1,212 LOC) has a working `generate_modules` CLI. `KernelBridge.swift`
 was 1,988 LOC of handwritten counterpart types — a maintenance surface that diverges on every
 snapshot field change.
-
-**Status:** Stage 1 (7 flat-record types) **DONE**. Stage 2 (`SnapshotProjections` registry)
-**DONE**. Stage 3 partial — `TimelineItem` migrated to the generated header (this PR);
-the handwritten Swift counterpart + custom decoder were deleted. The synthetic-construction
-call site in `ModularBlockView` was updated to feed the now-non-optional `authorPictureUrl`
-/ `authorAvatarSource` directly.
 
 **Remaining Stage 3 work (all blocked on emitter extensions):**
 
@@ -1720,12 +1062,6 @@ These are each their own architectural step and merit separate PRs.
 The "v1 QUALITY" label applies to Stage 1+2+3-partial; Stage 3 remainder (tagged enums,
 legacy_default, full sweep) is effectively post-v1. Consider renaming to "F-05a (DONE) /
 F-05b (post-v1)" so the v1 claim is scoped accurately.
-
-### F-06 · ~~CI lint: freeze C-ABI surface~~ CLOSED — see Appendix
-
-### F-07 · Fix V-02 — move nmp-marmot to apps/ [DONE]
-
-Completed — see V-02. Moved to `apps/marmot/nmp-app-marmot/`.
 
 ### F-08 · App-owned component registry + content rendering kits [V1 DX]
 
@@ -1768,7 +1104,7 @@ drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
 exact byte set as the M16 cross-platform wire-contract truth.
 
 **Kind-dispatch sub-track (ADR-0034):** the next M16 slice is the kind-dispatched
-content rendering system. Implementation plan: [`docs/plan/m16-kind-dispatch.md`](plan/m16-kind-dispatch.md).
+content rendering system.
 Architectural decisions: [`ADR-0034`](decisions/0034-kind-dispatch-content-rendering.md).
 Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
 open item not already in Section 2. PR #588 closes F-CR-01 and F-CR-06; the next
@@ -1970,6 +1306,10 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Raw-data projection follow-ups | ADR-0032 is canonical. Post-v1 work may add a shared `nmp-display` helper/codegen surface, a doctrine-lint rule for banned display helpers in projections, and a review of free-form metadata fallbacks. |
 | Chirp TUI approach-B visual refresh | The top-level scratch plans were deleted. If this work resumes, track it as a scoped TUI UX item here or in WIP while a branch is active; preserve existing `chirp-tui` runtime/bridge/command wiring and keep rendering modules under the LOC ceiling. |
 | Indexer-republish follow-ups | The default composition installs `nmp_router::IndexerRepublishPolicy` through `nmp-core`'s generic raw-event forwarding seam. Deferred add-ons are runtime toggles, telemetry, and parameterized replaceable support only if product demand appears. |
+| Chirp TUI unfinished interactions | `apps/chirp/chirp-tui/src/input.rs:350,431,433,523` — repost, group-discover, add-relay, add-account, and DM-open are all `// not yet wired (post-v1)` no-ops. Mirror: `ios/Chirp/Chirp/Components/NoteRowView.swift:225` repost is also a no-op. Wire once the corresponding `dispatch_action` namespaces exist. |
+| `nmp-content` Phase-2 claim dependency channel | `crates/nmp-content/src/embed_registry/mod.rs:26` — `// Phase 2: expose the claim-driven dependency channel`. The embed registry currently resolves claims synchronously; the async demand-producer path for late-arriving embedded events is not exposed to callers. |
+| wasm32 test infrastructure | `crates/nmp-wasm/src/lib.rs:200` — no `wasm-bindgen-test` harness set up. The entire wasm publish path and signer-slot dispatch lack automated coverage. Set up `wasm-pack test --headless` in CI and migrate the `// TODO: wasm32 tests TBD` stubs into real tests. |
+| `web/registry` CodeBlock placeholder | `web/registry/src/components/CodeBlock.tsx:39` renders `"This component is being built — check back soon."` in the web registry UI. Replace with a real syntax-highlighted code block (e.g. `shiki` or `prism`) once the registry UI is active. |
 
 ---
 

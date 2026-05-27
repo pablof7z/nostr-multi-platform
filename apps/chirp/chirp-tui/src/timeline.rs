@@ -30,6 +30,8 @@ pub struct TimelineRow {
     /// `author_*` fields above name the original note's author; this struct
     /// names the reposter so the UI can show "↻ reposted by @<reposter>".
     pub repost: Option<RowRepost>,
+    /// Pretty-printed JSON of the raw card object from the NMP snapshot.
+    pub raw_card: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,11 +64,6 @@ impl TimelineRow {
                     }
                 }
             }
-        }
-
-        if rows.is_empty() {
-            rows.extend(cards.values().map(|card| Self::from_card(card, 0, false)));
-            rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         }
 
         rows
@@ -126,6 +123,7 @@ impl TimelineRow {
             content_render,
             mention_pubkeys,
             repost,
+            raw_card: serde_json::to_string_pretty(card).unwrap_or_default(),
         }
     }
 }
@@ -306,6 +304,7 @@ mod tests {
     #[test]
     fn row_uses_profile_display_and_relation_counts_when_present() {
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -342,6 +341,7 @@ mod tests {
         let mention_a = "a".repeat(64);
         let mention_b = "b".repeat(64);
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -382,6 +382,7 @@ mod tests {
     #[test]
     fn mention_pubkeys_filter_non_hex_and_short_ids() {
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -427,6 +428,7 @@ mod tests {
         let a = "a".repeat(64);
         let b = "b".repeat(64);
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "x",
@@ -451,6 +453,7 @@ mod tests {
     #[test]
     fn missing_content_tree_yields_empty_mention_pubkeys() {
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "x",
@@ -465,6 +468,7 @@ mod tests {
     #[test]
     fn media_urls_include_direct_and_quoted_event_media() {
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "x",
@@ -516,6 +520,7 @@ mod tests {
         // `repost` carries the reposter + repost timestamp for the "↻ reposted
         // by" line.
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "repost"}],
             "cards": [{
                 "id": "repost",
                 "author_pubkey": "innerinnerinnerinnerinnerinnerinnerinnerinnerinnerinnerinner1234",
@@ -550,6 +555,7 @@ mod tests {
     #[test]
     fn ordinary_note_has_no_repost_attribution() {
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -564,6 +570,7 @@ mod tests {
     #[test]
     fn relation_counts_preserve_loading_vs_known_zero() {
         let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "note"}],
             "cards": [{
                 "id": "note",
                 "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -587,5 +594,42 @@ mod tests {
             rows[0].relation_counts.summary(),
             "reply 0  react ...  repost 0  zap 0"
         );
+    }
+
+    /// Regression: when `blocks` is present but its IDs temporarily don't
+    /// match any card (blocks/cards desync mid-session), replies must NOT be
+    /// promoted to depth 0.  The correct result is an empty row list.
+    #[test]
+    fn blocks_present_but_ids_missing_from_cards_yields_empty() {
+        let snapshot = serde_json::json!({
+            "blocks": [
+                {"Module": {"events": ["root", "reply"], "has_gap": false, "root": null}}
+            ],
+            "cards": [
+                {"id": "other", "author_pubkey": "aaaaaaaaaaaaaaaa", "created_at": 1, "content": "reply text"}
+            ]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert!(
+            rows.is_empty(),
+            "blocks present but no matching cards → empty rows; got {:?}",
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn no_blocks_key_yields_empty_rows() {
+        let snapshot = serde_json::json!({
+            "cards": [
+                {"id": "a", "author_pubkey": "aaaaaaaaaaaaaaaa", "created_at": 2, "content": "root"},
+                {"id": "b", "author_pubkey": "bbbbbbbbbbbbbbbb", "created_at": 1, "content": "reply"}
+            ]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert!(rows.is_empty());
     }
 }

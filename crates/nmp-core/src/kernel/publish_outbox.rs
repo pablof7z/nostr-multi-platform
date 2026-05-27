@@ -4,7 +4,6 @@
 //! module only projects that state into a compact UI shape and exposes
 //! user-triggered retry/cancel commands back through the engine.
 
-use crate::display::short_npub;
 use crate::publish::{PerRelayState, PublishAction, RelaySelectionReason};
 use crate::relay::{OutboundMessage, RelayRole};
 
@@ -178,7 +177,11 @@ pub(super) fn format_relay_reason(reason: &RelaySelectionReason) -> String {
             format!("Discovery indexer (kind {kind})")
         }
         RelaySelectionReason::RecipientInbox { pubkey } => {
-            format!("Inbox relay for {}", short_npub(pubkey))
+            // D6 — backend projections carry raw identifiers across the wire
+            // boundary; the shell/display layer abbreviates (`short_npub`,
+            // bech32 encoding, etc.) according to its own UX rules. The raw
+            // hex pubkey is emitted verbatim here.
+            format!("Inbox relay for {pubkey}")
         }
         RelaySelectionReason::Explicit => "Explicit relay".to_string(),
     }
@@ -360,12 +363,16 @@ fn publish_outbox_status(per_relay: &[(String, PerRelayState)]) -> String {
 }
 
 pub(super) fn publish_event_title(kind: u32) -> String {
+    use crate::kinds::{
+        KIND_CONTACT_LIST, KIND_PROFILE_METADATA, KIND_REACTION, KIND_RELAY_LIST,
+        KIND_SHORT_TEXT_NOTE,
+    };
     match kind {
-        0 => "Profile",
-        1 => "Note",
-        3 => "Contacts",
-        7 => "Reaction",
-        10002 => "Relay list",
+        k if k == KIND_PROFILE_METADATA => "Profile",
+        k if k == KIND_SHORT_TEXT_NOTE => "Note",
+        k if k == KIND_CONTACT_LIST => "Contacts",
+        k if k == KIND_REACTION => "Reaction",
+        k if k == KIND_RELAY_LIST => "Relay list",
         _ => "Event",
     }
     .to_string()
@@ -377,24 +384,41 @@ pub(super) fn publish_event_title(kind: u32) -> String {
 /// protocol concept (aim.md §4.4 / §6 anti-pattern). Default `"doc.text"`
 /// keeps the shell rendering unconditionally for any future kind.
 fn publish_event_system_image(kind: u32) -> String {
+    use crate::kinds::{
+        KIND_CONTACT_LIST, KIND_PROFILE_METADATA, KIND_REACTION, KIND_RELAY_LIST,
+        KIND_SHORT_TEXT_NOTE,
+    };
     match kind {
-        0 => "person.crop.circle",
-        1 => "text.bubble",
-        3 => "person.2",
-        7 => "heart",
-        10002 => "antenna.radiowaves.left.and.right",
+        k if k == KIND_PROFILE_METADATA => "person.crop.circle",
+        k if k == KIND_SHORT_TEXT_NOTE => "text.bubble",
+        k if k == KIND_CONTACT_LIST => "person.2",
+        k if k == KIND_REACTION => "heart",
+        k if k == KIND_RELAY_LIST => "antenna.radiowaves.left.and.right",
         _ => "doc.text",
     }
     .to_string()
 }
 
 fn publish_event_preview(kind: u32, content: &str) -> String {
+    use crate::kinds::{
+        KIND_CONTACT_LIST, KIND_GIFT_WRAP, KIND_PROFILE_METADATA, KIND_REACTION, KIND_RELAY_LIST,
+    };
+    // Legacy NIP-04 DM kind (kind:4) and the historical NIP-44-versioned DM
+    // kind (kind:44) are still emitted by other clients; we treat their
+    // content as encrypted opaque bytes alongside the canonical NIP-59
+    // gift-wrap envelope. The integers are local literals because
+    // `nmp_core::kinds` only mints constants for kinds the workspace
+    // actively WRITES — kind:4 / kind:44 are read-side legacy only.
+    const KIND_LEGACY_DM: u32 = 4;
+    const KIND_LEGACY_VERSIONED_DM: u32 = 44;
     match kind {
-        0 => "Profile metadata update".to_string(),
-        3 => "Contact list update".to_string(),
-        7 if content.trim().is_empty() => "Reaction event".to_string(),
-        10002 => "Relay list metadata".to_string(),
-        4 | 44 | 1059 => "Encrypted event content hidden".to_string(),
+        k if k == KIND_PROFILE_METADATA => "Profile metadata update".to_string(),
+        k if k == KIND_CONTACT_LIST => "Contact list update".to_string(),
+        k if k == KIND_REACTION && content.trim().is_empty() => "Reaction event".to_string(),
+        k if k == KIND_RELAY_LIST => "Relay list metadata".to_string(),
+        k if k == KIND_LEGACY_DM || k == KIND_LEGACY_VERSIONED_DM || k == KIND_GIFT_WRAP => {
+            "Encrypted event content hidden".to_string()
+        }
         _ => {
             let trimmed = content.trim();
             if trimmed.is_empty() {

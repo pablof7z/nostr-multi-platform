@@ -16,6 +16,7 @@ mod outbox;
 pub mod relay_panel;
 pub mod settings;
 mod shared_snapshot_lines;
+pub mod raw_event_modal;
 pub mod wallet;
 
 #[cfg(test)]

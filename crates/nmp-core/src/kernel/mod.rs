@@ -365,8 +365,9 @@ use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
-    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher,
-    MailboxCache, OutboxRouter, ParsedRelayList,
+    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
+    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
+    ParsedRelayList,
 };
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
@@ -555,6 +556,30 @@ pub struct Kernel {
     /// simultaneously the writer side fed by `nmp_nip17::Kind10050Parser`
     /// (registered with `ingest_dispatcher`).
     dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
+    /// Substrate blocked-relay lookup — wired through the
+    /// [`crate::substrate::BlockedRelayLookup`] seam. The kernel reads this
+    /// inside [`Kernel::build_routing_context`] on every routing decision
+    /// so the router's subtractive blocked-set post-pass drops kind:10006
+    /// blocked URLs from outbox routing. The concrete cache (kind:10006
+    /// today) lives in `nmp-router` so the kernel never names the wire
+    /// shape of a kind:10006 event (D0). Default:
+    /// [`crate::substrate::EmptyBlockedRelayLookup`] (every lookup returns
+    /// an empty set, preserving the pre-V-40 byte-for-byte zero-block
+    /// behaviour the four `BlockedRelaySet::new()` call sites in
+    /// `kernel/mailboxes.rs` assumed). Apps that need outbox blocking
+    /// inject `nmp_router::InMemoryBlockedRelayCache` via
+    /// [`Kernel::set_blocked_relay_lookup`] — the same `Arc` is
+    /// simultaneously the writer side fed by
+    /// `nmp_router::Kind10006Parser` (registered with `ingest_dispatcher`).
+    blocked_relays: Arc<dyn BlockedRelayLookup>,
+    /// Per-app override for the active-account bootstrap Tailing self-kinds
+    /// list (`startup::SELF_KINDS_TAILING`). `None` (the default) uses the
+    /// built-in `[0, 3, 10002, 10000, 10006]` list. Apps can override
+    /// before `nmp_app_start` via the FFI slot to extend or narrow the
+    /// reactive self-fetch — useful for apps that only care about a subset
+    /// (e.g. a publish-only app needing kind:0 + kind:10002 alone) or that
+    /// add app-specific replaceable kinds.
+    bootstrap_self_kinds_override: Option<Vec<u32>>,
     /// Substrate `IngestParser` registry — V-40 of
     /// `docs/architecture/crate-boundaries.md`. Per-NIP crates register a
     /// parser for the kinds they own (NIP-17 kind:10050, future NIP-51
@@ -1429,6 +1454,8 @@ impl Kernel {
             outbox_router,
             routing_trace,
             dm_inbox_relays: empty_dm_inbox_relay_lookup(),
+            blocked_relays: empty_blocked_relay_lookup(),
+            bootstrap_self_kinds_override: None,
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,
@@ -2044,6 +2071,48 @@ impl Kernel {
     /// after ingest would lose cached entries.
     pub(crate) fn set_dm_inbox_relay_lookup(&mut self, lookup: Arc<dyn DmInboxRelayLookup>) {
         self.dm_inbox_relays = lookup;
+    }
+
+    /// Inject the blocked-relay lookup (composition seam). Production
+    /// composition (apps that depend on `nmp-router`) calls this after
+    /// `Kernel::new` to install a shared `Arc<InMemoryBlockedRelayCache>`
+    /// so the kernel's `build_routing_context` reader and the
+    /// kind:10006 ingest parser writer see the same cache. Default is
+    /// [`crate::substrate::EmptyBlockedRelayLookup`] (every lookup returns
+    /// the empty set — the pre-V-40 zero-block default).
+    ///
+    /// MUST be called BEFORE the first kind:10006 event is ingested — the
+    /// caches are independent stores, not a write-through pair, so a swap
+    /// after ingest would lose cached entries.
+    pub(crate) fn set_blocked_relay_lookup(&mut self, lookup: Arc<dyn BlockedRelayLookup>) {
+        self.blocked_relays = lookup;
+    }
+
+    /// Shared handle to the injected `Arc<dyn BlockedRelayLookup>` — used by
+    /// `kernel/mailboxes.rs::build_routing_context` to snapshot a
+    /// [`crate::substrate::BlockedRelaySet`] per call.
+    pub(crate) fn blocked_relays_arc(&self) -> Arc<dyn BlockedRelayLookup> {
+        Arc::clone(&self.blocked_relays)
+    }
+
+    /// Override the active-account bootstrap Tailing self-kinds list
+    /// (`startup::SELF_KINDS_TAILING`). `None` (the default) uses the
+    /// built-in list.
+    ///
+    /// MUST be called BEFORE the first `active_account_bootstrap_requests`
+    /// call so the override takes effect on cold-start / sign-in. The
+    /// FFI's `bootstrap_self_kinds` pre-start slot wires through this
+    /// setter at actor start.
+    pub(crate) fn set_bootstrap_self_kinds_override(&mut self, kinds: Option<Vec<u32>>) {
+        self.bootstrap_self_kinds_override = kinds;
+    }
+
+    /// Read-only accessor for the bootstrap self-kinds override slot. The
+    /// `startup.rs` module reads through this rather than the bare field
+    /// so the override resolution policy (None → use builtin) stays
+    /// localised to a single call site.
+    pub(crate) fn bootstrap_self_kinds_override(&self) -> Option<&[u32]> {
+        self.bootstrap_self_kinds_override.as_deref()
     }
 
     /// Replace the kernel's [`EventIngestDispatcher`] slot with `slot`.

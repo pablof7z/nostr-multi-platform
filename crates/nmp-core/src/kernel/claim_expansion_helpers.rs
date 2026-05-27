@@ -136,6 +136,7 @@ impl Kernel {
                 shape: claim.shape.clone(),
                 hints,
                 lifecycle: InterestLifecycle::OneShot,
+                is_indexer_discovery: false,
             };
             self.lifecycle.registry_mut().push(updated_interest);
         }

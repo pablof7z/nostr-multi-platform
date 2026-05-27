@@ -168,7 +168,7 @@ impl SubscriptionLifecycle {
                         stable_hash64(("mailbox-probe", chunk)) & 0xFFFF_FFFF
                     );
                     let filter_json = serde_json::json!({
-                        "kinds": [10002],
+                        "kinds": [crate::kinds::KIND_RELAY_LIST],
                         "authors": chunk,
                         "limit": chunk.len(),
                     })
