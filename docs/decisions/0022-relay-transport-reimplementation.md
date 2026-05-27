@@ -4,7 +4,7 @@
 **Status:** Accepted
 **Doctrines invoked:** D4 (single writer per fact; caches derive), D8
 (reactivity contract — idle-tick emit gated on `changed_since_emit`),
-"No polling — ever" (`AGENTS.md` §"No polling — ever"), RMP bible actor
+"No polling — ever" (`AGENTS.md` §"No polling — ever"), actor
 pattern (`docs/aim.md` §2 — one OS thread owns all mutable state).
 **Supersedes the claim in:** `docs/aim.md` §3 / §8 (see "Decision" below).
 
@@ -86,7 +86,7 @@ tension with `nostr-sdk`'s `RelayPool`.
 
 ### 1. The RMP actor pattern is a synchronous OS thread; `nostr-sdk` is tokio-async
 
-`docs/aim.md` §2 (the RMP bible) makes the execution model
+`docs/aim.md` §2 makes the execution model
 non-negotiable: "A dedicated OS thread owns `AppState` and runs a
 synchronous event loop." NMP's actor is exactly that — a `std::thread`
 that blocks on `recv_timeout` (`actor/mod.rs:498`,
@@ -96,12 +96,12 @@ that blocks on `recv_timeout` (`actor/mod.rs:498`,
 `tokio::spawn`ed tasks, subscriptions are async streams, and reconnect
 is driven by the tokio reactor. Adopting it would either (a) pull a
 tokio runtime into the kernel and split state ownership across async
-tasks — directly contradicting the bible's "single actor owns all
+tasks — directly contradicting the `docs/aim.md` §2 invariant: "single actor owns all
 mutable state, no locks, no concurrent mutation" — or (b) force a
 sync↔async bridge (`block_on` / channel hops) on the hot path for no
 benefit. NMP stays tokio-free in the kernel **on purpose**: every
 relay frame already arrives over an `mpsc` channel the synchronous
-actor owns, which is the property the bible asks for, achieved without
+actor owns, which is the property `docs/aim.md` §2 asks for, achieved without
 an executor.
 
 ### 2. "No polling — ever" — `recv_timeout(compute_wait)` with idle-tick gating
@@ -183,7 +183,7 @@ own routing — strictly worse than owning the whole path.
 **Accepted benefits:**
 
 - The kernel stays **tokio-free**. The execution model is exactly the
-  RMP bible's single synchronous actor — no async task graph, no
+  single synchronous actor per `docs/aim.md` §2 — no async task graph, no
   `block_on` bridges, no runtime to configure or shut down. Async
   would complicate the single-writer model for no protocol-correctness
   gain (the protocol crate `nostr` already supplies correctness).
@@ -206,7 +206,7 @@ own routing — strictly worse than owning the whole path.
 
 - **Adopt `nostr-sdk`'s `RelayPool` and bridge sync↔async.** Rejected:
   pulls tokio into the kernel, splits state ownership across async
-  tasks, and contradicts the RMP bible's single-actor invariant.
+  tasks, and contradicts the single-actor invariant in `docs/aim.md` §2.
   Reconnect/backoff would become tokio-timer-driven, requiring either a
   second runtime or a polling shim ("No polling — ever").
 - **Fork `nostr-sdk` and strip the async layer.** Rejected: a fork is

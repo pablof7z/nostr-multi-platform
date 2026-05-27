@@ -191,8 +191,8 @@ and with ADR-0010's generated-app-enum direction.
 
 The two C-ABI symbols (`nmp_app_register_action_executor`,
 `nmp_app_register_action_module`) become un-needed at the same time. Both are
-deleted; the `extern "C"` surface shrinks. Cross-reference to the bible's
-"no high-frequency FFI loops" rule: this refactor *reduces* FFI surface — the
+deleted; the `extern "C"` surface shrinks. Cross-reference to the D8 constraint
+("no high-frequency FFI loops"): this refactor *reduces* FFI surface — the
 dispatch path itself (`nmp_app_dispatch_action`) is untouched.
 
 A grep for external consumers of `nmp_app_register_action_executor` finds

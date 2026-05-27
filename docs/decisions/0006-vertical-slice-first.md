@@ -66,7 +66,7 @@ Phase 1 of the build plan opens with a **vertical slice**: kind:0 profile metada
 - **LMDB / durable storage.** In-memory only; cold restart loses everything. Wire LMDB in *after* the slice works.
 - **Outbox routing.** Hardcoded single-relay configuration. NIP-65 fan-out comes after.
 - **Negentropy.** Plain REQ. The sync engine layers on once the REQ path is proven.
-- **FFI.** Desktop slice uses direct rlib linking (per spec §4.3.1, this is bible-canonical for desktop). UniFFI is wired in when porting the slice to iOS/Android.
+- **FFI.** Desktop slice uses direct rlib linking (per `docs/aim.md` §4.3.1 — canonical for desktop). UniFFI is wired in when porting the slice to iOS/Android.
 - **Other view kinds.** Profile only. Timeline / Thread / Reactions / Conversation all wait.
 - **Multi-account.** Single account, single signer. Account scope is in the API from the start but not exercised yet.
 - **Wallet, WoT, Messaging, Blossom.** All later phases.
