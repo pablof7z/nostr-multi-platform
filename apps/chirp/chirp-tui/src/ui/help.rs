@@ -24,8 +24,12 @@ pub fn render(f: &mut Frame, area: Rect) {
 
 /// Full render with scroll support via `state.detail_scroll`.
 pub fn render_with_state(f: &mut Frame, area: Rect, state: &AppState) {
-    let width = (area.width * 80 / 100).max(50).min(area.width.saturating_sub(2));
-    let height = (area.height * 80 / 100).max(16).min(area.height.saturating_sub(2));
+    let width = (area.width * 80 / 100)
+        .max(50)
+        .min(area.width.saturating_sub(2));
+    let height = (area.height * 80 / 100)
+        .max(16)
+        .min(area.height.saturating_sub(2));
     let popup = centered(area, width, height);
 
     f.render_widget(Clear, popup);
@@ -123,9 +127,10 @@ fn right_column() -> Vec<Line<'static>> {
 
     section_header(&mut lines, "Settings tab");
     binding(&mut lines, "n", "add relay / account");
-    binding(&mut lines, "d", "delete selected item");
-    binding(&mut lines, "Space", "toggle relay role");
-    binding(&mut lines, "Enter", "edit selected item");
+    binding(&mut lines, "Enter", "open outbox detail");
+    binding(&mut lines, "r", "retry selected publish");
+    binding(&mut lines, "d", "cancel / clear publish");
+    binding(&mut lines, "Esc", "close outbox detail");
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Compose mode");
@@ -160,7 +165,9 @@ fn binding(lines: &mut Vec<Line<'static>>, key: &'static str, desc: &'static str
     lines.push(Line::from(vec![
         Span::styled(
             format!("  {:<18}", key),
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(desc, Style::default().fg(DIM_TEXT)),
     ]));

@@ -7,6 +7,9 @@ pub use crate::runtime::AppRuntime;
 use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
 
+mod forms;
+mod navigation;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
     Feed,
@@ -34,7 +37,15 @@ pub enum Mode {
     /// Account list overlay invoked from the `a` key.
     AccountSwitcher,
     /// Read-only overlay showing the raw JSON card for the selected event.
-    RawEventModal { scroll: u16 },
+    RawEventModal {
+        scroll: u16,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutboxSelection {
+    Active(usize),
+    History(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,11 +112,12 @@ pub struct AppState {
     /// 4=Appearance, 5=About).
     pub settings_cursor: usize,
 
-    /// Settings → Outbox: when `Some(i)`, the outbox detail pane is open and
-    /// focused on item `i`. j/k navigate between items; Esc clears.
+    /// Settings → Outbox: when `Some`, the outbox detail pane is open and
+    /// focused on either an in-flight item or a settled history item. j/k
+    /// navigates both groups; Esc clears.
     /// `None` (the default) means the outbox pane shows a flat list and the
     /// Settings tab's j/k continues to navigate the accounts column.
-    pub outbox_selected: Option<usize>,
+    pub outbox_selected: Option<OutboxSelection>,
 
     /// Raw card JSON shown in the `RawEventModal` overlay.
     pub raw_event_content: String,
@@ -201,12 +213,7 @@ impl AppState {
         } else if self.settings_account_selected >= account_len {
             self.settings_account_selected = account_len - 1;
         }
-        let outbox_len = self.features.outbox.len();
-        self.outbox_selected = match self.outbox_selected {
-            Some(_) if outbox_len == 0 => None,
-            Some(i) if i >= outbox_len => Some(outbox_len - 1),
-            other => other,
-        };
+        self.clamp_outbox_selection();
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
         if let Some(feed) = shared.home_feed {
             self.apply_feed_snapshot(feed);
@@ -253,83 +260,6 @@ impl AppState {
         self.set_tab(self.tab.previous());
     }
 
-    pub fn select_next(&mut self) {
-        if self.selected + 1 < self.rows.len() {
-            self.selected += 1;
-        }
-    }
-
-    pub fn select_previous(&mut self) {
-        self.selected = self.selected.saturating_sub(1);
-    }
-
-    pub fn chat_select_next(&mut self) {
-        let len = self.features.dm_conversations.len();
-        if len > 0 && self.chat_selected + 1 < len {
-            self.chat_selected += 1;
-        }
-    }
-
-    pub fn chat_select_previous(&mut self) {
-        self.chat_selected = self.chat_selected.saturating_sub(1);
-    }
-
-    pub fn group_select_next(&mut self) {
-        let len = self.features.discovered_groups.len();
-        if len > 0 && self.group_selected + 1 < len {
-            self.group_selected += 1;
-        }
-    }
-
-    pub fn group_select_previous(&mut self) {
-        self.group_selected = self.group_selected.saturating_sub(1);
-    }
-
-    pub fn settings_account_select_next(&mut self) {
-        let len = self.features.accounts.len();
-        if len > 0 && self.settings_account_selected + 1 < len {
-            self.settings_account_selected += 1;
-        }
-    }
-
-    pub fn settings_account_select_previous(&mut self) {
-        self.settings_account_selected = self.settings_account_selected.saturating_sub(1);
-    }
-
-    pub fn select_page_down(&mut self) {
-        self.selected = (self.selected + 10).min(self.rows.len().saturating_sub(1));
-    }
-
-    pub fn select_page_up(&mut self) {
-        self.selected = self.selected.saturating_sub(10);
-    }
-
-    pub fn select_first(&mut self) {
-        self.selected = 0;
-    }
-
-    pub fn select_last(&mut self) {
-        self.selected = self.rows.len().saturating_sub(1);
-    }
-
-    pub fn load_older_timeline_if_needed(&mut self, runtime: &AppRuntime) {
-        if self.timeline_has_more && self.selected.saturating_add(5) >= self.rows.len() {
-            self.load_older_timeline(runtime);
-        }
-    }
-
-    pub fn load_older_timeline(&mut self, runtime: &AppRuntime) {
-        if !self.timeline_has_more {
-            return;
-        }
-        runtime.chirp_load_older_timeline();
-    }
-
-    #[must_use]
-    pub fn selected_row(&self) -> Option<&TimelineRow> {
-        self.rows.get(self.selected)
-    }
-
     pub fn open_palette(&mut self) {
         self.mode = Mode::Palette { cursor: 0 };
     }
@@ -338,241 +268,6 @@ impl AppState {
         if matches!(self.mode, Mode::Palette { .. }) {
             self.mode = Mode::Normal;
         }
-    }
-
-    pub fn start_compose(&mut self) {
-        self.mode = Mode::Compose;
-        self.compose.clear();
-        self.reply_to = None;
-        self.status = "compose note: Enter sends, Shift+Enter for newline, Esc cancels".to_string();
-    }
-
-    pub fn start_reply(&mut self) {
-        let Some(row) = self.selected_row() else {
-            self.status = "select a note before replying".to_string();
-            return;
-        };
-        let row_id = row.id.clone();
-        self.mode = Mode::Compose;
-        self.compose.clear();
-        self.reply_to = Some(row_id.clone());
-        self.status = format!(
-            "replying to {}: Enter sends, Shift+Enter for newline, Esc cancels",
-            short_id(&row_id)
-        );
-    }
-
-    pub fn cancel_compose(&mut self) {
-        self.mode = Mode::Normal;
-        self.compose.clear();
-        self.reply_to = None;
-        self.status = "compose canceled".to_string();
-    }
-
-    pub fn start_command(&mut self) {
-        self.mode = Mode::Command;
-        self.command.clear();
-        self.status = "command mode: type help for Chirp iOS parity commands".to_string();
-    }
-
-    pub fn cancel_command(&mut self) {
-        self.mode = Mode::Normal;
-        self.command.clear();
-        self.status = "command canceled".to_string();
-    }
-
-    pub fn push_command_char(&mut self, ch: char) {
-        self.command.push(ch);
-    }
-
-    pub fn backspace_command(&mut self) {
-        self.command.pop();
-    }
-
-    pub fn take_command(&mut self) -> Option<String> {
-        let input = self.command.trim().to_string();
-        if input.is_empty() {
-            self.status = "command is empty".to_string();
-            return None;
-        }
-        self.command.clear();
-        self.mode = Mode::Normal;
-        Some(input)
-    }
-
-    pub fn push_compose_char(&mut self, ch: char) {
-        self.compose.push(ch);
-    }
-
-    pub fn push_compose_newline(&mut self) {
-        self.compose.push('\n');
-    }
-
-    pub fn backspace_compose(&mut self) {
-        self.compose.pop();
-    }
-
-    pub fn take_compose(&mut self) -> Option<(String, Option<String>)> {
-        let content = self.compose.trim().to_string();
-        if content.is_empty() {
-            self.status = "compose is empty".to_string();
-            return None;
-        }
-        let reply_to = self.reply_to.take();
-        self.compose.clear();
-        self.mode = Mode::Normal;
-        Some((content, reply_to))
-    }
-
-    // -----------------------------------------------------------------
-    // Input bar (Pattern A)
-    // -----------------------------------------------------------------
-
-    pub fn start_input_bar(&mut self, label: &str, masked: bool, action: &str) {
-        self.mode = Mode::InputBar;
-        self.input_bar_label = label.to_string();
-        self.input_bar_value.clear();
-        self.input_bar_masked = masked;
-        self.input_bar_action = action.to_string();
-    }
-
-    pub fn push_input_char(&mut self, ch: char) {
-        self.input_bar_value.push(ch);
-    }
-
-    pub fn backspace_input(&mut self) {
-        self.input_bar_value.pop();
-    }
-
-    pub fn take_input(&mut self) -> Option<(String, String)> {
-        let value = self.input_bar_value.trim().to_string();
-        if value.is_empty() {
-            self.push_toast("input is empty");
-            return None;
-        }
-        let action = std::mem::take(&mut self.input_bar_action);
-        self.input_bar_value.clear();
-        self.input_bar_label.clear();
-        self.input_bar_masked = false;
-        self.mode = Mode::Normal;
-        Some((action, value))
-    }
-
-    pub fn cancel_input(&mut self) {
-        self.mode = Mode::Normal;
-        self.input_bar_value.clear();
-        self.input_bar_label.clear();
-        self.input_bar_action.clear();
-        self.input_bar_masked = false;
-        self.push_toast("canceled");
-    }
-
-    // -----------------------------------------------------------------
-    // Modal form (Pattern D)
-    // -----------------------------------------------------------------
-
-    pub fn start_modal(&mut self, title: &str, fields: Vec<&str>, action: &str) {
-        self.mode = Mode::ModalForm;
-        self.modal_title = title.to_string();
-        self.modal_fields = fields
-            .into_iter()
-            .map(|label| (label.to_string(), String::new()))
-            .collect();
-        self.modal_cursor = 0;
-        self.modal_action = action.to_string();
-    }
-
-    pub fn push_modal_char(&mut self, ch: char) {
-        if let Some((_, value)) = self.modal_fields.get_mut(self.modal_cursor) {
-            value.push(ch);
-        }
-    }
-
-    pub fn backspace_modal(&mut self) {
-        if let Some((_, value)) = self.modal_fields.get_mut(self.modal_cursor) {
-            value.pop();
-        }
-    }
-
-    pub fn next_modal_field(&mut self) {
-        let n = self.modal_fields.len();
-        if n == 0 {
-            return;
-        }
-        self.modal_cursor = (self.modal_cursor + 1) % n;
-    }
-
-    pub fn prev_modal_field(&mut self) {
-        let n = self.modal_fields.len();
-        if n == 0 {
-            return;
-        }
-        self.modal_cursor = (self.modal_cursor + n - 1) % n;
-    }
-
-    pub fn take_modal(&mut self) -> Option<(String, Vec<(String, String)>)> {
-        if self.modal_fields.is_empty() {
-            self.push_toast("modal has no fields");
-            return None;
-        }
-        let action = std::mem::take(&mut self.modal_action);
-        let fields = std::mem::take(&mut self.modal_fields);
-        self.modal_title.clear();
-        self.modal_cursor = 0;
-        self.mode = Mode::Normal;
-        Some((action, fields))
-    }
-
-    pub fn cancel_modal(&mut self) {
-        self.mode = Mode::Normal;
-        self.modal_title.clear();
-        self.modal_fields.clear();
-        self.modal_cursor = 0;
-        self.modal_action.clear();
-        self.push_toast("canceled");
-    }
-
-    // -----------------------------------------------------------------
-    // Raw event modal
-    // -----------------------------------------------------------------
-
-    pub fn open_raw_event_modal(&mut self, content: String) {
-        self.raw_event_content = content;
-        self.mode = Mode::RawEventModal { scroll: 0 };
-    }
-
-    pub fn close_raw_event_modal(&mut self) {
-        self.mode = Mode::Normal;
-        self.raw_event_content.clear();
-    }
-
-    pub fn scroll_raw_modal_down(&mut self) {
-        if let Mode::RawEventModal { ref mut scroll } = self.mode {
-            *scroll = scroll.saturating_add(1);
-        }
-    }
-
-    pub fn scroll_raw_modal_up(&mut self) {
-        if let Mode::RawEventModal { ref mut scroll } = self.mode {
-            *scroll = scroll.saturating_sub(1);
-        }
-    }
-
-    // -----------------------------------------------------------------
-    // Account switcher
-    // -----------------------------------------------------------------
-
-    pub fn open_account_switcher(&mut self) {
-        self.mode = Mode::AccountSwitcher;
-        if let Some(idx) = self.features.accounts.iter().position(|a| a.active) {
-            self.account_switcher_cursor = idx;
-        } else {
-            self.account_switcher_cursor = 0;
-        }
-    }
-
-    pub fn close_account_switcher(&mut self) {
-        self.mode = Mode::Normal;
     }
 
     // -----------------------------------------------------------------

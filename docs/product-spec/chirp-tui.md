@@ -154,8 +154,9 @@ animations.
 - Custom multiline compose widget on top of `tui-input`; split if it exceeds ~50 LOC
 - @-mention: `@` → `tui-popup` + `tui-widget-list` filtered by typed prefix
 - Character counter: >280 yellow, >800 red
-- Pending publish appears in feed only through a Rust-produced pending/published snapshot
-- Relay ACK spinner → ✓ on success, error in status bar on failure
+- Pending/published state appears only through Rust-produced snapshots
+- Settings → Outbox includes active and settled publish rows; `Enter` opens per-relay detail
+- Failed or partially failed rows expose Rust-owned retry/clear actions; the TUI never parses relay errors or decides retry policy
 - Reply shows parent note preview above textarea
 
 ### F4 — DM inbox (NIP-17)

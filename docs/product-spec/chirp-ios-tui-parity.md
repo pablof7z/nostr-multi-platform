@@ -41,8 +41,8 @@ action policy; the TUI renders projections and dispatches the same shared FFI or
 | Settings | Account list, active account | `Settings` tab |
 | Settings | Switch/remove account | `:account switch <id>`, `:account remove <id>` |
 | Settings | Relay list/editor | `Settings` tab, `:relay add/remove` |
-| Settings | Publish outbox | `Settings` tab |
-| Settings | Retry/cancel publish handle | `:outbox retry <handle>`, `:outbox cancel <handle>` |
+| Settings | Publish outbox and settled history detail | `Settings` tab, `Enter` opens active or Published rows |
+| Settings | Retry/cancel/clear publish handle | `r` / `d` in outbox detail, `:outbox retry <handle>`, `:outbox cancel <handle>` |
 | Settings | Relay diagnostics/interests | `Settings` tab diagnostics and status bar |
 
 Relay diagnostics rows render Rust-owned fields only: configured role, active

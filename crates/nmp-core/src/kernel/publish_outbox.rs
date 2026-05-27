@@ -4,7 +4,9 @@
 //! module only projects that state into a compact UI shape and exposes
 //! user-triggered retry/cancel commands back through the engine.
 
-use crate::publish::{PerRelayState, PublishAction, RelaySelectionReason};
+use crate::publish::{
+    PerRelayState, PublishAction, PublishEngineError, PublishStoreError, RelaySelectionReason,
+};
 use crate::relay::{OutboundMessage, RelayRole};
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
@@ -123,6 +125,12 @@ impl Kernel {
         let now_ms = now_epoch_ms();
         let handle = handle.to_string();
         if let Err(err) = self.publish_engine.retry_now(&handle, now_ms) {
+            if matches!(&err, PublishEngineError::Store(PublishStoreError::NotFound)) {
+                if let Some((signed, target)) = self.retry_payload_for_publish(&handle) {
+                    self.remove_publish_entry(&handle);
+                    return self.run_publish_engine_at(&signed, &[], target, None, now_ms);
+                }
+            }
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
             let (toast, _, _) = describe_engine_error(&err);
@@ -147,12 +155,22 @@ impl Kernel {
     pub(crate) fn cancel_publish(&mut self, handle: &str) {
         let now_ms = now_epoch_ms();
         let handle = handle.to_string();
+        if self.publish_engine.per_relay(&handle).is_empty() && self.remove_publish_entry(&handle) {
+            self.set_last_error_toast(None);
+            return;
+        }
         let action = PublishAction::Cancel {
             handle: handle.clone(),
         };
         // Cancel reports `handle` as the correlation_id directly (it is what
         // the host received from dispatch), so no override is needed here.
         if let Err(err) = self.publish_engine.start_publish(action, now_ms, None) {
+            if matches!(&err, PublishEngineError::Store(PublishStoreError::NotFound))
+                && self.remove_publish_entry(&handle)
+            {
+                self.set_last_error_toast(None);
+                return;
+            }
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
             let (toast, _, _) = describe_engine_error(&err);
