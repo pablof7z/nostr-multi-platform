@@ -10,10 +10,11 @@
 use std::collections::BTreeSet;
 
 use crate::planner::{
-    apply_selection, CompiledPlan, InterestId, InterestLifecycle, InterestShape, MailboxCache,
-    PlannerError, SubscriptionCompiler,
+    apply_selection_with_lookup, CompiledPlan, InterestId, InterestLifecycle, InterestShape,
+    MailboxCache, PlannerError, SubscriptionCompiler,
 };
 use crate::stable_hash::stable_hash64;
+use nmp_planner::RelayAuthorScoreLookup;
 
 use super::trigger::CompileTrigger;
 use super::wire::{plan_diff, WireFrame};
@@ -29,11 +30,17 @@ impl SubscriptionLifecycle {
     /// pass a local `InMemoryMailboxCache`. This eliminates the dual-source
     /// hazard the planner-side cache previously created.
     ///
+    /// W4: `score_lookup` is the optional warm-relay filter. The kernel passes
+    /// `Some(self)` (after `impl RelayAuthorScoreLookup for Kernel`) so the
+    /// planner's greedy step sees only warm outbox relays for authors that have
+    /// at least one warm option. Tests that don't need W4 pass `None`.
+    ///
     /// Updates the lifecycle gate; diverts REQs targeting auth-paused relays
     /// into the pending-auth buffer.
     pub fn recompile_and_diff(
         &mut self,
         mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
@@ -75,10 +82,11 @@ impl SubscriptionLifecycle {
         // recomputed (see `planner/mod.rs` §"Plan-id determinism vs.
         // post-compile mutators"; M4 precedent in
         // `docs/perf/codex-reviews/076173d.md`).
-        apply_selection(
+        apply_selection_with_lookup(
             &mut plan,
             self.select_max_connections,
             self.select_max_per_user,
+            score_lookup,
         );
 
         // D2 negentropy-first: let the coverage-gate hook (M4) rewrite the
@@ -173,6 +181,11 @@ impl SubscriptionLifecycle {
     /// [`Self::recompile_and_diff`] does — the lifecycle is no longer the
     /// owner of mailbox state.
     ///
+    /// W4: `score_lookup` threads through to `recompile_and_diff` so the
+    /// warm-relay pre-filter is applied on every drain tick. The kernel passes
+    /// `Some(self)` after `impl RelayAuthorScoreLookup for Kernel`; tests
+    /// pass `None` to retain pre-W4 behaviour.
+    ///
     /// T140 (D6 / codex finding #7): this path is FFI-visible (driven by the
     /// actor idle loop via `Kernel::drain_lifecycle_tick`). The previous
     /// `recompile_and_diff(...).unwrap_or_default()` silently discarded every
@@ -184,7 +197,11 @@ impl SubscriptionLifecycle {
     /// [`Self::last_planner_error`]) before returning empty, so the error is
     /// never silently lost.
     #[must_use]
-    pub fn drain_tick(&mut self, mailbox_cache: &dyn MailboxCache) -> Vec<WireFrame> {
+    pub fn drain_tick(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+    ) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {
             return Vec::new();
@@ -205,7 +222,7 @@ impl SubscriptionLifecycle {
                 auth_flushed.extend(self.auth_gate.record_transition(url.clone(), state.clone()));
             }
         }
-        match self.recompile_and_diff(mailbox_cache) {
+        match self.recompile_and_diff(mailbox_cache, score_lookup) {
             Ok(mut frames) => {
                 frames.extend(auth_flushed);
                 frames

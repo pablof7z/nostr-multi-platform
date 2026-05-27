@@ -28,6 +28,8 @@ mod inbox_helper;
 mod hint_case_d_tests;
 #[cfg(test)]
 mod hint_consumption_tests;
+#[cfg(test)]
+mod warm_filter_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 

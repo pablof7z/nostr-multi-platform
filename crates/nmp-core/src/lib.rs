@@ -65,6 +65,12 @@ pub mod planner {
         UserConfiguredCategory,
     };
     pub use nmp_planner::selection::apply_selection;
+    // W4 — warm-relay score lookup seam + lookup-aware selection.
+    pub use nmp_planner::selection::apply_selection_with_lookup;
+    pub use nmp_planner::selection::relay_score_lookup::{
+        NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup,
+        WARM_THRESHOLD as PLANNER_WARM_THRESHOLD,
+    };
 
     // A small number of in-tree call sites reach into the submodule
     // namespaces directly (`nmp_core::planner::compiler::*`,

@@ -7,8 +7,8 @@
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1
 //! Doctrine: D3 (outbox routing automatic).
 
-use std::collections::HashMap;
 use crate::interest::{Pubkey, RelayUrl};
+use std::collections::HashMap;
 
 // ─── MailboxSnapshot ─────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ impl MailboxSnapshot {
     }
 
     /// True iff the snapshot has at least one inbox relay (read or both).
-    #[must_use] 
+    #[must_use]
     pub fn has_inbox_relays(&self) -> bool {
         !self.read_relays.is_empty() || !self.both_relays.is_empty()
     }
@@ -108,7 +108,7 @@ pub struct InMemoryMailboxCache {
 }
 
 impl InMemoryMailboxCache {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -133,10 +133,16 @@ impl MailboxCache for InMemoryMailboxCache {
         self.data.get(pubkey).cloned()
     }
     fn dm_inbox_relays(&self, pubkey: &Pubkey) -> Option<Vec<RelayUrl>> {
-        self.dm_data.get(pubkey).filter(|relays| !relays.is_empty()).cloned()
+        self.dm_data
+            .get(pubkey)
+            .filter(|relays| !relays.is_empty())
+            .cloned()
     }
     fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)> {
-        self.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        self.data
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
     fn generation(&self) -> u64 {
         self.generation

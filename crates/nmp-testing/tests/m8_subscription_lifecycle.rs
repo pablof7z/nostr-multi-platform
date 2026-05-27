@@ -208,7 +208,7 @@ fn reconnect_replays_current_plan_without_recompile() {
     // Initial compile + emit. T132: caller-owned mailbox cache.
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
     let _initial = lifecycle
-        .recompile_and_diff(&mailboxes)
+        .recompile_and_diff(&mailboxes, None)
         .expect("initial compile");
     let baseline_compile_count = lifecycle.compile_count();
 
@@ -254,7 +254,7 @@ fn trigger_inbox_coalesces_within_one_tick() {
     }
 
     // One tick drain coalesces them all into one compile pass.
-    let _frames = lifecycle.drain_tick(&mailboxes);
+    let _frames = lifecycle.drain_tick(&mailboxes, None);
 
     assert_eq!(
         lifecycle.compile_count(),
@@ -264,7 +264,7 @@ fn trigger_inbox_coalesces_within_one_tick() {
     );
 
     // Subsequent tick with empty inbox does not compile.
-    let _empty = lifecycle.drain_tick(&mailboxes);
+    let _empty = lifecycle.drain_tick(&mailboxes, None);
     assert_eq!(
         lifecycle.compile_count(),
         baseline + 1,
@@ -318,10 +318,10 @@ fn auth_paused_relay_holds_reqs_until_authenticated() {
         url: "wss://relay.damus.io".to_string(),
         state: RelayAuthState::ChallengeReceived,
     });
-    let _drain = lifecycle.drain_tick(&mailboxes);
+    let _drain = lifecycle.drain_tick(&mailboxes, None);
 
     // Now compile — REQs that would target the paused relay must be withheld.
-    let frames_during_pause = lifecycle.recompile_and_diff(&mailboxes).expect("compile");
+    let frames_during_pause = lifecycle.recompile_and_diff(&mailboxes, None).expect("compile");
     let reqs_to_paused: Vec<_> = frames_during_pause
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://relay.damus.io"))

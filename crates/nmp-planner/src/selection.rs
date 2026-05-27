@@ -75,10 +75,13 @@
 //!
 //! [`SubscriptionCompiler`]: super::compiler::SubscriptionCompiler
 
+pub mod relay_score_lookup;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::interest::{Pubkey, RelayUrl};
 use super::plan::{CompiledPlan, RoutingSource, UserConfiguredCategory};
+use relay_score_lookup::RelayAuthorScoreLookup;
 
 /// Predicate: does this relay's `role_tags` carry a lane that must bypass
 /// greedy coverage pruning?
@@ -108,7 +111,8 @@ fn relay_bypasses_selection(role_tags: &BTreeSet<RoutingSource>) -> bool {
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-/// Apply greedy weighted max-coverage relay selection to a compiled plan.
+/// Apply greedy weighted max-coverage relay selection to a compiled plan,
+/// without a warm-relay score lookup (pre-W4 / noop behaviour).
 ///
 /// Mutates `plan` in place:
 /// - Drops relays whose authors are entirely covered by other surviving relays.
@@ -119,6 +123,10 @@ fn relay_bypasses_selection(role_tags: &BTreeSet<RoutingSource>) -> bool {
 /// - Drops sub-shapes whose author set became empty (note: wildcard sub-shapes
 ///   that started empty are *not* affected — they had no authors to filter).
 /// - Drops relay entries whose sub-shape list became empty.
+///
+/// Equivalent to `apply_selection_with_lookup(plan, max_connections,
+/// max_per_user, None)`. Use [`apply_selection_with_lookup`] to supply a
+/// warm-relay score filter (W4).
 ///
 /// # Arguments
 ///
@@ -142,6 +150,26 @@ fn relay_bypasses_selection(role_tags: &BTreeSet<RoutingSource>) -> bool {
 ///
 /// [`SubscriptionCompiler`]: super::compiler::SubscriptionCompiler
 pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_user: usize) {
+    apply_selection_with_lookup(plan, max_connections, max_per_user, None);
+}
+
+/// Apply greedy weighted max-coverage relay selection to a compiled plan,
+/// with an optional warm-relay score lookup.
+///
+/// When `score_lookup` is `Some`, Stage 1 pre-filters the per-relay-authors
+/// map: for each non-operator-pinned relay/author pair, if the author has NO
+/// other warm relay AND this relay is cold, the pair is still kept (fallback
+/// to existing behaviour). Otherwise, cold pairs for authors that HAVE at
+/// least one warm relay are dropped before the greedy pass. This preserves
+/// coverage for authors with no warm relays at all (D3 — no new routing lane).
+///
+/// See [`apply_selection`] for the full algorithm and doc.
+pub fn apply_selection_with_lookup(
+    plan: &mut CompiledPlan,
+    max_connections: usize,
+    max_per_user: usize,
+    score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+) {
     // Stage 0: identify operator-pinned relays (those carrying
     // `UserConfigured(AppRelay)`). They bypass greedy coverage entirely and
     // are preserved unchanged at projection. This is the operator-intent
@@ -168,7 +196,15 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
     // wants — EXCLUDING operator-pinned relays. Wildcard sub-shapes (empty
     // authors) contribute nothing here; if a relay's only sub-shapes are
     // wildcards, it will not be picked by coverage and will be dropped.
-    let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = plan
+    //
+    // W4 warm-relay pre-filter: when a score_lookup is provided, drop
+    // `(relay, author)` pairs where:
+    //   - the relay is NOT operator-pinned (already excluded above), AND
+    //   - the author has at least one warm relay in this plan, AND
+    //   - this relay is cold for that author.
+    // Authors with NO warm relays at all are passed through unchanged so that
+    // cold-start authors still get coverage (D3 — filter, not new lane).
+    let raw_per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = plan
         .per_relay
         .iter()
         .filter(|(relay, _)| !selection_pinned.contains(*relay))
@@ -180,6 +216,38 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
             (relay.clone(), union)
         })
         .collect();
+
+    // W4: compute per-author warm-relay set so we can decide whether to keep
+    // cold pairs (fallback) or drop them (author has a warm alternative).
+    let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = if let Some(lookup) = score_lookup
+    {
+        // Build a set of relays that are warm for each author.
+        let mut author_has_warm: BTreeSet<Pubkey> = BTreeSet::new();
+        for (relay, authors) in &raw_per_relay_authors {
+            for author in authors {
+                if lookup.is_warm(author, relay) {
+                    author_has_warm.insert(author.clone());
+                }
+            }
+        }
+        // Filter: for each (relay, author) pair, keep it if:
+        //   - the relay is warm for that author, OR
+        //   - the author has NO warm relay at all (cold-start fallback).
+        raw_per_relay_authors
+            .into_iter()
+            .map(|(relay, authors)| {
+                let filtered: BTreeSet<Pubkey> = authors
+                    .into_iter()
+                    .filter(|author| {
+                        lookup.is_warm(author, &relay) || !author_has_warm.contains(author)
+                    })
+                    .collect();
+                (relay, filtered)
+            })
+            .collect()
+    } else {
+        raw_per_relay_authors
+    };
 
     // Stage 2: greedy max-coverage. Returns the (relay → authors-this-relay-serves)
     // oracle.

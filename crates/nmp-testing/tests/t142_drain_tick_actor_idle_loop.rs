@@ -80,7 +80,7 @@ fn t142_actor_idle_loop_drains_tick() {
     });
 
     // This is the call the actor's idle loop makes (via drain_lifecycle_tick on Kernel).
-    let frames = lifecycle.drain_tick(&mailboxes);
+    let frames = lifecycle.drain_tick(&mailboxes, None);
 
     let req_count = frames
         .iter()
@@ -112,7 +112,7 @@ fn t142_follow_list_update_produces_wire_frames_e2e() {
         new_follows: vec![author],
     });
 
-    let frames = lifecycle.drain_tick(&mailboxes);
+    let frames = lifecycle.drain_tick(&mailboxes, None);
 
     let req_urls: Vec<String> = frames
         .iter()
@@ -147,7 +147,7 @@ fn t142_empty_tick_no_recompile() {
     let before = lifecycle.compile_count();
 
     // NO trigger enqueued — this must be a zero-cost no-op.
-    let frames = lifecycle.drain_tick(&mailboxes);
+    let frames = lifecycle.drain_tick(&mailboxes, None);
 
     assert!(
         frames.is_empty(),

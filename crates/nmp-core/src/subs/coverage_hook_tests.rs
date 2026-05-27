@@ -113,7 +113,7 @@ fn coverage_hook_runs_once_after_compile() {
 
     l.registry_mut().push(timeline_interest(1, "a"));
 
-    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
 
     assert!(
         *fired.lock().unwrap(),
@@ -151,7 +151,7 @@ fn coverage_hook_mutation_reaches_wire_diff() {
 
     l.registry_mut().push(timeline_interest(2, "b"));
 
-    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
 
     assert_eq!(
         req_count(&frames),
@@ -181,12 +181,12 @@ fn coverage_hook_drop_closes_prior_req() {
     l.registry_mut().push(timeline_interest(3, "c"));
 
     // Compile #1: hook passive → REQ flies.
-    let frames1 = l.recompile_and_diff(&mailboxes).expect("compile #1");
+    let frames1 = l.recompile_and_diff(&mailboxes, None).expect("compile #1");
     assert_eq!(req_count(&frames1), 1, "cold open must emit a REQ");
 
     // Compile #2: hook now drops the plan → the live REQ must be CLOSEd.
     *drop_plan.lock().unwrap() = true;
-    let frames2 = l.recompile_and_diff(&mailboxes).expect("compile #2");
+    let frames2 = l.recompile_and_diff(&mailboxes, None).expect("compile #2");
     assert_eq!(
         close_count(&frames2),
         1,
@@ -210,7 +210,7 @@ fn no_coverage_hook_leaves_plan_unchanged() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("d", &["wss://r4"]);
     l.registry_mut().push(timeline_interest(4, "d"));
 
-    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
 
     assert_eq!(
         req_count(&frames),

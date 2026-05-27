@@ -84,7 +84,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
         iters += 1;
         let frames = session
             .lifecycle
-            .recompile_and_diff(&session.mailbox_cache)
+            .recompile_and_diff(&session.mailbox_cache, None)
             .map_err(|e| ReplError::Planner(format!("{e:?}")))?;
 
         let probes: Vec<(String, String, String)> = frames
@@ -125,7 +125,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
         }
 
         // Drain the Nip65Arrived triggers → next plan routes via NIP-65.
-        let _ = session.lifecycle.drain_tick(&session.mailbox_cache);
+        let _ = session.lifecycle.drain_tick(&session.mailbox_cache, None);
 
         if iters >= MAX_DISCOVERY_ITERS {
             println!("  discovery: stopped after {iters} iterations (convergence guard)");

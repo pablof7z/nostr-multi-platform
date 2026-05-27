@@ -28,11 +28,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::RelayEntry;
 use crate::{
     interest::{InterestShape, LogicalInterest, RelayUrl},
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use super::RelayEntry;
 
 /// Route a pinned interest to its declared host relay only.
 ///
@@ -58,14 +58,15 @@ pub(super) fn route(
     let mut base_with_pin = base_shape.clone();
     base_with_pin.relay_pin = Some(pin_url.clone());
 
-    relay_entries.entry(pin_url.clone()).or_default().push(RelayEntry {
-        base_shape: base_with_pin,
-        authors_for_relay,
-        addresses_for_relay,
-        lifecycle: interest.lifecycle.clone(),
-        sources: BTreeSet::from([RoutingSource::UserConfigured(
-            UserConfiguredCategory::Debug,
-        )]),
-        interest_id: interest.id.clone(),
-    });
+    relay_entries
+        .entry(pin_url.clone())
+        .or_default()
+        .push(RelayEntry {
+            base_shape: base_with_pin,
+            authors_for_relay,
+            addresses_for_relay,
+            lifecycle: interest.lifecycle.clone(),
+            sources: BTreeSet::from([RoutingSource::UserConfigured(UserConfiguredCategory::Debug)]),
+            interest_id: interest.id.clone(),
+        });
 }
