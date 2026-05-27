@@ -258,8 +258,7 @@ pub(super) struct ActorContext<'a> {
     pub(super) dm_inbox_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::DmInboxRelayLookup>>>,
     /// Shared [`crate::substrate::BlockedRelayLookup`] slot. Same
     /// `Reset`-survival contract as `dm_inbox_relays_slot`.
-    pub(super) blocked_relays_slot:
-        &'a Arc<Mutex<Arc<dyn crate::substrate::BlockedRelayLookup>>>,
+    pub(super) blocked_relays_slot: &'a Arc<Mutex<Arc<dyn crate::substrate::BlockedRelayLookup>>>,
     /// Per-app bootstrap Tailing self-kinds override slot. `None` →
     /// kernel reverts to its built-in default. Read by the `Reset` arm
     /// to re-apply the override against the rebuilt kernel.
@@ -1179,14 +1178,10 @@ pub(super) fn dispatch_command(
                 ctx.kernel.set_blocked_relay_lookup(lookup);
             }
             {
-                let kinds = ctx
-                    .bootstrap_self_kinds_slot
-                    .lock()
-                    .ok()
-                    .and_then(|g| {
-                        g.as_ref()
-                            .map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>())
-                    });
+                let kinds = ctx.bootstrap_self_kinds_slot.lock().ok().and_then(|g| {
+                    g.as_ref()
+                        .map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>())
+                });
                 ctx.kernel.set_bootstrap_self_kinds_override(kinds);
             }
             // D2 — re-install the coverage-gate hook on the rebuilt kernel.

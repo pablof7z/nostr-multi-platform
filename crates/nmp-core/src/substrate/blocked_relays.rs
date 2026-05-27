@@ -95,10 +95,10 @@ mod tests {
 
     impl TestLookup {
         fn upsert(&self, pubkey: &str, relays: &[&str]) {
-            self.inner
-                .write()
-                .unwrap()
-                .insert(pubkey.to_string(), relays.iter().map(|s| (*s).to_string()).collect());
+            self.inner.write().unwrap().insert(
+                pubkey.to_string(),
+                relays.iter().map(|s| (*s).to_string()).collect(),
+            );
         }
     }
 
