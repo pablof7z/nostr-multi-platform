@@ -6,7 +6,7 @@ const policy: DoctrineItem[] = [
   {
     code: "D0",
     name: "No app nouns in the kernel",
-    desc: "Protocol and product concepts extend the kernel through typed traits. The kernel never accumulates your product's vocabulary, so two apps built on NMP can't poison each other through it.",
+    desc: "Product vocabulary stays out. Protocol and app concepts extend the kernel through typed traits. Two apps built on NMP cannot poison each other through it.",
   },
   {
     code: "D1",
@@ -21,7 +21,7 @@ const policy: DoctrineItem[] = [
   {
     code: "D3",
     name: "Outbox routing by default",
-    desc: "NIP-65 picks the relays. Manual selection exists for the rare case you need it; the default is correct.",
+    desc: "NIP-65 picks the relays. The default is correct. Manual selection is the audited opt-out, not the starting point.",
   },
   {
     code: "D4",
@@ -44,12 +44,12 @@ const substrate: DoctrineItem[] = [
   {
     code: "D6",
     name: "No exceptions across FFI",
-    desc: "Errors surface as state fields, not thrown exceptions. Swift and Kotlin code never wraps dispatch() in a try/catch because there's nothing to catch.",
+    desc: "Errors surface as state fields. Swift and Kotlin never wrap dispatch() in try/catch — there is nothing to catch.",
   },
   {
     code: "D7",
     name: "Capabilities report, never decide",
-    desc: "OS capabilities (Keychain, biometrics, push) report their state to the kernel. The kernel decides policy. You don't write policy in two languages.",
+    desc: "Keychain, biometrics, push — OS capabilities report state to the kernel. The kernel decides policy. Policy is never written in two languages.",
   },
   {
     code: "D8",
@@ -90,10 +90,10 @@ export default function Doctrine() {
   return (
     <section class="l-section">
       <p class="l-section__label">Principles</p>
-      <h2 class="l-section__heading">Eleven decisions we already made for you</h2>
+      <h2 class="l-section__heading">Eleven decisions, already made</h2>
       <p class="l-section__lead">
-        These are the framework's load-bearing commitments. Every API answers to at least one.
-        They are not suggestions and they don't have exceptions — that's what makes them useful.
+        These are constraints, not suggestions. Every API answers to at least one. They don't
+        have exceptions — that's what makes them useful.
       </p>
       <div class="doctrine-blocks">
         <div>
