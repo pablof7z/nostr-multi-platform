@@ -15,7 +15,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::hint_url::is_valid_hint_url;
 use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
@@ -70,25 +69,19 @@ pub(super) fn route(
         }
     }
 
-    // W7 — Hint lane (D3, D6, D8) — mirrors case_a hint walk.
-    // Note: case_b line 104 with `hints: Vec::new()` is in the TEST fixture
-    // (addr_interest helper), NOT production code — we walk `interest.hints` here.
-    //
-    // When at least one valid hint is present, coord.pubkeys previously pushed
-    // into `unroutable` are retroactively rescued — the hint is their landing pad.
     let mut any_valid_hint = false;
     for hint in &interest.hints {
-        let Some(normalized) = is_valid_hint_url(&hint.url) else {
+        let Some((relay_url, source)) = super::hint_helper::route_for_hint(hint) else {
             continue;
         };
         any_valid_hint = true;
         let entry = per_relay
-            .entry(normalized)
+            .entry(relay_url)
             .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
         for coord in &interest.shape.addresses {
             entry.0.insert(coord.clone());
         }
-        entry.1.insert(RoutingSource::Hint);
+        entry.1.insert(source);
     }
     // If any valid hint routed all coords, remove their pubkeys from unroutable.
     if any_valid_hint {

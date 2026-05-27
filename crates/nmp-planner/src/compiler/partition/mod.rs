@@ -21,13 +21,13 @@ mod case_b_addresses;
 mod case_c_p_tags;
 mod case_d_no_author;
 mod case_e_relay_pinned;
-mod hint_url;
+mod hint_helper;
 mod inbox_helper;
 
 #[cfg(test)]
-mod hint_consumption_case_a_tests;
+mod hint_case_d_tests;
 #[cfg(test)]
-mod hint_consumption_case_b_tests;
+mod hint_consumption_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -248,9 +248,9 @@ pub(super) fn partition_interest(
     }
 
     // Case D: no authors, addresses, or #p → active-account read relays ∪
-    // app relays (hashtag firehose). Indexer remains as a last-resort fallback
-    // when BOTH sets are empty so the kernel-driven discovery REQs still have
-    // somewhere to land in cold-start scenarios.
+    // app relays (hashtag firehose). Hint relays stack first so event-id-only
+    // fetches can honor nevent/e-tag relay hints instead of silently dropping
+    // them.
     //
     // PD-033-C head check: a `OneShot + Global` interest with concrete
     // `event_ids` is the kernel-driven discovery oneshot for referenced events
@@ -260,6 +260,8 @@ pub(super) fn partition_interest(
     // discovery-only for kind:0/3/10002). Non-discovery Case D interests
     // (Tailing firehose, Account-scoped reads, event_ids without `OneShot +
     // Global`) fall through to the unchanged routing below.
+    case_d_no_author::route_hints(interest, &base_shape, relay_entries);
+
     let is_oneshot_global_event_ids_discovery =
         matches!(interest.lifecycle, InterestLifecycle::OneShot)
             && matches!(interest.scope, InterestScope::Global)

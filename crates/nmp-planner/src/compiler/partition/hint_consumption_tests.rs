@@ -29,7 +29,11 @@ fn pk(s: &str) -> String {
 fn hint(url: &str) -> RelayHint {
     RelayHint {
         url: url.to_string(),
-        source: HintSource::UserConfigured,
+        source: HintSource::EventTag {
+            event_id: pk("event"),
+            tag: "e".to_string(),
+            position: 2,
+        },
     }
 }
 
@@ -70,7 +74,11 @@ fn addr_interest_with_hints(
 }
 
 fn coord(pubkey: &str, kind: u32, d: &str) -> NaddrCoord {
-    NaddrCoord { pubkey: pk(pubkey), kind, d_tag: d.to_string() }
+    NaddrCoord {
+        pubkey: pk(pubkey),
+        kind,
+        d_tag: d.to_string(),
+    }
 }
 
 // ─── case_a tests ─────────────────────────────────────────────────────────────
@@ -81,15 +89,12 @@ fn coord(pubkey: &str, kind: u32, d: &str) -> NaddrCoord {
 /// Demonstrates the baseline routing path: hint alone is sufficient for
 /// an interest to leave `unroutable_authors`.
 #[test]
-fn single_user_configured_hint_routes_to_that_relay_in_case_a() {
+fn single_event_tag_hint_routes_to_that_relay_in_case_a() {
     let cache = InMemoryMailboxCache::new();
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &[]);
 
-    let interest = authors_interest_with_hints(
-        1,
-        &["alice"],
-        vec![hint("wss://hint-relay.example")],
-    );
+    let interest =
+        authors_interest_with_hints(1, &["alice"], vec![hint("wss://hint-relay.example")]);
 
     let plan = compiler.compile(&[interest]).expect("compile");
 
@@ -128,11 +133,8 @@ fn hint_routes_independently_of_nip65_outbox() {
     );
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &[]);
 
-    let interest = authors_interest_with_hints(
-        1,
-        &["alice"],
-        vec![hint("wss://alice-hint.example")],
-    );
+    let interest =
+        authors_interest_with_hints(1, &["alice"], vec![hint("wss://alice-hint.example")]);
 
     let plan = compiler.compile(&[interest]).expect("compile");
 
@@ -193,11 +195,7 @@ fn hint_dedup_against_existing_route_in_case_a() {
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &[]);
 
     // Hint points at the SAME URL as the NIP-65 outbox.
-    let interest = authors_interest_with_hints(
-        1,
-        &["alice"],
-        vec![hint(&shared_url)],
-    );
+    let interest = authors_interest_with_hints(1, &["alice"], vec![hint(&shared_url)]);
 
     let plan = compiler.compile(&[interest]).expect("compile");
 
@@ -275,14 +273,13 @@ fn malformed_hint_url_silently_dropped() {
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &[]);
 
     // "http://not-a-relay" is malformed for a wss relay hint.
-    let interest = authors_interest_with_hints(
-        1,
-        &["alice"],
-        vec![hint("http://not-a-relay.example")],
-    );
+    let interest =
+        authors_interest_with_hints(1, &["alice"], vec![hint("http://not-a-relay.example")]);
 
     // Must not panic.
-    let plan = compiler.compile(&[interest]).expect("compile must not fail");
+    let plan = compiler
+        .compile(&[interest])
+        .expect("compile must not fail");
 
     // The malformed hint must NOT produce a relay entry.
     assert!(
