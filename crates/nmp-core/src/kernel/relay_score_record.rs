@@ -110,6 +110,14 @@ impl Kernel {
         relay_url: &str,
     ) {
         if self.take_claim_expansion_match_seen(sub_id, relay_url) {
+            // W8b: EOSE arrived after a matching EVENT was already accepted —
+            // emit EoseRx{matched:true} so W9 can distinguish hit-then-eose
+            // from no-match-eose in the telemetry stream.
+            log_wire(WireLogEvent::EoseRx {
+                sub_id,
+                relay_url,
+                matched: true,
+            });
             return;
         }
         if let Some(author) = self.lookup_claim_expansion_author(sub_id) {

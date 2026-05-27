@@ -22,6 +22,7 @@
 //! |--------------------|-----------------------------|------------------------------------|
 //! | `ReqEmit`          | `kernel/requests/mod.rs`    | `register_planner_wire_frames`     |
 //! | `EventRx`          | `kernel/relay_score_record.rs` | `record_claim_expansion_hit`    |
+//! | `EoseRx{matched:true}`  | `kernel/relay_score_record.rs` | `record_claim_expansion_eose_no_match` (early-return branch) |
 //! | `EoseRx{matched:false}` | `kernel/claim_expansion.rs` | `on_claim_outcome_eose_no_match` |
 //! | `ClaimPhaseAdvance` | `kernel/claim_expansion.rs` + `claim_expansion_helpers.rs` | register / advance / terminate |
 //! | `ScoreUpdate`      | `kernel/relay_score_record.rs` | `record_claim_outcome`          |
