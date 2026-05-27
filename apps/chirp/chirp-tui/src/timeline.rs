@@ -237,13 +237,10 @@ impl RowRelationCount {
 /// used downstream by the UI:
 ///
 /// - `has_gap`: the module knows an ancestor / mid-chain event is missing.
-/// - `is_partial_chain`: the module's `root` pointer is `Some(_)` — the
-///   chain's top event is a REPLY to a missing ancestor, not the true
-///   thread root. Per `nmp-threading::TimelineBlock::Module.root`, `None`
-///   (or absent, since the field uses `skip_serializing_if = Option::is_none`)
-///   means the head IS the root; `Some(_)` means it isn't. We must NOT use
-///   `has_gap` as a proxy here — `has_gap` also fires on mid-chain
-///   lookback gaps that don't change the head's root-ness.
+/// - `is_partial_chain`: the module's Event root pointer names a different
+///   id than the first event in the module. That means the displayed head is
+///   a reply to a missing event ancestor. Non-Event roots terminate the chain
+///   and do not imply a missing event head.
 fn ids_from_block(block: &Value) -> (Vec<String>, bool, bool) {
     if let Some(id) = block.get("Standalone").and_then(Value::as_str) {
         return (vec![id.to_string()], false, false);
@@ -263,13 +260,18 @@ fn ids_from_block(block: &Value) -> (Vec<String>, bool, bool) {
         .get("has_gap")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    // `root: Some(_)` ⇒ partial chain. Missing field (serde skips `None`)
-    // and explicit `null` both ⇒ head IS the true root.
-    let is_partial_chain = module
-        .get("root")
-        .map(|v| !v.is_null())
-        .unwrap_or(false);
+    let is_partial_chain = event_root_mismatches_top(module.get("root"), ids.first());
     (ids, has_gap, is_partial_chain)
+}
+
+fn event_root_mismatches_top(root: Option<&Value>, top: Option<&String>) -> bool {
+    let Some(top) = top else {
+        return false;
+    };
+    root.and_then(|root| root.get("Event"))
+        .and_then(|event| event.get("id"))
+        .and_then(Value::as_str)
+        .is_some_and(|root_id| root_id != top)
 }
 
 fn string_field(card: &Value, key: &str) -> String {

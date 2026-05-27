@@ -1,4 +1,3 @@
-
 use super::*;
 
 #[test]
@@ -68,6 +67,57 @@ fn partial_chain_module_head_gets_flag() {
         "depth must stay 0 for navigation anchoring"
     );
     assert_eq!(rows[1].depth, 1);
+}
+
+#[test]
+fn event_root_matching_module_head_is_not_partial_chain() {
+    let snapshot = serde_json::json!({
+        "blocks": [
+            {"Module": {
+                "events": ["root", "reply"],
+                "has_gap": false,
+                "root": {"Event": {"id": "root", "relay": null, "kind": null}}
+            }}
+        ],
+        "cards": [
+            {"id": "root", "author_pubkey": "aaa", "created_at": 1, "content": "root"},
+            {"id": "reply", "author_pubkey": "bbb", "created_at": 2, "content": "reply"}
+        ]
+    });
+
+    let rows = TimelineRow::from_snapshot(&snapshot);
+
+    assert_eq!(rows.len(), 2);
+    assert!(!rows[0].is_partial_chain_head);
+    assert!(!rows[1].is_partial_chain_head);
+}
+
+#[test]
+fn address_and_external_roots_are_not_partial_event_chains() {
+    let snapshot = serde_json::json!({
+        "blocks": [
+            {"Module": {
+                "events": ["article_reply"],
+                "has_gap": true,
+                "root": {"Address": {"coord": "30023:pubkey:slug", "relay": null, "kind": 30023}}
+            }},
+            {"Module": {
+                "events": ["uri_reply"],
+                "has_gap": true,
+                "root": {"External": {"uri": "https://example.com/post"}}
+            }}
+        ],
+        "cards": [
+            {"id": "article_reply", "author_pubkey": "aaa", "created_at": 1, "content": "article reply"},
+            {"id": "uri_reply", "author_pubkey": "bbb", "created_at": 2, "content": "uri reply"}
+        ]
+    });
+
+    let rows = TimelineRow::from_snapshot(&snapshot);
+
+    assert_eq!(rows.len(), 2);
+    assert!(!rows[0].is_partial_chain_head);
+    assert!(!rows[1].is_partial_chain_head);
 }
 
 /// A standalone block is by definition a single event with no chain
