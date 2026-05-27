@@ -1,20 +1,21 @@
 /// Tests for the `wire_log` module.
 ///
-/// # OnceLock testing caveat
+/// # Gate-decision coverage
 ///
-/// `claim_log_enabled()` caches the result in a `OnceLock<bool>` on first call.
-/// Testing the production `log_wire(...)` against env-var state is therefore
-/// order-dependent and unreliable across test threads. We avoid that trap by
-/// testing the internal `write_wire_line` helper (which drives actual I/O)
-/// separately from the gate. This keeps tests hermetic and deterministic.
+/// `claim_log_enabled()` caches the result in a `OnceLock<bool>` on first call,
+/// making env-var-based gate tests order-dependent and unreliable across test
+/// threads. We sidestep this by folding the enabled flag into `write_wire_line`
+/// itself: `log_wire` calls `write_wire_line(&mut stderr, claim_log_enabled(), &ev)`,
+/// and tests pass `true`/`false` explicitly. This means the production gate
+/// decision (the one-liner in `log_wire`) is code-reviewable, while the I/O
+/// behaviour of both paths is fully exercised here.
 #[cfg(test)]
 use super::wire_log::{write_wire_line, WireLogEvent};
 
 #[test]
-fn env_unset_silences_output() {
-    // When the gate flag is false, log_wire returns early and nothing is
-    // written. We verify this by calling write_wire_line directly through the
-    // enabled=false pathway via a Vec<u8> sink and asserting empty output.
+fn gate_false_produces_no_output() {
+    // When the gate flag is false, write_wire_line must write nothing.
+    // This is the production disabled-path behaviour exercised directly.
     let event = WireLogEvent::ReqEmit {
         sub_id: "sub-1",
         relay_url: "wss://relay.example.com",
@@ -22,18 +23,25 @@ fn env_unset_silences_output() {
         author: "aabbcc",
         has_hint: false,
     };
-    // Simulate the disabled-gate path: write nothing.
     let mut buf: Vec<u8> = Vec::new();
-    // The gate fn is tested independently; here we verify that the write path
-    // with enabled=false produces no output. The gate is an atomic load
-    // (OnceLock<bool>); it would be racy to drive it via env var here.
-    // Instead, we verify the public API contract via the helper that W8b will
-    // use for call-site testing.
-    let enabled = false;
-    if enabled {
-        write_wire_line(&mut buf, &event);
-    }
+    write_wire_line(&mut buf, false, &event);
     assert!(buf.is_empty(), "disabled gate must produce no output");
+}
+
+#[test]
+fn gate_true_produces_output() {
+    // When the gate flag is true, write_wire_line must emit a non-empty line.
+    // This is the production enabled-path behaviour exercised directly.
+    let event = WireLogEvent::ReqEmit {
+        sub_id: "sub-1",
+        relay_url: "wss://relay.example.com",
+        phase: "phase1",
+        author: "aabbcc",
+        has_hint: false,
+    };
+    let mut buf: Vec<u8> = Vec::new();
+    write_wire_line(&mut buf, true, &event);
+    assert!(!buf.is_empty(), "enabled gate must produce output");
 }
 
 #[test]
@@ -61,7 +69,7 @@ fn env_set_emits_one_line_per_event() {
 
     let mut buf: Vec<u8> = Vec::new();
     for ev in &events {
-        write_wire_line(&mut buf, ev);
+        write_wire_line(&mut buf, true, ev);
     }
 
     let output = String::from_utf8(buf).expect("valid UTF-8");
@@ -83,7 +91,7 @@ fn output_line_starts_with_nmp_wire() {
     };
 
     let mut buf: Vec<u8> = Vec::new();
-    write_wire_line(&mut buf, &event);
+    write_wire_line(&mut buf, true, &event);
 
     let output = String::from_utf8(buf).expect("valid UTF-8");
     for line in output.lines() {
@@ -92,4 +100,45 @@ fn output_line_starts_with_nmp_wire() {
             "line must start with 'nmp.wire '; got: {line:?}"
         );
     }
+}
+
+#[test]
+fn serialized_event_has_expected_schema_for_w9_grep() {
+    // Protects W9's grep-based acceptance tests from field-naming drift.
+    // Parses the JSON payload and asserts the discriminant + key fields that
+    // W9 greps for are present with exactly the expected values.
+    let event = WireLogEvent::ReqEmit {
+        sub_id: "test",
+        relay_url: "wss://r.example.com",
+        phase: "phase1",
+        author: "deadbeef",
+        has_hint: false,
+    };
+
+    let mut buf: Vec<u8> = Vec::new();
+    write_wire_line(&mut buf, true, &event);
+
+    let output = String::from_utf8(buf).expect("valid UTF-8");
+    let line = output.lines().next().expect("at least one line");
+    let json_str = line
+        .strip_prefix("nmp.wire ")
+        .expect("line must start with 'nmp.wire '");
+
+    let v: serde_json::Value = serde_json::from_str(json_str).expect("payload must be valid JSON");
+
+    assert_eq!(
+        v["type"], "ReqEmit",
+        "discriminant field must be 'ReqEmit'; got: {}",
+        v["type"]
+    );
+    assert_eq!(
+        v["phase"], "phase1",
+        "phase field must be 'phase1'; got: {}",
+        v["phase"]
+    );
+    assert_eq!(
+        v["relay_url"], "wss://r.example.com",
+        "relay_url field mismatch; got: {}",
+        v["relay_url"]
+    );
 }

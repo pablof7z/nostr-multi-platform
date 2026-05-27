@@ -85,21 +85,28 @@ pub(crate) enum WireLogEvent<'a> {
 /// delegates to [`write_wire_line`]. No allocation occurs when the gate is
 /// closed.
 pub(crate) fn log_wire(event: WireLogEvent<'_>) {
-    if !claim_log_enabled() {
-        return;
-    }
-    write_wire_line(&mut io::stderr().lock(), &event);
+    write_wire_line(&mut io::stderr().lock(), claim_log_enabled(), &event);
 }
 
 /// Inner writer extracted for testability.
 ///
-/// Writes `"nmp.wire <json>\n"` to `w`. Tests drive this directly (with a
-/// `Vec<u8>` sink) to avoid env-var coupling and OnceLock ordering hazards.
+/// Writes `"nmp.wire <json>\n"` to `w` only when `enabled` is `true`.
+/// Tests drive this directly (with a `Vec<u8>` sink and an explicit
+/// `enabled` flag) so they exercise the gate decision without touching
+/// the `OnceLock` or env-var state. This removes the vacuous-gate trap
+/// identified in the W8a codex review.
+///
+/// Call sites outside this module must go through [`log_wire`], which
+/// supplies the production gate value, so the env check cannot be
+/// accidentally bypassed.
 ///
 /// # D6 — panic safety
 /// JSON encoding errors produce an empty payload string (`""`) rather than
 /// panicking.
-pub(crate) fn write_wire_line<W: IoWrite>(w: &mut W, event: &WireLogEvent<'_>) {
+pub(super) fn write_wire_line<W: IoWrite>(w: &mut W, enabled: bool, event: &WireLogEvent<'_>) {
+    if !enabled {
+        return;
+    }
     let payload = serde_json::to_string(event).unwrap_or_default();
     // `writeln!` failure is intentionally discarded (e.g. broken pipe during
     // test teardown); the fallible return is not meaningful here.
