@@ -3,123 +3,171 @@
 These are not guidelines. They are the reasons why certain bugs are impossible to introduce through the safe API.
 
 When you try to route a DM to a public relay, D10 stops you. When you want a spinner while a profile loads, D1 stops you. When you try to pick relays per-publish, D3 stops you. The framework doesn't document footguns — it refuses to expose the API that lets you make those mistakes.
-
 Eleven principles in total. Every API decision answers to at least one; conflicts resolve in the order listed (D0 outranks D1, D1 outranks D2, and so on).
 
-**Two kinds.** D0–D5 and D10 are *policy* doctrines — they govern what the framework promises and forbids. D6–D9 are *substrate invariants* — they govern how the runtime is implemented: what crosses FFI, how state propagates, what the hot path may do, who owns time. Both are equally binding. The split only changes the kind of review question: "does this API choice violate a user-facing promise?" (policy) vs. "does this implementation leak across the boundary, degrade reactivity, or trust something the kernel must own?" (substrate).
+**Two kinds.** D0–D5 and D10 are *policy* doctrines — they govern what the framework promises and forbids. D6–D9 are *substrate invariants* — they govern how the runtime is implemented underneath. Both are equally binding, but they answer different review questions: policy doctrines ask "does this API make the wrong thing easy?" and substrate invariants ask "does this implementation break something the kernel must own, such as FFI boundaries, state propagation, hot-path cost, or time?"
 
-## D0. Kernel + extension modules — no app nouns in `nmp-core`
+---
 
-`nmp-core` is substrate. Protocol behavior and app behavior live in typed modules — `ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule` — that contribute variants to the kernel. App nouns (Chirp, Notes, Highlighter, podcast, group-chat) are banned from `nmp-core`. If implementing a real app requires adding domain nouns to the kernel, the kernel boundary is wrong and must change.
+## D0. The framework core knows nothing about your app's domain
+
+The shared Rust core (`nmp-core`) has no concept of a tweet, a podcast episode, a highlight, or a group chat. Those nouns belong to your app. You add them through typed extension modules (`ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule`). Two apps can be built on the same core without either one leaking its domain concepts into the shared substrate.
 
 This rules out:
 
-- `nmp-core` becoming a junk drawer of every consumer's domain concepts.
-- App-specific business logic in Swift, Kotlin, or TypeScript shells.
-- Closed FFI enums that prevent modules from contributing typed views, actions, updates, capabilities, or identity scopes.
+- The framework core becoming a grab-bag of every app's domain objects.
+- Business logic written in Swift, Kotlin, or TypeScript instead of once in Rust.
+- Apps poisoning each other through the shared core.
 
-Internal test-facing surface (e.g., `spawn_actor`) is gated behind `#[cfg(any(test, feature = "test-support"))]` so production builds export no actor internals.
+*Implementation detail: `nmp-core` enforces this via module traits. App-domain nouns, and protocol-specific nouns that smuggle app policy into the substrate, are banned from `nmp-core` by the doctrine lint. Generic protocol primitives such as shared kind constants stay in substrate-owned modules when they are reusable infrastructure. Internal test surface is gated behind `#[cfg(any(test, feature = "test-support"))]` so production builds export no actor internals.*
 
-## D1. Best-effort rendering — render now, refine in place
+---
 
-Apps built with this framework **never withhold cached data and never block on fetches**. Every view payload field carries a value, not a "loading" status. Missing display names default to a shortened npub; missing pictures default to a deterministic identicon URI; missing timestamps default to "now". When a more authoritative value (e.g., the author's kind:0) arrives later, the view payload updates in place and the affected cell re-renders. The UI never sees a spinner gating already-renderable content.
+## D1. Render now, refine in place
 
-The doctrine is enforced by the view payload **types**: display fields are non-`Option`, placeholders are part of the type contract, and freshness is exposed (when relevant) as an optional badge hint, not a render gate. There is no `if has_profile { render } else { spinner }` pattern available in the API — the framework does not provide one.
-
-This rules out, by construction, the most common Nostr-client failure modes:
-
-- Hiding a post because the author's profile hasn't loaded yet.
-- Replacing cached profile metadata with a spinner because "we might have something newer."
-- Refusing to render threads because the root event isn't in cache.
-- Profile-picture flicker between cached and placeholder.
-
-## D2. Negentropy first, REQ second
-
-NIP-77 negentropy reconciliation is the default backfill mechanism. Every `(filter, relay)` pair the app touches is treated as a tracked sync target with a watermark. Live REQ remains the tailing path, but historical gaps consult coverage first and prefer sync over REQ scans when relays support it.
-
-This is not a product feature you opt into later; it is a subscription policy built on explicit coverage metadata.
-
-## D3. Outbox routing is automatic; manual relay selection is the opt-out
-
-Per NIP-65, reads and writes are routed to the relevant relays by framework policy without normal app code specifying them. Subscriptions with `authors` filters route to those authors' write relays; publishes go to the author's write relays plus tagged recipients' inbox relays; discovery falls back to a configurable indexer set.
-
-The safe public path does not ask the developer to pick relays per operation. Explicit override and diagnostic/test paths exist, but they are named, observable, and excluded from the default app-building flow.
+Your UI never waits for data before it can render. If a user's display name hasn't loaded yet, the framework supplies a shortened version of their public key. When the real name arrives, the cell updates automatically. The type system enforces this: display fields in view payloads are never `Option` — they always carry a value, either real or a deterministic placeholder. There is no `if loading { spinner }` branch available in the API, because there is no loading state in the payload types.
 
 This rules out, by construction:
 
-- Posts to relays the author hasn't declared as write relays.
-- DMs leaked to public relays.
-- Silent reads against a default relay set that miss an author's actual relays; unknown relay lists surface as coverage/diagnostic state and use a bounded fallback policy.
-- Hand-rolled fan-out logic in app code.
+- Hiding a post because the author's profile hasn't arrived yet.
+- Replacing cached data with a spinner on the theory that "fresher data might exist."
+- Refusing to render a thread because the root event isn't in the local cache.
+- Profile-picture flicker between a cached image and a placeholder.
 
-## D4. Single writer per fact; caches derive
+*Implementation detail: Placeholders are part of the type contract. Freshness is exposed as an optional "badge hint" (not a render gate) when relevant. The view payload type physically cannot represent an empty display-name field.*
 
-The "single source of truth" doctrine does not mean one cache — there are five layers (durable event store, in-memory working set, view payloads, gossip cache, platform reactive shadow). It means **one writer per fact**, and every downstream cache derives from the writer mechanically. Cache invalidation is not a concept in the public API. Recomputation happens in the actor; the platform receives new derived state.
+---
 
-## D5. Snapshots bounded by what's open
+## D2. History syncs by diff, not by re-download
 
-What crosses FFI is the projection through currently-open views, not the underlying event store. `AppState` carries small screen-shaped data plus a map of `ViewId → ViewPayload` for views currently in use. Closing a view evicts its payload from the snapshot. The event store itself never crosses FFI.
+When your app needs historical events, the framework doesn't request everything from scratch — it uses a set-reconciliation protocol (NIP-77 / negentropy) that compares your local index against the relay's and fetches only what's missing. Live events still stream in real-time as usual.
 
-## D6. Errors never cross FFI as exceptions
+This isn't an optimization you opt into later. It's the default subscription policy, built on watermark metadata the framework maintains per relay.
 
-Operational failures surface as `toast: Option<String>` state fields, never as exceptions or `Result<T, E>` across the FFI boundary. Long-running operations expose `busy` flags that clear on completion regardless of outcome. Native `dispatch` calls never need `try` / `catch`; native reconciler callbacks never receive a Rust error type.
+This rules out:
 
-This rules out, by construction:
+- Re-downloading your entire timeline every launch.
+- Unbounded REQ scans for history when a relay supports smarter sync.
+- Pagination logic you write yourself.
 
-- Swift / Kotlin code wrapping framework calls in `do { try }` or `try { } catch`.
-- Per-operation error-type proliferation across UniFFI.
-- Silent failure: every error has at least one observable state field carrying its consequences (a toast, a `busy` flag clearing, a diagnostic record).
+*Implementation detail: Every `(filter, relay)` pair the framework touches is tracked as a sync target with a watermark. Live REQ handles the tail; NIP-77 reconciliation handles historical backfill where supported.*
 
-## D7. Capabilities report; never decide policy
+---
 
-Native bridges (Keychain, NIP-46 bunker, BGTask scheduler, `AVPlayer`, NIP-07 web extension, FilePicker, Blossom upload, etc.) execute platform APIs and report raw events back into the kernel. They never decide *whether to retry*, *whether an error is recoverable*, *which relay to publish to*, *which encryption scheme to negotiate*, *what state should become*, or *whether a duplicate request is a no-op*. Policy is Rust's; capabilities are reports.
+## D3. Relay routing is handled for you
 
-This rules out, by construction:
+You never specify which relay to send a request to. The framework follows Nostr's publish-list protocol (NIP-65): reads go to the relays each author publishes to; writes go to the author's declared write relays; direct messages go only to the recipient's inbox relays; discovery falls back to a configurable indexer set.
 
-- Capability bridges holding cached state beyond transient OS handles (Keychain handle, audio session token, network monitor, push registration).
-- Native code making decisions that the kernel should reproduce identically across platforms.
-- Capability lifecycles that aren't idempotent: start / stop / restart of any bridge must be safe N times.
-
-## D8. Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded
-
-The substrate that delivers D1, D2, D4, D5 in practice. Every inserted event participates in a composite reverse index that names the views interested in it; view recompute is bounded to ≤60 deltas per second per view; the working set is hot-resident with claim-pinned overlays. Allocations after warmup are linear in active-view count, never in cached-event count. False-wakeup rate ≤ 0.10 candidates per delta.
-
-The idle-tick emit path is gated on `kernel.changed_since_emit()` — idle ticks that produce no state change must not emit snapshots (D8 regression guard).
+Manual relay selection exists as an audited override — named, observable, and excluded from the default app-building path. The safe path has no relay-selection field on subscriptions or publishes.
 
 This rules out, by construction:
 
-- Per-event allocations on the hot path after warmup.
-- Wakeups proportional to event volume instead of view count.
-- Memory growth that tracks history depth instead of working set.
-- A view re-rendering at greater than 60 Hz regardless of upstream burst.
+- Posts going to relays the author hasn't declared as their write relays.
+- DMs leaking to public relays (D10 owns this specific invariant, but D3 is the prerequisite).
+- Missing events because you asked the wrong relay.
+- Relay fan-out logic written in app code.
 
-Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).
+*Implementation detail: The subscription planner and router compute relay targets from NIP-65 relay lists (kind:10002 events) stored in the framework's working set. Unknown relay lists surface as diagnostic state with bounded fallback policy, never as a silent default.*
 
-## D9. The kernel owns time; relay-supplied `created_at` is untrusted
+---
 
-Time is a kernel decision, never a relay assertion. The kernel reads "now" exclusively through its injected `Clock` trait (`SystemClock` in production, `FixedClock` under `test-support`), so every time-dependent reduction is deterministic under test and reproducible during replay. The kernel — not the relay that delivered an event — owns every decision that consumes time:
+## D4. One source of truth; everything else follows
 
-- **Signing.** When the kernel stamps `created_at` on an event it is about to sign, the value comes from the injected `Clock`.
-- **Replaceable-event resolution** (kinds 0, 3, 10002, and parameterized-replaceable). The canonical "winner" is picked by strict `>` on `created_at` in the `EventStore` and the kernel's local caches.
-- **NIP-40 expiration.** Whether an event has expired is computed against the kernel clock, not asserted by the relay that delivered it.
-- **`received_at_ms` provenance.** The wall-clock stamp the store records for an inbound event reads the injected `Clock`, so replay is deterministic.
+Every piece of state has exactly one owner. The framework maintains several derived layers (in-memory working set, view projections, platform reactive shadow), but they all derive from a single authoritative source automatically. You don't invalidate caches. You don't sync state between layers. When the source changes, downstream representations update on their own.
+
+Cache invalidation is not a concept in the public API — because it's not a concept the developer needs.
+
+This rules out:
+
+- The same fact showing different values in different parts of the UI.
+- Cache invalidation logic in app code.
+- State that can drift between the local store and the on-screen view.
+
+*Implementation detail: Five layers exist (durable event store, in-memory working set, view payloads, gossip cache, platform reactive shadow), each a mechanical derivation of the one above. The actor owns recomputation; the platform only receives derived state.*
+
+---
+
+## D5. Only what's on screen crosses the language boundary
+
+The data that crosses from Rust to Swift/Kotlin/TypeScript is limited to what your currently-open views need. Your full event history never serializes across the boundary. When you close a view, its data is immediately evicted from the snapshot. Memory cost scales with the number of open screens, not with how much data you've cached locally.
+
+This rules out:
+
+- Memory growing proportionally to your event history instead of your screen count.
+- Slow marshaling of large datasets across the language boundary.
+- The event store ever being visible to native code.
+
+*Implementation detail: `AppState` carries small screen-shaped state plus a `HashMap<ViewId, ViewPayload>` for views currently open. Closing a view drops its entry. The event store, gossip cache, sync watermarks, working set, and signer state live exclusively in the Rust actor.*
+
+---
+
+## D6. Errors show up in state, not as thrown exceptions
+
+When something goes wrong, it surfaces as a state field — a toast message, a cleared loading indicator, a diagnostic record. The dispatch function (`dispatch_action`) is fire-and-forget: it never throws, never blocks, never returns an error. Swift never wraps framework calls in `do { try }`. Kotlin never writes `try { } catch`. Every failure has at least one observable state field carrying its consequence.
 
 This rules out, by construction:
 
-- Trusting a relay's word on whether an event is "newer" or "expired".
-- Non-deterministic reducers that read wall-clock directly and break replay.
+- Per-operation error types polluting the Swift/Kotlin API layer.
+- Silent failures — errors without any observable state consequence.
+- Native code needing to know whether a Rust operation succeeded.
 
-A relay **cannot** tamper with an inbound event's `created_at`: the Schnorr signature covers `[0, pubkey, created_at, kind, tags, content]`, so any change to the timestamp invalidates the signature and the event is rejected by signature verification. A future-dated event can therefore only have been produced by the author's own signing client — there is no inbound future-timestamp threat to gate against, and NMP performs no such ingest-time rejection.
+*Implementation detail: Failures surface as `toast: Option<String>` state fields. Long-running operations expose `busy` flags that clear on completion regardless of outcome. No `Result<T, E>` ever crosses the Rust ↔ native boundary.*
 
-## D10. Provenance — private events never escape to public relays
+---
 
-The kernel tracks where every event came from and respects that origin for routing. Two invariants:
+## D7. Native bridges execute; the kernel decides
 
-1. **Source is recorded.** Every stored event carries per-event provenance — which relay(s) delivered it, with first/last-seen timestamps and a primary entry. An event received from one relay is never silently forwarded to a *different* relay without explicit user intent; the kernel does not treat "I have this event" as license to republish it anywhere.
-2. **Private events stay private.** "Private" in the Nostr sense means the NIP-59 gift-wrap (kind:1059) and the NIP-17 direct-message rumor payloads it carries. A kind:1059 gift-wrap is addressed to a specific recipient and must be published **only** to that recipient's direct-message / inbox relays — never to general-purpose public relays, never to a recipient-unknown fallback set. When the recipient inbox is unknown, the publish **fails closed** (no public-relay fallback).
+When native code needs to touch something the Rust kernel can't reach directly — the iOS Keychain, the Android file picker, push notifications, the camera — it executes the OS call and reports the raw result back to the kernel. It makes no decisions: no retry logic, no relay selection, no encryption-scheme negotiation, no policy. The kernel decides everything, in one place, in Rust.
 
-This is the provenance half of D3 (D3 owns *which* relays a write routes to; D10 owns *that private content never widens its audience* and *that received events are not laundered between relays*). It rules out, by construction:
+This means the behavior on iOS and Android is always the same, because it's always decided by the same code.
 
-- Republishing a privately-delivered event to a public relay because it happened to land in the store.
-- A kind:1059 gift-wrap leaking onto a non-DM relay (or onto an indexer fallback set when the recipient's inbox relays are unknown).
-- Cross-relay forwarding of received events as an implicit side effect of having cached them.
+This rules out, by construction:
+
+- The same policy being written differently on iOS vs Android vs web.
+- Retry logic or relay selection duplicated in native code.
+- Platform bridges holding state the kernel doesn't know about.
+- Capability lifecycles that aren't safe to start, stop, and restart multiple times.
+
+*Implementation detail: Native bridges implement `CapabilityModule`. They may hold transient OS handles (Keychain handle, audio session token) but no policy state. Start/stop/restart of any bridge must be idempotent.*
+
+---
+
+## D8. Reactivity is bounded — UI updates stay predictable under any event volume
+
+No matter how fast events arrive, each open view updates at most 60 times per second. Memory grows with the number of open views, not with the size of your event history. The framework maintains an index of which views care about which data, and only recomputes the views that are actually affected by a change. The UI thread is never the bottleneck.
+
+This rules out, by construction:
+
+- The UI updating 500 times per second because 500 events arrived.
+- Memory growing with your cache size instead of your screen count.
+- Every view recomputing on every event regardless of relevance.
+
+*Implementation detail: A composite reverse index maps each inserted event to the views interested in it. View recompute is bounded to ≤60 deltas per second per view. Working set is hot-resident with claim-pinned overlays; allocations after warmup are linear in active-view count. Idle ticks that produce no state change do not emit snapshots. Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).*
+
+---
+
+## D9. Timestamps are the kernel's call, not the relay's
+
+The kernel owns timestamp policy. Replaceable events decide which version of a profile is "newer" by comparing the event's signed `created_at` field; expiration and publish timestamps use the kernel's injected clock. Relays cannot change either without invalidating the event signature. The same logic runs under test with a fixed clock, so behavior is deterministic and reproducible.
+
+This rules out:
+
+- A relay feeding stale profile data by claiming it's newer than what you have.
+- Non-deterministic test behavior caused by reading real wall-clock time.
+- Expiration decisions that differ between the kernel and the relay that delivered the event.
+
+*Implementation detail: The kernel reads time exclusively through an injected `Clock` trait (`SystemClock` in production, `FixedClock` under `test-support`). Replaceable-event resolution (profile metadata, contact lists, relay lists, parameterized-replaceable kinds) picks winners by strict `>` on `created_at`. Relay-supplied timestamps cannot be tampered with without invalidating the event's cryptographic signature, so the only threat D9 guards against is the kernel's own reducers reading wall-clock directly.*
+
+---
+
+## D10. Private messages stay private; the framework enforces it
+
+Direct messages (encrypted per the NIP-17/NIP-59 gift-wrap protocol) are published only to the specific inbox relays where the recipient can receive them. The framework refuses to publish a private message to a public relay, even as a fallback. If the recipient's inbox relays are unknown, the send fails rather than leaking. Every stored event also records which relay delivered it; that provenance is respected if the event is ever re-published.
+
+This rules out, by construction:
+
+- A direct message appearing on a public relay.
+- Private events forwarded to a different relay because they happened to land in the local cache.
+- The framework silently falling back to a public relay when inbox relays are unknown.
+
+*Implementation detail: This is the provenance half of D3. D3 governs which relays a write routes to; D10 governs that private content never widens its audience and that received events are not laundered between relays. Gift-wrapped private message envelopes (NIP-59 kind:1059) may only be published to verified recipient inbox relays. `PublishPlanError::PrivateRecipientUnroutable` is the fail-closed error when inboxes are unknown.*
