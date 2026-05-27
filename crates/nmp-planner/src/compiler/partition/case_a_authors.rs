@@ -46,7 +46,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::hint_url::is_valid_hint_url;
 use super::inbox_helper::route_p_tags_to_inbox;
 use super::{MailboxCache, RelayEntry};
 use crate::{
@@ -231,25 +230,14 @@ pub(super) fn route(
         }
     }
 
-    // W7 — Hint lane (D3 new lane, D6 silent-drop, D8 O(hints.len())).
-    //
-    // Walk `interest.hints` after the NIP-65 / AppRelay / Indexer lanes so
-    // dedup against already-accumulated entries is natural: if a hint URL
-    // already appears in `per_relay`, we add `RoutingSource::Hint` to its
-    // source set; otherwise we create a new entry.
-    //
-    // When at least one valid hint is present, the hint lane acts as a routing
-    // source for all interest authors: any author that was marked unroutable
-    // (because NIP-65 / AppRelay / Indexer all missed them) is retroactively
-    // rescued — the hint is their landing pad, so they are NOT unroutable.
     let mut any_valid_hint = false;
     for hint in &interest.hints {
-        let Some(normalized) = is_valid_hint_url(&hint.url) else {
+        let Some((relay_url, source)) = super::hint_helper::route_for_hint(hint) else {
             continue;
         };
         any_valid_hint = true;
         let entry = per_relay
-            .entry(normalized)
+            .entry(relay_url)
             .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
         for author in &interest.shape.authors {
             entry.0.insert(author.clone());
@@ -257,7 +245,7 @@ pub(super) fn route(
         for coord in &interest.shape.addresses {
             entry.1.insert(coord.clone());
         }
-        entry.2.insert(RoutingSource::Hint);
+        entry.2.insert(source);
     }
     // If any valid hint routed all authors and coords, remove them from
     // unroutable. The hint is their landing pad; they are no longer stranded.

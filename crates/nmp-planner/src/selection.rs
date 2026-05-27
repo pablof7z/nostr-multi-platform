@@ -80,8 +80,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use super::interest::{Pubkey, RelayUrl};
 use super::plan::{CompiledPlan, RoutingSource, UserConfiguredCategory};
 
-/// Predicate: does this relay's `role_tags` carry the operator-pinned
-/// `UserConfigured(AppRelay)` lane?
+/// Predicate: does this relay's `role_tags` carry a lane that must bypass
+/// greedy coverage pruning?
 ///
 /// App-relays are operator directives — "always REQ from here" — and must
 /// survive the greedy max-coverage pass regardless of whether the author's
@@ -89,10 +89,21 @@ use super::plan::{CompiledPlan, RoutingSource, UserConfiguredCategory};
 /// (`Indexer`, `Bootstrap`, …) are kernel-driven cold-start helpers, NOT
 /// operator intent, and therefore remain subject to coverage pruning.
 ///
+/// Hint/provenance relays are explicit claim/fetch landing pads. Selection
+/// bounds the NIP-65 connection storm; it must not erase the only relay a
+/// caller supplied as evidence for where a specific event can be found.
+///
 /// See `selection/tests.rs::app_relay_survives_*` for the contract and the
 /// gallery-TUI smoke regression that motivated this carve-out.
-fn relay_is_operator_pinned(role_tags: &BTreeSet<RoutingSource>) -> bool {
-    role_tags.contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay))
+fn relay_bypasses_selection(role_tags: &BTreeSet<RoutingSource>) -> bool {
+    role_tags.contains(&RoutingSource::Hint)
+        || role_tags.contains(&RoutingSource::Provenance)
+        || role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay,
+        ))
+        || role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Debug,
+        ))
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -145,11 +156,11 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
     // coverage budget for the OTHER relays — i.e. the operator's pin does
     // not consume a slot in `max_per_user` or `max_connections`, both of
     // which exist solely to bound the NIP-65 outbox connection storm.
-    let operator_pinned: BTreeSet<RelayUrl> = plan
+    let selection_pinned: BTreeSet<RelayUrl> = plan
         .per_relay
         .iter()
         .filter_map(|(relay, relay_plan)| {
-            relay_is_operator_pinned(&relay_plan.role_tags).then(|| relay.clone())
+            relay_bypasses_selection(&relay_plan.role_tags).then(|| relay.clone())
         })
         .collect();
 
@@ -160,7 +171,7 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
     let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = plan
         .per_relay
         .iter()
-        .filter(|(relay, _)| !operator_pinned.contains(*relay))
+        .filter(|(relay, _)| !selection_pinned.contains(*relay))
         .map(|(relay, relay_plan)| {
             let mut union: BTreeSet<Pubkey> = BTreeSet::new();
             for sub in &relay_plan.sub_shapes {
@@ -184,13 +195,13 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
         }
     }
 
-    // Stage 3: project back. Operator-pinned relays survive unchanged;
+    // Stage 3: project back. Selection-pinned relays survive unchanged;
     // greedy-selected relays have their author sets filtered to the oracle;
     // every other relay is dropped.
     let mut new_per_relay = BTreeMap::new();
     for (relay, mut relay_plan) in std::mem::take(&mut plan.per_relay) {
-        if operator_pinned.contains(&relay) {
-            // Operator-pinned: preserve unchanged. The wire-emitter must emit
+        if selection_pinned.contains(&relay) {
+            // Explicitly pinned: preserve unchanged. The wire-emitter must emit
             // the REQ to this relay regardless of coverage decisions.
             // Sub-shape author sets are NOT mutated, so canonical_filter_hash
             // stays valid and sub-id stability is preserved across recompiles.
@@ -260,7 +271,9 @@ fn greedy_select(
     let mut pool: HashMap<Pubkey, HashSet<RelayUrl>> = HashMap::new();
     for (relay, authors) in per_relay {
         for author in authors {
-            pool.entry(author.clone()).or_default().insert(relay.clone());
+            pool.entry(author.clone())
+                .or_default()
+                .insert(relay.clone());
         }
     }
 
@@ -335,6 +348,11 @@ fn greedy_select(
 }
 
 #[cfg(test)]
+#[path = "selection/app_relay_tests.rs"]
+mod app_relay_tests;
+#[cfg(test)]
+#[path = "selection/hint_tests.rs"]
+mod hint_tests;
+#[cfg(test)]
 #[path = "selection/tests.rs"]
 mod tests;
-
