@@ -5,8 +5,8 @@ use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_chirp_identity_restore, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_unregister, nmp_signer_broker_init, ChirpHandle, MarmotHandle,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_marmot_unregister,
+    nmp_signer_broker_init, ChirpHandle, MarmotHandle,
 };
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
@@ -55,27 +55,13 @@ impl AppRuntime {
         nmp_app_chirp_register_follow_list(app, ptr::null());
         nmp_app_start(app, 0, 200, 10);
 
-        let db_dir = crate::keyring::chirp_data_dir()
-            .map(|p| p.join("marmot"))
-            .and_then(|p| std::fs::create_dir_all(&p).ok().map(|_| p));
-        let marmot = db_dir.and_then(|dir| {
-            let dir_c = CString::new(dir.to_string_lossy().as_ref()).ok()?;
-            let h = nmp_app_chirp_identity_restore(app, dir_c.as_ptr(), ptr::null());
-            if h.is_null() {
-                None
-            } else {
-                Some(h)
-            }
-        });
-        let initial_marmot = marmot.unwrap_or(ptr::null_mut());
-
         nmp_app_open_timeline(app);
 
         Ok((
             Self {
                 app,
                 chirp,
-                marmot: Cell::new(initial_marmot),
+                marmot: Cell::new(ptr::null_mut()),
                 update_bridge: Some(bridge),
             },
             rx,
