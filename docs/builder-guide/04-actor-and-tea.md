@@ -1,15 +1,14 @@
-# 04 — RMP bible + actor model (TEA on one thread)
+# 04 — Actor model (TEA on one thread)
 
 > **Status: SHIPS** · audience: builders + agents · cites verified at master tip.
 
-NMP's execution skeleton is taken wholesale from the RMP bible
-(`docs/aim.md:19-70`): **The Elm Architecture on a single actor thread.**
-This section translates the bible into the vocabulary you will actually see in
+NMP's execution skeleton is **The Elm Architecture on a single actor thread.**
+This section translates that into the vocabulary you will actually see in
 `crates/nmp-core/src/actor/` and tells you which thread runs what.
 
 ## TEA in NMP vocabulary
 
-| Bible term | NMP type | Where |
+| Concept | NMP type | Where |
 |---|---|---|
 | `AppState` | `AppState { rev, open_view_count }` | `app.rs:55-59` |
 | `AppAction` | `KernelAction` (`Start`/`OpenView`/`OpenUri`/…) | `app.rs:21-36` |
@@ -17,7 +16,7 @@ This section translates the bible into the vocabulary you will actually see in
 | `handle_message` | `dispatch_command(...)` | `actor/mod.rs:162-` |
 | state emission | `AppUpdate` frame via `update_tx`; canonical runtime payload is FlatBuffers | `app.rs:38-48`, `tick.rs:53-62` |
 
-Data flow is **strictly unidirectional** (`aim.md:29`): user interaction →
+Data flow is **strictly unidirectional**: user interaction →
 action dispatch → actor processes synchronously → state emission → platform
 re-renders. One OS thread owns all mutable state. No locks, no concurrent
 mutation, no race conditions.
@@ -26,7 +25,7 @@ mutation, no race conditions.
 
 ```
  UI (Swift/Kotlin)
-   │  dispatch(action)            fire-and-forget, no return value (aim.md:51)
+   │  dispatch(action)            fire-and-forget, no return value
    ▼
  command channel  ── std::sync::mpsc, NOT a return path
    │
@@ -40,11 +39,11 @@ mutation, no race conditions.
    │  kernel.open_*/start/...      builds Vec<OutboundMessage>
    │  emit_now()                   kernel.make_update() → FlatBuffers frame
    ▼
-update_tx                         snapshot by default (aim.md:58)
+update_tx                         snapshot by default
    │
    ▼
  listener / reconciler (host)      hops to UI thread
-   │  compare incoming rev to last applied → skip if stale (aim.md:49)
+   │  compare incoming rev to last applied → skip if stale
    ▼
  UI re-renders                     @Observable / mutableStateOf / signal
 ```
@@ -74,7 +73,7 @@ There is **one** writer (the actor). Everything else is a courier.
 > fire-and-forget dispatch, snapshot emit) is identical; the thread/channel
 > primitives differ. Build against the contract, not the bible's prose.
 
-## The four load-bearing invariants (bible §47-58, in NMP terms)
+## The four load-bearing invariants
 
 1. **Monotonic `rev`.** Every state change bumps `rev: u64` inside `AppState`
    (`app.rs:57`). The host compares incoming `rev` to last applied and drops
@@ -150,17 +149,16 @@ into kernel internals.
 
 ## Anti-patterns
 
-- **Expecting `dispatch` to return a result.** It is fire-and-forget by
-  contract (`aim.md:51`). Model the outcome as a future snapshot, not a return
-  value or a thrown error.
+- **Expecting `dispatch` to return a result.** It is fire-and-forget. Model the
+  outcome as a future snapshot, not a return value or a thrown error.
 - **Reading state synchronously after dispatch.** The command channel is
   one-way; there is no "get current state" call. Observe `update_tx`.
 - **Spawning ad-hoc threads in app code to "wait" for the actor.** All
-  concurrency is owned by the kernel (bible §52). App threads cannot mutate
-  `AppState` and only invite races the architecture rules out.
+  concurrency is owned by the kernel. App threads cannot mutate `AppState` and
+  only invite races the architecture rules out.
 - **Holding mutable state in Swift/Kotlin.** Native is rendering plus
-  capability execution; no caches, no derived state (`aim.md:53`,
-  bible invariant 5). Shadow the snapshot, do not author it.
+  capability execution; no caches, no derived state. Shadow the snapshot, do
+  not author it.
 - **Depending on `testing::spawn_actor` / `nmp_app_*` from production.** D0
   violation — those symbols are gated test-support, not the FFI contract
   (`lib.rs:37-56`, `actor/mod.rs:46-48`).
