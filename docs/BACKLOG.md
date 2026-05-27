@@ -668,7 +668,7 @@ artifact found it does NOT use the framework's defining properties:
   D3 outbox routing is bypassed entirely; `KindFilter` (`raw_event_observer.rs:92`) has no
   author dimension.
 - `NoteModel.swift:14` parses the NIP-01 event JSON in Swift (`JSONSerialization →
-  [String: Any]`). The architectural bible's first anti-pattern.
+  [String: Any]`). The first anti-pattern (D5: never parse protocol data in the shell).
 - `NotesBridge.swift:84` orders the timeline in Swift (insertion-order keyed off arrival,
   not `created_at`). The kernel owns no timeline view for this app.
 - `TimelineView.swift:30, 36–38` formats timestamps + shortens pubkeys in Swift.

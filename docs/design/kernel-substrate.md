@@ -286,7 +286,7 @@ impl ActionModule for SendNoteAction {
 
 ## 5. `CapabilityModule` — typed native fact reports
 
-Wraps the bible's capability bridge pattern. The kernel ships a small set of generic capability families; modules extend with app-specific ones.
+Implements D7 (capabilities report, never decide). The kernel ships a small set of generic capability families; modules extend with app-specific ones.
 
 ```rust
 pub trait CapabilityModule: Send + Sync + 'static {

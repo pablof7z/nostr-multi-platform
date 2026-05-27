@@ -22,7 +22,7 @@ relay worker threads spawn and join repeatedly.
 **Assertions.**
 1. Thread count after 1,000 cycles ≤ baseline + 2 (actor + listener
    only; relay workers gone after every Stop).
-2. **Idempotency (bible #7):** two consecutive Starts produce one
+2. **Idempotency (D7):** two consecutive Starts produce one
    set of relay workers (verified by counting `RelayControl` entries).
 3. Generation counter `next_relay_generation` strictly monotonic, no
    wrap (`u64` is fine for 1,000 cycles; harness verifies anyway).

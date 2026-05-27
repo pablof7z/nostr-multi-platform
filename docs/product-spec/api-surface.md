@@ -163,7 +163,7 @@ Doctrine:
 
 ### 6.4 AppUpdate
 
-`AppUpdate` is the outbound stream. Bible doctrine: snapshots by default; granular variants only where profiling warrants. The canonical runtime encoding is FlatBuffers, with this logical schema:
+`AppUpdate` is the outbound stream. Snapshots by default (D5); granular variants only where profiling warrants. The canonical runtime encoding is FlatBuffers, with this logical schema:
 
 ```rust
 #[derive(Clone, uniffi::Enum)]
@@ -192,7 +192,7 @@ Decisions captured here for `aim.md` §7.1:
 
 ### 6.5 Capabilities
 
-Each capability is a Rust trait with `#[uniffi::export(callback_interface)]`. Native implements it; Rust calls it. Bible-pure: native reports raw data, Rust decides policy. v1 capabilities:
+Each capability is a Rust trait with `#[uniffi::export(callback_interface)]`. Native implements it; Rust calls it. Native reports raw data; Rust decides policy (D7). v1 capabilities:
 
 ```rust
 #[uniffi::export(callback_interface)]

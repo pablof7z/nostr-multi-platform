@@ -9,7 +9,7 @@
 
 **Yes — but only the substrate, and only with the right partition.** NMP ships a **pure-Rust tokenizer + entity-resolver + embed-fetch-deduplicator** as protocol-module code (Layer A). NMP does **not** ship per-platform UI component packages as framework code (Layer C). The "just-works" composable components apps need are scaffolded into the **starter / per-app tree** as editable source (shadcn / jsrepo idiom), not published as `nmp-content-swiftui` / `nmp-content-compose`. Apps own and modify them.
 
-This position is forced by **D0** (kernel never grows app nouns — and a SwiftUI view IS an app noun), the **RMP bible** (native = rendering only — framework-published per-platform UI packages drag the framework across that line), and **D4** (single writer per fact — runtime renderer registries that mutate global state on import are a second writer). The orchestrator's hint to ship a Layer-C package is rejected on those three grounds; the user need it expresses ("apps shouldn't have to wire content rendering from zero") is fully discharged by scaffold-in-starter. Same first-day UX, different ownership boundary. §6 + §9 defend the choice.
+This position is forced by **D0** (kernel never grows app nouns — and a SwiftUI view IS an app noun), **D5** (native = rendering only — framework-published per-platform UI packages drag the framework across that line), and **D4** (single writer per fact — runtime renderer registries that mutate global state on import are a second writer). The orchestrator's hint to ship a Layer-C package is rejected on those three grounds; the user need it expresses ("apps shouldn't have to wire content rendering from zero") is fully discharged by scaffold-in-starter. Same first-day UX, different ownership boundary. §6 + §9 defend the choice.
 
 ## §2 What's hard about Nostr content rendering
 
@@ -44,7 +44,7 @@ A runtime `ContentRenderer` class with **`Map<kind, HandlerInfo>` + four nullabl
 |---|---|---|---|
 | **A. Pure-Rust tokenizer + entity resolver + embed-fetch dedup** | **SHIP in v1** | `nmp-content` (new crate) + `nmp-nip21` (in flight) | D0-clean: zero UI nouns. Composes with `EventStore` + `ViewModule`. The substrate every platform needs. Adds the two gaps both libraries leak: recursion guard + embed dedup. |
 | **B. A Rust-side `RenderableContent` ViewModel projection** | **REJECT** | (would be `nmp-core` / a sibling crate) | `ViewModule::Payload` is already this. Adding a parallel `RenderableContent` type is the NDKSwift "three overlapping APIs" anti-pattern in Rust. Apps already get `ContentTree` as a payload field on existing payloads; no new abstraction needed. |
-| **C. Per-platform UI primitives published as `nmp-content-swiftui` / `nmp-content-compose` / `nmp-content-iced` / `nmp-content-web`** | **REJECT** as framework code; **SHIP as starter scaffolds** | App's own tree (copied by `nmp init` / `nmp add component`) | RMP bible: native = rendering only. Framework-published platform-UI packages cross that line and become a v2-migration trap (see NDKSwift's 3-API anti-pattern). Scaffold-in-starter delivers identical first-day UX with app-ownership. NDK-svelte's jsrepo model is the architectural precedent — components ship as **copy-paste**, not as an imported library. |
+| **C. Per-platform UI primitives published as `nmp-content-swiftui` / `nmp-content-compose` / `nmp-content-iced` / `nmp-content-web`** | **REJECT** as framework code; **SHIP as starter scaffolds** | App's own tree (copied by `nmp init` / `nmp add component`) | D5: native = rendering only. Framework-published platform-UI packages cross that line and become a v2-migration trap (see NDKSwift's 3-API anti-pattern). Scaffold-in-starter delivers identical first-day UX with app-ownership. NDK-svelte's jsrepo model is the architectural precedent — components ship as **copy-paste**, not as an imported library. |
 
 **Layer A in detail.** `nmp-content::tokenize(content: &str, tags: &[Tag]) -> ContentTree` emits:
 
@@ -145,7 +145,7 @@ GM. Loved this thread by nostr:nprofile1qqsx... — see also nostr:nevent1qqs...
 
 | # | Anti-pattern | Reason |
 |---|---|---|
-| 1 | SwiftUI / Compose / iced views in any `nmp-*` Rust crate | RMP bible: native = rendering; framework code stays headless |
+| 1 | SwiftUI / Compose / iced views in any `nmp-*` Rust crate | D5: native = rendering; framework code stays headless |
 | 2 | Three overlapping public APIs (NDKSwift's `NDKRichText` + `NDKMarkdown` + `NDKUIMarkdownRenderer`) | One tokenizer with `RenderMode` flag; ndkswift.md §10.1 explicitly warns |
 | 3 | Forked parsers for markdown vs plain | Same shape risk; single `ContentTree` with `MarkdownBlock` variants when mode = Markdown |
 | 4 | Per-view embed subscriptions without dedup (NDKSwift's `EventPreviewLoader`) | `EmbedClaimRegistry` is one sub per id, refcounted |
