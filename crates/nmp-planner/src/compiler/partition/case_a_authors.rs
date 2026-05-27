@@ -217,6 +217,48 @@ pub(super) fn route(
         }
     }
 
+    // W7 — Hint lane (D3 new lane, D6 silent-drop, D8 O(hints.len())).
+    //
+    // Walk `interest.hints` after the NIP-65 / AppRelay / Indexer lanes so
+    // dedup against already-accumulated entries is natural: if a hint URL
+    // already appears in `per_relay`, we add `RoutingSource::Hint` to its
+    // source set; otherwise we create a new entry.
+    //
+    // When at least one valid hint is present, the hint lane acts as a routing
+    // source for all interest authors: any author that was marked unroutable
+    // (because NIP-65 / AppRelay / Indexer all missed them) is retroactively
+    // rescued — the hint is their landing pad, so they are NOT unroutable.
+    let mut any_valid_hint = false;
+    for hint in &interest.hints {
+        let lower = hint.url.trim().to_ascii_lowercase();
+        let is_valid = (lower.starts_with("wss://") || lower.starts_with("ws://"))
+            && hint.url.trim().len() > "wss://".len();
+        if !is_valid {
+            continue;
+        }
+        any_valid_hint = true;
+        let entry = per_relay
+            .entry(hint.url.clone())
+            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
+        for author in &interest.shape.authors {
+            entry.0.insert(author.clone());
+        }
+        for coord in &interest.shape.addresses {
+            entry.1.insert(coord.clone());
+        }
+        entry.2.insert(RoutingSource::Hint);
+    }
+    // If any valid hint routed all authors and coords, remove them from
+    // unroutable. The hint is their landing pad; they are no longer stranded.
+    if any_valid_hint {
+        for author in &interest.shape.authors {
+            unroutable.remove(author);
+        }
+        for coord in &interest.shape.addresses {
+            unroutable.remove(&coord.pubkey);
+        }
+    }
+
     for (relay_url, (authors, addrs, sources)) in per_relay {
         relay_entries.entry(relay_url).or_default().push(RelayEntry {
             base_shape: base_shape.clone(),

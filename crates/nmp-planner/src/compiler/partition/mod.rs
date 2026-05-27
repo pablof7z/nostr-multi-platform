@@ -23,6 +23,9 @@ mod case_d_no_author;
 mod case_e_relay_pinned;
 mod inbox_helper;
 
+#[cfg(test)]
+mod hint_consumption_tests;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{

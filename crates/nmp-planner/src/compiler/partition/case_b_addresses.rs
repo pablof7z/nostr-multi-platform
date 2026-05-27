@@ -67,6 +67,36 @@ pub(super) fn route(
         }
     }
 
+    // W7 — Hint lane (D3, D6, D8) — mirrors case_a hint walk.
+    // Note: case_b line 104 with `hints: Vec::new()` is in the TEST fixture
+    // (addr_interest helper), NOT production code — we walk `interest.hints` here.
+    //
+    // When at least one valid hint is present, coord.pubkeys previously pushed
+    // into `unroutable` are retroactively rescued — the hint is their landing pad.
+    let mut any_valid_hint = false;
+    for hint in &interest.hints {
+        let lower = hint.url.trim().to_ascii_lowercase();
+        let is_valid = (lower.starts_with("wss://") || lower.starts_with("ws://"))
+            && hint.url.trim().len() > "wss://".len();
+        if !is_valid {
+            continue;
+        }
+        any_valid_hint = true;
+        let entry = per_relay
+            .entry(hint.url.clone())
+            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
+        for coord in &interest.shape.addresses {
+            entry.0.insert(coord.clone());
+        }
+        entry.1.insert(RoutingSource::Hint);
+    }
+    // If any valid hint routed all coords, remove their pubkeys from unroutable.
+    if any_valid_hint {
+        for coord in &interest.shape.addresses {
+            unroutable.remove(&coord.pubkey);
+        }
+    }
+
     for (relay_url, (addrs, sources)) in per_relay {
         relay_entries.entry(relay_url).or_default().push(RelayEntry {
             base_shape: base_shape.clone(),
