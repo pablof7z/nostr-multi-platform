@@ -162,4 +162,4 @@ nothing changed so the buffer stays empty.
 See also: [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
 [07 — Subscription planner — Interest → CompiledPlan → wire](07-subscription-planner.md) ·
 [18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md) ·
-[04 — RMP bible + actor model (TEA on one thread)](04-actor-and-tea.md)
+[04 — Actor model (TEA on one thread)](04-actor-and-tea.md)

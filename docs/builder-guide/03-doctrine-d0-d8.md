@@ -5,10 +5,7 @@
 > conflicts resolve **in listed order** (D0 wins over D1, D1 over D2, …).
 
 Canonical text: [`docs/product-spec/doctrine.md`](../product-spec/doctrine.md)
-(D0–D10 full statements); in-page restatement
-[`docs/product-spec/overview-and-dx.md`](../product-spec/overview-and-dx.md)
-§1.5 (lines 27–43). Origin in the RMP-bible-derived rules at
-[`docs/aim.md`](../aim.md) §6 (lines 219–235).
+(D0–D10 full statements).
 
 ## Two kinds of doctrine
 
