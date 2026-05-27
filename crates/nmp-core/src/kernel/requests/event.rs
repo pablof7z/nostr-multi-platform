@@ -192,12 +192,24 @@ impl Kernel {
         }
 
         if !can_send {
-            // Open question #3 default: cold-start parking queue
-            // (`pending_event_claims`) is deferred. Callers re-enter
-            // after `relays_ready` flips; the snapshot push will
-            // naturally drive that re-entry once the kernel re-enters
-            // the warm path.
-            self.log("event claim queued until relay connects");
+            // Cold-start parking. Mirrors `ProfileRequestState.pending`:
+            // the claim has already been refcounted into `event_claims`
+            // (so the renderer sees the claim row immediately) but no
+            // OneshotApi interest is registered yet — no relay is
+            // reachable, so there is nowhere to send a REQ.
+            //
+            // `pending_event_claim_requests` drains this queue from
+            // `pending_view_requests` once `can_send` flips, replaying
+            // each pair as a warm `claim_event(uri, consumer_id, true)`.
+            // `claim_event` is idempotent on the refcount side
+            // (`BTreeSet::insert` returns `false` for the duplicate
+            // consumer) so the replay only registers the OneshotApi
+            // interest that this cold path skipped.
+            self.log(format!(
+                "event claim parked until relay connects: {}",
+                truncate(&uri, 80)
+            ));
+            self.pending_event_claims.push((uri, consumer_id));
             return Vec::new();
         }
 
@@ -321,6 +333,23 @@ impl Kernel {
                     .iter()
                     .any(|t| t.len() >= 2 && t[0] == "d" && t[1] == d_tag)
         })
+    }
+
+    /// Drain the cold-start parking queue. Called from `pending_view_requests`
+    /// once at least one relay is connected (`can_send = true`). Mirrors
+    /// `pending_profile_claim_requests` semantics: processes each parked
+    /// `(uri, consumer_id)` pair as a warm claim, skipping any that are
+    /// already resolved or already in-flight.
+    pub(crate) fn pending_event_claim_requests(&mut self) -> Vec<OutboundMessage> {
+        if self.pending_event_claims.is_empty() {
+            return Vec::new();
+        }
+        let parked: Vec<(String, String)> = std::mem::take(&mut self.pending_event_claims);
+        let mut out = Vec::new();
+        for (uri, consumer_id) in parked {
+            out.extend(self.claim_event(uri, consumer_id, true));
+        }
+        out
     }
 }
 
