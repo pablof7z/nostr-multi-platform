@@ -65,13 +65,13 @@ replies re-enter the **same** actor loop as `ActorMsg::Relay`
 
 There is **one** writer (the actor). Everything else is a courier.
 
-> **Reality note (cite drift, see [27]).** `aim.md:31` describes the bible's
+> **Reality note (cite drift, see [27]).** `aim.md:31` describes the spec's
 > reference model as a `flume` channel plus a separate **tokio** runtime for
 > async I/O. The shipped kernel realizes the same TEA contract with
 > `std::sync::mpsc` channels, `std::thread`, and blocking `tungstenite`
 > sockets — no `flume`, no tokio runtime. The *contract* (single-writer actor,
 > fire-and-forget dispatch, snapshot emit) is identical; the thread/channel
-> primitives differ. Build against the contract, not the bible's prose.
+> primitives differ. Build against the contract, not the spec's prose.
 
 ## The four load-bearing invariants
 
