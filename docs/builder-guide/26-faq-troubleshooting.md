@@ -89,8 +89,8 @@ plus an `eprintln!` with a doc URL. Release cost is zero
 
 **Q15. Where do I file a doc/code discrepancy?**
 [27 — Doc/code discrepancies](27-discrepancies.md). Most "the doc says X but
-the code does Y" cases are *milestone not landed yet* (UniFFI M14, `nmp init`
-M16), not bugs. Don't change the spec to match incomplete code; file it.
+the code does Y" cases are *milestone not landed yet* (e.g. UniFFI M14), not
+bugs. Don't change the spec to match incomplete code; file it.
 
 ## Debug a missing snapshot in 3 steps
 
