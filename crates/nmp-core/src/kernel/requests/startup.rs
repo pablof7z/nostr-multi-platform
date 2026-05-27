@@ -126,8 +126,9 @@ impl Kernel {
         // above into a single recompile pass (D8). Diagnostic
         // `interest_ids` left empty — the compiler walks the full
         // registry, not a filtered subset.
-        self.lifecycle
-            .enqueue_trigger(CompileTrigger::ViewOpened { interest_ids: Vec::new() });
+        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
+            interest_ids: Vec::new(),
+        });
 
         // Protocol-specific `#p`-addressed subscriptions (NIP-57 receipts,
         // NIP-25 reactions addressed to the user, …) USED to be emitted here
@@ -188,22 +189,17 @@ impl Kernel {
     ///
     /// Uses `set_sub` so an account switch swaps the author in-place
     /// rather than leaving the prior account's REQ live.
-    fn register_tailing_self_kinds_interest(
-        &mut self,
-        owner: SubOwnerKey,
-        author: String,
-    ) {
+    fn register_tailing_self_kinds_interest(&mut self, owner: SubOwnerKey, author: String) {
         let sub_key = SubKey::new("bootstrap:self-kinds-tailing");
         let identity = SubIdentity::new(owner, sub_key, SubScope::Global);
         // FFI override slot beats the builtin list — apps that need a
         // different replaceable-kind set (e.g. a publish-only app that
         // doesn't care about kind:10006 blocked relays) install one via
         // `nmp_app_set_bootstrap_self_kinds` before `nmp_app_start`.
-        let kinds_iter: Box<dyn Iterator<Item = u32>> =
-            match self.bootstrap_self_kinds_override() {
-                Some(override_kinds) => Box::new(override_kinds.to_vec().into_iter()),
-                None => Box::new(SELF_KINDS_TAILING.iter().copied()),
-            };
+        let kinds_iter: Box<dyn Iterator<Item = u32>> = match self.bootstrap_self_kinds_override() {
+            Some(override_kinds) => Box::new(override_kinds.to_vec().into_iter()),
+            None => Box::new(SELF_KINDS_TAILING.iter().copied()),
+        };
         let shape = InterestShape {
             authors: [author].into_iter().collect(),
             kinds: kinds_iter.collect(),

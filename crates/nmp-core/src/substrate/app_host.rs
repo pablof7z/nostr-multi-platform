@@ -98,10 +98,8 @@ pub trait AppHost: ActionRegistrar {
 
     fn unregister_raw_event_observer(&self, id: RawEventObserverId);
 
-    fn swap_dm_inbox_observer(
-        &self,
-        new: Option<RawEventObserverId>,
-    ) -> Option<RawEventObserverId>;
+    fn swap_dm_inbox_observer(&self, new: Option<RawEventObserverId>)
+        -> Option<RawEventObserverId>;
 
     fn relay_edit_rows_handle(&self) -> RelayEditRowsSlot;
 }

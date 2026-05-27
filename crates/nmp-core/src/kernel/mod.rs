@@ -46,6 +46,8 @@ mod claim_expansion_ingest_tests;
 mod claim_expansion_seam;
 #[cfg(test)]
 mod claim_expansion_tests;
+#[cfg(test)]
+mod claim_expansion_tick_tests;
 pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
