@@ -5,34 +5,19 @@
 //! unit tests and the firehose/FFI stress harnesses exercise the same ingest
 //! hot-paths as production code without needing real secp256k1 keys.
 //!
-//! New test-support helpers should be added here rather than to `kernel/mod.rs`
-//! to keep the main module under the 300-LOC soft limit (AGENTS.md).
-//!
-//! D0: capability boundary respected — none of these methods appear in the
-//! production FFI surface.
-
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
 use crate::relay::RelayRoleTestExt;
 
-// ---------------------------------------------------------------------------
-// W3 test-only seam: register (sub_id → author) mappings so the wire-shaped
-// test can exercise dormant claim-expansion hooks in `ingest/mod.rs` before
-// W5 wires them for real. Stored in a thread-local so no Kernel field is
-// needed (the Kernel field is W5's job).
-// ---------------------------------------------------------------------------
-
 thread_local! {
     static CLAIM_EXPANSION_SUBS: RefCell<BTreeMap<String, String>> =
         RefCell::new(BTreeMap::new());
+    static CLAIM_EXPANSION_MATCHES: RefCell<BTreeSet<(String, String)>> =
+        RefCell::new(BTreeSet::new());
 }
 
-/// Register `sub_id → author` in the W3 test-only thread-local.
-///
-/// Call before feeding wire frames to `handle_text` so `is_claim_expansion_oneshot`
-/// returns `true` and `lookup_claim_expansion_author` returns `Some(author)`.
 pub(crate) fn register_claim_expansion_sub(sub_id: &str, author: &str) {
     CLAIM_EXPANSION_SUBS.with(|m| {
         m.borrow_mut()
@@ -40,16 +25,31 @@ pub(crate) fn register_claim_expansion_sub(sub_id: &str, author: &str) {
     });
 }
 
-/// Retrieve the author for `sub_id` from the W3 test-only thread-local.
-///
-/// Returns `None` when the sub_id is not registered — production stub behaviour.
 pub(crate) fn get_claim_expansion_author(sub_id: &str) -> Option<String> {
     CLAIM_EXPANSION_SUBS.with(|m| m.borrow().get(sub_id).cloned())
 }
 
-/// Clear the W3 test-only thread-local (call in test teardown).
+pub(crate) fn mark_claim_expansion_match_seen(sub_id: &str, relay_url: &str) {
+    CLAIM_EXPANSION_MATCHES.with(|m| {
+        m.borrow_mut().insert((
+            sub_id.to_string(),
+            CanonicalRelayUrl::parse_or_raw(relay_url).into_string(),
+        ));
+    });
+}
+
+pub(crate) fn take_claim_expansion_match_seen(sub_id: &str, relay_url: &str) -> bool {
+    CLAIM_EXPANSION_MATCHES.with(|m| {
+        m.borrow_mut().remove(&(
+            sub_id.to_string(),
+            CanonicalRelayUrl::parse_or_raw(relay_url).into_string(),
+        ))
+    })
+}
+
 pub(crate) fn clear_claim_expansion_subs() {
     CLAIM_EXPANSION_SUBS.with(|m| m.borrow_mut().clear());
+    CLAIM_EXPANSION_MATCHES.with(|m| m.borrow_mut().clear());
 }
 
 impl Kernel {

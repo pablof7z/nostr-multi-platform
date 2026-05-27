@@ -1,39 +1,17 @@
-//! W3: score-update seam — translates wire-frame outcomes (EVENT = Hit,
-//! EOSE-without-match = EoseNoMatch, relay_failed = Failed) into score
-//! deltas via `relay_score::ClaimOutcome`.
-//!
-//! # Entry point
+//! W3: score-update seam — translates accepted claim-expansion outcomes
+//! (matching EVENT = Hit, EOSE-without-match = EoseNoMatch, relay_failed =
+//! Failed) into score deltas via `relay_score::ClaimOutcome`.
 //!
 //! [`Kernel::record_claim_outcome`] is the single, typed entry point.
 //! It converts the kernel's injected wall-clock to a `now_unix_s: u64`,
 //! delegates to [`relay_score::RelayAuthorScoreMap::record`] (which
 //! applies the §8.5 delta table and sets the dirty flag), and emits a
 //! `WireLogEvent::ScoreUpdate` when `NMP_CLAIM_LOG` is set.
-//!
-//! # Call-site stubs (W5 dependency)
-//!
-//! The production call sites in `ingest/mod.rs` (EVENT arm + EOSE arm)
-//! and `requests/relay_lifecycle.rs` (`relay_failed`) require W5's
-//! `pending_claims` and `claim_expansion_subs` structures. W3 wires the
-//! EVENT and EOSE arms in ingest via `is_claim_expansion_oneshot` /
-//! `lookup_claim_expansion_author` stubs that return `false` / `None`
-//! until W5 populates those maps. The `relay_failed` walk is a comment
-//! block only. This means the hooks are present and correct on the path;
-//! they simply never fire until W5 inserts real sub registrations.
-//!
-//! # Doctrine
-//!
-//! - **D0**: keys are `(author: &str, relay_url: &str)` — substrate types,
-//!   no protocol noun.
-//! - **D4**: `&mut self` — sole writer.
-//! - **D6**: total — unknown cells are inserted fresh via `entry().or_default()`.
-//! - **D8**: called only from already-edge-triggered seams (frame ingest,
-//!   transport-failure callback) — no new polling.
 
 use super::{
     relay_score::{ClaimOutcome, RelayAuthorScore},
     wire_log::{log_wire, WireLogEvent},
-    Kernel,
+    Kernel, NostrEvent,
 };
 
 impl Kernel {
@@ -74,18 +52,46 @@ impl Kernel {
         });
     }
 
-    /// Returns `true` if `sub_id` belongs to a claim-expansion subscription.
+    /// Return the claim author only when this EVENT belongs to the registered
+    /// claim-expansion sub and the event author matches that claim.
     ///
-    /// Stub: always returns `false` until W5 populates `claim_expansion_subs`.
-    /// The ingest EVENT and EOSE arms call this guard so they are correct and
-    /// present on the path; they simply never fire until W5 inserts real
-    /// registrations.
-    pub(crate) fn is_claim_expansion_oneshot(&self, sub_id: &str) -> bool {
-        // W5 dependency: claim_expansion_subs map doesn't exist yet.
-        // When W5 adds `claim_expansion_subs: BTreeMap<String, Pubkey>` to
-        // the Kernel struct, replace this body with:
-        //   self.claim_expansion_subs.contains_key(sub_id)
-        self.claim_expansion_sub_author_test(sub_id).is_some()
+    /// W5 will replace the author-only test seam with the full pending-claim
+    /// shape, including event id / address constraints. W3 still performs the
+    /// available match check here so invalid or wrong-author relay frames cannot
+    /// teach the score map.
+    pub(in crate::kernel) fn claim_expansion_match_author(
+        &self,
+        sub_id: &str,
+        event: &NostrEvent,
+    ) -> Option<String> {
+        let author = self.lookup_claim_expansion_author(sub_id)?;
+        (event.pubkey == author).then_some(author)
+    }
+
+    /// Record an accepted matching EVENT for a claim-expansion sub.
+    pub(in crate::kernel) fn record_claim_expansion_hit(
+        &mut self,
+        sub_id: &str,
+        relay_url: &str,
+        author: &str,
+    ) {
+        self.record_claim_outcome(author, relay_url, ClaimOutcome::Hit);
+        self.mark_claim_expansion_match_seen(sub_id, relay_url);
+    }
+
+    /// Record EOSE-without-match only if no accepted matching EVENT was seen
+    /// for the same `(sub_id, relay_url)` subscription.
+    pub(in crate::kernel) fn record_claim_expansion_eose_no_match(
+        &mut self,
+        sub_id: &str,
+        relay_url: &str,
+    ) {
+        if self.take_claim_expansion_match_seen(sub_id, relay_url) {
+            return;
+        }
+        if let Some(author) = self.lookup_claim_expansion_author(sub_id) {
+            self.record_claim_outcome(&author, relay_url, ClaimOutcome::EoseNoMatch);
+        }
     }
 
     /// Returns the author pubkey for a claim-expansion subscription, if any.
@@ -111,22 +117,38 @@ impl Kernel {
             None
         }
     }
-}
 
-// ---------------------------------------------------------------------------
-// Tests — TDD red→green. Tests 1–6 exercise `record_claim_outcome` directly
-// so they compile before the ingest wiring lands. Test #7 is the
-// wire-shaped end-to-end path through `handle_text`.
-// ---------------------------------------------------------------------------
+    fn mark_claim_expansion_match_seen(&self, sub_id: &str, relay_url: &str) {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            use super::test_support;
+            test_support::mark_claim_expansion_match_seen(sub_id, relay_url);
+        }
+        #[cfg(not(any(test, feature = "test-support")))]
+        {
+            let _ = (sub_id, relay_url);
+        }
+    }
+
+    fn take_claim_expansion_match_seen(&self, sub_id: &str, relay_url: &str) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            use super::test_support;
+            return test_support::take_claim_expansion_match_seen(sub_id, relay_url);
+        }
+        #[cfg(not(any(test, feature = "test-support")))]
+        {
+            let _ = (sub_id, relay_url);
+            false
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::super::{relay_score::ClaimOutcome, wire_log::write_wire_line, Kernel};
+    use super::super::{relay_score::ClaimOutcome, wire_log::write_wire_line, Kernel, NostrEvent};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
-    // -----------------------------------------------------------------------
-    // Test 1 — Hit increments successes and stamps last_used.
-    // -----------------------------------------------------------------------
     #[test]
     fn hit_increments_successes_and_sets_now() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -138,10 +160,6 @@ mod tests {
         assert!(cell.last_used_unix_s > 0, "Hit must stamp last_used_unix_s");
     }
 
-    // -----------------------------------------------------------------------
-    // Test 2 — EoseNoMatch is neutral: counters unchanged, recency stamp moves.
-    // §8.5 amendment.
-    // -----------------------------------------------------------------------
     #[test]
     fn eose_no_match_is_neutral_no_score_change() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -162,9 +180,6 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Test 3 — Failed increments failures by 3 (large penalty per §8.5).
-    // -----------------------------------------------------------------------
     #[test]
     fn failed_after_retries_increments_failures_by_three() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -175,9 +190,6 @@ mod tests {
         assert_eq!(cell.failures, 3, "Failed must add 3 to failures (§8.5)");
     }
 
-    // -----------------------------------------------------------------------
-    // Test 4 — Dirty flag is set after any `record_claim_outcome` call.
-    // -----------------------------------------------------------------------
     #[test]
     fn dirty_flag_set_after_any_record() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -193,10 +205,6 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Test 5 — Canonicalization: trailing-slash URL and bare URL key same cell.
-    // §8.10 amendment.
-    // -----------------------------------------------------------------------
     #[test]
     fn record_canonicalizes_url_before_keying() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -210,11 +218,6 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Test 6 — Wire-log output: ScoreUpdate variant serialises correctly.
-    // Uses `write_wire_line` directly with a Vec<u8> sink (same pattern as
-    // wire_log_tests.rs, avoids the OnceLock env-var trap).
-    // -----------------------------------------------------------------------
     #[test]
     fn record_emits_score_update_wire_log_event() {
         use super::super::relay_score::RelayAuthorScore;
@@ -249,50 +252,194 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Test 7 — Wire-shaped end-to-end: feeding an EVENT frame for a registered
-    // claim-expansion sub records a Hit on the correct (author, relay) cell.
-    //
-    // Uses the test-support seam in `kernel/test_support.rs` to register
-    // the sub_id → author mapping before feeding the wire frame, exercising
-    // the dormant `is_claim_expansion_oneshot` / `lookup_claim_expansion_author`
-    // hooks in `ingest/mod.rs`.
-    // -----------------------------------------------------------------------
     #[test]
-    fn claim_expansion_event_hit_records_score() {
+    fn claim_expansion_event_hit_records_score_after_acceptance() {
         use super::super::test_support;
         use crate::relay::RelayRole;
 
+        test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let keys = ::nostr::Keys::generate();
 
         let sub_id = "claim-exp-test-sub-001";
         let relay_url = "wss://relay.claim-expansion.test";
-        let author_hex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let event = signed_note(&keys, "claim hit", 1_700_000_000);
+        let author_hex = event.pubkey.clone();
 
-        // Register the (sub_id → author) mapping in the test-only seam.
-        test_support::register_claim_expansion_sub(sub_id, author_hex);
+        test_support::register_claim_expansion_sub(sub_id, &author_hex);
 
-        // Score map must start empty for this pair.
-        let cell_before = kernel.get_relay_score(author_hex, relay_url);
+        let cell_before = kernel.get_relay_score(&author_hex, relay_url);
         assert_eq!(
             cell_before.successes, 0,
             "cell must start with zero successes"
         );
 
-        // Feed an EVENT frame for the registered claim-expansion sub.
-        let event_json = format!(
-            r#"["EVENT","{sub_id}",{{"id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","pubkey":"{author_hex}","created_at":1700000000,"kind":1,"tags":[],"content":"test","sig":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}]"#
-        );
+        kernel.handle_text(RelayRole::Indexer, relay_url, &event_frame(sub_id, &event));
 
-        kernel.handle_text(RelayRole::Indexer, relay_url, &event_json);
-
-        let cell_after = kernel.get_relay_score(author_hex, relay_url);
+        let cell_after = kernel.get_relay_score(&author_hex, relay_url);
         assert_eq!(
             cell_after.successes, 1,
-            "EVENT on a claim-expansion sub must record a Hit (successes=1)"
+            "accepted matching EVENT on a claim-expansion sub must record a Hit"
         );
 
-        // Cleanup test seam.
         test_support::clear_claim_expansion_subs();
+    }
+
+    #[test]
+    fn claim_expansion_invalid_event_does_not_record_hit() {
+        use super::super::test_support;
+        use crate::relay::RelayRole;
+
+        test_support::clear_claim_expansion_subs();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let keys = ::nostr::Keys::generate();
+
+        let sub_id = "claim-exp-test-sub-invalid";
+        let relay_url = "wss://relay.claim-expansion.test";
+        let mut event = signed_note(&keys, "bad signature", 1_700_000_001);
+        event.sig = "c".repeat(128);
+        let author_hex = event.pubkey.clone();
+        test_support::register_claim_expansion_sub(sub_id, &author_hex);
+
+        kernel.handle_text(RelayRole::Indexer, relay_url, &event_frame(sub_id, &event));
+
+        let cell_after = kernel.get_relay_score(&author_hex, relay_url);
+        assert_eq!(cell_after.successes, 0);
+        assert!(
+            !kernel.test_relay_score_dirty(),
+            "invalid EVENT must not dirty the relay-score map"
+        );
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    #[test]
+    fn claim_expansion_wrong_author_event_does_not_record_hit() {
+        use super::super::test_support;
+        use crate::relay::RelayRole;
+
+        test_support::clear_claim_expansion_subs();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let claim_keys = ::nostr::Keys::generate();
+        let event_keys = ::nostr::Keys::generate();
+
+        let sub_id = "claim-exp-test-sub-wrong-author";
+        let relay_url = "wss://relay.claim-expansion.test";
+        let claim_author = claim_keys.public_key().to_hex();
+        let event = signed_note(&event_keys, "wrong author", 1_700_000_002);
+        test_support::register_claim_expansion_sub(sub_id, &claim_author);
+
+        kernel.handle_text(RelayRole::Indexer, relay_url, &event_frame(sub_id, &event));
+
+        let cell_after = kernel.get_relay_score(&claim_author, relay_url);
+        assert_eq!(cell_after.successes, 0);
+        assert!(
+            !kernel.test_relay_score_dirty(),
+            "wrong-author EVENT must not dirty the relay-score map"
+        );
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    #[test]
+    fn claim_expansion_eose_after_hit_does_not_record_no_match() {
+        use super::super::test_support;
+        use crate::relay::RelayRole;
+
+        test_support::clear_claim_expansion_subs();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let keys = ::nostr::Keys::generate();
+
+        let sub_id = "claim-exp-test-sub-hit-then-eose";
+        let relay_url = "wss://relay.claim-expansion.test";
+        let event = signed_note(&keys, "hit before eose", 1_700_000_003);
+        let author_hex = event.pubkey.clone();
+        test_support::register_claim_expansion_sub(sub_id, &author_hex);
+
+        kernel.handle_text(RelayRole::Indexer, relay_url, &event_frame(sub_id, &event));
+        let cell_after_hit = kernel.get_relay_score(&author_hex, relay_url);
+        assert_eq!(cell_after_hit.successes, 1);
+        kernel.relay_score_map.mark_clean();
+
+        kernel.handle_text(RelayRole::Indexer, relay_url, &eose_frame(sub_id));
+
+        let cell_after_eose = kernel.get_relay_score(&author_hex, relay_url);
+        assert_eq!(cell_after_eose.successes, 1);
+        assert!(
+            !kernel.test_relay_score_dirty(),
+            "EOSE after an accepted match must not record EoseNoMatch"
+        );
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    #[test]
+    fn claim_expansion_eose_without_match_records_neutral_outcome() {
+        use super::super::test_support;
+        use crate::relay::RelayRole;
+
+        test_support::clear_claim_expansion_subs();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+        let sub_id = "claim-exp-test-sub-eose-only";
+        let relay_url = "wss://relay.claim-expansion.test";
+        let author_hex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        test_support::register_claim_expansion_sub(sub_id, author_hex);
+        kernel.record_claim_outcome(author_hex, relay_url, ClaimOutcome::Hit);
+        kernel.relay_score_map.mark_clean();
+
+        kernel.handle_text(RelayRole::Indexer, relay_url, &eose_frame(sub_id));
+
+        let cell_after_eose = kernel.get_relay_score(author_hex, relay_url);
+        assert_eq!(cell_after_eose.successes, 1);
+        assert_eq!(cell_after_eose.failures, 0);
+        assert!(
+            kernel.test_relay_score_dirty(),
+            "EOSE without a matching EVENT must record the neutral recency outcome"
+        );
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
+        use ::nostr::{EventBuilder, Timestamp};
+        let nostr_event = EventBuilder::text_note(content)
+            .custom_created_at(Timestamp::from(ts))
+            .sign_with_keys(keys)
+            .expect("sign_with_keys cannot fail with a generated keypair");
+        NostrEvent {
+            id: nostr_event.id.to_hex(),
+            pubkey: nostr_event.pubkey.to_hex(),
+            created_at: nostr_event.created_at.as_secs(),
+            kind: nostr_event.kind.as_u16() as u32,
+            tags: nostr_event
+                .tags
+                .iter()
+                .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+                .collect(),
+            content: nostr_event.content.clone(),
+            sig: nostr_event.sig.to_string(),
+        }
+    }
+
+    fn event_frame(sub_id: &str, event: &NostrEvent) -> String {
+        serde_json::json!([
+            "EVENT",
+            sub_id,
+            {
+                "id": event.id,
+                "pubkey": event.pubkey,
+                "created_at": event.created_at,
+                "kind": event.kind,
+                "tags": event.tags,
+                "content": event.content,
+                "sig": event.sig,
+            }
+        ])
+        .to_string()
+    }
+
+    fn eose_frame(sub_id: &str) -> String {
+        serde_json::json!(["EOSE", sub_id]).to_string()
     }
 }

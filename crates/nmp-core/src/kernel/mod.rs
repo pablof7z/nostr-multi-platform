@@ -126,8 +126,7 @@ mod raw_event_observer_tests;
 mod relay_score_flush;
 // W3 — score-update seam: edge-triggered hooks translate wire-frame outcomes
 // (EVENT = Hit, EOSE = EoseNoMatch, relay_failed = Failed) into score deltas.
-// Stub predicates (`is_claim_expansion_oneshot`, `lookup_claim_expansion_author`)
-// return false/None until W5 populates `claim_expansion_subs`.
+// The author lookup is a test seam until W5 populates `claim_expansion_subs`.
 mod relay_score_record;
 mod replay;
 #[cfg(test)]
@@ -1256,8 +1255,8 @@ impl Kernel {
     ) -> Self {
         let store_bundle = build_event_store(storage_path);
         let store = store_bundle.store;
-        let publish_store = publish_store
-            .unwrap_or_else(|| resolve_publish_store(storage_path, &store));
+        let publish_store =
+            publish_store.unwrap_or_else(|| resolve_publish_store(storage_path, &store));
         let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         // Typed-slot constructors so the slot's purpose is visible at
