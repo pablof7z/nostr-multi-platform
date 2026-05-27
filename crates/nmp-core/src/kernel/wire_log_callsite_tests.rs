@@ -2,16 +2,18 @@
 //!
 //! Verifies that `log_wire` emissions fire at the correct seams without
 //! coupling to the `NMP_CLAIM_LOG` `OnceLock` (which is set-once and
-//! unreliable across test threads). All assertions drive
-//! `write_wire_line` directly with `enabled = true`.
+//! unreliable across test threads). Schema tests (T1–T4) drive
+//! `write_wire_line` directly with `enabled = true`. Production-ingest
+//! tests (T5–T6) drive `handle_text` through the real kernel and assert
+//! observable side-effects, confirming the call-site wiring is live.
 //!
 //! # Test seam
 //!
 //! `write_wire_line<W: IoWrite>(w, enabled, event)` is `pub(super)` and
-//! exposed for tests inside the `kernel` module tree. Each test builds
-//! the `WireLogEvent` that the call site _would_ emit, feeds it through
-//! `write_wire_line`, and asserts the JSON fields that W9's grep-based
-//! acceptance tests rely on.
+//! exposed for tests inside the `kernel` module tree. Each schema test
+//! builds the `WireLogEvent` that the call site _would_ emit, feeds it
+//! through `write_wire_line`, and asserts the JSON fields that W9's
+//! grep-based acceptance tests rely on.
 //!
 //! # Tests
 //!
@@ -22,6 +24,17 @@
 //! 3. `req_emit_phase1_emits_req_emit_line` — constructs a
 //!    `WireLogEvent::ReqEmit` for a phase1 claim REQ and verifies the
 //!    JSON schema.
+//! 4. `eose_no_match_emits_eose_rx_line` — schema pin for
+//!    `EoseRx{matched:false}`.
+//! 5. `event_hit_wires_event_rx_via_production_ingest` — drives a real
+//!    `handle_text(EVENT)` frame through the kernel; asserts the
+//!    `record_claim_expansion_hit` call-site (and hence `EventRx` log
+//!    call) executed by checking the relay-score successes counter.
+//! 6. `eose_after_hit_wires_eose_rx_matched_true_via_production_ingest` —
+//!    drives `handle_text(EVENT)` followed by `handle_text(EOSE)`; asserts
+//!    that the `EoseRx{matched:true}` early-return branch in
+//!    `record_claim_expansion_eose_no_match` executed (score unchanged,
+//!    dirty flag not re-set after the EOSE).
 
 #[cfg(test)]
 mod tests {
@@ -183,5 +196,139 @@ mod tests {
         assert_eq!(v["type"], "EoseRx", "discriminant must be EoseRx");
         assert_eq!(v["sub_id"], "sub-claim-eose-test");
         assert_eq!(v["matched"], false);
+    }
+
+    // ── T5: production-ingest — EventRx call-site wired ──────────────────────
+
+    /// Drives a real `handle_text(EVENT)` frame through the kernel and
+    /// asserts that `record_claim_expansion_hit` (and hence the W8b
+    /// `EventRx` log call) executed by checking the relay-score
+    /// successes counter. We cannot capture the actual `log_wire` output
+    /// (it targets stderr and is gated by `NMP_CLAIM_LOG` via OnceLock),
+    /// so the test pins the side-effect that proves the call-site ran.
+    #[test]
+    fn event_hit_wires_event_rx_via_production_ingest() {
+        use super::super::test_support;
+        use super::super::Kernel;
+        use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+
+        test_support::clear_claim_expansion_subs();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+        let keys = ::nostr::Keys::generate();
+        let sub_id = "sub-w8b-callsite-event-rx";
+        let relay_url = "wss://w8b-callsite-event.test";
+        let event = signed_note(&keys, "w8b EventRx call-site proof", 1_700_010_000);
+        let author_hex = event.pubkey.clone();
+
+        test_support::register_claim_expansion_sub(sub_id, &author_hex);
+
+        let before = kernel.get_relay_score(&author_hex, relay_url);
+        assert_eq!(before.successes, 0, "pre-condition: zero successes");
+
+        kernel.handle_text(RelayRole::Indexer, relay_url, &event_frame(sub_id, &event));
+
+        let after = kernel.get_relay_score(&author_hex, relay_url);
+        assert_eq!(
+            after.successes, 1,
+            "record_claim_expansion_hit (EventRx call site) must record a Hit; successes stayed at 0"
+        );
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    // ── T6: production-ingest — EoseRx{matched:true} call-site wired ─────────
+
+    /// Drives `handle_text(EVENT)` then `handle_text(EOSE)` through the kernel
+    /// and asserts that the `EoseRx{matched:true}` early-return branch in
+    /// `record_claim_expansion_eose_no_match` was taken. Evidence: the EOSE
+    /// must NOT record a second score outcome — successes stays at 1 and
+    /// failures stays at 0, which is only possible if the early-return (which
+    /// now carries the W8b `EoseRx{matched:true}` log call) was executed.
+    #[test]
+    fn eose_after_hit_wires_eose_rx_matched_true_via_production_ingest() {
+        use super::super::test_support;
+        use super::super::Kernel;
+        use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+
+        test_support::clear_claim_expansion_subs();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+        let keys = ::nostr::Keys::generate();
+        let sub_id = "sub-w8b-callsite-eose-matched";
+        let relay_url = "wss://w8b-callsite-eose-matched.test";
+        let event = signed_note(&keys, "w8b EoseRx matched:true proof", 1_700_020_000);
+        let author_hex = event.pubkey.clone();
+
+        test_support::register_claim_expansion_sub(sub_id, &author_hex);
+
+        // Phase 1: fire the EVENT hit — sets match-seen flag, scores a Hit.
+        kernel.handle_text(RelayRole::Indexer, relay_url, &event_frame(sub_id, &event));
+        assert_eq!(
+            kernel.get_relay_score(&author_hex, relay_url).successes,
+            1,
+            "pre-condition: EVENT hit must record successes=1"
+        );
+
+        // Phase 2: fire the EOSE — must hit the matched:true early-return
+        // branch in record_claim_expansion_eose_no_match and NOT record a
+        // second score outcome (failures stays 0, successes stays 1).
+        kernel.handle_text(RelayRole::Indexer, relay_url, &eose_frame(sub_id));
+
+        let after_eose = kernel.get_relay_score(&author_hex, relay_url);
+        assert_eq!(
+            after_eose.successes, 1,
+            "EOSE after hit must not change successes (EoseRx{{matched:true}} branch taken)"
+        );
+        assert_eq!(
+            after_eose.failures, 0,
+            "EOSE after hit must not record any failures (EoseRx{{matched:true}} branch taken)"
+        );
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    // ── helpers (production-ingest tests) ────────────────────────────────────
+
+    fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> super::super::NostrEvent {
+        use nostr::{EventBuilder, Timestamp};
+        let nostr_event = EventBuilder::text_note(content)
+            .custom_created_at(Timestamp::from(ts))
+            .sign_with_keys(keys)
+            .expect("sign_with_keys cannot fail with a generated keypair");
+        super::super::NostrEvent {
+            id: nostr_event.id.to_hex(),
+            pubkey: nostr_event.pubkey.to_hex(),
+            created_at: nostr_event.created_at.as_secs(),
+            kind: nostr_event.kind.as_u16() as u32,
+            tags: nostr_event
+                .tags
+                .iter()
+                .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+                .collect(),
+            content: nostr_event.content.clone(),
+            sig: nostr_event.sig.to_string(),
+        }
+    }
+
+    fn event_frame(sub_id: &str, event: &super::super::NostrEvent) -> String {
+        serde_json::json!([
+            "EVENT",
+            sub_id,
+            {
+                "id": event.id,
+                "pubkey": event.pubkey,
+                "created_at": event.created_at,
+                "kind": event.kind,
+                "tags": event.tags,
+                "content": event.content,
+                "sig": event.sig,
+            }
+        ])
+        .to_string()
+    }
+
+    fn eose_frame(sub_id: &str) -> String {
+        serde_json::json!(["EOSE", sub_id]).to_string()
     }
 }
