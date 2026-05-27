@@ -10,7 +10,7 @@ The concrete FFI API is per-app generated. `nmp-core` defines kernel primitives 
 
 ### 6.1 The App handle
 
-`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. Per RMP bible, it is a `uniffi::Object` constructed once per process. UniFFI owns object lifetime, callback registration, and capability interfaces; the hot Rust-to-frontend update payload is the canonical FlatBuffers schema, not UniFFI records.
+`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. It is a `uniffi::Object` constructed once per process. UniFFI owns object lifetime, callback registration, and capability interfaces; the hot Rust-to-frontend update payload is the canonical FlatBuffers schema, not UniFFI records.
 
 ```rust
 #[derive(uniffi::Object)]
