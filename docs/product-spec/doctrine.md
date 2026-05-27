@@ -1,8 +1,12 @@
 # Cardinal Doctrines D0–D10
 
-Eleven named principles that subsume the rest of the spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+These are not guidelines. They are the reasons why certain bugs are impossible to introduce through the safe API.
 
-**Two kinds of doctrine.** D0–D5 and D10 are *policy* doctrines — they govern user-facing semantics (what the framework promises, what it forbids). D6–D9 are *substrate invariants* — they govern how the runtime is allowed to be implemented (what crosses FFI, how state propagates, what the hot path can do, how time is decided). Both kinds are equally binding. Policy review flags "this API choice violates a user-facing principle"; substrate review flags "this implementation choice will leak across FFI, hide policy on the native side, degrade reactivity, or trust a value the kernel must own."
+When you try to route a DM to a public relay, D10 stops you. When you want a spinner while a profile loads, D1 stops you. When you try to pick relays per-publish, D3 stops you. The framework doesn't document footguns — it refuses to expose the API that lets you make those mistakes.
+
+Eleven principles in total. Every API decision answers to at least one; conflicts resolve in the order listed (D0 outranks D1, D1 outranks D2, and so on).
+
+**Two kinds.** D0–D5 and D10 are *policy* doctrines — they govern what the framework promises and forbids. D6–D9 are *substrate invariants* — they govern how the runtime is implemented: what crosses FFI, how state propagates, what the hot path may do, who owns time. Both are equally binding. The split only changes the kind of review question: "does this API choice violate a user-facing promise?" (policy) vs. "does this implementation leak across the boundary, degrade reactivity, or trust something the kernel must own?" (substrate).
 
 ## D0. Kernel + extension modules — no app nouns in `nmp-core`
 
