@@ -323,8 +323,12 @@ impl AppRuntime {
 }
 
 fn marmot_db_dir() -> String {
-    std::env::temp_dir()
-        .join(format!("chirp-tui-marmot-{}", std::process::id()))
+    crate::keyring::chirp_data_dir()
+        .map(|p| p.join("marmot"))
+        .and_then(|p| std::fs::create_dir_all(&p).ok().map(|_| p))
+        .unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("chirp-tui-marmot-{}", std::process::id()))
+        })
         .to_string_lossy()
         .into_owned()
 }

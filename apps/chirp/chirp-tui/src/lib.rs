@@ -6,6 +6,7 @@ pub mod commands;
 pub mod feature_snapshot;
 pub mod features;
 pub mod input;
+pub(crate) mod keyring;
 pub mod media_cache;
 pub mod render_intents;
 pub mod runtime;
