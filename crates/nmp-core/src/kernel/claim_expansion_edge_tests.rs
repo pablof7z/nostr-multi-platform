@@ -308,7 +308,7 @@ mod edge_tests {
             InterestId(70915),
         );
 
-        kernel.record_claim_expansion_hit(sub_id, relay_url, &author);
+        kernel.record_claim_expansion_hit(sub_id, relay_url, &author, "test-event-id-0001");
 
         assert!(
             kernel.test_claim_phase(&primary_id).is_none(),
