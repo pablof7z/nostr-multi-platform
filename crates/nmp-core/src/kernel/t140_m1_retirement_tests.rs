@@ -20,8 +20,7 @@
 //!   `seed-timeline-*` keep-alive behaviour.
 //!
 //! - [`m2_follow_feed_interest_carries_limit`] — the M2 follow-feed REQ must
-//!   carry `"limit":200` (parity with the retired M1 REQ; no unbounded
-//!   backfill).
+//!   carry `"limit":1000` (the follow-feed backfill cap; no unbounded backfill).
 //!
 //! - [`empty_follows_clears_timeline_authors_and_interests`] — an active
 //!   account with no cached follows must CLEAR stale follow-feed interest ids
@@ -198,8 +197,7 @@ fn m2_follow_feed_sub_survives_eose() {
 
 // ─── limit parity (no unbounded backfill) ────────────────────────────────────
 
-/// The M2 follow-feed REQ must carry `"limit":200` — parity with the retired
-/// M1 `{"kinds":[1,6],"authors":[...],"limit":200}` REQ.
+/// The M2 follow-feed REQ must carry `"limit":1000` — the follow-feed backfill cap.
 #[test]
 fn m2_follow_feed_interest_carries_limit() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -226,9 +224,8 @@ fn m2_follow_feed_interest_carries_limit() {
         })
         .expect("M2 drain must emit a follow-feed REQ");
     assert!(
-        filter.contains("\"limit\":200"),
-        "T140: M2 follow-feed REQ must carry limit:200 (parity with retired M1 \
-         REQ; no unbounded backfill). Got filter: {filter}"
+        filter.contains("\"limit\":1000"),
+        "T140: M2 follow-feed REQ must carry limit:1000. Got filter: {filter}"
     );
 }
 

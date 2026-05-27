@@ -16,19 +16,15 @@ fn follow_feed_interest_id(pubkey: &str) -> InterestId {
     InterestId(stable_hash64(("t140-follow-feed", pubkey)))
 }
 
-/// Per-author cap on the follow-feed REQ. Parity with the retired M1
-/// `seed-timeline-*` REQ, which carried `{"kinds":[1,6],"authors":[...],
-/// "limit":200}` (no since/until). Without this an `InterestShape` with no
-/// bounds risks an unbounded backfill on the wire (codex finding #6).
-const FOLLOW_FEED_LIMIT: u32 = 200;
+/// Per-author cap on the follow-feed REQ. Without this an `InterestShape` with
+/// no bounds risks an unbounded backfill on the wire (codex finding #6).
+const FOLLOW_FEED_LIMIT: u32 = 1000;
 
 /// Build a `LogicalInterest` for a single follow-feed pubkey (kinds 1 and 6,
 /// `InterestLifecycle::Tailing`, `InterestScope::Global`).
 ///
-/// T140: carries `limit: Some(200)` for parity with the retired M1 REQ. M1
-/// set no `since`/`until`, so parity is `limit` only (the relay returns the
-/// newest 200 and then tails — `Tailing` lifecycle keeps the sub live past
-/// EOSE for new events).
+/// T140: carries `limit: Some(1000)`. The relay returns the newest 1000 events
+/// and then tails — `Tailing` lifecycle keeps the sub live past EOSE for new events.
 fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
     let mut authors = BTreeSetInner::new();
     authors.insert(pubkey.to_string());

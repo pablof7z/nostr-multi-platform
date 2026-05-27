@@ -261,7 +261,7 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
             .expect("follow feed filter must carry kinds");
         assert!(kinds.contains(&Value::from(1)));
         assert!(kinds.contains(&Value::from(6)));
-        assert_eq!(json.get("limit"), Some(&Value::from(200)));
+        assert_eq!(json.get("limit"), Some(&Value::from(1000)));
     }
 }
 
