@@ -107,6 +107,7 @@ const PERMANENT_CODES: &[&str] = &[
     "restricted",
     "invalid",
     "duplicate",
+    "mute",
 ];
 
 /// Engine-internal classification of a raw ack. Drives retry policy without
@@ -121,10 +122,10 @@ pub(crate) enum AckClass {
     /// backoff. Default verdict for unknown codes (conservative).
     Transient,
     /// `blocked` / `pow` / `rate-limited` / `restricted` / `invalid` /
-    /// `duplicate` — permanent rejection; do not retry, surface to the
-    /// snapshot. Also: a successful ack (`ok=true`) is conceptually permanent
-    /// but never reaches the classifier (the engine routes it to `Settled(Ok)`
-    /// without consulting `AckClass`).
+    /// `duplicate` / `mute` — permanent rejection; do not retry, surface to
+    /// the snapshot. Also: a successful ack (`ok=true`) is conceptually
+    /// permanent but never reaches the classifier (the engine routes it to
+    /// `Settled(Ok)` without consulting `AckClass`).
     Permanent,
 }
 
