@@ -61,6 +61,10 @@ pub fn render_with_context(frame: &mut Frame<'_>, state: &AppState, context: &Re
         render_compose_modal(frame, area, state);
     }
 
+    if state.mode == Mode::ModalForm {
+        render_modal_form(frame, area, state);
+    }
+
     if let Mode::RawEventModal { scroll } = state.mode {
         raw_event_modal::render(frame, area, state, scroll);
     }
@@ -77,7 +81,9 @@ fn render_welcome(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         Line::from(""),
         Line::from(Span::styled(
             "chirp",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "the nostr social client",
@@ -117,13 +123,19 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             lower.contains("connected") || lower == "open"
         })
         .count();
-    let relay_dot = if connected > 0 { '\u{25cf}' } else { '\u{25cb}' };
+    let relay_dot = if connected > 0 {
+        '\u{25cf}'
+    } else {
+        '\u{25cb}'
+    };
     let relay_color = if connected > 0 { RELAY_OK } else { RELAY_DOWN };
 
     let title = Line::from(vec![
         Span::styled(
             "chirp",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
         Span::styled(account, Style::default().fg(DIM_TEXT)),
@@ -166,24 +178,6 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             label,
             format!("{}\u{2588}\nEnter confirm  Esc cancel", display),
         )
-    } else if state.mode == Mode::ModalForm {
-        let fields: String = state
-            .modal_fields
-            .iter()
-            .enumerate()
-            .map(|(i, (l, v))| {
-                if i == state.modal_cursor {
-                    format!("{}: {}\u{2588}", l, v)
-                } else {
-                    format!("{}: {}", l, v)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("  \u{2502}  ");
-        (
-            state.modal_title.clone(),
-            format!("{}\nTab next  Enter submit  Esc cancel", fields),
-        )
     } else if state.mode == Mode::AccountSwitcher {
         let accounts = state
             .features
@@ -212,6 +206,78 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     };
     let compose = Paragraph::new(body).block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(compose, area);
+}
+
+fn render_modal_form(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let field_count = state.modal_fields.len() as u16;
+    let width = ((area.width as u32 * 64 / 100) as u16).clamp(46, 76);
+    let height = (field_count.saturating_mul(2) + 5).clamp(9, 18);
+    let popup = centered_rect(area, width, height);
+
+    frame.render_widget(Clear, popup);
+
+    let title = if state.modal_title.is_empty() {
+        " Form ".to_string()
+    } else {
+        format!(" {} ", state.modal_title)
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(ACCENT_CYAN));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(inner);
+
+    let mut lines = Vec::new();
+    for (index, (label, value)) in state.modal_fields.iter().enumerate() {
+        let focused = index == state.modal_cursor;
+        let label_style = if focused {
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(DIM_TEXT)
+        };
+        let value_style = if focused {
+            Style::default().fg(BODY_TEXT)
+        } else {
+            Style::default().fg(DIM_TEXT)
+        };
+        let cursor = if focused { "\u{2588}" } else { "" };
+        lines.push(Line::from(Span::styled(label.clone(), label_style)));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(format!("{value}{cursor}"), value_style),
+        ]));
+    }
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().fg(BODY_TEXT))
+            .wrap(Wrap { trim: false }),
+        rows[0],
+    );
+
+    let key_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(DIM_TEXT);
+    let hint_line = Line::from(vec![
+        Span::styled("Tab", key_style),
+        Span::styled(" next  ", desc_style),
+        Span::styled("Shift+Tab", key_style),
+        Span::styled(" previous  ", desc_style),
+        Span::styled("Enter", key_style),
+        Span::styled(" submit  ", desc_style),
+        Span::styled("Esc", key_style),
+        Span::styled(" cancel", desc_style),
+    ]);
+    frame.render_widget(Paragraph::new(hint_line), rows[1]);
 }
 
 fn tab_labels(state: &AppState) -> String {
@@ -278,7 +344,9 @@ fn render_compose_modal(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .constraints([Constraint::Min(0), Constraint::Length(12)])
         .split(inner_rows[1]);
 
-    let key_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let key_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(DIM_TEXT);
     let hint_line = Line::from(vec![
         Span::styled("Enter", key_style),

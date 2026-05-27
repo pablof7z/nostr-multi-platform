@@ -169,7 +169,7 @@ animations.
 
 ### F6 — Group chat (Marmot MLS)
 - Room list + chat log; same bubble layout as DMs
-- `/mls invite` / `/mls accept` via command palette
+- `n` opens a centered Create group modal for protocol, name, relays, NIP-29 local id, and MLS invitees; `/group` and `/mls` commands remain power-user paths
 
 ### F7 — Search
 - `/search #tag` opens firehose-tag feed tab
