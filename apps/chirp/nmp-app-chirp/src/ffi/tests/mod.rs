@@ -4,6 +4,8 @@
 //! sub-modules (V-09b) so each test file stays under the 500-LOC ceiling.
 
 mod helpers;
+#[cfg(feature = "marmot")]
+mod identity;
 mod nip17;
 mod nip29;
 mod nip57;
