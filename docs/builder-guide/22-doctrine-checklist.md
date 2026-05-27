@@ -3,9 +3,8 @@
 > **Status: SHIPS.** Audience: agents (and human reviewers). This is the
 > operational checklist; the *why* lives in
 > [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md). Canon:
-> [`docs/product-spec/doctrine.md`](../product-spec/doctrine.md),
-> [`docs/product-spec/overview-and-dx.md`](../product-spec/overview-and-dx.md)
-> §1.5. Resolve conflicts in listed order (D0 > D1 > … > D10).
+> [`docs/product-spec/doctrine.md`](../product-spec/doctrine.md).
+> Resolve conflicts in listed order (D0 > D1 > … > D10).
 
 ## How this is consumed
 

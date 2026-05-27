@@ -51,7 +51,7 @@ final class KernelHandle {
 Every command method is **fire-and-forget** — `nmp_app_open_author` returns
 `void`. There is no synchronous "give me the result". State change arrives only
 later, via the callback, as a fresh snapshot. That is the actor model (see
-[04 — RMP + actor model](04-actor-and-tea.md)) crossing FFI intact.
+[04 — Actor model (TEA on one thread)](04-actor-and-tea.md)) crossing FFI intact.
 
 The C callback (`KernelBridge.swift:101-110`) is invoked **on a Rust thread**.
 In the legacy path it decodes JSON; in the FlatBuffers target it reads the
@@ -173,6 +173,6 @@ of the iOS path is drift; see [27 — Doc/code discrepancies](27-discrepancies.m
 - Rust emit → SwiftUI re-render sequence with the rev guard placed exactly.
 - FlatBuffers update shape + rev-guard code; per-iOS-app status box.
 
-See also: [04 — RMP + actor model (TEA on one thread)](04-actor-and-tea.md) ·
+See also: [04 — Actor model (TEA on one thread) (TEA on one thread)](04-actor-and-tea.md) ·
 [15 — Codegen and FFI](15-codegen-and-ffi.md) ·
 [16 — Capabilities (D7)](16-capabilities.md)
