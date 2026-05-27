@@ -96,11 +96,15 @@ impl Kernel {
 
     /// Returns the author pubkey for a claim-expansion subscription, if any.
     ///
-    /// Stub: always returns `None` until W5 populates `claim_expansion_subs`.
-    pub(crate) fn lookup_claim_expansion_author<'a>(&'a self, sub_id: &str) -> Option<String> {
-        // W5 dependency: when W5 adds `claim_expansion_subs: BTreeMap<String, Pubkey>`,
-        // replace this body with:
-        //   self.claim_expansion_subs.get(sub_id).cloned()
+    /// W5 implementation: looks up the originating claim via the twin BTreeMaps
+    /// (`claim_sub_index` → `pending_claims` → `author`). Falls back to the
+    /// test-support seam for W3 tests that inject via `register_claim_expansion_sub`.
+    pub(crate) fn lookup_claim_expansion_author(&self, sub_id: &str) -> Option<String> {
+        // Primary path: W5 twin-map lookup (O(log N)).
+        if let Some(author) = self.lookup_claim_author_by_sub_id(sub_id) {
+            return Some(author);
+        }
+        // Fallback: test-support seam for W3 tests that inject subs directly.
         self.claim_expansion_sub_author_test(sub_id)
     }
 

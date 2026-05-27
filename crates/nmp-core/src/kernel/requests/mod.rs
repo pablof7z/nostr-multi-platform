@@ -284,6 +284,17 @@ impl Kernel {
                         self.oneshot_subs
                             .insert(sub_id.clone(), (token, discovery::OneshotKind::Discovery));
                     }
+                    // W5 §8.3 — claim-expansion reverse-index bridge.
+                    // If this frame's `interest_id` belongs to a pending claim,
+                    // map the planner-assigned `sub_id` → `interest_id` so the
+                    // ingest seam can look up the originating claim in O(log N).
+                    if self.pending_claims.contains_key(interest_id) {
+                        self.claim_sub_index
+                            .insert(sub_id.clone(), interest_id.clone());
+                        if let Some(claim) = self.pending_claims.get_mut(interest_id) {
+                            claim.in_flight_subs.insert(sub_id.clone());
+                        }
+                    }
                     // PD-033-C Stage 0: route through the single-writer helper.
                     // After Stage 6 this is the SOLE caller of `insert_wire_sub`.
                     // M2 keeps its `"opening"` initial state (M1 has an extra

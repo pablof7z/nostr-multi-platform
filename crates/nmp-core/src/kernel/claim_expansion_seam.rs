@@ -1,0 +1,106 @@
+//! Test-seam accessors for the W5 claim-expansion controller.
+//!
+//! Extracted from `claim_expansion.rs` to keep the production file under the
+//! D-V12 500-LOC ceiling. All methods in this file are `#[cfg(any(test,
+//! feature = "test-support"))]` — they compile only in test / integration-test
+//! builds and are never part of the production binary.
+
+use std::collections::BTreeSet;
+
+use super::{
+    claim_expansion::{Phase, PendingClaim},
+    Kernel,
+};
+
+impl Kernel {
+    /// Returns true if `pending_claims` is empty. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn pending_claims_is_empty(&self) -> bool {
+        self.pending_claims.is_empty()
+    }
+
+    /// Returns the count of pending claims. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_pending_claims_count(&self) -> usize {
+        self.pending_claims.len()
+    }
+
+    /// Returns the current phase of a claim identified by `primary_id`. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_phase(&self, primary_id: &str) -> Option<Phase> {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.phase.clone())
+    }
+
+    /// Returns the in-flight sub count for a claim. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_in_flight_count(&self, primary_id: &str) -> usize {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.in_flight_subs.len())
+            .unwrap_or(0)
+    }
+
+    /// Returns all in-flight sub_ids for a claim. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_in_flight_sub_ids(&self, primary_id: &str) -> Vec<String> {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.in_flight_subs.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Returns the attempted relay set for a claim. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_attempted(&self, primary_id: &str) -> BTreeSet<String> {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.attempted.clone())
+            .unwrap_or_default()
+    }
+
+    /// Returns the count of attempted relays for a claim (0 if not found). Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_attempted_count(&self, primary_id: &str) -> usize {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.attempted.len())
+            .unwrap_or(0)
+    }
+
+    /// Mark an event as known in the store (for §8.7 preflight testing). Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_mark_event_known(&mut self, primary_id: &str) {
+        // Insert a minimal StoredEvent into the events map so `event_already_known` returns true.
+        // `StoredEvent` lives in `kernel/types.rs` (pub(super) within the kernel module).
+        use super::types::StoredEvent;
+        let stored = StoredEvent {
+            id: primary_id.to_string(),
+            author: "0".repeat(64),
+            kind: 1,
+            created_at: 0,
+            tags: vec![],
+            content: String::new(),
+            relay_count: 0,
+        };
+        self.events.insert(primary_id.to_string(), stored);
+    }
+
+    /// Add a relay to a claim's attempted set. Test seam for §8.1 relay_failed tests.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_mark_claim_attempted(&mut self, primary_id: &str, relay_url: &str) {
+        if let Some(claim) = self
+            .pending_claims
+            .values_mut()
+            .find(|c| c.primary_id == primary_id)
+        {
+            claim.attempted.insert(relay_url.to_string());
+        }
+    }
+}

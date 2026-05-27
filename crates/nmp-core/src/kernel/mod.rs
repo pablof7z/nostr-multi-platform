@@ -36,6 +36,14 @@ mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
 // reachable from the `actor` module's command handlers, not just kernel-
 // internal callsites.
+pub(crate) mod claim_expansion;
+mod claim_expansion_helpers;
+#[cfg(any(test, feature = "test-support"))]
+mod claim_expansion_seam;
+#[cfg(test)]
+mod claim_expansion_tests;
+#[cfg(test)]
+mod claim_expansion_edge_tests;
 pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
@@ -699,6 +707,14 @@ pub struct Kernel {
     /// for the same interest_id (the planner's hash is deterministic across
     /// recompiles for the same shape, so a re-route consumes the stale entry).
     pending_discovery_oneshots: HashMap<crate::planner::InterestId, crate::subs::OneshotToken>,
+    /// W5 — per-claim Phase 1/2/3 state machine entries, keyed by InterestId.
+    /// §8.3: twin BTreeMaps provide O(log N) forward and reverse lookup.
+    pending_claims:
+        std::collections::BTreeMap<crate::planner::InterestId, claim_expansion::PendingClaim>,
+    /// W5 — reverse index from wire sub_id → InterestId for O(log N) ingest lookup.
+    /// Populated by `register_planner_wire_frames` when the planner assigns
+    /// a sub_id to the claim's LogicalInterest.
+    claim_sub_index: std::collections::BTreeMap<String, crate::planner::InterestId>,
     /// M6 signer injection, per relay role. The actor / iOS layer wires the
     /// user-identity signer for `Content`/`Indexer` from
     /// `nmp_signers::AccountManager::signer_active()`. Other lanes (e.g.
@@ -1446,6 +1462,8 @@ impl Kernel {
             oneshot: OneshotApi::new(),
             oneshot_subs: HashMap::new(),
             pending_discovery_oneshots: HashMap::new(),
+            pending_claims: std::collections::BTreeMap::new(),
+            claim_sub_index: std::collections::BTreeMap::new(),
             auth_signers: HashMap::new(),
             accounts: Vec::new(),
             active_account: None,
