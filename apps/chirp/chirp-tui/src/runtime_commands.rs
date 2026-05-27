@@ -199,6 +199,25 @@ impl AppRuntime {
         self.dispatch_action_value("nmp.nip29.discover", &json!({ "relay_url": relay }))
     }
 
+    pub fn create_public_group(
+        &self,
+        relay: &str,
+        local_id: &str,
+        name: &str,
+        about: Option<&str>,
+    ) -> Result<String> {
+        let mut body = json!({
+            "group": { "host_relay_url": relay, "local_id": local_id },
+            "name": name,
+        });
+        if let Some(about) = about.map(str::trim).filter(|value| !value.is_empty()) {
+            body["about"] = Value::String(about.to_string());
+        }
+        let correlation_id = self.dispatch_action_value("nmp.nip29.create_public_group", &body)?;
+        self.register_group_chat(relay, local_id)?;
+        Ok(correlation_id)
+    }
+
     pub fn join_group(&self, relay: &str, local_id: &str) -> Result<String> {
         self.dispatch_action_value(
             "nmp.nip29.join",
@@ -267,6 +286,26 @@ impl AppRuntime {
         let handle = unsafe { &*handle_ptr };
         let value = handle.dispatch(&action);
         Ok(value.to_string())
+    }
+
+    pub fn marmot_create_group(
+        &self,
+        name: &str,
+        relays: &[String],
+        invitee_text: Option<&str>,
+    ) -> Result<String> {
+        let mut body = json!({
+            "op": "create_group",
+            "name": name,
+            "relays": relays,
+        });
+        if let Some(invitees) = invitee_text
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            body["invitee_text"] = Value::String(invitees.to_string());
+        }
+        self.marmot_dispatch_json(body)
     }
 
     pub fn marmot_snapshot_text(&self) -> Result<String> {

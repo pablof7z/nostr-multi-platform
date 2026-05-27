@@ -95,7 +95,7 @@ pub const IOS_FEATURES: &[IosFeature] = &[
     IosFeature {
         area: "Groups",
         feature: "NIP-29 discovery/join/chat/reply/react and Marmot MLS actions",
-        tui_surface: "groups tab + :group/:mls commands",
+        tui_surface: "groups tab controls",
     },
     IosFeature {
         area: "Wallet",
