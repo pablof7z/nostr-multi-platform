@@ -22,8 +22,8 @@ impl Kernel {
     /// fails (Failed). The `now_unix_s` timestamp is read from the kernel's
     /// injected clock via `self.now_secs()`.
     ///
-    /// Delegates to `relay_score_map.record()` (§8.5 delta table, §8.10
-    /// canonicalization) and emits a `WireLogEvent::ScoreUpdate` diagnostic
+    /// Routes through [`Kernel::record_relay_score`] / [`Kernel::get_relay_score`]
+    /// (D4 accessor seam, §8.3) and emits a `WireLogEvent::ScoreUpdate` diagnostic
     /// line when `NMP_CLAIM_LOG` is set.
     ///
     /// D6: unknown `(author, relay_url)` cells are created on first record.
@@ -35,10 +35,11 @@ impl Kernel {
         outcome: ClaimOutcome,
     ) {
         let now = self.now_secs();
-        self.relay_score_map
-            .record(&author.to_string(), relay_url, outcome, now);
+        // D4: route through the accessor seam — `record_relay_score` is the
+        // sole write entry point for the score map (§8.3).
+        self.record_relay_score(author, relay_url, outcome, now);
         // Emit structured diagnostic line (no-op unless NMP_CLAIM_LOG is set).
-        let cell: RelayAuthorScore = self.relay_score_map.get(&author.to_string(), relay_url);
+        let cell: RelayAuthorScore = self.get_relay_score(author, relay_url);
         let delta = match outcome {
             ClaimOutcome::Hit => "+1s",
             ClaimOutcome::EoseNoMatch => "0",
