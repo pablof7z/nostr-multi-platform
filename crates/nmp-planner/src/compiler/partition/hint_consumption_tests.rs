@@ -52,6 +52,7 @@ fn authors_interest_with_hints(
         },
         hints,
         lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
     }
 }
 
@@ -70,6 +71,7 @@ fn addr_interest_with_hints(
         },
         hints,
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     }
 }
 
