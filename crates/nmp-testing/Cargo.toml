@@ -7,6 +7,11 @@ license.workspace = true
 [features]
 # Enable LMDB-backed store tests. Passes through to nmp-core's lmdb-backend feature.
 lmdb-backend = ["nmp-core/lmdb-backend"]
+# Enable real-relay integration tests (A1-A6 relay-search-radius acceptance suite).
+# These tests open live WebSocket connections and are excluded from the default
+# scoped-test path.  Run explicitly:
+#   cargo test -p nmp-testing --features real-relay --test <name> -- --ignored --nocapture
+real-relay = []
 
 [dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
@@ -47,6 +52,9 @@ nmp-marmot = { path = "../nmp-marmot" }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 tempfile = "3"
+# Relay-search-radius acceptance tests (A1-A6) capture stderr using FD-level
+# pipe/dup2 to intercept the NMP_CLAIM_LOG structured output from actor threads.
+libc = "0.2"
 
 [[bin]]
 name = "reactivity-bench"
@@ -173,3 +181,42 @@ path = "tests/routing_trace_real_nostr.rs"
 name = "relay_score_persistence"
 path = "tests/relay_score_persistence.rs"
 required-features = ["lmdb-backend"]
+
+# W9 — relay-search-radius acceptance tests A1-A6.
+# All tests `#[ignore]` by default; run explicitly with --features real-relay:
+#   cargo test -p nmp-testing --features real-relay --test relay_search_radius_a1_cold_claim -- --ignored --nocapture
+# A1: cold-claim Gigi article against purplepag.es fallback; assert Phase-1 + Phase-2 wire log lines.
+[[test]]
+name = "relay_search_radius_a1_cold_claim"
+path = "tests/relay_search_radius_a1_cold_claim.rs"
+required-features = ["real-relay"]
+
+# A2: warm-path — prime A1, second claim for different Gigi article; assert delivering relay in phase1 set.
+[[test]]
+name = "relay_search_radius_a2_warm_path"
+path = "tests/relay_search_radius_a2_warm_path.rs"
+required-features = ["real-relay"]
+
+# A3: restart persistence — prime, drop kernel, reopen same store, re-claim; assert phase1-only hit.
+# Requires both lmdb-backend (score persistence) and real-relay (live WebSocket connections).
+[[test]]
+name = "relay_search_radius_a3_restart_persistence"
+path = "tests/relay_search_radius_a3_restart_persistence.rs"
+required-features = ["real-relay", "lmdb-backend"]
+
+# A4: doctrine-lint guard — confirms doctrine_lint_smoke binary exits 0.
+[[test]]
+name = "relay_search_radius_a4_doctrine_lint"
+path = "tests/relay_search_radius_a4_doctrine_lint.rs"
+
+# A5: mid-claim unreachable — stub relay drops connection; assert claim advances and failures+=3.
+[[test]]
+name = "relay_search_radius_a5_mid_claim_unreachable"
+path = "tests/relay_search_radius_a5_mid_claim_unreachable.rs"
+required-features = ["real-relay"]
+
+# A6: concurrent claims — two simultaneous claims for same author; claim B sees A's score delta.
+[[test]]
+name = "relay_search_radius_a6_concurrent_claims"
+path = "tests/relay_search_radius_a6_concurrent_claims.rs"
+required-features = ["real-relay"]
