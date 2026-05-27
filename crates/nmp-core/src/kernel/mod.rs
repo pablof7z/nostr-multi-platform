@@ -163,6 +163,9 @@ mod test_router;
 mod tests;
 mod types;
 mod update;
+pub(crate) mod wire_log;
+#[cfg(test)]
+mod wire_log_tests;
 
 #[cfg(test)]
 mod auth_fail_closed_tests;
