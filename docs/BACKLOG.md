@@ -89,6 +89,20 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    `Result<JsValue, JsValue>`; `crates/nmp-wasm/src/lib.rs:165-170` rejects a promise for
    invalid JSON. **Next step:** route wasm snapshots through the canonical kernel update path
    and return caller-visible failures as data envelopes.
+
+   **Additional publish-path gaps found (2026-05-27 research pass):**
+   - `crates/nmp-wasm/src/publish_path.rs:57` — `// TODO: wire AppAction variants` (action
+     dispatch not plumbed for wasm).
+   - `crates/nmp-wasm/src/publish_path.rs:81` — `// TODO: NIP-46 bunker signing not wired —
+     blocked on a wasm-native async transport for the bunker RPC`.
+   - `crates/nmp-wasm/src/runtime.rs:32` — `// TODO: in-process publish path missing on wasm
+     — ActorCommand is feature="native"-gated`. The wasm runtime has no equivalent of the
+     native actor command channel for synchronous publish.
+   - `crates/nmp-wasm/src/signer_slot.rs:32` — `// TODO: certain signer kinds not yet
+     recognised` in the wasm signer-slot dispatch.
+   - `crates/nmp-wasm/src/lib.rs:200` — `// TODO: wasm32 tests TBD` — no
+     `wasm-bindgen-test` infrastructure is set up; the wasm publish path and signer
+     wiring have zero automated coverage.
 5. **P5 — close native update-loop and envelope discipline gaps.**
    `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
    polls for updates; `apps/nmp-gallery/nmp-app-gallery/src/android.rs:221-228` returns `null` on
@@ -267,6 +281,13 @@ shims.
 **Staged fix plan:** Stage 1 (open-ActorCommand seam, shared with V-39/V-40/V-41) →
 Stage 2 (create `nmp-nip47`, move all wallet code) → Stage 3 (thin-shim FFI bodies) →
 Stage 4 (delete `feature = "wallet"` from `nmp-core/Cargo.toml`).
+
+**Blocked conformance test (2026-05-27):** `crates/nmp-nip47/tests/nip47_tag_conformance.rs:14-16`
+carries `#[ignore = "V-38 follow-up: needs Kernel::new_for_test() public ctor"]`. The test
+cannot run because `Kernel::new_for_test()` is not public (it is gated behind
+`cfg(feature = "test-support")` in `nmp-core` and not re-exported for downstream crate use).
+Unblocking it is a prerequisite for Stage 2: the conformance test must pass against the new
+`nmp-nip47` crate before the wallet migration can be called done.
 
 **Deadline:** post-v1.
 
@@ -624,6 +645,38 @@ secret material in freed memory.
 a zeroizable key type or mutable erasure hook, then delete the partial-mitigation
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
+
+### V-58 · Reconnect worker backoff is blind to relay close reason [LOW · reliability]
+
+**Verified:** `crates/nmp-core/src/kernel/ingest/closed.rs:27` and `:149` — two `// TODO` comments note that `last_close_reason` (populated from `CLOSED` relay frames, which may carry machine-readable prefixes such as `"rate-limited"` or `"slow-down"`) is not forwarded to the reconnect worker's backoff logic. The backoff schedule runs at a fixed/jitter cadence regardless of the close reason.
+
+**Impact:** a relay that issues `CLOSED ["rate-limited: …"]` will be reconnected at the same interval as a relay that closed due to a transient network drop. Under active rate-limiting the reconnect worker amplifies the load on the relay rather than backing off.
+
+**Correct fix:** thread `last_close_reason` into the reconnect worker's backoff decision; treat `"rate-limited"` and `"slow-down"` as long-backoff triggers (e.g. 60 s + jitter). The `closed.rs` already records the reason string; the worker needs a `CloseReason`-aware schedule variant rather than a single fixed delay.
+
+---
+
+### V-59 · `EventStore` trait missing kernel clock injection — `SystemTime::now()` in watermarks and queries [LOW · correctness]
+
+**Verified:**
+- `crates/nmp-store/src/types/watermark.rs:59-61` — inline note: "the `EventStore` trait does not yet thread the kernel clock into the store … this is a known transitional site pending the store-clock plumbing tracked for a later milestone."
+- `crates/nmp-store/src/lmdb/query.rs:433` and `src/mem/query.rs:373` — same note verbatim; `SystemTime::now()` substituted for the missing kernel clock.
+
+**Impact:** watermark timestamps and query "current time" are sourced from the OS wall clock, not the kernel's monotonic clock. This creates subtle divergence in test environments (where the kernel clock can be controlled) and in long-running sessions where clock skew could affect expiry and ordering logic.
+
+**Correct fix:** thread a `ClockSource` or `Instant`-provider through the `EventStore` trait so all time reads inside the store use the same clock as the rest of the kernel.
+
+---
+
+### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management]
+
+**Verified:** `crates/nmp-store/src/lmdb/gc.rs:8-10` — module comment: "LRU eviction is not implemented in this milestone — `Mem` doesn't have one either; `gc_step` reports `lru_evicted = 0`. Future work tracked under M4 GC tuning."
+
+**Impact:** a long-running session that ingests a high-throughput feed will grow the LMDB store without bound. The GC step runs on each tick but evicts nothing; no byte or event-count budget is enforced.
+
+**Correct fix:** implement an LRU policy in `gc_step` — track last-access time per event, evict the least-recently-read events when the store exceeds a configurable byte or event-count ceiling. The `mem` store needs the same policy for test consistency. Prerequisite: `EventStore` clock injection (V-59) so eviction timestamps are kernel-clock-sourced.
+
+---
 
 ### V-56 · Content-level profile mentions do not feed profile discovery [MEDIUM · v1 UX]
 
@@ -1058,6 +1111,10 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Raw-data projection follow-ups | ADR-0032 is canonical. Post-v1 work may add a shared `nmp-display` helper/codegen surface, a doctrine-lint rule for banned display helpers in projections, and a review of free-form metadata fallbacks. |
 | Chirp TUI approach-B visual refresh | The top-level scratch plans were deleted. If this work resumes, track it as a scoped TUI UX item here or in WIP while a branch is active; preserve existing `chirp-tui` runtime/bridge/command wiring and keep rendering modules under the LOC ceiling. |
 | Indexer-republish follow-ups | The default composition installs `nmp_router::IndexerRepublishPolicy` through `nmp-core`'s generic raw-event forwarding seam. Deferred add-ons are runtime toggles, telemetry, and parameterized replaceable support only if product demand appears. |
+| Chirp TUI unfinished interactions | `apps/chirp/chirp-tui/src/input.rs:350,431,433,523` — repost, group-discover, add-relay, add-account, and DM-open are all `// not yet wired (post-v1)` no-ops. Mirror: `ios/Chirp/Chirp/Components/NoteRowView.swift:225` repost is also a no-op. Wire once the corresponding `dispatch_action` namespaces exist. |
+| `nmp-content` Phase-2 claim dependency channel | `crates/nmp-content/src/embed_registry/mod.rs:26` — `// Phase 2: expose the claim-driven dependency channel`. The embed registry currently resolves claims synchronously; the async demand-producer path for late-arriving embedded events is not exposed to callers. |
+| wasm32 test infrastructure | `crates/nmp-wasm/src/lib.rs:200` — no `wasm-bindgen-test` harness set up. The entire wasm publish path and signer-slot dispatch lack automated coverage. Set up `wasm-pack test --headless` in CI and migrate the `// TODO: wasm32 tests TBD` stubs into real tests. |
+| `web/registry` CodeBlock placeholder | `web/registry/src/components/CodeBlock.tsx:39` renders `"This component is being built — check back soon."` in the web registry UI. Replace with a real syntax-highlighted code block (e.g. `shiki` or `prism`) once the registry UI is active. |
 
 ---
 
