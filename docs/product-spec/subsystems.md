@@ -177,7 +177,7 @@ The ledger is general, not relay-only. It can represent local optimistic commit,
 | WoT rank | `pubkey` | trust score + reasoning |
 | Search | `query`, `kinds`, `time_window` | result list |
 
-Each payload type carries **pre-formatted** display strings (timestamps in user locale, npub-shortened forms, sat amounts). Per bible doctrine: no platform-side formatting.
+Each payload type carries **pre-formatted** display strings (timestamps in user locale, npub-shortened forms, sat amounts). No platform-side formatting — the kernel owns that decision.
 
 **Best-effort field contract (per doctrine D1).** Every display-bearing field in every view payload is **non-optional** and has a defined placeholder when the underlying data is missing:
 
@@ -222,7 +222,7 @@ pub struct TimelineItem {
 }
 ```
 
-`TimelineItem` is a flat summary. The full event content, raw tags, signature, and provenance live in the event store inside Rust and do not cross FFI. This matches the precedent set by the bible's reference implementation (Pika): chat list is summaries; current chat loads full content on demand.
+`TimelineItem` is a flat summary. The full event content, raw tags, signature, and provenance live in the event store inside Rust and do not cross FFI. This is D5 applied: snapshots are screen-shaped, not store-shaped. Chat list carries summaries; a detail view loads full content on demand.
 
 View warmth: a view stays cached for 30 seconds after its last claim is dropped (configurable). Re-opening within the window costs zero relay traffic and zero re-sync.
 
