@@ -110,6 +110,8 @@ pub use req_intercept::{
 pub use empty_routing::TestInMemoryMailboxCache;
 pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
 pub use nmp_nip59::SignerForSeal;
+#[cfg(feature = "lmdb-backend")]
+pub use relay_score_store::LmdbRelayAuthorScoreStore;
 pub use relay_score_store::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore, ScoreCell};
 pub use routing::{
     AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,

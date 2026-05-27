@@ -157,7 +157,7 @@ fn saturating_add_does_not_panic_at_u32_max() {
 #[test]
 fn record_via_map_sets_dirty_flag() {
     let mut map = RelayAuthorScoreMap::new();
-    assert!(!map.dirty);
+    assert!(!map.is_dirty());
 
     map.record(
         &ALICE.to_string(),
@@ -165,10 +165,10 @@ fn record_via_map_sets_dirty_flag() {
         ClaimOutcome::Hit,
         NOW,
     );
-    assert!(map.dirty, "record should set dirty");
+    assert!(map.is_dirty(), "record should set dirty");
 
     map.mark_clean();
-    assert!(!map.dirty);
+    assert!(!map.is_dirty());
 }
 
 #[test]
@@ -187,10 +187,27 @@ fn bulk_load_does_not_set_dirty() {
     )];
     map.bulk_load(cells);
     assert!(
-        !map.dirty,
+        !map.is_dirty(),
         "bulk_load is hydration, not a write — must stay clean"
     );
     assert!(map.is_warm(&ALICE.to_string(), "wss://r.example", NOW));
+}
+
+#[test]
+fn eose_no_match_for_unknown_cell_does_not_create_row() {
+    let mut map = RelayAuthorScoreMap::new();
+    map.record(
+        &ALICE.to_string(),
+        "wss://niche.example",
+        ClaimOutcome::EoseNoMatch,
+        NOW,
+    );
+    assert_eq!(
+        map.len(),
+        0,
+        "neutral EOSE must not create a zero-score row"
+    );
+    assert!(!map.is_dirty(), "no persisted state changed");
 }
 
 #[test]

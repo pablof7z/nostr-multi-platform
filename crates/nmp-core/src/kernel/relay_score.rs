@@ -150,7 +150,7 @@ pub struct RelayAuthorScoreMap {
     cells: BTreeMap<(Pubkey, RelayUrl), RelayAuthorScore>,
     /// `true` if at least one cell mutated since the last LMDB flush.
     /// W2's flush clears this; W3's `record_*` calls set it.
-    pub(crate) dirty: bool,
+    dirty: bool,
 }
 
 impl RelayAuthorScoreMap {
@@ -183,12 +183,24 @@ impl RelayAuthorScoreMap {
         outcome: ClaimOutcome,
         now_unix_s: u64,
     ) {
-        let key = (author.clone(), canon(relay_url));
-        let cell = self.cells.entry(key).or_default();
         match outcome {
-            ClaimOutcome::Hit => cell.record_hit(now_unix_s),
-            ClaimOutcome::EoseNoMatch => cell.record_eose_no_match(now_unix_s),
-            ClaimOutcome::Failed => cell.record_failure(now_unix_s),
+            ClaimOutcome::EoseNoMatch => {
+                let key = (author.clone(), canon(relay_url));
+                let Some(cell) = self.cells.get_mut(&key) else {
+                    return;
+                };
+                cell.record_eose_no_match(now_unix_s);
+            }
+            ClaimOutcome::Hit => {
+                let key = (author.clone(), canon(relay_url));
+                let cell = self.cells.entry(key).or_default();
+                cell.record_hit(now_unix_s);
+            }
+            ClaimOutcome::Failed => {
+                let key = (author.clone(), canon(relay_url));
+                let cell = self.cells.entry(key).or_default();
+                cell.record_failure(now_unix_s);
+            }
         }
         self.dirty = true;
     }
@@ -206,6 +218,11 @@ impl RelayAuthorScoreMap {
     /// Reset the dirty flag — called by W2 after a successful LMDB flush.
     pub fn mark_clean(&mut self) {
         self.dirty = false;
+    }
+
+    #[must_use]
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
     /// Inject cells from LMDB at kernel construct. The store has already

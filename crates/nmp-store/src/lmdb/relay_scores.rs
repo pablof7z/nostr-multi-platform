@@ -166,8 +166,6 @@ pub fn put_batch_raw(
     store: &crate::LmdbEventStore,
     cells: Vec<([u8; 32], String, u32, u32, u64)>,
 ) -> Result<(), crate::StoreError> {
-    use heed::types::Bytes;
-
     if cells.is_empty() {
         return Ok(());
     }
