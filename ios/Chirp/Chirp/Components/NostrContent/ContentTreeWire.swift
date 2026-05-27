@@ -91,8 +91,8 @@ public struct NostrWireUri: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case uri, kind, relays, author
-        case primaryId = "primary_id"
-        case eventKind = "event_kind"
+        case primaryId
+        case eventKind
     }
 
     public init(
@@ -140,9 +140,9 @@ public enum NostrWireNode: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case kind, text, uri, tag, url, urls
-        case mediaKind = "media_kind"
+        case mediaKind
         case shortcode, level, children, code, info, body, href
-        case orderedStart = "ordered_start"
+        case orderedStart
         case items, alt, title, src, reason, invoice
     }
 
