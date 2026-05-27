@@ -1,7 +1,5 @@
 # Cardinal Doctrines D0–D10
 
-[Back to Product Spec: Overview And Developer Experience](./overview-and-dx.md)
-
 Eleven named principles that subsume the rest of the spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
 
 **Two kinds of doctrine.** D0–D5 and D10 are *policy* doctrines — they govern user-facing semantics (what the framework promises, what it forbids). D6–D9 are *substrate invariants* — they govern how the runtime is allowed to be implemented (what crosses FFI, how state propagates, what the hot path can do, how time is decided). Both kinds are equally binding. Policy review flags "this API choice violates a user-facing principle"; substrate review flags "this implementation choice will leak across FFI, hide policy on the native side, degrade reactivity, or trust a value the kernel must own."
