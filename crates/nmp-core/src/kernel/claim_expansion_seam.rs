@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use super::{
-    claim_expansion::{Phase, PendingClaim},
+    claim_expansion::{PendingClaim, Phase},
     Kernel,
 };
 
@@ -34,24 +34,57 @@ impl Kernel {
             .map(|c| c.phase.clone())
     }
 
-    /// Returns the in-flight sub count for a claim. Test seam.
+    /// Returns the in-flight relay count for a claim. Test seam.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn test_claim_in_flight_count(&self, primary_id: &str) -> usize {
         self.pending_claims
             .values()
             .find(|c: &&PendingClaim| c.primary_id == primary_id)
-            .map(|c| c.in_flight_subs.len())
+            .map(|c| {
+                // Count unique relays in in_flight_attempts (not tuples)
+                c.in_flight_attempts
+                    .iter()
+                    .map(|(relay, _)| relay.as_str())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+            })
             .unwrap_or(0)
     }
 
-    /// Returns all in-flight sub_ids for a claim. Test seam.
+    /// Returns all in-flight sub_ids for a claim (for compatibility). Test seam.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn test_claim_in_flight_sub_ids(&self, primary_id: &str) -> Vec<String> {
         self.pending_claims
             .values()
             .find(|c: &&PendingClaim| c.primary_id == primary_id)
-            .map(|c| c.in_flight_subs.iter().cloned().collect())
+            .map(|c| {
+                c.in_flight_attempts
+                    .iter()
+                    .map(|(_, sub_id)| sub_id.clone())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .collect()
+            })
             .unwrap_or_default()
+    }
+
+    /// Returns all in-flight (relay, sub_id) pairs for a claim. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_in_flight_attempts(
+        &self,
+        primary_id: &str,
+    ) -> std::collections::BTreeSet<(String, String)> {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.in_flight_attempts.clone())
+            .unwrap_or_default()
+    }
+
+    /// Returns the count of entries in claim_sub_index. Test seam.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_sub_index_len(&self) -> usize {
+        self.claim_sub_index.len()
     }
 
     /// Returns the attempted relay set for a claim. Test seam.
@@ -95,12 +128,21 @@ impl Kernel {
     /// Add a relay to a claim's attempted set. Test seam for §8.1 relay_failed tests.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn test_mark_claim_attempted(&mut self, primary_id: &str, relay_url: &str) {
+        use crate::relay::CanonicalRelayUrl;
         if let Some(claim) = self
             .pending_claims
             .values_mut()
             .find(|c| c.primary_id == primary_id)
         {
-            claim.attempted.insert(relay_url.to_string());
+            let canonical = CanonicalRelayUrl::parse_or_raw(relay_url).into_string();
+            claim.attempted.insert(canonical);
         }
+    }
+
+    /// Returns `oneshot.in_flight()` — the number of registered OneshotTokens.
+    /// §8.2: must stay at 1 per claim across Phase 1 → Phase 2 transition.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_oneshot_in_flight(&self) -> usize {
+        self.oneshot.in_flight()
     }
 }

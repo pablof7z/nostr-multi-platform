@@ -69,6 +69,10 @@ impl Kernel {
     }
 
     /// Record an accepted matching EVENT for a claim-expansion sub.
+    ///
+    /// B1: after recording the score, calls `on_claim_outcome_hit(sub_id)`
+    /// so the W5 controller transitions the claim to Terminal(Hit) and
+    /// claims never linger in pending_claims after a matching EVENT.
     pub(in crate::kernel) fn record_claim_expansion_hit(
         &mut self,
         sub_id: &str,
@@ -77,10 +81,16 @@ impl Kernel {
     ) {
         self.record_claim_outcome(author, relay_url, ClaimOutcome::Hit);
         self.mark_claim_expansion_match_seen(sub_id, relay_url);
+        // B1: drive the W5 controller state machine (production wire-up).
+        // on_claim_outcome_hit terminates the claim and cleans up claim_sub_index.
+        self.on_claim_outcome_hit(sub_id);
     }
 
     /// Record EOSE-without-match only if no accepted matching EVENT was seen
     /// for the same `(sub_id, relay_url)` subscription.
+    ///
+    /// B1: after recording the score, calls `on_claim_outcome_eose_no_match`
+    /// so the W5 controller updates in_flight_attempts and advances Phase 2.
     pub(in crate::kernel) fn record_claim_expansion_eose_no_match(
         &mut self,
         sub_id: &str,
@@ -92,6 +102,10 @@ impl Kernel {
         if let Some(author) = self.lookup_claim_expansion_author(sub_id) {
             self.record_claim_outcome(&author, relay_url, ClaimOutcome::EoseNoMatch);
         }
+        // B1: drive the W5 controller state machine (production wire-up).
+        // on_claim_outcome_eose_no_match removes the in_flight_attempt entry
+        // and records the relay as attempted.
+        self.on_claim_outcome_eose_no_match(sub_id, relay_url);
     }
 
     /// Returns the author pubkey for a claim-expansion subscription, if any.

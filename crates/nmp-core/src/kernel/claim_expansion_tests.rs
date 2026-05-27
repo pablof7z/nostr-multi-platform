@@ -62,8 +62,10 @@ mod tests {
         );
 
         // Simulate a Phase-1 hit: event becomes known + call on_claim_outcome Hit
+        // Uses the primary_id-based path since this test doesn't go through
+        // the production wire-frame registration (no claim_sub_index populated).
         kernel.test_mark_event_known(&primary_id);
-        kernel.on_claim_outcome_hit(&primary_id);
+        kernel.on_claim_outcome_hit_by_primary_id(&primary_id);
 
         // After hit, claim must be terminated (removed from pending)
         assert!(

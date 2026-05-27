@@ -37,13 +37,15 @@ mod closed_classifier_tests;
 // reachable from the `actor` module's command handlers, not just kernel-
 // internal callsites.
 pub(crate) mod claim_expansion;
+#[cfg(test)]
+mod claim_expansion_edge_tests;
 mod claim_expansion_helpers;
+#[cfg(test)]
+mod claim_expansion_ingest_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod claim_expansion_seam;
 #[cfg(test)]
 mod claim_expansion_tests;
-#[cfg(test)]
-mod claim_expansion_edge_tests;
 pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
