@@ -12,6 +12,11 @@ export default function HowItWorks() {
           OS capabilities like Keychain access or push notifications.{" "}
           <strong>The division is absolute.</strong> That's not a guideline. That's the framework.
         </p>
+        <pre class="arch-diagram">{`iOS (SwiftUI) · Android (Compose) · Desktop (iced) · Web (wasm)
+        ↓  dispatch(action)          reconcile(update)  ↑
+┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+          Rust kernel — one actor thread, no locks
+  relays · signing · subscriptions · state · projections`}</pre>
         <p>
           Cross-platform Nostr clients fragment into incompatible bugs because protocol logic
           gets reimplemented per platform. Three times. Badly. NMP writes it once, in Rust, with

@@ -36,9 +36,9 @@ export default function GetStarted() {
       </p>
       <InstallCommand command="nmp init my-app" />
       <p>
-        This drops a `Cargo.toml`, a `nmp.toml` manifest, and a placeholder
-        app crate that registers default ingest parsers, projections, and
-        the routing substrate.
+        This drops a <code class="inline-code">Cargo.toml</code>, a{" "}
+        <code class="inline-code">nmp.toml</code> manifest, and a placeholder
+        app crate wired to the framework's actor, event store, and routing substrate.
       </p>
 
       <h2>3. Install a content kit</h2>
@@ -59,8 +59,8 @@ export default function GetStarted() {
       <p>
         Open the installed Swift file in your editor. Change the colors,
         swap the layout, add new <code class="inline-code">NostrContentRun.Kind</code>{" "}
-        cases — whatever you want. There is no `node_modules`, no Swift
-        package to vendor, no abstraction barrier. The file is yours.
+        cases — whatever you want. There is no package to vendor, no abstraction
+        barrier. The file is yours.
       </p>
       <div class="callout">
         <strong>Tip.</strong> Inject your branded renderer at the app root
