@@ -12,22 +12,21 @@ type Link = {
 const links: Link[] = [
   {
     num: "01",
-    title: "Read the doctrine",
-    desc: "The eleven principles in full, with the reasoning. Thirty minutes. Read it before you write a line of code against the framework.",
-    href: "https://github.com/pablof7z/nostr-multi-platform/blob/master/docs/product-spec/doctrine.md",
-    external: true,
-  },
-  {
-    num: "02",
     title: "Browse the registry",
-    desc: "UI components for SwiftUI and Compose. Install the ones you need; edit them however you want.",
+    desc: "UI components for SwiftUI and Compose. Install the ones you need; edit them however you want. This is where most developers start.",
     href: "/components/content-core",
   },
   {
+    num: "02",
+    title: "Scaffold an app",
+    desc: "Five minutes from clone to a buildable Nostr app. The CLI generates the Rust core, the FFI layer, and a SwiftUI or Compose shell.",
+    href: "/get-started",
+  },
+  {
     num: "03",
-    title: "Read the source",
-    desc: "The kernel, the FFI, the registry, the apps. Everything is on GitHub.",
-    href: "https://github.com/pablof7z/nostr-multi-platform",
+    title: "Read the doctrine",
+    desc: "The eleven principles in full. Worth reading once you've built something and want to understand why the framework works the way it does.",
+    href: "https://github.com/pablof7z/nostr-multi-platform/blob/master/docs/product-spec/doctrine.md",
     external: true,
   },
 ];
@@ -69,8 +68,8 @@ export default function StartHere() {
       <p class="l-section__label">Getting started</p>
       <h2 class="l-section__heading">Start here</h2>
       <p class="l-section__lead">
-        NMP is open source and in active development. The fastest way in is to read the doctrine,
-        then build something small.
+        NMP is open source and in active development. Start with the registry — you can use
+        components without touching the kernel at all.
       </p>
       <div class="start-links">
         {links.map((link) => (
