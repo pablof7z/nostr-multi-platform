@@ -14,8 +14,8 @@ single line of the M11 podcast app is written.
 
 ### 1.1 Goals
 
-1. **Empirical proof of FFI invariants.** Every claim made in the RMP bible
-   (`docs/aim.md` §2 commandments 1–10), every cardinal doctrine
+1. **Empirical proof of FFI invariants.** Every architectural invariant
+   (`docs/aim.md` §2), every cardinal doctrine
    (`docs/product-spec/overview-and-dx.md` §1.5 D0–D5), and every ownership
    rule in the current FFI surface is verified by a concrete harness scenario
    that produces a numeric pass/fail.
@@ -110,16 +110,16 @@ Ten scenarios — full table with assertions and numeric thresholds is in
 
 | # | Scenario | Threading concern | Primary doctrine tested |
 |---|---|---|---|
-| S1 | Mount/unmount churn | actor recv + refcount | D5 (snapshot bounded), bible #5 |
-| S2 | Dispatch flood | mpsc backpressure | bible #3 (fire-and-forget) |
-| S3 | Snapshot pressure | listener serialization | bible #9 (≤60 Hz), D5 |
-| S4 | Reconciler back-pressure | listener channel growth | bible #9, D1 |
-| S5 | Reentrancy | callback re-enters FFI | bible #3, deadlock-free |
-| S6 | Capability lifecycle storms | start/stop/restart | bible #7 (idempotent) |
-| S7 | Error-shape exhaustion | every invalid input path | D3 (no errors cross FFI) |
-| S8 | Subscription planner DOS | OpenView/CloseView storm | D2 (≤60 Hz/view), D5 |
-| S9 | Relay flap | reconnect + watermark | bible #7, D2 |
-| S10 | Long suspend simulation | background → foreground | bible #1 (monotonic rev) |
+| S1 | Mount/unmount churn | actor recv + refcount | D5 (snapshot bounded) |
+| S2 | Dispatch flood | mpsc backpressure | dispatch is fire-and-forget (aim.md §2) |
+| S3 | Snapshot pressure | listener serialization | D8 (≤60 Hz), D5 |
+| S4 | Reconciler back-pressure | listener channel growth | D8, D1 |
+| S5 | Reentrancy | callback re-enters FFI | dispatch fire-and-forget, deadlock-free |
+| S6 | Capability lifecycle storms | start/stop/restart | D7 (capabilities idempotent) |
+| S7 | Error-shape exhaustion | every invalid input path | D6 (no errors cross FFI) |
+| S8 | Subscription planner DOS | OpenView/CloseView storm | D8 (≤60 Hz/view), D5 |
+| S9 | Relay flap | reconnect + watermark | D7, D2 |
+| S10 | Long suspend simulation | background → foreground | monotonic rev (aim.md §2) |
 
 ## 4. Harness architecture
 

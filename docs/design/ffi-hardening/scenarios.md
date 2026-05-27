@@ -66,8 +66,8 @@ queues). Actor thread is the bottleneck under test.
 
 **Assertions.**
 1. No dispatch call takes > **1 ms** at p99 (Swift→Rust channel send
-   latency; this is the bible-#3 "fire-and-forget" guarantee
-   quantified).
+   latency; this is the "fire-and-forget" guarantee
+   quantified — `dispatch()` never blocks).
 2. Main thread (XCUITest variant) is never blocked > **16 ms**
    (measured via XCTest's `XCTHitchMetric`).
 3. Actor mpsc backlog never exceeds **10,000 messages** (configurable
