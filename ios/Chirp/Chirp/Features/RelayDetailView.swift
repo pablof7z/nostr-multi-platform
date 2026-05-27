@@ -19,8 +19,8 @@ struct RelayDetailView: View {
         ScrollView {
             VStack(spacing: 24) {
                 statusSection
+                subsOverviewSection
                 if !row.wireSubs.isEmpty {
-                    subsOverviewSection
                     wireSubsSection
                 }
             }
