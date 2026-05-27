@@ -14,6 +14,21 @@
 - Do not open completed work as a draft pull request. If the work is ready and validated, open it as ready for review. Use draft PRs only when explicitly asked or when the work is intentionally incomplete.
 - After opening the PR, clean up the agent-owned worktree before completing the task.
 
+## User product corrections
+
+When the user gives any correction or instruction about how the NMP product
+should work, treat it as a possible product-authority update, not just an
+implementation request. Before making code changes, delegate a separate agent
+to research whether the correction should be represented in product specs,
+doctrine, canonical docs, `docs/plan.md`, `docs/BACKLOG.md`, ADRs under
+`docs/decisions/`, or another existing authoritative document.
+
+The delegated research must report where the instruction already lives, where
+it should live if it is missing, and whether the code change should be blocked
+until the documentation/source-of-truth update is made. If documentation needs
+to change, make that update in the same PR as the implementation unless the
+user explicitly scopes the work to docs only.
+
 ### Test scope — local vs. CI vs. merge
 
 When validating your own work locally, **scope `cargo test` to the crates
