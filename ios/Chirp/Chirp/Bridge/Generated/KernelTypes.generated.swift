@@ -77,6 +77,7 @@ public struct RelayStatus: Decodable, Equatable, Identifiable, Sendable {
     public let connection: String
     public let denied: Bool
     public let errorCategory: String?
+    public let eventsRx: UInt64
     public let lastCloseReason: String?
     public let lastConnectedAtMs: UInt64?
     public let lastError: String?

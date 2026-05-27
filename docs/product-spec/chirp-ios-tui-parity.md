@@ -44,6 +44,13 @@ action policy; the TUI renders projections and dispatches the same shared FFI or
 | Settings | Retry/cancel publish handle | `:outbox retry <handle>`, `:outbox cancel <handle>` |
 | Settings | Relay diagnostics/interests | `Settings` tab diagnostics and status bar |
 
+Relay diagnostics rows render Rust-owned fields only: configured role, active
+subscription count, durable session event count, and status/error text. A zero
+event count must be explainable as no active REQ, active REQ with no matches,
+EOSE/no matches, or a routing/configuration anomaly. Configured indexer relays
+must visibly participate in discovery-kind routing (`0`, `3`, `10002`, and
+other `10000..19999` lists) or expose why they did not.
+
 ## Notes
 
 - Tab keys mirror iOS top-level navigation: `h` Home, `c` Chats, `g` Groups,

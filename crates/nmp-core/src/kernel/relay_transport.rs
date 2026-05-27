@@ -83,6 +83,7 @@ impl RelayTransportMap {
                         last_notice: row.last_notice.clone(),
                         last_error: row.last_error.clone(),
                         error_category: row.error_category.clone(),
+                        events_rx: row.counters.events_rx,
                         bytes_rx: row.counters.bytes_rx,
                         bytes_tx: row.counters.bytes_tx,
                         denied: row.denied,

@@ -313,6 +313,7 @@ pub(crate) struct RelayStatus {
     /// `None` when `last_error` is empty. Lets iOS branch on error *class*
     /// without substring-matching the English `last_error` prose.
     pub(super) error_category: Option<String>,
+    pub(super) events_rx: u64,
     pub(super) bytes_rx: u64,
     pub(super) bytes_tx: u64,
     /// T120 (G8 / G11): relay has denied this client by policy
