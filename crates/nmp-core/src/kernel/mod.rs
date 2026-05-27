@@ -633,6 +633,29 @@ pub struct Kernel {
     /// consumer drops the claim — that lets a re-claim re-fetch (the
     /// `OneshotApi` row may have been released on EOSE long ago).
     event_claim_requested: BTreeSet<String>,
+    /// Cold-start parking queue for `claim_event` calls that arrived
+    /// before any relay socket reached the warm `can_send` state.
+    ///
+    /// Each entry is a `(uri, consumer_id)` pair — the exact arguments
+    /// the host originally passed to `claim_event`. The parked claim has
+    /// already been refcounted into [`Self::event_claims`] (so the
+    /// renderer sees the claim row immediately) but has NOT yet
+    /// registered a `OneShot + Global` interest with the OneshotApi —
+    /// no relay is reachable so there is nowhere to send a REQ.
+    ///
+    /// Drained by [`Kernel::pending_event_claim_requests`] which the
+    /// per-tick view-request dispatcher calls once at least one relay
+    /// is connected. Each parked pair is replayed as a warm
+    /// `claim_event(uri, consumer_id, can_send=true)` — `claim_event`
+    /// is idempotent on the refcount side (the second `insert` on the
+    /// same `(primary_id, consumer_id)` is a no-op) so the replay
+    /// simply registers the OneshotApi interest that the cold-start
+    /// path skipped.
+    ///
+    /// Symmetric with [`ProfileRequestState`]`.pending` and likewise
+    /// NOT preserved across `Kernel::Reset` (claims are view-derived;
+    /// views re-claim on re-open).
+    pub(super) pending_event_claims: Vec<(String, String)>,
     /// Counter for `claim_event` attempts dropped because a single
     /// `primary_id`'s consumer set hit [`MAX_EVENT_CLAIMS_PER_KEY`].
     /// Read-only diagnostic; mirrors `claim_drops_total` for the
@@ -1466,6 +1489,7 @@ impl Kernel {
             profile_claims: HashMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
+            pending_event_claims: Vec::new(),
             event_claim_drops_total: 0,
             profile_requests: ProfileRequestState::default(),
             timeline_requested: false,
