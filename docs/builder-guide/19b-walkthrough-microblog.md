@@ -111,7 +111,7 @@ the snapshot, not as a thrown error (D6).
 | Multi-account switch (`AccountManager`) | ✅ M8 (DONE) | — |
 | Outbox auto-routing in the planner | ✅ M2 (DONE) | wiring the planner into the *actor's REQ path* is the gap tracked in [27](27-discrepancies.md); the kernel demo still uses constant relays |
 | Legacy raw C FFI (JSON-over-string snapshot on master) | ✅ today | FlatBuffers runtime transport in progress; UniFFI binding/lifecycle bridge = **M14, PLANNED** |
-| `nmp init` starter CLI | ❌ not built | **M16, PLANNED** — example is hand-scaffolded |
+| `nmp init` (Rust workspace) | ✅ ships | Creates a Rust workspace only; full multi-platform starter is M16. This walkthrough hand-scaffolds inside the monorepo. |
 | iOS shell (Chirp, active) | ✅ M1/M10.5 (DONE) | Additional app shells are deferred until Chirp is complete |
 
 The publish substrate, the local signer, and multi-account all ship today.
@@ -135,9 +135,10 @@ expected and honest, not a defect.
 - **Per-platform SwiftData/Room cache parallel to `AppState`.** The decoded
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
-- **Expecting `nmp init` or UniFFI payload delivery today.** Both are PLANNED
-  milestones, and UniFFI is not the hot update payload format. Code that
-  imports a typed UniFFI `AppUpdate` will not compile against master.
+- **Expecting UniFFI typed payload delivery today.** UniFFI is the planned
+  binding/lifecycle bridge (M14); it is not the hot update payload format.
+  Code that imports a typed UniFFI `AppUpdate` will not compile against
+  master. (`nmp init` does ship for Rust-workspace scaffolding; see above.)
 
 See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
