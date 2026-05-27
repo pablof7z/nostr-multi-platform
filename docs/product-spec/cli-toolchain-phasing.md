@@ -21,7 +21,7 @@ nmp upgrade                        Bump nmp-* dependency versions and run migrat
 
 ### 8.2 What `nmp init` generates
 
-The scaffold matches the bible's `rmp init` pattern, adapted for Nostr:
+The scaffold produces a ready-to-build Rust workspace, adapted for Nostr:
 
 ```
 <project>/
@@ -59,7 +59,7 @@ Checks: Rust toolchain version, cross-compilation targets installed, Xcode (macO
 
 ## 9. Build & toolchain
 
-The bible's pipeline is adopted verbatim:
+The build pipeline:
 
 - `cdylib + staticlib + rlib` from generated `nmp-app-<name>`.
 - iOS: cross-compile, build `Nmp.xcframework`, link as non-embedded static framework via XcodeGen.
@@ -166,16 +166,15 @@ These questions are tractable in the design phase and do not block the rest of t
 ## 14. Glossary
 
 - **Action.** A `uniffi::Enum` variant + an async fn in `nmp-actions` that implements it. Fire-and-forget at the FFI boundary.
-- **Actor.** A dedicated OS thread that owns `AppState` and processes messages from a `flume` channel. Bible-canonical.
+- **Actor.** A dedicated OS thread that owns `AppState` and processes messages via an `mpsc` channel.
 - **AppState.** A `uniffi::Record` carrying everything the UI needs to render. Cloned across FFI.
 - **AppUpdate.** The outbound message stream from actor to platform. Variants: `FullState`, `ViewBatch`, `SideEffect`.
-- **Bible.** `rmp-architecture-bible.md` upstream at `rust-multiplatform/rmp`. The architectural standard.
 - **Capability.** A native-implemented Rust trait (`#[uniffi::export(callback_interface)]`) that lets Rust ask the OS to do something. Bounded; policy-free.
 - **EventStore.** The reactive single source of truth for all Nostr events. Owned by the actor; not exposed at FFI.
 - **Outbox routing.** NIP-65-based automatic relay selection for both reads and writes.
 - **Reconciler.** `AppReconciler` callback trait. Receives `AppUpdate`s on a background thread; the platform shim hops to the UI thread.
 - **View.** A pre-built derived projection of `EventStore` contents. Opened by `OpenView` action; payload arrives via `AppState.views` / `ViewBatch`.
-- **Capability bridge.** Synonym for capability; the RMP bible's term.
+- **Capability bridge.** Synonym for capability.
 - **ViewSpec / ViewPayload.** The opened-view descriptor and the materialized data.
 - **Watermark.** A `(filter, relay) → time` record indicating how much of that filter we have already reconciled from that relay. The basis of coverage-aware backfill (§7.1, §7.8).
 - **Best-effort rendering.** Doctrine D1: render what's available, refine in place; never withhold cached data; never block on fetches.
