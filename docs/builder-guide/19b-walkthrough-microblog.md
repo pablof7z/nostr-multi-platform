@@ -27,12 +27,14 @@ cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml --che
 ```
 
 > **Honest framing.** This is exactly the command that *regenerates the
-> existing fixture* ([`apps/fixture/`](../../apps/fixture)). There is no
-> `nmp init` that scaffolds a brand-new app for you yet — that is **M16,
-> PLANNED**. Today you hand-create `apps/microblog/nmp.toml` and
-> `crates/microblog-core/` (as in [19a](19a-walkthrough-microblog.md)), then
-> run `gen modules` to produce the FFI crate. The `--out` directory defaults
-> to `apps/{name}/{app_crate_name}` per
+> existing fixture* ([`apps/fixture/`](../../apps/fixture)). `nmp init`
+> exists today but creates a **standalone** project workspace — a separate
+> repo that depends on NMP as a path dependency. When adding an app to the
+> NMP monorepo (as this walkthrough does), you hand-create
+> `apps/microblog/nmp.toml` and `crates/microblog-core/` (as in
+> [19a](19a-walkthrough-microblog.md)), then run `gen modules` to produce
+> the FFI crate. The `--out` directory defaults to
+> `apps/{name}/{app_crate_name}` per
 > [`main.rs:45-51`](../../crates/nmp-codegen/src/main.rs).
 
 ### 3. Build the FFI library + run on the iOS simulator
