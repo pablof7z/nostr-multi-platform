@@ -31,6 +31,30 @@ of the Nostr protocol. It depends on the `rust-nostr` crate family for
 `Event`, `Filter`, NIP types, LMDB, and NIP-46/07 signing primitives. NMP
 is the missing multiplatform *application* layer above them.
 
+## What you stop writing
+
+The framework owns these. You don't write them, don't test them, don't debug
+them.
+
+- **Relay selection.** Not per-subscription. Not per-publish. Outbox routing
+  is on; the planner decides which relay gets which REQ.
+- **REQ/CLOSE lifecycle.** Open a view; subscriptions follow. Close the view;
+  they close.
+- **Duplicate filtering.** The store deduplicates on insert; the same event
+  arriving on three relays stores once.
+- **Replaceable-event supersession.** The store rejects older versions. You
+  cannot hold a stale kind:0 or kind:3.
+- **kind:3 auto-rewire.** When the follow list changes, every open subscription
+  re-routes. Zero app code.
+- **DM decryption.** NIP-17 plaintext never reaches Swift or Kotlin.
+- **Reconnect handling.** The relay manager retries; the view loop does not see
+  disconnects.
+- **Profile caching.** kind:0 is tracked and kept current; you render the
+  freshest value or a deterministic placeholder (never a spinner).
+
+If you find yourself writing any of these, stop. Either the framework already
+handles it, or you've found a gap worth filing.
+
 ## Contrast — one paragraph each
 
 **vs NDK (TypeScript).** NDK gets outbox-by-default ambition right and is
