@@ -41,6 +41,8 @@ without a `file:line` citation confirmed against the current tree.
 
 ### V-57 · 2026-05-26 architecture audit follow-up queue [HIGH · priority tracker]
 
+**ARCH ASSESSMENT CLOSED 2026-05-27.** Codex confirmed **ARCHITECTURE IS IN VERY GOOD STANDING** (all 6 checks passed) against master commit `7213d7ba` (PR #656). Two additional P1 violations found by the assessment were fixed and merged: D0 — `swap_nip17_dm_inbox_observer` renamed to `swap_dm_inbox_observer` in `AppHost` substrate trait (PR #654); D6 — `display::short_npub` removed from `publish_outbox` kernel projection (PR #655). P2–P6 items below remain as ongoing debt tracked here.
+
 **Scope:** this is the canonical roll-up for the six-agent architecture audit run on
 2026-05-26. PR #578 removes the duplicate planning/status authorities; the remaining
 findings below are ordered by architectural risk. When a slice gets a dedicated V/PD entry
