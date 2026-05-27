@@ -965,6 +965,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "crossterm 0.29.0",
+ "fastrand",
  "image",
  "insta",
  "keyring",

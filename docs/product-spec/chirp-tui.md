@@ -168,9 +168,13 @@ animations.
 - Avatar (8-cell tall), display_name + nip05, npub short + `y` to copy
 - Bio, follow/unfollow button, recent notes list
 
-### F6 — Group chat (Marmot MLS)
+### F6 — Group chat (Marmot MLS + NIP-29)
 - Room list + chat log; same bubble layout as DMs
 - `n` opens a centered Create group modal for protocol, name, relays, NIP-29 local id, and MLS invitees; `/group` and `/mls` commands remain power-user paths
+- NIP-29 public group creation collects protocol, display name, and relay; the
+  in-relay `local_id` is generated as `slug(display-name)-<random-number>` so
+  users do not have to invent protocol identifiers
+- Marmot MLS groups use `/mls invite` / `/mls accept` via command palette
 
 ### F7 — Search
 - `/search #tag` opens firehose-tag feed tab
