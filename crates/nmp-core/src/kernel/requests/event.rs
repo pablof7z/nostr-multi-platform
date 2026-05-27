@@ -78,6 +78,10 @@ impl Kernel {
         // `claim_profile` is the right primitive for npub/nprofile —
         // routing kind:0 fetches through the indexer lane rather than
         // through this generic OneshotApi seam.
+        // W5: carry author and relay hints from the URI TLV for claim-expansion.
+        let mut uri_author: Option<String> = None;
+        let mut uri_relay_hints: Vec<String> = Vec::new();
+
         let (primary_id, shape) = match parsed {
             NostrUri::Profile { .. } => {
                 self.log(format!(
@@ -86,7 +90,16 @@ impl Kernel {
                 ));
                 return Vec::new();
             }
-            NostrUri::Event { event_id, .. } => {
+            NostrUri::Event {
+                event_id,
+                author,
+                relays,
+                kind: _,
+            } => {
+                // §7.3: capture author TLV (seeds Phase-1 warm filter) and
+                // relay hints (fed to Phase-2 candidate queue via W7).
+                uri_author = author;
+                uri_relay_hints = relays;
                 let shape = InterestShape {
                     event_ids: std::iter::once(event_id.clone()).collect(),
                     limit: Some(1),
@@ -98,7 +111,7 @@ impl Kernel {
                 identifier,
                 pubkey,
                 kind,
-                ..
+                relays,
             } => {
                 // Per NIP-01 §3.7 (addressable events), the canonical filter
                 // for "fetch the event at coordinate (kind, pubkey, d_tag)" is
@@ -112,6 +125,9 @@ impl Kernel {
                 // produces an empty set on the relay. We use `authors` for
                 // outbox routing (the planner's NIP-65 mailbox lookup keys
                 // off `authors` just as well as `NaddrCoord::pubkey`).
+                // W5: naddr author is the pubkey field (single-author by construction).
+                uri_author = Some(pubkey.clone());
+                uri_relay_hints = relays;
                 let mut tags: std::collections::BTreeMap<
                     String,
                     std::collections::BTreeSet<String>,
@@ -192,8 +208,20 @@ impl Kernel {
             let registry = self.lifecycle.registry_mut();
             self.oneshot.request(registry, InterestScope::Global, shape)
         };
-        self.pending_discovery_oneshots.insert(interest_id, token);
-        self.event_claim_requested.insert(primary_id);
+        self.pending_discovery_oneshots
+            .insert(interest_id.clone(), token);
+        self.event_claim_requested.insert(primary_id.clone());
+        // W5 — register claim-expansion tracker. Must be called AFTER
+        // OneshotApi::request so `interest_id` is resolved. The tracker
+        // stores the interest_id, author, and URI relay hints for the
+        // Phase 1/2/3 state machine (§7.3 retarget).
+        self.register_claim_expansion(
+            primary_id,
+            Some(interest_id),
+            uri_author,
+            uri_relay_hints,
+            std::time::Instant::now(),
+        );
         // A2 — view-equivalent registered an interest. Empty
         // `interest_ids` is correct (the compiler walks the full
         // registry; this Vec is diagnostic provenance only).
@@ -272,7 +300,7 @@ impl Kernel {
     /// registration when no fetch is needed. The store-side equivalent
     /// is the snapshot projection in `kernel/update.rs::lookup_for_primary_id`
     /// which performs the same lookup against the same map.
-    fn event_already_known(&self, primary_id: &str) -> bool {
+    pub(in crate::kernel) fn event_already_known(&self, primary_id: &str) -> bool {
         if is_hex64(primary_id) {
             return self.events.contains_key(primary_id);
         }

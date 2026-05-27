@@ -77,6 +77,7 @@ impl Kernel {
     ) {
         self.record_claim_outcome(author, relay_url, ClaimOutcome::Hit);
         self.mark_claim_expansion_match_seen(sub_id, relay_url);
+        self.on_claim_outcome_hit_for_sub(sub_id);
     }
 
     /// Record EOSE-without-match only if no accepted matching EVENT was seen
@@ -92,15 +93,20 @@ impl Kernel {
         if let Some(author) = self.lookup_claim_expansion_author(sub_id) {
             self.record_claim_outcome(&author, relay_url, ClaimOutcome::EoseNoMatch);
         }
+        self.on_claim_outcome_eose_no_match(sub_id, relay_url);
     }
 
     /// Returns the author pubkey for a claim-expansion subscription, if any.
     ///
-    /// Stub: always returns `None` until W5 populates `claim_expansion_subs`.
-    pub(crate) fn lookup_claim_expansion_author<'a>(&'a self, sub_id: &str) -> Option<String> {
-        // W5 dependency: when W5 adds `claim_expansion_subs: BTreeMap<String, Pubkey>`,
-        // replace this body with:
-        //   self.claim_expansion_subs.get(sub_id).cloned()
+    /// W5 implementation: looks up the originating claim via the twin BTreeMaps
+    /// (`claim_sub_index` → `pending_claims` → `author`). Falls back to the
+    /// test-support seam for W3 tests that inject via `register_claim_expansion_sub`.
+    pub(crate) fn lookup_claim_expansion_author(&self, sub_id: &str) -> Option<String> {
+        // Primary path: W5 twin-map lookup (O(log N)).
+        if let Some(author) = self.lookup_claim_author_by_sub_id(sub_id) {
+            return Some(author);
+        }
+        // Fallback: test-support seam for W3 tests that inject subs directly.
         self.claim_expansion_sub_author_test(sub_id)
     }
 
@@ -402,7 +408,7 @@ mod tests {
     }
 
     fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
-        use ::nostr::{EventBuilder, Timestamp};
+        use nostr::{EventBuilder, Timestamp};
         let nostr_event = EventBuilder::text_note(content)
             .custom_created_at(Timestamp::from(ts))
             .sign_with_keys(keys)

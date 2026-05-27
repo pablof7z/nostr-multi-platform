@@ -96,29 +96,11 @@ impl Kernel {
             }
         }
 
-        // W3/W5 — claim-expansion score hook (relay_failed = Failed, §8.5 +3f).
-        //
-        // Cross-workstream dependency on W5:
-        //   When W5 adds `pending_claims: Vec<PendingClaim>` to Kernel, this
-        //   block should walk `self.pending_claims` and find every claim whose
-        //   Phase-1 or Phase-2 relay set includes `relay_url`. For each match:
-        //
-        //     self.record_claim_outcome(
-        //         claim.author(),
-        //         relay_url,
-        //         relay_score::ClaimOutcome::Failed,
-        //     );
-        //
-        //   The walk is deferred here rather than stubbed with a no-op because
-        //   the `PendingClaim` type (and the `pending_claims` field) do not
-        //   exist until W5. A fake loop over an empty Vec would compile but
-        //   silently do nothing and could mask a missing W5 wiring step.
-        //
-        //   §8.1 retarget note: the hook lands here (`relay_failed`) rather
-        //   than in `relay_transport.rs::FailedAfterRetries`. `relay_failed` is
-        //   already an edge-triggered callback (D8) and has access to
-        //   `relay_url` which is required to scope the walk. `FailedAfterRetries`
-        //   would require threading the URL through an additional layer.
+        // W5 §8.1 — claim-expansion score hook (relay_failed = Failed, §8.5 +3f).
+        // Walk all pending claims and record a Failed outcome for each claim
+        // that attempted the failed relay URL. Delegated to `relay_failed_claim_walk`
+        // in `claim_expansion.rs` (D4: single writer of the score map).
+        self.relay_failed_claim_walk(relay_url);
     }
 
     /// A transport socket for `role` was fully torn down (no retry).
