@@ -34,7 +34,9 @@ pub enum Mode {
     /// Account list overlay invoked from the `a` key.
     AccountSwitcher,
     /// Read-only overlay showing the raw JSON card for the selected event.
-    RawEventModal { scroll: u16 },
+    RawEventModal {
+        scroll: u16,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +62,7 @@ pub struct AppState {
     pub chat_selected: usize,
     pub group_selected: usize,
     pub settings_account_selected: usize,
+    pub settings_relay_selected: usize,
     pub detail_cursor: usize,
     pub detail_scroll: u16,
     pub compose: String,
@@ -97,8 +100,7 @@ pub struct AppState {
     pub group_composing: bool,
     pub group_compose_buf: String,
 
-    /// Settings section cursor (0=Account, 1=Relays, 2=Outbox, 3=Keys,
-    /// 4=Appearance, 5=About).
+    /// Settings section cursor (0=Accounts, 1=Relays, 2=Outbox).
     pub settings_cursor: usize,
 
     /// Settings → Outbox: when `Some(i)`, the outbox detail pane is open and
@@ -142,6 +144,7 @@ impl Default for AppState {
             chat_selected: 0,
             group_selected: 0,
             settings_account_selected: 0,
+            settings_relay_selected: 0,
             detail_cursor: 0,
             detail_scroll: 0,
             compose: String::new(),
@@ -181,6 +184,12 @@ impl AppState {
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
         self.features = FeatureSnapshot::from_transport_payload(&event.payload);
+        let relay_len = self.relays.len();
+        if relay_len == 0 {
+            self.settings_relay_selected = 0;
+        } else if self.settings_relay_selected >= relay_len {
+            self.settings_relay_selected = relay_len - 1;
+        }
 
         // Clamp tab-specific selection indices to avoid out-of-bounds access.
         let conv_len = self.features.dm_conversations.len();
@@ -242,6 +251,9 @@ impl AppState {
 
     pub fn set_tab(&mut self, tab: FeatureTab) {
         self.tab = tab;
+        if tab == FeatureTab::Settings && self.settings_cursor == 0 {
+            self.settings_cursor = 1;
+        }
         self.status = format!("tab {}", tab.label());
     }
 
@@ -294,6 +306,30 @@ impl AppState {
 
     pub fn settings_account_select_previous(&mut self) {
         self.settings_account_selected = self.settings_account_selected.saturating_sub(1);
+    }
+
+    pub fn settings_relay_select_next(&mut self) {
+        if !self.relays.is_empty() && self.settings_relay_selected + 1 < self.relays.len() {
+            self.settings_relay_selected += 1;
+        }
+    }
+
+    pub fn settings_relay_select_previous(&mut self) {
+        self.settings_relay_selected = self.settings_relay_selected.saturating_sub(1);
+    }
+
+    pub fn settings_section_next(&mut self) {
+        self.settings_cursor = (self.settings_cursor + 1).min(2);
+        if self.settings_cursor != 2 {
+            self.outbox_selected = None;
+        }
+    }
+
+    pub fn settings_section_previous(&mut self) {
+        self.settings_cursor = self.settings_cursor.saturating_sub(1);
+        if self.settings_cursor != 2 {
+            self.outbox_selected = None;
+        }
     }
 
     pub fn select_page_down(&mut self) {

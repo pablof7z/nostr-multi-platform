@@ -516,9 +516,15 @@ toolbar toggle on the wasm host) plus `chirp-tui` relay diagnostics. Every
 connected relay row must expose role, active wire-subscription count, durable
 session EVENT count, and enough status to explain a zero count as either no
 REQ, active REQ with no matches, EOSE/no matches, or a routing/configuration
-anomaly. Indexer relays are part of this acceptance criterion: for discovery
-kinds (`0`, `3`, `10002`, and other `10000..19999` lists), configured indexers
-must be visibly targeted or the diagnostics must show why they were not.
+anomaly. `chirp-tui` Settings must render the full active relay inventory
+rather than only configured app relays; group rows by runtime category/source;
+let the user select any relay; and show why the client is connected, current
+wire subscriptions with exact raw REQ filters, per-sub and session event
+counts, EOSE/close/error state, and traffic/reconnect counters. The title bar
+and preview relay pane must label total vs preview counts consistently.
+Indexer relays are part of this acceptance criterion: for discovery kinds
+(`0`, `3`, `10002`, and other `10000..19999` lists), configured indexers must
+be visibly targeted or the diagnostics must show why they were not.
 
 ---
 

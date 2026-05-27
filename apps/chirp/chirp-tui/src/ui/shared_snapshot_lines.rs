@@ -1,5 +1,3 @@
-use ratatui::text::Line;
-
 use crate::app::AppState;
 use crate::short_id;
 
@@ -31,32 +29,3 @@ pub fn action_summary(state: &AppState) -> String {
     }
     "last action: none".to_string()
 }
-
-pub fn relay_lines(state: &AppState) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from(format!(
-        "Relays: {}  Interests: {}",
-        state.relays.len(),
-        state.interests.len()
-    ))];
-    if state.relays.is_empty() {
-        lines.push(Line::from("No relay diagnostics yet."));
-        return lines;
-    }
-    for relay in state.relays.iter().take(4) {
-        let last = relay.last_event_display.as_deref().unwrap_or("no events");
-        lines.push(Line::from(format!(
-            "{}  {}  {}  subs:{}  events:{}  {}",
-            relay.short_url,
-            relay.role_label,
-            relay.connection_label,
-            relay.active_sub_count,
-            relay.total_events_display,
-            last
-        )));
-        if let Some(error) = &relay.last_error {
-            lines.push(Line::from(format!("  error: {error}")));
-        }
-    }
-    lines
-}
-

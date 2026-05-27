@@ -1,15 +1,15 @@
-use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::Frame;
 use ratatui_image::protocol::Protocol;
 
 use crate::app::AppState;
 use crate::app::Mode;
 use crate::features::FeatureTab;
 use crate::short_id;
-use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, RELAY_DOWN, RELAY_OK};
+use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, RELAY_DOWN, RELAY_OK};
 use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::home;
@@ -77,7 +77,9 @@ fn render_welcome(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         Line::from(""),
         Line::from(Span::styled(
             "chirp",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "the nostr social client",
@@ -112,18 +114,21 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let connected = state
         .relays
         .iter()
-        .filter(|r| {
-            let lower = r.connection_label.to_ascii_lowercase();
-            lower.contains("connected") || lower == "open"
-        })
+        .filter(|relay| relay_is_connected(&relay.connection_label))
         .count();
-    let relay_dot = if connected > 0 { '\u{25cf}' } else { '\u{25cb}' };
+    let relay_dot = if connected > 0 {
+        '\u{25cf}'
+    } else {
+        '\u{25cb}'
+    };
     let relay_color = if connected > 0 { RELAY_OK } else { RELAY_DOWN };
 
     let title = Line::from(vec![
         Span::styled(
             "chirp",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
         Span::styled(account, Style::default().fg(DIM_TEXT)),
@@ -131,11 +136,19 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         Span::raw(tab_labels(state)),
         Span::raw("  "),
         Span::styled(
-            format!("{} {} relays", relay_dot, state.relays.len()),
+            format!("{} {}/{} relays", relay_dot, connected, state.relays.len()),
             Style::default().fg(relay_color),
         ),
     ]);
     frame.render_widget(Paragraph::new(title), area);
+}
+
+fn relay_is_connected(connection_label: &str) -> bool {
+    let lower = connection_label.to_ascii_lowercase();
+    if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") {
+        return false;
+    }
+    lower.contains("connected") || lower == "open"
 }
 
 fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState, context: &RenderContext<'_>) {
@@ -278,7 +291,9 @@ fn render_compose_modal(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .constraints([Constraint::Min(0), Constraint::Length(12)])
         .split(inner_rows[1]);
 
-    let key_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let key_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(DIM_TEXT);
     let hint_line = Line::from(vec![
         Span::styled("Enter", key_style),

@@ -1,21 +1,27 @@
 //! Approach-b Home: bottom-left relay health panel.
 
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::snapshot::RelayRow;
 use crate::ui::colors::{
-    BODY_TEXT, DIM_TEXT, DIMMER_TEXT, LIST_BG, RELAY_CONNECTING, RELAY_DOWN, RELAY_OK,
+    BODY_TEXT, DIMMER_TEXT, DIM_TEXT, LIST_BG, RELAY_CONNECTING, RELAY_DOWN, RELAY_OK,
 };
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
+    let relay_count = state.relays.len();
+    let title = if relay_count == 0 {
+        " Relays ".to_string()
+    } else {
+        format!(" Relays {}/{} ", relay_count.min(8), relay_count)
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Relays ")
+        .title(title)
         .border_style(Style::default().fg(DIMMER_TEXT))
         .style(Style::default().bg(LIST_BG));
 

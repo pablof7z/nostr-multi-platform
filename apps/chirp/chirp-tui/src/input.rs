@@ -70,6 +70,16 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Tab => state.next_tab(),
         KeyCode::BackTab => state.previous_tab(),
         KeyCode::Char('l') | KeyCode::Right
+            if state.mode == Mode::Normal && state.tab == FeatureTab::Settings =>
+        {
+            state.settings_section_next();
+        }
+        KeyCode::Char('h') | KeyCode::Left
+            if state.mode == Mode::Normal && state.tab == FeatureTab::Settings =>
+        {
+            state.settings_section_previous();
+        }
+        KeyCode::Char('l') | KeyCode::Right
             if state.mode == Mode::Normal && state.focused != Pane::Detail =>
         {
             state.focused = Pane::Detail;
@@ -111,13 +121,12 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Down | KeyCode::Char('j') if state.focused != Pane::Detail => match state.tab {
             crate::features::FeatureTab::Chats => state.chat_select_next(),
             crate::features::FeatureTab::Groups => state.group_select_next(),
-            crate::features::FeatureTab::Settings => {
-                if state.outbox_selected.is_some() {
-                    outbox_select_next(state);
-                } else {
-                    state.settings_account_select_next();
-                }
-            }
+            crate::features::FeatureTab::Settings => match state.settings_cursor {
+                0 => state.settings_account_select_next(),
+                1 => state.settings_relay_select_next(),
+                2 => outbox_select_next(state),
+                _ => {}
+            },
             _ => {
                 state.select_next();
                 state.load_older_timeline_if_needed(runtime);
@@ -126,13 +135,12 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Up | KeyCode::Char('k') if state.focused != Pane::Detail => match state.tab {
             crate::features::FeatureTab::Chats => state.chat_select_previous(),
             crate::features::FeatureTab::Groups => state.group_select_previous(),
-            crate::features::FeatureTab::Settings => {
-                if state.outbox_selected.is_some() {
-                    outbox_select_previous(state);
-                } else {
-                    state.settings_account_select_previous();
-                }
-            }
+            crate::features::FeatureTab::Settings => match state.settings_cursor {
+                0 => state.settings_account_select_previous(),
+                1 => state.settings_relay_select_previous(),
+                2 => outbox_select_previous(state),
+                _ => {}
+            },
             _ => state.select_previous(),
         },
         KeyCode::PageDown => {
@@ -150,8 +158,10 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             }
         }
         KeyCode::Enter => {
-            if state.tab == FeatureTab::Settings {
+            if state.tab == FeatureTab::Settings && state.settings_cursor == 2 {
                 toggle_outbox_selection(state);
+            } else if state.tab == FeatureTab::Settings {
+                acknowledge_settings_selection(state);
             } else {
                 open_selected_thread(state, runtime);
             }
@@ -417,6 +427,14 @@ fn toggle_outbox_selection(state: &mut AppState) {
         None => Some(0),
         Some(_) => None,
     };
+}
+
+fn acknowledge_settings_selection(state: &mut AppState) {
+    if state.settings_cursor == 1 {
+        if let Some(relay) = state.relays.get(state.settings_relay_selected) {
+            state.status = format!("relay detail: {}", relay.short_url);
+        }
+    }
 }
 
 fn count_replies_for_selected(state: &AppState) -> usize {
