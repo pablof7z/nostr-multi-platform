@@ -61,11 +61,13 @@ routing, kind:3 auto-tracking, NIP-46 remote signing, NIP-77 negentropy
 backfill, replaceable-event supersession, multi-account sessions, and the
 reactive snapshot loop are all live. iOS Keychain is the production signer
 path. The Highlighter and NIP-29 modules prove the kernel/extension
-boundary holds for a second protocol surface.
+boundary holds for a second protocol surface. `nmp init` scaffolds a
+ready-to-build Rust workspace; `nmp gen modules` generates the per-app
+FFI crate from a manifest.
 
-Coming next: Blossom blob storage, an Android shell on the same kernel, a
-WASM build for the browser, UniFFI to replace the raw C FFI, and a `nmp
-init` CLI scaffold.
+Coming next: Blossom blob storage, an Android shell on the same kernel,
+WASM write path + IndexedDB (browser relay driver already landed; write
+path and storage in progress), and UniFFI to replace the raw C FFI.
 
 ## Comparison — 6 axes
 
