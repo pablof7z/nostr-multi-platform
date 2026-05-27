@@ -1232,10 +1232,10 @@ pub fn run_actor_with_observers(
         // value larger than u32::MAX is a host-side misconfiguration that
         // we silently truncate rather than reject (D6 — no panics on
         // input data we don't own).
-        let kinds = bootstrap_self_kinds_slot
-            .lock()
-            .ok()
-            .and_then(|g| g.as_ref().map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>()));
+        let kinds = bootstrap_self_kinds_slot.lock().ok().and_then(|g| {
+            g.as_ref()
+                .map(|v| v.iter().map(|n| *n as u32).collect::<Vec<u32>>())
+        });
         kernel.set_bootstrap_self_kinds_override(kinds);
     }
     // G-S4 — bind the actor command-channel depth counter so it surfaces on
@@ -1622,6 +1622,31 @@ pub fn run_actor_with_observers(
                     &mut kernel,
                     &mut next_relay_generation,
                     outbound,
+                );
+            }
+        }
+        // W6 — claim-expansion idle tick: advance the per-claim Phase 1/2/3
+        // state machine once per actor idle iteration. Per D8, an empty
+        // `pending_claims` map is a zero-cost no-op (single `is_empty()` check
+        // in `poll_claim_expansion`, no allocation, no iteration). When claims
+        // are pending, the state machine applies budget checks and promotes
+        // Phase-1 claims to Phase 2 by enqueuing a `CompileTrigger::ViewOpened`
+        // via `advance_to_phase2`; the resulting REQ frames surface on the NEXT
+        // iteration's `drain_lifecycle_tick` call above. Per D4, this is the
+        // sole writer of `pending_claims` — actor single-writer invariant.
+        // `poll_claim_expansion` always returns `Vec::new()` today (W5 contract);
+        // the `if !msgs.is_empty()` guard is forward-compatible with W7+ where
+        // the controller may route fallback REQs as direct OutboundMessages.
+        if running {
+            let expansion_msgs = kernel.poll_claim_expansion(Instant::now());
+            if !expansion_msgs.is_empty() {
+                send_all_outbound(
+                    &mut relay_controls,
+                    &mut slot_to_url,
+                    &pool,
+                    &mut kernel,
+                    &mut next_relay_generation,
+                    expansion_msgs,
                 );
             }
         }
