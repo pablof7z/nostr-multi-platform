@@ -5,11 +5,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestId, InterestLifecycle, InterestShape, PTagRouting, Pubkey, RelayUrl},
     plan::RoutingSource,
 };
-use super::{MailboxCache, RelayEntry};
 
 /// Route `#p` tag values to their inbox relays (read ∪ both).
 ///
@@ -45,9 +45,10 @@ pub(super) fn route_p_tags_to_inbox(
     for tagged_pk in p_tag_values {
         let relays_and_source = match base_shape.p_tag_routing {
             PTagRouting::Nip65ReadRelays => match mailbox_cache.get(tagged_pk) {
-                Some(ref snapshot) if snapshot.has_inbox_relays() => {
-                    Some((snapshot.inbox_relays().cloned().collect(), RoutingSource::Nip65))
-                }
+                Some(ref snapshot) if snapshot.has_inbox_relays() => Some((
+                    snapshot.inbox_relays().cloned().collect(),
+                    RoutingSource::Nip65,
+                )),
                 // Inbox unknown or empty: fail-closed. Probe and emit nothing.
                 _ => {
                     mailbox_cache.request_probe(tagged_pk);

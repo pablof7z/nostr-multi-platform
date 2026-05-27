@@ -106,8 +106,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
             break;
         }
 
-        let probe_authors: usize =
-            probes.iter().map(|(_, _, fj)| author_count(fj)).sum();
+        let probe_authors: usize = probes.iter().map(|(_, _, fj)| author_count(fj)).sum();
         probed_total += probe_authors;
 
         // `run_discovery` prints a per-REQ row for EVERY implicit
@@ -221,6 +220,10 @@ fn partition(reqs: &[ContentReq]) -> BTreeMap<String, Vec<ContentReq>> {
 fn author_count(filter_json: &str) -> usize {
     serde_json::from_str::<Value>(filter_json)
         .ok()
-        .and_then(|v| v.get("authors").and_then(Value::as_array).map(std::vec::Vec::len))
+        .and_then(|v| {
+            v.get("authors")
+                .and_then(Value::as_array)
+                .map(std::vec::Vec::len)
+        })
         .unwrap_or(0)
 }

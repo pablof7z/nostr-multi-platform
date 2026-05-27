@@ -17,6 +17,8 @@
 //!   [`crate::kernel::RelayEditRow`] projection. Diagnostic lane label,
 //!   not a routing input.
 
+use nmp_planner::selection::relay_score_lookup::RelayAuthorScoreLookup;
+
 use super::mailboxes::KernelMailboxes;
 use super::Kernel;
 
@@ -38,7 +40,22 @@ impl Kernel {
             std::sync::Arc::clone(&self.mailbox_cache),
             self.dm_inbox_relays_arc(),
         );
-        self.lifecycle.drain_tick(&mailboxes)
+        // W4 §8.6: build a `ScoreLookupRef` via a split-borrow pattern.
+        // We cannot write `let lookup = self as &dyn Trait` here because that
+        // borrows all of `self` (including `lifecycle`) before the subsequent
+        // `&mut self.lifecycle` in `drain_tick`. Instead we extract the two
+        // read-only pieces we need — `&self.relay_score_map` and the current
+        // wall-clock second — before the mutable call. `now_secs` is a
+        // `u64` copy (not a borrow), so no lifetime escapes through it.
+        //
+        // A6 same-tick visibility: W3 writes `relay_score_map` synchronously
+        // in the same actor tick before idle-tick drain fires, so the lookup
+        // sees the latest scores.
+        let now = self.now_secs();
+        let score_lookup = Kernel::score_lookup_ref_from(&self.relay_score_map, now);
+        let lookup: &dyn RelayAuthorScoreLookup = &score_lookup;
+        self.lifecycle
+            .drain_tick_with_lookup(&mailboxes, Some(lookup))
     }
 
     /// V-04 Stage 2 — `KernelReducer` / wasm bridge: drain one

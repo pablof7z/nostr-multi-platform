@@ -44,12 +44,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::inbox_helper::route_p_tags_to_inbox;
+use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestId, InterestLifecycle, InterestShape, LogicalInterest, Pubkey, RelayUrl},
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use super::{MailboxCache, RelayEntry};
-use super::inbox_helper::route_p_tags_to_inbox;
 
 /// Route a `#p`-only interest (no authors/addresses) to inbox relays.
 ///
@@ -121,17 +121,22 @@ pub(super) fn route_bootstrap_content_inbox(
         per_relay
             .entry(relay.clone())
             .or_default()
-            .insert(RoutingSource::UserConfigured(UserConfiguredCategory::Bootstrap));
+            .insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::Bootstrap,
+            ));
     }
     for (relay_url, sources) in per_relay {
-        relay_entries.entry(relay_url).or_default().push(RelayEntry {
-            base_shape: base_shape.clone(),
-            authors_for_relay: BTreeSet::new(),
-            addresses_for_relay: BTreeSet::new(),
-            lifecycle: interest.lifecycle.clone(),
-            sources,
-            interest_id: interest.id.clone(),
-        });
+        relay_entries
+            .entry(relay_url)
+            .or_default()
+            .push(RelayEntry {
+                base_shape: base_shape.clone(),
+                authors_for_relay: BTreeSet::new(),
+                addresses_for_relay: BTreeSet::new(),
+                lifecycle: interest.lifecycle.clone(),
+                sources,
+                interest_id: interest.id.clone(),
+            });
     }
 }
 
@@ -155,7 +160,6 @@ pub(super) fn every_tagged_pubkey_lacks_nip65_inbox(
         None => true,
     })
 }
-
 
 #[cfg(test)]
 #[path = "case_c_p_tags/tests.rs"]

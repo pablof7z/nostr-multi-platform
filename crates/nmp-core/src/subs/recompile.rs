@@ -10,10 +10,11 @@
 use std::collections::BTreeSet;
 
 use crate::planner::{
-    apply_selection, CompiledPlan, InterestId, InterestLifecycle, InterestShape, MailboxCache,
-    PlannerError, SubscriptionCompiler,
+    apply_selection_with_lookup, CompiledPlan, InterestId, InterestLifecycle, InterestShape,
+    MailboxCache, PlannerError, SubscriptionCompiler,
 };
 use crate::stable_hash::stable_hash64;
+use nmp_planner::RelayAuthorScoreLookup;
 
 use super::trigger::CompileTrigger;
 use super::wire::{plan_diff, WireFrame};
@@ -31,9 +32,31 @@ impl SubscriptionLifecycle {
     ///
     /// Updates the lifecycle gate; diverts REQs targeting auth-paused relays
     /// into the pending-auth buffer.
+    ///
+    /// Equivalent to `recompile_and_diff_with_lookup(mailbox_cache, None)`.
+    /// Use [`Self::recompile_and_diff_with_lookup`] to supply a warm-relay
+    /// score filter (W4).
     pub fn recompile_and_diff(
         &mut self,
         mailbox_cache: &dyn MailboxCache,
+    ) -> Result<Vec<WireFrame>, PlannerError> {
+        self.recompile_and_diff_with_lookup(mailbox_cache, None)
+    }
+
+    /// Recompile with an optional W4 warm-relay score filter.
+    ///
+    /// W4: `score_lookup` is the optional warm-relay filter. The kernel passes
+    /// `Some(lookup)` (via `ScoreLookupRef` built from `relay_score_map`) so
+    /// the planner's greedy step sees only warm outbox relays for authors that
+    /// have at least one warm option. Call sites that do not need W4 should use
+    /// the default-arity [`Self::recompile_and_diff`] wrapper.
+    ///
+    /// Updates the lifecycle gate; diverts REQs targeting auth-paused relays
+    /// into the pending-auth buffer.
+    pub fn recompile_and_diff_with_lookup(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
     ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
@@ -75,10 +98,11 @@ impl SubscriptionLifecycle {
         // recomputed (see `planner/mod.rs` §"Plan-id determinism vs.
         // post-compile mutators"; M4 precedent in
         // `docs/perf/codex-reviews/076173d.md`).
-        apply_selection(
+        apply_selection_with_lookup(
             &mut plan,
             self.select_max_connections,
             self.select_max_per_user,
+            score_lookup,
         );
 
         // D2 negentropy-first: let the coverage-gate hook (M4) rewrite the
@@ -183,8 +207,26 @@ impl SubscriptionLifecycle {
     /// `HashingFailed`) are surfaced into `last_planner_error` (observable via
     /// [`Self::last_planner_error`]) before returning empty, so the error is
     /// never silently lost.
+    ///
+    /// Equivalent to `drain_tick_with_lookup(mailbox_cache, None)`. Use
+    /// [`Self::drain_tick_with_lookup`] to supply a W4 warm-relay score filter.
     #[must_use]
     pub fn drain_tick(&mut self, mailbox_cache: &dyn MailboxCache) -> Vec<WireFrame> {
+        self.drain_tick_with_lookup(mailbox_cache, None)
+    }
+
+    /// Drain the trigger inbox with an optional W4 warm-relay score filter.
+    ///
+    /// W4: `score_lookup` threads through to `recompile_and_diff_with_lookup`
+    /// so the warm-relay pre-filter is applied on every drain tick. The kernel
+    /// passes `Some(lookup)` (via `ScoreLookupRef`); tests and non-W4 paths
+    /// should use the default-arity [`Self::drain_tick`] wrapper.
+    #[must_use]
+    pub fn drain_tick_with_lookup(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+        score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+    ) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {
             return Vec::new();
@@ -205,7 +247,7 @@ impl SubscriptionLifecycle {
                 auth_flushed.extend(self.auth_gate.record_transition(url.clone(), state.clone()));
             }
         }
-        match self.recompile_and_diff(mailbox_cache) {
+        match self.recompile_and_diff_with_lookup(mailbox_cache, score_lookup) {
             Ok(mut frames) => {
                 frames.extend(auth_flushed);
                 frames
