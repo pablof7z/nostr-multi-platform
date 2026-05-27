@@ -6,10 +6,12 @@ source files — you copy them, edit them, and update them safely.
 
 ## Prerequisites
 
-Install the NMP CLI:
+Clone the NMP repo and install the CLI:
 
 ```sh
-cargo install nmp-cli
+git clone https://github.com/pablof7z/nostr-multi-platform
+cd nostr-multi-platform
+cargo install --path crates/nmp-cli
 ```
 
 ## Recipe 1 — Minimal Inline Text
