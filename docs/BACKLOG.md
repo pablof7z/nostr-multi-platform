@@ -698,6 +698,166 @@ part of the deleted scratch plan.
 
 ---
 
+### V-61 · Marmot `PendingGroupChange::drop` silently clears unresolved MLS commit [HIGH · MLS state divergence]
+
+**Verified:** `crates/nmp-marmot/src/service.rs:172` — `PendingGroupChange::drop` clears the pending MLS commit on drop without surfacing an error. If a panic or early return drops the guard before the commit is resolved, the group's local MLS state is mutated as if the commit were applied, but no kind:445/`commit` event reaches the relay.
+
+**Impact:** group state diverges from the relay-published timeline. Subsequent members joining or syncing see a different epoch than this client. There is no recovery path short of leaving and rejoining the group.
+
+**Correct fix:** the drop path must either (a) roll the pending change back to pre-commit state, or (b) record a typed `MarmotError::OrphanedCommit` on the kernel error toast and refuse further group sends until the operator resolves the divergence. Silent drop is not a doctrined option.
+
+---
+
+### V-62 · Marmot keyring failure silently installs in-memory mock store [HIGH · MLS secret durability]
+
+**Verified:** `crates/nmp-marmot/src/ffi.rs:228-269` — nested fallback: real keyring open fails → delete-and-retry path → on second failure installs the in-memory mock store with no host-visible signal. MLS group secrets thereafter live only in process memory.
+
+**Impact:** the user believes MLS groups are persistent; on next launch the secret material is gone and every group is unjoinable. There is no toast, no error code returned to the host, no metric. Once secrets are lost, group membership cannot be recovered.
+
+**Correct fix:** surface a typed `MarmotInitError::KeyringUnavailable` to the host; let the app decide whether to block group features, prompt the user, or fall back to an explicit ephemeral session. Never install the mock store as an implicit decision inside `ffi.rs`.
+
+---
+
+### V-63 · NIP-47 outbound payment serialization uses `unwrap_or_default` — payment frame can be empty string [HIGH · silent payment failure]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs:222`, `:267`, `:460` — `serde_json::to_string(...).unwrap_or_default()` on the REQ/EVENT/CLOSE frames. If serialization fails, the resulting `""` is pushed onto the outbound queue. For `pay_invoice` (line 460) the `pending_payments` map is populated before the broken frame is sent, so the correlation_id is registered as inflight while the relay never receives a payment request.
+
+**Impact:** the user's pay-invoice action stage hangs indefinitely (or until wallet disconnect drains it as "wallet disconnected", which is a misleading reason). No error surfaces. This is also the most likely path through which a malformed bolt11 or amount could vanish without diagnosis.
+
+**Correct fix:** propagate serialization failure as `Err(NwcError::EncodeFailure)`; never send `""` frames; emit a `record_action_failure` for the correlation_id before dropping the request. Apply the same fix to the REQ filter and CLOSE frames so subscription bring-up failures are visible.
+
+---
+
+### V-64 · NIP-47 has no `pending_payments` timeout sweep — orphaned responses silently dropped [MEDIUM · silent stuck state]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs:392` — the `(_, None) => {}` arm in the response-correlation handler silently discards wallet responses that arrive with no matching `pending_payments` entry. `crates/nmp-nip47/src/runtime.rs:48` defines `pending_payments: HashMap<String, Option<String>>` and the only drain site is `wallet_disconnect_inner` (`:260`). There is no periodic sweep that times out inflight pay_invoice correlations.
+
+**Impact:** if a wallet response arrives after the client has already evicted the entry (or never registers one due to V-63), the response is silently consumed. Combined with the absence of a timeout, a payment can sit "pending" until the user manually disconnects the wallet, at which point the failure reason surfaced to the user is the unrelated string "wallet disconnected".
+
+**Correct fix:** add a wall-clock-gated sweep that records `record_action_failure(cid, "wallet timeout (>Ns)")` for entries older than a configured TTL (default 90 s, kernel-clock-sourced once V-59 lands). Replace the `_ => {}` arm with a `tracing::warn!` and a `WalletAnomaly::OrphanResponse` counter so the receive-without-correlation case becomes observable rather than dropped.
+
+---
+
+### V-65 · `NOSTRCONNECT_DEFAULT_RELAY_URL = "wss://relay.damus.io"` hardcoded in `nmp-core` [MEDIUM · D0 leak + third-party dependency]
+
+**Verified:** `crates/nmp-core/src/actor/relay_roles.rs:5` — `pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";` is a hardcoded third-party relay URL used as a fallback when a user without configured write relays initiates a `nostrconnect://` handshake (NIP-46).
+
+**Impact:** (1) D0 — `nmp-core` should not contain protocol-named third-party endpoints. (2) reliability — if `damus.io` rate-limits or goes offline, every NMP build worldwide that hasn't onboarded write relays cannot complete NIP-46 client-initiated handshakes. (3) policy — choice of bootstrap relay is an app/operator decision, not a framework constant.
+
+**Correct fix:** move the default to host-supplied policy. The host registers a `NostrConnectBootstrapRelays` capability (single URL or weighted list) via `NmpApp::register_capability`; the actor reads from the capability slot. nmp-core retains no hardcoded URL. Until removed, the existing constant must at minimum be flagged on the doctrine-lint banned-token list.
+
+---
+
+### V-66 · `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` activate silently when relay rows are empty [MEDIUM · D3 violation + masked config bug]
+
+**Verified:** `crates/nmp-core/src/kernel/mod.rs:1417,1420` — when `relay_edit_rows` is empty the kernel substitutes `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` for the active routing set. The substitution is silent (no toast, no log, no slot delta) so the host has no way to tell whether the user has zero configured relays or whether their configuration was wiped.
+
+**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62), the loss is invisible until they notice their followers no longer see their notes.
+
+**Correct fix:** distinguish "no rows" from "rows present but degraded". When `relay_edit_rows` is empty the kernel must publish `KernelDiagnostic::NoConfiguredRelays` and either (a) refuse to publish with a typed `NoTargets` error (matches V-50/V-51 fail-closed direction) or (b) require the host to explicitly opt in via a `BootstrapRelaysCapability`. Hardcoded URL constants in nmp-core must not be the production path.
+
+---
+
+### V-67 · Kernel init silently degrades to in-memory store on LMDB open failure [MEDIUM · silent durability loss]
+
+**Verified:** `crates/nmp-core/src/kernel/mod.rs:872` — LMDB open failure during kernel init falls through to an ephemeral in-process store. No `KernelDiagnostic` is emitted; no host callback is invoked. The kernel reports itself as healthy.
+
+**Impact:** the user runs the app, ingests events, publishes notes — and on the next launch every locally-stored event is gone (because the LMDB file was never opened, so the in-memory store was the only persistence layer). Notifications, drafts, profile cache, follow list — all transient without warning. This is one of the harder failure modes to diagnose because everything else works.
+
+**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring): silent mock installation is not a doctrined option.
+
+---
+
+### V-68 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
+
+**Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:446` — `func zap(...) { amountMsats: UInt64 = 21_000, ... }` with a doc-comment at `:433-434` stating "defaults to 21,000 msats (21 sats) until an amount picker lands." Every zap dispatch from the iOS shell that doesn't explicitly pass an amount sends 21 sats.
+
+**Impact:** users expecting a richer zap amount (e.g. 1,000 / 5,000 / 21,000 sats) send 21 sats because no picker exists. The default is in production iOS, not behind a feature flag, and the doc-comment promises a picker that has not landed. This is a user-facing UX defect, not framework debt.
+
+**Correct fix:** ship the amount picker (sheet with 21 / 100 / 500 / 1k / 5k / 21k presets + custom field) and remove the function default. The Rust side (`nmp_nip57::zap`) already accepts `amount_msats`; the gap is purely Swift UI. Until the picker ships, the default should be an explicit `nil` that forces the host to surface a sheet rather than silently dispatching 21 sats.
+
+---
+
+### V-69 · LMDB store silently swallows index-corruption errors via `ok()??` / `filter_map(res.ok())` [MEDIUM · silent query incompleteness]
+
+**Verified:** `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs:958` (`ok()??` double-error swallow in `query_by_scraping`) and the broader pattern `filter_map(|res| { res.ok()? })` on iteration paths in the same module. When a key resolves to a missing or undeserializable value (index points to a dangling event), the iterator silently produces fewer results rather than surfacing a corruption signal.
+
+**Impact:** queries appear to succeed but return incomplete result sets. No metric, no log, no `KernelDiagnostic`. Index corruption (which V-60 GC churn or a crash mid-write could induce) becomes a slow, undiagnosable "why is my note missing" bug. Test coverage for this path does not exist because the failure mode is silent.
+
+**Correct fix:** every `res.ok()?` on a query iteration must increment a typed `StoreAnomaly::OrphanIndexEntry` counter and emit `tracing::warn!` with the offending key. A non-zero counter must be exposed on the diagnostic snapshot so the host (and tests) can assert "no corruption detected". The double-swallow `.ok()??` at line 958 is the worst offender — replace with explicit `match` so the two error classes (missing key vs. deserialize failure) are distinguishable.
+
+---
+
+### V-70 · `hex_to_bytes32` returns all-zeros on malformed hex — `RawEvent::id_bytes/pubkey_bytes` produce valid-shape but wrong IDs [LOW · sharp-edge API]
+
+**Verified:** `crates/nmp-store/src/types/ids.rs:20-34` — `hex_to_bytes32(s)` returns `[0u8; 32]` whenever `s.len() != 64` or any byte is non-hex. `crates/nmp-store/src/types/events.rs:38-46` exposes this via `RawEvent::id_bytes()` and `RawEvent::pubkey_bytes()` with doc-comments that admit the silent-zero behaviour.
+
+**Impact:** `VerifiedEvent::try_from_raw` gates inserts behind Schnorr verification so a malformed `RawEvent` cannot enter the store with a zero ID/pubkey under normal flow. But any caller (current or future) that reads `id_bytes`/`pubkey_bytes` from an unverified `RawEvent` (e.g. for prefiltering, indexing, debug telemetry) silently receives the all-zeros sentinel. The all-zeros pubkey is a valid 32-byte shape, so downstream comparisons (`== local_pubkey`) cannot distinguish "decode failure" from "actually zero".
+
+**Correct fix:** change the signature to `fn hex_to_bytes32(s: &str) -> Option<[u8; 32]>` and propagate through `RawEvent::id_bytes/pubkey_bytes` as `Option<EventId>` / `Option<PubKey>`. Callers must handle the `None` arm explicitly. This is a one-shot mechanical refactor confined to `nmp-store`.
+
+---
+
+### V-71 · `nip65_resolver` module doc claims `tracing::debug!` logging that the code does not perform [LOW · false documentation + missing observability]
+
+**Verified:** `crates/nmp-router/src/nip65_resolver.rs:30` — module doc states "bad-shape kind:10002 tags (missing url, non-wss) are logged via `tracing::debug!` and skipped". A `grep tracing|debug!|warn!` of the file returns only the doc-comment itself; no tracing call exists.
+
+**Impact:** (1) documentation lies — a maintainer reading the module believes there is observability that doesn't exist. (2) the V-51 routing-trace inspector cannot attribute "kind:10002 tag was malformed" as a cause of an empty outbox set, because the malformed-tag path is silent. Diagnosing "why didn't my note publish?" is harder than the doc implies.
+
+**Correct fix:** add the `tracing::debug!(target: "nmp.router.nip65", url=?, reason=?, "skipping malformed kind:10002 tag")` calls at the two skip sites (missing URL, non-`wss://`), and surface a `RouterAnomaly::MalformedRelayTag` counter into V-51's routing-trace snapshot so the inspector can attribute empty-set outcomes.
+
+---
+
+### V-72 · `LocalKeySigner` silently coerces overflowing event `kind` to `u16::MAX` (65535) [LOW · silent overflow]
+
+**Verified:** `crates/nmp-signers/src/signers/local.rs:191` — `u16::try_from(unsigned.kind).unwrap_or(u16::MAX)` for an `unsigned.kind: u32`. NIP-01 kinds beyond 65535 are non-spec but architecturally reachable; the signer silently rebinds to kind 65535.
+
+**Impact:** a caller that passes an out-of-range `kind` gets a signed event with a different kind than they asked for. The signature is valid for kind 65535, so the relay accepts it and the recipient sees the wrong event class. There is no warning at the signer boundary.
+
+**Correct fix:** return `SignerError::KindOutOfRange { kind: u32 }` instead of silently coercing. Callers that genuinely want kind 65535 must pass it as a typed `u16` upstream.
+
+---
+
+### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
+
+**Verified:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs:114` — null or malformed `viewer_pubkey` is replaced with `Pubkey::default()` (32 zero bytes) and the register call proceeds. No error is returned to Swift.
+
+**Impact:** the iOS host believes it registered a logged-in user; the Rust side proceeds with the all-zeros pubkey as the active viewer. Personal-timeline projections, NIP-65 outbox resolution, and DM inbox filtering all run against the zero-pubkey "anonymous" identity. The user appears to be logged in to themselves but is treated as the canonical empty account by every Rust subsystem.
+
+**Correct fix:** the C-ABI `nmp_app_chirp_register` must return `NmpRegisterStatus::InvalidViewerPubkey` on null or non-32-byte input; Swift surfaces the failure to the onboarding flow. There is no doctrined reason for a register call with an invalid identity to silently succeed as anonymous.
+
+---
+
+### V-74 · NIP-47 NWC URI parser drops unknown params silently — misspelled `relay=` vanishes [LOW · silent config drop]
+
+**Verified:** `crates/nmp-nwc/src/parse.rs:135` — the `_ => {}` arm in the URI param match silently discards any param key the parser does not recognise. A user-pasted URI with `relays=wss://...` (note the `s`) or `Relay=wss://...` is accepted as a parse success with no relay configured.
+
+**Impact:** the user pastes a malformed NWC URI, the parse succeeds with a missing relay, the wallet connection fails on the next outbound, and the user has no clue why. This is a textbook silent-config-drop pattern; the URI parser is the right place to surface it.
+
+**Correct fix:** the `_` arm must either (a) return `NwcParseError::UnknownParam { key }` so the host can warn the user, or (b) record the unknown key into a `parse_warnings: Vec<String>` field on the parsed URI which the host surfaces in the wallet-connect sheet. Doctrine prefers (a) for required-shape params (`relay=`, `secret=`) and (b) for unknown extension params.
+
+---
+
+### V-75 · Router Lane 7 (AppRelay) catch-all silent — V-51 routing-trace cannot attribute empty-outbox causes [LOW · routing observability]
+
+**Verified:** `crates/nmp-router/src/router.rs:250-260` and `:377-388` — the AppRelay catch-all fires when all prior lanes (NIP-65, hint cache, recipient inbox, etc.) produce empty sets. No diagnostic is emitted for which lane attempted what; the catch-all is the silent terminator of an empty publish set.
+
+**Impact:** V-51's routing-trace inspector can show "event Y went to relay B via lane N" but cannot show "lanes 1–6 returned empty for reason R". When a publish appears to succeed against an app relay that the user didn't configure, the user has no way to find out why their NIP-65 write relays were skipped.
+
+**Correct fix:** each lane emits a typed `RouteAttempt { lane, outcome }` into the routing-trace ring buffer, including empty-set outcomes. The Lane 7 fallback explicitly attributes itself as `Lane::AppRelayFallback` so the V-51 inspector can show the empty-cause chain. This is a strict extension of V-51, not a duplicate.
+
+---
+
+### V-76 · `web/chirp` silently falls back to `InProcessNmpClient` on Worker construction failure [LOW · web production degradation]
+
+**Verified:** `web/chirp/src/nmp/client.ts:43-47` — Worker construction failure is caught and the client downgrades to `InProcessNmpClient`, which runs nmp-wasm on the main thread. No console warning, no telemetry, no UI signal.
+
+**Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) sees a Chirp web app that "works" but blocks the main thread on every kernel tick. Performance is silently degraded; the diagnostic surface is empty.
+
+**Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "performance-degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 
