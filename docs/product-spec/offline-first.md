@@ -2,7 +2,7 @@
 
 [Back to Product Specification - Nostr Multi-Platform Framework](../product-spec.md)
 
-This document elaborates **D1** ("Best-effort rendering — render now, refine in place") in practice and adds the relay-resilience requirements that sit alongside it. It is **not** a new doctrine; it is the product-spec contract that operationalizes D1 for kernel bootstrap, subscription lifecycle, and degraded-relay conditions.
+An NMP app renders immediately — with whatever is in the local store. No waiting for relay responses. No spinner while profiles load. No deferred first frame. This is D1 operationalized: the precise behaviors required for kernel bootstrap, subscription lifecycle, and degraded-relay conditions. Not a new doctrine; the product contract that makes D1 exact.
 
 ## 1. The core rule
 
