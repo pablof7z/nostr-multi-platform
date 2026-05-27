@@ -56,6 +56,18 @@ targets:
         # process-global Rust state such as the bunker hook single-copy.
         OTHER_LDFLAGS: "$(inherited) -lnmp_app_chirp"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Xcode 26 beta workarounds:
+        # 1. SwiftUICore restricts allowable-clients in its SDK TBD; the debug
+        #    dylib mode hits the same restriction. Disable the debug dylib so the
+        #    linker targets the real executable, and point FRAMEWORK_SEARCH_PATHS
+        #    at /tmp/LocalFrameworks first — that directory holds a copy of the
+        #    SwiftUICore.tbd with the allowable-clients block removed (no-op at
+        #    runtime; the real dylib is loaded from /System/Library at launch).
+        # 2. UIUtilities is a new private framework auto-linked in Xcode 26; a
+        #    stub TBD lives in the same /tmp/LocalFrameworks directory.
+        # Both stubs must exist before building; see docs/dev/xcode26-workarounds.md.
+        ENABLE_DEBUG_DYLIB: NO
+        "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]": "/tmp/LocalFrameworks $(inherited)"
     preBuildScripts:
       - name: Generate BuildInfo
         basedOnDependencyAnalysis: false

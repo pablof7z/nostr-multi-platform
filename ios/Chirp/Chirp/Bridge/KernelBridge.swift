@@ -536,6 +536,16 @@ final class KernelHandle {
                     decodeMicros: duration.microseconds
                 )
             )
+        } catch let error as DecodingError {
+            switch error {
+            case let .keyNotFound(key, ctx):
+                kbLog.error("FlatBuffers decode: keyNotFound '\(key.stringValue)' at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")) bytes=\(data.count)")
+            case let .typeMismatch(_, ctx):
+                kbLog.error("FlatBuffers decode: typeMismatch at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")) — \(ctx.debugDescription) bytes=\(data.count)")
+            default:
+                kbLog.error("FlatBuffers decode error: \(error.localizedDescription) bytes=\(data.count)")
+            }
+            return nil
         } catch {
             kbLog.error("FlatBuffers snapshot decode error: \(error.localizedDescription) bytes=\(data.count)")
             return nil

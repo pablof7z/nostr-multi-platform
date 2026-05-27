@@ -70,7 +70,7 @@ enum TimelineBlock: Decodable, Equatable {
 
     private struct ModulePayload: Decodable {
         let events: [String]
-        let has_gap: Bool
+        let hasGap: Bool
         let root: ThreadPointer?
     }
 
@@ -81,7 +81,7 @@ enum TimelineBlock: Decodable, Equatable {
             return
         }
         if let module = try container.decodeIfPresent(ModulePayload.self, forKey: .module) {
-            self = .module(events: module.events, hasGap: module.has_gap, root: module.root)
+            self = .module(events: module.events, hasGap: module.hasGap, root: module.root)
             return
         }
         throw DecodingError.dataCorrupted(
@@ -187,15 +187,15 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id
-        case authorPubkey = "author_pubkey"
+        case authorPubkey
         case kind
-        case createdAt = "created_at"
+        case createdAt
         case content
-        case contentTree = "content_tree"
-        case relationCounts = "relation_counts"
-        case authorDisplayName = "author_display_name"
-        case authorPictureUrl = "author_picture_url"
-        case contentPreview = "content_preview"
+        case contentTree
+        case relationCounts
+        case authorDisplayName
+        case authorPictureUrl
+        case contentPreview
     }
 }
 
@@ -235,7 +235,7 @@ struct TimelineWindowCursor: Decodable, Equatable, Sendable {
     let id: String
 
     private enum CodingKeys: String, CodingKey {
-        case createdAt = "created_at"
+        case createdAt
         case id
     }
 }
@@ -248,9 +248,9 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case limit
-        case nextCursor = "next_cursor"
-        case hasMore = "has_more"
-        case totalBlocks = "total_blocks"
+        case nextCursor
+        case hasMore
+        case totalBlocks
     }
 }
 
