@@ -115,9 +115,12 @@ mod relay_projection;
 // preference). LMDB hydration/flush is W2. See
 // `docs/design/relay-search-radius-impl-plan.md` §0/§W1 with §8.5/§8.10
 // amendments applied.
-mod relay_score;
+pub mod relay_score;
 #[cfg(test)]
 mod relay_score_tests;
+// W2 — flush dirty score cells to the injected `RelayAuthorScoreStore`.
+// Called on actor idle; no-op when the map is clean or no store is set.
+mod relay_score_flush;
 mod raw_event_observer;
 #[cfg(test)]
 mod raw_event_observer_tests;
@@ -821,6 +824,15 @@ pub struct Kernel {
     /// Shared active-account pubkey used by the publish resolver to scope the
     /// local relay-row fallback to the viewer's own events only.
     active_account_handle: ActiveAccountSlot,
+    /// W2 — in-memory relay-author score map. D4: the kernel is the sole
+    /// writer. W3 will record outcomes via `record_*`; W2 flushes to LMDB
+    /// on actor idle via `flush_relay_scores_if_dirty`. Default: empty.
+    pub relay_score_map: relay_score::RelayAuthorScoreMap,
+    /// W2 — pluggable relay-author-score persistence store. `None` when the
+    /// kernel is constructed in-memory-only (tests, CI without lmdb-backend).
+    /// Set by `set_relay_score_store` after construction. D4: the kernel
+    /// holds `Box` (not `Arc`) because it is the sole logical writer.
+    relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -945,7 +957,7 @@ impl Kernel {
     /// thread is the sole caller that passes a non-`None` path — every test
     /// site goes through [`Kernel::new`], which passes `None` and so keeps
     /// the in-memory backend.
-    pub(crate) fn with_storage_path(visible_limit: usize, storage_path: Option<&str>) -> Self {
+    pub fn with_storage_path(visible_limit: usize, storage_path: Option<&str>) -> Self {
         Self::with_optional_publish_store_and_path(visible_limit, None, storage_path)
     }
 
@@ -1012,6 +1024,55 @@ impl Kernel {
     /// that produced it.
     pub fn set_publish_resolver(&mut self, resolver: Arc<dyn crate::publish::OutboxResolver>) {
         self.publish_engine.set_outbox(resolver);
+    }
+
+    /// W2 — inject the relay-author-score persistence store and hydrate the
+    /// in-memory map from it.
+    ///
+    /// Must be called before any score observations are recorded. On
+    /// `load_all` error the map stays empty (D6 — silent fallback). Calling
+    /// this more than once replaces the store and re-hydrates the map from
+    /// scratch.
+    pub fn set_relay_score_store(
+        &mut self,
+        store: Box<dyn crate::substrate::RelayAuthorScoreStore>,
+    ) {
+        // Hydrate the in-memory map from persistent state.
+        match store.load_all() {
+            Ok(cells) => {
+                // Convert raw `([u8;32], String, u32, u32, u64)` tuples back
+                // into substrate types.
+                let substrate_cells = cells.into_iter().filter_map(
+                    |(pk_bytes, url, successes, failures, last_used_unix_s)| {
+                        // Encode raw pubkey bytes → lowercase hex string.
+                        let pk_hex: String = pk_bytes
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect();
+                        // crate::planner::Pubkey = String — just use the hex string directly.
+                        let pk: crate::planner::Pubkey = pk_hex;
+                        Some((
+                            pk,
+                            url,
+                            relay_score::RelayAuthorScore {
+                                successes,
+                                failures,
+                                last_used_unix_s,
+                            },
+                        ))
+                    },
+                );
+                self.relay_score_map = relay_score::RelayAuthorScoreMap::new();
+                self.relay_score_map.bulk_load(substrate_cells);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "relay-score store: load_all failed — starting with empty map"
+                );
+            }
+        }
+        self.relay_score_store = Some(store);
     }
 
     /// Borrow the kernel's `EventStore` handle.
@@ -1325,6 +1386,8 @@ impl Kernel {
             indexer_relays_handle,
             local_write_relays_handle,
             active_account_handle,
+            relay_score_map: relay_score::RelayAuthorScoreMap::new(),
+            relay_score_store: None,
             _not_send: PhantomData,
         }
     }

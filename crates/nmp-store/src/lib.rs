@@ -32,6 +32,14 @@ pub mod types;
 pub use domain_migration::{DomainMigration, MigrationTx};
 pub use events::{ClaimGuard, DomainHandle, DomainScanIter, EventIter, EventStore};
 pub use lmdb::LmdbEventStore;
+// W2 — relay-author-score encode/decode helpers. Gated on `lmdb-backend`
+// because the implementation is LMDB-specific. Callers that build
+// `LmdbRelayAuthorScoreStore` consume `load_all_raw` / `put_batch_raw`
+// through `nmp_core::store::relay_scores::*` (re-exported via nmp-core).
+#[cfg(feature = "lmdb-backend")]
+pub mod relay_scores {
+    pub use super::lmdb::relay_scores::{load_all_raw, put_batch_raw};
+}
 pub use mem::MemEventStore;
 pub use types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,

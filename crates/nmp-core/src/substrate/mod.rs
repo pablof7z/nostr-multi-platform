@@ -40,6 +40,8 @@
 
 mod action;
 mod app_host;
+// W2 — relay-author-score persistence trait.
+mod relay_score_store;
 mod bounded;
 mod capability;
 mod dm_inbox_relays;
@@ -118,6 +120,7 @@ pub use routing::{
 pub use routing_trace::{
     truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace,
 };
+pub use relay_score_store::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore, ScoreCell};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /

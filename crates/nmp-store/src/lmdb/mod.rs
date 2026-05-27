@@ -38,6 +38,9 @@ pub(crate) mod domain;
 mod dump;
 #[cfg(feature = "lmdb-backend")]
 mod store_impl;
+// W2 — relay-author-scores LMDB encode/decode layer.
+#[cfg(feature = "lmdb-backend")]
+pub mod relay_scores;
 
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod test_fixtures;
@@ -45,6 +48,9 @@ mod test_fixtures;
 mod tests;
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_kind5;
+// W2 TDD gate-tests for `relay_scores`.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod relay_scores_tests;
 
 use std::path::{Path, PathBuf};
 
@@ -100,6 +106,10 @@ mod inner {
         pub(crate) domain_versions: Database<Bytes, Bytes>,
         /// Domain data: namespace bytes || 0x00 || key bytes → value bytes.
         pub(crate) domain_data: Database<Bytes, Bytes>,
+        /// W2 — relay-author-scores: `[32 pubkey bytes][1 url-len u8][N url bytes]` →
+        /// `[u32 successes BE][u32 failures BE][u64 last_used_unix_s BE][u64 reserved BE]`.
+        /// See `relay_scores.rs` for the encode/decode layer and §8.9/§8.10 of the impl plan.
+        pub(crate) relay_author_scores: Database<Bytes, Bytes>,
     }
 
     impl std::fmt::Debug for Inner {
@@ -152,7 +162,7 @@ fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // 11 internal sub-dbs; we reserve 8 additional for NMP-side data.
     const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
     const MAX_READERS: u32 = 126;
-    const NMP_ADDITIONAL_DBS: u32 = 8;
+    const NMP_ADDITIONAL_DBS: u32 = 9; // W2: +1 for relay-author-scores-v1
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -180,6 +190,8 @@ fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let claims = open("nmp-claims", &mut txn)?;
     let domain_versions = open("nmp-domain-versions", &mut txn)?;
     let domain_data = open("nmp-domain-data", &mut txn)?;
+    // W2 — relay-author-scores sub-db.
+    let relay_author_scores = open(relay_scores::SUB_DB_NAME, &mut txn)?;
     txn.commit()
         .map_err(|e| StoreError::Io(format!("commit init: {e}")))?;
 
@@ -196,6 +208,7 @@ fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             claims,
             domain_versions,
             domain_data,
+            relay_author_scores,
         }),
     })
 }

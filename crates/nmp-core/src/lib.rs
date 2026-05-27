@@ -131,6 +131,17 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use kernel::{
     read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot,
 };
+// W2 — relay-author-score types. Re-exported so nmp-testing integration tests
+// and downstream crates (W4, W5) can access `ClaimOutcome`, `RelayAuthorScore`,
+// and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
+pub mod relay_score {
+    pub use super::kernel::relay_score::{
+        ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap,
+        WARM_THRESHOLD, DECAY_HALFLIFE_DAYS,
+        MAX_RELAYS_TRIED_PER_CLAIM, MAX_EXPANSION_CONCURRENCY,
+        PHASE_1_BUDGET_MS, PER_RELAY_REQ_TIMEOUT_MS, PER_CLAIM_TOTAL_BUDGET_MS,
+    };
+}
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
