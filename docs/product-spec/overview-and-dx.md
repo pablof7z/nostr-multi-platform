@@ -103,7 +103,7 @@ A change that cannot satisfy all five is either an escape hatch (named in `docs/
 
 ## 2. Audience and use cases
 
-**Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, desktop, and web — including LLM-driven and inexperienced developers who lack the protocol literacy to navigate Nostr's footguns unaided.
+**Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, desktop, and web — including LLM-driven developers and teams who want to ship correct Nostr apps without becoming Nostr protocol experts first.
 
 **Secondary audience.** Existing Nostr client teams considering a port to Rust + multi-platform, who want a substrate they can compose rather than reimplement.
 
@@ -255,7 +255,7 @@ The proof app also ships a **performance overlay** (toggleable, debug-build defa
 
 The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on all four platforms and decoded `AppState` snapshots must match. Any JSON in that harness is a comparison artifact, not the runtime update transport.
 
-### 4.5 Documentation set
+### 4.6 Documentation set
 
 | Document | Purpose | Owner |
 |---|---|---|
