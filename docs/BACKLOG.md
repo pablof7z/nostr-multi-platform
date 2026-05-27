@@ -858,6 +858,41 @@ part of the deleted scratch plan.
 
 ---
 
+### V-77 · `nmp-nwc` defines `MakeInvoice` end-to-end but never dispatches it — dead receive-side API surface [LOW · misleading API surface]
+
+**Verified:** `crates/nmp-nwc/src/types.rs:25` declares `NwcMethod::MakeInvoice`; `crates/nmp-nwc/src/types.rs:50` defines `MakeInvoiceParams`; `crates/nmp-nwc/src/types.rs:99` defines `MakeInvoiceResult`; `crates/nmp-nwc/src/build.rs:160` exports `make_invoice_content(...)`. The only caller is the in-crate test `make_invoice_request_shape` at `build.rs:250`. There is no `make_invoice_result()` parser, no `ActorCommand` or `dispatch_action` namespace, no FFI symbol, and no Swift/Kotlin/TS host caller. The receive-side NIP-47 leg (invoice creation, used by lightning-address resolution, receive flows, and zap-recipient pairing) is wire-protocol-complete but never reachable at runtime.
+
+**Impact:** NMP advertises NIP-47 NWC support (see `docs/plan.md:29` — "NWC wallet (NIP-47, still in nmp-core)") but the receive half is dead. Any host integrator who reads the public type surface (`pub use ... MakeInvoiceParams, MakeInvoiceResult` in `nmp-nwc/src/lib.rs:28`) sees a complete `MakeInvoice` API, attempts to call it, and discovers no entry point exists. This is the misleading-API-surface failure mode the doctrine prohibits: types that exist but cannot be invoked.
+
+**Correct fix:** either (a) finish the receive path — add `MakeInvoiceResult::from_response()`, an `nmp.nwc.make_invoice` dispatch action, and an FFI / wasm symbol — gated on a real receive-flow consumer (zap-recipient or invoice-request UI); or (b) delete `MakeInvoice`, `MakeInvoiceParams`, `MakeInvoiceResult`, and `make_invoice_content` until a caller exists. Doctrine prefers (b) — no scaffolding without a consumer.
+
+---
+
+### V-78 · NIP-57 zap signing requires local keys — bunker (NIP-46) accounts cannot zap [MEDIUM · bunker feature gap]
+
+**Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:195-211` — `ZapAction::execute` short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
+
+**Impact:** users authenticated via bunker can read zaps (kind:9735 receipts decode without keys) but cannot send a zap. The failure is non-silent (toast fires) so this is not a silent-fail violation, but it is a v1-A feature gap that is currently invisible from the BACKLOG. V-08 covers DMs and V-06 covers AUTH; zaps were missing as a tracked sibling.
+
+**Staged fix plan:**
+- Stage 1: surface the bunker-zap gap in onboarding / zap UI before the user attempts a zap (currently they only learn at zap time via toast).
+- Stage 2: broker side — expose `sign_zap_request(unsigned_kind_9734)` RPC. Companion to V-06 Stage 2 (the broker is the same target; both bunker-sign paths land in the same RPC table).
+- Stage 3: `ZapAction::execute` — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
+
+**Deadline:** Stages 2-3 are post-v1. Either this is fixed or v1 copy drops "send zaps" as a v1 capability for bunker accounts.
+
+---
+
+### V-79 · NIP-47 wallet connection has no heartbeat and no reconnect — connection can stale silently [LOW · wallet connection resilience]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs` — no `ping`, `health`, `interval`, `heartbeat`, `reconnect`, `backoff`, or `tokio::time` symbols. On `UNAUTHORIZED` / `RESTRICTED` error codes (`runtime.rs:398-399`) the connection `status` is set to `"error"` but no reconnect is attempted. There is no periodic liveness probe; a wallet that goes offline after the initial handshake leaves the connection in `"ready"` indefinitely. V-14 (which would be the natural home for this) is scoped to NIP-46 bunker reconnect and is marked DONE — NIP-47 NWC is a separate transport with no equivalent tracker.
+
+**Impact:** the user sees the wallet status pill as "ready" while the wallet is in fact unreachable; the first outbound `pay_invoice` after the connection stales fails with a transport error that the user can't pre-empt. There is no diagnostic surface to attribute the failure to a stale connection (the user reads it as a wallet bug). This is the wallet-side analogue of the relay-flap pattern V-14 fixed for bunker.
+
+**Correct fix:** mirror V-14's design for NIP-47 — (a) periodic `get_info` heartbeat at a low cadence (~30s) while the wallet UI is visible, (b) on three consecutive failures, transition `status` to `"connecting"` and re-establish the subscription, (c) project a `nmp.nwc.connection_state` field (Connected / Reconnecting / TransportLost) so the host shell can render a non-silent indicator. Implementation must reuse the relay-flap reconnect primitives from V-14 rather than introducing a parallel timer subsystem.
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 

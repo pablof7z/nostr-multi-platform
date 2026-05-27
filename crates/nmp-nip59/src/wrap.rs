@@ -5,7 +5,7 @@
 //! `futures::executor::block_on` bridges to a synchronous call-site without
 //! pulling in tokio.
 
-use nostr::{Event, EventBuilder, Keys, PublicKey, Tag, UnsignedEvent};
+use nostr::{Event, Keys, PublicKey, UnsignedEvent};
 
 use crate::error::Nip59Error;
 
@@ -20,43 +20,6 @@ pub struct UnwrappedGift {
     pub sender: PublicKey,
     /// The inner rumor (`UnsignedEvent`) extracted from the seal.
     pub rumor: UnsignedEvent,
-}
-
-/// Seal (kind:13, NIP-44 from sender) + gift-wrap (kind:1059, NIP-44 from
-/// ephemeral key). Thin wrapper over `nostr::EventBuilder::gift_wrap`.
-///
-/// # Seam note
-///
-/// `gift_wrap` is a **local-keys primitive**: it requires the caller to hold
-/// the sender's raw `Keys` and performs the NIP-44 seal/wrap in-process.
-/// As of the offline-first audit (PR #631) this primitive is `pub(crate)` —
-/// the only public surface is [`crate::gift_wrap_with_signer`], which routes
-/// through the ADR-0026 `SignerForSeal` seam and supports BOTH local-keys
-/// (synchronous, via the blanket impl on `Keys`) AND remote signers
-/// (NIP-46 / NIP-07 / hardware via the pending `SignerOp` shape). Callers
-/// that previously held an ADR-0025 raw-key exception now construct an
-/// `Arc<dyn SignerForSeal>` over their `Keys` and dispatch through the
-/// signer seam.
-///
-/// # Errors
-///
-/// Returns `Nip59Error` if the NIP-59 seal or wrap construction fails.
-#[allow(dead_code)] // Retained as a reference impl of the legacy local-keys path.
-#[must_use]
-pub(crate) fn gift_wrap(
-    sender: &Keys,
-    receiver: &PublicKey,
-    rumor: UnsignedEvent,
-    expiration: Option<nostr::Timestamp>,
-) -> Result<Event, Nip59Error> {
-    let extra_tags: Vec<Tag> = expiration
-        .map(|ts| vec![Tag::expiration(ts)])
-        .unwrap_or_default();
-
-    futures::executor::block_on(
-        EventBuilder::gift_wrap(sender, receiver, rumor, extra_tags),
-    )
-    .map_err(Nip59Error::from)
 }
 
 /// Unwrap an incoming kind:1059 gift-wrap event: verify the seal → extract
