@@ -19,7 +19,7 @@ const links: Link[] = [
   {
     num: "02",
     title: "Scaffold an app",
-    desc: "Five minutes from clone to a buildable Nostr app. The CLI generates the Rust core, the FFI layer, and a SwiftUI or Compose shell.",
+    desc: "Run `nmp init my-app` to scaffold a Rust workspace wired to the framework. Add components from the registry. The guide walks from zero to a working renderer.",
     href: "/get-started",
   },
   {
