@@ -15,11 +15,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::hint_url::is_valid_hint_url;
+use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use super::{MailboxCache, RelayEntry};
 
 /// Route an interest with address-pointer pubkeys to their outbox relays.
 pub(super) fn route(
@@ -58,7 +59,9 @@ pub(super) fn route(
                 .entry(relay.clone())
                 .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
             entry.0.insert(coord.clone());
-            entry.1.insert(RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay));
+            entry.1.insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::AppRelay,
+            ));
             landed = true;
         }
 
@@ -75,15 +78,12 @@ pub(super) fn route(
     // into `unroutable` are retroactively rescued — the hint is their landing pad.
     let mut any_valid_hint = false;
     for hint in &interest.hints {
-        let lower = hint.url.trim().to_ascii_lowercase();
-        let is_valid = (lower.starts_with("wss://") || lower.starts_with("ws://"))
-            && hint.url.trim().len() > "wss://".len();
-        if !is_valid {
+        let Some(normalized) = is_valid_hint_url(&hint.url) else {
             continue;
-        }
+        };
         any_valid_hint = true;
         let entry = per_relay
-            .entry(hint.url.clone())
+            .entry(normalized)
             .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
         for coord in &interest.shape.addresses {
             entry.0.insert(coord.clone());
@@ -98,14 +98,17 @@ pub(super) fn route(
     }
 
     for (relay_url, (addrs, sources)) in per_relay {
-        relay_entries.entry(relay_url).or_default().push(RelayEntry {
-            base_shape: base_shape.clone(),
-            authors_for_relay: BTreeSet::new(),
-            addresses_for_relay: addrs,
-            lifecycle: interest.lifecycle.clone(),
-            sources,
-            interest_id: interest.id.clone(),
-        });
+        relay_entries
+            .entry(relay_url)
+            .or_default()
+            .push(RelayEntry {
+                base_shape: base_shape.clone(),
+                authors_for_relay: BTreeSet::new(),
+                addresses_for_relay: addrs,
+                lifecycle: interest.lifecycle.clone(),
+                sources,
+                interest_id: interest.id.clone(),
+            });
     }
 }
 
@@ -151,8 +154,14 @@ mod tests {
         let app = vec!["wss://app".to_string()];
         let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &app);
 
-        let coord = NaddrCoord { pubkey: pk("alice"), kind: 30023, d_tag: "post-1".to_string() };
-        let plan = compiler.compile(&[addr_interest(1, vec![coord])]).expect("compile");
+        let coord = NaddrCoord {
+            pubkey: pk("alice"),
+            kind: 30023,
+            d_tag: "post-1".to_string(),
+        };
+        let plan = compiler
+            .compile(&[addr_interest(1, vec![coord])])
+            .expect("compile");
 
         assert!(plan
             .per_relay
@@ -160,12 +169,9 @@ mod tests {
             .unwrap()
             .role_tags
             .contains(&RoutingSource::Nip65));
-        assert!(plan
-            .per_relay
-            .get("wss://app")
-            .unwrap()
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+        assert!(plan.per_relay.get("wss://app").unwrap().role_tags.contains(
+            &RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)
+        ));
         assert!(plan.unroutable_authors.is_empty());
     }
 
@@ -177,8 +183,14 @@ mod tests {
         let indexer = vec!["wss://purplepag.es".to_string()];
         let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &[]);
 
-        let coord = NaddrCoord { pubkey: pk("ghost"), kind: 30023, d_tag: "post-1".to_string() };
-        let plan = compiler.compile(&[addr_interest(1, vec![coord])]).expect("compile");
+        let coord = NaddrCoord {
+            pubkey: pk("ghost"),
+            kind: 30023,
+            d_tag: "post-1".to_string(),
+        };
+        let plan = compiler
+            .compile(&[addr_interest(1, vec![coord])])
+            .expect("compile");
 
         assert!(plan.per_relay.is_empty(), "indexer must not carry content");
         assert!(plan.unroutable_authors.contains(&pk("ghost")));
@@ -191,16 +203,22 @@ mod tests {
         let app = vec!["wss://app".to_string()];
         let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &app);
 
-        let coord = NaddrCoord { pubkey: pk("ghost"), kind: 30023, d_tag: "x".to_string() };
-        let plan = compiler.compile(&[addr_interest(1, vec![coord])]).expect("compile");
+        let coord = NaddrCoord {
+            pubkey: pk("ghost"),
+            kind: 30023,
+            d_tag: "x".to_string(),
+        };
+        let plan = compiler
+            .compile(&[addr_interest(1, vec![coord])])
+            .expect("compile");
 
         let app_plan = plan.per_relay.get("wss://app").expect("app");
-        assert!(app_plan
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
-        assert!(!app_plan
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)));
+        assert!(app_plan.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay
+        )));
+        assert!(!app_plan.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Indexer
+        )));
         assert!(plan.unroutable_authors.is_empty());
     }
 }

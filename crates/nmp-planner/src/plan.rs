@@ -166,9 +166,12 @@ impl SubShape {
 /// 32-byte BLAKE3 hex form; the eight-character window will widen accordingly.
 /// All callers (compiler, planner gate, wire-emitter, watermark store) read
 /// this single helper so the swap is one edit.
-#[must_use] 
+#[must_use]
 pub fn canonical_filter_hash(shape: &InterestShape) -> String {
-    let hash = serde_json::to_string(shape).map_or_else(|_| stable_hash64("canonical-filter-invalid-json"), |json| stable_hash64(("canonical-filter", json)));
+    let hash = serde_json::to_string(shape).map_or_else(
+        |_| stable_hash64("canonical-filter-invalid-json"),
+        |json| stable_hash64(("canonical-filter", json)),
+    );
     format!("{:08x}", hash & 0xffff_ffff)
 }
 
