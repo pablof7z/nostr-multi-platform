@@ -205,6 +205,7 @@ impl Kernel {
                 if self.is_discovery_oneshot(sub_id) {
                     self.complete_unknown_oneshot(sub_id);
                 }
+                self.record_claim_expansion_eose_no_match(sub_id, relay_url);
                 if !keep_live {
                     // T105: CLOSE must travel back to the same socket the REQ
                     // went out on — the transport pool is URL-keyed, so a
@@ -381,6 +382,8 @@ impl Kernel {
             sub.last_event_at = Some(now);
         }
 
+        let claim_match_author = self.claim_expansion_match_author(sub_id, &event);
+
         // D4: all events are persisted before kind-specific dispatch.
         // Kinds 1|6 handle their own store.insert inside ingest_timeline_event.
         // For replaceable kinds (0, 3) we gate local cache mutations on the
@@ -395,14 +398,24 @@ impl Kernel {
         // `verify_and_persist` and then observes any substrate mailbox-cache
         // mutation kind-agnostically.
         match event.kind {
-            1 | 6 => self.ingest_timeline_event(role, relay_url, sub_id, event),
+            1 | 6 => {
+                if self.ingest_timeline_event(role, relay_url, sub_id, event) {
+                    if let Some(author) = claim_match_author.as_deref() {
+                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                    }
+                }
+            }
             0 => {
                 use crate::store::InsertOutcome;
                 let outcome = self.verify_and_persist(relay_url, &event);
-                if matches!(
+                let accepted = matches!(
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                ) {
+                );
+                if accepted {
+                    if let Some(author) = claim_match_author.as_deref() {
+                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                    }
                     let kernel_event = kernel_event_from_nostr(&event);
                     self.ingest_profile(event);
                     self.notify_event_observers(&kernel_event);
@@ -412,10 +425,14 @@ impl Kernel {
             3 => {
                 use crate::store::InsertOutcome;
                 let outcome = self.verify_and_persist(relay_url, &event);
-                if matches!(
+                let accepted = matches!(
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                ) {
+                );
+                if accepted {
+                    if let Some(author) = claim_match_author.as_deref() {
+                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                    }
                     let kernel_event = kernel_event_from_nostr(&event);
                     self.ingest_contacts(event);
                     self.notify_event_observers(&kernel_event);
@@ -464,6 +481,9 @@ impl Kernel {
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
                 ) {
+                    if let Some(author) = claim_match_author.as_deref() {
+                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                    }
                     let kernel_event = kernel_event_from_nostr(&event);
                     self.notify_event_observers(&kernel_event);
                     let after = self.mailbox_cache().snapshot(&author);
