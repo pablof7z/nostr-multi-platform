@@ -25,7 +25,7 @@ pub struct TriggerInbox {
 }
 
 impl TriggerInbox {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -53,12 +53,12 @@ impl TriggerInbox {
         out
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.queue.len()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
     }

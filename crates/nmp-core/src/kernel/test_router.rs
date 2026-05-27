@@ -83,11 +83,7 @@ fn classify_kind(kind: u32) -> EventClass {
 }
 
 /// Build the lane-5 explicit-set with the right `EventClass` for `kind`.
-fn explicit_set_for_kind(
-    urls: &[String],
-    blocked: &BlockedRelaySet,
-    kind: u32,
-) -> RoutedRelaySet {
+fn explicit_set_for_kind(urls: &[String], blocked: &BlockedRelaySet, kind: u32) -> RoutedRelaySet {
     let class = classify_kind(kind);
     let mut out = RoutedRelaySet::new();
     for url in urls {
@@ -123,7 +119,11 @@ impl OutboxRouter for TestOutboxRouter {
     ) -> Result<RoutedRelaySet, RoutingError> {
         if let Some(explicit) = ctx.explicit_targets {
             // Lane 5 — refine the EventClass for the publish kind.
-            return Ok(explicit_set_for_kind(explicit, ctx.blocked_relays, evt.kind));
+            return Ok(explicit_set_for_kind(
+                explicit,
+                ctx.blocked_relays,
+                evt.kind,
+            ));
         }
         let mut out = RoutedRelaySet::new();
         // Lane 1 — author's NIP-65 write set.
@@ -132,7 +132,12 @@ impl OutboxRouter for TestOutboxRouter {
                 if ctx.blocked_relays.contains(&url) {
                     continue;
                 }
-                out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+                out.add(
+                    url,
+                    RoutingSource::Nip65 {
+                        direction: Direction::Write,
+                    },
+                );
             }
         }
         // Lane 2 — relay-hint tags on `evt` (e/p/a/q position 2).
@@ -152,9 +157,7 @@ impl OutboxRouter for TestOutboxRouter {
                     }
                     out.add(
                         url.clone(),
-                        RoutingSource::UserConfigured(
-                            UserConfiguredCategory::ActiveAccountWrite,
-                        ),
+                        RoutingSource::UserConfigured(UserConfiguredCategory::ActiveAccountWrite),
                     );
                 }
             }
@@ -176,7 +179,9 @@ impl OutboxRouter for TestOutboxRouter {
                 }
                 out.add(
                     url.clone(),
-                    RoutingSource::AppRelay { mode: AppRelayMode::Fallback },
+                    RoutingSource::AppRelay {
+                        mode: AppRelayMode::Fallback,
+                    },
                 );
             }
         }
@@ -206,7 +211,12 @@ impl OutboxRouter for TestOutboxRouter {
                     if ctx.blocked_relays.contains(&url) {
                         continue;
                     }
-                    out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
+                    out.add(
+                        url,
+                        RoutingSource::Nip65 {
+                            direction: Direction::Read,
+                        },
+                    );
                 }
             }
         }
@@ -218,16 +228,16 @@ impl OutboxRouter for TestOutboxRouter {
             let lane = match hint.source {
                 HintSource::EventTag { .. } => RoutingSource::Hint,
                 HintSource::Provenance { .. } => RoutingSource::Provenance,
-                HintSource::UserConfigured => RoutingSource::UserConfigured(
-                    UserConfiguredCategory::Debug,
-                ),
+                HintSource::UserConfigured => {
+                    RoutingSource::UserConfigured(UserConfiguredCategory::Debug)
+                }
             };
             out.add(hint.url.clone(), lane);
         }
         // Lane 4 — UserConfigured active-account read (active in scope).
         if let Some(active) = ctx.active_account {
-            let active_in_scope = interest.shape.authors.is_empty()
-                || interest.shape.authors.contains(active);
+            let active_in_scope =
+                interest.shape.authors.is_empty() || interest.shape.authors.contains(active);
             if active_in_scope {
                 for url in ctx.session_keys.active_read.iter() {
                     if ctx.blocked_relays.contains(url) {
@@ -235,9 +245,7 @@ impl OutboxRouter for TestOutboxRouter {
                     }
                     out.add(
                         url.clone(),
-                        RoutingSource::UserConfigured(
-                            UserConfiguredCategory::ActiveAccountRead,
-                        ),
+                        RoutingSource::UserConfigured(UserConfiguredCategory::ActiveAccountRead),
                     );
                 }
             }
@@ -259,7 +267,9 @@ impl OutboxRouter for TestOutboxRouter {
                 }
                 out.add(
                     url.clone(),
-                    RoutingSource::AppRelay { mode: AppRelayMode::Fallback },
+                    RoutingSource::AppRelay {
+                        mode: AppRelayMode::Fallback,
+                    },
                 );
             }
         }

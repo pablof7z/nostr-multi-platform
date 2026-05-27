@@ -98,15 +98,42 @@ const SCOPED_PATH_FRAGMENTS: &[&str] = &[
 ];
 
 const BANNED_ALLOCATIONS: &[(&str, &str)] = &[
-    ("Vec::new()", "preallocate at startup; reuse a thread-local scratch `Vec` cleared per event"),
-    ("Vec::with_capacity(", "preallocate at startup; reuse a thread-local scratch `Vec` cleared per event"),
-    ("String::new()", "preallocate at startup; reuse a `String` cleared per event"),
-    ("String::with_capacity(", "preallocate at startup; reuse a `String` cleared per event"),
-    ("Box::new(", "consider stack allocation or a pool; D8 forbids per-event Box allocation"),
-    ("Arc::new(", "share an `Arc` constructed once at startup; D8 forbids per-event Arc allocation"),
-    ("Rc::new(", "share an `Rc` constructed once at startup; D8 forbids per-event Rc allocation"),
-    ("format!(", "use `write!` into a reused `String` buffer; per-event `format!` allocates"),
-    ("vec![", "preallocate; the `vec![]` macro allocates every call"),
+    (
+        "Vec::new()",
+        "preallocate at startup; reuse a thread-local scratch `Vec` cleared per event",
+    ),
+    (
+        "Vec::with_capacity(",
+        "preallocate at startup; reuse a thread-local scratch `Vec` cleared per event",
+    ),
+    (
+        "String::new()",
+        "preallocate at startup; reuse a `String` cleared per event",
+    ),
+    (
+        "String::with_capacity(",
+        "preallocate at startup; reuse a `String` cleared per event",
+    ),
+    (
+        "Box::new(",
+        "consider stack allocation or a pool; D8 forbids per-event Box allocation",
+    ),
+    (
+        "Arc::new(",
+        "share an `Arc` constructed once at startup; D8 forbids per-event Arc allocation",
+    ),
+    (
+        "Rc::new(",
+        "share an `Rc` constructed once at startup; D8 forbids per-event Rc allocation",
+    ),
+    (
+        "format!(",
+        "use `write!` into a reused `String` buffer; per-event `format!` allocates",
+    ),
+    (
+        "vec![",
+        "preallocate; the `vec![]` macro allocates every call",
+    ),
 ];
 
 pub fn file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
@@ -258,7 +285,8 @@ fn is_hot_path_marker(line: &str) -> bool {
         .trim_start()
         .to_ascii_lowercase();
     // Drop trailing punctuation/whitespace so `// hot path!` matches.
-    let normalised = without_slash.trim_end_matches(|c: char| c == '!' || c == '.' || c.is_whitespace());
+    let normalised =
+        without_slash.trim_end_matches(|c: char| c == '!' || c == '.' || c.is_whitespace());
     matches!(normalised, "hot path" | "hot-path" | "hot_path")
 }
 
@@ -328,7 +356,10 @@ fn cold_path() {\n\
         // ordering matters: closing brace is on the *same* line as the pop,
         // so after observe_line the stack is popped → in_marked_fn = false).
         // For our usage we only need: line 3 (Vec::new) reports marked.
-        assert!(marked_per_line[2], "Vec::new() line must report as in_marked_fn");
+        assert!(
+            marked_per_line[2],
+            "Vec::new() line must report as in_marked_fn"
+        );
         assert!(!marked_per_line[5], "cold path's Vec::new() must not");
     }
 
@@ -463,8 +494,7 @@ fn cold_path() {\n\
 
     #[test]
     fn no_polling_ignores_tokio_sleep_comment_line() {
-        let hits =
-            check_no_polling("// avoid tokio::time::sleep(...) here", true, false);
+        let hits = check_no_polling("// avoid tokio::time::sleep(...) here", true, false);
         assert!(hits.is_empty());
     }
 

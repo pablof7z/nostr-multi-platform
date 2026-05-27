@@ -61,9 +61,7 @@ pub enum StorageBackend {
 }
 
 /// Factory: construct a `Box<dyn EventStore>` from a backend selector.
-pub fn open_event_store(
-    backend: &StorageBackend,
-) -> Result<Box<dyn EventStore>, StoreError> {
+pub fn open_event_store(backend: &StorageBackend) -> Result<Box<dyn EventStore>, StoreError> {
     match backend {
         StorageBackend::Memory => Ok(Box::new(MemEventStore::new())),
         StorageBackend::Lmdb { path } => Ok(Box::new(LmdbEventStore::open(path)?)),

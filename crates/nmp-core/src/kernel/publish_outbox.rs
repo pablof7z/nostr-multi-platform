@@ -9,7 +9,7 @@ use crate::publish::{PerRelayState, PublishAction, RelaySelectionReason};
 use crate::relay::{OutboundMessage, RelayRole};
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
-use super::{Kernel, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, truncate};
+use super::{truncate, Kernel, OutboxSummarySnapshot, PublishOutboxItem, PublishOutboxRelay};
 // `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
 // The single use site is already gated below; the import has to match so
 // `--no-default-features` (wasm32) compiles.
@@ -273,7 +273,11 @@ fn publish_outbox_status_label(status: &str) -> String {
 /// row. Server-side pluralization keeps the shell free of the
 /// `count == 1 ? "" : "s"` ternary (§6 anti-pattern #1).
 fn publish_outbox_target_summary(target_relays: usize, created_at_display: &str) -> String {
-    let noun = if target_relays == 1 { "relay" } else { "relays" };
+    let noun = if target_relays == 1 {
+        "relay"
+    } else {
+        "relays"
+    };
     format!("{target_relays} {noun} · {created_at_display}")
 }
 

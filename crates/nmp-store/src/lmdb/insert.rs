@@ -13,9 +13,7 @@ use nostr_database::FlatBufferBuilder;
 use nostr_database::RejectedReason;
 
 use super::{conv, provenance, tombstones, Inner};
-use crate::types::{
-    EventId, InsertOutcome, RawEvent, RejectReason, RelayUrl, TombstoneOrigin,
-};
+use crate::types::{EventId, InsertOutcome, RawEvent, RejectReason, RelayUrl, TombstoneOrigin};
 use crate::StoreError;
 
 pub(super) fn insert(
@@ -34,7 +32,9 @@ pub(super) fn insert(
 
     // 2. Ephemeral kinds — never stored.
     if event.is_ephemeral() {
-        return Ok(InsertOutcome::Ephemeral { id: event.id_bytes() });
+        return Ok(InsertOutcome::Ephemeral {
+            id: event.id_bytes(),
+        });
     }
 
     // 3. NIP-40 expiration on arrival.
@@ -63,16 +63,16 @@ pub(super) fn insert(
     // 4. Per-id tombstone check (NMP-side).
     if let Some(tomb) = tombstones::get(inner.tombstones, &txn, &id_bytes)? {
         let applies = match tomb.origin {
-            TombstoneOrigin::Kind5 => {
-                tomb.deleter_pubkey
-                    .as_ref()
-                    .map(|dp| hex_eq(dp, &event.pubkey))
-                    .unwrap_or(false)
-            }
+            TombstoneOrigin::Kind5 => tomb
+                .deleter_pubkey
+                .as_ref()
+                .map(|dp| hex_eq(dp, &event.pubkey))
+                .unwrap_or(false),
             TombstoneOrigin::NIP40Expiry | TombstoneOrigin::AdminPurge => true,
         };
         if applies {
-            txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+            txn.commit()
+                .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
             return Ok(InsertOutcome::Tombstoned {
                 id: id_bytes,
                 kind5_event_id: tomb.kind5_event_id,
@@ -94,7 +94,8 @@ pub(super) fn insert(
             let key = tombstones::addr_key(event.kind, &event.pubkey, &d);
             if let Some(tomb) = tombstones::get_addr(inner.addr_tombstones, &txn, &key)? {
                 if tomb.deleted_at >= event.created_at {
-                    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+                    txn.commit()
+                        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
                     return Ok(InsertOutcome::Tombstoned {
                         id: id_bytes,
                         kind5_event_id: tomb.kind5_event_id,
@@ -108,7 +109,8 @@ pub(super) fn insert(
     // 6. Kind:5 — special handling, then fall through to fork's normal save.
     if event.kind == 5 {
         let outcome = handle_kind5(inner, &mut txn, event, source, received_at_ms)?;
-        txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+        txn.commit()
+            .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
         return Ok(outcome);
     }
 
@@ -139,9 +141,15 @@ pub(super) fn insert(
             if let Some(replaced_id) = pre_existing_id {
                 // Replaced — also drop the replaced event's provenance.
                 provenance::delete(inner.provenance, &mut txn, &replaced_id)?;
-                InsertOutcome::Replaced { new_id: id_bytes, replaced_id }
+                InsertOutcome::Replaced {
+                    new_id: id_bytes,
+                    replaced_id,
+                }
             } else {
-                InsertOutcome::Inserted { id: id_bytes, sources_after: count }
+                InsertOutcome::Inserted {
+                    id: id_bytes,
+                    sources_after: count,
+                }
             }
         }
         SaveEventStatus::Rejected(RejectedReason::Duplicate) => {
@@ -152,7 +160,10 @@ pub(super) fn insert(
                 source.clone(),
                 received_at_ms,
             )?;
-            InsertOutcome::Duplicate { id: id_bytes, sources_after: count }
+            InsertOutcome::Duplicate {
+                id: id_bytes,
+                sources_after: count,
+            }
         }
         SaveEventStatus::Rejected(RejectedReason::Replaced) => {
             // The fork's "Replaced" rejection = incoming is older than what
@@ -170,7 +181,11 @@ pub(super) fn insert(
                 Some(t) => (t.kind5_event_id, t.origin),
                 None => (None, TombstoneOrigin::AdminPurge),
             };
-            InsertOutcome::Tombstoned { id: id_bytes, kind5_event_id, origin }
+            InsertOutcome::Tombstoned {
+                id: id_bytes,
+                kind5_event_id,
+                origin,
+            }
         }
         SaveEventStatus::Rejected(RejectedReason::Ephemeral) => {
             // Unreachable — pre-shortcircuit handled it. Defensive map.
@@ -191,7 +206,8 @@ pub(super) fn insert(
         },
     };
 
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     Ok(outcome)
 }
 
@@ -304,13 +320,7 @@ fn handle_kind5(
         // Verified by reading fork's `save_event_with_txn` (mod.rs:461):
         // `is_deleted` reads ONLY `deleted_ids`, which is now never written
         // by NMP on this path.
-        let row = tombstones::kind5_row(
-            target_id_bytes,
-            kind5_id,
-            kind5_pubkey,
-            kind5_at,
-            source,
-        );
+        let row = tombstones::kind5_row(target_id_bytes, kind5_id, kind5_pubkey, kind5_at, source);
         tombstones::merge_per_id(inner.tombstones, txn, &target_id_bytes, row)?;
 
         // Remove the target's primary + indexes if it exists.
@@ -322,9 +332,8 @@ fn handle_kind5(
         {
             // The fork doesn't expose a single-id deletion; emulate by
             // delete-by-filter on the id.
-            let filter = nostr::Filter::new().id(EventId::from_slice(&target_id_bytes).map_err(
-                |e| StoreError::Encoding(format!("k5 id: {e}")),
-            )?);
+            let filter = nostr::Filter::new().id(EventId::from_slice(&target_id_bytes)
+                .map_err(|e| StoreError::Encoding(format!("k5 id: {e}")))?);
             inner
                 .lmdb
                 .delete(txn, filter)
@@ -344,7 +353,9 @@ fn handle_kind5(
         if tgt_pk_hex != event.pubkey {
             continue;
         }
-        let Ok(tgt_kind) = tgt_kind_str.parse::<u32>() else { continue };
+        let Ok(tgt_kind) = tgt_kind_str.parse::<u32>() else {
+            continue;
+        };
 
         // Coordinate-tombstone for future arrivals (max-merge).
         let addr_key_bytes = tombstones::addr_key(tgt_kind, tgt_pk_hex, tgt_dtag.as_bytes());
@@ -359,8 +370,8 @@ fn handle_kind5(
 
         // Remove all matching events ≤ kind5.created_at via the fork.
         if let Ok(pk) = PublicKey::from_slice(&kind5_pubkey) {
-            let coord = Coordinate::new(Kind::from(tgt_kind as u16), pk)
-                .identifier(tgt_dtag.to_string());
+            let coord =
+                Coordinate::new(Kind::from(tgt_kind as u16), pk).identifier(tgt_dtag.to_string());
             if coord.kind.is_addressable() {
                 inner
                     .lmdb
@@ -402,7 +413,10 @@ fn handle_kind5(
             source.clone(),
             received_at_ms,
         )?;
-        return Ok(InsertOutcome::Duplicate { id: kind5_id, sources_after: count });
+        return Ok(InsertOutcome::Duplicate {
+            id: kind5_id,
+            sources_after: count,
+        });
     }
     inner
         .lmdb
@@ -415,7 +429,10 @@ fn handle_kind5(
         source.clone(),
         received_at_ms,
     )?;
-    Ok(InsertOutcome::Inserted { id: kind5_id, sources_after: count })
+    Ok(InsertOutcome::Inserted {
+        id: kind5_id,
+        sources_after: count,
+    })
 }
 
 /// Hex-eq for the deleter_pubkey check. `dp` is `[u8; 32]`; `pubkey_hex`

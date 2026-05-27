@@ -150,7 +150,9 @@ pub(crate) fn selected_live_scenarios(selected: Option<&str>) -> Vec<&'static st
             vec![all.into_iter().find(|item| *item == name).unwrap()]
         }
         Some(name) => {
-            eprintln!("unknown live scenario `{name}` (M1 supports: cold_start, profile_thrashing)");
+            eprintln!(
+                "unknown live scenario `{name}` (M1 supports: cold_start, profile_thrashing)"
+            );
             std::process::exit(64);
         }
     }

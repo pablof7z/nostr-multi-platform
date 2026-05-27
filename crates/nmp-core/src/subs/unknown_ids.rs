@@ -49,7 +49,7 @@ pub struct UnknownIds {
 
 impl UnknownIds {
     /// Empty collector.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -140,13 +140,13 @@ impl UnknownIds {
     }
 
     /// Number of pending unknown ids (event ids + pubkeys). Diagnostics/tests.
-    #[must_use] 
+    #[must_use]
     pub fn pending_len(&self) -> usize {
         self.event_ids.len() + self.pubkeys.len()
     }
 
     /// True when nothing is pending.
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.event_ids.is_empty() && self.pubkeys.is_empty()
     }
@@ -188,11 +188,7 @@ mod tests {
     #[test]
     fn collects_missing_e_and_p_tags() {
         let mut u = UnknownIds::new();
-        let tags = vec![
-            tag(&["e", ID_A]),
-            tag(&["p", PK_C]),
-            tag(&["q", ID_B]),
-        ];
+        let tags = vec![tag(&["e", ID_A]), tag(&["p", PK_C]), tag(&["q", ID_B])];
         u.visit_tags(&tags, |_| false, |_| false);
         let (events, pubkeys) = u.drain();
         assert_eq!(events, vec![ID_A.to_string(), ID_B.to_string()]);
@@ -213,7 +209,11 @@ mod tests {
         let mut u = UnknownIds::new();
         u.visit_tags(&[tag(&["e", ID_A])], |_| false, |_| false);
         u.visit_tags(&[tag(&["e", ID_A])], |_| false, |_| false);
-        u.visit_tags(&[tag(&["e", ID_A]), tag(&["e", ID_B])], |_| false, |_| false);
+        u.visit_tags(
+            &[tag(&["e", ID_A]), tag(&["e", ID_B])],
+            |_| false,
+            |_| false,
+        );
         assert_eq!(u.pending_len(), 2, "ID_A deduped, ID_B added once");
     }
 
@@ -224,7 +224,10 @@ mod tests {
         let first = u.drain();
         assert_eq!(first.0.len(), 1);
         let second = u.drain();
-        assert!(second.0.is_empty() && second.1.is_empty(), "second drain empty, not errored");
+        assert!(
+            second.0.is_empty() && second.1.is_empty(),
+            "second drain empty, not errored"
+        );
         assert!(u.is_empty());
     }
 
@@ -234,7 +237,7 @@ mod tests {
         u.visit_tags(
             &[
                 tag(&["e", "not-hex"]),
-                tag(&["e"]),               // missing value
+                tag(&["e"]), // missing value
                 tag(&["p", "tooshort"]),
                 tag(&["e", &"z".repeat(64)]), // 64 chars but not hex
             ],

@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use super::MemEventStore;
 use crate::events::{DomainHandle, DomainHandleInner};
-use crate::StoreError;
 use crate::DomainMigration;
+use crate::StoreError;
 
 pub(super) fn domain_open(
     store: &MemEventStore,
@@ -62,15 +62,14 @@ pub(super) fn run_migrations(
             continue;
         }
         let mut tx = crate::MigrationTx::default();
-        (m.apply)(&mut tx).map_err(|reason| StoreError::MigrationFailed { // doctrine-allow: D15 — `Migration::apply` is an internal substrate-registered migration closure run at store init, not a host FFI seam; loud panic here is the intended bug-surfacing behaviour (mirrors the actor command drain allowlist rationale)
+        (m.apply)(&mut tx).map_err(|reason| StoreError::MigrationFailed {
+            // doctrine-allow: D15 — `Migration::apply` is an internal substrate-registered migration closure run at store init, not a host FFI seam; loud panic here is the intended bug-surfacing behaviour (mirrors the actor command drain allowlist rationale)
             namespace: namespace.to_string(),
             from: m.from_version,
             to: m.to_version,
             reason,
         })?;
-        let mut data = data_arc
-            .lock()
-            .map_err(|e| StoreError::Io(e.to_string()))?;
+        let mut data = data_arc.lock().map_err(|e| StoreError::Io(e.to_string()))?;
         for (k, v) in tx.writes() {
             data.insert(k.clone(), v.clone());
         }

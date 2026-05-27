@@ -23,16 +23,12 @@ fn message_roundtrip_alice_sends_bob_decrypts() {
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
     // Establish group (both services at same epoch after post-join self_update).
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
-        "msg-roundtrip",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "msg-roundtrip");
 
     // ── Alice sends a message ─────────────────────────────────────────────────
     let plaintext = "hello bob, this is alice";
-    let rumor = EventBuilder::new(Kind::TextNote, plaintext)
-        .build(alice_keys.public_key());
+    let rumor = EventBuilder::new(Kind::TextNote, plaintext).build(alice_keys.public_key());
     let msg_event = alice
         .create_message(&group_id, rumor)
         .expect("alice create_message");
@@ -46,7 +42,10 @@ fn message_roundtrip_alice_sends_bob_decrypts() {
         .expect("bob process_message")
     {
         MessageProcessingResult::ApplicationMessage(m) => {
-            assert_eq!(m.content, plaintext, "plaintext must round-trip identically");
+            assert_eq!(
+                m.content, plaintext,
+                "plaintext must round-trip identically"
+            );
             assert_eq!(
                 m.pubkey,
                 alice_keys.public_key(),
@@ -70,16 +69,17 @@ fn message_roundtrip_multiple_messages() {
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
     let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
+        &alice,
+        &alice_keys,
+        &bob,
+        &bob_keys,
         "msg-roundtrip-multi",
     );
 
     let messages = ["first", "second", "third", "fourth", "fifth"];
 
     for msg in &messages {
-        let rumor = EventBuilder::new(Kind::TextNote, *msg)
-            .build(alice_keys.public_key());
+        let rumor = EventBuilder::new(Kind::TextNote, *msg).build(alice_keys.public_key());
         let event = alice
             .create_message(&group_id, rumor)
             .expect("alice create_message");
@@ -106,19 +106,23 @@ fn message_roundtrip_bob_sends_alice_decrypts() {
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
     let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
+        &alice,
+        &alice_keys,
+        &bob,
+        &bob_keys,
         "msg-roundtrip-bob-sends",
     );
 
     let plaintext = "hello alice, this is bob";
-    let rumor = EventBuilder::new(Kind::TextNote, plaintext)
-        .build(bob_keys.public_key());
+    let rumor = EventBuilder::new(Kind::TextNote, plaintext).build(bob_keys.public_key());
     let msg_event = bob
         .create_message(&group_id, rumor)
         .expect("bob create_message");
 
-    match alice.process_message(&msg_event).expect("alice process_message") {
+    match alice
+        .process_message(&msg_event)
+        .expect("alice process_message")
+    {
         MessageProcessingResult::ApplicationMessage(m) => {
             assert_eq!(m.content, plaintext);
             assert_eq!(m.pubkey, bob_keys.public_key());
@@ -139,23 +143,25 @@ fn message_roundtrip_get_messages_history() {
     let alice = harness::service_at(&alice_dir.db_path("alice"), alice_keys.clone());
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
-        "msg-history",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "msg-history");
 
     let texts = ["msg-a", "msg-b", "msg-c"];
     for text in &texts {
-        let rumor = EventBuilder::new(Kind::TextNote, *text)
-            .build(alice_keys.public_key());
-        let event = alice.create_message(&group_id, rumor).expect("create_message");
+        let rumor = EventBuilder::new(Kind::TextNote, *text).build(alice_keys.public_key());
+        let event = alice
+            .create_message(&group_id, rumor)
+            .expect("create_message");
         // Bob must process each event so MDK stores it in history.
         bob.process_message(&event).expect("bob process_message");
     }
 
     let history = bob.get_messages(&group_id).expect("bob get_messages");
-    assert_eq!(history.len(), texts.len(), "history must contain all messages");
+    assert_eq!(
+        history.len(),
+        texts.len(),
+        "history must contain all messages"
+    );
 
     // MDK does not guarantee insertion-order retrieval; verify all messages are
     // present regardless of order (set containment check).

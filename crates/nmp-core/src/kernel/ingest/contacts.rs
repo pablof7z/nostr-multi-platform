@@ -1,6 +1,6 @@
 //! Kind:3 (contact list) ingest.
 
-use super::super::{Kernel, BTreeSet, NostrEvent, is_hex_pubkey, TIMELINE_AUTHOR_LIMIT, short_hex};
+use super::super::{is_hex_pubkey, short_hex, BTreeSet, Kernel, NostrEvent, TIMELINE_AUTHOR_LIMIT};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -224,7 +224,9 @@ impl Kernel {
     ///   diff that tears down the prior account's follow-feed subs (privacy
     ///   leak + stale-feed fix).
     pub(crate) fn reconcile_follow_feed_after_identity_change(&mut self) {
-        if self.active_account.clone().is_some() { self.register_follow_feed_for_active_account() } else {
+        if self.active_account.clone().is_some() {
+            self.register_follow_feed_for_active_account()
+        } else {
             self.sync_follow_feed_interests(&[]);
             use crate::subs::CompileTrigger;
             self.lifecycle

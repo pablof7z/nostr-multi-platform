@@ -94,7 +94,10 @@ pub enum RoutingSource {
     /// Lane 4 — user-configured (active-account read/write, debug).
     UserConfigured(UserConfiguredCategory),
     /// Lane 5 — NIP-51 class routing (search/draft/wiki — ADR-0020).
-    ClassRouted { class: EventClass, via: ClassRoutingPath },
+    ClassRouted {
+        class: EventClass,
+        via: ClassRoutingPath,
+    },
     /// Lane 6 — operator-configured indexer relays. Always-on for kind:0,
     /// kind:3, kind:10000–19999; R+W symmetric.
     Indexer,

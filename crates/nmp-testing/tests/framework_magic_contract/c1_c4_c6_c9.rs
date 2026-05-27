@@ -16,12 +16,20 @@ use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 fn pubkey(seed: &str) -> String {
-    format!("{seed:0>64}").chars().take(64).collect::<String>().to_lowercase()
+    format!("{seed:0>64}")
+        .chars()
+        .take(64)
+        .collect::<String>()
+        .to_lowercase()
 }
 
-fn relay(url: &str) -> String { url.to_string() }
+fn relay(url: &str) -> String {
+    url.to_string()
+}
 
-fn interest_id(n: u64) -> InterestId { InterestId(n) }
+fn interest_id(n: u64) -> InterestId {
+    InterestId(n)
+}
 
 fn mailbox_write(relays: &[&str]) -> MailboxSnapshot {
     MailboxSnapshot {
@@ -41,20 +49,29 @@ pub fn c1_replaceable_supersedes_on_insert() {
 
     let ev1 = h.make_event(ALICE_HEX, 0, 1_000);
     let id1 = ev1.id_bytes();
-    assert!(matches!(h.insert_raw(ev1, "wss://r1/", 1_000_000), InsertOutcome::Inserted { .. }));
+    assert!(matches!(
+        h.insert_raw(ev1, "wss://r1/", 1_000_000),
+        InsertOutcome::Inserted { .. }
+    ));
     h.assert_present(&id1);
 
     let ev2 = h.make_event(ALICE_HEX, 0, 2_000);
     let id2 = ev2.id_bytes();
     let o2 = h.insert_raw(ev2, "wss://r1/", 2_000_000);
-    assert!(matches!(o2, InsertOutcome::Replaced { .. }), "newer must replace: {o2:?}");
+    assert!(
+        matches!(o2, InsertOutcome::Replaced { .. }),
+        "newer must replace: {o2:?}"
+    );
     h.assert_absent(&id1);
     h.assert_present(&id2);
 
     let ev_stale = h.make_event(ALICE_HEX, 0, 500);
     let id_stale = ev_stale.id_bytes();
     let o_stale = h.insert_raw(ev_stale, "wss://r2/", 3_000_000);
-    assert!(matches!(o_stale, InsertOutcome::Superseded { .. }), "stale: {o_stale:?}");
+    assert!(
+        matches!(o_stale, InsertOutcome::Superseded { .. }),
+        "stale: {o_stale:?}"
+    );
     h.assert_absent(&id_stale);
     h.assert_present(&id2);
 
@@ -88,41 +105,73 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
     use nmp_testing::store_harness::ALICE_PUBKEY;
     let h = StoreHarness::mem();
 
-    let ev1 = h.make_event_with_tags(ALICE_HEX, 30_023, 1_000, vec![
-        vec!["d".to_string(), "foo".to_string()],
-    ]);
+    let ev1 = h.make_event_with_tags(
+        ALICE_HEX,
+        30_023,
+        1_000,
+        vec![vec!["d".to_string(), "foo".to_string()]],
+    );
     let id1 = ev1.id_bytes();
     h.insert_raw(ev1, "wss://t/", 1_000_000);
-    let ev2 = h.make_event_with_tags(ALICE_HEX, 30_023, 2_000, vec![
-        vec!["d".to_string(), "foo".to_string()],
-    ]);
+    let ev2 = h.make_event_with_tags(
+        ALICE_HEX,
+        30_023,
+        2_000,
+        vec![vec!["d".to_string(), "foo".to_string()]],
+    );
     let id2 = ev2.id_bytes();
     let o2 = h.insert_raw(ev2, "wss://t/", 2_000_000);
-    assert!(matches!(o2, InsertOutcome::Replaced { .. }), "newer d=foo must replace: {o2:?}");
+    assert!(
+        matches!(o2, InsertOutcome::Replaced { .. }),
+        "newer d=foo must replace: {o2:?}"
+    );
     h.assert_absent(&id1);
     h.assert_present(&id2);
 
-    let ev_bar = h.make_event_with_tags(ALICE_HEX, 30_023, 1_000, vec![
-        vec!["d".to_string(), "bar".to_string()],
-    ]);
+    let ev_bar = h.make_event_with_tags(
+        ALICE_HEX,
+        30_023,
+        1_000,
+        vec![vec!["d".to_string(), "bar".to_string()]],
+    );
     let id_bar = ev_bar.id_bytes();
     h.insert_raw(ev_bar, "wss://t/", 1_000_000);
     h.assert_present(&id2);
     h.assert_present(&id_bar);
-    let foo = h.store.get_param_replaceable(&ALICE_PUBKEY, 30_023, b"foo").unwrap();
-    let bar = h.store.get_param_replaceable(&ALICE_PUBKEY, 30_023, b"bar").unwrap();
+    let foo = h
+        .store
+        .get_param_replaceable(&ALICE_PUBKEY, 30_023, b"foo")
+        .unwrap();
+    let bar = h
+        .store
+        .get_param_replaceable(&ALICE_PUBKEY, 30_023, b"bar")
+        .unwrap();
     assert_eq!(foo.unwrap().raw.id_bytes(), id2, "foo slot must hold v2");
-    assert_eq!(bar.unwrap().raw.id_bytes(), id_bar, "bar slot must be independent");
+    assert_eq!(
+        bar.unwrap().raw.id_bytes(),
+        id_bar,
+        "bar slot must be independent"
+    );
 
-    let ev_24 = h.make_event_with_tags(ALICE_HEX, 30_024, 1_000, vec![
-        vec!["d".to_string(), "foo".to_string()],
-    ]);
+    let ev_24 = h.make_event_with_tags(
+        ALICE_HEX,
+        30_024,
+        1_000,
+        vec![vec!["d".to_string(), "foo".to_string()]],
+    );
     let id_24 = ev_24.id_bytes();
     h.insert_raw(ev_24, "wss://t/", 1_000_000);
     h.assert_present(&id2);
     h.assert_present(&id_24);
-    let r24 = h.store.get_param_replaceable(&ALICE_PUBKEY, 30_024, b"foo").unwrap();
-    assert_eq!(r24.unwrap().raw.id_bytes(), id_24, "kind:30024 slot is independent");
+    let r24 = h
+        .store
+        .get_param_replaceable(&ALICE_PUBKEY, 30_024, b"foo")
+        .unwrap();
+    assert_eq!(
+        r24.unwrap().raw.id_bytes(),
+        id_24,
+        "kind:30024 slot is independent"
+    );
 }
 
 // ── C3 ────────────────────────────────────────────────────────────────────────
@@ -141,17 +190,29 @@ pub fn c3_kind5_delete_removes_referenced_and_tombstones() {
     h.insert_raw(kind1, "wss://r1/", 1_000_000);
     h.assert_present(&kind1_id);
 
-    let kind5 = h.make_event_with_tags(ALICE_HEX, 5, 2_000, vec![
-        vec!["e".to_string(), kind1_id_hex],
-    ]);
+    let kind5 = h.make_event_with_tags(
+        ALICE_HEX,
+        5,
+        2_000,
+        vec![vec!["e".to_string(), kind1_id_hex]],
+    );
     h.insert_raw(kind5, "wss://r1/", 2_000_000);
     h.assert_absent(&kind1_id);
     h.assert_tombstoned(&kind1_id);
-    assert_eq!(h.store.tombstones_for(&kind1_id).unwrap()[0].origin, TombstoneOrigin::Kind5);
+    assert_eq!(
+        h.store.tombstones_for(&kind1_id).unwrap()[0].origin,
+        TombstoneOrigin::Kind5
+    );
 
     let o_rein = h.insert_raw(kind1_clone, "wss://r2/", 3_000_000);
     assert!(
-        matches!(o_rein, InsertOutcome::Tombstoned { origin: TombstoneOrigin::Kind5, .. }),
+        matches!(
+            o_rein,
+            InsertOutcome::Tombstoned {
+                origin: TombstoneOrigin::Kind5,
+                ..
+            }
+        ),
         "reinsert must be Tombstoned: {o_rein:?}"
     );
     h.assert_absent(&kind1_id);
@@ -162,7 +223,12 @@ pub fn c3_kind5_delete_removes_referenced_and_tombstones() {
     let alice_ev2_hex = alice_ev2.id.clone();
     h.insert_raw(alice_ev2, "wss://r1/", 3_000_000);
     h.insert_raw(
-        h.make_event_with_tags(BOB_HEX, 5, 4_000, vec![vec!["e".to_string(), alice_ev2_hex]]),
+        h.make_event_with_tags(
+            BOB_HEX,
+            5,
+            4_000,
+            vec![vec!["e".to_string(), alice_ev2_hex]],
+        ),
         "wss://r1/",
         4_000_000,
     );
@@ -179,32 +245,56 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
     use nmp_core::store::{GcBudget, RejectReason};
     let h = StoreHarness::mem();
 
-    let ev_past = h.make_event_with_tags(ALICE_HEX, 1, 1_000, vec![
-        vec!["expiration".to_string(), "999".to_string()],
-    ]);
+    let ev_past = h.make_event_with_tags(
+        ALICE_HEX,
+        1,
+        1_000,
+        vec![vec!["expiration".to_string(), "999".to_string()]],
+    );
     let past_id = ev_past.id_bytes();
     let o = h.insert_raw(ev_past, "wss://t/", 1_700_000_000_000u64);
     assert!(
-        matches!(o, InsertOutcome::Rejected { reason: RejectReason::ExpiredOnArrival, .. }),
+        matches!(
+            o,
+            InsertOutcome::Rejected {
+                reason: RejectReason::ExpiredOnArrival,
+                ..
+            }
+        ),
         "expired on arrival must be rejected: {o:?}"
     );
     h.assert_absent(&past_id);
 
-    let ev = h.make_event_with_tags(ALICE_HEX, 1, 1u64, vec![
-        vec!["expiration".to_string(), "2".to_string()],
-    ]);
+    let ev = h.make_event_with_tags(
+        ALICE_HEX,
+        1,
+        1u64,
+        vec![vec!["expiration".to_string(), "2".to_string()]],
+    );
     let ev_id = ev.id_bytes();
     let ev_clone = ev.clone();
     h.insert_raw(ev, "wss://t/", 1u64);
     h.assert_present(&ev_id);
 
-    let expiring: Vec<_> = h.store
-        .scan_expiring_before(12, 100).unwrap()
-        .collect::<Result<Vec<_>, _>>().unwrap();
+    let expiring: Vec<_> = h
+        .store
+        .scan_expiring_before(12, 100)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
     assert!(expiring.iter().any(|e| e.raw.id_bytes() == ev_id));
 
-    let report = h.store.gc_step(GcBudget { max_events_per_step: 100, max_duration_ms: 1_000 }).unwrap();
-    assert!(report.expired_reaped >= 1, "gc_step must reap the expired event");
+    let report = h
+        .store
+        .gc_step(GcBudget {
+            max_events_per_step: 100,
+            max_duration_ms: 1_000,
+        })
+        .unwrap();
+    assert!(
+        report.expired_reaped >= 1,
+        "gc_step must reap the expired event"
+    );
     h.assert_absent(&ev_id);
     let tombs = h.store.tombstones_for(&ev_id).unwrap();
     assert!(!tombs.is_empty() && tombs[0].origin == TombstoneOrigin::NIP40Expiry);
@@ -213,8 +303,10 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
     assert!(
         matches!(
             o_rein,
-            InsertOutcome::Tombstoned { origin: TombstoneOrigin::NIP40Expiry, .. }
-                | InsertOutcome::Rejected { .. }
+            InsertOutcome::Tombstoned {
+                origin: TombstoneOrigin::NIP40Expiry,
+                ..
+            } | InsertOutcome::Rejected { .. }
         ),
         "re-insert after NIP40 expiry must be blocked: {o_rein:?}"
     );
@@ -255,9 +347,16 @@ pub fn c6_authors_subscription_routes_to_per_author_write_relays() {
 
     let rs: std::collections::BTreeSet<_> = plan.per_relay.keys().cloned().collect();
     assert!(rs.contains("wss://r1/") && rs.contains("wss://r2/") && rs.contains("wss://r3/"));
-    assert!(!rs.contains("wss://purplepag.es"), "indexer must not appear for known authors");
+    assert!(
+        !rs.contains("wss://purplepag.es"),
+        "indexer must not appear for known authors"
+    );
     for (url, rp) in &plan.per_relay {
-        assert_eq!(rp.sub_shapes.len(), 1, "relay {url} must have one merged sub-shape");
+        assert_eq!(
+            rp.sub_shapes.len(),
+            1,
+            "relay {url} must have one merged sub-shape"
+        );
     }
     let r1 = &plan.per_relay["wss://r1/"].sub_shapes[0].shape.authors;
     assert!(r1.contains(&alice) && !r1.contains(&carol));
@@ -267,7 +366,10 @@ pub fn c6_authors_subscription_routes_to_per_author_write_relays() {
     let plan2 = compiler
         .compile(&[mk(1, vec![alice, bob, carol])])
         .expect("compile #2");
-    assert_eq!(plan.plan_id, plan2.plan_id, "plan_id must be stable under identical inputs");
+    assert_eq!(
+        plan.plan_id, plan2.plan_id,
+        "plan_id must be stable under identical inputs"
+    );
 }
 
 // ── C9 ────────────────────────────────────────────────────────────────────────
@@ -283,23 +385,44 @@ pub fn c9_provenance_merges_across_relay_redeliveries() {
     let ev2 = ev.clone();
     let ev3 = ev.clone();
 
-    assert!(matches!(h.insert_raw(ev, "wss://r1/", 1_000), InsertOutcome::Inserted { .. }));
+    assert!(matches!(
+        h.insert_raw(ev, "wss://r1/", 1_000),
+        InsertOutcome::Inserted { .. }
+    ));
     let prov1 = h.store.provenance_for(&id).unwrap();
     assert_eq!(prov1.len(), 1);
-    assert_eq!(prov1.iter().find(|e| e.primary).unwrap().relay_url, "wss://r1/");
+    assert_eq!(
+        prov1.iter().find(|e| e.primary).unwrap().relay_url,
+        "wss://r1/"
+    );
 
     let o2 = h.insert_raw(ev2, "wss://r2/", 5_000);
     assert!(
-        matches!(o2, InsertOutcome::Duplicate { sources_after: 2, .. }),
+        matches!(
+            o2,
+            InsertOutcome::Duplicate {
+                sources_after: 2,
+                ..
+            }
+        ),
         "second relay must produce Duplicate: {o2:?}"
     );
     let prov2 = h.store.provenance_for(&id).unwrap();
     assert_eq!(prov2.len(), 2);
-    assert_eq!(prov2.iter().find(|e| e.primary).unwrap().relay_url, "wss://r1/");
+    assert_eq!(
+        prov2.iter().find(|e| e.primary).unwrap().relay_url,
+        "wss://r1/"
+    );
 
     let o3 = h.insert_raw(ev3, "wss://r1/", 60_000);
     assert!(
-        matches!(o3, InsertOutcome::Duplicate { sources_after: 2, .. }),
+        matches!(
+            o3,
+            InsertOutcome::Duplicate {
+                sources_after: 2,
+                ..
+            }
+        ),
         "same-relay re-delivery must not add a third provenance entry: {o3:?}"
     );
     let prov3 = h.store.provenance_for(&id).unwrap();

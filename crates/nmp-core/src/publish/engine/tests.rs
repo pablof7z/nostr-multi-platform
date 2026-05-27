@@ -375,9 +375,9 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
     // simulating a relay that accepts the socket but never sends OK or closes.
     let dispatcher = Arc::new(QueueDispatcher::new());
     let policy = RetryPolicy {
-        transient_max_retries: 2,  // attempt 1 → timeout → attempt 2 → timeout → fail
+        transient_max_retries: 2, // attempt 1 → timeout → attempt 2 → timeout → fail
         inflight_deadline_ms: 5_000,
-        backoff_base_ms: 0,        // no backoff so ticks are predictable
+        backoff_base_ms: 0, // no backoff so ticks are predictable
         ..RetryPolicy::default()
     };
     let mut engine = PublishEngine::new(
@@ -426,7 +426,10 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
         "publish must settle to FailedAfterRetries after retries exhausted"
     );
     assert!(
-        completed[0].failed.iter().any(|(url, _)| url == "wss://silent"),
+        completed[0]
+            .failed
+            .iter()
+            .any(|(url, _)| url == "wss://silent"),
         "the silent relay must appear in the failed list"
     );
     assert!(
@@ -486,7 +489,8 @@ fn record_action_terminal_failure_accumulates_until_drained() {
     );
 
     engine.record_action_terminal_failure("corr-a".to_string(), "no active account".to_string());
-    engine.record_action_terminal_failure("corr-b".to_string(), "sign failed: rejected".to_string());
+    engine
+        .record_action_terminal_failure("corr-b".to_string(), "sign failed: rejected".to_string());
 
     let mut ids: Vec<String> = engine
         .take_pending_terminals()

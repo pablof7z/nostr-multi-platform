@@ -65,7 +65,11 @@ fn key_package_lifecycle_publish_validate_create_group_join() {
     let gift = alice
         .wrap_welcome(&bob_keys.public_key(), bob_rumor)
         .expect("alice wrap_welcome");
-    assert_eq!(gift.kind, Kind::GiftWrap, "outer gift-wrap must be kind:1059");
+    assert_eq!(
+        gift.kind,
+        Kind::GiftWrap,
+        "outer gift-wrap must be kind:1059"
+    );
 
     // Commit the create (publish-success path).
     pending.commit().expect("alice merge create commit");

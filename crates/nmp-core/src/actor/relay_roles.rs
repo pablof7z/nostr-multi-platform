@@ -139,7 +139,10 @@ where
 {
     rows.into_iter()
         .find(|(_, role)| has_role(role, "write"))
-        .map_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string(), |(url, _)| url.to_string())
+        .map_or_else(
+            || NOSTRCONNECT_DEFAULT_RELAY_URL.to_string(),
+            |(url, _)| url.to_string(),
+        )
 }
 
 fn role_metadata(role: &str) -> Option<&'static RelayRoleMetadata> {

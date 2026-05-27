@@ -121,7 +121,10 @@ mod tests {
     /// Pull the row for the first tag whose marker (column 3) equals `marker`.
     fn marked_e_tag<'a>(tags: &'a [Vec<String>], marker: &str) -> &'a Vec<String> {
         tags.iter()
-            .find(|t| t.first().map(String::as_str) == Some("e") && t.get(3).map(String::as_str) == Some(marker))
+            .find(|t| {
+                t.first().map(String::as_str) == Some("e")
+                    && t.get(3).map(String::as_str) == Some(marker)
+            })
             .unwrap_or_else(|| panic!("no e-tag with marker {marker:?}"))
     }
 
@@ -140,7 +143,13 @@ mod tests {
     fn reply_to_root_promotes_parent_to_root_and_reply() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         // A genuine thread root: kind:1, no `e` tags.
-        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 1_000, vec![], "root post");
+        kernel.seed_kind1_for_reply_test(
+            &parent_id(),
+            &parent_author(),
+            1_000,
+            vec![],
+            "root post",
+        );
 
         let tags = kernel
             .reply_tags_for_parent(&parent_id())
@@ -168,7 +177,13 @@ mod tests {
             e_tag(&"ff".repeat(32), None, Some("reply")),
             p_tag(&root_author(), None),
         ];
-        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 2_000, parent_tags, "a reply");
+        kernel.seed_kind1_for_reply_test(
+            &parent_id(),
+            &parent_author(),
+            2_000,
+            parent_tags,
+            "a reply",
+        );
 
         let tags = kernel
             .reply_tags_for_parent(&parent_id())
@@ -194,7 +209,13 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         // Parent has only a `mention`-marked e-tag: no `root`, no `reply`.
         let parent_tags = vec![e_tag(&"99".repeat(32), None, Some("mention"))];
-        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 3_000, parent_tags, "quote post");
+        kernel.seed_kind1_for_reply_test(
+            &parent_id(),
+            &parent_author(),
+            3_000,
+            parent_tags,
+            "quote post",
+        );
 
         let tags = kernel
             .reply_tags_for_parent(&parent_id())
@@ -217,7 +238,13 @@ mod tests {
             e_tag(&root_id(), Some("wss://relay.example"), Some("root")),
             e_tag(&"ff".repeat(32), None, Some("reply")),
         ];
-        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 4_000, parent_tags, "deep reply");
+        kernel.seed_kind1_for_reply_test(
+            &parent_id(),
+            &parent_author(),
+            4_000,
+            parent_tags,
+            "deep reply",
+        );
 
         let tags = kernel
             .reply_tags_for_parent(&parent_id())
@@ -256,7 +283,13 @@ mod tests {
             p_tag(&parent_author(), None),
             p_tag(&third_party(), None),
         ];
-        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 5_000, parent_tags, "busy thread");
+        kernel.seed_kind1_for_reply_test(
+            &parent_id(),
+            &parent_author(),
+            5_000,
+            parent_tags,
+            "busy thread",
+        );
 
         let tags = kernel
             .reply_tags_for_parent(&parent_id())

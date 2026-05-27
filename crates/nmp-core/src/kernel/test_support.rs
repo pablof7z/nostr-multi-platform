@@ -92,14 +92,10 @@ impl Kernel {
                     //      what the kernel's substrate-honest mailbox-change
                     //      observer (`Kernel::on_mailbox_changed`) does in
                     //      production.
-                    let parsed = parse_relay_list_to_substrate(
-                        &event.id,
-                        event.created_at,
-                        &event.tags,
-                    );
-                    let empty = parsed.read.is_empty()
-                        && parsed.write.is_empty()
-                        && parsed.both.is_empty();
+                    let parsed =
+                        parse_relay_list_to_substrate(&event.id, event.created_at, &event.tags);
+                    let empty =
+                        parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
                     let had_entry = self.mailbox_cache.known(&event.pubkey);
                     let mailbox_mutated = if empty {
                         if had_entry {
@@ -115,14 +111,12 @@ impl Kernel {
                             false
                         }
                     } else {
-                        self.mailbox_cache
-                            .upsert(event.pubkey.clone(), parsed);
-                        self.lifecycle.enqueue_trigger(
-                            crate::subs::CompileTrigger::Nip65Arrived {
+                        self.mailbox_cache.upsert(event.pubkey.clone(), parsed);
+                        self.lifecycle
+                            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
                                 pubkey: event.pubkey.clone(),
                                 created_at: event.created_at,
-                            },
-                        );
+                            });
                         true
                     };
                     // Mirror the production `Kernel::on_mailbox_changed`
@@ -380,7 +374,8 @@ impl Kernel {
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10050_for_test(&mut self, author_pubkey: &str, dm_relay_urls: &[&str]) {
-        self.test_dm_relay_cache().upsert(author_pubkey, dm_relay_urls);
+        self.test_dm_relay_cache()
+            .upsert(author_pubkey, dm_relay_urls);
         // V-40 substitute for the removed `CompileTrigger::DmRelayListChanged`.
         // Production composition (`Kind10050Parser` in `nmp-nip17`) will need
         // its own seam to enqueue a trigger when the cache mutates; for tests
@@ -412,10 +407,7 @@ impl Kernel {
     /// `actor::outbound::wire_frames_to_outbound`; tests drive it directly so
     /// the EOSE keep-live assertion exercises the same registration code.
     #[cfg(test)]
-    pub(crate) fn register_wire_frames_for_test(
-        &mut self,
-        frames: &[crate::subs::WireFrame],
-    ) {
+    pub(crate) fn register_wire_frames_for_test(&mut self, frames: &[crate::subs::WireFrame]) {
         self.register_planner_wire_frames(frames);
     }
 
@@ -440,9 +432,7 @@ impl Kernel {
 
     /// Snapshot of the registered M2 follow-feed `InterestId`s.
     #[cfg(test)]
-    pub(crate) fn follow_feed_interest_ids_for_test(
-        &self,
-    ) -> Vec<crate::planner::InterestId> {
+    pub(crate) fn follow_feed_interest_ids_for_test(&self) -> Vec<crate::planner::InterestId> {
         self.follow_feed_interest_ids.iter().cloned().collect()
     }
 
@@ -455,18 +445,14 @@ impl Kernel {
     /// Read-only snapshot of `profile_requests.pending` (the queued kind:0
     /// fetch set).
     #[cfg(test)]
-    pub(crate) fn profile_requests_pending_for_test(
-        &self,
-    ) -> &std::collections::BTreeSet<String> {
+    pub(crate) fn profile_requests_pending_for_test(&self) -> &std::collections::BTreeSet<String> {
         &self.profile_requests.pending
     }
 
     /// Read-only snapshot of `profile_requests.requested` (the inflight /
     /// completed kind:0 fetch set).
     #[cfg(test)]
-    pub(crate) fn profile_requests_requested_for_test(
-        &self,
-    ) -> &std::collections::HashSet<String> {
+    pub(crate) fn profile_requests_requested_for_test(&self) -> &std::collections::HashSet<String> {
         &self.profile_requests.requested
     }
 }

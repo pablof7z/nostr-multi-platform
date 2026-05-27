@@ -260,9 +260,7 @@ fn decode_value(value: fb::Value<'_>) -> Result<Value, UpdateFrameDecodeError> {
         kind if kind == fb::ValueKind::Null => Ok(Value::Null),
         kind if kind == fb::ValueKind::Bool => Ok(Value::Bool(value.bool_value())),
         kind if kind == fb::ValueKind::Int => Ok(Value::Number(Number::from(value.int_value()))),
-        kind if kind == fb::ValueKind::UInt => {
-            Ok(Value::Number(Number::from(value.uint_value())))
-        }
+        kind if kind == fb::ValueKind::UInt => Ok(Value::Number(Number::from(value.uint_value()))),
         kind if kind == fb::ValueKind::Float => {
             let float = value.float_value();
             if !float.is_finite() {
@@ -366,12 +364,16 @@ mod tests {
     #[test]
     fn snapshot_v1_wire_fixture_is_stable() {
         let wire = encode_snapshot_value(golden_snapshot_payload());
-        let expected =
-            decode_hex_fixture(include_str!("../tests/fixtures/update_frame_snapshot_v1.fb.hex"));
+        let expected = decode_hex_fixture(include_str!(
+            "../tests/fixtures/update_frame_snapshot_v1.fb.hex"
+        ));
         if wire != expected {
             eprintln!("actual snapshot_v1 fixture hex:\n{}", encode_hex(&wire));
         }
-        assert_eq!(wire, expected, "snapshot v1 FlatBuffers wire fixture drifted");
+        assert_eq!(
+            wire, expected,
+            "snapshot v1 FlatBuffers wire fixture drifted"
+        );
     }
 
     #[test]

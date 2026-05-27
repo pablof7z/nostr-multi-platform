@@ -86,7 +86,11 @@ fn schema_bump_resets_table() {
     {
         let store = LmdbEventStore::open(dir.path()).expect("re-open for v2");
         let rows = load_all_raw_with_name(&store, "relay-author-scores-v2").expect("v2 load");
-        assert_eq!(rows.len(), 0, "v2 name must be empty (schema-bump isolation)");
+        assert_eq!(
+            rows.len(),
+            0,
+            "v2 name must be empty (schema-bump isolation)"
+        );
     }
 }
 
@@ -104,7 +108,10 @@ fn url_over_255_chars_rejected_without_panic() {
     // 256-byte URL
     let padding = "x".repeat(256 - "wss://relay.example.com/".len() + 1);
     let long_url = format!("wss://relay.example.com/{}", padding);
-    assert!(long_url.len() > 255, "test setup: URL must exceed 255 bytes");
+    assert!(
+        long_url.len() > 255,
+        "test setup: URL must exceed 255 bytes"
+    );
 
     // encode_key must return None for a too-long URL (pure computation — no disk I/O)
     assert!(

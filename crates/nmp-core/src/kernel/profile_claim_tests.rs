@@ -23,7 +23,7 @@
 //! for a NIP-65-known author.
 
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL, CONTENT_RELAY_URL};
+use crate::relay::{CONTENT_RELAY_URL, DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL};
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
@@ -85,7 +85,10 @@ fn cold_start_profile_claims_never_go_to_content_relay() {
         content_relay_reqs.is_empty(),
         "profile claims must NOT go to the content relay ({}); got: {:#?}",
         CONTENT_RELAY_URL,
-        content_relay_reqs.iter().map(|m| &m.relay_url).collect::<Vec<_>>()
+        content_relay_reqs
+            .iter()
+            .map(|m| &m.relay_url)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -137,7 +140,9 @@ fn kind10002_arrival_requeues_already_requested_profile() {
     let _ = kernel.claim_profile(alice.clone(), "view-0".to_string(), false);
     let _ = kernel.pending_profile_claim_requests();
     assert!(
-        kernel.profile_requests_requested_for_test().contains(&alice),
+        kernel
+            .profile_requests_requested_for_test()
+            .contains(&alice),
         "post-flush, alice must be in `requested`"
     );
     assert!(
@@ -165,13 +170,14 @@ fn kind10002_arrival_requeues_already_requested_profile() {
         .expect("inject kind:10002 must succeed");
     assert!(matches!(
         outcome,
-        crate::store::InsertOutcome::Inserted { .. }
-            | crate::store::InsertOutcome::Replaced { .. }
+        crate::store::InsertOutcome::Inserted { .. } | crate::store::InsertOutcome::Replaced { .. }
     ));
 
     // Post-mailbox alice must be back in `pending` and out of `requested`.
     assert!(
-        !kernel.profile_requests_requested_for_test().contains(&alice),
+        !kernel
+            .profile_requests_requested_for_test()
+            .contains(&alice),
         "after kind:10002, alice must leave `requested`"
     );
     assert!(
@@ -188,7 +194,9 @@ fn kind10002_arrival_requeues_already_requested_profile() {
         .collect();
     let relay_urls: Vec<&str> = reqs.iter().map(|m| m.relay_url.as_str()).collect();
     assert!(
-        relay_urls.iter().any(|u| *u == "wss://alice-write.example/"),
+        relay_urls
+            .iter()
+            .any(|u| *u == "wss://alice-write.example/"),
         "post-refresh kind:0 REQ must route to alice's NIP-65 write relay; got {relay_urls:?}"
     );
 }
@@ -223,12 +231,7 @@ fn known_nip65_profile_claims_use_declared_write_relays() {
     let alice = hex64("alice");
     let alice_relay = "wss://alice-write.example/";
 
-    kernel.seed_mailbox_relay_list(
-        &alice,
-        vec![],
-        vec![alice_relay.to_string()],
-        vec![],
-    );
+    kernel.seed_mailbox_relay_list(&alice, vec![], vec![alice_relay.to_string()], vec![]);
 
     let msgs = kernel.claim_profile(alice.clone(), "view-0".to_string(), true);
     let reqs: Vec<&OutboundMessage> = msgs

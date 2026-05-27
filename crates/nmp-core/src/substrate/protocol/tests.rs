@@ -44,8 +44,9 @@ impl ProtocolCommand for FailingCommand {
 #[test]
 fn run_is_called_with_context() {
     let fired = Arc::new(Mutex::new(false));
-    let cmd: Box<dyn ProtocolCommand> =
-        Box::new(FiringCommand { fired: fired.clone() });
+    let cmd: Box<dyn ProtocolCommand> = Box::new(FiringCommand {
+        fired: fired.clone(),
+    });
 
     let send = |_: ActorCommand| {};
     let mut ctx = ProtocolCommandContext::with_send_only(&send);
@@ -170,13 +171,18 @@ fn full_constructor_threads_capabilities() {
     use std::sync::mpsc;
     let send = |_: ActorCommand| {};
     let clock = FixedClock(123_456);
-    let signers = LocalSigners { keys: None, signer: None };
+    let signers = LocalSigners {
+        keys: None,
+        signer: None,
+    };
     let dms = crate::substrate::EmptyDmInboxRelayLookup;
     let errors = RecordingErrors {
         toasts: Mutex::new(Vec::new()),
         failures: Mutex::new(Vec::new()),
     };
-    let stages = RecordingStages { seen: Mutex::new(Vec::new()) };
+    let stages = RecordingStages {
+        seen: Mutex::new(Vec::new()),
+    };
     let recipients = RecordingRecipients {
         seen: Mutex::new(Vec::new()),
         respond: vec!["wss://r.example".to_string()],
@@ -201,7 +207,10 @@ fn full_constructor_threads_capabilities() {
     ctx.set_last_error_toast(Some("hello".to_string()));
     ctx.record_action_failure("cid-z".to_string(), "boom".to_string());
     ctx.record_action_stage_requested("cid-abc");
-    assert_eq!(*errors.toasts.lock().unwrap(), vec![Some("hello".to_string())]);
+    assert_eq!(
+        *errors.toasts.lock().unwrap(),
+        vec![Some("hello".to_string())]
+    );
     assert_eq!(
         *errors.failures.lock().unwrap(),
         vec![("cid-z".to_string(), "boom".to_string())]

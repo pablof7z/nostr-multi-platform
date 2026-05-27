@@ -86,9 +86,7 @@ const PART_A_BANNED: &[&str] = &[
 /// Files that opt in to Part A by default (no marker comment required).
 /// The canonical entry is the NIP-17 send handler; future Theme C+ paths
 /// (zap, raw NIP-44) will be added here as they land.
-const PART_A_DEFAULT_FILES: &[&str] = &[
-    "crates/nmp-core/src/actor/commands/dm.rs",
-];
+const PART_A_DEFAULT_FILES: &[&str] = &["crates/nmp-core/src/actor/commands/dm.rs"];
 
 /// The opt-in marker. A file containing this comment anywhere in its
 /// contents joins the Part-A scope without having to be enumerated here.
@@ -127,14 +125,12 @@ pub fn file_in_part_b_scope(path: &Path) -> bool {
         return false;
     }
     let is_marmot = s.contains("/crates/nmp-marmot/") || s.starts_with("crates/nmp-marmot/");
-    let is_testing =
-        s.contains("/crates/nmp-testing/") || s.starts_with("crates/nmp-testing/");
-    let is_ffi_crate =
-        s.contains("/crates/nmp-ffi/") || s.starts_with("crates/nmp-ffi/");
+    let is_testing = s.contains("/crates/nmp-testing/") || s.starts_with("crates/nmp-testing/");
+    let is_ffi_crate = s.contains("/crates/nmp-ffi/") || s.starts_with("crates/nmp-ffi/");
     let is_core_slots = s.contains("/crates/nmp-core/src/slots.rs")
         || s.starts_with("crates/nmp-core/src/slots.rs");
-    let is_core_actor = s.contains("/crates/nmp-core/src/actor/")
-        || s.starts_with("crates/nmp-core/src/actor/");
+    let is_core_actor =
+        s.contains("/crates/nmp-core/src/actor/") || s.starts_with("crates/nmp-core/src/actor/");
     !(is_marmot || is_testing || is_ffi_crate || is_core_slots || is_core_actor)
 }
 
@@ -243,7 +239,11 @@ mod tests {
             false,
             false,
         );
-        assert_eq!(hits.len(), 1, "expected one D13 finding for active_local_keys");
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected one D13 finding for active_local_keys"
+        );
         assert!(hits[0].1.contains("D13"));
         assert!(hits[0].1.contains("active_local_keys"));
     }
@@ -303,7 +303,10 @@ mod tests {
             false,
             false,
         );
-        assert!(hits.is_empty(), "the legitimate seam call must not trip D13");
+        assert!(
+            hits.is_empty(),
+            "the legitimate seam call must not trip D13"
+        );
     }
 
     #[test]

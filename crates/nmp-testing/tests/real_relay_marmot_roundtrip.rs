@@ -90,13 +90,8 @@ fn marmot_kind445_roundtrip_over_damus() {
 
     // setup_two_member_group exercises the migrated `wrap_welcome` (now
     // routes through `gift_wrap_with_signer`). If that broke, this panics.
-    let group_id = harness::setup_two_member_group(
-        &alice,
-        &alice_keys,
-        &bob,
-        &bob_keys,
-        "marmot-real-relay",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "marmot-real-relay");
     println!("[marmot-rrt] group established at the same epoch on both sides");
 
     // ── Build the kind:445 group message ────────────────────────────────────
@@ -164,7 +159,10 @@ fn marmot_kind445_roundtrip_over_damus() {
         }
     }
     if !got_eose {
-        eprintln!("SKIP: no EOSE within {:?} — relay likely overloaded", EOSE_BUDGET);
+        eprintln!(
+            "SKIP: no EOSE within {:?} — relay likely overloaded",
+            EOSE_BUDGET
+        );
         return;
     }
     println!("[marmot-rrt] bob sub is active (EOSE received)");
@@ -178,7 +176,9 @@ fn marmot_kind445_roundtrip_over_damus() {
         }
     };
     let publish = format!("[\"EVENT\",{}]", msg_event.as_json());
-    alice_sock.send(Message::Text(publish)).expect("alice EVENT");
+    alice_sock
+        .send(Message::Text(publish))
+        .expect("alice EVENT");
 
     // Drain Alice's OK.
     let alice_deadline = Instant::now() + Duration::from_secs(8);
@@ -292,8 +292,8 @@ fn marmot_kind445_roundtrip_over_damus() {
                 m.content
             );
         }
-        other => panic!(
-            "expected ApplicationMessage for the relay-delivered kind:445, got {other:?}"
-        ),
+        other => {
+            panic!("expected ApplicationMessage for the relay-delivered kind:445, got {other:?}")
+        }
     }
 }

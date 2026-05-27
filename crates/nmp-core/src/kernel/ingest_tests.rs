@@ -41,7 +41,13 @@ const FOLLOW_B: &str = "22222222222222222222222222222222222222222222222222222222
 /// distinct ids (the supersession tiebreak in `ingest_relay_list` compares
 /// event ids on a `created_at` tie). `sig` is a placeholder — the ingest
 /// methods never read it (they run post-verification).
-fn make_event(id: &str, pubkey: &str, created_at: u64, kind: u32, tags: Vec<Vec<String>>) -> NostrEvent {
+fn make_event(
+    id: &str,
+    pubkey: &str,
+    created_at: u64,
+    kind: u32,
+    tags: Vec<Vec<String>>,
+) -> NostrEvent {
     NostrEvent {
         id: id.to_string(),
         pubkey: pubkey.to_string(),
@@ -339,7 +345,10 @@ fn recipient_dm_relays_none_for_uncached_pubkey() {
 fn ingest_contacts_with_p_tags_updates_follow_graph() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // No active account → the active-only follow-feed sync branch is skipped.
-    assert!(kernel.active_account.is_none(), "precondition: no active account");
+    assert!(
+        kernel.active_account.is_none(),
+        "precondition: no active account"
+    );
 
     let event = make_event(
         "0000000000000000000000000000000000000000000000000000000000000004",
@@ -482,13 +491,7 @@ fn ingest_profile_stores_metadata_under_pubkey() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     let profile_id = "0000000000000000000000000000000000000000000000000000000000000010";
-    let event = make_event(
-        profile_id,
-        AUTHOR,
-        1_000,
-        0,
-        Vec::new(),
-    );
+    let event = make_event(profile_id, AUTHOR, 1_000, 0, Vec::new());
     // `parse_profile` reads only `content`; tags are irrelevant for kind:0.
     let event = NostrEvent {
         content: r#"{"name":"test","display_name":"Test User","nip05":"test@example.com","about":"hi","picture":"https://example.com/a.png"}"#

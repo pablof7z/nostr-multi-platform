@@ -61,23 +61,15 @@ pub enum InvalidateReason {
 #[derive(Clone, Debug)]
 pub enum CompileTrigger {
     /// A1 — kind:10002 just replaced an author's mailbox entry.
-    Nip65Arrived {
-        pubkey: String,
-        created_at: u64,
-    },
+    Nip65Arrived { pubkey: String, created_at: u64 },
     /// A1-DM — kind:10050 just replaced an author's NIP-17 DM-relay list.
     ///
     /// This re-routes only interests whose `#p` routing mode explicitly asks
     /// for kind:10050 DM relays. Generic `#p` interests continue to use
     /// kind:10002 read relays.
-    DmRelayListChanged {
-        pubkey: String,
-        created_at: u64,
-    },
+    DmRelayListChanged { pubkey: String, created_at: u64 },
     /// A2 — view registered one or more interests.
-    ViewOpened {
-        interest_ids: Vec<InterestId>,
-    },
+    ViewOpened { interest_ids: Vec<InterestId> },
     /// A3 — view's warmth grace expired; interests dropped.
     ViewClosed {
         interest_ids: Vec<InterestId>,
@@ -89,21 +81,13 @@ pub enum CompileTrigger {
         to: Option<AccountId>,
     },
     /// A5 — relay reconnected after backoff. Pure replay; not a recompile.
-    RelayReconnected {
-        url: RelayUrl,
-    },
+    RelayReconnected { url: RelayUrl },
     /// A6 — external force-recompile.
-    InvalidateCompile {
-        reason: InvalidateReason,
-    },
+    InvalidateCompile { reason: InvalidateReason },
     /// A7 — user-configured relay set changed.
-    UserConfiguredRelaysChanged {
-        generation: u64,
-    },
+    UserConfiguredRelaysChanged { generation: u64 },
     /// A8 — kernel-configured indexer set changed.
-    IndexerSetChanged {
-        generation: u64,
-    },
+    IndexerSetChanged { generation: u64 },
     /// A9 — NIP-42 auth-state transition (M5 / T40 seam).
     RelayAuthStateChanged {
         url: RelayUrl,
@@ -119,10 +103,7 @@ pub enum CompileTrigger {
     /// candidate set on the next recompile, forcing affected authors onto
     /// alternative NIP-65 write relays. Symmetric: re-marking a relay alive
     /// also fires this trigger so authors can route back to it.
-    RelayHealthChanged {
-        url: RelayUrl,
-        dead: bool,
-    },
+    RelayHealthChanged { url: RelayUrl, dead: bool },
     /// A11 — active account's kind:3 contact list replaced with a fresher
     /// event. Emitted by the kind:3 ingest fan after `Inserted | Replaced`
     /// from the event store (D4). The compiler re-runs every view whose
@@ -148,7 +129,7 @@ impl CompileTrigger {
     /// classify triggers as they fan them into the inbox without re-encoding
     /// the rule.
     #[allow(dead_code)]
-    #[must_use] 
+    #[must_use]
     pub fn requires_recompile(&self) -> bool {
         !matches!(self, Self::RelayReconnected { .. })
     }

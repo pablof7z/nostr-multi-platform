@@ -136,10 +136,9 @@ pub use kernel::{
 // and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
 pub mod relay_score {
     pub use super::kernel::relay_score::{
-        ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap,
-        WARM_THRESHOLD, DECAY_HALFLIFE_DAYS,
-        MAX_RELAYS_TRIED_PER_CLAIM, MAX_EXPANSION_CONCURRENCY,
-        PHASE_1_BUDGET_MS, PER_RELAY_REQ_TIMEOUT_MS, PER_CLAIM_TOTAL_BUDGET_MS,
+        ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS,
+        MAX_EXPANSION_CONCURRENCY, MAX_RELAYS_TRIED_PER_CLAIM, PER_CLAIM_TOTAL_BUDGET_MS,
+        PER_RELAY_REQ_TIMEOUT_MS, PHASE_1_BUDGET_MS, WARM_THRESHOLD,
     };
 }
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the

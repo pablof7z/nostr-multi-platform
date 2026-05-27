@@ -150,7 +150,7 @@ pub struct RelayAuthorScoreMap {
     cells: BTreeMap<(Pubkey, RelayUrl), RelayAuthorScore>,
     /// `true` if at least one cell mutated since the last LMDB flush.
     /// W2's flush clears this; W3's `record_*` calls set it.
-    pub dirty: bool,
+    pub(crate) dirty: bool,
 }
 
 impl RelayAuthorScoreMap {

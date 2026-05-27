@@ -26,9 +26,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, Once};
 use std::time::{Duration, Instant};
 
-use nmp_nip59::{
-    gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT,
-};
+use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
@@ -122,7 +120,10 @@ fn nip17_giftwrap_roundtrip_over_damus() {
         }
     }
     if !got_eose {
-        eprintln!("SKIP: no EOSE within {:?} — relay likely overloaded", EOSE_BUDGET);
+        eprintln!(
+            "SKIP: no EOSE within {:?} — relay likely overloaded",
+            EOSE_BUDGET
+        );
         return;
     }
     println!("[nip17-rrt] bob sub is active (EOSE received)");
@@ -159,7 +160,9 @@ fn nip17_giftwrap_roundtrip_over_damus() {
         }
     };
     let publish = format!("[\"EVENT\",{}]", envelope_json);
-    alice_sock.send(Message::Text(publish)).expect("alice EVENT");
+    alice_sock
+        .send(Message::Text(publish))
+        .expect("alice EVENT");
     println!("[nip17-rrt] alice published kind:1059 id={}", envelope_id);
 
     // Drain Alice's OK so we know the relay accepted the publish before we
@@ -193,9 +196,7 @@ fn nip17_giftwrap_roundtrip_over_damus() {
     }
     let _ = alice_sock.close(None);
     if !alice_ok {
-        eprintln!(
-            "SKIP: no OK from relay for our publish within 8s — relay likely throttling"
-        );
+        eprintln!("SKIP: no OK from relay for our publish within 8s — relay likely throttling");
         let _ = bob_sock.close(None);
         return;
     }

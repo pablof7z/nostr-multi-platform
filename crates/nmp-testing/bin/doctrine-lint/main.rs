@@ -368,11 +368,7 @@ fn scan_one_file(
         // Exempt doctrine-lint's own rule source (contains banned patterns
         // as string constants → meta-false-positives on broad sweeps).
         if !workspace_d8 && !is_doctrine_lint_source(path) {
-            for (col, msg, suggested) in d11::check(
-                sl.text,
-                sl.is_comment,
-                in_nmp_app_extern_fn,
-            ) {
+            for (col, msg, suggested) in d11::check(sl.text, sl.is_comment, in_nmp_app_extern_fn) {
                 if allow::line_allows(sl.text, d11::ID) {
                     continue;
                 }
@@ -392,9 +388,7 @@ fn scan_one_file(
         // workspace-wide-relevant correctness rules (a leaked raw nsec is
         // a leak everywhere), so they run regardless of `--workspace-d8`.
         if d13_part_a_in_scope {
-            for (col, msg, suggested) in
-                d13::check_part_a(sl.text, sl.is_comment, sl.in_test_cfg)
-            {
+            for (col, msg, suggested) in d13::check_part_a(sl.text, sl.is_comment, sl.in_test_cfg) {
                 if allow::line_allows(sl.text, d13::ID) {
                     continue;
                 }
@@ -459,9 +453,7 @@ fn scan_one_file(
         // detection is suppressed. Skipped in --workspace-d8 (no-polling
         // sweep only).
         if !workspace_d8 && d15_in_scope {
-            for (col, msg, suggested) in
-                d15::check(&mut d15_state, path, sl.text, sl.is_comment)
-            {
+            for (col, msg, suggested) in d15::check(&mut d15_state, path, sl.text, sl.is_comment) {
                 if allow::line_allows(sl.text, d15::ID) {
                     continue;
                 }
@@ -649,8 +641,7 @@ fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// `--path crates/` produces meta-false-positives that obscure real findings.
 fn is_doctrine_lint_source(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
-    (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/"))
-        && !s.contains("/fixtures/")
+    (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/")) && !s.contains("/fixtures/")
 }
 
 // ────────────────────────────────────────────────────────────────────────────

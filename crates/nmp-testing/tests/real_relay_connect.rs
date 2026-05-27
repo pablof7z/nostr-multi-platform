@@ -66,9 +66,7 @@ fn connect_subscribe_receive_real_kind1() {
     let sub_id = format!("rr-connect-{}", common::now_ms());
     // Recent-but-not-edge window: kinds:[1], modest limit, since ~10 min ago.
     let since = common::now_s().saturating_sub(600);
-    let req = format!(
-        "[\"REQ\",\"{sub_id}\",{{\"kinds\":[1],\"limit\":8,\"since\":{since}}}]"
-    );
+    let req = format!("[\"REQ\",\"{sub_id}\",{{\"kinds\":[1],\"limit\":8,\"since\":{since}}}]");
 
     let mut attempted: Vec<&str> = Vec::new();
     for relay in candidates {

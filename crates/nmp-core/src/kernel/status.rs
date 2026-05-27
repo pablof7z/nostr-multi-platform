@@ -5,7 +5,10 @@
 //! kernel's relay-connectivity and subscription-lifecycle state — used by
 //! `make_update` to populate the diagnostics-screen snapshot projection.
 
-use super::{Kernel, RelayStatus, RelayRole, LogicalInterestStatus, short_hex, BTreeSet, WireSubscriptionStatus, RelayHealth, Counters, Instant};
+use super::{
+    short_hex, BTreeSet, Counters, Instant, Kernel, LogicalInterestStatus, RelayHealth, RelayRole,
+    RelayStatus, WireSubscriptionStatus,
+};
 // `now_hms` is `#[cfg(feature = "native")]` (reads OS wall clock via
 // `chrono::Local`). The single use site in `log()` is already gated; the
 // import has to match so `--no-default-features` (wasm32) compiles.
@@ -96,7 +99,11 @@ impl Kernel {
         let relay = self.relay(role);
         RelayStatus {
             role: role.key().to_string(),
-            relay_url: self.bootstrap_urls_for_role(role).first().cloned().unwrap_or_default(),
+            relay_url: self
+                .bootstrap_urls_for_role(role)
+                .first()
+                .cloned()
+                .unwrap_or_default(),
             connection: relay.connection.clone(),
             auth: relay.auth.clone(),
             negentropy_probe: relay.negentropy_probe_state.clone(),

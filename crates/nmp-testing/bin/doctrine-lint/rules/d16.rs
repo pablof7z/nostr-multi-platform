@@ -56,10 +56,7 @@ const BARE_PREFIXES: &[&str] = &["\"nip17.", "\"nip29."];
 
 /// Path suffixes that are explicitly whitelisted — these files contain stable
 /// hash seeds (NOT projection keys) that share the bare `nip*.` shape.
-const WHITELISTED_PATH_SUFFIXES: &[&str] = &[
-    "nmp-nip29/src/interest.rs",
-    "nmp-nip17/src/inbox.rs",
-];
+const WHITELISTED_PATH_SUFFIXES: &[&str] = &["nmp-nip29/src/interest.rs", "nmp-nip17/src/inbox.rs"];
 
 /// True iff the file is in scope for D16 — i.e. it is a Rust source under
 /// `apps/chirp/`. Protocol crates and the `nmp-testing` crate (which hosts
@@ -162,7 +159,10 @@ mod tests {
             false,
         );
         assert_eq!(hits.len(), 1, "bare nip29. key must fire D16");
-        assert!(hits[0].1.contains("nip29.group_chat"), "message must name the key");
+        assert!(
+            hits[0].1.contains("nip29.group_chat"),
+            "message must name the key"
+        );
         assert!(hits[0].1.contains("D16"), "message must name the rule");
     }
 
@@ -173,7 +173,10 @@ mod tests {
             false,
         );
         assert_eq!(hits.len(), 1, "bare nip17. key must fire D16");
-        assert!(hits[0].1.contains("nip17.dm_inbox"), "message must name the key");
+        assert!(
+            hits[0].1.contains("nip17.dm_inbox"),
+            "message must name the key"
+        );
     }
 
     #[test]
@@ -267,17 +270,17 @@ mod tests {
         let hits = check(line, false);
         assert_eq!(hits.len(), 1);
         let expected_col = line.find('"').unwrap() + 1; // 1-indexed
-        assert_eq!(hits[0].0, expected_col, "column must point at the opening quote");
+        assert_eq!(
+            hits[0].0, expected_col,
+            "column must point at the opening quote"
+        );
     }
 
     #[test]
     fn flags_nip29_in_doc_comment_only_when_not_is_comment() {
         // The caller passes `is_comment = false` for non-comment lines;
         // a doc comment in code (as a string literal) still fires.
-        let hits = check(
-            r#"    let key = "nip29.my_projection";"#,
-            false,
-        );
+        let hits = check(r#"    let key = "nip29.my_projection";"#, false);
         assert_eq!(hits.len(), 1, "bare nip29. in a string literal must fire");
     }
 }

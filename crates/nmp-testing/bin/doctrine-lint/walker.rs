@@ -246,7 +246,10 @@ mod tests {
         assert!(!s[1].1);
         assert!(!s[2].1, "mod decl line itself reads as outside");
         assert!(s[3].1, "body must be inside");
-        assert!(s[4].1, "closing brace line (start-of-line state) still inside");
+        assert!(
+            s[4].1,
+            "closing brace line (start-of-line state) still inside"
+        );
         assert!(!s[5].1);
     }
 

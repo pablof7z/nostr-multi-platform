@@ -49,7 +49,7 @@ impl MigrationTx {
     /// Staged writes, in insertion order. The backend's `run_migrations`
     /// drains these and applies the `namespace || 0x00` prefix before each
     /// row reaches storage.
-    #[must_use] 
+    #[must_use]
     pub fn writes(&self) -> &[(Vec<u8>, Vec<u8>)] {
         &self.writes
     }

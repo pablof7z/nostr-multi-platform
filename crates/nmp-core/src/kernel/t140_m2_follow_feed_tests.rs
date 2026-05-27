@@ -167,4 +167,3 @@ fn t140_follow_list_change_rereg_interests_new_relay_appears() {
          targeting wss://bob-t140.relay/; got urls: {req_urls:?}"
     );
 }
-

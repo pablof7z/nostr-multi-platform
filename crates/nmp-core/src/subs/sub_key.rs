@@ -70,7 +70,7 @@ impl SubKeyBuilder {
     }
 
     /// Finalize the running hash into a [`SubKey`].
-    #[must_use] 
+    #[must_use]
     pub fn finish(self) -> SubKey {
         SubKey(self.hasher.finish())
     }
@@ -135,7 +135,7 @@ pub struct SubIdentity {
 
 impl SubIdentity {
     /// Construct a triple.
-    #[must_use] 
+    #[must_use]
     pub fn new(owner: SubOwnerKey, key: SubKey, scope: SubScope) -> Self {
         Self { owner, key, scope }
     }

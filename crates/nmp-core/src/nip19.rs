@@ -158,7 +158,7 @@ fn nibble(b: u8) -> Result<u8, Nip19Error> {
     }
 }
 
-#[must_use] 
+#[must_use]
 pub fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -249,7 +249,9 @@ impl<'a> Iterator for TlvIter<'a> {
             return None;
         }
         if self.pos + 2 > self.data.len() {
-            return Some(Err(Nip19Error::MalformedTlv("truncated type/length".into())));
+            return Some(Err(Nip19Error::MalformedTlv(
+                "truncated type/length".into(),
+            )));
         }
         let typ = self.data[self.pos];
         let len = self.data[self.pos + 1] as usize;

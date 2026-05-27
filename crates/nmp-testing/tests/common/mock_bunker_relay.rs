@@ -236,12 +236,8 @@ fn handle_incoming_rpc(
     seen: &Arc<Mutex<Vec<String>>>,
 ) -> Option<Value> {
     let ciphertext = event.get("content").and_then(|v| v.as_str())?;
-    let plaintext = nip44::decrypt(
-        bunker_keys.secret_key(),
-        &client_pk,
-        ciphertext.as_bytes(),
-    )
-    .ok()?;
+    let plaintext =
+        nip44::decrypt(bunker_keys.secret_key(), &client_pk, ciphertext.as_bytes()).ok()?;
     let rpc: Value = serde_json::from_str(&plaintext).ok()?;
     let id = rpc.get("id").and_then(|v| v.as_str())?.to_string();
     let method = rpc.get("method").and_then(|v| v.as_str())?.to_string();

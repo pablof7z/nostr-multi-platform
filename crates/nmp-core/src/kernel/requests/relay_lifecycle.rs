@@ -5,7 +5,7 @@
 //! marking wire-subs as `retrying`/`closed`, and bumping `changed_since_emit`
 //! so the actor surfaces the transition in the next snapshot.
 
-use super::super::{Kernel, RelayRole, Instant, CanonicalRelayUrl, truncate};
+use super::super::{truncate, CanonicalRelayUrl, Instant, Kernel, RelayRole};
 
 impl Kernel {
     #[cfg_attr(not(test), allow(dead_code))]
@@ -117,7 +117,9 @@ impl Kernel {
         // accumulating closed rows across reconnect churn is exactly the
         // long-session leak T133 fixes. Sibling sockets on the same role
         // lane are untouched — their subs are still live.
-        self.wire.subs.retain(|_key, sub| sub.relay_url != canonical);
+        self.wire
+            .subs
+            .retain(|_key, sub| sub.relay_url != canonical);
         self.changed_since_emit = true;
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();

@@ -166,14 +166,23 @@ mod tests {
 
     #[test]
     fn classifies_each_nip01_prefix() {
-        assert_eq!(classify("auth-required: please AUTH"), CloseReason::AuthRequired);
+        assert_eq!(
+            classify("auth-required: please AUTH"),
+            CloseReason::AuthRequired
+        );
         assert_eq!(classify("restricted: paid only"), CloseReason::Restricted);
         assert_eq!(classify("blocked: spam"), CloseReason::Blocked);
         assert_eq!(classify("shadowbanned: sorry"), CloseReason::Shadowbanned);
-        assert_eq!(classify("rate-limited: slow down"), CloseReason::RateLimited);
+        assert_eq!(
+            classify("rate-limited: slow down"),
+            CloseReason::RateLimited
+        );
         assert_eq!(classify("error: internal"), CloseReason::Error);
         assert_eq!(classify("invalid: bad filter"), CloseReason::Invalid);
-        assert_eq!(classify("unsupported: kinds out of range"), CloseReason::Unsupported);
+        assert_eq!(
+            classify("unsupported: kinds out of range"),
+            CloseReason::Unsupported
+        );
         assert_eq!(classify("pow: need 24 bits"), CloseReason::Pow);
         assert_eq!(classify("duplicate: same sub"), CloseReason::Duplicate);
     }

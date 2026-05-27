@@ -25,6 +25,19 @@
 ///
 /// Changing this string is a schema-bump: the old table becomes invisible and
 /// a new empty one is created on next open (§5 E6).
+///
+/// # URL canonicalization schema contract
+///
+/// The kernel canonicalizes URLs via `CanonicalRelayUrl::parse_or_raw` both on
+/// write (`relay_score_flush.rs`) and on hydration (`set_relay_score_store`).
+/// If the canonicalization rules change such that a URL that was previously
+/// stored in one form now resolves to a different canonical string, old rows
+/// split into raw/canonical cells during hydration. The `BTreeMap::insert`
+/// in `bulk_load` deduplicates them (last-writer wins) so the map stays
+/// consistent, but the old raw-form row persists in LMDB until the next
+/// flush overwrites it. This is safe. A sub-db name bump (`v1` → `v2`) is
+/// still REQUIRED when the cell value layout changes (format break), but is
+/// NOT required for URL canonicalization rule changes.
 pub const SUB_DB_NAME: &str = "relay-author-scores-v1";
 
 /// Encode a `(pubkey_bytes, relay_url)` pair into the LMDB key.

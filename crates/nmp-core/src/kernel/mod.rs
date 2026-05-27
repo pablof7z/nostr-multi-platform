@@ -19,12 +19,12 @@ pub(crate) mod action_registry;
 // FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
 // dispatch handler (`actor::dispatch`) can reach the type aliases; the
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
+#[cfg(test)]
+mod action_failure_tests;
 pub(crate) mod action_lifecycle;
 #[cfg(test)]
 mod action_lifecycle_tests;
 pub(crate) mod action_stages;
-#[cfg(test)]
-mod action_failure_tests;
 #[cfg(test)]
 mod action_stages_tests;
 mod auth;
@@ -42,6 +42,8 @@ mod discovery;
 mod discovery_tests;
 #[cfg(test)]
 mod eose_ok_notice_ingest_tests;
+#[cfg(test)]
+mod event_claim_tests;
 mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
@@ -58,8 +60,6 @@ mod mailboxes;
 mod nostr;
 #[cfg(test)]
 mod outbox_tests;
-#[cfg(test)]
-mod event_claim_tests;
 #[cfg(test)]
 mod profile_claim_tests;
 mod provenance;
@@ -120,10 +120,10 @@ pub mod relay_score;
 mod relay_score_tests;
 // W2 — flush dirty score cells to the injected `RelayAuthorScoreStore`.
 // Called on actor idle; no-op when the map is clean or no store is set.
-mod relay_score_flush;
 mod raw_event_observer;
 #[cfg(test)]
 mod raw_event_observer_tests;
+mod relay_score_flush;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
@@ -134,6 +134,10 @@ mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
 // seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
 // + slot helpers for the C-ABI registration entry point.
+#[cfg(test)]
+mod dm_inbox_routing_tests;
+#[cfg(test)]
+mod perf_tests;
 pub(crate) mod snapshot_registry;
 #[cfg(test)]
 mod snapshot_registry_tests;
@@ -151,19 +155,15 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
-mod dm_inbox_routing_tests;
-#[cfg(test)]
-mod perf_tests;
-#[cfg(test)]
-mod timeline_perf_tests;
-#[cfg(test)]
-mod timeline_order_tests;
+mod test_router;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
 #[cfg(test)]
-mod test_router;
-#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timeline_order_tests;
+#[cfg(test)]
+mod timeline_perf_tests;
 mod types;
 mod update;
 
@@ -210,7 +210,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // `KernelReducer::handle_relay_frame`. Substrate-grade (D0).
 pub use relay_frame::RelayFrame;
 
-use nostr::{truncate, NostrEvent, short_hex, parse_profile, parse_relay_list, event_references, referenced_event_ids, diff_items, ratio, root_event_id, first_event_ref};
+use nostr::{
+    diff_items, event_references, first_event_ref, parse_profile, parse_relay_list, ratio,
+    referenced_event_ids, root_event_id, short_hex, truncate, NostrEvent,
+};
 // V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
 // `#[cfg(feature = "native")]` in `kernel/nostr.rs` (they read the OS
 // wall clock via `chrono::Local`). Importing them unconditionally breaks
@@ -293,11 +296,11 @@ pub(crate) use types::RelayStatus as RelayStatusForCodegen;
 // this re-export, and the `as ForCodegen` rename sidesteps a collision with
 // the plain `use types::{... TimelineItem ...}` at the bottom of the imports
 // block in this file.
+pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::TimelineItem as TimelineItemForCodegen;
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
-pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 // `SnapshotProjectionSlot` is a Kernel struct field type (always-compiled);
@@ -306,9 +309,9 @@ pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // `nmp_core::__ffi_internal::SnapshotProjectionSlot` (the NmpApp struct
 // field type); `new_snapshot_projection_slot` is called once from
 // `nmp_app_new`.
-pub use snapshot_registry::SnapshotProjectionSlot;
 #[cfg(feature = "native")]
 pub use snapshot_registry::new_snapshot_projection_slot;
+pub use snapshot_registry::SnapshotProjectionSlot;
 // Typed slot wrappers + constructors. `RelayEditRowsSlot` /
 // `RelayEditRowList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via
@@ -341,18 +344,25 @@ pub(crate) use lifecycle::LifecycleTransition;
 // — it moved to the wallet command runtime (`actor::commands::wallet`) and is
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
 // `KernelSnapshot` field. The kernel never names the NWC noun.
-use std::sync::atomic::{AtomicU64, Ordering};
-use relay_transport::RelayTransportMap;
-use types::{StoredEvent, Profile, TimelineItem, PublishOutboxItem, OutboxSummarySnapshot, PublishOutboxRelay, RelayStatus, WireSubscriptionStatus, ViewInterest, WireSub, LogicalInterestStatus, RelayHealth, Counters, KernelSnapshot, Metrics, ProfileCard, ProfileAction, ProfileDispatchSpec, AuthorViewPayload, ThreadViewPayload, MentionProfilePayload, ClaimedEventDto, TimingMilestones, AuthorViewState, ThreadViewState, DiagnosticFirehoseState, ProfileRequestState, WireSubscriptionState};
+#[cfg(not(any(test, feature = "test-support")))]
+use crate::substrate::EmptyMailboxCache;
+#[cfg(any(test, feature = "test-support"))]
+use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher,
     MailboxCache, OutboxRouter, ParsedRelayList,
 };
-#[cfg(any(test, feature = "test-support"))]
-use crate::substrate::TestInMemoryMailboxCache;
-#[cfg(not(any(test, feature = "test-support")))]
-use crate::substrate::EmptyMailboxCache;
 use crate::util::sort_dedup;
+use relay_transport::RelayTransportMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use types::{
+    AuthorViewPayload, AuthorViewState, ClaimedEventDto, Counters, DiagnosticFirehoseState,
+    KernelSnapshot, LogicalInterestStatus, MentionProfilePayload, Metrics, OutboxSummarySnapshot,
+    Profile, ProfileAction, ProfileCard, ProfileDispatchSpec, ProfileRequestState,
+    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent,
+    ThreadViewPayload, ThreadViewState, TimelineItem, TimingMilestones, ViewInterest, WireSub,
+    WireSubscriptionState, WireSubscriptionStatus,
+};
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
 ///
@@ -680,8 +690,7 @@ pub struct Kernel {
     /// no NIP-65 mailbox, etc.) leaks until the next `register_planner_wire_frames`
     /// for the same interest_id (the planner's hash is deterministic across
     /// recompiles for the same shape, so a re-route consumes the stale entry).
-    pending_discovery_oneshots:
-        HashMap<crate::planner::InterestId, crate::subs::OneshotToken>,
+    pending_discovery_oneshots: HashMap<crate::planner::InterestId, crate::subs::OneshotToken>,
     /// M6 signer injection, per relay role. The actor / iOS layer wires the
     /// user-identity signer for `Content`/`Indexer` from
     /// `nmp_signers::AccountManager::signer_active()`. Other lanes (e.g.
@@ -827,7 +836,7 @@ pub struct Kernel {
     /// W2 — in-memory relay-author score map. D4: the kernel is the sole
     /// writer. W3 will record outcomes via `record_*`; W2 flushes to LMDB
     /// on actor idle via `flush_relay_scores_if_dirty`. Default: empty.
-    pub relay_score_map: relay_score::RelayAuthorScoreMap,
+    pub(crate) relay_score_map: relay_score::RelayAuthorScoreMap,
     /// W2 — pluggable relay-author-score persistence store. `None` when the
     /// kernel is constructed in-memory-only (tests, CI without lmdb-backend).
     /// Set by `set_relay_score_store` after construction. D4: the kernel
@@ -913,11 +922,13 @@ fn resolve_publish_store(
     // No storage path: fall back to the LMDB-domain store (durable only under
     // `lmdb-backend`), then the in-memory store. This keeps CI/test behaviour
     // (no storage path -> no on-disk artefacts) unchanged.
-    crate::publish::DomainPublishStore::open(Arc::clone(event_store))
-        .map_or_else(
-            |_| Arc::new(crate::publish::InMemoryPublishStore::new()) as Arc<dyn crate::publish::PublishStore>,
-            |store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>,
-        )
+    crate::publish::DomainPublishStore::open(Arc::clone(event_store)).map_or_else(
+        |_| {
+            Arc::new(crate::publish::InMemoryPublishStore::new())
+                as Arc<dyn crate::publish::PublishStore>
+        },
+        |store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>,
+    )
 }
 
 fn load_profile_intents(
@@ -992,11 +1003,7 @@ impl Kernel {
     /// `RoutingTraceProjection` through the supplied router's
     /// `with_trace_observer` so the trace ring keeps populating across
     /// the swap.
-    pub fn set_routing(
-        &mut self,
-        router: Arc<dyn OutboxRouter>,
-        cache: Arc<dyn MailboxCache>,
-    ) {
+    pub fn set_routing(&mut self, router: Arc<dyn OutboxRouter>, cache: Arc<dyn MailboxCache>) {
         self.outbox_router = router;
         self.mailbox_cache = cache;
     }
@@ -1042,18 +1049,28 @@ impl Kernel {
             Ok(cells) => {
                 // Convert raw `([u8;32], String, u32, u32, u64)` tuples back
                 // into substrate types.
+                //
+                // §8.10 / canonicalization-on-load: we canonicalize the URL
+                // here even though `flush_relay_scores_if_dirty` already
+                // canonicalized it before writing. This guards against old
+                // rows written before a canonicalization rule change and is
+                // more robust than relying on sub-db name bumps alone.
+                // Duplicate `(pubkey, canonical_url)` pairs that arise from
+                // a rule change are naturally deduplicated by
+                // `BTreeMap::insert` in `bulk_load` (last-writer wins).
                 let substrate_cells = cells.into_iter().filter_map(
                     |(pk_bytes, url, successes, failures, last_used_unix_s)| {
                         // Encode raw pubkey bytes → lowercase hex string.
-                        let pk_hex: String = pk_bytes
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect();
+                        let pk_hex: String = pk_bytes.iter().map(|b| format!("{b:02x}")).collect();
                         // crate::planner::Pubkey = String — just use the hex string directly.
                         let pk: crate::planner::Pubkey = pk_hex;
+                        // Canonicalize the stored URL so that any trailing-slash
+                        // split between old and new rows collapses to one cell.
+                        let canonical_url =
+                            crate::relay::CanonicalRelayUrl::parse_or_raw(&url).into_string();
                         Some((
                             pk,
-                            url,
+                            canonical_url,
                             relay_score::RelayAuthorScore {
                                 successes,
                                 failures,
@@ -1073,6 +1090,47 @@ impl Kernel {
             }
         }
         self.relay_score_store = Some(store);
+    }
+
+    /// Record a relay-author score outcome.
+    ///
+    /// W3 entry-point: called by the claim-lifecycle layer when a relay
+    /// delivers (Hit), EOSEs without a match (EoseNoMatch), or fails
+    /// (Failed). Marks the map dirty so the next idle flush persists it.
+    ///
+    /// D4: `&mut self` — the kernel is the sole writer of the score map.
+    pub fn record_relay_score(
+        &mut self,
+        author: &str,
+        relay_url: &str,
+        outcome: relay_score::ClaimOutcome,
+        now_unix_s: u64,
+    ) {
+        self.relay_score_map
+            .record(&author.to_string(), relay_url, outcome, now_unix_s);
+    }
+
+    /// Look up the current `RelayAuthorScore` for `(author, relay_url)`.
+    ///
+    /// W4/W5 read path: warm-relay filter and claim expansion call this to
+    /// decide whether a relay is eligible for Phase-1 bias.
+    ///
+    /// Unknown cells return a zero-cell (D6: total). The URL is
+    /// canonicalized internally.
+    #[must_use]
+    pub fn get_relay_score(&self, author: &str, relay_url: &str) -> relay_score::RelayAuthorScore {
+        self.relay_score_map.get(&author.to_string(), relay_url)
+    }
+
+    /// Test-only: whether the score map has unsaved mutations.
+    ///
+    /// Production code must not gate behaviour on this flag — the map is
+    /// dirty or clean as a side-effect of `record_relay_score` /
+    /// `flush_relay_scores_if_dirty`. Tests use it to assert flush semantics.
+    #[cfg(test)]
+    #[must_use]
+    pub fn test_relay_score_dirty(&self) -> bool {
+        self.relay_score_map.dirty
     }
 
     /// Borrow the kernel's `EventStore` handle.
@@ -1172,8 +1230,8 @@ impl Kernel {
         storage_path: Option<&str>,
     ) -> Self {
         let store: Arc<dyn EventStore> = build_event_store(storage_path);
-        let publish_store = publish_store
-            .unwrap_or_else(|| resolve_publish_store(storage_path, &store));
+        let publish_store =
+            publish_store.unwrap_or_else(|| resolve_publish_store(storage_path, &store));
         let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         // Typed-slot constructors so the slot's purpose is visible at
@@ -1670,9 +1728,7 @@ impl Kernel {
     /// Extract the relay-edit rows handle before a `Reset` replaces the
     /// kernel. The underlying `Arc` is process-lifetime and must survive
     /// across kernel reinstantiation.
-    pub(crate) fn take_relay_edit_rows_handle_for_reset(
-        &mut self,
-    ) -> Option<RelayEditRowsSlot> {
+    pub(crate) fn take_relay_edit_rows_handle_for_reset(&mut self) -> Option<RelayEditRowsSlot> {
         self.relay_edit_rows_handle.take()
     }
 
@@ -1905,10 +1961,8 @@ impl Kernel {
         write: Vec<String>,
         both: Vec<String>,
     ) {
-        self.mailbox_cache.upsert(
-            pubkey.to_string(),
-            ParsedRelayList { read, write, both },
-        );
+        self.mailbox_cache
+            .upsert(pubkey.to_string(), ParsedRelayList { read, write, both });
     }
 
     /// Shared handle to the substrate [`MailboxCache`]. Used by the
@@ -1989,9 +2043,7 @@ impl Kernel {
     /// by the actor / kernel ingest path to dispatch a verified event to
     /// every registered parser; used by the FFI composition seam to
     /// install fresh parsers.
-    pub(crate) fn ingest_dispatcher_slot(
-        &self,
-    ) -> Arc<std::sync::RwLock<EventIngestDispatcher>> {
+    pub(crate) fn ingest_dispatcher_slot(&self) -> Arc<std::sync::RwLock<EventIngestDispatcher>> {
         Arc::clone(&self.ingest_dispatcher)
     }
 }

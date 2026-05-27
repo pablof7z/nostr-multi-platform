@@ -19,7 +19,7 @@
 //! This file remains the kernel's public `publish_signed` entrypoint so
 //! `actor/commands/publish.rs` stays untouched.
 
-use super::{Kernel, OutboundMessage, is_hex_pubkey};
+use super::{is_hex_pubkey, Kernel, OutboundMessage};
 use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 
@@ -276,13 +276,12 @@ impl Kernel {
         let Some(author) = crate::kernel::hex_to_pubkey_bytes(author_hex) else {
             return Vec::new();
         };
-        let Ok(mut iter) = self
-            .store
-            .scan_by_author_kind(&author, &[3], None, None, 1)
-        else {
+        let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
             return Vec::new();
         };
-        let Some(Ok(stored)) = iter.next() else { return Vec::new(); };
+        let Some(Ok(stored)) = iter.next() else {
+            return Vec::new();
+        };
         stored
             .raw
             .tags

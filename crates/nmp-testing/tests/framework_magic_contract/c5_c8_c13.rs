@@ -12,7 +12,9 @@ use nmp_core::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
 };
-use nmp_core::subs::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame};
+use nmp_core::subs::{
+    AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame,
+};
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 
 /// T132 helper — populate a mailbox cache with one (author, write_relays) pair.
@@ -30,7 +32,11 @@ fn put_mailbox(cache: &mut InMemoryMailboxCache, author: &str, write_relays: &[&
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 fn pubkey(seed: &str) -> String {
-    format!("{seed:0>64}").chars().take(64).collect::<String>().to_lowercase()
+    format!("{seed:0>64}")
+        .chars()
+        .take(64)
+        .collect::<String>()
+        .to_lowercase()
 }
 
 fn tailing_interest(id: u64, authors: &[&str]) -> LogicalInterest {
@@ -80,17 +86,29 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     let frames1 = lc.recompile_and_diff(&mailboxes).expect("first compile");
     let req_urls1: Vec<_> = frames1
         .iter()
-        .filter_map(|f| if let WireFrame::Req { relay_url, .. } = f { Some(relay_url.as_str()) } else { None })
+        .filter_map(|f| {
+            if let WireFrame::Req { relay_url, .. } = f {
+                Some(relay_url.as_str())
+            } else {
+                None
+            }
+        })
         .collect();
-    assert!(req_urls1.contains(&"wss://r1/"), "first compile must REQ alice's relay");
+    assert!(
+        req_urls1.contains(&"wss://r1/"),
+        "first compile must REQ alice's relay"
+    );
     assert_eq!(lc.compile_count(), 1);
 
     // Store the kind:3 in the harness (exercises the store path the real
     // ingest fan calls before emitting the trigger).
     let h = StoreHarness::mem();
-    let kind3 = h.make_event_with_tags(ALICE_HEX, 3, 2_000, vec![
-        vec!["p".to_string(), pubkey("bob")],
-    ]);
+    let kind3 = h.make_event_with_tags(
+        ALICE_HEX,
+        3,
+        2_000,
+        vec![vec!["p".to_string(), pubkey("bob")]],
+    );
     let _ = h.insert_raw(kind3, "wss://r1/", 2_000_000);
 
     // "bob" has a mailbox — wire it so the recompile finds a route.
@@ -99,7 +117,8 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     // Expand the follow-list interest to include bob (synthetic stand-in for
     // the M11 view rebuild; the trigger does not rewrite registry entries —
     // that is the view's responsibility).
-    lc.registry_mut().push(tailing_interest(1, &["alice", "bob"]));
+    lc.registry_mut()
+        .push(tailing_interest(1, &["alice", "bob"]));
 
     // Fire the real A11 FollowListChanged trigger (replaces the old A6
     // InvalidateCompile placeholder used before this variant existed).
@@ -110,11 +129,21 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
 
     // drain_tick must recompile and emit the new REQ diff.
     let frames2 = lc.drain_tick(&mailboxes);
-    assert_eq!(lc.compile_count(), 2, "drain_tick must recompile on trigger");
+    assert_eq!(
+        lc.compile_count(),
+        2,
+        "drain_tick must recompile on trigger"
+    );
 
     let req_urls2: Vec<_> = frames2
         .iter()
-        .filter_map(|f| if let WireFrame::Req { relay_url, .. } = f { Some(relay_url.as_str()) } else { None })
+        .filter_map(|f| {
+            if let WireFrame::Req { relay_url, .. } = f {
+                Some(relay_url.as_str())
+            } else {
+                None
+            }
+        })
         .collect();
     // wss://r2/ must appear — bob is newly followed.
     assert!(
@@ -148,7 +177,11 @@ fn c8_subscriptions_coalesce_and_buffer() {
         });
     }
     let _frames = lc.drain_tick(&mailboxes);
-    assert_eq!(lc.compile_count(), 1, "3 triggers in one tick must produce exactly 1 compile");
+    assert_eq!(
+        lc.compile_count(),
+        1,
+        "3 triggers in one tick must produce exactly 1 compile"
+    );
 
     // --- 2. Empty-tick is a no-op -------------------------------------------
     let frames_empty = lc.drain_tick(&mailboxes);
@@ -162,10 +195,8 @@ fn c8_subscriptions_coalesce_and_buffer() {
     lc3.registry_mut().push(tailing_interest(20, &["dave"]));
 
     // Mark the relay as auth-challenged BEFORE the first compile.
-    let _pre = lc3.handle_auth_state_change(
-        "wss://rd/".to_string(),
-        RelayAuthState::ChallengeReceived,
-    );
+    let _pre =
+        lc3.handle_auth_state_change("wss://rd/".to_string(), RelayAuthState::ChallengeReceived);
 
     let frames_paused = lc3
         .recompile_and_diff(&mailboxes3)
@@ -182,10 +213,8 @@ fn c8_subscriptions_coalesce_and_buffer() {
     );
 
     // After auth completes, the buffered REQs are flushed.
-    let flush_frames = lc3.handle_auth_state_change(
-        "wss://rd/".to_string(),
-        RelayAuthState::Authenticated,
-    );
+    let flush_frames =
+        lc3.handle_auth_state_change("wss://rd/".to_string(), RelayAuthState::Authenticated);
     let reqs_flushed: Vec<_> = flush_frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://rd/"))
@@ -236,7 +265,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
 
     // Build a kind:1 event with a fixed author pubkey (no kind:0 will arrive).
     let author_pk = "c13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13a";
-    let event_id  = "c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000";
+    let event_id = "c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000";
     let raw = RawEvent {
         id: event_id.to_string(),
         pubkey: author_pk.to_string(),
@@ -268,13 +297,11 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                             panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame bytes: {frame:?}")
                         });
                     if let UpdateEnvelope::Snapshot(snapshot) = envelope {
-                        let items = snapshot["projections"]["timeline"]
-                            .as_array();
+                        let items = snapshot["projections"]["timeline"].as_array();
                         if let Some(items) = items {
-                            if items
-                                .iter()
-                                .any(|item| item.get("id").and_then(|id| id.as_str()) == Some(event_id))
-                            {
+                            if items.iter().any(|item| {
+                                item.get("id").and_then(|id| id.as_str()) == Some(event_id)
+                            }) {
                                 found = Some(snapshot);
                                 break;
                             }
@@ -310,7 +337,9 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     // author_avatar_source was removed by ADR-0032 display separation sweep;
     // the presentation layer tracks placeholder vs authoritative state itself.
     assert!(
-        our_item.get("author_avatar_source").map_or(true, |v| v.is_null()),
+        our_item
+            .get("author_avatar_source")
+            .map_or(true, |v| v.is_null()),
         "author_avatar_source must not be present after ADR-0032"
     );
 

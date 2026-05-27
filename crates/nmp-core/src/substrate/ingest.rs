@@ -99,7 +99,9 @@ mod tests {
 
     impl CapturingParser {
         fn new() -> Arc<Self> {
-            Arc::new(Self { seen: Mutex::new(Vec::new()) })
+            Arc::new(Self {
+                seen: Mutex::new(Vec::new()),
+            })
         }
 
         fn kinds(&self) -> Vec<u32> {

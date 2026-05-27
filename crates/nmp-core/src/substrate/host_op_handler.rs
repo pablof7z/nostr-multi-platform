@@ -158,10 +158,7 @@ mod tests {
         };
         let handler = cloned.expect("handler should have been installed");
         let result = handler.handle(r#"{"op":"ping"}"#, "corr-test");
-        assert_eq!(
-            result.get("ok").and_then(|v| v.as_bool()),
-            Some(true),
-        );
+        assert_eq!(result.get("ok").and_then(|v| v.as_bool()), Some(true),);
         assert_eq!(
             result.get("correlation_id").and_then(|v| v.as_str()),
             Some("corr-test"),

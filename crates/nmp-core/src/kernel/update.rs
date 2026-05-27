@@ -560,9 +560,9 @@ impl Kernel {
         // back to scanning the in-memory cache for the (rare) case where an
         // addressable-kind event also landed in `self.events`.
         if let Some(pubkey_bytes) = hex64_to_bytes32(pubkey) {
-            if let Ok(Some(e)) = self
-                .store
-                .get_param_replaceable(&pubkey_bytes, kind, d_tag.as_bytes())
+            if let Ok(Some(e)) =
+                self.store
+                    .get_param_replaceable(&pubkey_bytes, kind, d_tag.as_bytes())
             {
                 return Some(nmp_store_to_kernel_stored(e));
             }

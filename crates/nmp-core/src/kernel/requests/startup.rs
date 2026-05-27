@@ -2,7 +2,9 @@
 //! list, and the active account's kind:3 follow list. No hardcoded seed timeline.
 
 use super::super::{Duration, Instant, Kernel, OutboundMessage};
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 impl Kernel {
@@ -87,8 +89,9 @@ impl Kernel {
         // interests, the per-tick inbox coalesces to a single recompile pass
         // (D8). Diagnostic `interest_ids` left empty — the compiler walks
         // the full registry, not a filtered subset.
-        self.lifecycle
-            .enqueue_trigger(CompileTrigger::ViewOpened { interest_ids: Vec::new() });
+        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
+            interest_ids: Vec::new(),
+        });
 
         // Protocol-specific `#p`-addressed subscriptions (NIP-57 receipts,
         // NIP-25 reactions addressed to the user, …) USED to be emitted here
@@ -161,8 +164,7 @@ mod tests {
     fn install_bootstrap_relays(kernel: &mut Kernel) {
         let lifecycle = kernel.lifecycle_mut();
         lifecycle.set_indexer_relays(vec![]);
-        lifecycle
-            .set_bootstrap_indexer_relays(vec!["wss://bootstrap-indexer.test/".to_string()]);
+        lifecycle.set_bootstrap_indexer_relays(vec!["wss://bootstrap-indexer.test/".to_string()]);
     }
 
     /// Extract the REQ frames from a list of `OutboundMessage`s. V-04 Stage 2:

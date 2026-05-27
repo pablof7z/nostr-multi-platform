@@ -12,15 +12,8 @@
 //! Doctrine: D8 (plan-id stability avoids redundant recompilation).
 
 use nmp_core::planner::{
-    CompileContext,
-    InMemoryMailboxCache,
-    MailboxSnapshot,
-    SubscriptionCompiler,
-    InterestId,
-    InterestLifecycle,
-    InterestScope,
-    InterestShape,
-    LogicalInterest,
+    CompileContext, InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+    InterestShape, LogicalInterest, MailboxSnapshot, SubscriptionCompiler,
 };
 
 // ─── Helpers (duplicated from audit to keep files independent) ────────────────
@@ -208,8 +201,14 @@ fn plan_id_changes_on_indexer_set_version_bump() {
         lifecycle: InterestLifecycle::Tailing,
     };
 
-    let ctx_v0 = CompileContext { indexer_set_version: 0, user_config_version: 0 };
-    let ctx_v1 = CompileContext { indexer_set_version: 1, user_config_version: 0 };
+    let ctx_v0 = CompileContext {
+        indexer_set_version: 0,
+        user_config_version: 0,
+    };
+    let ctx_v1 = CompileContext {
+        indexer_set_version: 1,
+        user_config_version: 0,
+    };
 
     let plan_v0 = compiler
         .compile_with_context(std::slice::from_ref(&interest), &ctx_v0)

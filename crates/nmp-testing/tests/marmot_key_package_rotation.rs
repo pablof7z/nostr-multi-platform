@@ -75,7 +75,8 @@ fn key_package_rotation_after_welcome_consumption() {
     let (bob_welcome, _) = bob
         .unwrap_and_process_welcome(&gift)
         .expect("bob unwrap welcome");
-    bob.accept_welcome(&bob_welcome).expect("bob accept welcome");
+    bob.accept_welcome(&bob_welcome)
+        .expect("bob accept welcome");
     harness::post_join_self_update(&bob, &alice, &group_id);
 
     // ── Bob explicitly publishes a FRESH key package (rotation) ──────────────
@@ -102,7 +103,10 @@ fn key_package_rotation_after_welcome_consumption() {
     // Contract: d_tag MAY be reused on rotation for relay-side replacement.
     // (MDK may or may not reuse the same d_tag; both are valid. We just verify
     // it is non-empty on the rotated package.)
-    assert!(!kp_rotated.d_tag.is_empty(), "rotated d_tag must be non-empty");
+    assert!(
+        !kp_rotated.d_tag.is_empty(),
+        "rotated d_tag must be non-empty"
+    );
 
     // Contract: the rotated key package is valid and can be used in a new group.
     let alice2_keys = Keys::generate();
@@ -126,11 +130,8 @@ fn key_package_rotation_stale_ttl_groups_needing_self_update() {
     let alice = harness::service_at(&alice_dir.db_path("alice"), alice_keys.clone());
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
-        "stale-ttl",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "stale-ttl");
 
     // threshold_secs = 0: every group joined MORE than 0 seconds ago needs an
     // update.  At least the group we just created must appear.

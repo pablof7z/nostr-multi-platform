@@ -82,7 +82,8 @@ fn recompile_caps_per_relay_at_max_connections() {
                 both_relays: vec![],
             },
         );
-        l.registry_mut().push(follow(u64::from(i) + 1, &author_seed));
+        l.registry_mut()
+            .push(follow(u64::from(i) + 1, &author_seed));
     }
 
     let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -124,7 +125,8 @@ fn recompile_preserves_app_relay_under_budget() {
                 both_relays: vec![],
             },
         );
-        l.registry_mut().push(follow(u64::from(i) + 1, &author_seed));
+        l.registry_mut()
+            .push(follow(u64::from(i) + 1, &author_seed));
     }
 
     let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
@@ -178,7 +180,8 @@ fn dropped_relay_emits_close_on_next_recompile() {
                 both_relays: vec![],
             },
         );
-        l.registry_mut().push(follow(u64::from(i) + 1, &author_seed));
+        l.registry_mut()
+            .push(follow(u64::from(i) + 1, &author_seed));
     }
 
     let first = l.recompile_and_diff(&mailboxes).expect("first compile");
@@ -206,8 +209,7 @@ fn dropped_relay_emits_close_on_next_recompile() {
         "selection budget = 1 → exactly one relay survives; got {}",
         plan.per_relay.len(),
     );
-    let surviving: std::collections::BTreeSet<String> =
-        plan.per_relay.keys().cloned().collect();
+    let surviving: std::collections::BTreeSet<String> = plan.per_relay.keys().cloned().collect();
 
     let closes: std::collections::BTreeSet<String> = second
         .iter()
@@ -219,7 +221,11 @@ fn dropped_relay_emits_close_on_next_recompile() {
     // Every relay that disappeared must have at least one CLOSE.
     let expected_dropped: std::collections::BTreeSet<String> =
         req_relays.difference(&surviving).cloned().collect();
-    assert_eq!(expected_dropped.len(), 2, "two relays must have been dropped");
+    assert_eq!(
+        expected_dropped.len(),
+        2,
+        "two relays must have been dropped"
+    );
     for dropped in &expected_dropped {
         assert!(
             closes.contains(dropped),
@@ -388,7 +394,11 @@ fn drain_tick_empty_inbox_returns_no_frames() {
     let mailboxes = InMemoryMailboxCache::new();
     let frames = l.drain_tick(&mailboxes);
     assert!(frames.is_empty(), "empty inbox must return no frames");
-    assert_eq!(l.compile_count(), 0, "empty inbox must not trigger a compile");
+    assert_eq!(
+        l.compile_count(),
+        0,
+        "empty inbox must not trigger a compile"
+    );
 }
 
 /// T142-U2: A FollowListChanged trigger with follow interests → REQ frames.
@@ -431,8 +441,14 @@ fn drain_tick_follow_list_changed_emits_req_frames() {
     });
 
     let frames = l.drain_tick(&mailboxes);
-    let req_count = frames.iter().filter(|f| matches!(f, WireFrame::Req { .. })).count();
-    assert!(req_count > 0, "FollowListChanged trigger with interests must emit REQ frames (got {req_count})");
+    let req_count = frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .count();
+    assert!(
+        req_count > 0,
+        "FollowListChanged trigger with interests must emit REQ frames (got {req_count})"
+    );
 }
 
 /// T142-U3: RelayAuthStateChanged → AuthGate state applied before compile.
@@ -444,7 +460,10 @@ fn drain_tick_relay_auth_changed_applies_side_effect() {
     let relay_url = "wss://auth-test.example".to_string();
 
     // Before the trigger: relay is NOT paused.
-    assert!(!l.is_auth_paused_for_url(&relay_url), "relay should not be paused initially");
+    assert!(
+        !l.is_auth_paused_for_url(&relay_url),
+        "relay should not be paused initially"
+    );
 
     // Enqueue a ChallengeReceived transition — should pause the relay.
     l.enqueue_trigger(CompileTrigger::RelayAuthStateChanged {
@@ -456,7 +475,10 @@ fn drain_tick_relay_auth_changed_applies_side_effect() {
     let _frames = l.drain_tick(&mailboxes);
 
     // After drain_tick the side effect must be applied.
-    assert!(l.is_auth_paused_for_url(&relay_url), "relay must be paused after ChallengeReceived side effect");
+    assert!(
+        l.is_auth_paused_for_url(&relay_url),
+        "relay must be paused after ChallengeReceived side effect"
+    );
 }
 
 /// `RelayAuthStateChanged{Authenticated}` via drain_tick must flush buffered REQs.
@@ -485,7 +507,9 @@ fn drain_tick_authenticated_flushes_pending_reqs() {
     let paused_frames = l.drain_tick(&mailboxes);
     let paused_reqs = paused_frames
         .iter()
-        .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == "wss://auth-flush.example"))
+        .filter(
+            |f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == "wss://auth-flush.example"),
+        )
         .count();
     assert_eq!(
         paused_reqs, 0,
@@ -500,7 +524,9 @@ fn drain_tick_authenticated_flushes_pending_reqs() {
     let flushed_frames = l.drain_tick(&mailboxes);
     let flushed_reqs = flushed_frames
         .iter()
-        .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == "wss://auth-flush.example"))
+        .filter(
+            |f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == "wss://auth-flush.example"),
+        )
         .count();
     assert!(
         flushed_reqs > 0,
@@ -554,7 +580,11 @@ fn new_and_default_produce_identical_empty_state() {
     let from_default = SubscriptionLifecycle::default();
 
     for (label, l) in [("new", &from_new), ("default", &from_default)] {
-        assert_eq!(l.compile_count(), 0, "{label}: compile_count must start at 0");
+        assert_eq!(
+            l.compile_count(),
+            0,
+            "{label}: compile_count must start at 0"
+        );
         assert!(l.current_plan.is_none(), "{label}: no plan at construction");
         assert!(l.dead_relays().is_empty(), "{label}: dead_relays empty");
         assert!(l.probed_mailboxes().is_empty(), "{label}: probed set empty");
@@ -608,7 +638,10 @@ fn mark_relay_dead_second_call_is_noop_and_enqueues_nothing() {
 
     let changed_again = l.mark_relay_dead(url.clone());
 
-    assert!(!changed_again, "re-marking a dead relay must report no change");
+    assert!(
+        !changed_again,
+        "re-marking a dead relay must report no change"
+    );
     assert_eq!(
         l.inbox.len(),
         after_first,
@@ -656,7 +689,10 @@ fn mark_relay_alive_on_never_dead_relay_is_noop() {
 
     let changed = l.mark_relay_alive(&"wss://healthy.example".to_string());
 
-    assert!(!changed, "clearing a never-dead relay must report no change");
+    assert!(
+        !changed,
+        "clearing a never-dead relay must report no change"
+    );
     assert!(l.inbox.is_empty(), "no trigger may be enqueued for a no-op");
 }
 
@@ -708,7 +744,12 @@ fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
         landed.len(),
         frames
     );
-    if let WireFrame::Req { lifecycle, filter_json, .. } = landed[0] {
+    if let WireFrame::Req {
+        lifecycle,
+        filter_json,
+        ..
+    } = landed[0]
+    {
         assert!(
             matches!(lifecycle, InterestLifecycle::OneShot),
             "the bootstrap REQ must carry OneShot lifecycle (CLOSE on EOSE)"
@@ -804,7 +845,9 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let landed: Vec<&WireFrame> = frames
         .iter()
-        .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://purplepag.es"))
+        .filter(
+            |f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://purplepag.es"),
+        )
         .filter(|f| match f {
             // Discriminate the bootstrap-indexer profile fetch from any
             // mailbox-probe REQ that might also land on the same URL — the
@@ -821,7 +864,12 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
         landed.len(),
         frames.len(),
     );
-    if let WireFrame::Req { lifecycle, filter_json, .. } = landed[0] {
+    if let WireFrame::Req {
+        lifecycle,
+        filter_json,
+        ..
+    } = landed[0]
+    {
         assert!(
             matches!(lifecycle, InterestLifecycle::OneShot),
             "the bootstrap-indexer REQ must carry OneShot lifecycle"

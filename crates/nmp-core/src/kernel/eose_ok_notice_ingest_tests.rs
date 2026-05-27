@@ -29,12 +29,12 @@
 //! (the publish engine never re-verifies the signature past `dispatch`).
 
 use crate::kernel::Kernel;
+use crate::kernel::RelayFrame;
 use crate::publish::PublishTarget;
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::subs::WireFrame;
 use crate::substrate::{SignedEvent, UnsignedEvent};
-use crate::kernel::RelayFrame;
 
 use crate::planner::{InterestId, InterestLifecycle};
 
@@ -77,9 +77,7 @@ fn eose_for_unknown_sub_does_not_mutate_state_but_counts_and_closes() {
     // there is no wire_subs row to read a recorded URL from.
     assert!(
         outbound.iter().any(|m| {
-            m.relay_url == RELAY
-                && m.text.contains("CLOSE")
-                && m.text.contains("sub-never-opened")
+            m.relay_url == RELAY && m.text.contains("CLOSE") && m.text.contains("sub-never-opened")
         }),
         "an unknown-sub EOSE routes a defensive CLOSE on the delivering \
          relay; got: {:?}",
@@ -263,7 +261,11 @@ fn ok_true_wire_frame_settles_publish_as_accepted() {
 
     let signed = fake_signed(&"11".repeat(32), &author, "hello eon");
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
-    assert_eq!(outbound.len(), 1, "publish routes to the single write relay");
+    assert_eq!(
+        outbound.len(),
+        1,
+        "publish routes to the single write relay"
+    );
 
     // The OK ack arrives as a raw wire frame on the same write relay.
     let ok = serde_json::json!(["OK", signed.id, true, ""]).to_string();

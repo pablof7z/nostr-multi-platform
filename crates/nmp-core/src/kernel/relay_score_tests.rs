@@ -17,8 +17,7 @@
 //! per CLAUDE.md.)
 
 use super::relay_score::{
-    canon, ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS,
-    WARM_THRESHOLD,
+    canon, ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS, WARM_THRESHOLD,
 };
 
 const ALICE: &str = "alice_pubkey_hex";
@@ -46,7 +45,10 @@ fn weight_above_threshold_after_clean_hit() {
     s.record_hit(NOW);
     // One hit, zero failures, zero age → 1 / (1 + 0 + 1) = 0.5
     let w = s.weight(NOW);
-    assert!(w > WARM_THRESHOLD, "weight {w} should exceed WARM_THRESHOLD={WARM_THRESHOLD}");
+    assert!(
+        w > WARM_THRESHOLD,
+        "weight {w} should exceed WARM_THRESHOLD={WARM_THRESHOLD}"
+    );
     assert!((w - 0.5_f32).abs() < 1e-3, "weight {w} should be ~0.5");
     assert!(s.is_warm(NOW));
 }
@@ -124,7 +126,10 @@ fn canonicalization_consolidates_trailing_slash_to_one_cell() {
 
     // Lookup under the alternate spelling must hit the same cell.
     let cell = map.get(&ALICE.to_string(), without_slash);
-    assert_eq!(cell.successes, 1, "trailing-slash cell must match no-slash cell");
+    assert_eq!(
+        cell.successes, 1,
+        "trailing-slash cell must match no-slash cell"
+    );
     assert!(map.is_warm(&ALICE.to_string(), without_slash, NOW));
 
     // And the map only contains one entry.
@@ -181,7 +186,10 @@ fn bulk_load_does_not_set_dirty() {
         },
     )];
     map.bulk_load(cells);
-    assert!(!map.dirty, "bulk_load is hydration, not a write — must stay clean");
+    assert!(
+        !map.dirty,
+        "bulk_load is hydration, not a write — must stay clean"
+    );
     assert!(map.is_warm(&ALICE.to_string(), "wss://r.example", NOW));
 }
 

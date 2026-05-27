@@ -93,14 +93,13 @@ fn signed_notes(count: usize) -> Vec<NostrEvent> {
             // in non-sequential memory order). Exact pattern lifted from
             // `timeline_perf_tests` so the two harnesses stay comparable.
             let newest_first_scramble = (i.wrapping_mul(37) % count) as u64;
-            let nostr_event = ::nostr::EventBuilder::text_note(format!(
-                "snapshot perf firehose note {i}"
-            ))
-            .custom_created_at(::nostr::Timestamp::from(
-                1_700_000_000 + newest_first_scramble,
-            ))
-            .sign_with_keys(&keys)
-            .expect("signing a generated-key note should succeed");
+            let nostr_event =
+                ::nostr::EventBuilder::text_note(format!("snapshot perf firehose note {i}"))
+                    .custom_created_at(::nostr::Timestamp::from(
+                        1_700_000_000 + newest_first_scramble,
+                    ))
+                    .sign_with_keys(&keys)
+                    .expect("signing a generated-key note should succeed");
             NostrEvent {
                 id: nostr_event.id.to_hex(),
                 pubkey: nostr_event.pubkey.to_hex(),

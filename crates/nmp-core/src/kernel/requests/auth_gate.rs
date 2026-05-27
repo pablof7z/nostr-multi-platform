@@ -5,7 +5,7 @@
 //! `relay_lifecycle` (which resets drivers on reconnect) and the deferred-
 //! queue drain in `pending_view_requests`.
 
-use super::super::{Kernel, RelayRole, OutboundMessage};
+use super::super::{Kernel, OutboundMessage, RelayRole};
 
 impl Kernel {
     /// True when REQs to `role` must be withheld from the wire:
@@ -17,7 +17,9 @@ impl Kernel {
         let state = self
             .auth_drivers
             .get(&role)
-            .map_or(crate::subs::RelayAuthState::NotRequired, |d| d.state.clone());
+            .map_or(crate::subs::RelayAuthState::NotRequired, |d| {
+                d.state.clone()
+            });
         matches!(
             state,
             crate::subs::RelayAuthState::ChallengeReceived

@@ -20,7 +20,10 @@
 //! The `close_subscriptions_with_prefixes` helper disappears: the wire-emitter
 //! closes by `WireSubId` (compiler diff output), not string-prefix matching.
 
-use super::super::{json, Kernel, OutboundMessage, ViewInterest, short_hex, referenced_event_ids, is_hex_id, RelayRole};
+use super::super::{
+    is_hex_id, json, referenced_event_ids, short_hex, Kernel, OutboundMessage, RelayRole,
+    ViewInterest,
+};
 use crate::stable_hash::stable_hash64;
 
 /// Deterministic 8-char tag over `relay_url` for thread hydration sub-ids.

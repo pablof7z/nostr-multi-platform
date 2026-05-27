@@ -25,7 +25,7 @@ impl super::Kernel {
     /// store has been injected. On store error: logs + returns without marking
     /// clean so the next idle cycle retries.
     pub fn flush_relay_scores_if_dirty(&mut self) {
-        let Some(store) = self.relay_score_store.as_ref() else {
+        let Some(store) = self.relay_score_store.as_mut() else {
             return;
         };
         if !self.relay_score_map.dirty {
@@ -49,7 +49,13 @@ impl super::Kernel {
                 // Convert substrate Pubkey (hex string) → raw [u8;32].
                 // `hex_to_pubkey_bytes` is the existing kernel helper (D6: returns None on bad hex).
                 let pk_bytes = super::hex_to_pubkey_bytes(&pk)?;
-                Some((pk_bytes, canon_url, score.successes, score.failures, score.last_used_unix_s))
+                Some((
+                    pk_bytes,
+                    canon_url,
+                    score.successes,
+                    score.failures,
+                    score.last_used_unix_s,
+                ))
             })
             .collect();
 
@@ -100,7 +106,7 @@ mod tests {
         }
 
         fn put_batch(
-            &self,
+            &mut self,
             cells: Vec<([u8; 32], String, u32, u32, u64)>,
         ) -> Result<(), Box<dyn std::error::Error>> {
             self.calls.lock().unwrap().push(cells);
@@ -108,7 +114,10 @@ mod tests {
         }
     }
 
-    fn make_kernel_with_capturing() -> (super::super::Kernel, Arc<Mutex<Vec<Vec<([u8; 32], String, u32, u32, u64)>>>>) {
+    fn make_kernel_with_capturing() -> (
+        super::super::Kernel,
+        Arc<Mutex<Vec<Vec<([u8; 32], String, u32, u32, u64)>>>>,
+    ) {
         let mut k = super::super::Kernel::new(100);
         let store = CapturingStore::new();
         let calls = Arc::clone(&store.calls);

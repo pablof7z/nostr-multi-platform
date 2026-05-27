@@ -75,8 +75,7 @@ impl PublishEngine {
         // `PublishNote` path), otherwise the handle — same fallback rule as
         // `LastTerminal::from_outcome`.
         self.record_terminal(LastTerminal {
-            correlation_id: correlation_id_override
-                .map_or_else(|| handle.clone(), str::to_string),
+            correlation_id: correlation_id_override.map_or_else(|| handle.clone(), str::to_string),
             status: "failed",
             error: Some("no relays resolved for publish target".to_string()),
         });
@@ -109,11 +108,7 @@ impl PublishEngine {
     /// surfaces a `set_last_error_toast`. This records *only* the
     /// `action_results` terminal so the dispatched action's promise is
     /// honoured.
-    pub(crate) fn record_action_terminal_failure(
-        &mut self,
-        correlation_id: String,
-        error: String,
-    ) {
+    pub(crate) fn record_action_terminal_failure(&mut self, correlation_id: String, error: String) {
         self.record_terminal(LastTerminal {
             correlation_id,
             status: "failed",

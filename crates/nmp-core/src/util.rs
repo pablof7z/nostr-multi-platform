@@ -214,7 +214,10 @@ mod tests {
         // The new value is re-anchored to `past`, so a read just after it is
         // still fresh.
         let just_after = past + Duration::from_secs(1);
-        assert_eq!(*cache.get_or_refresh(just_after, counting_refresh(&calls)), 2);
+        assert_eq!(
+            *cache.get_or_refresh(just_after, counting_refresh(&calls)),
+            2
+        );
         assert_eq!(calls.get(), 2, "value re-anchored to the refresh instant");
     }
 
@@ -230,7 +233,10 @@ mod tests {
         // Exactly at `anchor + ttl` the value is stale (>= boundary).
         let at_boundary = t0 + ttl;
         assert!(cache.is_stale(at_boundary));
-        assert_eq!(*cache.get_or_refresh(at_boundary, counting_refresh(&calls)), 2);
+        assert_eq!(
+            *cache.get_or_refresh(at_boundary, counting_refresh(&calls)),
+            2
+        );
         assert_eq!(calls.get(), 2);
 
         // One nanosecond before the boundary it is still fresh.
@@ -287,12 +293,12 @@ mod tests {
 
         // A fully scripted clock timeline yields a deterministic call count.
         let script = [
-            (0u64, 1u32),   // first read -> refresh #1
-            (50, 1),        // fresh
-            (99, 1),        // fresh (just before boundary)
-            (100, 2),       // boundary -> refresh #2 (re-anchored at +100)
-            (150, 2),       // fresh relative to new anchor
-            (200, 3),       // +100 past new anchor -> refresh #3
+            (0u64, 1u32), // first read -> refresh #1
+            (50, 1),      // fresh
+            (99, 1),      // fresh (just before boundary)
+            (100, 2),     // boundary -> refresh #2 (re-anchored at +100)
+            (150, 2),     // fresh relative to new anchor
+            (200, 3),     // +100 past new anchor -> refresh #3
         ];
         for (offset, expected) in script {
             let now = base + Duration::from_secs(offset);
@@ -302,6 +308,10 @@ mod tests {
                 "offset {offset}s"
             );
         }
-        assert_eq!(calls.get(), 3, "exactly three refreshes across the timeline");
+        assert_eq!(
+            calls.get(),
+            3,
+            "exactly three refreshes across the timeline"
+        );
     }
 }

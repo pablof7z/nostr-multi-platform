@@ -46,8 +46,7 @@ impl PublishEngine {
             // map. Older serialised rows (`relay_reasons` defaulted to empty)
             // simply project with an empty string per relay — the projection
             // skips empty `relay_reason` fields via `skip_serializing_if`.
-            let mut relay_reasons: BTreeMap<RelayUrl, Vec<RelaySelectionReason>> =
-                BTreeMap::new();
+            let mut relay_reasons: BTreeMap<RelayUrl, Vec<RelaySelectionReason>> = BTreeMap::new();
             for (url, reasons) in record.relay_reasons {
                 relay_reasons.insert(helpers::canonical_relay_identity(&url), reasons);
             }

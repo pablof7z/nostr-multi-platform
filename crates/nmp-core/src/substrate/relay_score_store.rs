@@ -35,7 +35,11 @@ pub trait RelayAuthorScoreStore {
     /// `Kernel::flush_relay_scores_if_dirty` on actor idle when the map is
     /// dirty. The batch may contain zero rows (noop). Implementations should
     /// be all-or-nothing within one transaction where possible (D6).
-    fn put_batch(&self, cells: Vec<ScoreCell>) -> Result<(), Box<dyn std::error::Error>>;
+    ///
+    /// `&mut self` encodes write-side exclusivity: only the kernel actor may
+    /// call this, and only via `flush_relay_scores_if_dirty`. No shared-ref
+    /// writes are permitted. D4.
+    fn put_batch(&mut self, cells: Vec<ScoreCell>) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 /// No-op implementation — never persists anything. Default when no LMDB
@@ -48,7 +52,7 @@ impl RelayAuthorScoreStore for NoopRelayAuthorScoreStore {
         Ok(Vec::new())
     }
 
-    fn put_batch(&self, _cells: Vec<ScoreCell>) -> Result<(), Box<dyn std::error::Error>> {
+    fn put_batch(&mut self, _cells: Vec<ScoreCell>) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }

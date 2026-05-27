@@ -42,8 +42,7 @@ fn start_publish_note_action_returns_correlation_id() {
     // note, so `preferred_action_id` returns `None` and the registry
     // mints a random 32-hex-char `correlation_id`.
     let registry = default_registry();
-    let action_json =
-        r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
+    let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
     let id = registry
         .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
         .expect("publish note action should be accepted");
@@ -121,7 +120,12 @@ fn unknown_namespace_is_rejected() {
 fn malformed_json_is_rejected_as_invalid() {
     let registry = default_registry();
     let err = registry
-        .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", "{not valid json")
+        .start(
+            &mut ctx(),
+            1_700_000_000_000,
+            "nmp.publish",
+            "{not valid json",
+        )
         .expect_err("malformed JSON must be rejected");
     assert!(
         matches!(err, ActionRejection::Invalid(_)),
@@ -136,7 +140,12 @@ fn json_not_matching_action_shape_is_rejected() {
     // `{"t":"PublishNote"}` matches no variant and is rejected.
     let registry = default_registry();
     let err = registry
-        .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", r#"{"t":"PublishNote"}"#)
+        .start(
+            &mut ctx(),
+            1_700_000_000_000,
+            "nmp.publish",
+            r#"{"t":"PublishNote"}"#,
+        )
         .expect_err("wrong-shape JSON must be rejected");
     assert!(matches!(err, ActionRejection::Invalid(_)));
 }
@@ -147,8 +156,7 @@ fn start_publish_note_action_with_content_is_accepted() {
     // `PublishModule::start`'s validation gate — the `ActionModule`-native
     // path replacing the deleted per-verb `nmp_app_publish_note` symbol.
     let registry = default_registry();
-    let action_json =
-        r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
+    let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
     let id = registry
         .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
         .expect("publish-note action with content should be accepted");
@@ -179,7 +187,11 @@ fn publish_note_executor_threads_correlation_id_onto_actor_command() {
         .expect("publish-note execution should succeed");
 
     let cmds = captured.into_inner();
-    assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand; got {cmds:?}");
+    assert_eq!(
+        cmds.len(),
+        1,
+        "executor must emit exactly one ActorCommand; got {cmds:?}"
+    );
     match cmds.into_iter().next().unwrap() {
         ActorCommand::PublishNote {
             content,
@@ -241,7 +253,11 @@ fn publish_signed_executor_sends_publish_signed_event_command() {
         .expect("publish execution should succeed");
 
     let cmds = captured.into_inner();
-    assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand; got {cmds:?}");
+    assert_eq!(
+        cmds.len(),
+        1,
+        "executor must emit exactly one ActorCommand; got {cmds:?}"
+    );
     match cmds.into_iter().next().unwrap() {
         ActorCommand::PublishSignedEvent {
             target,
@@ -319,7 +335,11 @@ fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
         .expect("publish-profile execution should succeed");
 
     let cmds = captured.into_inner();
-    assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand; got {cmds:?}");
+    assert_eq!(
+        cmds.len(),
+        1,
+        "executor must emit exactly one ActorCommand; got {cmds:?}"
+    );
     match cmds.into_iter().next().unwrap() {
         ActorCommand::PublishProfile {
             fields,
@@ -455,10 +475,7 @@ fn panicking_validator_is_rejected_not_unwound() {
     impl ActionModule for PanickingStartModule {
         const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
-        fn start(
-            _ctx: &mut ActionContext,
-            _action: Self::Action,
-        ) -> Result<(), ActionRejection> {
+        fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
             panic!("buggy module validator");
         }
         fn execute(
@@ -500,10 +517,7 @@ fn panicking_executor_returns_err_not_unwound() {
     impl ActionModule for PanickingExecuteModule {
         const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
-        fn start(
-            _ctx: &mut ActionContext,
-            _action: Self::Action,
-        ) -> Result<(), ActionRejection> {
+        fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
             Ok(())
         }
         fn execute(

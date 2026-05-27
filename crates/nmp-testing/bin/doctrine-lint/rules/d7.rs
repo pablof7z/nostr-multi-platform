@@ -30,7 +30,14 @@ pub const ID: &str = "D7";
 const TARGET_FILE_SUFFIX: &str = "substrate/capability.rs";
 
 const BANNED_VERBS: &[&str] = &[
-    "retry", "fallback", "select", "choose", "route_to", "decide", "dispatch_to", "resolve_to",
+    "retry",
+    "fallback",
+    "select",
+    "choose",
+    "route_to",
+    "decide",
+    "dispatch_to",
+    "resolve_to",
 ];
 
 pub fn file_in_scope(path: &Path) -> bool {
@@ -114,7 +121,10 @@ mod tests {
     #[test]
     fn ignores_no_fn_decl() {
         let hits = check("    self.dispatch_to_relay(url);", false);
-        assert!(hits.is_empty(), "method call ≠ method decl; only decl names matter");
+        assert!(
+            hits.is_empty(),
+            "method call ≠ method decl; only decl names matter"
+        );
     }
 
     #[test]

@@ -53,9 +53,7 @@ fn kind3_arrival_fans_out_timeline_onto_new_follows_write_relays() {
         .set_selection_budget(usize::MAX, usize::MAX);
 
     // First kind:3: ALICE follows herself only.
-    let first_tags = vec![
-        vec!["p".to_string(), ALICE.to_string()],
-    ];
+    let first_tags = vec![vec!["p".to_string(), ALICE.to_string()]];
     kernel
         .inject_replaceable_event(
             "1111111111111111111111111111111111111111111111111111111111111111",

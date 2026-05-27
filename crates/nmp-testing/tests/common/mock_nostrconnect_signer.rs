@@ -191,7 +191,9 @@ impl MockNostrConnectSigner {
 
             // Send ["EVENT", <event>].
             if ws
-                .send(tungstenite::Message::Text(format!(r#"["EVENT",{event_json}]"#)))
+                .send(tungstenite::Message::Text(format!(
+                    r#"["EVENT",{event_json}]"#
+                )))
                 .is_err()
             {
                 eprintln!("mock signer: send connect event failed");
@@ -208,10 +210,7 @@ impl MockNostrConnectSigner {
                 let msg = match ws.read() {
                     Ok(m) => m,
                     Err(tungstenite::Error::Io(io_err))
-                        if matches!(
-                            io_err.kind(),
-                            ErrorKind::WouldBlock | ErrorKind::TimedOut
-                        ) =>
+                        if matches!(io_err.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
                     {
                         continue;
                     }
@@ -279,9 +278,8 @@ impl MockNostrConnectSigner {
                     if let Some(reply) =
                         build_encrypted_event(&signer_keys, client_pk, response, &client_pubkey)
                     {
-                        let _ = ws.send(tungstenite::Message::Text(format!(
-                            r#"["EVENT",{reply}]"#
-                        )));
+                        let _ =
+                            ws.send(tungstenite::Message::Text(format!(r#"["EVENT",{reply}]"#)));
                     }
                     sent_gpk_reply = true;
                     break;

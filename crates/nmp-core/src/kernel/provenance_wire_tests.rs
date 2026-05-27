@@ -87,12 +87,7 @@ fn timeline_ingest_credits_novel_to_first_source_url() {
     let keys = ::nostr::Keys::generate();
     let event = signed_note(&keys, "first event", 1_000);
 
-    kernel.ingest_timeline_event(
-        RelayRole::Content,
-        RELAY_A,
-        "diag-firehose-stress",
-        event,
-    );
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", event);
 
     let counters = kernel
         .event_provenance
@@ -130,12 +125,7 @@ fn timeline_ingest_credits_duplicate_to_second_url_not_first() {
         .record_first_source(&event.id, RELAY_A);
 
     // Now drive the live wire-up: same event, different relay.
-    kernel.ingest_timeline_event(
-        RelayRole::Content,
-        RELAY_B,
-        "diag-firehose-stress",
-        event,
-    );
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY_B, "diag-firehose-stress", event);
 
     let a = kernel
         .event_provenance
@@ -208,12 +198,7 @@ fn timeline_ingest_skips_provenance_on_pre_verify_failure() {
     // Corrupt the signature so `try_from_raw` rejects.
     event.sig = "0".repeat(128);
 
-    kernel.ingest_timeline_event(
-        RelayRole::Content,
-        RELAY_A,
-        "diag-firehose-stress",
-        event,
-    );
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", event);
 
     assert!(
         kernel.event_provenance.counters_for(RELAY_A).is_none(),

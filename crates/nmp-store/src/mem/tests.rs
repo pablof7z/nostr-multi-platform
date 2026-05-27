@@ -30,7 +30,9 @@ mod insert_tests {
             content: String::new(),
             sig: "a".repeat(128),
         };
-        store.insert(unchecked(k5a), &"wss://r1/".to_string(), 100_000).unwrap();
+        store
+            .insert(unchecked(k5a), &"wss://r1/".to_string(), 100_000)
+            .unwrap();
 
         // Second kind:5 at t=200 (newer — should win for deleted_at).
         let k5b = RawEvent {
@@ -42,13 +44,27 @@ mod insert_tests {
             content: String::new(),
             sig: "a".repeat(128),
         };
-        store.insert(unchecked(k5b), &"wss://r2/".to_string(), 200_000).unwrap();
+        store
+            .insert(unchecked(k5b), &"wss://r2/".to_string(), 200_000)
+            .unwrap();
 
         let st = store.state.lock().unwrap();
-        let tomb = st.tombstones.get(&target_hex).expect("tombstone must exist");
-        assert_eq!(tomb.deleted_at, 200, "max-merge must take the newer deleted_at");
-        assert!(tomb.sources.contains(&"wss://r1/".to_string()), "must union r1");
-        assert!(tomb.sources.contains(&"wss://r2/".to_string()), "must union r2");
+        let tomb = st
+            .tombstones
+            .get(&target_hex)
+            .expect("tombstone must exist");
+        assert_eq!(
+            tomb.deleted_at, 200,
+            "max-merge must take the newer deleted_at"
+        );
+        assert!(
+            tomb.sources.contains(&"wss://r1/".to_string()),
+            "must union r1"
+        );
+        assert!(
+            tomb.sources.contains(&"wss://r2/".to_string()),
+            "must union r2"
+        );
     }
 
     /// P2: same-id re-delivery for replaceable events must merge provenance,
@@ -68,10 +84,14 @@ mod insert_tests {
             sig: "a".repeat(128),
         };
 
-        let o1 = store.insert(unchecked(ev.clone()), &"wss://r1/".to_string(), 1_000_000).unwrap();
+        let o1 = store
+            .insert(unchecked(ev.clone()), &"wss://r1/".to_string(), 1_000_000)
+            .unwrap();
         assert!(matches!(o1, InsertOutcome::Inserted { .. }));
 
-        let o2 = store.insert(unchecked(ev), &"wss://r2/".to_string(), 2_000_000).unwrap();
+        let o2 = store
+            .insert(unchecked(ev), &"wss://r2/".to_string(), 2_000_000)
+            .unwrap();
         assert!(
             matches!(o2, InsertOutcome::Duplicate { .. }),
             "re-delivery of same id must be Duplicate, got {o2:?}"
@@ -203,7 +223,11 @@ mod gc_tests {
         store.claim(c, &[id]).unwrap();
         store.claim(c, &[id]).unwrap();
         let st = store.state.lock().unwrap();
-        assert_eq!(st.claims[&c].len(), 1, "idempotent: re-claim must not add entry");
+        assert_eq!(
+            st.claims[&c].len(),
+            1,
+            "idempotent: re-claim must not add entry"
+        );
     }
 
     #[test]
@@ -227,6 +251,9 @@ mod gc_tests {
         store.claim(c, &[make_id(1), make_id(2)]).unwrap();
         store.release(c).unwrap();
         let st = store.state.lock().unwrap();
-        assert!(!st.claims.contains_key(&c), "release must clear claimer's pins");
+        assert!(
+            !st.claims.contains_key(&c),
+            "release must clear claimer's pins"
+        );
     }
 }

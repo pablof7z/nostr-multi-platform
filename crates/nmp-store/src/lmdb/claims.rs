@@ -46,7 +46,10 @@ fn get_budget_rw(
     c: ClaimerId,
 ) -> Result<Option<usize>, StoreError> {
     let k = claimer_key(c);
-    match db.get(txn, &k).map_err(|e| StoreError::Io(format!("budget get: {e}")))? {
+    match db
+        .get(txn, &k)
+        .map_err(|e| StoreError::Io(format!("budget get: {e}")))?
+    {
         Some(v) if v.len() == 8 => {
             let mut arr = [0u8; 8];
             arr.copy_from_slice(v);
@@ -88,7 +91,8 @@ pub(super) fn register_view_cover(
         .write_txn()
         .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
     put_budget(inner.claims_budget, &mut txn, claimer, cover_budget)?;
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))
 }
 
 pub(super) fn claim(
@@ -100,7 +104,8 @@ pub(super) fn claim(
         .env
         .write_txn()
         .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-    let ceiling = get_budget_rw(inner.claims_budget, &txn, claimer)?.unwrap_or(DEFAULT_VIEW_CEILING);
+    let ceiling =
+        get_budget_rw(inner.claims_budget, &txn, claimer)?.unwrap_or(DEFAULT_VIEW_CEILING);
 
     // Load existing claimer set.
     let prefix = claimer_prefix(claimer);
@@ -166,13 +171,11 @@ pub(super) fn claim(
             .put(&mut txn, &k, b"")
             .map_err(|e| StoreError::Io(format!("claim put: {e}")))?;
     }
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))
 }
 
-pub(super) fn release(
-    inner: &Arc<Inner>,
-    claimer: ClaimerId,
-) -> Result<(), StoreError> {
+pub(super) fn release(inner: &Arc<Inner>, claimer: ClaimerId) -> Result<(), StoreError> {
     let mut txn = inner
         .env
         .write_txn()
@@ -199,6 +202,6 @@ pub(super) fn release(
             .map_err(|e| StoreError::Io(format!("claim del: {e}")))?;
     }
     delete_budget(inner.claims_budget, &mut txn, claimer)?;
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))
 }
-

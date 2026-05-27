@@ -59,7 +59,7 @@ pub struct KernelReducer {
 impl KernelReducer {
     /// Construct a fresh reducer with the default visible-limit. Equivalent
     /// to what the actor loop uses at startup.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             kernel: Kernel::new(DEFAULT_VISIBLE_LIMIT),
@@ -294,7 +294,10 @@ mod tests {
     #[test]
     fn reduce_start_echoes_started() {
         let mut r = KernelReducer::new();
-        assert_eq!(r.reduce(KernelAction::Start), KernelUpdate::Started { rev: 0 });
+        assert_eq!(
+            r.reduce(KernelAction::Start),
+            KernelUpdate::Started { rev: 0 }
+        );
     }
 
     #[test]
@@ -335,7 +338,10 @@ mod tests {
         );
         // No registered subs / publish engine state → empty outbound; the
         // important assertion is the absence of a panic.
-        assert!(out.is_empty(), "garbage text must drop, not produce outbound");
+        assert!(
+            out.is_empty(),
+            "garbage text must drop, not produce outbound"
+        );
     }
 
     #[test]

@@ -46,10 +46,7 @@ impl CapabilityModule for KeyringCapability {
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum KeyringRequest {
     /// Persist `secret` under `account_id`. Overwrites any existing value.
-    Store {
-        account_id: String,
-        secret: String,
-    },
+    Store { account_id: String, secret: String },
     /// Read the secret stored under `account_id`.
     Retrieve { account_id: String },
     /// Remove the secret stored under `account_id` (no-op if absent).
@@ -58,7 +55,7 @@ pub enum KeyringRequest {
 
 impl KeyringRequest {
     /// The `account_id` this request is keyed by, regardless of variant.
-    #[must_use] 
+    #[must_use]
     pub fn account_id(&self) -> &str {
         match self {
             Self::Store { account_id, .. }
@@ -87,7 +84,7 @@ pub struct KeyringResult {
 
 impl KeyringResult {
     /// Successful operation; `secret` is `Some` only for a `retrieve` hit.
-    #[must_use] 
+    #[must_use]
     pub fn ok(secret: Option<String>) -> Self {
         Self {
             status: KeyringStatus::Ok,
@@ -97,7 +94,7 @@ impl KeyringResult {
     }
 
     /// `retrieve` of an absent key — distinct from an error (D6 data).
-    #[must_use] 
+    #[must_use]
     pub fn not_found() -> Self {
         Self {
             status: KeyringStatus::NotFound,
@@ -107,7 +104,7 @@ impl KeyringResult {
     }
 
     /// Platform-level failure carrying the native status code.
-    #[must_use] 
+    #[must_use]
     pub fn error(os_status: i32) -> Self {
         Self {
             status: KeyringStatus::Error,
@@ -182,23 +179,19 @@ impl KeyringIdentityWiring {
     /// Decode the [`CapabilityEnvelope`] the capability handed back into a
     /// typed [`KeyringResult`]. A malformed envelope is itself reported as a
     /// `KeyringResult::error` (D6: never an exception across the boundary).
-    #[must_use] 
+    #[must_use]
     pub fn decode_result(envelope: &CapabilityEnvelope) -> KeyringResult {
         serde_json::from_str(&envelope.result_json)
             .unwrap_or_else(|_| KeyringResult::error(MALFORMED_RESULT))
     }
 
-    fn request(
-        correlation_id: impl Into<String>,
-        request: KeyringRequest,
-    ) -> CapabilityRequest {
+    fn request(correlation_id: impl Into<String>, request: KeyringRequest) -> CapabilityRequest {
         CapabilityRequest {
             namespace: KeyringCapability::NAMESPACE.to_string(),
             correlation_id: correlation_id.into(),
             // serde_json::to_string on a closed enum cannot fail; the
             // `unwrap_or` keeps this panic-free without a TODO/unwrap (D6).
-            payload_json: serde_json::to_string(&request)
-                .unwrap_or_else(|_| "{}".to_string()),
+            payload_json: serde_json::to_string(&request).unwrap_or_else(|_| "{}".to_string()),
         }
     }
 }
@@ -225,8 +218,7 @@ mod tests {
 
         // The Swift side emits exactly this shape; round-trip it back.
         let decoded: KeyringRequest =
-            serde_json::from_str(r#"{"op":"retrieve","account_id":"acct-1"}"#)
-                .unwrap();
+            serde_json::from_str(r#"{"op":"retrieve","account_id":"acct-1"}"#).unwrap();
         assert_eq!(
             decoded,
             KeyringRequest::Retrieve {
@@ -235,8 +227,7 @@ mod tests {
         );
 
         let decoded: KeyringRequest =
-            serde_json::from_str(r#"{"op":"delete","account_id":"acct-1"}"#)
-                .unwrap();
+            serde_json::from_str(r#"{"op":"delete","account_id":"acct-1"}"#).unwrap();
         assert_eq!(decoded.account_id(), "acct-1");
     }
 
@@ -267,20 +258,16 @@ mod tests {
 
         // Swift-emitted error result decodes back.
         let decoded: KeyringResult =
-            serde_json::from_str(r#"{"status":"error","os_status":-50}"#)
-                .unwrap();
+            serde_json::from_str(r#"{"status":"error","os_status":-50}"#).unwrap();
         assert_eq!(decoded, KeyringResult::error(-50));
     }
 
     #[test]
     fn identity_wiring_builds_namespaced_envelopes() {
-        let req = KeyringIdentityWiring::persist_secret(
-            "corr-1", "acct-1", "nsec1abc",
-        );
+        let req = KeyringIdentityWiring::persist_secret("corr-1", "acct-1", "nsec1abc");
         assert_eq!(req.namespace, KeyringCapability::NAMESPACE);
         assert_eq!(req.correlation_id, "corr-1");
-        let payload: KeyringRequest =
-            serde_json::from_str(&req.payload_json).unwrap();
+        let payload: KeyringRequest = serde_json::from_str(&req.payload_json).unwrap();
         assert_eq!(
             payload,
             KeyringRequest::Store {
@@ -291,8 +278,7 @@ mod tests {
 
         let recall = KeyringIdentityWiring::recall_secret("c", "acct-1");
         assert_eq!(
-            serde_json::from_str::<KeyringRequest>(&recall.payload_json)
-                .unwrap(),
+            serde_json::from_str::<KeyringRequest>(&recall.payload_json).unwrap(),
             KeyringRequest::Retrieve {
                 account_id: "acct-1".into()
             }
@@ -300,8 +286,7 @@ mod tests {
 
         let forget = KeyringIdentityWiring::forget_secret("c", "acct-1");
         assert_eq!(
-            serde_json::from_str::<KeyringRequest>(&forget.payload_json)
-                .unwrap(),
+            serde_json::from_str::<KeyringRequest>(&forget.payload_json).unwrap(),
             KeyringRequest::Delete {
                 account_id: "acct-1".into()
             }

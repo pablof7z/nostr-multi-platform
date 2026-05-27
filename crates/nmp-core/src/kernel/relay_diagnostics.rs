@@ -249,13 +249,29 @@ fn build_relay_row(
     // owned so the shell renders fields directly.
     let Some(s) = status else {
         let active_count = subs.iter().filter(|s| is_active_state(&s.state)).count();
-        let connection = if active_count > 0 { "connected" } else { "unknown" };
+        let connection = if active_count > 0 {
+            "connected"
+        } else {
+            "unknown"
+        };
         let last_event = subs.iter().filter_map(|s| s.last_event_at_ms).max();
-        return finish_row(relay_url, "outbox", connection, "—", 0, None, last_event,
-            None, None, 0, 0, subs, now_ms);
+        return finish_row(
+            relay_url, "outbox", connection, "—", 0, None, last_event, None, None, 0, 0, subs,
+            now_ms,
+        );
     };
-    let (role, connection, auth, reconnect_count, last_connected, last_event, last_notice,
-        last_error, bytes_rx, bytes_tx) = (
+    let (
+        role,
+        connection,
+        auth,
+        reconnect_count,
+        last_connected,
+        last_event,
+        last_notice,
+        last_error,
+        bytes_rx,
+        bytes_tx,
+    ) = (
         s.role.as_str(),
         s.connection.as_str(),
         s.auth.as_str(),
@@ -301,10 +317,7 @@ fn finish_row(
     now_ms: u128,
 ) -> RelayDiagnosticsRow {
     let total_sub_count = subs.len() as u32;
-    let active_sub_count = subs
-        .iter()
-        .filter(|s| is_active_state(&s.state))
-        .count() as u32;
+    let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
     let eosed_sub_count = subs.iter().filter(|s| s.eose_at_ms.is_some()).count() as u32;
     let total_events_rx: u64 = subs.iter().map(|s| s.events_rx).sum();
 

@@ -12,8 +12,8 @@ use crate::types::{
     InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow,
     VerifiedEvent, WatermarkKey, WatermarkRow,
 };
-use crate::StoreError;
 use crate::DomainMigration;
+use crate::StoreError;
 
 impl EventStore for LmdbEventStore {
     fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError> {

@@ -2,11 +2,11 @@
 
 use crate::config::{
     Scale, DELTAS_PER_VIEW_SEC_GATE, FILLED_TIMELINE_GATE_MS, FIRST_ITEM_GATE_MS,
-    INGEST_TO_EMIT_P99_GATE_MS, MEMORY_DRIFT_30M_GATE_MB, RAMP_MEMORY_GATE_MB,
-    SOAK_MEMORY_GATE_MB, VIEW_BATCH_HZ_GATE,
+    INGEST_TO_EMIT_P99_GATE_MS, MEMORY_DRIFT_30M_GATE_MB, RAMP_MEMORY_GATE_MB, SOAK_MEMORY_GATE_MB,
+    VIEW_BATCH_HZ_GATE,
 };
 use crate::report::{ScenarioMetrics, ScenarioResult};
-use crate::scenarios::{finish_scenario, gate_eq_i64, gate_eq, gate_max, round2, Lcg};
+use crate::scenarios::{finish_scenario, gate_eq, gate_eq_i64, gate_max, round2, Lcg};
 use std::time::Instant;
 
 pub(crate) fn cold_start(scale: Scale) -> ScenarioResult {

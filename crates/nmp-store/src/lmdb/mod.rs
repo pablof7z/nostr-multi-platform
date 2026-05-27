@@ -17,30 +17,33 @@
 //! `#[cfg(feature = "lmdb-backend")]` gated.
 
 #[cfg(feature = "lmdb-backend")]
+mod claims;
+#[cfg(feature = "lmdb-backend")]
 mod conv;
 #[cfg(feature = "lmdb-backend")]
 mod delete;
-#[cfg(feature = "lmdb-backend")]
-mod insert;
-#[cfg(feature = "lmdb-backend")]
-mod query;
-#[cfg(feature = "lmdb-backend")]
-mod provenance;
-#[cfg(feature = "lmdb-backend")]
-mod tombstones;
-#[cfg(feature = "lmdb-backend")]
-mod claims;
-#[cfg(feature = "lmdb-backend")]
-mod gc;
 #[cfg(feature = "lmdb-backend")]
 pub(crate) mod domain;
 #[cfg(feature = "lmdb-backend")]
 mod dump;
 #[cfg(feature = "lmdb-backend")]
+mod gc;
+#[cfg(feature = "lmdb-backend")]
+mod insert;
+#[cfg(feature = "lmdb-backend")]
+mod provenance;
+#[cfg(feature = "lmdb-backend")]
+mod query;
+#[cfg(feature = "lmdb-backend")]
 mod store_impl;
+#[cfg(feature = "lmdb-backend")]
+mod tombstones;
 // W2 — relay-author-scores LMDB encode/decode layer.
 #[cfg(feature = "lmdb-backend")]
 pub mod relay_scores;
+// Sub-db + env open logic extracted for LOC budget.
+#[cfg(feature = "lmdb-backend")]
+mod open;
 
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod test_fixtures;
@@ -57,8 +60,6 @@ use std::path::{Path, PathBuf};
 use super::StoreError;
 
 #[cfg(not(feature = "lmdb-backend"))]
-use std::ops::ControlFlow;
-#[cfg(not(feature = "lmdb-backend"))]
 use super::events::{DomainHandle, EventIter, EventStore};
 #[cfg(not(feature = "lmdb-backend"))]
 use super::types::{
@@ -68,6 +69,8 @@ use super::types::{
 };
 #[cfg(not(feature = "lmdb-backend"))]
 use crate::DomainMigration;
+#[cfg(not(feature = "lmdb-backend"))]
+use std::ops::ControlFlow;
 
 // ─── Internal sub-db / env handles (feature-on only) ─────────────────────────
 
@@ -135,7 +138,7 @@ impl LmdbEventStore {
     pub fn open(path: &Path) -> Result<Self, StoreError> {
         #[cfg(feature = "lmdb-backend")]
         {
-            open_impl(path)
+            open::open_impl(path)
         }
         #[cfg(not(feature = "lmdb-backend"))]
         {
@@ -152,67 +155,6 @@ impl LmdbEventStore {
     }
 }
 
-#[cfg(feature = "lmdb-backend")]
-fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
-    use heed::types::Bytes;
-    use nmp_nostr_lmdb::Lmdb;
-    use std::sync::Arc;
-
-    // 32 GB on 64-bit; the upstream default. The fork's `with_env` wraps the
-    // 11 internal sub-dbs; we reserve 8 additional for NMP-side data.
-    const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
-    const MAX_READERS: u32 = 126;
-    const NMP_ADDITIONAL_DBS: u32 = 9; // W2: +1 for relay-author-scores-v1
-
-    std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
-
-    let env = Lmdb::open_env(path, MAP_SIZE, MAX_READERS, NMP_ADDITIONAL_DBS)
-        .map_err(|e| StoreError::Io(format!("open_env: {e}")))?;
-    let lmdb = Lmdb::with_env(env.clone())
-        .map_err(|e| StoreError::Io(format!("with_env: {e}")))?;
-
-    // Open NMP sub-dbs on the shared env.
-    let mut txn = env
-        .write_txn()
-        .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-    let open = |name: &str, txn: &mut heed::RwTxn| -> Result<heed::Database<Bytes, Bytes>, StoreError> {
-        env.database_options()
-            .types::<Bytes, Bytes>()
-            .name(name)
-            .create(txn)
-            .map_err(|e| StoreError::Io(format!("open {name}: {e}")))
-    };
-    let provenance = open("nmp-provenance", &mut txn)?;
-    let tombstones = open("nmp-tombstones", &mut txn)?;
-    let addr_tombstones = open("nmp-addr-tombstones", &mut txn)?;
-    let watermarks = open("nmp-watermarks", &mut txn)?;
-    let claims_budget = open("nmp-claims-budget", &mut txn)?;
-    let claims = open("nmp-claims", &mut txn)?;
-    let domain_versions = open("nmp-domain-versions", &mut txn)?;
-    let domain_data = open("nmp-domain-data", &mut txn)?;
-    // W2 — relay-author-scores sub-db.
-    let relay_author_scores = open(relay_scores::SUB_DB_NAME, &mut txn)?;
-    txn.commit()
-        .map_err(|e| StoreError::Io(format!("commit init: {e}")))?;
-
-    Ok(LmdbEventStore {
-        path: path.to_path_buf(),
-        inner: Arc::new(Inner {
-            env,
-            lmdb,
-            provenance,
-            tombstones,
-            addr_tombstones,
-            watermarks,
-            claims_budget,
-            claims,
-            domain_versions,
-            domain_data,
-            relay_author_scores,
-        }),
-    })
-}
-
 // ─── Feature-off stub trait impl ─────────────────────────────────────────────
 //
 // When the lmdb-backend feature is OFF, every method returns the not_enabled
@@ -225,41 +167,85 @@ impl EventStore for LmdbEventStore {
         Err(Self::not_enabled())
     }
     fn scan_by_author_kind<'a>(
-        &'a self, _author: &PubKey, _kinds: &[u32], _since: Option<u64>,
-        _until: Option<u64>, _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> { Err(Self::not_enabled()) }
+        &'a self,
+        _author: &PubKey,
+        _kinds: &[u32],
+        _since: Option<u64>,
+        _until: Option<u64>,
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn get_param_replaceable(
-        &self, _pubkey: &PubKey, _kind: u32, _d_tag: &[u8],
-    ) -> Result<Option<StoredEvent>, StoreError> { Err(Self::not_enabled()) }
+        &self,
+        _pubkey: &PubKey,
+        _kind: u32,
+        _d_tag: &[u8],
+    ) -> Result<Option<StoredEvent>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn scan_by_kind_dtag<'a>(
-        &'a self, _kind: u32, _d_tag: &[u8], _since: Option<u64>,
-        _until: Option<u64>, _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> { Err(Self::not_enabled()) }
+        &'a self,
+        _kind: u32,
+        _d_tag: &[u8],
+        _since: Option<u64>,
+        _until: Option<u64>,
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn scan_by_etag<'a>(
-        &'a self, _target: &EventId, _kinds: &[u32], _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> { Err(Self::not_enabled()) }
+        &'a self,
+        _target: &EventId,
+        _kinds: &[u32],
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn scan_by_ptag<'a>(
-        &'a self, _target: &PubKey, _kinds: &[u32], _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> { Err(Self::not_enabled()) }
+        &'a self,
+        _target: &PubKey,
+        _kinds: &[u32],
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn scan_by_kind_time<'a>(
-        &'a self, _kinds: &[u32], _since: Option<u64>, _until: Option<u64>, _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> { Err(Self::not_enabled()) }
+        &'a self,
+        _kinds: &[u32],
+        _since: Option<u64>,
+        _until: Option<u64>,
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn scan_expiring_before<'a>(
-        &'a self, _unix_seconds: u64, _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> { Err(Self::not_enabled()) }
+        &'a self,
+        _unix_seconds: u64,
+        _limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn tombstones_for(&self, _target: &EventId) -> Result<Vec<TombstoneRow>, StoreError> {
         Err(Self::not_enabled())
     }
     fn list_tombstones<'a>(
         &'a self,
     ) -> Result<Box<dyn Iterator<Item = Result<TombstoneRow, StoreError>> + Send + 'a>, StoreError>
-    { Err(Self::not_enabled()) }
+    {
+        Err(Self::not_enabled())
+    }
     fn provenance_for(&self, _id: &EventId) -> Result<Vec<ProvenanceEntry>, StoreError> {
         Err(Self::not_enabled())
     }
     fn insert(
-        &self, _event: VerifiedEvent, _source: &RelayUrl, _received_at_ms: u64,
-    ) -> Result<InsertOutcome, StoreError> { Err(Self::not_enabled()) }
+        &self,
+        _event: VerifiedEvent,
+        _source: &RelayUrl,
+        _received_at_ms: u64,
+    ) -> Result<InsertOutcome, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn delete_by_filter(&self, _filter: DeleteFilter) -> Result<usize, StoreError> {
         Err(Self::not_enabled())
     }
@@ -273,19 +259,28 @@ impl EventStore for LmdbEventStore {
         Err(Self::not_enabled())
     }
     fn list_watermarks_for_relay<'a>(
-        &'a self, _relay_url: &str,
+        &'a self,
+        _relay_url: &str,
     ) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError>
-    { Err(Self::not_enabled()) }
+    {
+        Err(Self::not_enabled())
+    }
     fn register_view_cover(
-        &self, _claimer: ClaimerId, _cover_budget: usize,
-    ) -> Result<(), StoreError> { Err(Self::not_enabled()) }
+        &self,
+        _claimer: ClaimerId,
+        _cover_budget: usize,
+    ) -> Result<(), StoreError> {
+        Err(Self::not_enabled())
+    }
     fn claim(&self, _claimer: ClaimerId, _ids: &[EventId]) -> Result<(), StoreError> {
         Err(Self::not_enabled())
     }
     fn release(&self, _claimer: ClaimerId) -> Result<(), StoreError> {
         Err(Self::not_enabled())
     }
-    fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> { Ok(()) }
+    fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {
+        Ok(())
+    }
     fn gc_step(&self, _budget: GcBudget) -> Result<GcReport, StoreError> {
         Err(Self::not_enabled())
     }
@@ -293,16 +288,26 @@ impl EventStore for LmdbEventStore {
         Err(Self::not_enabled())
     }
     fn run_migrations(
-        &self, _namespace: &'static str, _target_version: u32,
+        &self,
+        _namespace: &'static str,
+        _target_version: u32,
         _migrations: &[DomainMigration],
-    ) -> Result<(), StoreError> { Err(Self::not_enabled()) }
+    ) -> Result<(), StoreError> {
+        Err(Self::not_enabled())
+    }
     fn dump(
-        &self, _out: &mut dyn std::io::Write, _format: DumpFormat,
-    ) -> Result<DumpStats, StoreError> { Err(Self::not_enabled()) }
+        &self,
+        _out: &mut dyn std::io::Write,
+        _format: DumpFormat,
+    ) -> Result<DumpStats, StoreError> {
+        Err(Self::not_enabled())
+    }
     fn query_visit(
         &self,
         _query: &StoreQuery,
         _limit: usize,
         _visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
-    ) -> Result<(), StoreError> { Err(Self::not_enabled()) }
+    ) -> Result<(), StoreError> {
+        Err(Self::not_enabled())
+    }
 }

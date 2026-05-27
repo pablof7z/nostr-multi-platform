@@ -91,8 +91,7 @@ impl Kernel {
                         (relay_url, format!(r#"["CLOSE","{sub_id}"]"#))
                     }
                 };
-                let relay_url =
-                    crate::relay::canonical_relay_url(&relay_url).unwrap_or(relay_url);
+                let relay_url = crate::relay::canonical_relay_url(&relay_url).unwrap_or(relay_url);
                 let role = self
                     .role_for_relay_url(&relay_url)
                     .unwrap_or(crate::relay::RelayRole::Content);
@@ -137,8 +136,7 @@ impl Kernel {
         // Canonicalize so a raw/non-canonical input matches the canonical
         // `RelayEditRow.url` keys. Fall back to the raw string for inputs that
         // do not parse as ws/wss (no edit row will match those anyway).
-        let lookup =
-            crate::relay::canonical_relay_url(url).unwrap_or_else(|| url.to_string());
+        let lookup = crate::relay::canonical_relay_url(url).unwrap_or_else(|| url.to_string());
         for row in &self.relay_edit_rows {
             if row.url == lookup {
                 if crate::actor::has_role(&row.role, "indexer") {

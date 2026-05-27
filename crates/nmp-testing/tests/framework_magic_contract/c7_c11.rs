@@ -10,16 +10,20 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishEngineError,
-    PublishTarget, RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
-    NoopOutboxResolver,
+    InMemoryPublishStore, NoopOutboxResolver, NoopSigner, PublishAction, PublishEngine,
+    PublishEngineError, PublishTarget, RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy,
+    StaticOutbox,
 };
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 fn pubkey(seed: &str) -> String {
-    format!("{seed:0>64}").chars().take(64).collect::<String>().to_lowercase()
+    format!("{seed:0>64}")
+        .chars()
+        .take(64)
+        .collect::<String>()
+        .to_lowercase()
 }
 
 fn fake_signed_event(author: &str, kind: u32, p_tags: Vec<&str>) -> SignedEvent {
@@ -40,10 +44,7 @@ fn fake_signed_event(author: &str, kind: u32, p_tags: Vec<&str>) -> SignedEvent 
     }
 }
 
-fn engine_with_outbox(
-    outbox: StaticOutbox,
-    dispatcher: Arc<ReplayDispatcher>,
-) -> PublishEngine {
+fn engine_with_outbox(outbox: StaticOutbox, dispatcher: Arc<ReplayDispatcher>) -> PublishEngine {
     PublishEngine::new(
         Arc::new(outbox),
         dispatcher,
@@ -72,12 +73,11 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
     // (`wss://r1/` → `wss://r1`), so the dispatcher sees the canonical form.
     // See `crates/nmp-core/src/kernel/publish_relay_identity_tests.rs` and
     // `crates/nmp-core/src/relay.rs::CanonicalRelayUrl` for the contract.
-    let alice_writes: Vec<RelayUrl> = vec![
-        "wss://r1/".to_string(),
-        "wss://r2/".to_string(),
-    ];
+    let alice_writes: Vec<RelayUrl> = vec!["wss://r1/".to_string(), "wss://r2/".to_string()];
     let mut outbox = StaticOutbox::default();
-    outbox.author_writes.insert(pubkey("alice"), alice_writes.clone());
+    outbox
+        .author_writes
+        .insert(pubkey("alice"), alice_writes.clone());
 
     let dispatcher = Arc::new(ReplayDispatcher::new());
     // Script OK acks under the *canonical* relay keys — that is the identity
@@ -95,15 +95,14 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
                 event,
                 target: PublishTarget::Auto,
             },
-            0, None,
+            0,
+            None,
         )
         .expect("public publish must succeed");
 
     let sent = dispatcher.sent_frames();
-    let sent_relays: std::collections::BTreeSet<&str> = sent
-        .iter()
-        .map(|(url, _)| url.as_str())
-        .collect();
+    let sent_relays: std::collections::BTreeSet<&str> =
+        sent.iter().map(|(url, _)| url.as_str()).collect();
     assert!(
         sent_relays.contains("wss://r1"),
         "public event must be dispatched to alice's canonical write relay r1 (got: {sent_relays:?})"
@@ -135,7 +134,8 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
             event: dm_event,
             target: PublishTarget::Auto,
         },
-        0, None,
+        0,
+        None,
     );
     assert!(
         matches!(result, Err(PublishEngineError::NoTargets)),
@@ -164,8 +164,8 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
 /// Design: `docs/design/framework-magic/signers.md`
 #[test]
 fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
-    use std::time::Duration;
     use nmp_signers::{parse_bunker_uri, AccountManager, LocalKeySigner, Signer};
+    use std::time::Duration;
 
     // --- bunker:// URI parse ------------------------------------------------
     let uri = "bunker://\
@@ -178,16 +178,23 @@ fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
     );
     assert_eq!(parsed.relays.len(), 1, "must parse one relay");
     assert!(
-        parsed.relays[0] == "wss://nostr.example.com" || parsed.relays[0] == "wss://nostr.example.com/",
+        parsed.relays[0] == "wss://nostr.example.com"
+            || parsed.relays[0] == "wss://nostr.example.com/",
         "relay must normalize to wss://nostr.example.com or wss://nostr.example.com/, got: {}",
         parsed.relays[0]
     );
     assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("abc123"));
 
     // Error paths: wrong scheme, no relay, oversized.
-    assert!(parse_bunker_uri("https://foo").is_err(), "wrong scheme must fail");
     assert!(
-        parse_bunker_uri("bunker://0000000000000000000000000000000000000000000000000000000000000001").is_err(),
+        parse_bunker_uri("https://foo").is_err(),
+        "wrong scheme must fail"
+    );
+    assert!(
+        parse_bunker_uri(
+            "bunker://0000000000000000000000000000000000000000000000000000000000000001"
+        )
+        .is_err(),
         "missing relay must fail"
     );
     assert!(parse_bunker_uri("").is_err(), "empty must fail");
@@ -197,8 +204,7 @@ fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
     let pubkey_hex = signer.pubkey().to_hex();
     assert_eq!(pubkey_hex.len(), 64, "generated pubkey must be 64-char hex");
 
-    let mut manager = AccountManager::new()
-        .with_post_condition_timeout(Duration::from_millis(500));
+    let mut manager = AccountManager::new().with_post_condition_timeout(Duration::from_millis(500));
     let id = manager.add(Arc::new(signer)).expect("add must succeed");
     assert_eq!(id, pubkey_hex, "account id must equal pubkey hex");
     assert_eq!(manager.accounts().len(), 1);
@@ -206,9 +212,12 @@ fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
 
     // Verify duplicate-add is rejected.
     let dup_signer = nmp_signers::LocalKeySigner::from_secret_hex(
-        "0000000000000000000000000000000000000000000000000000000000000002"
-    ).expect("valid hex");
-    let dup_id = manager.add(Arc::new(dup_signer)).expect("second distinct account");
+        "0000000000000000000000000000000000000000000000000000000000000002",
+    )
+    .expect("valid hex");
+    let dup_id = manager
+        .add(Arc::new(dup_signer))
+        .expect("second distinct account");
     assert_ne!(dup_id, id, "distinct keys produce distinct ids");
     assert_eq!(manager.accounts().len(), 2);
 }

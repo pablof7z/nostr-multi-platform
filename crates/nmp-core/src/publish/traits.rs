@@ -182,9 +182,7 @@ impl OutboxResolver for StaticOutbox {
                     for url in reads {
                         out.push(ResolvedRelay {
                             url: url.clone(),
-                            reason: RelaySelectionReason::RecipientInbox {
-                                pubkey: p.clone(),
-                            },
+                            reason: RelaySelectionReason::RecipientInbox { pubkey: p.clone() },
                         });
                     }
                 }
@@ -219,7 +217,6 @@ impl OutboxResolver for NoopOutboxResolver {
     }
 }
 
-
 // ---------------- Relay dispatcher (M8 / task #46) ----------------
 
 /// Send a single frame to a single relay. Implementations may be async +
@@ -241,7 +238,7 @@ pub struct ReplayDispatcher {
 }
 
 impl ReplayDispatcher {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -259,7 +256,10 @@ impl ReplayDispatcher {
 
     #[must_use]
     pub fn sent_frames(&self) -> Vec<(RelayUrl, String)> {
-        self.sent.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+        self.sent
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -269,7 +269,10 @@ impl RelayDispatcher for ReplayDispatcher {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push((relay_url.to_string(), frame.to_string()));
-        let mut scripts = self.scripts.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut scripts = self
+            .scripts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(queue) = scripts.get_mut(relay_url) {
             if !queue.is_empty() {
                 return vec![queue.remove(0)];
@@ -300,7 +303,7 @@ pub struct QueueDispatcher {
 }
 
 impl QueueDispatcher {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -312,7 +315,12 @@ impl QueueDispatcher {
         // D2: recover from a poisoned lock rather than panic — this seam is
         // driven by the single actor thread and a panic here would take the
         // kernel down. The queued frames remain a valid `Vec` regardless.
-        std::mem::take(&mut *self.queued.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+        std::mem::take(
+            &mut *self
+                .queued
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
     }
 }
 
@@ -393,7 +401,7 @@ pub struct InMemoryPublishStore {
 }
 
 impl InMemoryPublishStore {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

@@ -36,7 +36,7 @@
 //! cold-claim transition (`event_claim_requested` dedupes); ingest is
 //! push, and the projection re-emits on the next snapshot tick.
 
-use super::super::{Kernel, OutboundMessage, truncate};
+use super::super::{truncate, Kernel, OutboundMessage};
 use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{InterestScope, InterestShape, NaddrCoord};
 use crate::subs::CompileTrigger;
@@ -143,15 +143,11 @@ impl Kernel {
         // on overflow bumps the diagnostic counter and silently no-ops
         // (D6: never an FFI error).
         let (inserted, refcount) = {
-            let consumers = self
-                .event_claims
-                .entry(primary_id.clone())
-                .or_default();
+            let consumers = self.event_claims.entry(primary_id.clone()).or_default();
             if !consumers.contains(&consumer_id)
                 && consumers.len() >= super::super::MAX_EVENT_CLAIMS_PER_KEY
             {
-                self.event_claim_drops_total =
-                    self.event_claim_drops_total.saturating_add(1);
+                self.event_claim_drops_total = self.event_claim_drops_total.saturating_add(1);
                 return Vec::new();
             }
             let inserted = consumers.insert(consumer_id.clone());
@@ -201,8 +197,9 @@ impl Kernel {
         // A2 — view-equivalent registered an interest. Empty
         // `interest_ids` is correct (the compiler walks the full
         // registry; this Vec is diagnostic provenance only).
-        self.lifecycle
-            .enqueue_trigger(CompileTrigger::ViewOpened { interest_ids: Vec::new() });
+        self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
+            interest_ids: Vec::new(),
+        });
 
         Vec::new()
     }
@@ -212,11 +209,7 @@ impl Kernel {
     /// and from `event_claim_requested`; the OneshotApi row is NOT
     /// released here — the existing `complete_unknown_oneshot` path
     /// releases on EOSE (symmetric with `release_profile`).
-    pub(crate) fn release_event(
-        &mut self,
-        uri: &str,
-        consumer_id: &str,
-    ) -> Vec<OutboundMessage> {
+    pub(crate) fn release_event(&mut self, uri: &str, consumer_id: &str) -> Vec<OutboundMessage> {
         // Resolve the URI to the same `primary_id` `claim_event`
         // computed. A re-parse is cheap and keeps the FFI surface
         // URI-string-symmetric — callers never have to remember a

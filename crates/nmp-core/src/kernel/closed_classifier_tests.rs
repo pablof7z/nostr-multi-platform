@@ -48,10 +48,9 @@ fn closed_auth_required_triggers_auth_pause() {
 
     // The lifecycle AuthGate must also see the pause — REQs to this URL
     // partition out (mirrors the AUTH-frame ingest path).
-    let paused_after_pause = kernel.lifecycle.handle_auth_state_change(
-        role.url().to_string(),
-        RelayAuthState::ChallengeReceived,
-    );
+    let paused_after_pause = kernel
+        .lifecycle
+        .handle_auth_state_change(role.url().to_string(), RelayAuthState::ChallengeReceived);
     assert!(
         paused_after_pause.is_empty(),
         "second pause is a no-op transition; nothing to flush"
@@ -115,11 +114,7 @@ fn closed_restricted_marks_relay_denied() {
 fn closed_blocked_marks_relay_denied() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let role = RelayRole::Indexer;
-    let _ = kernel.handle_text(
-        role,
-        role.url(),
-        &closed_frame("sub-4", "blocked: spam"),
-    );
+    let _ = kernel.handle_text(role, role.url(), &closed_frame("sub-4", "blocked: spam"));
 
     let relay = kernel.relay(role);
     assert!(relay.denied, "blocked must mark the relay denied");
@@ -137,7 +132,10 @@ fn closed_shadowbanned_marks_relay_denied() {
     );
 
     let relay = kernel.relay(role);
-    assert!(relay.denied, "shadowbanned routes to denied (same as blocked)");
+    assert!(
+        relay.denied,
+        "shadowbanned routes to denied (same as blocked)"
+    );
     assert_eq!(relay.last_close_reason.as_deref(), Some("shadowbanned"));
 }
 
@@ -173,16 +171,15 @@ fn closed_unknown_prefix_folds_to_error_no_denied_no_auth_pause() {
 fn closed_error_logs_and_records_classification() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let role = RelayRole::Content;
-    let _ = kernel.handle_text(
-        role,
-        role.url(),
-        &closed_frame("sub-7", "error: internal"),
-    );
+    let _ = kernel.handle_text(role, role.url(), &closed_frame("sub-7", "error: internal"));
 
     let relay = kernel.relay(role);
     assert_eq!(relay.last_close_reason.as_deref(), Some("error"));
     assert!(!relay.denied, "generic error never marks denied");
-    assert_eq!(relay.auth, "not_required", "generic error leaves AUTH alone");
+    assert_eq!(
+        relay.auth, "not_required",
+        "generic error leaves AUTH alone"
+    );
 }
 
 #[test]

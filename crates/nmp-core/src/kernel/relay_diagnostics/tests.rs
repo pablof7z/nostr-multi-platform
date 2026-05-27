@@ -23,7 +23,10 @@ fn compact_count_buckets() {
 #[test]
 fn short_relay_strips_scheme_and_trailing_slash() {
     assert_eq!(short_relay_url("wss://relay.example/"), "relay.example");
-    assert_eq!(short_relay_url("ws://relay.example/path"), "relay.example/path");
+    assert_eq!(
+        short_relay_url("ws://relay.example/path"),
+        "relay.example/path"
+    );
     assert_eq!(short_relay_url("relay.example"), "relay.example");
 }
 
@@ -70,7 +73,7 @@ fn snapshot_emits_one_row_per_known_relay() {
 
 #[test]
 fn snapshot_emits_every_transport_url_for_same_role() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT, RelayRole};
+    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connecting_url(RelayRole::Content, "wss://relay-a.test/");

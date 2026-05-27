@@ -16,23 +16,12 @@
 use std::collections::BTreeSet;
 
 use nmp_core::planner::{
-    InMemoryMailboxCache,
-    InterestId,
-    InterestLifecycle,
-    InterestScope,
-    InterestShape,
+    InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest,
 };
 use nmp_core::subs::{
-    plan_diff,
-    CompileTrigger,
-    ConnectionPool,
-    InMemoryPool,
-    InvalidateReason,
-    PoolSendOutcome,
-    RelayAuthState,
-    SubscriptionLifecycle,
-    WireFrame,
+    plan_diff, CompileTrigger, ConnectionPool, InMemoryPool, InvalidateReason, PoolSendOutcome,
+    RelayAuthState, SubscriptionLifecycle, WireFrame,
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -60,7 +49,10 @@ fn interest(id: u64, authors: &[&str], lifecycle: InterestLifecycle) -> LogicalI
     }
 }
 
-fn mailboxes_for(authors: &[&str], write_relays: &[&str]) -> Vec<(String, nmp_core::planner::MailboxSnapshot)> {
+fn mailboxes_for(
+    authors: &[&str],
+    write_relays: &[&str],
+) -> Vec<(String, nmp_core::planner::MailboxSnapshot)> {
     use nmp_core::planner::MailboxSnapshot;
     authors
         .iter()
@@ -119,7 +111,10 @@ fn compile_plan_to_wire_frames_emits_one_req_per_sub_shape() {
     let frames: Vec<WireFrame> = plan_diff(None, Some(&plan), &interests);
 
     // Each SubShape becomes exactly one REQ frame (no CLOSEs because no prior plan).
-    let req_frames: Vec<_> = frames.iter().filter(|f| matches!(f, WireFrame::Req { .. })).collect();
+    let req_frames: Vec<_> = frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .collect();
     let close_frames: Vec<_> = frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Close { .. }))
@@ -137,7 +132,12 @@ fn compile_plan_to_wire_frames_emits_one_req_per_sub_shape() {
 
     // Each REQ frame is well-formed: ["REQ", sub_id, filter_json].
     for frame in &req_frames {
-        if let WireFrame::Req { sub_id, filter_json, .. } = frame {
+        if let WireFrame::Req {
+            sub_id,
+            filter_json,
+            ..
+        } = frame
+        {
             assert!(!sub_id.is_empty(), "sub_id non-empty");
             assert!(filter_json.starts_with('{'), "filter is a JSON object");
         }
@@ -172,11 +172,23 @@ fn plan_diff_closes_removed_subs_and_opens_added_subs() {
     let diff = plan_diff(Some(&plan_a), Some(&plan_b), &interests_b);
 
     // Expect at least one CLOSE (bob's sub) and at least one REQ (carol's sub).
-    let close_count = diff.iter().filter(|f| matches!(f, WireFrame::Close { .. })).count();
-    let req_count = diff.iter().filter(|f| matches!(f, WireFrame::Req { .. })).count();
+    let close_count = diff
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Close { .. }))
+        .count();
+    let req_count = diff
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .count();
 
-    assert!(close_count >= 1, "removed sub-shape produces CLOSE (got {close_count})");
-    assert!(req_count >= 1, "added sub-shape produces REQ (got {req_count})");
+    assert!(
+        close_count >= 1,
+        "removed sub-shape produces CLOSE (got {close_count})"
+    );
+    assert!(
+        req_count >= 1,
+        "added sub-shape produces REQ (got {req_count})"
+    );
 
     // Idempotence: diff(B, B) is empty.
     let noop = plan_diff(Some(&plan_b), Some(&plan_b), &interests_b);
@@ -209,7 +221,10 @@ fn reconnect_replays_current_plan_without_recompile() {
         baseline_compile_count,
         "reconnect must not invoke planner",
     );
-    let req_frames: Vec<_> = replay.iter().filter(|f| matches!(f, WireFrame::Req { .. })).collect();
+    let req_frames: Vec<_> = replay
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .collect();
     assert!(!req_frames.is_empty(), "reconnect replays at least one REQ");
     // All replay frames target the reconnected relay.
     for frame in &replay {
@@ -224,7 +239,9 @@ fn reconnect_replays_current_plan_without_recompile() {
 #[test]
 fn trigger_inbox_coalesces_within_one_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.registry_mut().push(interest(1, &["alice"], InterestLifecycle::Tailing));
+    lifecycle
+        .registry_mut()
+        .push(interest(1, &["alice"], InterestLifecycle::Tailing));
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     let baseline = lifecycle.compile_count();
@@ -272,7 +289,11 @@ fn send_path_defers_outbound_when_pool_disconnected() {
     // Connect the relay; drained queue produces sent count = 1.
     pool.mark_connected("wss://relay.damus.io");
     let drained = pool.drain_deferred("wss://relay.damus.io");
-    assert_eq!(drained.len(), 1, "reconnect drains exactly the deferred frame");
+    assert_eq!(
+        drained.len(),
+        1,
+        "reconnect drains exactly the deferred frame"
+    );
 
     // Now a normal send goes through immediately.
     let outcome = pool.send("wss://relay.damus.io", "[\"REQ\",\"y\",{}]".to_string());
@@ -287,7 +308,9 @@ fn send_path_defers_outbound_when_pool_disconnected() {
 #[test]
 fn auth_paused_relay_holds_reqs_until_authenticated() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.registry_mut().push(interest(1, &["alice"], InterestLifecycle::Tailing));
+    lifecycle
+        .registry_mut()
+        .push(interest(1, &["alice"], InterestLifecycle::Tailing));
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     // Auth challenge arrives BEFORE the first compile.
@@ -298,9 +321,7 @@ fn auth_paused_relay_holds_reqs_until_authenticated() {
     let _drain = lifecycle.drain_tick(&mailboxes);
 
     // Now compile — REQs that would target the paused relay must be withheld.
-    let frames_during_pause = lifecycle
-        .recompile_and_diff(&mailboxes)
-        .expect("compile");
+    let frames_during_pause = lifecycle.recompile_and_diff(&mailboxes).expect("compile");
     let reqs_to_paused: Vec<_> = frames_during_pause
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://relay.damus.io"))

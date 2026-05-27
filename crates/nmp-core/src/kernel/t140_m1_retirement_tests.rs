@@ -187,8 +187,7 @@ fn m2_follow_feed_sub_survives_eose() {
         RelayFrame::Text(eose),
     );
 
-    let state =
-        kernel.wire_sub_state_for_test_on_relay("wss://alice-t140.relay/", &sub_id);
+    let state = kernel.wire_sub_state_for_test_on_relay("wss://alice-t140.relay/", &sub_id);
     assert_eq!(
         state.as_deref(),
         Some("live"),
@@ -341,10 +340,12 @@ fn empty_kind_10002_emits_nip65_arrived() {
     // The empty kind:10002 must have enqueued Nip65Arrived → this drain
     // recompiles. The stale-relay sub must be CLOSEd (re-routed off stale).
     let after = kernel.drain_lifecycle_tick();
-    let closed_stale = after.iter().any(|f| matches!(
-        f,
-        WireFrame::Close { relay_url, .. } if relay_url == "wss://stale.relay/"
-    ));
+    let closed_stale = after.iter().any(|f| {
+        matches!(
+            f,
+            WireFrame::Close { relay_url, .. } if relay_url == "wss://stale.relay/"
+        )
+    });
     assert!(
         closed_stale,
         "T140: empty kind:10002 must enqueue Nip65Arrived so the next drain \

@@ -4,7 +4,7 @@
 //! glue** that drives the driver, dispatches the signer, and reflects state
 //! into `RelayHealth`.
 
-use super::super::{RelayRole, OutboundMessage, Kernel, Arc};
+use super::super::{Arc, Kernel, OutboundMessage, RelayRole};
 use crate::subs::RelayAuthState;
 use serde_json::{json, Value};
 use std::time::UNIX_EPOCH;
@@ -138,12 +138,8 @@ impl Kernel {
         // T125: stamp the delivering relay's URL on the kind:22242 `relay` tag,
         // not the lane's bootstrap URL. NIP-42 binds the AUTH event to the URL
         // of the relay that issued the challenge (replay protection).
-        let unsigned = build_auth_event(
-            active_pubkey,
-            delivering_relay_url,
-            &challenge,
-            created_at,
-        );
+        let unsigned =
+            build_auth_event(active_pubkey, delivering_relay_url, &challenge, created_at);
         match signer(&unsigned) {
             Ok(signed) => {
                 // Structural-validation guard against buggy/malicious signers

@@ -89,11 +89,7 @@ fn build_kind1(content: &str) -> (String, String, String) {
     let event = EventBuilder::text_note(content)
         .sign_with_keys(&keys)
         .expect("sign kind:1");
-    (
-        event.id.to_hex(),
-        event.pubkey.to_hex(),
-        event.as_json(),
-    )
+    (event.id.to_hex(), event.pubkey.to_hex(), event.as_json())
 }
 
 /// Spec §5 scenario 1: publish a kind:1 via real socket, REQ it back, assert
@@ -135,9 +131,7 @@ fn damus_round_trip_kind1() {
         "[\"REQ\",\"{}\",{{\"ids\":[\"{}\"],\"authors\":[\"{}\"]}}]",
         req_id, event_id, author_hex
     );
-    socket
-        .send(Message::Text(req))
-        .expect("send REQ frame");
+    socket.send(Message::Text(req)).expect("send REQ frame");
 
     let deadline = Instant::now() + ROUND_TRIP_BUDGET;
     let mut seen_ok = false;
@@ -152,7 +146,10 @@ fn damus_round_trip_kind1() {
                     } else {
                         panic!("relay rejected the publish: {}", text);
                     }
-                } else if text.contains("\"EVENT\"") && text.contains(&req_id) && text.contains(&nonce) {
+                } else if text.contains("\"EVENT\"")
+                    && text.contains(&req_id)
+                    && text.contains(&nonce)
+                {
                     seen_event = true;
                 }
             }
@@ -171,7 +168,10 @@ fn damus_round_trip_kind1() {
 
     let _ = socket.close(None);
 
-    assert!(seen_ok, "did not observe OK frame for published event within budget");
+    assert!(
+        seen_ok,
+        "did not observe OK frame for published event within budget"
+    );
     assert!(
         seen_event,
         "did not observe EVENT frame round-trip via REQ within budget"

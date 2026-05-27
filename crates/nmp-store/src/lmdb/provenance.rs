@@ -9,8 +9,8 @@
 //! Encoding: serde_json (the existing dump path already serializes via JSON;
 //! provenance is small, no hot-path concern at this scope).
 
-use heed::{Database, RoTxn, RwTxn};
 use heed::types::Bytes;
+use heed::{Database, RoTxn, RwTxn};
 
 use crate::types::{EventId, ProvenanceEntry, RelayUrl};
 use crate::StoreError;
@@ -53,7 +53,10 @@ pub(super) fn read(
     txn: &RoTxn,
     id: &EventId,
 ) -> Result<Vec<ProvenanceEntry>, StoreError> {
-    match db.get(txn, id).map_err(|e| StoreError::Io(format!("prov get: {e}")))? {
+    match db
+        .get(txn, id)
+        .map_err(|e| StoreError::Io(format!("prov get: {e}")))?
+    {
         Some(bytes) => decode(bytes),
         None => Ok(Vec::new()),
     }
@@ -67,8 +70,7 @@ fn decode(bytes: &[u8]) -> Result<Vec<ProvenanceEntry>, StoreError> {
 
 fn encode(entries: &[ProvenanceEntry]) -> Result<Vec<u8>, StoreError> {
     let persisted: Vec<PersistEntry> = entries.iter().map(PersistEntry::from).collect();
-    serde_json::to_vec(&persisted)
-        .map_err(|e| StoreError::Encoding(format!("prov encode: {e}")))
+    serde_json::to_vec(&persisted).map_err(|e| StoreError::Encoding(format!("prov encode: {e}")))
 }
 
 /// Upsert a provenance entry. Mirrors `mem::upsert_provenance` semantics.
@@ -145,7 +147,10 @@ fn read_rw(
     txn: &RwTxn,
     id: &EventId,
 ) -> Result<Vec<ProvenanceEntry>, StoreError> {
-    match db.get(txn, id).map_err(|e| StoreError::Io(format!("prov get: {e}")))? {
+    match db
+        .get(txn, id)
+        .map_err(|e| StoreError::Io(format!("prov get: {e}")))?
+    {
         Some(bytes) => decode(bytes),
         None => Ok(Vec::new()),
     }

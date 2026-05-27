@@ -69,7 +69,10 @@ fn add_carol_to_group(
     add_pending.commit().expect("alice merges add commit");
 
     // Bob processes the add commit.
-    match bob.process_message(&add_event).expect("bob processes add commit") {
+    match bob
+        .process_message(&add_event)
+        .expect("bob processes add commit")
+    {
         MessageProcessingResult::Commit { .. } => {}
         other => panic!("expected Commit from add_members, got {other:?}"),
     }
@@ -83,15 +86,23 @@ fn add_carol_to_group(
         .expect("carol accepts welcome");
 
     // Carol post-join self_update (MIP-02). Bob and Alice both process it.
-    let carol_su = carol.self_update(group_id).expect("carol post-join self_update");
+    let carol_su = carol
+        .self_update(group_id)
+        .expect("carol post-join self_update");
     let carol_su_event = carol_su.evolution_event.clone();
     carol_su.commit().expect("carol merges su");
 
-    match alice.process_message(&carol_su_event).expect("alice processes carol su") {
+    match alice
+        .process_message(&carol_su_event)
+        .expect("alice processes carol su")
+    {
         MessageProcessingResult::Commit { .. } => {}
         other => panic!("alice: expected Commit from carol su, got {other:?}"),
     }
-    match bob.process_message(&carol_su_event).expect("bob processes carol su") {
+    match bob
+        .process_message(&carol_su_event)
+        .expect("bob processes carol su")
+    {
         MessageProcessingResult::Commit { .. } => {}
         other => panic!("bob: expected Commit from carol su, got {other:?}"),
     }
@@ -112,17 +123,16 @@ fn forward_secrecy_removed_member_cannot_decrypt() {
     let carol = harness::service_at(&carol_dir.db_path("carol"), carol_keys.clone());
 
     // ── Establish Alice + Bob group ───────────────────────────────────────────
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
-        "forward-secrecy",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "forward-secrecy");
 
     // ── Add Carol ─────────────────────────────────────────────────────────────
     add_carol_to_group(&alice, &alice_keys, &bob, &carol, &carol_keys, &group_id);
 
     // Verify Carol is in the member set before removal.
-    let before_removal = alice.get_members(&group_id).expect("members before removal");
+    let before_removal = alice
+        .get_members(&group_id)
+        .expect("members before removal");
     assert!(
         before_removal.contains(&carol_keys.public_key()),
         "Carol must be in group before removal"
@@ -161,8 +171,7 @@ fn forward_secrecy_removed_member_cannot_decrypt() {
 
     // ── Alice sends a message encrypted at the new (post-removal) epoch ───────
     let plaintext = "carol cannot read this";
-    let rumor = EventBuilder::new(Kind::TextNote, plaintext)
-        .build(alice_keys.public_key());
+    let rumor = EventBuilder::new(Kind::TextNote, plaintext).build(alice_keys.public_key());
     let msg_event = alice
         .create_message(&group_id, rumor)
         .expect("alice create_message post-removal");
@@ -211,6 +220,9 @@ fn forward_secrecy_removed_member_cannot_decrypt() {
 
     // ── Members after removal ─────────────────────────────────────────────────
     let after_removal = alice.get_members(&group_id).expect("members after removal");
-    assert!(!after_removal.contains(&carol_keys.public_key()), "Carol not in group");
+    assert!(
+        !after_removal.contains(&carol_keys.public_key()),
+        "Carol not in group"
+    );
     assert_eq!(after_removal.len(), 2, "2 members after removal");
 }
