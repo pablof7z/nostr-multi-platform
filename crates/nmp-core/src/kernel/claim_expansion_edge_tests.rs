@@ -11,7 +11,9 @@ mod edge_tests {
 
     use crate::kernel::claim_expansion::Phase;
     use crate::kernel::Kernel;
+    use crate::planner::{InterestId, InterestLifecycle};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use crate::subs::WireFrame;
 
     fn hex(byte: &str) -> String {
         byte.repeat(32)
@@ -19,6 +21,30 @@ mod edge_tests {
 
     fn event_id(byte: &str) -> String {
         byte.repeat(32)
+    }
+
+    fn register_claim_wire_sub(
+        kernel: &mut Kernel,
+        primary_id: &str,
+        author: &str,
+        relay_url: &str,
+        sub_id: &str,
+        interest_id: InterestId,
+    ) {
+        kernel.register_claim_expansion(
+            primary_id.to_string(),
+            Some(interest_id.clone()),
+            Some(author.to_string()),
+            vec![relay_url.to_string()],
+            Instant::now(),
+        );
+        kernel.register_wire_frames_for_test(&[WireFrame::Req {
+            relay_url: relay_url.to_string(),
+            sub_id: sub_id.to_string(),
+            filter_json: r#"{"ids":["claim"]}"#.to_string(),
+            interest_id,
+            lifecycle: InterestLifecycle::OneShot,
+        }]);
     }
 
     // ── T9: Phase-1 hit same tick as budget does not emit Phase 2 ─────────
@@ -127,8 +153,6 @@ mod edge_tests {
 
     #[test]
     fn relay_failed_records_failed_outcome_for_each_claim_that_attempted_the_relay() {
-        use crate::kernel::relay_score::ClaimOutcome;
-
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let author = hex("a9");
         let relay_url = "wss://failing.relay.test";
@@ -175,7 +199,35 @@ mod edge_tests {
         );
     }
 
-    // ── T13: register_claim_expansion dedup (same primary_id twice) ───────
+    // ── T13: relay_failed uses canonical attempted relay spelling ───────────
+
+    #[test]
+    fn relay_failed_matches_canonical_attempted_relay_url() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let author = hex("aa");
+        let primary_id = event_id("bb");
+        let relay_hint = "wss://canonical-failing.test/";
+        let relay_failed_url = "wss://canonical-failing.test";
+
+        kernel.register_claim_expansion(
+            primary_id,
+            None,
+            Some(author.clone()),
+            vec![relay_hint.to_string()],
+            Instant::now() - Duration::from_millis(1600),
+        );
+        let _msgs = kernel.poll_claim_expansion(Instant::now());
+
+        kernel.relay_failed_claim_walk(relay_failed_url);
+
+        assert_eq!(
+            kernel.get_relay_score(&author, relay_failed_url).failures,
+            3,
+            "relay_failed must match an attempted relay after canonicalization"
+        );
+    }
+
+    // ── T14: register_claim_expansion dedup (same primary_id twice) ───────
 
     #[test]
     fn register_claim_expansion_duplicate_primary_id_is_noop() {
@@ -206,5 +258,62 @@ mod edge_tests {
             count_before, count_after,
             "duplicate registration must be a no-op (D6)"
         );
+    }
+
+    // ── T15: live EOSE seam frees the Phase-2 slot ──────────────────────────
+
+    #[test]
+    fn live_eose_no_match_frees_phase2_slot() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let primary_id = event_id("ab");
+        let author = hex("cd");
+        let relay_url = "wss://eose-live.test";
+        let sub_id = "sub-claim-eose-live";
+
+        register_claim_wire_sub(
+            &mut kernel,
+            &primary_id,
+            &author,
+            relay_url,
+            sub_id,
+            InterestId(70914),
+        );
+        assert_eq!(kernel.test_claim_in_flight_count(&primary_id), 1);
+
+        kernel.record_claim_expansion_eose_no_match(sub_id, relay_url);
+
+        assert_eq!(
+            kernel.test_claim_in_flight_count(&primary_id),
+            0,
+            "live W3 EOSE hook must free the W5 Phase-2 slot"
+        );
+    }
+
+    // ── T16: live hit seam terminates the pending claim ─────────────────────
+
+    #[test]
+    fn live_hit_terminates_pending_claim() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let primary_id = event_id("bc");
+        let author = hex("de");
+        let relay_url = "wss://hit-live.test";
+        let sub_id = "sub-claim-hit-live";
+
+        register_claim_wire_sub(
+            &mut kernel,
+            &primary_id,
+            &author,
+            relay_url,
+            sub_id,
+            InterestId(70915),
+        );
+
+        kernel.record_claim_expansion_hit(sub_id, relay_url, &author);
+
+        assert!(
+            kernel.test_claim_phase(&primary_id).is_none(),
+            "live W3 HIT hook must terminate and prune the W5 claim"
+        );
+        assert_eq!(kernel.get_relay_score(&author, relay_url).successes, 1);
     }
 }

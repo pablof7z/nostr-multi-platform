@@ -43,6 +43,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::time::Instant;
 
 use crate::planner::{InterestId, InterestShape};
+use crate::relay::CanonicalRelayUrl;
 
 use super::{relay_score::ClaimOutcome, wire_log, Kernel, OutboundMessage};
 
@@ -123,7 +124,10 @@ impl PendingClaim {
     ) -> Self {
         // Build initial candidate queue from provided hints (URI relay hints
         // from the nevent TLV per §7.3).
-        let candidate_queue: VecDeque<String> = initial_hints.into_iter().collect();
+        let candidate_queue: VecDeque<String> = initial_hints
+            .into_iter()
+            .map(|url| canonical_url(&url))
+            .collect();
         Self {
             interest_id,
             primary_id,
@@ -296,9 +300,8 @@ impl Kernel {
             self.terminate_claim(iid, reason);
         }
 
-        // Prune terminal entries
-        self.pending_claims
-            .retain(|_, c| !matches!(c.phase, Phase::Terminal(_)));
+        // Prune terminal entries and their reverse-index rows.
+        self.prune_terminal_claims();
 
         Vec::new()
     }
@@ -317,8 +320,16 @@ impl Kernel {
             return;
         };
         self.terminate_claim(iid, ClaimTermination::Hit);
-        self.pending_claims
-            .retain(|_, c| !matches!(c.phase, Phase::Terminal(_)));
+        self.prune_terminal_claims();
+    }
+
+    /// Handle a matching EVENT on a claim-expansion wire sub.
+    pub(crate) fn on_claim_outcome_hit_for_sub(&mut self, sub_id: &str) {
+        let Some(iid) = self.claim_sub_index.get(sub_id).cloned() else {
+            return;
+        };
+        self.terminate_claim(iid, ClaimTermination::Hit);
+        self.prune_terminal_claims();
     }
 
     /// Handle an EOSE-without-match on a claim-expansion sub.
@@ -330,12 +341,13 @@ impl Kernel {
         let Some(iid) = self.claim_sub_index.get(sub_id).cloned() else {
             return;
         };
+        self.claim_sub_index.remove(sub_id);
         let Some(claim) = self.pending_claims.get_mut(&iid) else {
             return;
         };
 
         claim.in_flight_subs.remove(sub_id);
-        let relay_url = relay_url.to_string();
+        let relay_url = canonical_url(relay_url);
         claim.attempted.insert(relay_url.clone());
 
         wire_log::log_wire(wire_log::WireLogEvent::EoseRx {
@@ -348,9 +360,7 @@ impl Kernel {
     /// Walk pending claims and record a `Failed` outcome for any claim that
     /// attempted the given relay URL. Called from `relay_lifecycle.rs::relay_failed`.
     pub(crate) fn relay_failed_claim_walk(&mut self, relay_url: &str) {
-        use crate::relay::CanonicalRelayUrl;
-        let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
-        let canonical_str = canonical.as_str().to_string();
+        let canonical_str = canonical_url(relay_url);
 
         // Collect (author, relay) pairs to score — can't call record_claim_outcome
         // inside the mutable borrow of pending_claims.
@@ -382,6 +392,7 @@ impl Kernel {
             .find(|c| c.primary_id == primary_id)
             .map(|c| c.interest_id.clone());
         if let Some(iid) = maybe_iid {
+            self.remove_claim_sub_index(&iid);
             self.pending_claims.remove(&iid);
         }
     }
@@ -395,4 +406,25 @@ impl Kernel {
         claim.author.clone()
     }
 
+    fn prune_terminal_claims(&mut self) {
+        let terminal_ids: Vec<InterestId> = self
+            .pending_claims
+            .iter()
+            .filter(|(_, claim)| matches!(claim.phase, Phase::Terminal(_)))
+            .map(|(iid, _)| iid.clone())
+            .collect();
+        for iid in terminal_ids {
+            self.remove_claim_sub_index(&iid);
+            self.pending_claims.remove(&iid);
+        }
+    }
+
+    fn remove_claim_sub_index(&mut self, iid: &InterestId) {
+        self.claim_sub_index
+            .retain(|_, mapped_iid| mapped_iid != iid);
+    }
+}
+
+fn canonical_url(relay_url: &str) -> String {
+    CanonicalRelayUrl::parse_or_raw(relay_url).into_string()
 }

@@ -6,12 +6,11 @@
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
     use std::time::{Duration, Instant};
 
     use crate::kernel::claim_expansion::Phase;
     use crate::kernel::Kernel;
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -23,17 +22,6 @@ mod tests {
     /// A valid 64-char event-id hex string.
     fn event_id(byte: &str) -> String {
         byte.repeat(32)
-    }
-
-    /// Register a single `nevent`-style claim (no author TLV).
-    fn register_nevent_claim(k: &mut Kernel, primary_id: &str, author: Option<&str>) {
-        k.register_claim_expansion(
-            primary_id.to_string(),
-            None, // interest_id resolved by test
-            author.map(|a| a.to_string()),
-            vec![],
-            Instant::now(),
-        );
     }
 
     /// Register a claim with a specific author.

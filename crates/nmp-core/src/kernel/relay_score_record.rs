@@ -77,6 +77,7 @@ impl Kernel {
     ) {
         self.record_claim_outcome(author, relay_url, ClaimOutcome::Hit);
         self.mark_claim_expansion_match_seen(sub_id, relay_url);
+        self.on_claim_outcome_hit_for_sub(sub_id);
     }
 
     /// Record EOSE-without-match only if no accepted matching EVENT was seen
@@ -92,6 +93,7 @@ impl Kernel {
         if let Some(author) = self.lookup_claim_expansion_author(sub_id) {
             self.record_claim_outcome(&author, relay_url, ClaimOutcome::EoseNoMatch);
         }
+        self.on_claim_outcome_eose_no_match(sub_id, relay_url);
     }
 
     /// Returns the author pubkey for a claim-expansion subscription, if any.
@@ -406,7 +408,7 @@ mod tests {
     }
 
     fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
-        use ::nostr::{EventBuilder, Timestamp};
+        use nostr::{EventBuilder, Timestamp};
         let nostr_event = EventBuilder::text_note(content)
             .custom_created_at(Timestamp::from(ts))
             .sign_with_keys(keys)
