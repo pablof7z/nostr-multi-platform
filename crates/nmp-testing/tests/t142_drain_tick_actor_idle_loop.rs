@@ -22,10 +22,16 @@ use nmp_core::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
 };
-use nmp_core::subs::{AccountId, CompileTrigger, InvalidateReason, SubscriptionLifecycle, WireFrame};
+use nmp_core::subs::{
+    AccountId, CompileTrigger, InvalidateReason, SubscriptionLifecycle, WireFrame,
+};
 
 fn pubkey(s: &str) -> String {
-    format!("{s:0>64}").chars().take(64).collect::<String>().to_lowercase()
+    format!("{s:0>64}")
+        .chars()
+        .take(64)
+        .collect::<String>()
+        .to_lowercase()
 }
 
 fn interest_for(id: u64, author: &str) -> LogicalInterest {
@@ -77,7 +83,10 @@ fn t142_actor_idle_loop_drains_tick() {
     // This is the call the actor's idle loop makes (via drain_lifecycle_tick on Kernel).
     let frames = lifecycle.drain_tick(&mailboxes);
 
-    let req_count = frames.iter().filter(|f| matches!(f, WireFrame::Req { .. })).count();
+    let req_count = frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .count();
     assert!(
         req_count > 0,
         "queued trigger with registered interests must produce REQ frames (got {req_count})",

@@ -19,13 +19,7 @@ use crate::relay::{BOOTSTRAP_DISCOVERY_RELAYS, DEFAULT_VISIBLE_LIMIT};
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-fn install_relay_list(
-    kernel: &Kernel,
-    author: &str,
-    write: &[&str],
-    read: &[&str],
-    both: &[&str],
-) {
+fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str], read: &[&str], both: &[&str]) {
     kernel.seed_mailbox_relay_list(
         author,
         read.iter().map(|s| s.to_string()).collect(),
@@ -102,8 +96,7 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
 
     // (2) Alice's and Bob's resolved write relays both appear; the shared
     // (both-marker) relay also appears.
-    let urls: std::collections::BTreeSet<String> =
-        reqs.iter().map(|(u, _)| (*u).clone()).collect();
+    let urls: std::collections::BTreeSet<String> = reqs.iter().map(|(u, _)| (*u).clone()).collect();
     assert!(
         urls.contains("wss://alice.relay/"),
         "alice's write relay must be a routing target, got {urls:?}"
@@ -364,11 +357,7 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
     // Seed the kernel's events cache so `partition_ids_by_author_write_relays`
     // can resolve each id to its author. The `relay_count`/`created_at`
     // fields are immaterial to the routing decision — only `author` is read.
-    for (id, author) in [
-        (&id_a, ALICE),
-        (&id_b, BOB),
-        (&id_c, CHARLIE),
-    ] {
+    for (id, author) in [(&id_a, ALICE), (&id_b, BOB), (&id_c, CHARLIE)] {
         kernel.events.insert(
             id.clone(),
             StoredEvent {
@@ -435,13 +424,11 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
         );
     }
     // No unexpected leakage onto other resolved relays.
-    let expected: std::collections::BTreeSet<String> = [
-        "wss://relay1/".to_string(),
-        "wss://relay2/".to_string(),
-    ]
-    .into_iter()
-    .chain(BOOTSTRAP_DISCOVERY_RELAYS.iter().map(|s| s.to_string()))
-    .collect();
+    let expected: std::collections::BTreeSet<String> =
+        ["wss://relay1/".to_string(), "wss://relay2/".to_string()]
+            .into_iter()
+            .chain(BOOTSTRAP_DISCOVERY_RELAYS.iter().map(|s| s.to_string()))
+            .collect();
     assert_eq!(
         urls, expected,
         "hydration URL set must be exactly the resolved write relays plus \
@@ -566,7 +553,6 @@ fn hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap() {
          must NOT be a routing target, got urls = {urls:?}"
     );
 }
-
 
 // ─── T130 — deferred queue preserves per-URL routing on drain ────────────────
 

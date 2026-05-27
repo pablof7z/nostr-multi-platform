@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use super::{bytes_to_hex, upsert_provenance, MemEventStore, MemState};
 use crate::types::{
-    DeleteFilter, InsertOutcome, RawEvent, RejectReason, RelayUrl, StoredEvent,
-    TombstoneOrigin, TombstoneRow,
+    DeleteFilter, InsertOutcome, RawEvent, RejectReason, RelayUrl, StoredEvent, TombstoneOrigin,
+    TombstoneRow,
 };
 use crate::StoreError;
 
@@ -35,7 +35,9 @@ pub(super) fn insert(
 
     // 2. Ephemeral: deliver to live consumers, do not store.
     if event.is_ephemeral() {
-        return Ok(InsertOutcome::Ephemeral { id: event.id_bytes() });
+        return Ok(InsertOutcome::Ephemeral {
+            id: event.id_bytes(),
+        });
     }
 
     // 3. Check NIP-40 expiration on arrival.
@@ -103,15 +105,28 @@ pub(super) fn insert(
     // 7. Replaceable supersession.
     if event.is_replaceable() {
         let key = (event.pubkey.clone(), event.kind, None::<String>);
-        return Ok(handle_supersession(&mut st, event, source, received_at_ms, key));
+        return Ok(handle_supersession(
+            &mut st,
+            event,
+            source,
+            received_at_ms,
+            key,
+        ));
     }
 
     // 8. Parameterized replaceable.
     if event.is_param_replaceable() {
-        let d = event.d_tag()
+        let d = event
+            .d_tag()
             .map(|b| String::from_utf8_lossy(&b).into_owned());
         let key = (event.pubkey.clone(), event.kind, d);
-        return Ok(handle_supersession(&mut st, event, source, received_at_ms, key));
+        return Ok(handle_supersession(
+            &mut st,
+            event,
+            source,
+            received_at_ms,
+            key,
+        ));
     }
 
     // 9. Normal insert / duplicate.
@@ -181,7 +196,10 @@ fn handle_supersession(
     if st.events.contains_key(&id_hex) {
         let p = st.provenance.entry(id_hex).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
-        return InsertOutcome::Duplicate { id: id_bytes, sources_after: p.len() as u32 };
+        return InsertOutcome::Duplicate {
+            id: id_bytes,
+            sources_after: p.len() as u32,
+        };
     }
 
     let existing_id: Option<String> = st
@@ -192,12 +210,15 @@ fn handle_supersession(
                 && ev.raw.kind == kind
                 && match &d_tag_filter {
                     None => true,
-                    Some(d) => ev.raw.d_tag()
+                    Some(d) => ev
+                        .raw
+                        .d_tag()
                         .is_some_and(|tag| String::from_utf8_lossy(&tag).into_owned() == *d),
                 }
         })
         .max_by(|(_, a), (_, b)| {
-            a.raw.created_at
+            a.raw
+                .created_at
                 .cmp(&b.raw.created_at)
                 .then(b.raw.id.cmp(&a.raw.id))
         })
@@ -215,18 +236,39 @@ fn handle_supersession(
             st.events.remove(existing_hex);
             st.provenance.remove(existing_hex);
             let new_id = id_bytes;
-            st.events.insert(id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
+            st.events.insert(
+                id_hex.clone(),
+                StoredEvent {
+                    raw: Arc::new(event),
+                    received_at_ms,
+                },
+            );
             let p = st.provenance.entry(id_hex).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
-            InsertOutcome::Replaced { new_id, replaced_id }
+            InsertOutcome::Replaced {
+                new_id,
+                replaced_id,
+            }
         } else {
-            InsertOutcome::Superseded { id: id_bytes, current_id: hex_to_bytes32_owned(existing_hex) }
+            InsertOutcome::Superseded {
+                id: id_bytes,
+                current_id: hex_to_bytes32_owned(existing_hex),
+            }
         }
     } else {
-        st.events.insert(id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
+        st.events.insert(
+            id_hex.clone(),
+            StoredEvent {
+                raw: Arc::new(event),
+                received_at_ms,
+            },
+        );
         let p = st.provenance.entry(id_hex).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
-        InsertOutcome::Inserted { id: id_bytes, sources_after: p.len() as u32 }
+        InsertOutcome::Inserted {
+            id: id_bytes,
+            sources_after: p.len() as u32,
+        }
     }
 }
 
@@ -242,13 +284,25 @@ fn handle_normal_insert(
     if st.events.contains_key(&id_hex) {
         let p = st.provenance.entry(id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
-        return InsertOutcome::Duplicate { id: id_bytes, sources_after: p.len() as u32 };
+        return InsertOutcome::Duplicate {
+            id: id_bytes,
+            sources_after: p.len() as u32,
+        };
     }
 
-    st.events.insert(id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
+    st.events.insert(
+        id_hex.clone(),
+        StoredEvent {
+            raw: Arc::new(event),
+            received_at_ms,
+        },
+    );
     let p = st.provenance.entry(id_hex).or_default();
     upsert_provenance(p, source.clone(), received_at_ms);
-    InsertOutcome::Inserted { id: id_bytes, sources_after: p.len() as u32 }
+    InsertOutcome::Inserted {
+        id: id_bytes,
+        sources_after: p.len() as u32,
+    }
 }
 
 fn handle_kind5_insert(
@@ -265,30 +319,52 @@ fn handle_kind5_insert(
     // Process `e`-tag deletes (self-deletes only).
     for target_hex in event.e_tags() {
         if let Some(existing) = st.events.get(&target_hex) {
-            if existing.raw.pubkey != kind5_pubkey { continue; }
+            if existing.raw.pubkey != kind5_pubkey {
+                continue;
+            }
             let target_id = existing.raw.id_bytes();
             st.events.remove(&target_hex);
             st.provenance.remove(&target_hex);
-            merge_tombstone(&mut st.tombstones, target_hex, kind5_tomb(target_id, kind5_id_bytes, &kind5_pubkey, kind5_at, source));
+            merge_tombstone(
+                &mut st.tombstones,
+                target_hex,
+                kind5_tomb(target_id, kind5_id_bytes, &kind5_pubkey, kind5_at, source),
+            );
         } else {
             let target_id = hex_to_bytes32_owned(&target_hex);
-            merge_tombstone(&mut st.tombstones, target_hex, kind5_tomb(target_id, kind5_id_bytes, &kind5_pubkey, kind5_at, source));
+            merge_tombstone(
+                &mut st.tombstones,
+                target_hex,
+                kind5_tomb(target_id, kind5_id_bytes, &kind5_pubkey, kind5_at, source),
+            );
         }
     }
 
     // Process `a`-tag deletes (parameterized replaceables, self-delete only).
     for addr in event.a_tags() {
         let parts: Vec<&str> = addr.splitn(3, ':').collect();
-        if parts.len() < 3 { continue; }
+        if parts.len() < 3 {
+            continue;
+        }
         let (tgt_kind_str, tgt_pk, tgt_dtag) = (parts[0], parts[1], parts[2]);
-        if tgt_pk != kind5_pubkey { continue; }
-        let Ok(tgt_kind) = tgt_kind_str.parse::<u32>() else { continue };
+        if tgt_pk != kind5_pubkey {
+            continue;
+        }
+        let Ok(tgt_kind) = tgt_kind_str.parse::<u32>() else {
+            continue;
+        };
         let addr_key = format!("{tgt_kind_str}:{tgt_pk}:{tgt_dtag}");
 
-        let to_delete: Vec<String> = st.events.iter()
+        let to_delete: Vec<String> = st
+            .events
+            .iter()
             .filter(|(_, ev)| {
-                ev.raw.pubkey == tgt_pk && ev.raw.kind == tgt_kind
-                    && ev.raw.d_tag().is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == tgt_dtag)
+                ev.raw.pubkey == tgt_pk
+                    && ev.raw.kind == tgt_kind
+                    && ev
+                        .raw
+                        .d_tag()
+                        .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == tgt_dtag)
                     && ev.raw.created_at <= kind5_at
             })
             .map(|(id, _)| id.clone())
@@ -297,18 +373,41 @@ fn handle_kind5_insert(
         for target_hex in to_delete {
             if let Some(existing) = st.events.remove(&target_hex) {
                 st.provenance.remove(&target_hex);
-                merge_tombstone(&mut st.tombstones, target_hex, kind5_tomb(existing.raw.id_bytes(), kind5_id_bytes, &kind5_pubkey, kind5_at, source));
+                merge_tombstone(
+                    &mut st.tombstones,
+                    target_hex,
+                    kind5_tomb(
+                        existing.raw.id_bytes(),
+                        kind5_id_bytes,
+                        &kind5_pubkey,
+                        kind5_at,
+                        source,
+                    ),
+                );
             }
         }
         // Address tombstone for events arriving later (max-merge).
-        merge_tombstone(&mut st.addr_tombstones, addr_key, kind5_tomb([0u8; 32], kind5_id_bytes, &kind5_pubkey, kind5_at, source));
+        merge_tombstone(
+            &mut st.addr_tombstones,
+            addr_key,
+            kind5_tomb([0u8; 32], kind5_id_bytes, &kind5_pubkey, kind5_at, source),
+        );
     }
 
     // Store the kind:5 event itself.
-    st.events.insert(kind5_id_hex.clone(), StoredEvent { raw: Arc::new(event), received_at_ms });
+    st.events.insert(
+        kind5_id_hex.clone(),
+        StoredEvent {
+            raw: Arc::new(event),
+            received_at_ms,
+        },
+    );
     let p = st.provenance.entry(kind5_id_hex).or_default();
     upsert_provenance(p, source.clone(), received_at_ms);
-    InsertOutcome::Inserted { id: kind5_id_bytes, sources_after: p.len() as u32 }
+    InsertOutcome::Inserted {
+        id: kind5_id_bytes,
+        sources_after: p.len() as u32,
+    }
 }
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
@@ -345,7 +444,9 @@ fn merge_tombstone(map: &mut HashMap<String, TombstoneRow>, key: String, incomin
                 }
             }
         }
-        None => { map.insert(key, incoming); }
+        None => {
+            map.insert(key, incoming);
+        }
     }
 }
 

@@ -220,7 +220,9 @@ impl ActionLifecycleTracker {
     fn prune_expired(&mut self, now_ms: u64) {
         let mut drop_ids: Vec<String> = Vec::new();
         for (cid, t) in &self.entries {
-            if t.stage.is_terminal() && now_ms >= t.latest_at_ms.saturating_add(RECENT_TERMINAL_TTL_MS) {
+            if t.stage.is_terminal()
+                && now_ms >= t.latest_at_ms.saturating_add(RECENT_TERMINAL_TTL_MS)
+            {
                 drop_ids.push(cid.clone());
             }
         }

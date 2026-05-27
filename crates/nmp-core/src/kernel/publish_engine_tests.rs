@@ -100,18 +100,25 @@ fn t117_successful_multi_relay_publish_lands_in_engine_recent_ok() {
     // (T-publish-resolver-indexer: no fallback; without this seed the engine
     // would return NoTargets and emit 0 frames.)
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "11".repeat(32).as_str(),
-        &author,
-        1,
-        "hello t117",
+    let signed = fake_signed("11".repeat(32).as_str(), &author, 1, "hello t117");
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        None,
+        1_000,
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 1_000);
     // Author has kind:10002 → resolver routes to declared write relays.
     let urls: std::collections::BTreeSet<String> =
         outbound.iter().map(|m| m.relay_url.clone()).collect();
-    assert!(urls.contains(WRITE_R1), "WRITE_R1 must be a routing target; urls={urls:?}");
-    assert!(urls.contains(WRITE_R2), "WRITE_R2 must be a routing target; urls={urls:?}");
+    assert!(
+        urls.contains(WRITE_R1),
+        "WRITE_R1 must be a routing target; urls={urls:?}"
+    );
+    assert!(
+        urls.contains(WRITE_R2),
+        "WRITE_R2 must be a routing target; urls={urls:?}"
+    );
     assert_eq!(outbound.len(), 2);
 
     // Per-relay state is now InFlight — feed OK acks in.
@@ -145,20 +152,19 @@ fn t117_auth_required_on_one_relay_reauths_and_other_unaffected() {
     let author = "44".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "33".repeat(32).as_str(),
-        &author,
-        1,
-        "auth-required test",
-    );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let signed = fake_signed("33".repeat(32).as_str(), &author, 1, "auth-required test");
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
     // r1: AUTH-REQUIRED on attempt 1 (no retry frames flushed yet — the
     // engine's Reauth verdict moves the row to RelayError + schedules
     // pending_retries[r1] = now (delay_ms = 0)).
-    let retry_now =
-        kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "auth-required: please AUTH"), 100);
+    let retry_now = kernel.handle_publish_ok_at(
+        WRITE_R1,
+        ok_payload(&signed.id, false, "auth-required: please AUTH"),
+        100,
+    );
     // Reauth's delay_ms = 0 means the very next dispatch_pending fires the
     // retry on the same on_ack call (apply_ack → dispatch on schedule). The
     // engine in `on_ack` runs `apply_verdict` but does NOT call
@@ -205,20 +211,20 @@ fn t117_transient_failure_retries_with_1s_4s_backoff_then_gives_up() {
     let author = "66".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed(
-        "55".repeat(32).as_str(),
-        &author,
-        1,
-        "transient test",
-    );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let signed = fake_signed("55".repeat(32).as_str(), &author, 1, "transient test");
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
     // r2: settle immediately so the engine isn't tracking it any more.
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 10);
 
     // r1 attempt 1 → io failure → schedule retry at now + 1s.
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: connection reset"), 100);
+    let _ = kernel.handle_publish_ok_at(
+        WRITE_R1,
+        ok_payload(&signed.id, false, "io: connection reset"),
+        100,
+    );
 
     // Tick at 1_500ms — past the 1s backoff (100 + 1_000 = 1_100). Engine
     // dispatches attempt 2.
@@ -236,7 +242,11 @@ fn t117_transient_failure_retries_with_1s_4s_backoff_then_gives_up() {
     assert_eq!(retry3[0].relay_url, WRITE_R1);
 
     // r1 attempt 3 → io failure → engine gives up (FailedAfterRetries).
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: still bad"), 6_100);
+    let _ = kernel.handle_publish_ok_at(
+        WRITE_R1,
+        ok_payload(&signed.id, false, "io: still bad"),
+        6_100,
+    );
     // Tick once more to flush — the give-up settles inside on_ack already,
     // so this is belt-and-braces.
     let _ = kernel.tick_publish_engine(30_000);
@@ -256,10 +266,7 @@ fn t117_transient_failure_retries_with_1s_4s_backoff_then_gives_up() {
     );
     // r2 settled cleanly.
     assert_eq!(snap.recent_ok.len(), 1);
-    assert!(snap.recent_ok[0]
-        .accepted_by
-        .iter()
-        .any(|r| r == WRITE_R2));
+    assert!(snap.recent_ok[0].accepted_by.iter().any(|r| r == WRITE_R2));
 }
 
 #[test]
@@ -271,22 +278,25 @@ fn t117_actor_restart_with_pending_resumes_from_pending_retries() {
     let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
 
     let author = "88".repeat(32);
-    let signed = fake_signed(
-        "77".repeat(32).as_str(),
-        &author,
-        1,
-        "restart test",
-    );
+    let signed = fake_signed("77".repeat(32).as_str(), &author, 1, "restart test");
 
     // Kernel A: drive a transient failure so pending_retries gets populated.
     {
-        let mut kernel_a = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+        let mut kernel_a =
+            Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
         seed_kind10002(&mut kernel_a, &author, &[WRITE_R1, WRITE_R2]);
-        let outbound = kernel_a.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+        let outbound = kernel_a.run_publish_engine_at(
+            &signed,
+            &[],
+            crate::publish::PublishTarget::Auto,
+            None,
+            0,
+        );
         assert_eq!(outbound.len(), 2);
         // r2 settles OK; r1 transient → pending_retries[r1] = 0 + 1_000 = 1_000.
         let _ = kernel_a.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 10);
-        let _ = kernel_a.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: down"), 100);
+        let _ =
+            kernel_a.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: down"), 100);
 
         // The store now has one durable row with pending_retries on r1.
         let pending = publish_store.load_pending().unwrap();
@@ -304,7 +314,8 @@ fn t117_actor_restart_with_pending_resumes_from_pending_retries() {
     // through `PublishEngine::resume_from_store`, which restores
     // pending_retries. With now far in the future, the retry fires
     // immediately and we feed OK to settle it.
-    let mut kernel_b = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+    let mut kernel_b =
+        Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
     let resumed = kernel_b.resume_publish_engine();
     // `resume_publish_engine` uses wall-clock now (`now_epoch_ms`); the
     // persisted deadline (1_000 ms epoch) is in the deep past so the retry
@@ -377,7 +388,8 @@ fn t127_quiet_socket_tick_progresses_pending_retry_without_inbound() {
         1,
         "quiet-socket tick test",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2, "two NIP-65 write relays expected");
 
     // r2 settles immediately so the engine isn't tracking it any more —
@@ -445,12 +457,7 @@ fn t127_start_path_drives_resume_publish_engine() {
     let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
 
     let author = "dd".repeat(32);
-    let signed = fake_signed(
-        "cc".repeat(32).as_str(),
-        &author,
-        1,
-        "boot-resume test",
-    );
+    let signed = fake_signed("cc".repeat(32).as_str(), &author, 1, "boot-resume test");
 
     // Kernel A: drive a transient failure so the durable store carries one
     // `pending_retries` row with a past-due deadline. Mirror of T117's
@@ -458,22 +465,35 @@ fn t127_start_path_drives_resume_publish_engine() {
     // **immediately** (the engine compares against wall-clock `now` and
     // the seeded deadline is 0).
     {
-        let mut kernel_a = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+        let mut kernel_a =
+            Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
         seed_kind10002(&mut kernel_a, &author, &[WRITE_R1, WRITE_R2]);
-        let outbound = kernel_a.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+        let outbound = kernel_a.run_publish_engine_at(
+            &signed,
+            &[],
+            crate::publish::PublishTarget::Auto,
+            None,
+            0,
+        );
         assert_eq!(outbound.len(), 2);
         let _ = kernel_a.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 10);
-        let _ = kernel_a.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: down"), 100);
+        let _ =
+            kernel_a.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: down"), 100);
 
         let pending = publish_store.load_pending().unwrap();
-        assert_eq!(pending.len(), 1, "store carries one durable row pre-restart");
+        assert_eq!(
+            pending.len(),
+            1,
+            "store carries one durable row pre-restart"
+        );
     }
 
     // Kernel B: this is exactly the state the actor's `Start` handler
     // produces — a fresh kernel sharing the same `Arc<dyn PublishStore>`.
     // The first `resume_publish_engine` call (which `Start` invokes once,
     // after `spawn_missing_relays`) must dispatch the due retry on r1.
-    let mut kernel_b = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
+    let mut kernel_b =
+        Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
     let resumed = kernel_b.resume_publish_engine();
     assert_eq!(
         resumed.len(),
@@ -496,7 +516,11 @@ fn t127_start_path_drives_resume_publish_engine() {
     // wiring's job, not the kernel's. Ack the dispatched retry so the
     // store clears and we exit clean — proves the resumed publish
     // completes end-to-end through the same path the actor drives.
-    let _ = kernel_b.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), now_ms_after_resume(&signed));
+    let _ = kernel_b.handle_publish_ok_at(
+        WRITE_R1,
+        ok_payload(&signed.id, true, ""),
+        now_ms_after_resume(&signed),
+    );
     let snap = kernel_b.publish_status_snapshot();
     assert_eq!(
         snap.recent_ok.len(),
@@ -561,8 +585,13 @@ fn pd025_finding5_quiet_period_retry_fires_on_actor_tick() {
     );
 
     // Step 1a: dispatch publish → two NIP-65 write relays.
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
-    assert_eq!(outbound.len(), 2, "publish dispatched to two NIP-65 write relays");
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    assert_eq!(
+        outbound.len(),
+        2,
+        "publish dispatched to two NIP-65 write relays"
+    );
 
     // Step 1b: r2 settles OK; r1 returns transient failure (io error).
     // After this ack r1's state is InFlight → RelayError + pending_retries[r1]
@@ -693,7 +722,8 @@ fn t_publish_resolver_unroutable_author_no_kind10002_produces_no_targets() {
         1,
         "unroutable author publish test",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert!(
         outbound.is_empty(),
         "author with no kind:10002 must produce zero outbound frames (NoTargets, fail-closed); \

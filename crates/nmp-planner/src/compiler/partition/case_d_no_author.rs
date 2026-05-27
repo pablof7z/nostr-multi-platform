@@ -32,11 +32,39 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::RelayEntry;
 use crate::{
     interest::{InterestShape, LogicalInterest, RelayUrl},
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use super::RelayEntry;
+
+/// Route no-author hints. Stacks with the normal Case D sources.
+pub(super) fn route_hints(
+    interest: &LogicalInterest,
+    base_shape: &InterestShape,
+    relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
+) {
+    let mut per_relay: BTreeMap<RelayUrl, BTreeSet<RoutingSource>> = BTreeMap::new();
+    for hint in &interest.hints {
+        let Some((relay_url, source)) = super::hint_helper::route_for_hint(hint) else {
+            continue;
+        };
+        per_relay.entry(relay_url).or_default().insert(source);
+    }
+    for (relay_url, sources) in per_relay {
+        relay_entries
+            .entry(relay_url)
+            .or_default()
+            .push(RelayEntry {
+                base_shape: base_shape.clone(),
+                authors_for_relay: BTreeSet::new(),
+                addresses_for_relay: BTreeSet::new(),
+                lifecycle: interest.lifecycle.clone(),
+                sources,
+                interest_id: interest.id.clone(),
+            });
+    }
+}
 
 /// Route a no-author/no-address/no-p interest to active-account ∪ `app_relays`.
 pub(super) fn route(
@@ -57,14 +85,18 @@ pub(super) fn route(
         per_relay
             .entry(relay.clone())
             .or_default()
-            .insert(RoutingSource::UserConfigured(UserConfiguredCategory::AccountRead));
+            .insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::AccountRead,
+            ));
     }
 
     for relay in app_relays {
         per_relay
             .entry(relay.clone())
             .or_default()
-            .insert(RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay));
+            .insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::AppRelay,
+            ));
     }
 
     // Cold-start indexer fallback: ONLY when both user-configured sources
@@ -76,31 +108,29 @@ pub(super) fn route(
             per_relay
                 .entry(relay.clone())
                 .or_default()
-                .insert(RoutingSource::UserConfigured(UserConfiguredCategory::Indexer));
+                .insert(RoutingSource::UserConfigured(
+                    UserConfiguredCategory::Indexer,
+                ));
         }
     }
 
     for (relay_url, sources) in per_relay {
-        relay_entries.entry(relay_url).or_default().push(RelayEntry {
-            base_shape: base_shape.clone(),
-            authors_for_relay: BTreeSet::new(),
-            addresses_for_relay: BTreeSet::new(),
-            lifecycle: interest.lifecycle.clone(),
-            sources,
-            interest_id: interest.id.clone(),
-        });
+        relay_entries
+            .entry(relay_url)
+            .or_default()
+            .push(RelayEntry {
+                base_shape: base_shape.clone(),
+                authors_for_relay: BTreeSet::new(),
+                addresses_for_relay: BTreeSet::new(),
+                lifecycle: interest.lifecycle.clone(),
+                sources,
+                interest_id: interest.id.clone(),
+            });
     }
 }
 
 /// PD-033-C planner extension: route a `OneShot + Global + event_ids` discovery
 /// interest to `bootstrap_content_relays`.
-///
-/// Mirrors `kernel/discovery.rs::drain_unknown_oneshots`'s events-oneshot arm
-/// which fans the equivalent `{ids: [...], limit: n}` filter to
-/// `RelayRole::Content`. The caller (`partition::partition_interest`) guarantees
-/// `bootstrap_content_relays` is non-empty, the interest's `lifecycle` is
-/// `OneShot`, its `scope` is `Global`, and `event_ids` is non-empty — gating is
-/// the dispatcher's responsibility so this helper stays focused on emission.
 ///
 /// All emitted entries are tagged
 /// `RoutingSource::UserConfigured(UserConfiguredCategory::Bootstrap)` — a
@@ -119,17 +149,22 @@ pub(super) fn route_bootstrap_content(
         per_relay
             .entry(relay.clone())
             .or_default()
-            .insert(RoutingSource::UserConfigured(UserConfiguredCategory::Bootstrap));
+            .insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::Bootstrap,
+            ));
     }
     for (relay_url, sources) in per_relay {
-        relay_entries.entry(relay_url).or_default().push(RelayEntry {
-            base_shape: base_shape.clone(),
-            authors_for_relay: BTreeSet::new(),
-            addresses_for_relay: BTreeSet::new(),
-            lifecycle: interest.lifecycle.clone(),
-            sources,
-            interest_id: interest.id.clone(),
-        });
+        relay_entries
+            .entry(relay_url)
+            .or_default()
+            .push(RelayEntry {
+                base_shape: base_shape.clone(),
+                authors_for_relay: BTreeSet::new(),
+                addresses_for_relay: BTreeSet::new(),
+                lifecycle: interest.lifecycle.clone(),
+                sources,
+                interest_id: interest.id.clone(),
+            });
     }
 }
 
@@ -169,31 +204,33 @@ mod tests {
         let app = vec!["wss://app".to_string(), "wss://shared".to_string()];
         let compiler = SubscriptionCompiler::with_relays(&cache, &[], &aar, &app);
 
-        let plan = compiler.compile(&[hashtag_interest(1, "nostr")]).expect("compile");
+        let plan = compiler
+            .compile(&[hashtag_interest(1, "nostr")])
+            .expect("compile");
 
         // AccountRead-only URL.
         let read1 = plan.per_relay.get("wss://read-1").expect("read-1");
-        assert!(read1
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AccountRead)));
-        assert!(!read1
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+        assert!(read1.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AccountRead
+        )));
+        assert!(!read1.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay
+        )));
 
         // AppRelay-only URL.
         let app_p = plan.per_relay.get("wss://app").expect("app");
-        assert!(app_p
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+        assert!(app_p.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay
+        )));
 
         // Both lanes on shared URL.
         let shared = plan.per_relay.get("wss://shared").expect("shared");
-        assert!(shared
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AccountRead)));
-        assert!(shared
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+        assert!(shared.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AccountRead
+        )));
+        assert!(shared.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay
+        )));
     }
 
     /// Cold-start: both active_account and app_relays empty → fall through
@@ -204,12 +241,17 @@ mod tests {
         let indexer = vec!["wss://purplepag.es".to_string()];
         let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &[]);
 
-        let plan = compiler.compile(&[hashtag_interest(1, "nostr")]).expect("compile");
+        let plan = compiler
+            .compile(&[hashtag_interest(1, "nostr")])
+            .expect("compile");
 
-        let ix = plan.per_relay.get("wss://purplepag.es").expect("indexer fallback");
-        assert!(ix
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)));
+        let ix = plan
+            .per_relay
+            .get("wss://purplepag.es")
+            .expect("indexer fallback");
+        assert!(ix.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Indexer
+        )));
     }
 
     /// app_relays alone (no active_account) → routes to app_relays without
@@ -221,7 +263,9 @@ mod tests {
         let app = vec!["wss://app".to_string()];
         let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &app);
 
-        let plan = compiler.compile(&[hashtag_interest(1, "nostr")]).expect("compile");
+        let plan = compiler
+            .compile(&[hashtag_interest(1, "nostr")])
+            .expect("compile");
 
         assert!(plan.per_relay.get("wss://app").is_some());
         assert!(
@@ -230,22 +274,10 @@ mod tests {
         );
     }
 
-    // ── PD-033-C planner extension — bootstrap content lane (§4.3) ──────────
-    //
-    // The matrix below is the regression net for the discovery-oneshot routing
-    // gate (`OneShot + Global + event_ids`). It is the prerequisite for Stage 1
-    // of the M1 → InterestRegistry migration (`docs/architecture-audit/pd033c-plan.md`):
-    // until these assertions hold, deleting `self.req(RelayRole::Content, ...)`
-    // from `kernel/discovery.rs::drain_unknown_oneshots` would silently lose
-    // every event-id discovery REQ to the indexer fallback.
-
     fn hex(byte: &str) -> String {
         byte.repeat(32)
     }
 
-    /// Construct an `OneShot + Global + event_ids` discovery interest matching
-    /// the shape `kernel/discovery.rs::drain_unknown_oneshots` registers via
-    /// `oneshot.request(registry, InterestScope::Global, …)`.
     fn discovery_oneshot_ids(id: u64, event_ids: &[&str]) -> LogicalInterest {
         LogicalInterest {
             id: InterestId(id),
@@ -261,20 +293,11 @@ mod tests {
         }
     }
 
-    /// The headline routing decision: a `OneShot + Global + event_ids` interest
-    /// with a non-empty `bootstrap_content_relays` set routes to those URLs
-    /// (lane `UserConfigured(Bootstrap)`), NOT to `indexer_relays` (the
-    /// pre-PD-033-C silent-loss regression that put discovery on the indexer
-    /// lane), and NOT to `active_account_read_relays` (which are user-content
-    /// relays, not the cold-start bootstrap seed).
     #[test]
     fn pd033c_event_ids_oneshot_global_routes_to_bootstrap_content() {
         let cache = InMemoryMailboxCache::new();
         let indexer = vec!["wss://purplepag.es".to_string()];
         let bootstrap = vec!["wss://relay.primal.net".to_string()];
-        // Active-account / app relays present to prove the gate routes to
-        // BOOTSTRAP specifically, not to either of those (both would be wrong
-        // for discovery — they're user-content lanes).
         let aar = vec!["wss://user-read.example".to_string()];
         let app = vec!["wss://user-app.example".to_string()];
         let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
@@ -297,24 +320,15 @@ mod tests {
         assert!(landed.role_tags.contains(&RoutingSource::UserConfigured(
             UserConfiguredCategory::Bootstrap,
         )));
-        // The indexer set was non-empty but MUST NOT carry the discovery REQ
-        // (event-id discovery belongs on the content lane, not the indexer
-        // lane — the silent-loss regression).
         assert!(
             plan.per_relay.get("wss://purplepag.es").is_none(),
             "event_ids discovery must NOT land on the indexer lane"
         );
-        // Active-account read & app relays MUST NOT be consulted — the gate
-        // chooses bootstrap exclusively when it fires.
         assert!(plan.per_relay.get("wss://user-read.example").is_none());
         assert!(plan.per_relay.get("wss://user-app.example").is_none());
-        // Exactly one relay served the discovery REQ.
         assert_eq!(plan.per_relay.len(), 1);
     }
 
-    /// Empty `bootstrap_content_relays` falls through to the unchanged Case D
-    /// body — proves the gate is a strict superset opt-in, not a behavioural
-    /// change for callers that never set the bootstrap field.
     #[test]
     fn pd033c_event_ids_oneshot_with_empty_bootstrap_falls_through() {
         let cache = InMemoryMailboxCache::new();
@@ -332,20 +346,15 @@ mod tests {
             .compile(&[discovery_oneshot_ids(1, &["aa"])])
             .expect("compile");
 
-        // Pre-PD-033-C behaviour preserved: no app/account relays AND no
-        // bootstrap → indexer cold-start fallback (the existing Case D tail).
         let ix = plan
             .per_relay
             .get("wss://purplepag.es")
             .expect("indexer fallback still applies when bootstrap is empty");
-        assert!(ix
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)));
+        assert!(ix.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Indexer
+        )));
     }
 
-    /// `Tailing + Global + event_ids` is NOT a discovery oneshot — it must NOT
-    /// trigger the gate (would broaden the change beyond the discovery
-    /// oneshots the task scopes). It flows through the unchanged Case D body.
     #[test]
     fn pd033c_tailing_event_ids_does_not_trigger_bootstrap_gate() {
         let cache = InMemoryMailboxCache::new();
@@ -368,14 +377,9 @@ mod tests {
             plan.per_relay.get("wss://relay.primal.net").is_none(),
             "Tailing event_ids must NOT route to bootstrap content relays"
         );
-        // Existing Case D cold-start fallback (no user-configured relays at all
-        // → indexer) still applies.
         assert!(plan.per_relay.get("wss://purplepag.es").is_some());
     }
 
-    /// `OneShot + Account(x) + event_ids` is account-scoped — it must NOT
-    /// trigger the bootstrap gate (account-scoped reads have a concrete owner
-    /// and should not divert to the cold-start lane).
     #[test]
     fn pd033c_account_scoped_event_ids_does_not_trigger_bootstrap_gate() {
         let cache = InMemoryMailboxCache::new();
@@ -400,9 +404,6 @@ mod tests {
         );
     }
 
-    /// `OneShot + Global` *without* `event_ids` is just a no-author/no-address
-    /// firehose — must NOT trigger the bootstrap gate (the gate is keyed on
-    /// concrete event-id batches, the discovery-oneshot fingerprint).
     #[test]
     fn pd033c_oneshot_global_without_event_ids_does_not_trigger_bootstrap_gate() {
         let cache = InMemoryMailboxCache::new();
@@ -417,7 +418,6 @@ mod tests {
             /* bootstrap_indexer = */ &[],
         );
 
-        // No authors/addresses/p-tags/event_ids → pure Case D firehose.
         let mut interest = hashtag_interest(1, "nostr");
         interest.lifecycle = InterestLifecycle::OneShot;
         let plan = compiler.compile(&[interest]).expect("compile");
@@ -428,11 +428,6 @@ mod tests {
         );
     }
 
-    /// `bootstrap_content_relays` is EXCLUDED from `compute_plan_id` — matching
-    /// the `app_relays` treatment (`compile_with_context` Stage 4 comment).
-    /// Toggling it at runtime must NOT churn sub-ids, otherwise every
-    /// discovery oneshot would re-emit on the next recompile when the kernel
-    /// re-syncs the bootstrap set.
     #[test]
     fn pd033c_bootstrap_toggle_does_not_change_plan_id() {
         let cache = InMemoryMailboxCache::new();
@@ -458,14 +453,8 @@ mod tests {
 
         let plan_without = no_bootstrap.compile(&interests).expect("compile");
         let plan_with = with_bootstrap.compile(&interests).expect("compile");
-        // The per_relay maps differ behaviourally — with_bootstrap routes the
-        // discovery REQ; without leaves it un-routed (no app/account/indexer
-        // configured here either).
         assert!(plan_without.per_relay.is_empty());
         assert!(plan_with.per_relay.contains_key("wss://relay.primal.net"));
-        // But plan_id is identical — bootstrap_content_relays is excluded
-        // from the hash, matching the app_relays-toggle invariant the existing
-        // `app_relay_toggle_changes_unroutable_set_but_not_plan_id` test pins.
         assert_eq!(
             plan_without.plan_id, plan_with.plan_id,
             "bootstrap_content_relays must be excluded from compute_plan_id \

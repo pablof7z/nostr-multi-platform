@@ -50,8 +50,11 @@ impl AuthGate {
     pub(super) fn is_paused(&self, relay_url: &str) -> bool {
         matches!(
             self.state.get(relay_url),
-            Some(RelayAuthState::ChallengeReceived | RelayAuthState::Authenticating |
-RelayAuthState::Failed)
+            Some(
+                RelayAuthState::ChallengeReceived
+                    | RelayAuthState::Authenticating
+                    | RelayAuthState::Failed
+            )
         )
     }
 
@@ -220,8 +223,7 @@ mod tests {
         let mut g = AuthGate::new();
         g.record_transition("wss://r".to_string(), RelayAuthState::ChallengeReceived);
         g.partition(vec![req("wss://r"), req("wss://r")]);
-        let drained_on_fail =
-            g.record_transition("wss://r".to_string(), RelayAuthState::Failed);
+        let drained_on_fail = g.record_transition("wss://r".to_string(), RelayAuthState::Failed);
         assert!(
             drained_on_fail.is_empty(),
             "Failed transition returns nothing (drop, not flush)"

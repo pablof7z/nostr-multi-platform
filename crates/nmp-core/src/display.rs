@@ -311,7 +311,10 @@ mod tests {
     fn avatar_initials_extracts_two_chars_after_npub1_prefix() {
         let npub = "npub1abcdefgh";
         let initials = avatar_initials(npub);
-        assert_eq!(initials, "AB", "initials should be first 2 chars after 'npub1'");
+        assert_eq!(
+            initials, "AB",
+            "initials should be first 2 chars after 'npub1'"
+        );
     }
 
     #[test]

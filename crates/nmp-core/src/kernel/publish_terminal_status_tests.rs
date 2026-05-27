@@ -417,13 +417,10 @@ fn t128_terminal_outcome_carries_relay_reason_to_wire_json() {
         .expect("relay_outcomes must serialize on a terminal entry");
     assert_eq!(outcomes.len(), 2);
     for outcome in outcomes {
-        let reason = outcome
-            .get("relay_reason")
-            .and_then(|v| v.as_str())
-            .expect(
-                "relay_reason must be present on every per-relay outcome — Nip65OutboxResolver \
+        let reason = outcome.get("relay_reason").and_then(|v| v.as_str()).expect(
+            "relay_reason must be present on every per-relay outcome — Nip65OutboxResolver \
                  emits a non-empty rationale for every write relay it returns",
-            );
+        );
         // The NIP-65 resolver emits a stable English label for write relays;
         // assert on the substring rather than the exact wording so the
         // rationale copy can evolve without breaking this contract test.

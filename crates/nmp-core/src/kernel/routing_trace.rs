@@ -349,12 +349,11 @@ mod tests {
         use crate::planner::LogicalInterest;
         use crate::relay::DEFAULT_VISIBLE_LIMIT;
         use crate::substrate::{
-            BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutedRelaySet,
-            RoutingContext, RoutingError, RoutingSource, SessionKeySet, UnsignedEvent,
+            BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutedRelaySet, RoutingContext,
+            RoutingError, RoutingSource, SessionKeySet, UnsignedEvent,
         };
 
-        const ALICE: &str =
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
         /// Stub router for this kernel-side trace-plumbing test only.
         /// `route_publish` reads the author's write set from the supplied
@@ -374,7 +373,12 @@ mod tests {
                     .ok_or_else(|| RoutingError::Unroutable(evt.pubkey.clone()))?;
                 let mut out = RoutedRelaySet::new();
                 for url in writes {
-                    out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+                    out.add(
+                        url,
+                        RoutingSource::Nip65 {
+                            direction: Direction::Write,
+                        },
+                    );
                 }
                 if out.is_empty() {
                     return Err(RoutingError::Unroutable(evt.pubkey.clone()));
@@ -398,12 +402,7 @@ mod tests {
         }
 
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-        kernel.seed_mailbox_relay_list(
-            ALICE,
-            vec![],
-            vec!["wss://alice.write/".into()],
-            vec![],
-        );
+        kernel.seed_mailbox_relay_list(ALICE, vec![], vec!["wss://alice.write/".into()], vec![]);
         // Install the stub router AFTER seeding so the kernel's
         // `mailbox_cache` (a `TestInMemoryMailboxCache` under cfg(test))
         // survives the swap. The cache `Arc` is reused; `set_routing`

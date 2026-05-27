@@ -204,9 +204,7 @@ fn nip42_auth_challenge_response() {
                         &body,
                     ),
                 );
-                println!(
-                    "[nip42] PASS via {relay}: auth_id={auth_id} accepted=true"
-                );
+                println!("[nip42] PASS via {relay}: auth_id={auth_id} accepted=true");
                 return;
             }
             Some(ok) => {

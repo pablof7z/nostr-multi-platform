@@ -12,7 +12,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type EventId = String;
@@ -61,7 +63,7 @@ impl ViewDependencies {
     ///
     /// `lifecycle` — `Tailing` for live subscriptions, `OneShot` for historical
     ///   fetch-and-close requests.
-    #[must_use] 
+    #[must_use]
     pub fn into_logical_interest(
         &self,
         id: InterestId,
@@ -126,7 +128,10 @@ mod tests {
             InterestLifecycle::Tailing,
         );
         assert!(interest.shape.kinds.contains(&445));
-        assert_eq!(interest.shape.relay_pin.as_deref(), Some("wss://group.relay/"));
+        assert_eq!(
+            interest.shape.relay_pin.as_deref(),
+            Some("wss://group.relay/")
+        );
         assert_eq!(interest.id, InterestId(42));
         assert!(matches!(interest.scope, InterestScope::Global));
         assert!(matches!(interest.lifecycle, InterestLifecycle::Tailing));

@@ -20,10 +20,7 @@ use crate::StoreError;
 /// Mirrored from `mem/mod.rs:45`.
 const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 3600;
 
-pub(super) fn gc_step(
-    inner: &Arc<Inner>,
-    budget: GcBudget,
-) -> Result<GcReport, StoreError> {
+pub(super) fn gc_step(inner: &Arc<Inner>, budget: GcBudget) -> Result<GcReport, StoreError> {
     let start = std::time::Instant::now();
     let mut report = GcReport::default();
 
@@ -47,7 +44,10 @@ pub(super) fn gc_step(
             // Decode just enough to find the expiration tag.
             let owned: nostr::Event = ev.into_owned();
             if let Some(exp_tag) = owned.tags.iter().find(|t| {
-                t.as_slice().first().map(|s| s == "expiration").unwrap_or(false)
+                t.as_slice()
+                    .first()
+                    .map(|s| s == "expiration")
+                    .unwrap_or(false)
             }) {
                 if let Some(val) = exp_tag.as_slice().get(1) {
                     if let Ok(exp) = val.parse::<u64>() {
@@ -72,10 +72,8 @@ pub(super) fn gc_step(
             .write_txn()
             .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
         for (id, _exp) in &expired {
-            let f = Filter::new().id(
-                nostr::EventId::from_slice(id)
-                    .map_err(|e| StoreError::Encoding(format!("id: {e}")))?,
-            );
+            let f = Filter::new().id(nostr::EventId::from_slice(id)
+                .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
             inner
                 .lmdb
                 .delete(&mut txn, f)
@@ -99,7 +97,8 @@ pub(super) fn gc_step(
                 break;
             }
         }
-        txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+        txn.commit()
+            .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     }
 
     // ── Purge old tombstones ──────────────────────────────────────────────
@@ -127,7 +126,8 @@ pub(super) fn gc_step(
                 .delete(&mut txn, &k)
                 .map_err(|e| StoreError::Io(format!("tomb del: {e}")))?;
         }
-        txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+        txn.commit()
+            .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     }
 
     report.duration_ms = start.elapsed().as_millis() as u32;

@@ -193,7 +193,11 @@ fn coverage_hook_drop_closes_prior_req() {
         1,
         "dropping a previously-covered pair must CLOSE its live REQ"
     );
-    assert_eq!(req_count(&frames2), 0, "no new REQ once the plan is dropped");
+    assert_eq!(
+        req_count(&frames2),
+        0,
+        "no new REQ once the plan is dropped"
+    );
 }
 
 // ─── 3) No hook installed → kernel-only path is unchanged ────────────────────

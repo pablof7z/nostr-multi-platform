@@ -54,8 +54,7 @@ fn explicit_publish_target_accepts_valid_relay_url() {
             relays: vec!["wss://relay.example".to_string()],
         },
     };
-    PublishModule::start(&mut ctx(), action)
-        .expect("valid explicit target should pass validation");
+    PublishModule::start(&mut ctx(), action).expect("valid explicit target should pass validation");
 }
 
 #[test]
@@ -69,8 +68,7 @@ fn publish_raw_rejects_kind_0_to_protect_profile_path() {
         content: "{}".to_string(),
         target: PublishTarget::Auto,
     };
-    let err = PublishModule::start(&mut ctx(), action)
-        .expect_err("PublishRaw must reject kind:0");
+    let err = PublishModule::start(&mut ctx(), action).expect_err("PublishRaw must reject kind:0");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("PublishProfile")));
 }
 
@@ -86,8 +84,7 @@ fn publish_raw_rejects_kind_3_pending_dedicated_path() {
         content: String::new(),
         target: PublishTarget::Auto,
     };
-    let err = PublishModule::start(&mut ctx(), action)
-        .expect_err("PublishRaw must reject kind:3");
+    let err = PublishModule::start(&mut ctx(), action).expect_err("PublishRaw must reject kind:3");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("kind:3")));
 }
 
@@ -150,7 +147,12 @@ fn execute_publish_note_emits_publish_note_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishNote { content, reply_to_id, target, correlation_id } => {
+        ActorCommand::PublishNote {
+            content,
+            reply_to_id,
+            target,
+            correlation_id,
+        } => {
             assert_eq!(content, "hello");
             assert_eq!(reply_to_id, None);
             assert_eq!(target, PublishTarget::Auto);
@@ -163,12 +165,18 @@ fn execute_publish_note_emits_publish_note_command() {
 #[test]
 fn execute_publish_profile_emits_publish_profile_command() {
     let mut fields = serde_json::Map::new();
-    fields.insert("display_name".to_string(), serde_json::Value::String("Alice".to_string()));
+    fields.insert(
+        "display_name".to_string(),
+        serde_json::Value::String("Alice".to_string()),
+    );
     let action = PublishAction::PublishProfile { fields };
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishProfile { fields, correlation_id } => {
+        ActorCommand::PublishProfile {
+            fields,
+            correlation_id,
+        } => {
             assert_eq!(
                 fields.get("display_name").and_then(|v| v.as_str()),
                 Some("Alice"),
@@ -190,7 +198,13 @@ fn execute_publish_raw_emits_publish_raw_event_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishRawEvent { kind, content, target, correlation_id, .. } => {
+        ActorCommand::PublishRawEvent {
+            kind,
+            content,
+            target,
+            correlation_id,
+            ..
+        } => {
             assert_eq!(kind, 30023);
             assert_eq!(content, "body");
             assert_eq!(target, PublishTarget::Auto);
@@ -210,7 +224,11 @@ fn execute_publish_signed_event_emits_publish_signed_event_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishSignedEvent { raw, target, correlation_id } => {
+        ActorCommand::PublishSignedEvent {
+            raw,
+            target,
+            correlation_id,
+        } => {
             assert_eq!(raw.kind, 1);
             assert_eq!(target, PublishTarget::Auto);
             assert_eq!(correlation_id.as_deref(), Some("test-cid"));

@@ -69,6 +69,12 @@ pub mod planner {
         UserConfiguredCategory,
     };
     pub use nmp_planner::selection::apply_selection;
+    // W4 — warm-relay score lookup seam + lookup-aware selection.
+    pub use nmp_planner::selection::apply_selection_with_lookup;
+    pub use nmp_planner::selection::relay_score_lookup::{
+        NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup,
+        WARM_THRESHOLD as PLANNER_WARM_THRESHOLD,
+    };
 
     // A small number of in-tree call sites reach into the submodule
     // namespaces directly (`nmp_core::planner::compiler::*`,
@@ -135,6 +141,16 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use kernel::{
     read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot,
 };
+// W2 — relay-author-score types. Re-exported so nmp-testing integration tests
+// and downstream crates (W4, W5) can access `ClaimOutcome`, `RelayAuthorScore`,
+// and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
+pub mod relay_score {
+    pub use super::kernel::relay_score::{
+        ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS,
+        MAX_EXPANSION_CONCURRENCY, MAX_RELAYS_TRIED_PER_CLAIM, PER_CLAIM_TOTAL_BUDGET_MS,
+        PER_RELAY_REQ_TIMEOUT_MS, PHASE_1_BUDGET_MS, WARM_THRESHOLD,
+    };
+}
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.

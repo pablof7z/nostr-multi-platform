@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 /// NIP-10 marked form requires the relay slot to be present (possibly empty)
 /// when a marker follows, so a `Some(marker)` always emits the 4-column form
 /// `["e", id, relay_or_empty, marker]`.
-#[must_use] 
+#[must_use]
 pub fn e_tag(id: &str, relay: Option<&str>, marker: Option<&str>) -> Vec<String> {
     match (relay, marker) {
         (_, Some(marker)) => vec![
@@ -38,7 +38,7 @@ pub fn e_tag(id: &str, relay: Option<&str>, marker: Option<&str>) -> Vec<String>
 }
 
 /// Build a `p` tag: `["p", <pubkey>]`, optionally with a relay hint.
-#[must_use] 
+#[must_use]
 pub fn p_tag(pubkey: &str, relay: Option<&str>) -> Vec<String> {
     match relay {
         Some(relay) => vec!["p".to_string(), pubkey.to_string(), relay.to_string()],
@@ -48,7 +48,7 @@ pub fn p_tag(pubkey: &str, relay: Option<&str>) -> Vec<String> {
 
 /// Build a NIP-33 `a` tag: `["a", "<kind>:<pubkey>:<d_tag>"]`, optionally with
 /// a relay hint.
-#[must_use] 
+#[must_use]
 pub fn a_tag(kind: u32, pubkey: &str, d_tag: &str, relay: Option<&str>) -> Vec<String> {
     let coord = format!("{kind}:{pubkey}:{d_tag}");
     match relay {
@@ -58,7 +58,7 @@ pub fn a_tag(kind: u32, pubkey: &str, d_tag: &str, relay: Option<&str>) -> Vec<S
 }
 
 /// Build a NIP-18 `q` (quote) tag: `["q", <id>]`, optionally with a relay hint.
-#[must_use] 
+#[must_use]
 pub fn q_tag(id: &str, relay: Option<&str>) -> Vec<String> {
     match relay {
         Some(relay) => vec!["q".to_string(), id.to_string(), relay.to_string()],
@@ -126,13 +126,13 @@ pub struct Nip10Refs {
 impl Nip10Refs {
     /// True when the event carries no root and no reply marker — i.e. it is a
     /// thread root itself, not a reply (mirrors applesauce `Note.isRoot`).
-    #[must_use] 
+    #[must_use]
     pub fn is_root(&self) -> bool {
         self.root.is_none() && self.reply.is_none()
     }
 
     /// True when the event replies to something (mirrors `Note.isReply`).
-    #[must_use] 
+    #[must_use]
     pub fn is_reply(&self) -> bool {
         self.reply.is_some()
     }
@@ -173,9 +173,12 @@ pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
         .map(str::to_string)
         .collect();
 
-    let has_marker = e_tags
-        .iter()
-        .any(|t| matches!(t.get(3).map(String::as_str), Some("root" | "reply" | "mention")));
+    let has_marker = e_tags.iter().any(|t| {
+        matches!(
+            t.get(3).map(String::as_str),
+            Some("root" | "reply" | "mention")
+        )
+    });
 
     if has_marker {
         let mut refs = Nip10Refs {
@@ -208,10 +211,7 @@ pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
     }
 
     // Positional fallback (deprecated NIP-10 form).
-    let resolved: Vec<EventRef> = e_tags
-        .iter()
-        .filter_map(|t| e_ref_from_tag(t))
-        .collect();
+    let resolved: Vec<EventRef> = e_tags.iter().filter_map(|t| e_ref_from_tag(t)).collect();
 
     match resolved.len() {
         0 => Nip10Refs {

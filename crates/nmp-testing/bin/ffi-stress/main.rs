@@ -96,8 +96,10 @@ fn main() {
         );
         for gate in &metrics.gates {
             let sym = if gate.passed { "  ok" } else { "FAIL" };
-            eprintln!("  [{sym}] {}: {:.4} (op={:?} threshold={:.4})",
-                gate.name, gate.measured, gate.op, gate.threshold);
+            eprintln!(
+                "  [{sym}] {}: {:.4} (op={:?} threshold={:.4})",
+                gate.name, gate.measured, gate.op, gate.threshold
+            );
         }
 
         if cli.write_report {
@@ -232,15 +234,11 @@ fn parse_scenario(s: &str) -> Result<Scenario, String> {
 
 fn parse_duration(s: &str) -> Result<Duration, String> {
     if let Some(mins) = s.strip_suffix('m') {
-        let m: u64 = mins
-            .parse()
-            .map_err(|_| format!("invalid duration: {s}"))?;
+        let m: u64 = mins.parse().map_err(|_| format!("invalid duration: {s}"))?;
         return Ok(Duration::from_secs(m * 60));
     }
     if let Some(secs) = s.strip_suffix('s') {
-        let s: u64 = secs
-            .parse()
-            .map_err(|_| format!("invalid duration: {s}"))?;
+        let s: u64 = secs.parse().map_err(|_| format!("invalid duration: {s}"))?;
         return Ok(Duration::from_secs(s));
     }
     // Plain number = seconds.

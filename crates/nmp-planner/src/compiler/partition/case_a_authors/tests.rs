@@ -40,28 +40,35 @@ fn case_a_nip65_known_unions_with_app_relays() {
     let app = vec!["wss://app".to_string(), "wss://shared".to_string()];
     let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &app);
 
-    let plan = compiler.compile(&[timeline_interest(1, &["alice"])]).expect("compile");
+    let plan = compiler
+        .compile(&[timeline_interest(1, &["alice"])])
+        .expect("compile");
 
     // NIP-65 lane only on the author-only URL.
-    let alice_only = plan.per_relay.get("wss://alice-write").expect("alice-write");
+    let alice_only = plan
+        .per_relay
+        .get("wss://alice-write")
+        .expect("alice-write");
     assert!(alice_only.role_tags.contains(&RoutingSource::Nip65));
     assert!(!alice_only
         .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+        .contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay
+        )));
 
     // AppRelay lane only on the app-only URL.
     let app_only = plan.per_relay.get("wss://app").expect("app");
-    assert!(app_only
-        .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+    assert!(app_only.role_tags.contains(&RoutingSource::UserConfigured(
+        UserConfiguredCategory::AppRelay
+    )));
     assert!(!app_only.role_tags.contains(&RoutingSource::Nip65));
 
     // Both lanes on the shared URL.
     let shared = plan.per_relay.get("wss://shared").expect("shared");
     assert!(shared.role_tags.contains(&RoutingSource::Nip65));
-    assert!(shared
-        .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+    assert!(shared.role_tags.contains(&RoutingSource::UserConfigured(
+        UserConfiguredCategory::AppRelay
+    )));
 
     // No author is unroutable.
     assert!(plan.unroutable_authors.is_empty());
@@ -76,19 +83,21 @@ fn case_a_nip65_unknown_routes_to_app_relays_only() {
     let app = vec!["wss://app".to_string()];
     let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &app);
 
-    let plan = compiler.compile(&[timeline_interest(1, &["bob"])]).expect("compile");
+    let plan = compiler
+        .compile(&[timeline_interest(1, &["bob"])])
+        .expect("compile");
 
     // Indexer URL is NEVER consulted for content routing now.
     assert!(plan.per_relay.get("wss://purplepag.es").is_none());
 
     // App relay carries Bob with the AppRelay lane only.
     let app_plan = plan.per_relay.get("wss://app").expect("app");
-    assert!(app_plan
-        .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
-    assert!(!app_plan
-        .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)));
+    assert!(app_plan.role_tags.contains(&RoutingSource::UserConfigured(
+        UserConfiguredCategory::AppRelay
+    )));
+    assert!(!app_plan.role_tags.contains(&RoutingSource::UserConfigured(
+        UserConfiguredCategory::Indexer
+    )));
 
     // Bob is NOT unroutable — app_relays carried him.
     assert!(plan.unroutable_authors.is_empty());
@@ -103,9 +112,14 @@ fn case_a_no_nip65_no_app_relays_marks_author_unroutable() {
     let app: Vec<String> = vec![];
     let compiler = SubscriptionCompiler::with_relays(&cache, &indexer, &[], &app);
 
-    let plan = compiler.compile(&[timeline_interest(1, &["bob"])]).expect("compile");
+    let plan = compiler
+        .compile(&[timeline_interest(1, &["bob"])])
+        .expect("compile");
 
-    assert!(plan.per_relay.is_empty(), "no relays should be selected for content");
+    assert!(
+        plan.per_relay.is_empty(),
+        "no relays should be selected for content"
+    );
     assert!(
         plan.unroutable_authors.contains(&pk("bob")),
         "bob should be marked unroutable; got {:?}",
@@ -129,17 +143,22 @@ fn case_a_mixed_nip65_known_and_unknown_with_app_relays() {
     let app = vec!["wss://app".to_string()];
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &app);
 
-    let plan = compiler.compile(&[timeline_interest(1, &["alice", "bob"])]).expect("compile");
+    let plan = compiler
+        .compile(&[timeline_interest(1, &["alice", "bob"])])
+        .expect("compile");
 
     // Alice's write relay carries Alice via NIP-65 (and also AppRelay if Alice is there).
-    let alice_plan = plan.per_relay.get("wss://alice-write").expect("alice-write");
+    let alice_plan = plan
+        .per_relay
+        .get("wss://alice-write")
+        .expect("alice-write");
     assert!(alice_plan.role_tags.contains(&RoutingSource::Nip65));
 
     // App relay carries both Alice and Bob via AppRelay lane.
     let app_plan = plan.per_relay.get("wss://app").expect("app");
-    assert!(app_plan
-        .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)));
+    assert!(app_plan.role_tags.contains(&RoutingSource::UserConfigured(
+        UserConfiguredCategory::AppRelay
+    )));
 
     // No one is unroutable.
     assert!(plan.unroutable_authors.is_empty());
@@ -160,7 +179,9 @@ fn case_a_mixed_no_app_relays_isolates_unroutable() {
     );
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &[]);
 
-    let plan = compiler.compile(&[timeline_interest(1, &["alice", "bob"])]).expect("compile");
+    let plan = compiler
+        .compile(&[timeline_interest(1, &["alice", "bob"])])
+        .expect("compile");
 
     // Alice flies.
     assert!(plan.per_relay.contains_key("wss://alice-write"));
@@ -186,7 +207,9 @@ fn case_a_empty_mailbox_without_app_relays_is_unroutable() {
     );
     let compiler = SubscriptionCompiler::with_relays(&cache, &[], &[], &[]);
 
-    let plan = compiler.compile(&[timeline_interest(1, &["alice"])]).expect("compile");
+    let plan = compiler
+        .compile(&[timeline_interest(1, &["alice"])])
+        .expect("compile");
 
     assert!(plan.per_relay.is_empty());
     assert!(plan.unroutable_authors.contains(&pk("alice")));
@@ -237,9 +260,9 @@ fn pd033c_case_a_oneshot_global_no_nip65_routes_to_bootstrap_indexer() {
         .per_relay
         .get("wss://purplepag.es")
         .expect("bootstrap indexer must carry the discovery profile-oneshot");
-    assert!(ix
-        .role_tags
-        .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)));
+    assert!(ix.role_tags.contains(&RoutingSource::UserConfigured(
+        UserConfiguredCategory::Indexer
+    )));
     // Critical: Bob is NOT unroutable — the silent-loss invariant.
     assert!(
         plan.unroutable_authors.is_empty(),
@@ -430,11 +453,14 @@ fn pd033c_case_a_oneshot_global_with_app_relays_skips_bootstrap_indexer() {
 #[test]
 fn pd033c_case_a_mixed_authors_partial_nip65_landed_via_bootstrap_indexer() {
     let mut cache = InMemoryMailboxCache::new();
-    cache.put(pk("alice"), MailboxSnapshot {
-        write_relays: vec!["wss://alice-write".to_string()],
-        read_relays: vec![],
-        both_relays: vec![],
-    });
+    cache.put(
+        pk("alice"),
+        MailboxSnapshot {
+            write_relays: vec!["wss://alice-write".to_string()],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
     let bootstrap_indexer = vec!["wss://purplepag.es".to_string()];
     let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
         &cache,

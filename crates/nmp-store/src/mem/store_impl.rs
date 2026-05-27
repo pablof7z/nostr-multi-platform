@@ -9,11 +9,11 @@ use super::{domain, gc, insert, query, MemEventStore};
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent,
-    TombstoneRow, VerifiedEvent, WatermarkKey, WatermarkRow,
+    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow,
+    VerifiedEvent, WatermarkKey, WatermarkRow,
 };
-use crate::StoreError;
 use crate::DomainMigration;
+use crate::StoreError;
 
 impl EventStore for MemEventStore {
     fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError> {

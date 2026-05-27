@@ -57,9 +57,7 @@ mod tests;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
-use super::types::{
-    ClaimerId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow,
-};
+use super::types::{ClaimerId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow};
 use super::StoreError;
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -132,7 +130,8 @@ impl MemState {
     pub(super) fn events_sorted_newest_first(&self) -> Vec<&StoredEvent> {
         let mut v: Vec<&StoredEvent> = self.events.values().collect();
         v.sort_by(|a, b| {
-            b.raw.created_at
+            b.raw
+                .created_at
                 .cmp(&a.raw.created_at)
                 .then(a.raw.id.cmp(&b.raw.id))
         });
@@ -148,7 +147,7 @@ pub struct MemEventStore {
 }
 
 impl MemEventStore {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: Mutex::new(MemState::new()),

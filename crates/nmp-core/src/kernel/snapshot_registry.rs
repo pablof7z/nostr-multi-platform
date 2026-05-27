@@ -121,7 +121,6 @@ impl SnapshotRegistry {
         }
         out
     }
-
 }
 
 /// Shared snapshot-projection registry handle.
@@ -171,9 +170,7 @@ impl Kernel {
     /// mutex is poisoned, or nothing is registered — D6: a projection
     /// failure is data, never a panic at the boundary. Called from
     /// `make_update`.
-    pub(in crate::kernel) fn run_snapshot_projections(
-        &self,
-    ) -> HashMap<String, serde_json::Value> {
+    pub(in crate::kernel) fn run_snapshot_projections(&self) -> HashMap<String, serde_json::Value> {
         match &self.snapshot_projections {
             Some(slot) => slot
                 .lock()

@@ -44,8 +44,7 @@ pub(crate) enum DomainHandleInner {
 }
 
 /// Type alias for domain scan iterators.
-pub type DomainScanIter<'a> =
-    Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>), StoreError>> + 'a>;
+pub type DomainScanIter<'a> = Box<dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>), StoreError>> + 'a>;
 
 /// A module-scoped handle into the domain store for one namespace.
 ///
@@ -77,12 +76,11 @@ impl DomainHandle {
     /// Read a value by key from this domain namespace.
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
         match &self.inner {
-            DomainHandleInner::Mem { data, .. } => {
-                Ok(data.lock()
-                    .map_err(|e| StoreError::Io(e.to_string()))?
-                    .get(key)
-                    .cloned())
-            }
+            DomainHandleInner::Mem { data, .. } => Ok(data
+                .lock()
+                .map_err(|e| StoreError::Io(e.to_string()))?
+                .get(key)
+                .cloned()),
             #[cfg(feature = "lmdb-backend")]
             DomainHandleInner::Lmdb { namespace, backend } => {
                 crate::lmdb::domain::get(backend, namespace, key)
@@ -93,12 +91,11 @@ impl DomainHandle {
     /// Delete a key. Returns `true` if the key existed.
     pub fn delete(&self, key: &[u8]) -> Result<bool, StoreError> {
         match &self.inner {
-            DomainHandleInner::Mem { data, .. } => {
-                Ok(data.lock()
-                    .map_err(|e| StoreError::Io(e.to_string()))?
-                    .remove(key)
-                    .is_some())
-            }
+            DomainHandleInner::Mem { data, .. } => Ok(data
+                .lock()
+                .map_err(|e| StoreError::Io(e.to_string()))?
+                .remove(key)
+                .is_some()),
             #[cfg(feature = "lmdb-backend")]
             DomainHandleInner::Lmdb { namespace, backend } => {
                 crate::lmdb::domain::delete(backend, namespace, key)
@@ -228,25 +225,30 @@ pub trait EventStore: Send + Sync {
         visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
     ) -> Result<(), StoreError> {
         let iter: Box<dyn EventIter + '_> = match query {
-            StoreQuery::AuthorKind { author, kinds, since, until } => {
-                self.scan_by_author_kind(author, kinds, *since, *until, limit)?
-            }
-            StoreQuery::KindTime { kinds, since, until } => {
-                self.scan_by_kind_time(kinds, *since, *until, limit)?
-            }
-            StoreQuery::KindDtag { kind, d_tag, since, until } => {
-                self.scan_by_kind_dtag(*kind, d_tag, *since, *until, limit)?
-            }
-            StoreQuery::Etag { target, kinds } => {
-                self.scan_by_etag(target, kinds, limit)?
-            }
-            StoreQuery::Ptag { target, kinds } => {
-                self.scan_by_ptag(target, kinds, limit)?
-            }
+            StoreQuery::AuthorKind {
+                author,
+                kinds,
+                since,
+                until,
+            } => self.scan_by_author_kind(author, kinds, *since, *until, limit)?,
+            StoreQuery::KindTime {
+                kinds,
+                since,
+                until,
+            } => self.scan_by_kind_time(kinds, *since, *until, limit)?,
+            StoreQuery::KindDtag {
+                kind,
+                d_tag,
+                since,
+                until,
+            } => self.scan_by_kind_dtag(*kind, d_tag, *since, *until, limit)?,
+            StoreQuery::Etag { target, kinds } => self.scan_by_etag(target, kinds, limit)?,
+            StoreQuery::Ptag { target, kinds } => self.scan_by_ptag(target, kinds, limit)?,
         };
         for item in iter {
             let ev = item?;
-            if let ControlFlow::Break(()) = (visitor)(&ev) { // doctrine-allow: D15 — `visitor` is an `impl Fn` parameter (compile-time monomorphic), not a stored `Box<dyn Fn>` host closure; no FFI surface involved
+            if let ControlFlow::Break(()) = (visitor)(&ev) {
+                // doctrine-allow: D15 — `visitor` is an `impl Fn` parameter (compile-time monomorphic), not a stored `Box<dyn Fn>` host closure; no FFI surface involved
                 break;
             }
         }
@@ -256,11 +258,7 @@ pub trait EventStore: Send + Sync {
     /// Vec-returning query — a thin wrapper over [`query_visit`](Self::query_visit)
     /// so the index logic lives in exactly one place. Materializes matched
     /// events into a `Vec`, newest-first, capped at `limit`.
-    fn query(
-        &self,
-        query: &StoreQuery,
-        limit: usize,
-    ) -> Result<Vec<StoredEvent>, StoreError> {
+    fn query(&self, query: &StoreQuery, limit: usize) -> Result<Vec<StoredEvent>, StoreError> {
         let mut out: Vec<StoredEvent> = Vec::new();
         self.query_visit(query, limit, &mut |ev| {
             out.push(ev.clone());
@@ -326,7 +324,11 @@ pub trait EventStore: Send + Sync {
     // ─── Hot-set / claims (GC) ───────────────────────────────────────────────
 
     /// Register the maximum number of events a view may pin at once.
-    fn register_view_cover(&self, claimer: ClaimerId, cover_budget: usize) -> Result<(), StoreError>;
+    fn register_view_cover(
+        &self,
+        claimer: ClaimerId,
+        cover_budget: usize,
+    ) -> Result<(), StoreError>;
 
     /// Pin `ids` against eviction until `release()`.
     fn claim(&self, claimer: ClaimerId, ids: &[EventId]) -> Result<(), StoreError>;
@@ -382,7 +384,11 @@ pub trait EventStore: Send + Sync {
     // ─── Export ──────────────────────────────────────────────────────────────
 
     /// Dump all store contents in the requested format.
-    fn dump(&self, out: &mut dyn std::io::Write, format: DumpFormat) -> Result<DumpStats, StoreError>;
+    fn dump(
+        &self,
+        out: &mut dyn std::io::Write,
+        format: DumpFormat,
+    ) -> Result<DumpStats, StoreError>;
 }
 
 // ─── ClaimGuard ───────────────────────────────────────────────────────────────
@@ -412,7 +418,7 @@ impl<'a, S: EventStore + ?Sized> ClaimGuard<'a, S> {
     }
 
     /// The `ClaimerId` this guard will release on drop.
-    #[must_use] 
+    #[must_use]
     pub fn claimer(&self) -> ClaimerId {
         self.claimer
     }

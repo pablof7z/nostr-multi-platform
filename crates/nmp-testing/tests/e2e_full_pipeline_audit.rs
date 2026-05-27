@@ -42,8 +42,7 @@ use std::collections::HashSet;
 /// causes this test to flag tests that genuinely cannot yet be implemented.
 const DONE_MILESTONES: &[&str] = &[
     // M0 and M1 are done but not referenced in ignore tags — safe to list.
-    "M0",
-    "M1",
+    "M0", "M1",
     // Add "M2", "M3", ... here as milestones land on master.
 ];
 
@@ -55,16 +54,11 @@ const E2E_SOURCE_RELATIVE: &str = "tests/e2e_full_pipeline.rs";
 
 #[test]
 fn no_ignored_e2e_test_has_all_gates_done() {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR must be set by cargo test");
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by cargo test");
     let source_path = std::path::Path::new(&manifest_dir).join(E2E_SOURCE_RELATIVE);
-    let source = std::fs::read_to_string(&source_path).unwrap_or_else(|err| {
-        panic!(
-            "audit: cannot read {}: {}",
-            source_path.display(),
-            err
-        )
-    });
+    let source = std::fs::read_to_string(&source_path)
+        .unwrap_or_else(|err| panic!("audit: cannot read {}: {}", source_path.display(), err));
 
     let done: HashSet<&str> = DONE_MILESTONES.iter().copied().collect();
 
@@ -97,7 +91,8 @@ fn no_ignored_e2e_test_has_all_gates_done() {
             let gate = gate.trim();
             if done.contains(gate) {
                 // Find the function name on subsequent lines for a better error.
-                let fn_name = source.lines()
+                let fn_name = source
+                    .lines()
                     .skip(line_number + 1)
                     .find(|l| l.trim().starts_with("fn "))
                     .and_then(|l| l.trim().strip_prefix("fn "))
@@ -107,7 +102,9 @@ fn no_ignored_e2e_test_has_all_gates_done() {
                 failures.push(format!(
                     "  - `{}` is still #[ignore]d but its gate `{}` is DONE \
                      (line {}). Remove #[ignore] and implement the test.",
-                    fn_name, gate, line_number + 1
+                    fn_name,
+                    gate,
+                    line_number + 1
                 ));
             }
         }

@@ -38,8 +38,8 @@ use std::sync::Arc;
 
 use super::identity::UnsignedEvent;
 use super::routing::{
-    MailboxCache, OutboxRouter, ParsedRelayList, Pubkey, RelayUrl, RoutedRelaySet,
-    RoutingContext, RoutingError,
+    MailboxCache, OutboxRouter, ParsedRelayList, Pubkey, RelayUrl, RoutedRelaySet, RoutingContext,
+    RoutingError,
 };
 use crate::planner::LogicalInterest;
 
@@ -252,7 +252,9 @@ mod tests {
             explicit_targets: None,
         };
         let router = EmptyOutboxRouter::new();
-        let err = router.route_publish(&unsigned("alice", 1), &ctx).unwrap_err();
+        let err = router
+            .route_publish(&unsigned("alice", 1), &ctx)
+            .unwrap_err();
         assert_eq!(err, RoutingError::Unroutable("alice".into()));
     }
 

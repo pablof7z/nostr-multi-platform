@@ -81,8 +81,7 @@ fn received_at_ms_uses_injected_clock() {
     // stamped from `self.clock.now()` (ingest/timeline.rs).
     kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", event);
 
-    let id_bytes = crate::kernel::hex_to_pubkey_bytes(&event_id)
-        .expect("event id is 64-char hex");
+    let id_bytes = crate::kernel::hex_to_pubkey_bytes(&event_id).expect("event id is 64-char hex");
     let stored = kernel
         .store
         .get_by_id(&id_bytes)
@@ -120,8 +119,7 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
     kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", second);
 
     let read = |id_hex: &str| -> u64 {
-        let id_bytes = crate::kernel::hex_to_pubkey_bytes(id_hex)
-            .expect("event id is 64-char hex");
+        let id_bytes = crate::kernel::hex_to_pubkey_bytes(id_hex).expect("event id is 64-char hex");
         kernel
             .store
             .get_by_id(&id_bytes)
@@ -133,7 +131,10 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
     let first_ms = read(&first_id);
     let second_ms = read(&second_id);
 
-    assert_eq!(first_ms, FIXED_MS, "first ingest stamps the FixedClock value");
+    assert_eq!(
+        first_ms, FIXED_MS,
+        "first ingest stamps the FixedClock value"
+    );
     assert_eq!(
         first_ms, second_ms,
         "both ingests under the same FixedClock must stamp identical \

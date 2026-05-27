@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use super::Inner;
 use crate::events::{DomainHandle, DomainHandleInner};
-use crate::StoreError;
 use crate::DomainMigration;
+use crate::StoreError;
 
 /// Compose `namespace || 0x00 || user_key` for storage in the shared sub-db.
 fn full_key(namespace: &str, user_key: &[u8]) -> Vec<u8> {
@@ -43,7 +43,8 @@ pub(crate) fn put(
         .domain_data
         .put(&mut txn, &k, value)
         .map_err(|e| StoreError::Io(format!("dom put: {e}")))?;
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))
 }
 
 pub(crate) fn get(
@@ -63,11 +64,7 @@ pub(crate) fn get(
         .map(|v| v.to_vec()))
 }
 
-pub(crate) fn delete(
-    inner: &Arc<Inner>,
-    namespace: &str,
-    key: &[u8],
-) -> Result<bool, StoreError> {
+pub(crate) fn delete(inner: &Arc<Inner>, namespace: &str, key: &[u8]) -> Result<bool, StoreError> {
     let mut txn = inner
         .env
         .write_txn()
@@ -77,7 +74,8 @@ pub(crate) fn delete(
         .domain_data
         .delete(&mut txn, &k)
         .map_err(|e| StoreError::Io(format!("dom del: {e}")))?;
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     Ok(removed)
 }
 
@@ -169,7 +167,8 @@ pub(super) fn run_migrations(
             continue;
         }
         let mut tx = crate::MigrationTx::default();
-        (m.apply)(&mut tx).map_err(|reason| StoreError::MigrationFailed { // doctrine-allow: D15 — `Migration::apply` is an internal substrate-registered migration closure run at store init, not a host FFI seam; loud panic here is the intended bug-surfacing behaviour (mirrors the actor command drain allowlist rationale)
+        (m.apply)(&mut tx).map_err(|reason| StoreError::MigrationFailed {
+            // doctrine-allow: D15 — `Migration::apply` is an internal substrate-registered migration closure run at store init, not a host FFI seam; loud panic here is the intended bug-surfacing behaviour (mirrors the actor command drain allowlist rationale)
             namespace: namespace.to_string(),
             from: m.from_version,
             to: m.to_version,
@@ -186,7 +185,12 @@ pub(super) fn run_migrations(
 
     inner
         .domain_versions
-        .put(&mut txn, namespace.as_bytes(), &target_version.to_be_bytes())
+        .put(
+            &mut txn,
+            namespace.as_bytes(),
+            &target_version.to_be_bytes(),
+        )
         .map_err(|e| StoreError::Io(format!("ver put: {e}")))?;
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))
 }

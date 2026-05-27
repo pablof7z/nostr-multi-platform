@@ -212,8 +212,9 @@ impl Kernel {
             // an empty Vec is a correct and zero-allocation form. Per-tick
             // coalescing in the trigger inbox guarantees ≤1 recompile per
             // tick regardless of how many oneshots this drain registered.
-            self.lifecycle
-                .enqueue_trigger(CompileTrigger::ViewOpened { interest_ids: Vec::new() });
+            self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
+                interest_ids: Vec::new(),
+            });
         }
 
         Vec::new()

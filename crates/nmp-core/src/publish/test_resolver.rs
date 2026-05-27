@@ -76,7 +76,10 @@ impl TestKind10002OutboxResolver {
         let Some(author) = hex_to_pubkey(author_hex) else {
             return (Vec::new(), Vec::new());
         };
-        let Ok(iter) = self.store.scan_by_author_kind(&author, &[10002], None, None, 1) else {
+        let Ok(iter) = self
+            .store
+            .scan_by_author_kind(&author, &[10002], None, None, 1)
+        else {
             return (Vec::new(), Vec::new());
         };
         let Some(Ok(stored)) = iter.into_iter().next() else {
@@ -171,9 +174,7 @@ impl OutboxResolver for TestKind10002OutboxResolver {
                 for url in reads {
                     out.push(ResolvedRelay {
                         url,
-                        reason: RelaySelectionReason::RecipientInbox {
-                            pubkey: p.clone(),
-                        },
+                        reason: RelaySelectionReason::RecipientInbox { pubkey: p.clone() },
                     });
                 }
             }

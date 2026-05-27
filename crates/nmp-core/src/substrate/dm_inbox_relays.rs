@@ -101,7 +101,9 @@ impl TestDmInboxRelayCache {
         // D15 — degrade-gracefully on poisoned lock; silently drop the
         // mutation rather than panic on the actor thread. Mirrors the
         // policy documented in `nmp_router::cache`.
-        let Ok(mut guard) = self.inner.write() else { return };
+        let Ok(mut guard) = self.inner.write() else {
+            return;
+        };
         if relays.is_empty() {
             guard.remove(pubkey);
         } else {
@@ -162,10 +164,10 @@ mod tests {
 
     impl TestLookup {
         fn upsert(&self, pubkey: &str, relays: &[&str]) {
-            self.inner
-                .write()
-                .unwrap()
-                .insert(pubkey.to_string(), relays.iter().map(|s| (*s).to_string()).collect());
+            self.inner.write().unwrap().insert(
+                pubkey.to_string(),
+                relays.iter().map(|s| (*s).to_string()).collect(),
+            );
         }
     }
 
@@ -190,7 +192,9 @@ mod tests {
     fn populated_lookup_returns_relays() {
         let lookup = Arc::new(TestLookup::default());
         lookup.upsert("alice", &["wss://dm-a.example", "wss://dm-b.example"]);
-        let resolved = lookup.dm_inbox_relays("alice").expect("alice's list is populated");
+        let resolved = lookup
+            .dm_inbox_relays("alice")
+            .expect("alice's list is populated");
         assert_eq!(resolved, vec!["wss://dm-a.example", "wss://dm-b.example"]);
     }
 

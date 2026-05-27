@@ -79,7 +79,7 @@ impl<T> From<T> for Placeholder<T> {
 /// Returns `"identicon:<first16-hex-chars-of-pubkey>"`.  The `identicon:`
 /// scheme is detectable by the UI to render avatar initials + color instead
 /// of a network image fetch.
-#[must_use] 
+#[must_use]
 pub fn picture_placeholder(pubkey: &str) -> String {
     // Char-based truncation: pubkeys are ASCII hex in practice, but slicing on
     // a raw byte index would panic on a non-char-boundary if a non-ASCII string

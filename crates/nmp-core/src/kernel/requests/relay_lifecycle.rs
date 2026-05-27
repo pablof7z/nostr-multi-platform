@@ -5,7 +5,7 @@
 //! marking wire-subs as `retrying`/`closed`, and bumping `changed_since_emit`
 //! so the actor surfaces the transition in the next snapshot.
 
-use super::super::{Kernel, RelayRole, Instant, CanonicalRelayUrl, truncate};
+use super::super::{truncate, CanonicalRelayUrl, Instant, Kernel, RelayRole};
 
 impl Kernel {
     #[cfg_attr(not(test), allow(dead_code))]
@@ -95,6 +95,12 @@ impl Kernel {
                 sub.state = "retrying".to_string();
             }
         }
+
+        // W5 §8.1 — claim-expansion score hook (relay_failed = Failed, §8.5 +3f).
+        // Walk all pending claims and record a Failed outcome for each claim
+        // that attempted the failed relay URL. Delegated to `relay_failed_claim_walk`
+        // in `claim_expansion.rs` (D4: single writer of the score map).
+        self.relay_failed_claim_walk(relay_url);
     }
 
     /// A transport socket for `role` was fully torn down (no retry).
@@ -117,7 +123,9 @@ impl Kernel {
         // accumulating closed rows across reconnect churn is exactly the
         // long-session leak T133 fixes. Sibling sockets on the same role
         // lane are untouched — their subs are still live.
-        self.wire.subs.retain(|_key, sub| sub.relay_url != canonical);
+        self.wire
+            .subs
+            .retain(|_key, sub| sub.relay_url != canonical);
         self.changed_since_emit = true;
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();

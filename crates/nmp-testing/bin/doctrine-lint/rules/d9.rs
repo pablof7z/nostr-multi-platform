@@ -42,8 +42,7 @@ pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     // Only the workspace `crates/` tree is scoped — app-layer crates under
     // `apps/<app>/` legitimately use app-local vocabulary.
-    let in_crates =
-        s.contains("/crates/nmp-") || s.starts_with("crates/nmp-");
+    let in_crates = s.contains("/crates/nmp-") || s.starts_with("crates/nmp-");
     if !in_crates {
         return false;
     }
@@ -98,9 +97,7 @@ pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
 fn parse_namespace_literal(line: &str) -> Option<(usize, String)> {
     // Cheap reject — skip any line that obviously can't be a NAMESPACE
     // string-literal declaration.
-    if !line.contains("NAMESPACE")
-        || (!line.contains("&'static str") && !line.contains("&str"))
-    {
+    if !line.contains("NAMESPACE") || (!line.contains("&'static str") && !line.contains("&str")) {
         return None;
     }
     // Find the position of `NAMESPACE`.
@@ -143,7 +140,11 @@ mod tests {
             "message must name the offending literal; got: {}",
             hits[0].1
         );
-        assert!(hits[0].1.contains("D9"), "rule id must appear; got: {}", hits[0].1);
+        assert!(
+            hits[0].1.contains("D9"),
+            "rule id must appear; got: {}",
+            hits[0].1
+        );
     }
 
     #[test]
@@ -212,10 +213,7 @@ mod tests {
     fn ignores_unrelated_const_with_namespace_in_value() {
         // A `const FOO` whose value happens to contain the word `NAMESPACE`
         // is not a NAMESPACE declaration — D9 must not fire.
-        let hits = check(
-            "    const FOO: &str = \"reserved.NAMESPACE.token\";",
-            false,
-        );
+        let hits = check("    const FOO: &str = \"reserved.NAMESPACE.token\";", false);
         assert!(hits.is_empty());
     }
 
@@ -235,7 +233,10 @@ mod tests {
         let hits = check(line, false);
         assert_eq!(hits.len(), 1);
         let expected_col = line.find('"').unwrap() + 1; // 1-indexed
-        assert_eq!(hits[0].0, expected_col, "column must point at the opening quote");
+        assert_eq!(
+            hits[0].0, expected_col,
+            "column must point at the opening quote"
+        );
     }
 
     #[test]
@@ -246,7 +247,9 @@ mod tests {
         assert!(file_in_scope(&PathBuf::from(
             "/abs/path/crates/nmp-nip17/src/lib.rs"
         )));
-        assert!(file_in_scope(&PathBuf::from("crates/nmp-core/src/publish.rs")));
+        assert!(file_in_scope(&PathBuf::from(
+            "crates/nmp-core/src/publish.rs"
+        )));
     }
 
     #[test]

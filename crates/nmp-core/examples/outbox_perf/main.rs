@@ -43,8 +43,7 @@ use phase_d::phase_d_fanout;
 use transport::truncate;
 
 const INDEXER: &str = "wss://purplepag.es";
-const SEED_NPUB: &str =
-    "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
+const SEED_NPUB: &str = "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
 
 // applesauce-style selector budgets (see planner::apply_selection).
 const MAX_CONNECTIONS: usize = 30;
@@ -60,7 +59,9 @@ fn main() {
     println!("  indexer:   {INDEXER}");
     println!("  seed npub: {SEED_NPUB}");
     println!("  seed hex:  {seed_hex}");
-    println!("  budget:    max_connections={MAX_CONNECTIONS}, max_relays_per_user={MAX_RELAYS_PER_USER}");
+    println!(
+        "  budget:    max_connections={MAX_CONNECTIONS}, max_relays_per_user={MAX_RELAYS_PER_USER}"
+    );
     println!();
 
     let total_start = Instant::now();

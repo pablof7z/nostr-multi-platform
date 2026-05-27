@@ -42,7 +42,8 @@ pub(super) fn rule2_tags(
     a: &InterestShape,
     b: &InterestShape,
     limit: usize,
-) -> Option<std::collections::BTreeMap<crate::interest::TagKey, std::collections::BTreeSet<String>>> {
+) -> Option<std::collections::BTreeMap<crate::interest::TagKey, std::collections::BTreeSet<String>>>
+{
     // Keys must be identical (same dimensions)
     if a.tags.keys().ne(b.tags.keys()) {
         return None;
@@ -128,8 +129,7 @@ pub(super) fn rule8_addresses(
     b: &InterestShape,
     limit: usize,
 ) -> Option<std::collections::BTreeSet<NaddrCoord>> {
-    let union: std::collections::BTreeSet<_> =
-        a.addresses.union(&b.addresses).cloned().collect();
+    let union: std::collections::BTreeSet<_> = a.addresses.union(&b.addresses).cloned().collect();
     if union.len() > limit {
         None
     } else {

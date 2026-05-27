@@ -49,7 +49,7 @@ pub struct InterestRegistry {
 }
 
 impl InterestRegistry {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -116,7 +116,7 @@ impl InterestRegistry {
 
     /// Owner refcount for a `(scope, key)` slot (diagnostics / tests).
     #[allow(dead_code)]
-    #[must_use] 
+    #[must_use]
     pub fn owner_count(&self, scope: &SubScope, key: &SubKey) -> usize {
         self.slots
             .get(&(scope.clone(), *key))
@@ -149,20 +149,20 @@ impl InterestRegistry {
     /// Snapshot of all active interests, deterministically ordered by
     /// `(scope, key)`. Dedup across owners: exactly one interest per
     /// `(scope, key)` regardless of how many owners are attached.
-    #[must_use] 
+    #[must_use]
     pub fn iter_active(&self) -> Vec<LogicalInterest> {
         self.slots.values().map(|s| s.interest.clone()).collect()
     }
 
     /// Count of registered `(scope, key)` slots.
     #[allow(dead_code)]
-    #[must_use] 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.slots.len()
     }
 
     #[allow(dead_code)]
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
@@ -226,8 +226,7 @@ mod tests {
         let active = r.iter_active();
         assert_eq!(active.len(), 2);
         // Deterministic order preserved (ids 1,2 keyed → stable slot order).
-        let ids: std::collections::BTreeSet<u64> =
-            active.iter().map(|i| i.id.0).collect();
+        let ids: std::collections::BTreeSet<u64> = active.iter().map(|i| i.id.0).collect();
         assert_eq!(ids, [1, 2].into_iter().collect());
     }
 
@@ -315,15 +314,15 @@ mod tests {
         );
         let glob = SubIdentity::new(SubOwnerKey::new("v1"), key, SubScope::Global);
 
-        assert!(r.ensure_sub(acct, scoped_fixture(1, InterestScope::Account("alice".into()))));
+        assert!(r.ensure_sub(
+            acct,
+            scoped_fixture(1, InterestScope::Account("alice".into()))
+        ));
         assert!(r.ensure_sub(glob, scoped_fixture(2, InterestScope::Global)));
 
         // Same SubKey, different scope → two distinct entries.
         assert_eq!(r.len(), 2);
-        assert_eq!(
-            r.owner_count(&SubScope::Account("alice".into()), &key),
-            1
-        );
+        assert_eq!(r.owner_count(&SubScope::Account("alice".into()), &key), 1);
         assert_eq!(r.owner_count(&SubScope::Global, &key), 1);
     }
 

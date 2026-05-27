@@ -15,7 +15,8 @@ fn main() {
 
     // Live mode drives the real kernel actor against real relays.
     // Only cold_start and profile_thrashing are implemented for M1.
-    let (status, live_limitations): (&'static str, Vec<String>) = if matches!(args.mode, Mode::Live) {
+    let (status, live_limitations): (&'static str, Vec<String>) = if matches!(args.mode, Mode::Live)
+    {
         (
             "live",
             vec![

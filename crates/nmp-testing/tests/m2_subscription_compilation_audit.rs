@@ -16,15 +16,8 @@
 // Import through the planner's public API surface — submodule paths are
 // pub(crate) and must not be named from an external crate.
 use nmp_core::planner::{
-    InMemoryMailboxCache,
-    MailboxSnapshot,
-    SubscriptionCompiler,
-    InterestId,
-    InterestLifecycle,
-    InterestScope,
-    InterestShape,
-    LogicalInterest,
-    NaddrCoord,
+    InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+    LogicalInterest, MailboxSnapshot, NaddrCoord, SubscriptionCompiler,
 };
 use std::collections::BTreeSet;
 
@@ -43,9 +36,7 @@ fn relay(url: &str) -> String {
     url.to_string()
 }
 
-fn make_authors_with_overlapping_mailboxes(
-    count: usize,
-) -> Vec<(String, MailboxSnapshot)> {
+fn make_authors_with_overlapping_mailboxes(count: usize) -> Vec<(String, MailboxSnapshot)> {
     // Three relay groups with deliberate overlap:
     //   - first 60% of authors → relay.damus.io + nos.lol
     //   - next  30% of authors → nostr.wine     + nos.lol
@@ -153,18 +144,20 @@ fn timeline_compiles_to_per_relay_union() {
     }
 
     // Assert: plan-id is stable — two consecutive compiles with no input change.
-    let plan2 = compiler.compile(&[LogicalInterest {
-        id: interest_id(1),
-        scope: InterestScope::ActiveAccount,
-        shape: InterestShape {
-            authors: author_set,
-            kinds: [1u32, 6u32].into_iter().collect(),
-            ..Default::default()
-        },
-        hints: vec![],
-        lifecycle: InterestLifecycle::Tailing,
-        is_indexer_discovery: false,
-    }]).expect("compile #2");
+    let plan2 = compiler
+        .compile(&[LogicalInterest {
+            id: interest_id(1),
+            scope: InterestScope::ActiveAccount,
+            shape: InterestShape {
+                authors: author_set,
+                kinds: [1u32, 6u32].into_iter().collect(),
+                ..Default::default()
+            },
+            hints: vec![],
+            lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
+        }])
+        .expect("compile #2");
     assert_eq!(
         plan.plan_id, plan2.plan_id,
         "re-compile with identical inputs must yield the same plan_id"
@@ -456,7 +449,9 @@ fn plan_id_changes_when_interest_set_changes() {
         is_indexer_discovery: false,
     };
 
-    let plan_one = compiler.compile(std::slice::from_ref(&interest_a)).expect("compile one");
+    let plan_one = compiler
+        .compile(std::slice::from_ref(&interest_a))
+        .expect("compile one");
     let plan_two = compiler
         .compile(&[interest_a, interest_b])
         .expect("compile two");

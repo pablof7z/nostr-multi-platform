@@ -530,7 +530,9 @@ fn d14_skips_out_of_scope_crates() {
     // explicit `--d14-extra-scope`) must NOT trigger — the rule is
     // substrate-scoped, not workspace-wide.
     let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d14_out_of_scope");
+    let tmp = workspace
+        .join("target")
+        .join("doctrine_lint_d14_out_of_scope");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     std::fs::write(
@@ -813,7 +815,9 @@ fn d13_part_b_positive_fixture_fires_outside_marmot() {
     // `target/doctrine_lint_d13_part_b_pos/` puts the file outside the
     // exemption set entirely, which is the in-scope condition.
     let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d13_part_b_pos");
+    let tmp = workspace
+        .join("target")
+        .join("doctrine_lint_d13_part_b_pos");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     let pos_src = workspace.join(fixture_path("d13/part_b_pos.rs"));
@@ -824,8 +828,7 @@ fn d13_part_b_positive_fixture_fires_outside_marmot() {
     // resolves to in-scope.
     let crate_src = tmp.join("crates").join("some-app-crate").join("src");
     std::fs::create_dir_all(&crate_src).expect("create fake crate src");
-    std::fs::copy(&pos_src, crate_src.join("part_b_pos.rs"))
-        .expect("copy fixture into fake crate");
+    std::fs::copy(&pos_src, crate_src.join("part_b_pos.rs")).expect("copy fixture into fake crate");
 
     let crate_src_str = crate_src.to_string_lossy().into_owned();
     let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
@@ -964,7 +967,9 @@ fn d12_positive_fixture_fires() {
 #[test]
 fn d12_multiline_positive_fixture_fires() {
     let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d12_multiline_pos");
+    let tmp = workspace
+        .join("target")
+        .join("doctrine_lint_d12_multiline_pos");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).expect("create temp dir");
     let pos_src = workspace.join(fixture_path("d12/pos_multiline.rs"));

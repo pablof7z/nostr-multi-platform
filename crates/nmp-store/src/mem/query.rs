@@ -23,8 +23,8 @@ use std::ops::ControlFlow;
 use super::{bytes_to_hex, MemEventStore};
 use crate::events::EventIter;
 use crate::types::{
-    Coverage, DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoreQuery,
-    StoredEvent, TombstoneRow, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
+    Coverage, DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent,
+    TombstoneRow, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
 };
 use crate::StoreError;
 
@@ -61,7 +61,8 @@ pub(super) fn scan_by_author_kind<'a>(
         .cloned()
         .collect();
     results.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -84,12 +85,14 @@ pub(super) fn get_param_replaceable(
         .filter(|ev| {
             ev.raw.pubkey == pubkey_hex
                 && ev.raw.kind == kind
-                && ev.raw
+                && ev
+                    .raw
                     .d_tag()
                     .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == d_str)
         })
         .max_by(|a, b| {
-            a.raw.created_at
+            a.raw
+                .created_at
                 .cmp(&b.raw.created_at)
                 .then(b.raw.id.cmp(&a.raw.id))
         })
@@ -112,7 +115,8 @@ pub(super) fn scan_by_kind_dtag<'a>(
         .values()
         .filter(|ev| {
             ev.raw.kind == kind
-                && ev.raw
+                && ev
+                    .raw
                     .d_tag()
                     .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == d_str)
                 && since.is_none_or(|s| ev.raw.created_at >= s)
@@ -121,7 +125,8 @@ pub(super) fn scan_by_kind_dtag<'a>(
         .cloned()
         .collect();
     results.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -140,13 +145,12 @@ pub(super) fn scan_by_etag<'a>(
     let mut results: Vec<StoredEvent> = st
         .events
         .values()
-        .filter(|ev| {
-            kinds.contains(&ev.raw.kind) && ev.raw.e_tags().contains(&target_hex)
-        })
+        .filter(|ev| kinds.contains(&ev.raw.kind) && ev.raw.e_tags().contains(&target_hex))
         .cloned()
         .collect();
     results.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -165,13 +169,12 @@ pub(super) fn scan_by_ptag<'a>(
     let mut results: Vec<StoredEvent> = st
         .events
         .values()
-        .filter(|ev| {
-            kinds.contains(&ev.raw.kind) && ev.raw.p_tags().contains(&target_hex)
-        })
+        .filter(|ev| kinds.contains(&ev.raw.kind) && ev.raw.p_tags().contains(&target_hex))
         .cloned()
         .collect();
     results.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -198,7 +201,8 @@ pub(super) fn scan_by_kind_time<'a>(
         .cloned()
         .collect();
     results.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -211,34 +215,43 @@ pub(super) fn scan_by_kind_time<'a>(
 /// the same matching logic (no duplicated index semantics).
 fn matches(ev: &StoredEvent, query: &StoreQuery) -> bool {
     let in_range = |since: Option<u64>, until: Option<u64>| {
-        since.is_none_or(|s| ev.raw.created_at >= s)
-            && until.is_none_or(|u| ev.raw.created_at <= u)
+        since.is_none_or(|s| ev.raw.created_at >= s) && until.is_none_or(|u| ev.raw.created_at <= u)
     };
     match query {
-        StoreQuery::AuthorKind { author, kinds, since, until } => {
+        StoreQuery::AuthorKind {
+            author,
+            kinds,
+            since,
+            until,
+        } => {
             ev.raw.pubkey == bytes_to_hex(author)
                 && kinds.contains(&ev.raw.kind)
                 && in_range(*since, *until)
         }
-        StoreQuery::KindTime { kinds, since, until } => {
-            (kinds.is_empty() || kinds.contains(&ev.raw.kind))
-                && in_range(*since, *until)
-        }
-        StoreQuery::KindDtag { kind, d_tag, since, until } => {
+        StoreQuery::KindTime {
+            kinds,
+            since,
+            until,
+        } => (kinds.is_empty() || kinds.contains(&ev.raw.kind)) && in_range(*since, *until),
+        StoreQuery::KindDtag {
+            kind,
+            d_tag,
+            since,
+            until,
+        } => {
             let want = String::from_utf8_lossy(d_tag).into_owned();
             ev.raw.kind == *kind
-                && ev.raw
+                && ev
+                    .raw
                     .d_tag()
                     .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == want)
                 && in_range(*since, *until)
         }
         StoreQuery::Etag { target, kinds } => {
-            kinds.contains(&ev.raw.kind)
-                && ev.raw.e_tags().contains(&bytes_to_hex(target))
+            kinds.contains(&ev.raw.kind) && ev.raw.e_tags().contains(&bytes_to_hex(target))
         }
         StoreQuery::Ptag { target, kinds } => {
-            kinds.contains(&ev.raw.kind)
-                && ev.raw.p_tags().contains(&bytes_to_hex(target))
+            kinds.contains(&ev.raw.kind) && ev.raw.p_tags().contains(&bytes_to_hex(target))
         }
     }
 }
@@ -262,11 +275,16 @@ pub(super) fn query_visit(
     }
     let st = store.lock()?;
     if limit == 1 {
-        let newest = st.events.values().filter(|ev| matches(ev, query)).max_by(|a, b| {
-            a.raw.created_at
-                .cmp(&b.raw.created_at)
-                .then(b.raw.id.cmp(&a.raw.id))
-        });
+        let newest = st
+            .events
+            .values()
+            .filter(|ev| matches(ev, query))
+            .max_by(|a, b| {
+                a.raw
+                    .created_at
+                    .cmp(&b.raw.created_at)
+                    .then(b.raw.id.cmp(&a.raw.id))
+            });
         if let Some(ev) = newest {
             let _ = visitor(ev);
         }
@@ -276,7 +294,8 @@ pub(super) fn query_visit(
     let mut matched: Vec<&StoredEvent> =
         st.events.values().filter(|ev| matches(ev, query)).collect();
     matched.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -343,27 +362,21 @@ pub(super) fn read_watermark(
     key: &WatermarkKey,
 ) -> Result<Option<WatermarkRow>, StoreError> {
     let st = store.lock()?;
-    let wm_key = (
-        bytes_to_hex(&key.filter_hash),
-        key.relay_url.clone(),
-    );
+    let wm_key = (bytes_to_hex(&key.filter_hash), key.relay_url.clone());
     Ok(st.watermarks.get(&wm_key).cloned())
 }
 
-pub(super) fn write_watermark(
-    store: &MemEventStore,
-    row: WatermarkRow,
-) -> Result<(), StoreError> {
+pub(super) fn write_watermark(store: &MemEventStore, row: WatermarkRow) -> Result<(), StoreError> {
     let mut st = store.lock()?;
-    let wm_key = (bytes_to_hex(&row.key.filter_hash), row.key.relay_url.clone());
+    let wm_key = (
+        bytes_to_hex(&row.key.filter_hash),
+        row.key.relay_url.clone(),
+    );
     st.watermarks.insert(wm_key, row);
     Ok(())
 }
 
-pub(super) fn coverage(
-    store: &MemEventStore,
-    key: &WatermarkKey,
-) -> Result<Coverage, StoreError> {
+pub(super) fn coverage(store: &MemEventStore, key: &WatermarkKey) -> Result<Coverage, StoreError> {
     let row = read_watermark(store, key)?;
     let Some(row) = row else {
         return Ok(Coverage::Unknown);
@@ -387,8 +400,7 @@ pub(super) fn coverage(
 pub(super) fn list_watermarks_for_relay<'a>(
     store: &'a MemEventStore,
     relay_url: &str,
-) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError>
-{
+) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError> {
     let st = store.lock()?;
     let rows: Vec<WatermarkRow> = st
         .watermarks
@@ -422,7 +434,8 @@ pub(super) fn dump(
         .to_string();
         let bytes = (line + "\n").into_bytes();
         stats.bytes_written += bytes.len() as u64;
-        out.write_all(&bytes).map_err(|e| StoreError::Io(e.to_string()))?;
+        out.write_all(&bytes)
+            .map_err(|e| StoreError::Io(e.to_string()))?;
         stats.events += 1;
     }
 
@@ -440,7 +453,8 @@ pub(super) fn dump(
         .to_string();
         let bytes = (line + "\n").into_bytes();
         stats.bytes_written += bytes.len() as u64;
-        out.write_all(&bytes).map_err(|e| StoreError::Io(e.to_string()))?;
+        out.write_all(&bytes)
+            .map_err(|e| StoreError::Io(e.to_string()))?;
         stats.tombstones += 1;
     }
 
@@ -458,7 +472,8 @@ pub(super) fn dump(
         .to_string();
         let bytes = (line + "\n").into_bytes();
         stats.bytes_written += bytes.len() as u64;
-        out.write_all(&bytes).map_err(|e| StoreError::Io(e.to_string()))?;
+        out.write_all(&bytes)
+            .map_err(|e| StoreError::Io(e.to_string()))?;
         stats.watermarks += 1;
     }
 
@@ -481,7 +496,8 @@ pub(super) fn dump(
             .to_string();
             let bytes = (line + "\n").into_bytes();
             stats.bytes_written += bytes.len() as u64;
-            out.write_all(&bytes).map_err(|e| StoreError::Io(e.to_string()))?;
+            out.write_all(&bytes)
+                .map_err(|e| StoreError::Io(e.to_string()))?;
             stats.domain_rows += 1;
         }
     }

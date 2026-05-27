@@ -46,15 +46,22 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::inbox_helper::route_p_tags_to_inbox;
+use super::{MailboxCache, RelayEntry};
 use crate::{
-    interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
+    interest::{
+        InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord, Pubkey,
+        RelayUrl,
+    },
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use super::{MailboxCache, RelayEntry};
-use super::inbox_helper::route_p_tags_to_inbox;
 
 /// Per-relay accumulator: (authors, addresses, sources).
-type CaseAEntry = (BTreeSet<Pubkey>, BTreeSet<NaddrCoord>, BTreeSet<RoutingSource>);
+type CaseAEntry = (
+    BTreeSet<Pubkey>,
+    BTreeSet<NaddrCoord>,
+    BTreeSet<RoutingSource>,
+);
 
 /// Route an interest with explicit authors to outbox relays.
 ///
@@ -143,7 +150,9 @@ pub(super) fn route(
                 .entry(relay.clone())
                 .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
             entry.0.insert(author.clone());
-            entry.2.insert(RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay));
+            entry.2.insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::AppRelay,
+            ));
             landed = true;
         }
 
@@ -165,7 +174,9 @@ pub(super) fn route(
                         .entry(relay.clone())
                         .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
                     entry.0.insert(author.clone());
-                    entry.2.insert(RoutingSource::UserConfigured(UserConfiguredCategory::Indexer));
+                    entry.2.insert(RoutingSource::UserConfigured(
+                        UserConfiguredCategory::Indexer,
+                    ));
                     landed = true;
                 }
             }
@@ -199,7 +210,9 @@ pub(super) fn route(
                 .entry(relay.clone())
                 .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
             entry.1.insert(coord.clone());
-            entry.2.insert(RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay));
+            entry.2.insert(RoutingSource::UserConfigured(
+                UserConfiguredCategory::AppRelay,
+            ));
             landed = true;
         }
 
@@ -218,15 +231,46 @@ pub(super) fn route(
         }
     }
 
+    let mut any_valid_hint = false;
+    for hint in &interest.hints {
+        let Some((relay_url, source)) = super::hint_helper::route_for_hint(hint) else {
+            continue;
+        };
+        any_valid_hint = true;
+        let entry = per_relay
+            .entry(relay_url)
+            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
+        for author in &interest.shape.authors {
+            entry.0.insert(author.clone());
+        }
+        for coord in &interest.shape.addresses {
+            entry.1.insert(coord.clone());
+        }
+        entry.2.insert(source);
+    }
+    // If any valid hint routed all authors and coords, remove them from
+    // unroutable. The hint is their landing pad; they are no longer stranded.
+    if any_valid_hint {
+        for author in &interest.shape.authors {
+            unroutable.remove(author);
+        }
+        for coord in &interest.shape.addresses {
+            unroutable.remove(&coord.pubkey);
+        }
+    }
+
     for (relay_url, (authors, addrs, sources)) in per_relay {
-        relay_entries.entry(relay_url).or_default().push(RelayEntry {
-            base_shape: base_shape.clone(),
-            authors_for_relay: authors,
-            addresses_for_relay: addrs,
-            lifecycle: interest.lifecycle.clone(),
-            sources,
-            interest_id: interest.id.clone(),
-        });
+        relay_entries
+            .entry(relay_url)
+            .or_default()
+            .push(RelayEntry {
+                base_shape: base_shape.clone(),
+                authors_for_relay: authors,
+                addresses_for_relay: addrs,
+                lifecycle: interest.lifecycle.clone(),
+                sources,
+                interest_id: interest.id.clone(),
+            });
     }
 
     // "Both populated" split: also emit Inbox entries for any #p values.

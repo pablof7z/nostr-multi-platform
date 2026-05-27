@@ -462,5 +462,4 @@ impl Kernel {
     pub(crate) fn publish_status_snapshot(&self) -> &crate::publish::PublishStatusSnapshot {
         self.publish_engine.snapshot()
     }
-
 }

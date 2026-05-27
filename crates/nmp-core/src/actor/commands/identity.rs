@@ -15,10 +15,7 @@ use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
-use crate::kernel::{
-    AccountSummary,
-    Kernel, RelayEditRow,
-};
+use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
 use crate::relay::{canonical_relay_url, default_relay_bootstrap, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
@@ -276,10 +273,11 @@ pub(crate) struct Nip46OnboardingDto {
 /// bunker-handshake slot and deriving the typed view. Runs on every snapshot
 /// tick (D8: lock-and-clone only, no allocation in the steady-state path
 /// beyond the static signer-app vec).
-pub(crate) fn build_nip46_onboarding_dto(
-    slot: &BunkerHandshakeSlot,
-) -> Nip46OnboardingDto {
-    let raw = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+pub(crate) fn build_nip46_onboarding_dto(slot: &BunkerHandshakeSlot) -> Nip46OnboardingDto {
+    let raw = slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
     let (stage_kind, progress_message) = match raw {
         Some(dto) => (Some(BunkerStageKind::from_wire(&dto.stage)), dto.message),
         None => (None, None),
@@ -507,10 +505,11 @@ impl IdentityRuntime {
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_nip59::SignerForSeal>> {
         if let Some(remote) = self.active_remote_arc() {
-            return super::remote_signer_for_seal::RemoteSignerForSeal::new(remote)
-                .map(|adapter| {
+            return super::remote_signer_for_seal::RemoteSignerForSeal::new(remote).map(
+                |adapter| {
                     std::sync::Arc::new(adapter) as std::sync::Arc<dyn nmp_nip59::SignerForSeal>
-                });
+                },
+            );
         }
         if let Some(keys) = self.active_keys() {
             return Some(std::sync::Arc::new(keys.clone()));

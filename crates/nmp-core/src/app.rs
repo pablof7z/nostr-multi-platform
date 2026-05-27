@@ -22,8 +22,14 @@ use crate::planner::{
 pub enum KernelAction {
     Start,
     Stop,
-    OpenView { namespace: String, key: String },
-    CloseView { namespace: String, key: String },
+    OpenView {
+        namespace: String,
+        key: String,
+    },
+    CloseView {
+        namespace: String,
+        key: String,
+    },
     RunDiagnostics,
     /// Open whatever a `nostr:` URI (or bare NIP-19 entity) points at.
     ///
@@ -32,19 +38,36 @@ pub enum KernelAction {
     /// `note`/`nevent` → thread, `naddr` → addressable-event. Relay hints
     /// carried by the entity are honoured as the `relay_pin` third routing
     /// lane (ADR-0012).
-    OpenUri { uri: String },
+    OpenUri {
+        uri: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum KernelUpdate {
-    Started { rev: u64 },
-    Stopped { rev: u64 },
-    ViewOpened { namespace: String, key: String },
-    ViewClosed { namespace: String, key: String },
-    Diagnostics { summary: String },
+    Started {
+        rev: u64,
+    },
+    Stopped {
+        rev: u64,
+    },
+    ViewOpened {
+        namespace: String,
+        key: String,
+    },
+    ViewClosed {
+        namespace: String,
+        key: String,
+    },
+    Diagnostics {
+        summary: String,
+    },
     /// A `nostr:` URI could not be resolved into a view. Carries a stable,
     /// app-noun-free reason string for diagnostics/telemetry.
-    UriRejected { uri: String, reason: String },
+    UriRejected {
+        uri: String,
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -120,8 +143,14 @@ fn bare_entity_to_target(entity: nip19::Nip19Entity) -> Result<NostrUri, OpenUri
     use nip19::Nip19Entity::{Naddr, Nevent, Note, Nprofile, Npub, Nsec};
     Ok(match entity {
         Nsec(_) => return Err(OpenUriError::NotRoutable("nsec is not routable".into())),
-        Npub(pubkey) => NostrUri::Profile { pubkey, relays: vec![] },
-        Nprofile(d) => NostrUri::Profile { pubkey: d.pubkey, relays: d.relays },
+        Npub(pubkey) => NostrUri::Profile {
+            pubkey,
+            relays: vec![],
+        },
+        Nprofile(d) => NostrUri::Profile {
+            pubkey: d.pubkey,
+            relays: d.relays,
+        },
         Note(event_id) => NostrUri::Event {
             event_id,
             relays: vec![],
@@ -176,7 +205,12 @@ pub fn resolve_open_uri(uri: &str) -> Result<OpenUriRouting, OpenUriError> {
             let shape = InterestShape::profile_for(pubkey.clone());
             (shape, VIEW_PROFILE, pubkey.clone())
         }
-        NostrUri::Event { event_id, author, kind, .. } => {
+        NostrUri::Event {
+            event_id,
+            author,
+            kind,
+            ..
+        } => {
             let mut shape = InterestShape::default();
             shape.event_ids.insert(event_id.clone());
             if let Some(author) = author {
@@ -188,7 +222,12 @@ pub fn resolve_open_uri(uri: &str) -> Result<OpenUriRouting, OpenUriError> {
             shape.limit = Some(1);
             (shape, VIEW_THREAD, event_id.clone())
         }
-        NostrUri::Address { identifier, pubkey, kind, .. } => {
+        NostrUri::Address {
+            identifier,
+            pubkey,
+            kind,
+            ..
+        } => {
             let mut shape = InterestShape::default();
             shape.addresses.insert(NaddrCoord {
                 pubkey: pubkey.clone(),
@@ -236,7 +275,7 @@ pub fn resolve_open_uri(uri: &str) -> Result<OpenUriRouting, OpenUriError> {
 mod open_uri_tests {
     use super::*;
     use crate::nip19::{
-        encode_naddr, encode_nevent, encode_npub, encode_nprofile, encode_note, encode_nsec,
+        encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec,
         NaddrData, NeventData, NprofileData,
     };
 
@@ -251,11 +290,18 @@ mod open_uri_tests {
         let r = resolve_open_uri(&format!("nostr:{bech}")).unwrap();
         assert_eq!(
             r.view,
-            KernelUpdate::ViewOpened { namespace: VIEW_PROFILE.into(), key: PK.into() }
+            KernelUpdate::ViewOpened {
+                namespace: VIEW_PROFILE.into(),
+                key: PK.into()
+            }
         );
         assert!(r.interest.shape.kinds.contains(&KIND_METADATA));
         assert!(r.interest.shape.authors.contains(PK));
-        assert_eq!(r.interest.shape.limit, Some(3), "one event per kind (profile, contacts, relay list)");
+        assert_eq!(
+            r.interest.shape.limit,
+            Some(3),
+            "one event per kind (profile, contacts, relay list)"
+        );
         assert!(r.interest.shape.relay_pin.is_none());
         assert!(r.interest.hints.is_empty());
     }
@@ -278,9 +324,15 @@ mod open_uri_tests {
         let r = resolve_open_uri(&format!("nostr:{bech}")).unwrap();
         assert_eq!(
             r.view,
-            KernelUpdate::ViewOpened { namespace: VIEW_PROFILE.into(), key: PK.into() }
+            KernelUpdate::ViewOpened {
+                namespace: VIEW_PROFILE.into(),
+                key: PK.into()
+            }
         );
-        assert_eq!(r.interest.shape.relay_pin.as_deref(), Some("wss://relay.example"));
+        assert_eq!(
+            r.interest.shape.relay_pin.as_deref(),
+            Some("wss://relay.example")
+        );
         assert_eq!(r.interest.hints.len(), 2);
     }
 
@@ -290,7 +342,10 @@ mod open_uri_tests {
         let r = resolve_open_uri(&format!("nostr:{bech}")).unwrap();
         assert_eq!(
             r.view,
-            KernelUpdate::ViewOpened { namespace: VIEW_THREAD.into(), key: EVID.into() }
+            KernelUpdate::ViewOpened {
+                namespace: VIEW_THREAD.into(),
+                key: EVID.into()
+            }
         );
         assert!(r.interest.shape.event_ids.contains(EVID));
         assert!(r.interest.shape.relay_pin.is_none());
@@ -308,12 +363,18 @@ mod open_uri_tests {
         let r = resolve_open_uri(&format!("nostr:{bech}")).unwrap();
         assert_eq!(
             r.view,
-            KernelUpdate::ViewOpened { namespace: VIEW_THREAD.into(), key: EVID.into() }
+            KernelUpdate::ViewOpened {
+                namespace: VIEW_THREAD.into(),
+                key: EVID.into()
+            }
         );
         assert!(r.interest.shape.event_ids.contains(EVID));
         assert!(r.interest.shape.authors.contains(PK));
         assert!(r.interest.shape.kinds.contains(&1));
-        assert_eq!(r.interest.shape.relay_pin.as_deref(), Some("wss://nevent.example"));
+        assert_eq!(
+            r.interest.shape.relay_pin.as_deref(),
+            Some("wss://nevent.example")
+        );
         assert_eq!(r.interest.hints.len(), 1);
     }
 
@@ -351,7 +412,10 @@ mod open_uri_tests {
         })
         .unwrap();
         let r = resolve_open_uri(&format!("nostr:{bech}")).unwrap();
-        assert_eq!(r.interest.shape.relay_pin.as_deref(), Some("wss://naddr.example"));
+        assert_eq!(
+            r.interest.shape.relay_pin.as_deref(),
+            Some("wss://naddr.example")
+        );
         assert_eq!(r.interest.hints.len(), 1);
     }
 
@@ -382,7 +446,9 @@ mod open_uri_tests {
 
     #[test]
     fn action_round_trips_through_serde() {
-        let a = KernelAction::OpenUri { uri: "nostr:npub1xyz".into() };
+        let a = KernelAction::OpenUri {
+            uri: "nostr:npub1xyz".into(),
+        };
         let json = serde_json::to_string(&a).unwrap();
         let back: KernelAction = serde_json::from_str(&json).unwrap();
         assert_eq!(a, back);

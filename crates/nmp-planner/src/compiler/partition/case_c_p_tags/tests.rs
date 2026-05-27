@@ -16,8 +16,7 @@
 use crate::{
     compiler::{InMemoryMailboxCache, MailboxSnapshot, SubscriptionCompiler},
     interest::{
-        InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
-        PTagRouting,
+        InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, PTagRouting,
     },
     plan::{RoutingSource, UserConfiguredCategory},
 };
@@ -416,14 +415,8 @@ fn pd033c_p_tag_bootstrap_toggle_does_not_change_plan_id() {
         /* bootstrap_content = */ &[],
         &[],
     );
-    let with_bootstrap = SubscriptionCompiler::with_relays_and_bootstrap(
-        &cache,
-        &[],
-        &[],
-        &[],
-        &bootstrap_set,
-        &[],
-    );
+    let with_bootstrap =
+        SubscriptionCompiler::with_relays_and_bootstrap(&cache, &[], &[], &[], &bootstrap_set, &[]);
 
     let plan_without = no_bootstrap.compile(&interests).expect("compile");
     let plan_with = with_bootstrap.compile(&interests).expect("compile");

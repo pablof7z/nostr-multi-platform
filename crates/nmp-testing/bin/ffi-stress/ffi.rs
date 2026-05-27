@@ -10,8 +10,8 @@
 
 pub(crate) use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free,
-    nmp_app_inject_signed_events, nmp_app_new,
-    nmp_app_open_author, nmp_app_release_profile, nmp_app_set_update_callback, NmpApp,
+    nmp_app_inject_signed_events, nmp_app_new, nmp_app_open_author, nmp_app_release_profile,
+    nmp_app_set_update_callback, NmpApp,
 };
 // nmp_app_inject_pre_verified_events is retained for possible future harness use
 // but S3/S4/S5 all use nmp_app_inject_signed_events (T44 round-4).
@@ -75,7 +75,11 @@ pub(crate) fn process_rss_bytes() -> u64 {
                 &mut count,
             )
         };
-        if ret == 0 { info.resident_size } else { 0 }
+        if ret == 0 {
+            info.resident_size
+        } else {
+            0
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {

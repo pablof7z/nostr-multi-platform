@@ -181,7 +181,7 @@ pub struct InterestShape {
 
 impl InterestShape {
     /// Convenience constructor for a tailing author+kind timeline interest.
-    #[must_use] 
+    #[must_use]
     pub fn timeline_for(authors: BTreeSet<Pubkey>) -> Self {
         Self {
             authors,
@@ -194,7 +194,7 @@ impl InterestShape {
     ///
     /// Fetches all indexer-relevant replaceable events for the author:
     /// kind:0 (profile), kind:3 (contact list), kind:10002 (NIP-65 relay list).
-    #[must_use] 
+    #[must_use]
     pub fn profile_for(pubkey: Pubkey) -> Self {
         Self {
             authors: [pubkey].into_iter().collect(),
@@ -360,7 +360,9 @@ mod tests {
         // kind:0 profile + kind:3 contacts + kind:10002 NIP-65 relay list.
         assert_eq!(
             shape.kinds,
-            [0u32, 3u32, 10002u32].into_iter().collect::<BTreeSet<u32>>()
+            [0u32, 3u32, 10002u32]
+                .into_iter()
+                .collect::<BTreeSet<u32>>()
         );
         // One-shot profile fetch caps at 3 replaceable events.
         assert_eq!(shape.limit, Some(3));
@@ -455,7 +457,9 @@ mod tests {
         let mut tags: BTreeMap<TagKey, BTreeSet<String>> = BTreeMap::new();
         tags.insert(
             "t".to_string(),
-            ["nostr".to_string(), "rust".to_string()].into_iter().collect(),
+            ["nostr".to_string(), "rust".to_string()]
+                .into_iter()
+                .collect(),
         );
 
         let addr = NaddrCoord {
@@ -483,10 +487,7 @@ mod tests {
             shape.kinds,
             [1u32, 7u32].into_iter().collect::<BTreeSet<u32>>()
         );
-        assert_eq!(
-            shape.tags.get("t").map(|v| v.len()),
-            Some(2),
-        );
+        assert_eq!(shape.tags.get("t").map(|v| v.len()), Some(2),);
         assert!(shape.tags["t"].contains("nostr"));
         assert!(shape.tags["t"].contains("rust"));
         assert_eq!(shape.since, Some(1_700_000_000));

@@ -80,9 +80,8 @@ impl FsPublishStore {
 impl PublishStore for FsPublishStore {
     fn upsert(&self, record: &PublishRecord) -> Result<(), PublishStoreError> {
         self.ensure_dir()?;
-        let bytes = serde_json::to_vec_pretty(record).map_err(|err| {
-            PublishStoreError::Backend(format!("encode publish record: {err}"))
-        })?;
+        let bytes = serde_json::to_vec_pretty(record)
+            .map_err(|err| PublishStoreError::Backend(format!("encode publish record: {err}")))?;
 
         let final_path = self.record_path(&record.handle);
         // Temp file in the SAME directory as the target so the rename below is
@@ -193,10 +192,7 @@ fn encode_handle(handle: &str) -> String {
     }
     let mut out = String::with_capacity(handle.len());
     for &byte in handle.as_bytes() {
-        let safe = byte.is_ascii_alphanumeric()
-            || byte == b'.'
-            || byte == b'_'
-            || byte == b'-';
+        let safe = byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'_' || byte == b'-';
         if safe {
             out.push(byte as char);
         } else {
@@ -304,10 +300,7 @@ mod tests {
     fn fs_publish_store_load_pending_empty_when_unwritten() {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = FsPublishStore::new(dir.path());
-        assert!(store
-            .load_pending()
-            .expect("load with no dir")
-            .is_empty());
+        assert!(store.load_pending().expect("load with no dir").is_empty());
     }
 
     /// `delete` of a never-written handle is a no-op success (idempotent).

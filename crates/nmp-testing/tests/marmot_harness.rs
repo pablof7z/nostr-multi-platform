@@ -14,11 +14,11 @@
 
 use std::path::{Path, PathBuf};
 
-use mdk_core::MdkConfig;
 use mdk_core::prelude::NostrGroupConfigData;
+use mdk_core::MdkConfig;
 use mdk_sqlite_storage::MdkSqliteStorage;
-use nostr::{Keys, RelayUrl};
 use nmp_marmot::service::MarmotService;
+use nostr::{Keys, RelayUrl};
 use tempfile::TempDir;
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -39,10 +39,8 @@ impl TestDir {
 
 /// Build an unencrypted (test-only) `MdkSqliteStorage` at `path`.
 pub fn unencrypted_storage(path: &Path) -> MdkSqliteStorage {
-    MdkSqliteStorage::new_unencrypted(
-        path.to_str().expect("utf8 path"),
-    )
-    .expect("unencrypted sqlite storage")
+    MdkSqliteStorage::new_unencrypted(path.to_str().expect("utf8 path"))
+        .expect("unencrypted sqlite storage")
 }
 
 /// Copy the SQLite file at `src` to `dst` — used by the post-compromise test
@@ -137,7 +135,8 @@ pub fn setup_two_member_group(
         .unwrap_and_process_welcome(&gift)
         .expect("bob unwraps welcome");
     assert_eq!(sender, alice_keys.public_key());
-    bob.accept_welcome(&bob_welcome).expect("bob accepts welcome");
+    bob.accept_welcome(&bob_welcome)
+        .expect("bob accepts welcome");
 
     // Post-join self_update (MIP-02 mandatory).
     post_join_self_update(bob, alice, &group_id);
@@ -153,9 +152,7 @@ pub fn post_join_self_update(
     group_id: &mdk_core::prelude::GroupId,
 ) {
     use mdk_core::prelude::MessageProcessingResult;
-    let su = joiner
-        .self_update(group_id)
-        .expect("post-join self_update");
+    let su = joiner.self_update(group_id).expect("post-join self_update");
     let commit_event = su.evolution_event.clone();
     su.commit().expect("merge post-join self_update");
     match peer

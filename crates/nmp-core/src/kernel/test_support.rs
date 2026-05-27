@@ -5,14 +5,52 @@
 //! unit tests and the firehose/FFI stress harnesses exercise the same ingest
 //! hot-paths as production code without needing real secp256k1 keys.
 //!
-//! New test-support helpers should be added here rather than to `kernel/mod.rs`
-//! to keep the main module under the 300-LOC soft limit (AGENTS.md).
-//!
-//! D0: capability boundary respected — none of these methods appear in the
-//! production FFI surface.
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
 use crate::relay::RelayRoleTestExt;
+
+thread_local! {
+    static CLAIM_EXPANSION_SUBS: RefCell<BTreeMap<String, String>> =
+        RefCell::new(BTreeMap::new());
+    static CLAIM_EXPANSION_MATCHES: RefCell<BTreeSet<(String, String)>> =
+        RefCell::new(BTreeSet::new());
+}
+
+pub(crate) fn register_claim_expansion_sub(sub_id: &str, author: &str) {
+    CLAIM_EXPANSION_SUBS.with(|m| {
+        m.borrow_mut()
+            .insert(sub_id.to_string(), author.to_string());
+    });
+}
+
+pub(crate) fn get_claim_expansion_author(sub_id: &str) -> Option<String> {
+    CLAIM_EXPANSION_SUBS.with(|m| m.borrow().get(sub_id).cloned())
+}
+
+pub(crate) fn mark_claim_expansion_match_seen(sub_id: &str, relay_url: &str) {
+    CLAIM_EXPANSION_MATCHES.with(|m| {
+        m.borrow_mut().insert((
+            sub_id.to_string(),
+            CanonicalRelayUrl::parse_or_raw(relay_url).into_string(),
+        ));
+    });
+}
+
+pub(crate) fn take_claim_expansion_match_seen(sub_id: &str, relay_url: &str) -> bool {
+    CLAIM_EXPANSION_MATCHES.with(|m| {
+        m.borrow_mut().remove(&(
+            sub_id.to_string(),
+            CanonicalRelayUrl::parse_or_raw(relay_url).into_string(),
+        ))
+    })
+}
+
+pub(crate) fn clear_claim_expansion_subs() {
+    CLAIM_EXPANSION_SUBS.with(|m| m.borrow_mut().clear());
+    CLAIM_EXPANSION_MATCHES.with(|m| m.borrow_mut().clear());
+}
 
 impl Kernel {
     /// Test-support constructor for downstream protocol crates.
@@ -92,14 +130,10 @@ impl Kernel {
                     //      what the kernel's substrate-honest mailbox-change
                     //      observer (`Kernel::on_mailbox_changed`) does in
                     //      production.
-                    let parsed = parse_relay_list_to_substrate(
-                        &event.id,
-                        event.created_at,
-                        &event.tags,
-                    );
-                    let empty = parsed.read.is_empty()
-                        && parsed.write.is_empty()
-                        && parsed.both.is_empty();
+                    let parsed =
+                        parse_relay_list_to_substrate(&event.id, event.created_at, &event.tags);
+                    let empty =
+                        parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
                     let had_entry = self.mailbox_cache.known(&event.pubkey);
                     let mailbox_mutated = if empty {
                         if had_entry {
@@ -115,14 +149,12 @@ impl Kernel {
                             false
                         }
                     } else {
-                        self.mailbox_cache
-                            .upsert(event.pubkey.clone(), parsed);
-                        self.lifecycle.enqueue_trigger(
-                            crate::subs::CompileTrigger::Nip65Arrived {
+                        self.mailbox_cache.upsert(event.pubkey.clone(), parsed);
+                        self.lifecycle
+                            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
                                 pubkey: event.pubkey.clone(),
                                 created_at: event.created_at,
-                            },
-                        );
+                            });
                         true
                     };
                     // Mirror the production `Kernel::on_mailbox_changed`
@@ -380,7 +412,8 @@ impl Kernel {
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10050_for_test(&mut self, author_pubkey: &str, dm_relay_urls: &[&str]) {
-        self.test_dm_relay_cache().upsert(author_pubkey, dm_relay_urls);
+        self.test_dm_relay_cache()
+            .upsert(author_pubkey, dm_relay_urls);
         // V-40 substitute for the removed `CompileTrigger::DmRelayListChanged`.
         // Production composition (`Kind10050Parser` in `nmp-nip17`) will need
         // its own seam to enqueue a trigger when the cache mutates; for tests
@@ -412,10 +445,7 @@ impl Kernel {
     /// `actor::outbound::wire_frames_to_outbound`; tests drive it directly so
     /// the EOSE keep-live assertion exercises the same registration code.
     #[cfg(test)]
-    pub(crate) fn register_wire_frames_for_test(
-        &mut self,
-        frames: &[crate::subs::WireFrame],
-    ) {
+    pub(crate) fn register_wire_frames_for_test(&mut self, frames: &[crate::subs::WireFrame]) {
         self.register_planner_wire_frames(frames);
     }
 
@@ -440,9 +470,7 @@ impl Kernel {
 
     /// Snapshot of the registered M2 follow-feed `InterestId`s.
     #[cfg(test)]
-    pub(crate) fn follow_feed_interest_ids_for_test(
-        &self,
-    ) -> Vec<crate::planner::InterestId> {
+    pub(crate) fn follow_feed_interest_ids_for_test(&self) -> Vec<crate::planner::InterestId> {
         self.follow_feed_interest_ids.iter().cloned().collect()
     }
 
@@ -455,18 +483,14 @@ impl Kernel {
     /// Read-only snapshot of `profile_requests.pending` (the queued kind:0
     /// fetch set).
     #[cfg(test)]
-    pub(crate) fn profile_requests_pending_for_test(
-        &self,
-    ) -> &std::collections::BTreeSet<String> {
+    pub(crate) fn profile_requests_pending_for_test(&self) -> &std::collections::BTreeSet<String> {
         &self.profile_requests.pending
     }
 
     /// Read-only snapshot of `profile_requests.requested` (the inflight /
     /// completed kind:0 fetch set).
     #[cfg(test)]
-    pub(crate) fn profile_requests_requested_for_test(
-        &self,
-    ) -> &std::collections::HashSet<String> {
+    pub(crate) fn profile_requests_requested_for_test(&self) -> &std::collections::HashSet<String> {
         &self.profile_requests.requested
     }
 }

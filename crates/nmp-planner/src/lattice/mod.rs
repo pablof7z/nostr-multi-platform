@@ -64,7 +64,7 @@ pub enum MergeOutcome {
 /// independently to filter over-delivered events.
 ///
 /// Design: §3.3 Rules 1–9
-#[must_use] 
+#[must_use]
 pub fn merge(
     a: &InterestShape,
     b: &InterestShape,
@@ -91,16 +91,24 @@ pub fn merge(
     }
 
     // Rule 1 — kinds
-    let Some(merged_kinds) = rule1_kinds(a, b) else { return MergeOutcome::Refused };
+    let Some(merged_kinds) = rule1_kinds(a, b) else {
+        return MergeOutcome::Refused;
+    };
 
     // Rule 2 — tag dimensions
-    let Some(merged_tags) = rule2_tags(a, b, DEFAULT_VALUE_LIMIT) else { return MergeOutcome::Refused };
+    let Some(merged_tags) = rule2_tags(a, b, DEFAULT_VALUE_LIMIT) else {
+        return MergeOutcome::Refused;
+    };
 
     // Rule 3 — since
-    let Some(merged_since) = rule3_since(a, b) else { return MergeOutcome::Refused };
+    let Some(merged_since) = rule3_since(a, b) else {
+        return MergeOutcome::Refused;
+    };
 
     // Rule 4 — until
-    let Some(merged_until) = rule4_until(a, b) else { return MergeOutcome::Refused };
+    let Some(merged_until) = rule4_until(a, b) else {
+        return MergeOutcome::Refused;
+    };
 
     // Rule 5 — limit
     if !rule5_limit(a, b) {
@@ -108,10 +116,14 @@ pub fn merge(
     }
 
     // Rule 7 — event_ids union
-    let Some(merged_event_ids) = rule7_event_ids(a, b, DEFAULT_VALUE_LIMIT) else { return MergeOutcome::Refused };
+    let Some(merged_event_ids) = rule7_event_ids(a, b, DEFAULT_VALUE_LIMIT) else {
+        return MergeOutcome::Refused;
+    };
 
     // Rule 8 — addresses union (requires prior rules to have passed)
-    let Some(merged_addresses) = rule8_addresses(a, b, DEFAULT_VALUE_LIMIT) else { return MergeOutcome::Refused };
+    let Some(merged_addresses) = rule8_addresses(a, b, DEFAULT_VALUE_LIMIT) else {
+        return MergeOutcome::Refused;
+    };
 
     MergeOutcome::Merged(InterestShape {
         authors: a.authors.union(&b.authors).cloned().collect(),
@@ -198,11 +210,13 @@ mod tests {
             let r_ba = merge(&concrete, &wildcard, &tailing(), &tailing());
             assert!(
                 matches!(r_ab, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
-                "wildcard ∪ {:?} must be wildcard (a=wildcard)", concrete_kinds
+                "wildcard ∪ {:?} must be wildcard (a=wildcard)",
+                concrete_kinds
             );
             assert!(
                 matches!(r_ba, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
-                "wildcard ∪ {:?} must be wildcard (b=wildcard)", concrete_kinds
+                "wildcard ∪ {:?} must be wildcard (b=wildcard)",
+                concrete_kinds
             );
         }
         // wildcard ∪ wildcard = wildcard
@@ -218,11 +232,25 @@ mod tests {
     #[test]
     fn rule2_same_tag_dimensions_merge() {
         let mut tags_a = BTreeMap::new();
-        tags_a.insert("t".to_string(), ["bitcoin".to_string()].into_iter().collect::<BTreeSet<_>>());
+        tags_a.insert(
+            "t".to_string(),
+            ["bitcoin".to_string()].into_iter().collect::<BTreeSet<_>>(),
+        );
         let mut tags_b = BTreeMap::new();
-        tags_b.insert("t".to_string(), ["nostr".to_string()].into_iter().collect::<BTreeSet<_>>());
-        let a = InterestShape { tags: tags_a, kinds: [1].into_iter().collect(), ..Default::default() };
-        let b = InterestShape { tags: tags_b, kinds: [1].into_iter().collect(), ..Default::default() };
+        tags_b.insert(
+            "t".to_string(),
+            ["nostr".to_string()].into_iter().collect::<BTreeSet<_>>(),
+        );
+        let a = InterestShape {
+            tags: tags_a,
+            kinds: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            tags: tags_b,
+            kinds: [1].into_iter().collect(),
+            ..Default::default()
+        };
         let r = merge(&a, &b, &tailing(), &tailing());
         if let MergeOutcome::Merged(s) = r {
             let t = s.tags.get("t").unwrap();
@@ -236,10 +264,19 @@ mod tests {
     #[test]
     fn rule2_different_tag_dimensions_refuse() {
         let mut tags_a = BTreeMap::new();
-        tags_a.insert("t".to_string(), ["bitcoin".to_string()].into_iter().collect::<BTreeSet<_>>());
+        tags_a.insert(
+            "t".to_string(),
+            ["bitcoin".to_string()].into_iter().collect::<BTreeSet<_>>(),
+        );
         let tags_b = BTreeMap::new();
-        let a = InterestShape { tags: tags_a, ..Default::default() };
-        let b = InterestShape { tags: tags_b, ..Default::default() };
+        let a = InterestShape {
+            tags: tags_a,
+            ..Default::default()
+        };
+        let b = InterestShape {
+            tags: tags_b,
+            ..Default::default()
+        };
         assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused);
     }
 
@@ -247,8 +284,16 @@ mod tests {
 
     #[test]
     fn rule3_both_since_take_min() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), since: Some(1000), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), since: Some(500), ..Default::default() };
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            since: Some(1000),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            since: Some(500),
+            ..Default::default()
+        };
         let r = merge(&a, &b, &tailing(), &tailing());
         if let MergeOutcome::Merged(s) = r {
             assert_eq!(s.since, Some(500));
@@ -259,8 +304,16 @@ mod tests {
 
     #[test]
     fn rule3_mixed_since_refuse() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), since: Some(1000), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), since: None, ..Default::default() };
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            since: Some(1000),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            since: None,
+            ..Default::default()
+        };
         assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused);
     }
 
@@ -268,8 +321,16 @@ mod tests {
 
     #[test]
     fn rule4_both_until_take_max() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), until: Some(2000), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), until: Some(3000), ..Default::default() };
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            until: Some(2000),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            until: Some(3000),
+            ..Default::default()
+        };
         let r = merge(&a, &b, &tailing(), &tailing());
         if let MergeOutcome::Merged(s) = r {
             assert_eq!(s.until, Some(3000));
@@ -280,8 +341,16 @@ mod tests {
 
     #[test]
     fn rule4_mixed_until_refuse() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), until: Some(2000), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), until: None, ..Default::default() };
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            until: Some(2000),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            until: None,
+            ..Default::default()
+        };
         assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused);
     }
 
@@ -289,19 +358,46 @@ mod tests {
 
     #[test]
     fn rule5_both_absent_limit_merge() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), limit: None, ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), limit: None, ..Default::default() };
-        assert!(matches!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Merged(_)));
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            limit: None,
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            limit: None,
+            ..Default::default()
+        };
+        assert!(matches!(
+            merge(&a, &b, &tailing(), &tailing()),
+            MergeOutcome::Merged(_)
+        ));
     }
 
     #[test]
     fn rule5_any_limit_refuse() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), limit: Some(100), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), limit: None, ..Default::default() };
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            limit: Some(100),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            limit: None,
+            ..Default::default()
+        };
         assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused);
 
-        let c = InterestShape { kinds: [1].into_iter().collect(), limit: Some(200), ..Default::default() };
-        let d = InterestShape { kinds: [1].into_iter().collect(), limit: Some(200), ..Default::default() };
+        let c = InterestShape {
+            kinds: [1].into_iter().collect(),
+            limit: Some(200),
+            ..Default::default()
+        };
+        let d = InterestShape {
+            kinds: [1].into_iter().collect(),
+            limit: Some(200),
+            ..Default::default()
+        };
         assert_eq!(merge(&c, &d, &tailing(), &tailing()), MergeOutcome::Refused);
     }
 
@@ -309,17 +405,38 @@ mod tests {
 
     #[test]
     fn rule6_identical_lifecycle_merge() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), ..Default::default() };
-        assert!(matches!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Merged(_)));
-        assert!(matches!(merge(&a, &b, &one_shot(), &one_shot()), MergeOutcome::Merged(_)));
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        assert!(matches!(
+            merge(&a, &b, &tailing(), &tailing()),
+            MergeOutcome::Merged(_)
+        ));
+        assert!(matches!(
+            merge(&a, &b, &one_shot(), &one_shot()),
+            MergeOutcome::Merged(_)
+        ));
     }
 
     #[test]
     fn rule6_mixed_lifecycle_refuse() {
-        let a = InterestShape { kinds: [1].into_iter().collect(), ..Default::default() };
-        let b = InterestShape { kinds: [1].into_iter().collect(), ..Default::default() };
-        assert_eq!(merge(&a, &b, &tailing(), &one_shot()), MergeOutcome::Refused);
+        let a = InterestShape {
+            kinds: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        let b = InterestShape {
+            kinds: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        assert_eq!(
+            merge(&a, &b, &tailing(), &one_shot()),
+            MergeOutcome::Refused
+        );
     }
 
     // ── Rule 7 — event_ids ───────────────────────────────────────────────────
@@ -347,17 +464,34 @@ mod tests {
     fn rule7_event_ids_cap_refuse() {
         let ids_a: BTreeSet<String> = (0u32..600).map(|i| format!("{i:064x}")).collect();
         let ids_b: BTreeSet<String> = (500u32..1100).map(|i| format!("{i:064x}")).collect();
-        let a = InterestShape { event_ids: ids_a, ..Default::default() };
-        let b = InterestShape { event_ids: ids_b, ..Default::default() };
-        assert_eq!(merge(&a, &b, &one_shot(), &one_shot()), MergeOutcome::Refused);
+        let a = InterestShape {
+            event_ids: ids_a,
+            ..Default::default()
+        };
+        let b = InterestShape {
+            event_ids: ids_b,
+            ..Default::default()
+        };
+        assert_eq!(
+            merge(&a, &b, &one_shot(), &one_shot()),
+            MergeOutcome::Refused
+        );
     }
 
     // ── Rule 8 — addresses ───────────────────────────────────────────────────
 
     #[test]
     fn rule8_address_union_merges() {
-        let coord_a = NaddrCoord { pubkey: "a".repeat(64), kind: 30023, d_tag: "post-a".to_string() };
-        let coord_b = NaddrCoord { pubkey: "b".repeat(64), kind: 30023, d_tag: "post-b".to_string() };
+        let coord_a = NaddrCoord {
+            pubkey: "a".repeat(64),
+            kind: 30023,
+            d_tag: "post-a".to_string(),
+        };
+        let coord_b = NaddrCoord {
+            pubkey: "b".repeat(64),
+            kind: 30023,
+            d_tag: "post-b".to_string(),
+        };
         let a = InterestShape {
             kinds: [30023].into_iter().collect(),
             addresses: [coord_a.clone()].into_iter().collect(),
@@ -379,7 +513,11 @@ mod tests {
 
     #[test]
     fn rule8_address_dedup_identical_coord() {
-        let coord = NaddrCoord { pubkey: "a".repeat(64), kind: 30023, d_tag: "my-post".to_string() };
+        let coord = NaddrCoord {
+            pubkey: "a".repeat(64),
+            kind: 30023,
+            d_tag: "my-post".to_string(),
+        };
         let a = InterestShape {
             kinds: [30023].into_iter().collect(),
             addresses: [coord.clone()].into_iter().collect(),
@@ -396,14 +534,21 @@ mod tests {
 
     #[test]
     fn rule8_addresses_respect_other_rules() {
-        let coord = NaddrCoord { pubkey: "a".repeat(64), kind: 30023, d_tag: "post".to_string() };
+        let coord = NaddrCoord {
+            pubkey: "a".repeat(64),
+            kind: 30023,
+            d_tag: "post".to_string(),
+        };
         let a = InterestShape {
             kinds: [30023].into_iter().collect(),
             addresses: [coord.clone()].into_iter().collect(),
             ..Default::default()
         };
         let b = a.clone();
-        assert_eq!(merge(&a, &b, &tailing(), &one_shot()), MergeOutcome::Refused);
+        assert_eq!(
+            merge(&a, &b, &tailing(), &one_shot()),
+            MergeOutcome::Refused
+        );
     }
 
     // ── Rule 9 — relay_pin (host-relay-pin / h-tag coalesce) ─────────────────
@@ -419,15 +564,24 @@ mod tests {
         // Two interests pinned to the same host but carrying different `h`
         // tag values must merge into one per-host REQ whose `h` set is the
         // union — this is the generic h-tag-coalesce behavior.
-        let mut a = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        let mut a = InterestShape {
+            kinds: [9].into_iter().collect(),
+            ..Default::default()
+        };
         a.relay_pin = Some("wss://host.example.com".into());
         let mut b = a.clone();
         // Different `h` value per side — Rule 2 must union them.
         let mut tags = BTreeMap::new();
-        tags.insert("h".to_string(), ["room-a".to_string()].into_iter().collect::<BTreeSet<_>>());
+        tags.insert(
+            "h".to_string(),
+            ["room-a".to_string()].into_iter().collect::<BTreeSet<_>>(),
+        );
         a.tags = tags;
         let mut tags_b = BTreeMap::new();
-        tags_b.insert("h".to_string(), ["room-b".to_string()].into_iter().collect::<BTreeSet<_>>());
+        tags_b.insert(
+            "h".to_string(),
+            ["room-b".to_string()].into_iter().collect::<BTreeSet<_>>(),
+        );
         b.tags = tags_b;
         let r = merge(&a, &b, &tailing(), &tailing());
         if let MergeOutcome::Merged(s) = r {
@@ -443,12 +597,21 @@ mod tests {
     fn rule9_different_relay_pin_refuses() {
         // Two host-pinned interests targeting DIFFERENT hosts must NOT collapse
         // into a single wire frame — they're literally going to different relays.
-        let mut a = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        let mut a = InterestShape {
+            kinds: [9].into_iter().collect(),
+            ..Default::default()
+        };
         a.relay_pin = Some("wss://host-a.example.com".into());
-        let mut b = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        let mut b = InterestShape {
+            kinds: [9].into_iter().collect(),
+            ..Default::default()
+        };
         b.relay_pin = Some("wss://host-b.example.com".into());
-        assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused,
-            "different relay_pin must refuse — they go to different relays");
+        assert_eq!(
+            merge(&a, &b, &tailing(), &tailing()),
+            MergeOutcome::Refused,
+            "different relay_pin must refuse — they go to different relays"
+        );
     }
 
     #[test]
@@ -456,12 +619,24 @@ mod tests {
         // Unlike Rule 1's wildcard kinds, `None` does NOT absorb `Some(_)`:
         // mixing pinned + unpinned would either leak pinned content or narrow
         // the unpinned scope — both correctness regressions.
-        let mut pinned = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        let mut pinned = InterestShape {
+            kinds: [9].into_iter().collect(),
+            ..Default::default()
+        };
         pinned.relay_pin = Some("wss://host.example.com".into());
-        let unpinned = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        let unpinned = InterestShape {
+            kinds: [9].into_iter().collect(),
+            ..Default::default()
+        };
         // pinned ∪ unpinned must refuse in BOTH directions (symmetric refusal).
-        assert_eq!(merge(&pinned, &unpinned, &tailing(), &tailing()), MergeOutcome::Refused);
-        assert_eq!(merge(&unpinned, &pinned, &tailing(), &tailing()), MergeOutcome::Refused);
+        assert_eq!(
+            merge(&pinned, &unpinned, &tailing(), &tailing()),
+            MergeOutcome::Refused
+        );
+        assert_eq!(
+            merge(&unpinned, &pinned, &tailing(), &tailing()),
+            MergeOutcome::Refused
+        );
     }
 
     #[test]
@@ -469,6 +644,9 @@ mod tests {
         // The common case (no pin on either side) is unaffected by Rule 9.
         let a = shape_with_kinds(&[1, 6]);
         let b = shape_with_kinds(&[1, 6]);
-        assert!(matches!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Merged(_)));
+        assert!(matches!(
+            merge(&a, &b, &tailing(), &tailing()),
+            MergeOutcome::Merged(_)
+        ));
     }
 }

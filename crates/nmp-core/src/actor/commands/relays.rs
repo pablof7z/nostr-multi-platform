@@ -467,7 +467,10 @@ mod tests {
         ];
         let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
         let urls: Vec<&String> = event.tags.iter().map(|t| &t[1]).collect();
-        assert_eq!(urls, vec!["wss://b.example", "wss://a.example", "wss://c.example"]);
+        assert_eq!(
+            urls,
+            vec!["wss://b.example", "wss://a.example", "wss://c.example"]
+        );
     }
 
     #[test]

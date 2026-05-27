@@ -2,8 +2,8 @@
 //!
 //! D2: store returns typed outcomes, never panics or `unwrap`s on bad input.
 
-use serde::{Deserialize, Serialize};
 use super::ids::{EventId, PubKey, RelayUrl};
+use serde::{Deserialize, Serialize};
 
 // ─── Insert outcomes ─────────────────────────────────────────────────────────
 
@@ -14,11 +14,18 @@ pub enum InsertOutcome {
     /// Duplicate id; provenance updated, primary untouched.
     Duplicate { id: EventId, sources_after: u32 },
     /// Replaceable supersession: this event replaced an older one.
-    Replaced { new_id: EventId, replaced_id: EventId },
+    Replaced {
+        new_id: EventId,
+        replaced_id: EventId,
+    },
     /// Replaceable supersession: incoming was older, dropped.
     Superseded { id: EventId, current_id: EventId },
     /// Suppressed because a tombstone exists for this event id.
-    Tombstoned { id: EventId, kind5_event_id: Option<EventId>, origin: TombstoneOrigin },
+    Tombstoned {
+        id: EventId,
+        kind5_event_id: Option<EventId>,
+        origin: TombstoneOrigin,
+    },
     /// Signature / delegation / structural validity failed.
     Rejected { id: EventId, reason: RejectReason },
     /// Ephemeral kind: delivered to live consumers, not stored.

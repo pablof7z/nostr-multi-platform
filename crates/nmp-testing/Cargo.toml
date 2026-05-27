@@ -166,3 +166,10 @@ path = "tests/marmot_perf.rs"
 [[test]]
 name = "routing_trace_real_nostr"
 path = "tests/routing_trace_real_nostr.rs"
+
+# W2 — relay-author-score LMDB persistence integration gate.
+# Requires lmdb-backend feature: `cargo test -p nmp-testing --features lmdb-backend --test relay_score_persistence`
+[[test]]
+name = "relay_score_persistence"
+path = "tests/relay_score_persistence.rs"
+required-features = ["lmdb-backend"]

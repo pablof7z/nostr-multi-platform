@@ -45,15 +45,16 @@ mod bounded;
 mod capability;
 mod dm_inbox_relays;
 mod empty_routing;
+mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
-mod host_op_handler;
 pub mod placeholder;
 mod protocol;
 mod raw_event_forwarding;
-mod req_intercept;
 mod relay_intercept;
+mod relay_score_store;
+mod req_intercept;
 mod routing;
 mod routing_trace;
 mod view;
@@ -67,11 +68,11 @@ pub use blocked_relays::{
 };
 pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
+#[cfg(any(test, feature = "test-support"))]
+pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use dm_inbox_relays::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
 };
-#[cfg(any(test, feature = "test-support"))]
-pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 // Step 9: the `DomainMigration` / `MigrationTx` value types passed to
 // `EventStore::run_migrations` moved with the store (they are consumed only by
@@ -79,29 +80,28 @@ pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandler
 // without a back-edge into substrate). Re-exported here so the legacy
 // `nmp_core::substrate::{DomainMigration, MigrationTx}` import path is
 // unchanged.
-pub use nmp_store::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
     MALFORMED_RESULT,
 };
+pub use nmp_store::{DomainMigration, MigrationTx};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
     ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess,
     NoopActionStageTracker, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
-    NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
-    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
+    NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts,
+    ProtocolCommandError, RecipientRelayLookup,
 };
 pub use raw_event_forwarding::{
     RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
 };
-pub use req_intercept::{
-    new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor,
-    ReqFrameInterceptorSlot,
-};
 pub use relay_intercept::{
     new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
+};
+pub use req_intercept::{
+    new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor, ReqFrameInterceptorSlot,
 };
 // V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
 // only on `nmp-core` can name the signer-capability trait that
@@ -109,19 +109,20 @@ pub use relay_intercept::{
 // NIP crate substrate is allowed to depend on per the spec (Layer 4
 // exception); re-exporting its capability trait keeps the dep wall
 // asymmetric the way the architecture wants it.
-pub use nmp_nip59::SignerForSeal;
-pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
 #[cfg(any(test, feature = "test-support"))]
 pub use empty_routing::TestInMemoryMailboxCache;
+pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
+pub use nmp_nip59::SignerForSeal;
+#[cfg(feature = "lmdb-backend")]
+pub use relay_score_store::LmdbRelayAuthorScoreStore;
+pub use relay_score_store::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore, ScoreCell};
 pub use routing::{
     AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,
     OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,
     RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, SessionKeySet,
     UserConfiguredCategory,
 };
-pub use routing_trace::{
-    truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace,
-};
+pub use routing_trace::{truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /

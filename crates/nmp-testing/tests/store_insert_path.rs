@@ -37,7 +37,13 @@ for_each_backend!(insert_malformed_sig_rejected, |h: &mut StoreHarness| {
     let id = ev.id_bytes();
     let outcome = h.insert_raw(ev, "wss://t/", 1_000_000_000);
     assert!(
-        matches!(outcome, InsertOutcome::Rejected { reason: RejectReason::Malformed(_), .. }),
+        matches!(
+            outcome,
+            InsertOutcome::Rejected {
+                reason: RejectReason::Malformed(_),
+                ..
+            }
+        ),
         "expected Rejected(Malformed), got {outcome:?}"
     );
     h.assert_absent(&id);
@@ -52,12 +58,15 @@ for_each_backend!(insert_get_by_id_round_trip, |h: &mut StoreHarness| {
     assert_eq!(stored.raw.content, content);
 });
 
-for_each_backend!(insert_provenance_created_on_insert, |h: &mut StoreHarness| {
-    let ev = h.make_event(ALICE_HEX, 1, 1_000_000);
-    let id = ev.id_bytes();
-    h.insert_raw(ev, "wss://a/", 1_000_000_000);
-    let prov = h.store.provenance_for(&id).unwrap();
-    assert_eq!(prov.len(), 1);
-    assert_eq!(prov[0].relay_url, "wss://a/");
-    assert!(prov[0].primary);
-});
+for_each_backend!(
+    insert_provenance_created_on_insert,
+    |h: &mut StoreHarness| {
+        let ev = h.make_event(ALICE_HEX, 1, 1_000_000);
+        let id = ev.id_bytes();
+        h.insert_raw(ev, "wss://a/", 1_000_000_000);
+        let prov = h.store.provenance_for(&id).unwrap();
+        assert_eq!(prov.len(), 1);
+        assert_eq!(prov[0].relay_url, "wss://a/");
+        assert!(prov[0].primary);
+    }
+);

@@ -22,8 +22,7 @@ struct LocalProvenanceEntry {
 }
 
 fn decode_local(bytes: &[u8]) -> Result<Vec<LocalProvenanceEntry>, StoreError> {
-    serde_json::from_slice(bytes)
-        .map_err(|e| StoreError::Encoding(format!("prov decode: {e}")))
+    serde_json::from_slice(bytes).map_err(|e| StoreError::Encoding(format!("prov decode: {e}")))
 }
 
 pub(super) fn delete_by_filter(
@@ -42,7 +41,8 @@ pub(super) fn delete_by_filter(
         DeleteFilter::ByRelayOnly(relay) => by_relay_only(inner, &mut txn, relay)?,
     };
 
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     Ok(count)
 }
 
@@ -58,10 +58,8 @@ fn by_ids(
             .has_event(txn, &id)
             .map_err(|e| StoreError::Io(format!("has: {e}")))?
         {
-            let f = Filter::new().id(
-                nostr::EventId::from_slice(&id)
-                    .map_err(|e| StoreError::Encoding(format!("id: {e}")))?,
-            );
+            let f = Filter::new().id(nostr::EventId::from_slice(&id)
+                .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
             inner
                 .lmdb
                 .delete(txn, f)
@@ -73,13 +71,8 @@ fn by_ids(
     Ok(n)
 }
 
-fn by_author(
-    inner: &Arc<Inner>,
-    txn: &mut heed::RwTxn,
-    pk: EventId,
-) -> Result<usize, StoreError> {
-    let pk = PublicKey::from_slice(&pk)
-        .map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
+fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<usize, StoreError> {
+    let pk = PublicKey::from_slice(&pk).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let f = Filter::new().author(pk);
     let ids: Vec<EventId> = inner
         .lmdb
@@ -155,10 +148,8 @@ fn by_relay_only(
     }
     let n = victims.len();
     for id in victims {
-        let f = Filter::new().id(
-            nostr::EventId::from_slice(&id)
-                .map_err(|e| StoreError::Encoding(format!("id: {e}")))?,
-        );
+        let f = Filter::new().id(nostr::EventId::from_slice(&id)
+            .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
         inner
             .lmdb
             .delete(txn, f)

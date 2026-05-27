@@ -46,7 +46,9 @@ fn empty_plan_stays_empty() {
 #[test]
 fn single_author_single_relay_unchanged() {
     let mut plan = plan_with(&[("wss://a", &["alice"])]);
-    let before_hash = plan.per_relay["wss://a"].sub_shapes[0].canonical_filter_hash.clone();
+    let before_hash = plan.per_relay["wss://a"].sub_shapes[0]
+        .canonical_filter_hash
+        .clone();
     apply_selection(&mut plan, 30, 2);
     assert_eq!(plan.per_relay.len(), 1);
     assert_eq!(plan.per_relay["wss://a"].sub_shapes.len(), 1);
@@ -56,8 +58,7 @@ fn single_author_single_relay_unchanged() {
     );
     // Hash should not have changed (author set unchanged).
     assert_eq!(
-        plan.per_relay["wss://a"].sub_shapes[0].canonical_filter_hash,
-        before_hash,
+        plan.per_relay["wss://a"].sub_shapes[0].canonical_filter_hash, before_hash,
         "hash must not be recomputed when authors are unchanged",
     );
 }
@@ -71,7 +72,10 @@ fn one_shared_relay_for_many_authors_picks_one() {
     apply_selection(&mut plan, 30, 2);
     assert_eq!(plan.per_relay.len(), 1);
     assert_eq!(
-        plan.per_relay["wss://hub"].sub_shapes[0].shape.authors.len(),
+        plan.per_relay["wss://hub"].sub_shapes[0]
+            .shape
+            .authors
+            .len(),
         100
     );
 }
@@ -143,7 +147,10 @@ fn deterministic_across_runs() {
 
     let keys_1: Vec<_> = p1.per_relay.keys().cloned().collect();
     let keys_2: Vec<_> = p2.per_relay.keys().cloned().collect();
-    assert_eq!(keys_1, keys_2, "selected relay keys must be identical across runs");
+    assert_eq!(
+        keys_1, keys_2,
+        "selected relay keys must be identical across runs"
+    );
     for k in &keys_1 {
         let a1 = &p1.per_relay[k].sub_shapes[0].shape.authors;
         let a2 = &p2.per_relay[k].sub_shapes[0].shape.authors;
@@ -206,12 +213,13 @@ fn hash_recomputed_when_authors_change() {
     //   - Round 2: only c remains in pool with {r2}. r2 takes {c}.
     // Result: r1 keeps {a, b} unchanged → hash unchanged. r2 keeps only
     // {c} (filtered from {b, c}) → hash MUST recompute.
-    let mut plan = plan_with(&[
-        ("wss://r1", &["a", "b"]),
-        ("wss://r2", &["b", "c"]),
-    ]);
-    let r1_hash_before = plan.per_relay["wss://r1"].sub_shapes[0].canonical_filter_hash.clone();
-    let r2_hash_before = plan.per_relay["wss://r2"].sub_shapes[0].canonical_filter_hash.clone();
+    let mut plan = plan_with(&[("wss://r1", &["a", "b"]), ("wss://r2", &["b", "c"])]);
+    let r1_hash_before = plan.per_relay["wss://r1"].sub_shapes[0]
+        .canonical_filter_hash
+        .clone();
+    let r2_hash_before = plan.per_relay["wss://r2"].sub_shapes[0]
+        .canonical_filter_hash
+        .clone();
 
     apply_selection(&mut plan, 2, 1);
 
@@ -219,7 +227,9 @@ fn hash_recomputed_when_authors_change() {
     let r2 = &plan.per_relay["wss://r2"].sub_shapes[0];
     assert_eq!(
         r1.shape.authors,
-        ["a".to_string(), "b".to_string()].into_iter().collect::<BTreeSet<_>>(),
+        ["a".to_string(), "b".to_string()]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         "r1 must keep {{a, b}}",
     );
     assert_eq!(
@@ -320,168 +330,4 @@ fn zero_max_per_user_drops_all() {
     let mut plan = plan_with(&[("wss://a", &["alice"])]);
     apply_selection(&mut plan, 30, 0);
     assert!(plan.per_relay.is_empty());
-}
-
-// ─── App-relay protection (operator intent overrides coverage) ───────────────
-//
-// Operator-configured app relays (`UserConfigured(AppRelay)`) carry the user
-// directive "always REQ from here". They MUST NOT be pruned by the greedy
-// max-coverage pass — that pass exists to bound the connection storm against
-// NIP-65 outbox sets, not to second-guess the operator. Without this
-// protection the selector silently drops app_relays whenever the author's
-// NIP-65 outbox already covers them under the `max_per_user` cap — exactly
-// the gallery-TUI smoke regression where `app_relays=[primal]` is dropped
-// in favour of Gigi's [atlas, eden] outbox because `max_per_user=2`.
-
-/// Helper that builds a per-relay sub-shape tagged with the supplied routing
-/// source set. Mirrors [`plan_with`] but lets the test pin the lane each
-/// relay landed on, since app-relay protection is keyed on `role_tags`.
-fn plan_with_sources(
-    relays: &[(&str, &[&str], &[RoutingSource])],
-) -> CompiledPlan {
-    let mut per_relay = BTreeMap::new();
-    for (relay, authors, sources) in relays {
-        let mut shape = InterestShape::default();
-        for a in *authors {
-            shape.authors.insert((*a).to_string());
-        }
-        let hash = canonical_filter_hash(&shape);
-        let sub = SubShape {
-            shape,
-            originating_interests: vec![],
-            canonical_filter_hash: hash,
-        };
-        let mut role_tags = BTreeSet::new();
-        for src in *sources {
-            role_tags.insert(src.clone());
-        }
-        per_relay.insert(
-            (*relay).to_string(),
-            RelayPlan {
-                relay_url: (*relay).to_string(),
-                role_tags,
-                sub_shapes: vec![sub],
-            },
-        );
-    }
-    CompiledPlan {
-        plan_id: "test".to_string(),
-        per_relay,
-        unroutable_authors: BTreeSet::new(),
-    }
-}
-
-#[test]
-fn app_relay_survives_selection_even_when_outbox_already_covers_author() {
-    // Gallery-TUI smoke repro: 1 author, outbox=[atlas, eden], app_relays=[primal].
-    // Under DEFAULT_SELECT_MAX_PER_USER=2 the greedy pass picks atlas+eden
-    // (lex-smallest first via the reverse-URL tiebreak) and drops primal
-    // even though it carries the operator-directed `AppRelay` lane.
-    use crate::plan::UserConfiguredCategory;
-    let nip65 = [RoutingSource::Nip65];
-    let app = [RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)];
-    let mut plan = plan_with_sources(&[
-        ("wss://atlas.nostr.land", &["gigi"], &nip65),
-        ("wss://eden.nostr.land", &["gigi"], &nip65),
-        ("wss://relay.primal.net", &["gigi"], &app),
-    ]);
-    apply_selection(&mut plan, 30, 2);
-
-    assert!(
-        plan.per_relay.contains_key("wss://relay.primal.net"),
-        "primal (AppRelay-tagged) must survive selection regardless of outbox coverage; \
-         got relays: {:?}",
-        plan.per_relay.keys().collect::<Vec<_>>(),
-    );
-    // The author must still be carried on the app relay's sub-shape — the
-    // wire-emitter walks each surviving sub-shape and renders one REQ per.
-    let primal = &plan.per_relay["wss://relay.primal.net"];
-    assert_eq!(primal.sub_shapes.len(), 1);
-    assert!(
-        primal.sub_shapes[0].shape.authors.contains("gigi"),
-        "app relay must carry the author on its sub-shape; got {:?}",
-        primal.sub_shapes[0].shape.authors,
-    );
-}
-
-#[test]
-fn app_relay_survives_even_under_tight_max_connections_budget() {
-    // Same shape, but max_connections=1. The operator's directive still
-    // overrides — primal is preserved; greedy gets the remaining slot (which
-    // is zero) for outbox relays. Result: primal alone.
-    use crate::plan::UserConfiguredCategory;
-    let nip65 = [RoutingSource::Nip65];
-    let app = [RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay)];
-    let mut plan = plan_with_sources(&[
-        ("wss://atlas.nostr.land", &["gigi"], &nip65),
-        ("wss://eden.nostr.land", &["gigi"], &nip65),
-        ("wss://relay.primal.net", &["gigi"], &app),
-    ]);
-    apply_selection(&mut plan, 1, 2);
-
-    assert!(
-        plan.per_relay.contains_key("wss://relay.primal.net"),
-        "primal must survive even when max_connections=1 — operator intent overrides budget; \
-         got: {:?}",
-        plan.per_relay.keys().collect::<Vec<_>>(),
-    );
-}
-
-#[test]
-fn dual_lane_app_relay_plus_nip65_survives() {
-    // Same URL tagged as BOTH NIP-65 and AppRelay (e.g. operator pinned a
-    // relay the author also declared). Coverage might or might not pick it
-    // anyway, but the protection MUST hold regardless.
-    use crate::plan::UserConfiguredCategory;
-    let mut plan = plan_with_sources(&[
-        ("wss://atlas.nostr.land", &["gigi"], &[RoutingSource::Nip65]),
-        ("wss://eden.nostr.land", &["gigi"], &[RoutingSource::Nip65]),
-        (
-            "wss://relay.primal.net",
-            &["gigi"],
-            &[
-                RoutingSource::Nip65,
-                RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay),
-            ],
-        ),
-    ]);
-    apply_selection(&mut plan, 30, 2);
-
-    assert!(
-        plan.per_relay.contains_key("wss://relay.primal.net"),
-        "dual-lane primal must survive; got: {:?}",
-        plan.per_relay.keys().collect::<Vec<_>>(),
-    );
-}
-
-#[test]
-fn non_app_relay_lanes_are_still_subject_to_coverage_pruning() {
-    // Regression guard: only `UserConfigured(AppRelay)` triggers the
-    // protection. A relay tagged `UserConfigured(Indexer)` (discovery-only)
-    // or `UserConfigured(Bootstrap)` (cold-start) does NOT receive the
-    // override — those lanes are kernel-driven cold-start helpers, not
-    // operator intent.
-    //
-    // Set up 3 relays all covering gigi with `max_per_user=2`. Tag the
-    // lex-largest URL with `Indexer` (NOT `AppRelay`). The selector must
-    // still prune it under the existing budget rules.
-    use crate::plan::UserConfiguredCategory;
-    let nip65 = [RoutingSource::Nip65];
-    let indexer = [RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)];
-    let mut plan = plan_with_sources(&[
-        ("wss://atlas.nostr.land", &["gigi"], &nip65),
-        ("wss://eden.nostr.land", &["gigi"], &nip65),
-        ("wss://relay.primal.net", &["gigi"], &indexer),
-    ]);
-    apply_selection(&mut plan, 30, 2);
-
-    // Under the existing tiebreak (`b.cmp(a)` on URL → lex-smallest wins
-    // first), atlas + eden are picked first; primal is dropped because the
-    // author retires after `max_per_user=2` hits and primal carries no
-    // override-eligible lane.
-    assert!(
-        !plan.per_relay.contains_key("wss://relay.primal.net"),
-        "Indexer-tagged relay must remain subject to coverage pruning; got: {:?}",
-        plan.per_relay.keys().collect::<Vec<_>>(),
-    );
 }

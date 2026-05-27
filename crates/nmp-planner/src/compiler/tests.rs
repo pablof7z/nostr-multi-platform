@@ -52,14 +52,22 @@ fn empty_interests_compile_to_empty_plan() {
     let cache = InMemoryMailboxCache::new();
     let compiler = SubscriptionCompiler::new(&cache, &[]);
 
-    let plan = compiler.compile(&[]).expect("empty input is Ok, not an error");
+    let plan = compiler
+        .compile(&[])
+        .expect("empty input is Ok, not an error");
 
-    assert!(plan.per_relay.is_empty(), "no relays for an empty interest set");
+    assert!(
+        plan.per_relay.is_empty(),
+        "no relays for an empty interest set"
+    );
     assert!(
         plan.unroutable_authors.is_empty(),
         "no authors, so nothing can be unroutable"
     );
-    assert!(!plan.plan_id.is_empty(), "even the empty plan carries a plan-id");
+    assert!(
+        !plan.plan_id.is_empty(),
+        "even the empty plan carries a plan-id"
+    );
 }
 
 /// The empty-input plan-id is deterministic across recompiles — the
@@ -90,16 +98,27 @@ fn single_author_interest_produces_one_subshape() {
     let compiler = SubscriptionCompiler::new(&cache, &[]);
 
     let plan = compiler
-        .compile(&[author_interest(1, &["alice"], &[1], InterestLifecycle::Tailing)])
+        .compile(&[author_interest(
+            1,
+            &["alice"],
+            &[1],
+            InterestLifecycle::Tailing,
+        )])
         .expect("compile");
 
     assert_eq!(plan.per_relay.len(), 1, "exactly one relay in the plan");
-    let relay = plan.per_relay.get("wss://alice-write").expect("alice-write relay");
+    let relay = plan
+        .per_relay
+        .get("wss://alice-write")
+        .expect("alice-write relay");
     assert_eq!(relay.sub_shapes.len(), 1, "one interest → one sub-shape");
 
     let sub = &relay.sub_shapes[0];
     // Author-partitioning: the sub-shape's author set is exactly Alice.
-    assert_eq!(sub.shape.authors, [pk("alice")].into_iter().collect::<BTreeSet<_>>());
+    assert_eq!(
+        sub.shape.authors,
+        [pk("alice")].into_iter().collect::<BTreeSet<_>>()
+    );
     assert_eq!(sub.shape.kinds, [1u32].into_iter().collect::<BTreeSet<_>>());
     // Provenance: the sub-shape names interest #1.
     assert_eq!(sub.originating_interests, vec![InterestId(1)]);
@@ -138,7 +157,9 @@ fn two_compatible_interests_same_relay_merge_into_one_subshape() {
     // Merged shape unions both authors.
     assert_eq!(
         sub.shape.authors,
-        [pk("alice"), pk("bob")].into_iter().collect::<BTreeSet<_>>()
+        [pk("alice"), pk("bob")]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
     );
     // Both interest ids are recorded on the merged sub-shape.
     let ids: BTreeSet<InterestId> = sub.originating_interests.iter().cloned().collect();
@@ -225,7 +246,10 @@ fn same_interest_on_one_relay_via_two_lanes_dedupes_originating_id() {
 
     // One interest: author Alice + #p:[Carol].
     let mut tags = std::collections::BTreeMap::new();
-    tags.insert("p".to_string(), [pk("carol")].into_iter().collect::<BTreeSet<_>>());
+    tags.insert(
+        "p".to_string(),
+        [pk("carol")].into_iter().collect::<BTreeSet<_>>(),
+    );
     let interest = LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
@@ -305,7 +329,12 @@ fn compile_with_context_plan_id_tracks_the_context() {
     let mut cache = InMemoryMailboxCache::new();
     cache.put(pk("alice"), write_snapshot(&["wss://alice-write"]));
     let compiler = SubscriptionCompiler::new(&cache, &[]);
-    let interests = [author_interest(1, &["alice"], &[1], InterestLifecycle::Tailing)];
+    let interests = [author_interest(
+        1,
+        &["alice"],
+        &[1],
+        InterestLifecycle::Tailing,
+    )];
 
     let v0 = compiler
         .compile_with_context(&interests, &CompileContext::default())
@@ -313,7 +342,10 @@ fn compile_with_context_plan_id_tracks_the_context() {
     let v1 = compiler
         .compile_with_context(
             &interests,
-            &CompileContext { indexer_set_version: 0, user_config_version: 1 },
+            &CompileContext {
+                indexer_set_version: 0,
+                user_config_version: 1,
+            },
         )
         .expect("compile");
 
@@ -342,7 +374,12 @@ fn app_relay_toggle_changes_unroutable_set_but_not_plan_id() {
     // Bob has no NIP-65 mailbox — his routability depends entirely on
     // whether app_relays are configured.
     let cache = InMemoryMailboxCache::new();
-    let interests = [author_interest(1, &["bob"], &[1], InterestLifecycle::Tailing)];
+    let interests = [author_interest(
+        1,
+        &["bob"],
+        &[1],
+        InterestLifecycle::Tailing,
+    )];
 
     // Without app relays: Bob is unroutable.
     let no_app = SubscriptionCompiler::new(&cache, &[]);
@@ -381,7 +418,12 @@ fn app_relay_toggle_changes_unroutable_set_but_not_plan_id() {
 /// invalidates the plan.
 #[test]
 fn nip65_arrival_changes_plan_id_even_via_unroutable_author() {
-    let interests = [author_interest(1, &["bob"], &[1], InterestLifecycle::Tailing)];
+    let interests = [author_interest(
+        1,
+        &["bob"],
+        &[1],
+        InterestLifecycle::Tailing,
+    )];
 
     // Before NIP-65: empty cache, Bob unroutable.
     let empty_cache = InMemoryMailboxCache::new();
@@ -435,7 +477,10 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
     };
 
     let plan = compiler.compile(&[timeline, profile]).expect("compile");
-    let relay = plan.per_relay.get("wss://alice-write").expect("alice-write relay");
+    let relay = plan
+        .per_relay
+        .get("wss://alice-write")
+        .expect("alice-write relay");
     assert_eq!(
         relay.sub_shapes.len(),
         2,
@@ -445,10 +490,22 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
     // Exactly one sub-shape carries the timeline kinds, one the profile kinds.
     let timeline_kinds: BTreeSet<u32> = [1, 6].into_iter().collect();
     let profile_kinds: BTreeSet<u32> = [0, 3, 10002].into_iter().collect();
-    let has_timeline = relay.sub_shapes.iter().any(|s| s.shape.kinds == timeline_kinds);
-    let has_profile = relay.sub_shapes.iter().any(|s| s.shape.kinds == profile_kinds);
-    assert!(has_timeline, "one sub-shape must carry the timeline kinds {{1,6}}");
-    assert!(has_profile, "one sub-shape must carry the profile kinds {{0,3,10002}}");
+    let has_timeline = relay
+        .sub_shapes
+        .iter()
+        .any(|s| s.shape.kinds == timeline_kinds);
+    let has_profile = relay
+        .sub_shapes
+        .iter()
+        .any(|s| s.shape.kinds == profile_kinds);
+    assert!(
+        has_timeline,
+        "one sub-shape must carry the timeline kinds {{1,6}}"
+    );
+    assert!(
+        has_profile,
+        "one sub-shape must carry the profile kinds {{0,3,10002}}"
+    );
 
     // The profile sub-shape preserves its limit (Rule 5 would have refused
     // any merge that dropped it).
@@ -457,7 +514,11 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
         .iter()
         .find(|s| s.shape.kinds == profile_kinds)
         .expect("profile sub-shape");
-    assert_eq!(profile_sub.shape.limit, Some(3), "profile limit must survive");
+    assert_eq!(
+        profile_sub.shape.limit,
+        Some(3),
+        "profile limit must survive"
+    );
 }
 
 /// A naddr-coordinate address pointer (Case B) routes to the addressed
@@ -488,7 +549,10 @@ fn address_pointer_interest_routes_coord_to_authors_write_relay() {
     };
 
     let plan = compiler.compile(&[interest]).expect("compile");
-    let relay = plan.per_relay.get("wss://author-write").expect("author-write relay");
+    let relay = plan
+        .per_relay
+        .get("wss://author-write")
+        .expect("author-write relay");
     assert_eq!(relay.sub_shapes.len(), 1, "one address pointer → one REQ");
     assert!(
         relay.sub_shapes[0].shape.addresses.contains(&coord),

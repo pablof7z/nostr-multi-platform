@@ -493,9 +493,7 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         ActorCommand::ClaimEvent { uri, consumer_id } => {
-            let outbound = ctx
-                .kernel
-                .claim_event(uri, consumer_id, ctx.relays_ready);
+            let outbound = ctx.kernel.claim_event(uri, consumer_id, ctx.relays_ready);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

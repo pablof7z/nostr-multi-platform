@@ -222,7 +222,9 @@ pub fn register_c_observer(
     slot: &KernelEventObserverSlot,
     registration: KernelEventObserverRegistration,
 ) -> KernelEventObserverId {
-    let Ok(mut guard) = slot.lock() else { return KernelEventObserverId(0); };
+    let Ok(mut guard) = slot.lock() else {
+        return KernelEventObserverId(0);
+    };
     let id = guard.alloc_id();
     guard.c_abi.push((id, registration));
     id

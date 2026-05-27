@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{
-    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, NOS_LOL, NOSTR_BAND,
+    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, NOSTR_BAND, NOS_LOL,
     PRIMAL_RELAY,
 };
 use nmp_core::publish::{OutboxResolver, PublishTarget};
@@ -42,9 +42,18 @@ const FETCH_BUDGET: Duration = Duration::from_secs(10);
 /// Stable, well-known authors. First whose kind:10002 yields ≥1 write `r`-tag
 /// from a reachable relay wins. `(label, hex_pubkey)`.
 const AUTHORS: &[(&str, &str)] = &[
-    ("jb55", "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2"),
-    ("fiatjaf", "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"),
-    ("hodlbod", "97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322"),
+    (
+        "jb55",
+        "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2",
+    ),
+    (
+        "fiatjaf",
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    ),
+    (
+        "hodlbod",
+        "97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322",
+    ),
 ];
 
 /// Relays to try, in order, for the kind:10002 REQ.
@@ -103,7 +112,9 @@ fn write_relays(ev: &Value) -> BTreeSet<String> {
         return out;
     };
     for tag in tags {
-        let Some(parts) = tag.as_array() else { continue };
+        let Some(parts) = tag.as_array() else {
+            continue;
+        };
         if parts.first().and_then(Value::as_str) != Some("r") {
             continue;
         }
@@ -228,7 +239,11 @@ fn outbox_routes_real_author_kind10002_writes() {
     let verified = VerifiedEvent::try_from_raw(raw).expect("verify live kind:10002 signature");
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     store
-        .insert(verified, &"wss://fetch".to_string(), common::now_ms() as u64)
+        .insert(
+            verified,
+            &"wss://fetch".to_string(),
+            common::now_ms() as u64,
+        )
         .expect("insert live kind:10002");
 
     let resolver = Nip65OutboxResolver::with_default_fallback(store);

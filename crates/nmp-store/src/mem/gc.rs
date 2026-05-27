@@ -6,10 +6,10 @@
 //!   - `BTreeSet` idempotency per T25: re-claiming a known id is a no-op.
 //!   - `StoreError::OverPinned` on breach (D8).
 
-use super::{bytes_to_hex, MemEventStore, DEFAULT_VIEW_CEILING, MAX_PINNED_TOTAL, TOMBSTONE_MAX_AGE_SECS};
-use crate::types::{
-    ClaimerId, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow,
+use super::{
+    bytes_to_hex, MemEventStore, DEFAULT_VIEW_CEILING, MAX_PINNED_TOTAL, TOMBSTONE_MAX_AGE_SECS,
 };
+use crate::types::{ClaimerId, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
 pub(super) fn register_view_cover(
@@ -29,7 +29,10 @@ pub(super) fn claim(
 ) -> Result<(), StoreError> {
     use std::collections::BTreeSet;
     let mut st = store.lock()?;
-    let ceiling = *st.claim_budgets.get(&claimer).unwrap_or(&DEFAULT_VIEW_CEILING);
+    let ceiling = *st
+        .claim_budgets
+        .get(&claimer)
+        .unwrap_or(&DEFAULT_VIEW_CEILING);
 
     let existing_set = st.claims.entry(claimer).or_default();
     // Use BTreeSet for intra-call deduplication so repeated ids in the same
@@ -74,20 +77,14 @@ pub(super) fn claim(
     Ok(())
 }
 
-pub(super) fn release(
-    store: &MemEventStore,
-    claimer: ClaimerId,
-) -> Result<(), StoreError> {
+pub(super) fn release(store: &MemEventStore, claimer: ClaimerId) -> Result<(), StoreError> {
     let mut st = store.lock()?;
     st.claims.remove(&claimer);
     st.claim_budgets.remove(&claimer);
     Ok(())
 }
 
-pub(super) fn gc_step(
-    store: &MemEventStore,
-    budget: GcBudget,
-) -> Result<GcReport, StoreError> {
+pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcReport, StoreError> {
     let start = std::time::Instant::now();
     let mut st = store.lock()?;
     let mut report = GcReport::default();
@@ -149,8 +146,8 @@ pub(super) fn gc_step(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EventStore, MemEventStore};
     use crate::types::EventId;
+    use crate::{EventStore, MemEventStore};
 
     fn make_id(b: u8) -> EventId {
         let mut id = [0u8; 32];
@@ -168,7 +165,11 @@ mod tests {
         // Re-claiming the same id must not count toward the ceiling.
         store.claim(c, &[id]).unwrap();
         let st = store.lock().unwrap();
-        assert_eq!(st.claims[&c].len(), 1, "idempotent: re-claim must not add entry");
+        assert_eq!(
+            st.claims[&c].len(),
+            1,
+            "idempotent: re-claim must not add entry"
+        );
     }
 
     #[test]
@@ -192,7 +193,10 @@ mod tests {
         store.claim(c, &[make_id(1), make_id(2)]).unwrap();
         store.release(c).unwrap();
         let st = store.lock().unwrap();
-        assert!(!st.claims.contains_key(&c), "release must clear claimer's pins");
+        assert!(
+            !st.claims.contains_key(&c),
+            "release must clear claimer's pins"
+        );
     }
 
     #[test]
@@ -206,7 +210,11 @@ mod tests {
         // Ceiling is 2; passing the same id three times should only consume 1 slot.
         store.claim(c, &[id, id, id]).unwrap();
         let st = store.lock().unwrap();
-        assert_eq!(st.claims[&c].len(), 1, "intra-call dup ids must count as one");
+        assert_eq!(
+            st.claims[&c].len(),
+            1,
+            "intra-call dup ids must count as one"
+        );
     }
 
     #[test]
@@ -219,6 +227,9 @@ mod tests {
         store.release(c).unwrap();
         let st = store.lock().unwrap();
         assert!(!st.claims.contains_key(&c), "release must clear pins");
-        assert!(!st.claim_budgets.contains_key(&c), "release must clear budget entry");
+        assert!(
+            !st.claim_budgets.contains_key(&c),
+            "release must clear budget entry"
+        );
     }
 }

@@ -100,7 +100,10 @@ mod tests {
             h_large.record(1_000);
         }
         assert_eq!(h_small.buckets.len(), h_large.buckets.len());
-        assert_eq!(std::mem::size_of_val(&h_small), std::mem::size_of_val(&h_large));
+        assert_eq!(
+            std::mem::size_of_val(&h_small),
+            std::mem::size_of_val(&h_large)
+        );
         assert_eq!(h_small.count, 10);
         assert_eq!(h_large.count, 1_000_000);
     }

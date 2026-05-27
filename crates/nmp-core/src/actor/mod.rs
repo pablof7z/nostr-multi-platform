@@ -1625,6 +1625,7 @@ pub fn run_actor_with_observers(
                 );
             }
         }
+        kernel.flush_relay_scores_if_dirty();
         // T127: actor-tick for the publish engine. The 250ms idle poll
         // in `compute_wait` (`tick.rs`) already paces this; no
         // additional throttle (the engine's own pending_retries gate

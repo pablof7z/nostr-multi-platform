@@ -368,8 +368,16 @@ fn assert_nip65_relay_list(event: &Value, expected_urls: &[&str]) {
 fn kind10002_relay_list_carries_r_tags() {
     let mut h = signed_harness();
     let r_tags = vec![
-        vec!["r".to_string(), "wss://nip65-write.test".to_string(), "write".to_string()],
-        vec!["r".to_string(), "wss://nip65-read.test".to_string(), "read".to_string()],
+        vec![
+            "r".to_string(),
+            "wss://nip65-write.test".to_string(),
+            "write".to_string(),
+        ],
+        vec![
+            "r".to_string(),
+            "wss://nip65-read.test".to_string(),
+            "read".to_string(),
+        ],
         // An unmarked `r` tag — NIP-65 reads this as both read and write.
         vec!["r".to_string(), "wss://nip65-both.test".to_string()],
     ];

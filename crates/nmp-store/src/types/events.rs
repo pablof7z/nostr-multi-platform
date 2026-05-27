@@ -3,10 +3,10 @@
 //! `VerifiedEvent` is the gate type for `EventStore::insert`: only events that
 //! have passed Schnorr signature verification can enter the store.
 
-use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use super::ids::{EventId, PubKey, hex_to_bytes32, hex_nibble};
 use super::errors::VerifyError;
+use super::ids::{hex_nibble, hex_to_bytes32, EventId, PubKey};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 // ─── RawEvent ────────────────────────────────────────────────────────────────
 
@@ -23,48 +23,48 @@ use super::errors::VerifyError;
 /// this type is NOT a security gap — verification happens at the boundary.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RawEvent {
-    pub id: String,          // lowercase hex
-    pub pubkey: String,      // lowercase hex
-    pub created_at: u64,     // unix seconds
+    pub id: String,      // lowercase hex
+    pub pubkey: String,  // lowercase hex
+    pub created_at: u64, // unix seconds
     pub kind: u32,
     pub tags: Vec<Vec<String>>,
     pub content: String,
-    pub sig: String,         // lowercase hex
+    pub sig: String, // lowercase hex
 }
 
 impl RawEvent {
     /// Decode hex id → 32 bytes. Returns zeroes on malformed input.
-    #[must_use] 
+    #[must_use]
     pub fn id_bytes(&self) -> EventId {
         hex_to_bytes32(&self.id)
     }
 
     /// Decode hex pubkey → 32 bytes. Returns zeroes on malformed input.
-    #[must_use] 
+    #[must_use]
     pub fn pubkey_bytes(&self) -> PubKey {
         hex_to_bytes32(&self.pubkey)
     }
 
     /// NIP-01 replaceable kinds: 0, 3, and 10000–19999.
-    #[must_use] 
+    #[must_use]
     pub fn is_replaceable(&self) -> bool {
         self.kind == 0 || self.kind == 3 || (10_000..20_000).contains(&self.kind)
     }
 
     /// NIP-33 parameterized replaceable kinds: 30000–39999.
-    #[must_use] 
+    #[must_use]
     pub fn is_param_replaceable(&self) -> bool {
         (30_000..40_000).contains(&self.kind)
     }
 
     /// NIP-16 ephemeral kinds: 20000–29999.
-    #[must_use] 
+    #[must_use]
     pub fn is_ephemeral(&self) -> bool {
         (20_000..30_000).contains(&self.kind)
     }
 
     /// Returns the value of the first `d` tag, if present.
-    #[must_use] 
+    #[must_use]
     pub fn d_tag(&self) -> Option<Vec<u8>> {
         self.tags
             .iter()
@@ -74,7 +74,7 @@ impl RawEvent {
     }
 
     /// Returns the unix-second value of the first `expiration` tag, if present.
-    #[must_use] 
+    #[must_use]
     pub fn expiration(&self) -> Option<u64> {
         self.tags
             .iter()
@@ -84,7 +84,7 @@ impl RawEvent {
     }
 
     /// Returns all `e`-tag target ids (lowercase hex).
-    #[must_use] 
+    #[must_use]
     pub fn e_tags(&self) -> Vec<String> {
         self.tags
             .iter()
@@ -94,7 +94,7 @@ impl RawEvent {
     }
 
     /// Returns all `p`-tag target pubkeys (lowercase hex).
-    #[must_use] 
+    #[must_use]
     pub fn p_tags(&self) -> Vec<String> {
         self.tags
             .iter()
@@ -104,7 +104,7 @@ impl RawEvent {
     }
 
     /// Returns all `a`-tag target addresses (e.g. "30023:pubkey:dtag").
-    #[must_use] 
+    #[must_use]
     pub fn a_tags(&self) -> Vec<String> {
         self.tags
             .iter()
@@ -116,7 +116,7 @@ impl RawEvent {
     /// Returns true iff the event has plausible field lengths (non-empty id,
     /// pubkey, sig). This is a cheap pre-filter only — cryptographic
     /// verification is done by `VerifiedEvent::try_from_raw`.
-    #[must_use] 
+    #[must_use]
     pub fn is_structurally_valid(&self) -> bool {
         self.id.len() == 64 && self.pubkey.len() == 64 && self.sig.len() == 128
     }
@@ -158,10 +158,9 @@ impl VerifiedEvent {
     /// both the event-id hash and the Schnorr signature.
     pub fn try_from_raw(raw: RawEvent) -> Result<Self, VerifyError> {
         use nostr::util::JsonUtil as _;
-        let json = serde_json::to_string(&raw)
-            .map_err(|e| VerifyError::Serialization(e.to_string()))?;
-        let ev = nostr::Event::from_json(&json)
-            .map_err(|_| VerifyError::InvalidId)?;
+        let json =
+            serde_json::to_string(&raw).map_err(|e| VerifyError::Serialization(e.to_string()))?;
+        let ev = nostr::Event::from_json(&json).map_err(|_| VerifyError::InvalidId)?;
         // verify() checks both event-id hash and Schnorr signature.
         ev.verify().map_err(|e| {
             let msg = e.to_string();
@@ -185,13 +184,13 @@ impl VerifiedEvent {
     }
 
     /// Access the underlying raw event.
-    #[must_use] 
+    #[must_use]
     pub fn raw(&self) -> &RawEvent {
         &self.0
     }
 
     /// Consume and return the underlying raw event.
-    #[must_use] 
+    #[must_use]
     pub fn into_raw(self) -> RawEvent {
         self.0
     }
@@ -206,5 +205,5 @@ impl VerifiedEvent {
 #[derive(Clone, Debug)]
 pub struct StoredEvent {
     pub raw: Arc<RawEvent>,
-    pub received_at_ms: u64,   // wall-clock first arrival across all relays
+    pub received_at_ms: u64, // wall-clock first arrival across all relays
 }

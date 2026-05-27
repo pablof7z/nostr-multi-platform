@@ -103,13 +103,13 @@ impl KindFilter {
 
     /// `true` if `kind` should be delivered: either the filter is empty
     /// (match all) or `kind` is explicitly listed.
-    #[must_use] 
+    #[must_use]
     pub fn matches(&self, kind: u32) -> bool {
         self.0.is_empty() || self.0.contains(&kind)
     }
 
     /// `true` when no kinds are listed (match-everything).
-    #[must_use] 
+    #[must_use]
     pub fn is_all(&self) -> bool {
         self.0.is_empty()
     }
@@ -339,7 +339,9 @@ pub fn register_c_raw_observer(
     slot: &RawEventObserverSlot,
     registration: RawEventObserverRegistration,
 ) -> RawEventObserverId {
-    let Ok(mut guard) = slot.lock() else { return RawEventObserverId(0); };
+    let Ok(mut guard) = slot.lock() else {
+        return RawEventObserverId(0);
+    };
     let id = guard.alloc_id();
     guard.c_abi.push(Arc::new(RawCObserverEntry {
         id,

@@ -18,7 +18,10 @@ fn classify_ack_ok_is_permanent() {
     // ok=true never reaches the classifier via apply_ack, but the
     // classifier pins it to Permanent so an accidental call cannot
     // trigger a retry loop.
-    assert_eq!(classify_ack(&RelayAck::ok("wss://relay.example/")), AckClass::Permanent);
+    assert_eq!(
+        classify_ack(&RelayAck::ok("wss://relay.example/")),
+        AckClass::Permanent
+    );
 }
 
 #[test]
@@ -43,7 +46,10 @@ fn classify_ack_unknown_code_is_transient() {
     // retry verdict. A timeout is the canonical transport-class case.
     let unknown = RelayAck::failed("wss://relay.example/", "totally-unknown-token", "huh");
     assert_eq!(classify_ack(&unknown), AckClass::Transient);
-    assert_eq!(classify_ack(&RelayAck::timed_out("wss://relay.example/")), AckClass::Transient);
+    assert_eq!(
+        classify_ack(&RelayAck::timed_out("wss://relay.example/")),
+        AckClass::Transient
+    );
 }
 
 // --- PerRelayState::is_terminal -----------------------------------------
@@ -62,13 +68,19 @@ fn is_terminal_true_only_for_ok_and_failed_after_retries() {
 fn is_terminal_false_for_non_settled_states() {
     let non_terminal = [
         PerRelayState::Pending,
-        PerRelayState::InFlight { sent_at_ms: 1, attempt: 1 },
+        PerRelayState::InFlight {
+            sent_at_ms: 1,
+            attempt: 1,
+        },
         PerRelayState::RelayError {
             message: "transient".into(),
             attempt: 1,
             last_at_ms: 1,
         },
-        PerRelayState::TimedOut { attempt: 1, last_at_ms: 1 },
+        PerRelayState::TimedOut {
+            attempt: 1,
+            last_at_ms: 1,
+        },
     ];
     for state in non_terminal {
         assert!(!state.is_terminal(), "expected non-terminal: {state:?}");
@@ -82,19 +94,42 @@ fn attempt_reports_zero_for_pending_and_settled_states() {
     assert_eq!(PerRelayState::Pending.attempt(), 0);
     assert_eq!(PerRelayState::Ok { acked_at_ms: 5 }.attempt(), 0);
     assert_eq!(
-        PerRelayState::FailedAfterRetries { reason: "x".into(), last_at_ms: 5 }.attempt(),
+        PerRelayState::FailedAfterRetries {
+            reason: "x".into(),
+            last_at_ms: 5
+        }
+        .attempt(),
         0
     );
 }
 
 #[test]
 fn attempt_reports_inner_counter_for_in_progress_states() {
-    assert_eq!(PerRelayState::InFlight { sent_at_ms: 1, attempt: 2 }.attempt(), 2);
     assert_eq!(
-        PerRelayState::RelayError { message: "e".into(), attempt: 3, last_at_ms: 1 }.attempt(),
+        PerRelayState::InFlight {
+            sent_at_ms: 1,
+            attempt: 2
+        }
+        .attempt(),
+        2
+    );
+    assert_eq!(
+        PerRelayState::RelayError {
+            message: "e".into(),
+            attempt: 3,
+            last_at_ms: 1
+        }
+        .attempt(),
         3
     );
-    assert_eq!(PerRelayState::TimedOut { attempt: 4, last_at_ms: 1 }.attempt(), 4);
+    assert_eq!(
+        PerRelayState::TimedOut {
+            attempt: 4,
+            last_at_ms: 1
+        }
+        .attempt(),
+        4
+    );
 }
 
 // --- RetryPolicy ---------------------------------------------------------

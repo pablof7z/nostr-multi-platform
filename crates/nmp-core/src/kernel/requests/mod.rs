@@ -15,7 +15,7 @@ mod relay_lifecycle;
 mod startup;
 mod thread;
 
-use super::{discovery, json, Kernel, RelayRole, OutboundMessage, CanonicalRelayUrl, Value};
+use super::{discovery, json, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value};
 
 impl Kernel {
     #[allow(dead_code)] // Per-lane snapshot retained for diagnostic surface (M11).
@@ -280,26 +280,27 @@ impl Kernel {
                     // so the two sides matched. With M1 retired the planner's
                     // `sub-<hash>` is the only sub-id that ever lands on the
                     // wire — `oneshot_subs` must be keyed on that.
-                    if let Some(token) =
-                        self.pending_discovery_oneshots.remove(interest_id)
-                    {
-                        self.oneshot_subs.insert(
-                            sub_id.clone(),
-                            (token, discovery::OneshotKind::Discovery),
-                        );
+                    if let Some(token) = self.pending_discovery_oneshots.remove(interest_id) {
+                        self.oneshot_subs
+                            .insert(sub_id.clone(), (token, discovery::OneshotKind::Discovery));
+                    }
+                    // W5 §8.3 — claim-expansion reverse-index bridge.
+                    // If this frame's `interest_id` belongs to a pending claim,
+                    // map the planner-assigned `sub_id` → `interest_id` so the
+                    // ingest seam can look up the originating claim in O(log N).
+                    if self.pending_claims.contains_key(interest_id) {
+                        self.claim_sub_index
+                            .insert(sub_id.clone(), interest_id.clone());
+                        if let Some(claim) = self.pending_claims.get_mut(interest_id) {
+                            claim.in_flight_subs.insert(sub_id.clone());
+                        }
                     }
                     // PD-033-C Stage 0: route through the single-writer helper.
                     // After Stage 6 this is the SOLE caller of `insert_wire_sub`.
                     // M2 keeps its `"opening"` initial state (M1 has an extra
                     // `auth_paused` branch — see pd033c-plan.md §4.1 for the
                     // gap and the AuthGate consolidation that closes it).
-                    self.insert_wire_sub(
-                        role,
-                        key,
-                        sub_id.clone(),
-                        filter_json.clone(),
-                        "opening",
-                    );
+                    self.insert_wire_sub(role, key, sub_id.clone(), filter_json.clone(), "opening");
                 }
                 WireFrame::Close { relay_url, sub_id } => {
                     // Same canonicalization as the Req arm: a Close emitted

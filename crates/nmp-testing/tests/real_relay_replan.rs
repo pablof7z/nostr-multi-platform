@@ -201,8 +201,9 @@ fn kind3_change_forces_subscription_replan() {
         };
         for (name, hex) in CANDIDATE_AUTHORS {
             let sub_id = format!("rr-replan-{}", common::now_ms());
-            let req =
-                format!("[\"REQ\",\"{sub_id}\",{{\"authors\":[\"{hex}\"],\"kinds\":[3],\"limit\":1}}]");
+            let req = format!(
+                "[\"REQ\",\"{sub_id}\",{{\"authors\":[\"{hex}\"],\"kinds\":[3],\"limit\":1}}]"
+            );
             if send_text(&mut socket, req).is_err() {
                 eprintln!("[replan] {relay}: REQ send failed for {name}");
                 continue;

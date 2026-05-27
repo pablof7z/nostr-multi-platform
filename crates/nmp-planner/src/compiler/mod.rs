@@ -239,10 +239,7 @@ impl<'a> SubscriptionCompiler<'a> {
     /// Production callers: use `compile_with_context`.
     /// Test-only / static-config callers: `compile` is safe.
     #[must_use]
-    pub fn compile(
-        &self,
-        interests: &[LogicalInterest],
-    ) -> Result<CompiledPlan, PlannerError> {
+    pub fn compile(&self, interests: &[LogicalInterest]) -> Result<CompiledPlan, PlannerError> {
         self.compile_with_context(interests, &CompileContext::default())
     }
 
@@ -285,8 +282,15 @@ impl<'a> SubscriptionCompiler<'a> {
         for (relay_url, entries) in relay_entries {
             let mut role_tags: BTreeSet<RoutingSource> = BTreeSet::new();
             // Shape + lifecycle + all source lanes + originating interest id.
-            let shaped: Vec<(InterestShape, InterestLifecycle, BTreeSet<RoutingSource>, InterestId)> =
-                entries.into_iter().map(partition::RelayEntry::into_shape).collect();
+            let shaped: Vec<(
+                InterestShape,
+                InterestLifecycle,
+                BTreeSet<RoutingSource>,
+                InterestId,
+            )> = entries
+                .into_iter()
+                .map(partition::RelayEntry::into_shape)
+                .collect();
 
             let mut sub_shapes: Vec<(InterestShape, InterestLifecycle, Vec<InterestId>)> =
                 Vec::new();
@@ -297,9 +301,12 @@ impl<'a> SubscriptionCompiler<'a> {
                 }
                 let mut merged = false;
                 for (existing_shape, existing_lifecycle, existing_ids) in &mut sub_shapes {
-                    if let MergeOutcome::Merged(new_shape) =
-                        merge(&existing_shape.clone(), &shape, existing_lifecycle, &lifecycle)
-                    {
+                    if let MergeOutcome::Merged(new_shape) = merge(
+                        &existing_shape.clone(),
+                        &shape,
+                        existing_lifecycle,
+                        &lifecycle,
+                    ) {
                         *existing_shape = new_shape;
                         // Dedupe: the same interest_id can land on a relay more
                         // than once (e.g. when Case A's outbox push and the
@@ -323,13 +330,21 @@ impl<'a> SubscriptionCompiler<'a> {
                 .into_iter()
                 .map(|(shape, _lifecycle, ids)| {
                     let hash = canonical_filter_hash(&shape);
-                    SubShape { shape, originating_interests: ids, canonical_filter_hash: hash }
+                    SubShape {
+                        shape,
+                        originating_interests: ids,
+                        canonical_filter_hash: hash,
+                    }
                 })
                 .collect();
 
             per_relay.insert(
                 relay_url.clone(),
-                RelayPlan { relay_url, role_tags, sub_shapes: relay_sub_shapes },
+                RelayPlan {
+                    relay_url,
+                    role_tags,
+                    sub_shapes: relay_sub_shapes,
+                },
             );
         }
 

@@ -50,7 +50,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, NOS_LOL, NOSTR_BAND};
+use common::{drain_until, now_ms, send_text, try_open, DAMUS_RELAY, NOSTR_BAND, NOS_LOL};
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -115,7 +115,9 @@ fn declared_read_relays(ev: &Value) -> BTreeSet<String> {
         return out;
     };
     for tag in tags {
-        let Some(parts) = tag.as_array() else { continue };
+        let Some(parts) = tag.as_array() else {
+            continue;
+        };
         if parts.first().and_then(Value::as_str) != Some("r") {
             continue;
         }
@@ -209,7 +211,7 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
     let cache = Arc::new(InMemoryMailboxCache::new());
     let projection = Arc::new(RoutingTraceProjection::new());
     let router = GenericOutboxRouter::new().with_trace_observer(
-        Arc::clone(&projection) as Arc<dyn nmp_core::substrate::RoutingTraceObserver>,
+        Arc::clone(&projection) as Arc<dyn nmp_core::substrate::RoutingTraceObserver>
     );
 
     // 2. Feed the live kind:10002 through the substrate parser to seed the
@@ -297,7 +299,9 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
         let mut has_nip65_read = false;
         for source in sources {
             match source {
-                RoutingSource::Nip65 { direction: Direction::Read } => {
+                RoutingSource::Nip65 {
+                    direction: Direction::Read,
+                } => {
                     has_nip65_read = true;
                 }
                 RoutingSource::AppRelay { .. } => {

@@ -3,7 +3,9 @@
 //! account's kind:3 follow list. No hardcoded seed timeline.
 
 use super::super::{Duration, Instant, Kernel, OutboundMessage};
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// Self-fetched account-config kinds the cold-start tailing subscription
@@ -120,10 +122,10 @@ impl Kernel {
         // bootstrap chicken-and-egg.
         self.register_tailing_self_kinds_interest(owner, self_pk.clone());
 
-        // Coalesced trigger: per-tick inbox collapses the two
-        // registrations above into a single recompile pass (D8).
-        // Diagnostic `interest_ids` left empty — the compiler walks the
-        // full registry, not a filtered subset.
+        // Coalesced trigger: per-tick inbox collapses the registrations
+        // above into a single recompile pass (D8). Diagnostic
+        // `interest_ids` left empty — the compiler walks the full
+        // registry, not a filtered subset.
         self.lifecycle
             .enqueue_trigger(CompileTrigger::ViewOpened { interest_ids: Vec::new() });
 
@@ -250,8 +252,7 @@ mod tests {
     fn install_bootstrap_relays(kernel: &mut Kernel) {
         let lifecycle = kernel.lifecycle_mut();
         lifecycle.set_indexer_relays(vec![]);
-        lifecycle
-            .set_bootstrap_indexer_relays(vec!["wss://bootstrap-indexer.test/".to_string()]);
+        lifecycle.set_bootstrap_indexer_relays(vec!["wss://bootstrap-indexer.test/".to_string()]);
     }
 
     /// Extract the REQ frames from a list of `OutboundMessage`s. V-04 Stage 2:

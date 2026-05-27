@@ -98,34 +98,20 @@ pub mod stable_hash;
 // are consumed by crate-internal callers (kernel, actor).
 
 pub use compiler::{
-    CompileContext,
-    EmptyMailboxCache,
-    InMemoryMailboxCache,
-    MailboxCache,
-    MailboxSnapshot,
+    CompileContext, EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot,
     SubscriptionCompiler,
 };
 pub use interest::{
-    HintSource,
-    InterestId,
-    InterestLifecycle,
-    InterestScope,
-    InterestShape,
-    LogicalInterest,
-    NaddrCoord,
-    PTagRouting,
-    Pubkey,
-    RelayHint,
-    RelayUrl,
+    HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+    NaddrCoord, PTagRouting, Pubkey, RelayHint, RelayUrl,
 };
 pub use lattice::{merge, MergeOutcome};
 pub use plan::{
-    canonical_filter_hash,
-    CompiledPlan,
-    PlannerError,
-    RelayPlan,
-    RoutingSource,
-    SubShape,
+    canonical_filter_hash, CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape,
     UserConfiguredCategory,
 };
 pub use selection::apply_selection;
+pub use selection::apply_selection_with_lookup;
+pub use selection::relay_score_lookup::{
+    NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup, WARM_THRESHOLD,
+};

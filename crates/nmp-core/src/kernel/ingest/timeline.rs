@@ -3,7 +3,10 @@
 //! Covers event storage, deduplication, timeline ordering, thread hydration
 //! queue management, and the seed-timeline open gate.
 
-use super::super::{Kernel, RelayRole, NostrEvent, StoredEvent, Instant, event_references, referenced_event_ids, OutboundMessage};
+use super::super::{
+    event_references, referenced_event_ids, Instant, Kernel, NostrEvent, OutboundMessage,
+    RelayRole, StoredEvent,
+};
 use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {
@@ -20,10 +23,12 @@ impl Kernel {
         relay_url: &str,
         sub_id: &str,
         event: NostrEvent,
-    ) {
+    ) -> bool {
         if !self.should_store_event(sub_id, &event) {
-            return;
+            return false;
         }
+
+        let mut accepted_for_score = false;
 
         // D4: route through EventStore for ALL deliveries, including duplicates.
         let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(&event))
@@ -34,7 +39,7 @@ impl Kernel {
                     "sig verify failed for {}: {e}",
                     event_short_id(&event.id)
                 ));
-                return;
+                return false;
             }
         };
         let raw_for_observer = if self.raw_event_observers_idle_for_kind(event.kind) {
@@ -86,7 +91,10 @@ impl Kernel {
                     | InsertOutcome::Ephemeral { .. } => {}
                 }
                 match outcome {
-                    InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => true,
+                    InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => {
+                        accepted_for_score = true;
+                        true
+                    }
                     InsertOutcome::Duplicate { sources_after, .. } => {
                         if let Some(cached) = self.events.get_mut(&event.id) {
                             // Diagnostic counter: a cached event becomes a
@@ -99,12 +107,12 @@ impl Kernel {
                             }
                             cached.relay_count = sources_after;
                         }
-                        return;
+                        return false;
                     }
-                    InsertOutcome::Superseded { .. } => return,
+                    InsertOutcome::Superseded { .. } => return false,
                     InsertOutcome::Tombstoned { .. }
                     | InsertOutcome::Rejected { .. }
-                    | InsertOutcome::Ephemeral { .. } => return,
+                    | InsertOutcome::Ephemeral { .. } => return false,
                 }
             }
             Err(e) => {
@@ -119,14 +127,14 @@ impl Kernel {
                         }
                         cached.relay_count = cached.relay_count.saturating_add(1);
                     }
-                    return;
+                    return false;
                 }
                 true
             }
         };
 
         if !proceed {
-            return;
+            return false;
         }
 
         // T82 discovery seam (notedeck §3.10): collect referenced-but-missing
@@ -180,6 +188,7 @@ impl Kernel {
                 .get_or_insert_with(Instant::now);
         }
         self.changed_since_emit = true;
+        accepted_for_score
     }
 
     pub(in crate::kernel) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {
@@ -198,6 +207,7 @@ impl Kernel {
             // actually resolved (otherwise the next ingest re-discovers it).
             // Uses typed OneshotKind dispatch (T104) rather than string-prefix.
             || self.is_discovery_oneshot(sub_id)
+            || self.claim_expansion_match_author(sub_id, event).is_some()
     }
 
     pub(in crate::kernel) fn enqueue_thread_hydration_from_event(&mut self, event_id: &str) {

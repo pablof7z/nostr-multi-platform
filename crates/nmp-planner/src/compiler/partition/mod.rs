@@ -21,10 +21,19 @@ mod case_b_addresses;
 mod case_c_p_tags;
 mod case_d_no_author;
 mod case_e_relay_pinned;
+mod hint_helper;
 mod inbox_helper;
+
+#[cfg(test)]
+mod hint_case_d_tests;
+#[cfg(test)]
+mod hint_consumption_tests;
+#[cfg(test)]
+mod warm_filter_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+pub(super) use super::mailbox::MailboxCache;
 use crate::{
     interest::{
         InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
@@ -32,7 +41,6 @@ use crate::{
     },
     plan::RoutingSource,
 };
-pub(super) use super::mailbox::MailboxCache;
 
 // ─── RelayEntry ──────────────────────────────────────────────────────────────
 
@@ -66,10 +74,20 @@ impl RelayEntry {
     /// Construct the final `InterestShape` for this relay slice.
     pub fn into_shape(
         mut self,
-    ) -> (InterestShape, InterestLifecycle, BTreeSet<RoutingSource>, InterestId) {
+    ) -> (
+        InterestShape,
+        InterestLifecycle,
+        BTreeSet<RoutingSource>,
+        InterestId,
+    ) {
         self.base_shape.authors = self.authors_for_relay;
         self.base_shape.addresses = self.addresses_for_relay;
-        (self.base_shape, self.lifecycle, self.sources, self.interest_id)
+        (
+            self.base_shape,
+            self.lifecycle,
+            self.sources,
+            self.interest_id,
+        )
     }
 }
 
@@ -161,12 +179,7 @@ pub(super) fn partition_interest(
     }
 
     // Extract #p tag values once — used in Case A (if authors + #p) and Case C.
-    let p_tag_values: BTreeSet<Pubkey> = interest
-        .shape
-        .tags
-        .get("p")
-        .cloned()
-        .unwrap_or_default();
+    let p_tag_values: BTreeSet<Pubkey> = interest.shape.tags.get("p").cloned().unwrap_or_default();
 
     // Case A: explicit authors → Outbox (write relays).
     if !interest.shape.authors.is_empty() {
@@ -211,15 +224,11 @@ pub(super) fn partition_interest(
         // MUST stay fail-closed when DM relays are unknown — diverting them
         // to a bootstrap content relay would leak gift-wraps to a non-DM
         // relay.
-        let is_bootstrap_inbox_eligible =
-            matches!(interest.lifecycle, InterestLifecycle::Tailing)
-                && matches!(interest.scope, InterestScope::Global)
-                && matches!(interest.shape.p_tag_routing, PTagRouting::Nip65ReadRelays)
-                && !bootstrap_content_relays.is_empty()
-                && case_c_p_tags::every_tagged_pubkey_lacks_nip65_inbox(
-                    &p_tag_values,
-                    mailbox_cache,
-                );
+        let is_bootstrap_inbox_eligible = matches!(interest.lifecycle, InterestLifecycle::Tailing)
+            && matches!(interest.scope, InterestScope::Global)
+            && matches!(interest.shape.p_tag_routing, PTagRouting::Nip65ReadRelays)
+            && !bootstrap_content_relays.is_empty()
+            && case_c_p_tags::every_tagged_pubkey_lacks_nip65_inbox(&p_tag_values, mailbox_cache);
         if is_bootstrap_inbox_eligible {
             case_c_p_tags::route_bootstrap_content_inbox(
                 interest,
@@ -241,9 +250,9 @@ pub(super) fn partition_interest(
     }
 
     // Case D: no authors, addresses, or #p → active-account read relays ∪
-    // app relays (hashtag firehose). Indexer remains as a last-resort fallback
-    // when BOTH sets are empty so the kernel-driven discovery REQs still have
-    // somewhere to land in cold-start scenarios.
+    // app relays (hashtag firehose). Hint relays stack first so event-id-only
+    // fetches can honor nevent/e-tag relay hints instead of silently dropping
+    // them.
     //
     // PD-033-C head check: a `OneShot + Global` interest with concrete
     // `event_ids` is the kernel-driven discovery oneshot for referenced events
@@ -253,10 +262,13 @@ pub(super) fn partition_interest(
     // discovery-only for kind:0/3/10002). Non-discovery Case D interests
     // (Tailing firehose, Account-scoped reads, event_ids without `OneShot +
     // Global`) fall through to the unchanged routing below.
-    let is_oneshot_global_event_ids_discovery = matches!(interest.lifecycle, InterestLifecycle::OneShot)
-        && matches!(interest.scope, InterestScope::Global)
-        && !interest.shape.event_ids.is_empty()
-        && !bootstrap_content_relays.is_empty();
+    case_d_no_author::route_hints(interest, &base_shape, relay_entries);
+
+    let is_oneshot_global_event_ids_discovery =
+        matches!(interest.lifecycle, InterestLifecycle::OneShot)
+            && matches!(interest.scope, InterestScope::Global)
+            && !interest.shape.event_ids.is_empty()
+            && !bootstrap_content_relays.is_empty();
     if is_oneshot_global_event_ids_discovery {
         case_d_no_author::route_bootstrap_content(
             interest,

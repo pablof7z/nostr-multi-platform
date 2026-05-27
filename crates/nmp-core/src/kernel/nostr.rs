@@ -7,13 +7,13 @@
 //! `pub(crate)` — they are internal kernel implementation details, not public
 //! NMP API.
 
-use super::{Deserialize, Profile, TimelineItem, HashMap, HashSet, StoredEvent, BTreeSet};
 use super::types::AuthorRelayList;
+use super::{BTreeSet, Deserialize, HashMap, HashSet, Profile, StoredEvent, TimelineItem};
 // `UNIX_EPOCH`, `Duration`, `DateTime`, `Local`, `SystemTime` are only consumed
 // by `format_timestamp` / `now_hms` below, both `#[cfg(feature = "native")]` —
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
-use super::{UNIX_EPOCH, Duration, DateTime, Local, SystemTime};
+use super::{DateTime, Duration, Local, SystemTime, UNIX_EPOCH};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -240,7 +240,6 @@ pub(super) fn short_hex(value: &str) -> String {
         format!("{}..{}", &value[..6], &value[value.len() - 6..])
     }
 }
-
 
 pub(super) fn truncate(value: &str, limit: usize) -> String {
     let mut out = String::new();

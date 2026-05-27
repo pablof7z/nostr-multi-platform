@@ -75,13 +75,16 @@
 //!
 //! [`SubscriptionCompiler`]: super::compiler::SubscriptionCompiler
 
+pub mod relay_score_lookup;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::interest::{Pubkey, RelayUrl};
 use super::plan::{CompiledPlan, RoutingSource, UserConfiguredCategory};
+use relay_score_lookup::RelayAuthorScoreLookup;
 
-/// Predicate: does this relay's `role_tags` carry the operator-pinned
-/// `UserConfigured(AppRelay)` lane?
+/// Predicate: does this relay's `role_tags` carry a lane that must bypass
+/// greedy coverage pruning?
 ///
 /// App-relays are operator directives — "always REQ from here" — and must
 /// survive the greedy max-coverage pass regardless of whether the author's
@@ -89,15 +92,27 @@ use super::plan::{CompiledPlan, RoutingSource, UserConfiguredCategory};
 /// (`Indexer`, `Bootstrap`, …) are kernel-driven cold-start helpers, NOT
 /// operator intent, and therefore remain subject to coverage pruning.
 ///
+/// Hint/provenance relays are explicit claim/fetch landing pads. Selection
+/// bounds the NIP-65 connection storm; it must not erase the only relay a
+/// caller supplied as evidence for where a specific event can be found.
+///
 /// See `selection/tests.rs::app_relay_survives_*` for the contract and the
 /// gallery-TUI smoke regression that motivated this carve-out.
-fn relay_is_operator_pinned(role_tags: &BTreeSet<RoutingSource>) -> bool {
-    role_tags.contains(&RoutingSource::UserConfigured(UserConfiguredCategory::AppRelay))
+fn relay_bypasses_selection(role_tags: &BTreeSet<RoutingSource>) -> bool {
+    role_tags.contains(&RoutingSource::Hint)
+        || role_tags.contains(&RoutingSource::Provenance)
+        || role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::AppRelay,
+        ))
+        || role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Debug,
+        ))
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-/// Apply greedy weighted max-coverage relay selection to a compiled plan.
+/// Apply greedy weighted max-coverage relay selection to a compiled plan,
+/// without a warm-relay score lookup (pre-W4 / noop behaviour).
 ///
 /// Mutates `plan` in place:
 /// - Drops relays whose authors are entirely covered by other surviving relays.
@@ -108,6 +123,10 @@ fn relay_is_operator_pinned(role_tags: &BTreeSet<RoutingSource>) -> bool {
 /// - Drops sub-shapes whose author set became empty (note: wildcard sub-shapes
 ///   that started empty are *not* affected — they had no authors to filter).
 /// - Drops relay entries whose sub-shape list became empty.
+///
+/// Equivalent to `apply_selection_with_lookup(plan, max_connections,
+/// max_per_user, None)`. Use [`apply_selection_with_lookup`] to supply a
+/// warm-relay score filter (W4).
 ///
 /// # Arguments
 ///
@@ -131,6 +150,26 @@ fn relay_is_operator_pinned(role_tags: &BTreeSet<RoutingSource>) -> bool {
 ///
 /// [`SubscriptionCompiler`]: super::compiler::SubscriptionCompiler
 pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_user: usize) {
+    apply_selection_with_lookup(plan, max_connections, max_per_user, None);
+}
+
+/// Apply greedy weighted max-coverage relay selection to a compiled plan,
+/// with an optional warm-relay score lookup.
+///
+/// When `score_lookup` is `Some`, Stage 1 pre-filters the per-relay-authors
+/// map: for each non-operator-pinned relay/author pair, if the author has NO
+/// other warm relay AND this relay is cold, the pair is still kept (fallback
+/// to existing behaviour). Otherwise, cold pairs for authors that HAVE at
+/// least one warm relay are dropped before the greedy pass. This preserves
+/// coverage for authors with no warm relays at all (D3 — no new routing lane).
+///
+/// See [`apply_selection`] for the full algorithm and doc.
+pub fn apply_selection_with_lookup(
+    plan: &mut CompiledPlan,
+    max_connections: usize,
+    max_per_user: usize,
+    score_lookup: Option<&dyn RelayAuthorScoreLookup>,
+) {
     // Stage 0: identify operator-pinned relays (those carrying
     // `UserConfigured(AppRelay)`). They bypass greedy coverage entirely and
     // are preserved unchanged at projection. This is the operator-intent
@@ -145,11 +184,11 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
     // coverage budget for the OTHER relays — i.e. the operator's pin does
     // not consume a slot in `max_per_user` or `max_connections`, both of
     // which exist solely to bound the NIP-65 outbox connection storm.
-    let operator_pinned: BTreeSet<RelayUrl> = plan
+    let selection_pinned: BTreeSet<RelayUrl> = plan
         .per_relay
         .iter()
         .filter_map(|(relay, relay_plan)| {
-            relay_is_operator_pinned(&relay_plan.role_tags).then(|| relay.clone())
+            relay_bypasses_selection(&relay_plan.role_tags).then(|| relay.clone())
         })
         .collect();
 
@@ -157,10 +196,21 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
     // wants — EXCLUDING operator-pinned relays. Wildcard sub-shapes (empty
     // authors) contribute nothing here; if a relay's only sub-shapes are
     // wildcards, it will not be picked by coverage and will be dropped.
-    let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = plan
+    //
+    // W4 warm-relay pre-filter: when a score_lookup is provided, drop
+    // `(relay, author)` pairs where:
+    //   - the relay is NOT operator-pinned (already excluded above), AND
+    //   - the relay's `role_tags` is EXACTLY `{Nip65}` (lane-1 PRUNER;
+    //     Hint, Provenance, NIP-17, UserConfigured lanes are never pruned
+    //     by the warm filter — D3: filter, not multi-lane gate), AND
+    //   - the author has at least one warm relay in this plan, AND
+    //   - this relay is cold for that author.
+    // Authors with NO warm relays at all are passed through unchanged so that
+    // cold-start authors still get coverage (D3 — filter, not new lane).
+    let raw_per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = plan
         .per_relay
         .iter()
-        .filter(|(relay, _)| !operator_pinned.contains(*relay))
+        .filter(|(relay, _)| !selection_pinned.contains(*relay))
         .map(|(relay, relay_plan)| {
             let mut union: BTreeSet<Pubkey> = BTreeSet::new();
             for sub in &relay_plan.sub_shapes {
@@ -169,6 +219,62 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
             (relay.clone(), union)
         })
         .collect();
+
+    // W4: the set of relay URLs that carry ONLY the Nip65 routing source.
+    // The warm filter is a lane-1 pruner — it must never touch relays that
+    // carry Hint, Provenance, NIP-17, or UserConfigured entries. A relay
+    // is warm-filterable iff its `role_tags` == `{Nip65}` exactly.
+    let nip65_only: BTreeSet<RelayUrl> = plan
+        .per_relay
+        .iter()
+        .filter(|(relay, relay_plan)| {
+            !selection_pinned.contains(*relay)
+                && relay_plan.role_tags.len() == 1
+                && relay_plan.role_tags.contains(&RoutingSource::Nip65)
+        })
+        .map(|(relay, _)| relay.clone())
+        .collect();
+
+    // W4: compute per-author warm-relay set so we can decide whether to keep
+    // cold pairs (fallback) or drop them (author has a warm alternative).
+    // Only Nip65-only relays participate in warm-score computation.
+    let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = if let Some(lookup) = score_lookup
+    {
+        // Build the set of authors that have at least one warm Nip65-only relay.
+        let mut author_has_warm: BTreeSet<Pubkey> = BTreeSet::new();
+        for (relay, authors) in &raw_per_relay_authors {
+            if !nip65_only.contains(relay) {
+                continue; // non-Nip65 relay: skip, preserve regardless
+            }
+            for author in authors {
+                if lookup.is_warm(author, relay) {
+                    author_has_warm.insert(author.clone());
+                }
+            }
+        }
+        // Filter: for each (relay, author) pair:
+        //   - Non-Nip65-only relay → keep always (D3 lane preservation).
+        //   - Nip65-only relay: keep if warm for that author OR author has
+        //     no warm Nip65 relay at all (cold-start fallback).
+        raw_per_relay_authors
+            .into_iter()
+            .map(|(relay, authors)| {
+                if !nip65_only.contains(&relay) {
+                    // Not a pure Nip65 relay — preserve all authors unchanged.
+                    return (relay, authors);
+                }
+                let filtered: BTreeSet<Pubkey> = authors
+                    .into_iter()
+                    .filter(|author| {
+                        lookup.is_warm(author, &relay) || !author_has_warm.contains(author)
+                    })
+                    .collect();
+                (relay, filtered)
+            })
+            .collect()
+    } else {
+        raw_per_relay_authors
+    };
 
     // Stage 2: greedy max-coverage. Returns the (relay → authors-this-relay-serves)
     // oracle.
@@ -184,13 +290,13 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
         }
     }
 
-    // Stage 3: project back. Operator-pinned relays survive unchanged;
+    // Stage 3: project back. Selection-pinned relays survive unchanged;
     // greedy-selected relays have their author sets filtered to the oracle;
     // every other relay is dropped.
     let mut new_per_relay = BTreeMap::new();
     for (relay, mut relay_plan) in std::mem::take(&mut plan.per_relay) {
-        if operator_pinned.contains(&relay) {
-            // Operator-pinned: preserve unchanged. The wire-emitter must emit
+        if selection_pinned.contains(&relay) {
+            // Explicitly pinned: preserve unchanged. The wire-emitter must emit
             // the REQ to this relay regardless of coverage decisions.
             // Sub-shape author sets are NOT mutated, so canonical_filter_hash
             // stays valid and sub-id stability is preserved across recompiles.
@@ -260,7 +366,9 @@ fn greedy_select(
     let mut pool: HashMap<Pubkey, HashSet<RelayUrl>> = HashMap::new();
     for (relay, authors) in per_relay {
         for author in authors {
-            pool.entry(author.clone()).or_default().insert(relay.clone());
+            pool.entry(author.clone())
+                .or_default()
+                .insert(relay.clone());
         }
     }
 
@@ -335,6 +443,11 @@ fn greedy_select(
 }
 
 #[cfg(test)]
+#[path = "selection/app_relay_tests.rs"]
+mod app_relay_tests;
+#[cfg(test)]
+#[path = "selection/hint_tests.rs"]
+mod hint_tests;
+#[cfg(test)]
 #[path = "selection/tests.rs"]
 mod tests;
-

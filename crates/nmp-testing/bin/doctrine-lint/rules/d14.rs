@@ -32,8 +32,8 @@ pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     // Strictly scoped to nmp-core's `src/` tree. `--path` invocations that
     // point at a fixture dir bypass this gate via `--d14-extra-scope`.
-    let in_nmp_core_src = s.contains("/crates/nmp-core/src/")
-        || s.starts_with("crates/nmp-core/src/");
+    let in_nmp_core_src =
+        s.contains("/crates/nmp-core/src/") || s.starts_with("crates/nmp-core/src/");
     if !in_nmp_core_src {
         return false;
     }
@@ -116,7 +116,9 @@ fn parse_arc_mutex_vec_field(line: &str) -> Option<(usize, String)> {
     // `const` / `where`. A struct field starts with optional visibility,
     // optional attribute, then identifier.
     let trimmed = line.trim_start();
-    for prefix in ["let ", "fn ", "type ", "static ", "const ", "pub fn ", "where "] {
+    for prefix in [
+        "let ", "fn ", "type ", "static ", "const ", "pub fn ", "where ",
+    ] {
         if trimmed.starts_with(prefix) {
             return None;
         }
@@ -128,8 +130,7 @@ fn parse_arc_mutex_vec_field(line: &str) -> Option<(usize, String)> {
         .find(|tok| !tok.is_empty())
         .unwrap_or("<field>")
         .to_string();
-    if matches!(field_name.as_str(), "type" | "let" | "fn" | "where")
-        || !is_identifier(&field_name)
+    if matches!(field_name.as_str(), "type" | "let" | "fn" | "where") || !is_identifier(&field_name)
     {
         return None;
     }
@@ -344,7 +345,10 @@ mod tests {
             false,
             Some("PublishEngine"),
         );
-        assert!(hits.is_empty(), "non-Kernel/NmpApp/Actor struct must not fire");
+        assert!(
+            hits.is_empty(),
+            "non-Kernel/NmpApp/Actor struct must not fire"
+        );
     }
 
     #[test]
@@ -446,7 +450,10 @@ mod tests {
 
     #[test]
     fn parse_struct_open_handles_visibility_and_generics() {
-        assert_eq!(parse_struct_open("pub struct Foo {").as_deref(), Some("Foo"));
+        assert_eq!(
+            parse_struct_open("pub struct Foo {").as_deref(),
+            Some("Foo")
+        );
         assert_eq!(parse_struct_open("struct Bar<T> {").as_deref(), Some("Bar"));
         assert_eq!(
             parse_struct_open("pub(crate) struct Baz {").as_deref(),

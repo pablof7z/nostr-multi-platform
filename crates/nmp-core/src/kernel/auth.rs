@@ -39,8 +39,7 @@ pub(crate) use nmp_nip42_types::{parse_ok_frame, AuthOk as OkFrame};
 /// `nmp_signers::AccountManager::signer_active()` to this signature at kernel
 /// construction time (avoids the `nmp-signers -> nmp-core` cycle that would
 /// otherwise prevent direct trait use).
-pub type AuthSignerFn =
-    Arc<dyn Fn(&UnsignedEvent) -> Result<SignedEvent, String> + Send + Sync>;
+pub type AuthSignerFn = Arc<dyn Fn(&UnsignedEvent) -> Result<SignedEvent, String> + Send + Sync>;
 
 /// Parsed `["AUTH", <challenge>]` frame → challenge string. Thin shim over
 /// [`nmp_nip42_types::parse_auth_frame`]; the kernel only needs the

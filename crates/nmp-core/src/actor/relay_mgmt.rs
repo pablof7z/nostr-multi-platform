@@ -455,10 +455,7 @@ pub(super) fn close_relays(
 }
 
 /// Mark each lane as closed once all its sockets are gone (post-drain).
-fn bootstrap_lane_close(
-    connected_relays: &mut HashSet<RelayRole>,
-    kernel: &mut Kernel,
-) {
+fn bootstrap_lane_close(connected_relays: &mut HashSet<RelayRole>, kernel: &mut Kernel) {
     for role in RelayRole::all() {
         connected_relays.remove(&role);
         // Global teardown: every socket of every role is being drained, so

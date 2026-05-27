@@ -176,12 +176,12 @@ pub enum PerRelayState {
 }
 
 impl PerRelayState {
-    #[must_use] 
+    #[must_use]
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Ok { .. } | Self::FailedAfterRetries { .. })
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn attempt(&self) -> u32 {
         match self {
             Self::InFlight { attempt, .. }
@@ -245,7 +245,7 @@ impl RetryPolicy {
         30_000
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn backoff_for(&self, attempt_just_failed: u32) -> u64 {
         // attempt_just_failed is 1-indexed (the first send is attempt 1).
         // We want 1s after attempt 1, 4s after attempt 2, 16s after attempt 3.
@@ -308,9 +308,7 @@ pub fn apply_ack(
         AckClass::AuthRequired => {
             if attempt > policy.auth_required_max_retries {
                 RetryVerdict::Settled(PerRelayState::FailedAfterRetries {
-                    reason: format!(
-                        "auth-required after {attempt} reauth attempts: {message}"
-                    ),
+                    reason: format!("auth-required after {attempt} reauth attempts: {message}"),
                     last_at_ms: now_ms,
                 })
             } else {

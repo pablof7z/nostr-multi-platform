@@ -8,11 +8,9 @@
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.4
 //! Doctrine: D8 (plan-id stability avoids redundant recompilation).
 
-use std::collections::BTreeSet;
-use crate::interest::{
-    InterestLifecycle, InterestScope, LogicalInterest, PTagRouting, Pubkey,
-};
 use super::mailbox::MailboxCache;
+use crate::interest::{InterestLifecycle, InterestScope, LogicalInterest, PTagRouting, Pubkey};
+use std::collections::BTreeSet;
 
 // ─── CompileContext ───────────────────────────────────────────────────────────
 
@@ -140,19 +138,27 @@ pub(super) fn compute_plan_id(
             h.feed_bytes(pk.as_bytes());
             let mut write_sorted = mb.write_relays.clone();
             write_sorted.sort();
-            for r in &write_sorted { h.feed_bytes(r.as_bytes()); }
+            for r in &write_sorted {
+                h.feed_bytes(r.as_bytes());
+            }
             let mut read_sorted = mb.read_relays.clone();
             read_sorted.sort();
-            for r in &read_sorted { h.feed_bytes(r.as_bytes()); }
+            for r in &read_sorted {
+                h.feed_bytes(r.as_bytes());
+            }
             let mut both_sorted = mb.both_relays.clone();
             both_sorted.sort();
-            for r in &both_sorted { h.feed_bytes(r.as_bytes()); }
+            for r in &both_sorted {
+                h.feed_bytes(r.as_bytes());
+            }
         }
         if dm_ref_pks.contains(pk) {
             if let Some(mut dm_sorted) = cache.dm_inbox_relays(pk) {
                 h.feed_bytes(b"dm-relays");
                 dm_sorted.sort();
-                for r in &dm_sorted { h.feed_bytes(r.as_bytes()); }
+                for r in &dm_sorted {
+                    h.feed_bytes(r.as_bytes());
+                }
             }
         }
     }
@@ -186,9 +192,7 @@ fn dm_relay_referenced_pubkeys(interests: &[LogicalInterest]) -> BTreeSet<Pubkey
 mod tests {
     use super::*;
     use crate::compiler::mailbox::{InMemoryMailboxCache, MailboxSnapshot};
-    use crate::interest::{
-        InterestId, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
-    };
+    use crate::interest::{InterestId, InterestScope, InterestShape, LogicalInterest, NaddrCoord};
     use std::collections::BTreeSet;
 
     /// 64-hex-ish pubkey placeholders — content does not matter for hashing,
@@ -196,8 +200,7 @@ mod tests {
     const PK_AUTHOR: &str = "1111111111111111111111111111111111111111111111111111111111111111";
     const PK_ADDR: &str = "2222222222222222222222222222222222222222222222222222222222222222";
     const PK_PTAG: &str = "3333333333333333333333333333333333333333333333333333333333333333";
-    const PK_UNRELATED: &str =
-        "9999999999999999999999999999999999999999999999999999999999999999";
+    const PK_UNRELATED: &str = "9999999999999999999999999999999999999999999999999999999999999999";
 
     /// Build a `LogicalInterest` that references one author, one address pubkey,
     /// and one `#p` tag pubkey — exercising all three `referenced_pubkeys` sources.
@@ -372,7 +375,10 @@ mod tests {
         let bumped_indexer = compute_plan_id(
             &interests,
             &cache,
-            &CompileContext { indexer_set_version: 1, user_config_version: 0 },
+            &CompileContext {
+                indexer_set_version: 1,
+                user_config_version: 0,
+            },
             1,
         );
         assert_ne!(
@@ -383,7 +389,10 @@ mod tests {
         let bumped_user = compute_plan_id(
             &interests,
             &cache,
-            &CompileContext { indexer_set_version: 0, user_config_version: 1 },
+            &CompileContext {
+                indexer_set_version: 0,
+                user_config_version: 1,
+            },
             1,
         );
         assert_ne!(

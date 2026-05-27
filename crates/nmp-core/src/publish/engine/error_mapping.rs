@@ -31,7 +31,7 @@ pub const ENGINE_FAILURE_RELAY_URL: &str = "(engine)";
 /// `event_id` may be empty when the error happens before an event is
 /// associated with a handle (e.g. duplicate handle on a fresh start) — the
 /// snapshot consumer is expected to tolerate that.
-#[must_use] 
+#[must_use]
 pub fn engine_error_to_failure(
     err: &PublishEngineError,
     handle: &PublishHandle,

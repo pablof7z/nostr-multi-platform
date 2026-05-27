@@ -110,8 +110,7 @@ pub fn scan_file(text: &str, line_is_comment: &[bool]) -> Vec<AsyncMarkerHit> {
             // The declaration line is where the finding is anchored.
             // `body_returns_true` widens the scan across newlines if the
             // body is multi-line.
-            if line_declares_async_marker(line) && body_returns_true(&lines, line_is_comment, idx)
-            {
+            if line_declares_async_marker(line) && body_returns_true(&lines, line_is_comment, idx) {
                 let col = line.find("is_async_completing").unwrap_or(0) + 1;
                 markers.push((idx + 1, col));
             }
@@ -134,12 +133,11 @@ pub fn scan_file(text: &str, line_is_comment: &[bool]) -> Vec<AsyncMarkerHit> {
                  to record stage transitions so the `action_stages` mirror \
                  reflects reality"
                 .to_string(),
-            suggested:
-                "call `kernel.record_action_stage(correlation_id, stage, detail)` \
+            suggested: "call `kernel.record_action_stage(correlation_id, stage, detail)` \
                  from the module's executor or actor handler — see \
                  `crates/nmp-core/src/kernel/publish_engine.rs` for the canonical \
                  publish-path consumer"
-                    .to_string(),
+                .to_string(),
         })
         .collect()
 }
@@ -259,8 +257,7 @@ fn body_returns_true(lines: &[&str], line_is_comment: &[bool], start: usize) -> 
                         && bytes.get(i + 3).copied() == Some(b'e')
                     {
                         let left_ok = i == 0 || !is_ident_char(bytes[i - 1]);
-                        let right_ok =
-                            i + 4 >= bytes.len() || !is_ident_char(bytes[i + 4]);
+                        let right_ok = i + 4 >= bytes.len() || !is_ident_char(bytes[i + 4]);
                         if left_ok && right_ok {
                             saw_true = true;
                             i += 3; // skip past the literal

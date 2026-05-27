@@ -8,9 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_signers::{
-    AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner,
-};
+use nmp_signers::{AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner};
 
 // ── C12 ───────────────────────────────────────────────────────────────────────
 
@@ -21,7 +19,9 @@ struct EventCapture {
 
 impl EventCapture {
     fn new() -> Arc<Self> {
-        Arc::new(Self { events: Mutex::new(Vec::new()) })
+        Arc::new(Self {
+            events: Mutex::new(Vec::new()),
+        })
     }
 
     fn events(&self) -> Vec<(Option<String>, String)> {
@@ -33,7 +33,10 @@ impl ActiveChangeObserver for EventCapture {
     fn on_active_change(&self, event: &ActiveChangeEvent) {
         self.events.lock().unwrap().push((
             event.previous.clone(),
-            event.current.clone().expect("current must be Some during a switch"),
+            event
+                .current
+                .clone()
+                .expect("current must be Some during a switch"),
         ));
     }
 }
@@ -51,11 +54,10 @@ impl ActiveChangeObserver for EventCapture {
 /// Design: `docs/design/framework-magic/sessions.md`
 #[test]
 fn c12_account_switch_rebinds_views_without_imperative_dance() {
-    use std::time::Duration;
     use nmp_core::subs::{AccountId, CompileTrigger};
+    use std::time::Duration;
 
-    let mut manager = AccountManager::new()
-        .with_post_condition_timeout(Duration::from_millis(500));
+    let mut manager = AccountManager::new().with_post_condition_timeout(Duration::from_millis(500));
 
     let capture = EventCapture::new();
     manager.observe(Arc::clone(&capture) as Arc<dyn ActiveChangeObserver>);
@@ -69,11 +71,13 @@ fn c12_account_switch_rebinds_views_without_imperative_dance() {
 
     // --- 2. Add two accounts ------------------------------------------------
     let sk_a = LocalKeySigner::from_secret_hex(
-        "0101010101010101010101010101010101010101010101010101010101010101"
-    ).expect("valid hex");
+        "0101010101010101010101010101010101010101010101010101010101010101",
+    )
+    .expect("valid hex");
     let sk_b = LocalKeySigner::from_secret_hex(
-        "0202020202020202020202020202020202020202020202020202020202020202"
-    ).expect("valid hex");
+        "0202020202020202020202020202020202020202020202020202020202020202",
+    )
+    .expect("valid hex");
 
     let id_a = manager.add(Arc::new(sk_a)).expect("add A");
     let id_b = manager.add(Arc::new(sk_b)).expect("add B");
@@ -93,7 +97,11 @@ fn c12_account_switch_rebinds_views_without_imperative_dance() {
     manager.switch_active(&id_b).expect("switch to B");
     let evs = capture.events();
     assert_eq!(evs.len(), 2);
-    assert_eq!(evs[1].0.as_deref(), Some(id_a.as_str()), "previous must be A");
+    assert_eq!(
+        evs[1].0.as_deref(),
+        Some(id_a.as_str()),
+        "previous must be A"
+    );
     assert_eq!(evs[1].1, id_b, "current must be B");
     assert_eq!(manager.active().as_deref(), Some(id_b.as_str()));
 

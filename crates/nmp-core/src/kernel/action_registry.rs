@@ -105,8 +105,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
-        let action: M::Action = serde_json::from_str(action_json)
-            .map_err(|e| e.to_string())?;
+        let action: M::Action = serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         M::execute(action, correlation_id, send)
     }
 }
