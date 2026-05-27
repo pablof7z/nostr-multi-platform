@@ -98,20 +98,23 @@ impl Kernel {
 
         // W3/W5 — claim-expansion score hook (relay_failed = Failed, §8.5 +3f).
         //
-        // Cross-workstream dependency on W5:
-        //   When W5 adds `pending_claims: Vec<PendingClaim>` to Kernel, this
-        //   block should walk `self.pending_claims` and find every claim whose
-        //   Phase-1 or Phase-2 relay set includes `relay_url`. For each match:
+        // Cross-workstream dependency on W5 (§8.3 retarget):
+        //   When W5 adds
+        //     `pending_claims: BTreeMap<InterestId, PendingClaim>`
+        //     `claim_sub_index: BTreeMap<String /* sub_id */, InterestId>`
+        //   to Kernel, this block should walk `self.pending_claims.values()`
+        //   and find every claim whose `attempted` BTreeSet<RelayUrl> includes
+        //   `relay_url`. For each match:
         //
         //     self.record_claim_outcome(
-        //         claim.author(),
+        //         &claim.author,
         //         relay_url,
         //         relay_score::ClaimOutcome::Failed,
         //     );
         //
         //   The walk is deferred here rather than stubbed with a no-op because
         //   the `PendingClaim` type (and the `pending_claims` field) do not
-        //   exist until W5. A fake loop over an empty Vec would compile but
+        //   exist until W5. A fake loop over an empty map would compile but
         //   silently do nothing and could mask a missing W5 wiring step.
         //
         //   §8.1 retarget note: the hook lands here (`relay_failed`) rather

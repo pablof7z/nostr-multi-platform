@@ -11,7 +11,7 @@
 use super::{
     relay_score::{ClaimOutcome, RelayAuthorScore},
     wire_log::{log_wire, WireLogEvent},
-    Kernel, NostrEvent,
+    CanonicalRelayUrl, Kernel, NostrEvent,
 };
 
 impl Kernel {
@@ -34,11 +34,16 @@ impl Kernel {
         relay_url: &str,
         outcome: ClaimOutcome,
     ) {
+        // S1: canonicalize once — used for both the D4 write accessor and
+        // the diagnostic log emission so both see the same URL form.
+        let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
+        let canonical_str = canonical.as_str();
         let now = self.now_secs();
-        self.relay_score_map
-            .record(&author.to_string(), relay_url, outcome, now);
+        // D4: route through the accessor seam instead of writing the map
+        // directly. `record_relay_score` is the sole entry point (§8.3).
+        self.record_relay_score(author, canonical_str, outcome, now);
         // Emit structured diagnostic line (no-op unless NMP_CLAIM_LOG is set).
-        let cell: RelayAuthorScore = self.relay_score_map.get(&author.to_string(), relay_url);
+        let cell: RelayAuthorScore = self.get_relay_score(author, canonical_str);
         let delta = match outcome {
             ClaimOutcome::Hit => "+1s",
             ClaimOutcome::EoseNoMatch => "0",
@@ -46,7 +51,7 @@ impl Kernel {
         };
         log_wire(WireLogEvent::ScoreUpdate {
             author,
-            relay_url,
+            relay_url: canonical_str,
             delta,
             new_weight: cell.weight(now),
         });
@@ -97,10 +102,13 @@ impl Kernel {
     /// Returns the author pubkey for a claim-expansion subscription, if any.
     ///
     /// Stub: always returns `None` until W5 populates `claim_expansion_subs`.
-    pub(crate) fn lookup_claim_expansion_author<'a>(&'a self, sub_id: &str) -> Option<String> {
-        // W5 dependency: when W5 adds `claim_expansion_subs: BTreeMap<String, Pubkey>`,
+    pub(crate) fn lookup_claim_expansion_author(&self, sub_id: &str) -> Option<String> {
+        // W5 dependency: when W5 adds
+        //   `pending_claims: BTreeMap<InterestId, PendingClaim>`
+        //   `claim_sub_index: BTreeMap<String /* sub_id */, InterestId>`
         // replace this body with:
-        //   self.claim_expansion_subs.get(sub_id).cloned()
+        //   let interest_id = self.claim_sub_index.get(sub_id)?;
+        //   self.pending_claims.get(interest_id).map(|c| c.author.clone())
         self.claim_expansion_sub_author_test(sub_id)
     }
 
