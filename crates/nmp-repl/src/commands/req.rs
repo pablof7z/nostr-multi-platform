@@ -84,7 +84,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
         iters += 1;
         let frames = session
             .lifecycle
-            .recompile_and_diff(&session.mailbox_cache, None)
+            .recompile_and_diff(&session.mailbox_cache)
             .map_err(|e| ReplError::Planner(format!("{e:?}")))?;
 
         let probes: Vec<(String, String, String)> = frames
@@ -106,8 +106,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
             break;
         }
 
-        let probe_authors: usize =
-            probes.iter().map(|(_, _, fj)| author_count(fj)).sum();
+        let probe_authors: usize = probes.iter().map(|(_, _, fj)| author_count(fj)).sum();
         probed_total += probe_authors;
 
         // `run_discovery` prints a per-REQ row for EVERY implicit
@@ -125,7 +124,7 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
         }
 
         // Drain the Nip65Arrived triggers → next plan routes via NIP-65.
-        let _ = session.lifecycle.drain_tick(&session.mailbox_cache, None);
+        let _ = session.lifecycle.drain_tick(&session.mailbox_cache);
 
         if iters >= MAX_DISCOVERY_ITERS {
             println!("  discovery: stopped after {iters} iterations (convergence guard)");
@@ -221,6 +220,10 @@ fn partition(reqs: &[ContentReq]) -> BTreeMap<String, Vec<ContentReq>> {
 fn author_count(filter_json: &str) -> usize {
     serde_json::from_str::<Value>(filter_json)
         .ok()
-        .and_then(|v| v.get("authors").and_then(Value::as_array).map(std::vec::Vec::len))
+        .and_then(|v| {
+            v.get("authors")
+                .and_then(Value::as_array)
+                .map(std::vec::Vec::len)
+        })
         .unwrap_or(0)
 }

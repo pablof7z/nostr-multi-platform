@@ -266,6 +266,110 @@ fn no_warm_relays_falls_through_to_existing_pruning() {
     }
 }
 
+/// Build a plan with a single relay carrying the given `role_tags` set.
+fn plan_with_role_tags(
+    relay: &str,
+    authors: &[&str],
+    role_tags: BTreeSet<RoutingSource>,
+) -> CompiledPlan {
+    let mut per_relay = std::collections::BTreeMap::new();
+    let mut shape = InterestShape::default();
+    for a in authors {
+        shape.authors.insert((*a).to_string());
+    }
+    let hash = canonical_filter_hash(&shape);
+    let sub = SubShape {
+        shape,
+        originating_interests: vec![],
+        canonical_filter_hash: hash,
+    };
+    per_relay.insert(
+        relay.to_string(),
+        RelayPlan {
+            relay_url: relay.to_string(),
+            role_tags,
+            sub_shapes: vec![sub],
+        },
+    );
+    CompiledPlan {
+        plan_id: "test-lane".to_string(),
+        per_relay,
+        unroutable_authors: BTreeSet::new(),
+    }
+}
+
+/// Test 5: The warm filter must NOT prune a Hint-routed relay even if the
+/// relay is cold for the author. Hint is not a NIP-65 outbox — pruning it
+/// would remove a non-NIP-65 discovery lane (D3 violation).
+#[test]
+fn warm_filter_does_not_prune_hint_lane() {
+    let mut role_tags = BTreeSet::new();
+    role_tags.insert(RoutingSource::Hint);
+    let mut plan = plan_with_role_tags("wss://hint-relay", &["alice"], role_tags);
+
+    // Noop lookup returns 0.0 for everything — "cold".
+    let lookup = NoopRelayAuthorScoreLookup;
+    apply_selection_with_lookup(&mut plan, 30, 2, Some(&lookup));
+
+    // The Hint relay MUST still be in the plan with alice on it.
+    assert!(
+        plan.per_relay.contains_key("wss://hint-relay"),
+        "Hint-routed relay must survive warm filter (D3 lane preservation)"
+    );
+    let relay_plan = &plan.per_relay["wss://hint-relay"];
+    let has_alice = relay_plan
+        .sub_shapes
+        .iter()
+        .any(|s| s.shape.authors.contains("alice"));
+    assert!(
+        has_alice,
+        "alice must remain on the Hint relay after warm filter"
+    );
+}
+
+/// Test 6: The warm filter must NOT prune a UserConfigured (non-AppRelay)
+/// relay even when cold. This guards the Indexer and Bootstrap sub-categories
+/// which are NOT operator-pinned AppRelays but must still survive coverage.
+#[test]
+fn warm_filter_does_not_prune_user_configured_indexer_lane() {
+    let mut role_tags = BTreeSet::new();
+    role_tags.insert(RoutingSource::UserConfigured(
+        UserConfiguredCategory::Indexer,
+    ));
+    let mut plan = plan_with_role_tags("wss://indexer-relay", &["alice"], role_tags);
+
+    let lookup = NoopRelayAuthorScoreLookup;
+    apply_selection_with_lookup(&mut plan, 30, 2, Some(&lookup));
+
+    // Indexer relay MUST survive (warm filter is Nip65-only pruner).
+    assert!(
+        plan.per_relay.contains_key("wss://indexer-relay"),
+        "UserConfigured(Indexer) relay must survive warm filter"
+    );
+}
+
+/// Test 7: A relay tagged with BOTH Nip65 AND Hint (multi-lane relay)
+/// must survive the warm filter regardless of warmth. The warm filter only
+/// prunes relays whose role_tags == {Nip65} exactly.
+#[test]
+fn warm_filter_preserves_multi_lane_relay() {
+    let mut role_tags = BTreeSet::new();
+    role_tags.insert(RoutingSource::Nip65);
+    role_tags.insert(RoutingSource::Hint);
+    let mut plan = plan_with_role_tags("wss://multi-lane", &["alice"], role_tags);
+
+    // Noop — all cold.
+    let lookup = NoopRelayAuthorScoreLookup;
+    apply_selection_with_lookup(&mut plan, 30, 2, Some(&lookup));
+
+    // Multi-lane relay (Nip65 + Hint) must survive — the Hint tag overrides
+    // the cold-Nip65 prune.
+    assert!(
+        plan.per_relay.contains_key("wss://multi-lane"),
+        "Multi-lane relay (Nip65+Hint) must survive warm filter; cold-Nip65 prune must not apply"
+    );
+}
+
 // Delegate to the real implementation in `crate::selection`.
 fn apply_selection_with_lookup(
     plan: &mut CompiledPlan,

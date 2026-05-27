@@ -83,7 +83,7 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     lc.registry_mut().push(tailing_interest(1, &["alice"]));
 
     // First compile — expect a REQ for alice at wss://r1/.
-    let frames1 = lc.recompile_and_diff(&mailboxes, None).expect("first compile");
+    let frames1 = lc.recompile_and_diff(&mailboxes).expect("first compile");
     let req_urls1: Vec<_> = frames1
         .iter()
         .filter_map(|f| {
@@ -128,7 +128,7 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     });
 
     // drain_tick must recompile and emit the new REQ diff.
-    let frames2 = lc.drain_tick(&mailboxes, None);
+    let frames2 = lc.drain_tick(&mailboxes);
     assert_eq!(
         lc.compile_count(),
         2,
@@ -176,7 +176,7 @@ fn c8_subscriptions_coalesce_and_buffer() {
             reason: InvalidateReason::TestForceRecompile,
         });
     }
-    let _frames = lc.drain_tick(&mailboxes, None);
+    let _frames = lc.drain_tick(&mailboxes);
     assert_eq!(
         lc.compile_count(),
         1,
@@ -184,7 +184,7 @@ fn c8_subscriptions_coalesce_and_buffer() {
     );
 
     // --- 2. Empty-tick is a no-op -------------------------------------------
-    let frames_empty = lc.drain_tick(&mailboxes, None);
+    let frames_empty = lc.drain_tick(&mailboxes);
     assert!(frames_empty.is_empty(), "empty tick must emit no frames");
     assert_eq!(lc.compile_count(), 1, "empty tick must not compile");
 

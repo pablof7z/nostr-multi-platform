@@ -42,7 +42,7 @@ fn empty_lifecycle_starts_with_zero_compiles() {
 fn empty_tick_does_not_compile() {
     let mut l = SubscriptionLifecycle::new();
     let mailboxes = InMemoryMailboxCache::new();
-    let frames = l.drain_tick(&mailboxes, None);
+    let frames = l.drain_tick(&mailboxes);
     assert!(frames.is_empty());
     assert_eq!(l.compile_count(), 0);
 }
@@ -86,7 +86,7 @@ fn recompile_caps_per_relay_at_max_connections() {
             .push(follow(u64::from(i) + 1, &author_seed));
     }
 
-    let _frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let plan = l.current_plan.as_ref().expect("plan present");
     assert!(
         plan.per_relay.len() <= max_connections,
@@ -129,7 +129,7 @@ fn recompile_preserves_app_relay_under_budget() {
             .push(follow(u64::from(i) + 1, &author_seed));
     }
 
-    let _frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let plan = l.current_plan.as_ref().expect("plan present");
 
     assert!(
@@ -184,9 +184,7 @@ fn dropped_relay_emits_close_on_next_recompile() {
             .push(follow(u64::from(i) + 1, &author_seed));
     }
 
-    let first = l
-        .recompile_and_diff(&mailboxes, None)
-        .expect("first compile");
+    let first = l.recompile_and_diff(&mailboxes).expect("first compile");
     let req_relays: std::collections::BTreeSet<String> = first
         .iter()
         .filter_map(|f| match f {
@@ -202,9 +200,7 @@ fn dropped_relay_emits_close_on_next_recompile() {
 
     // Tighten the budget so 2 relays must be dropped on the next compile.
     l.set_selection_budget(1, 1);
-    let second = l
-        .recompile_and_diff(&mailboxes, None)
-        .expect("second compile");
+    let second = l.recompile_and_diff(&mailboxes).expect("second compile");
 
     let plan = l.current_plan.as_ref().expect("plan present");
     assert_eq!(
@@ -271,7 +267,7 @@ fn set_indexer_relays_is_reflected_in_next_recompile() {
     // is not poison input to the recompile path.
     let mailboxes = InMemoryMailboxCache::new();
     let prior = l.compile_count();
-    let _ = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let _ = l.recompile_and_diff(&mailboxes).expect("compile");
     assert_eq!(
         l.compile_count(),
         prior + 1,
@@ -309,18 +305,14 @@ fn dead_relay_excluded_from_next_recompile() {
     l.registry_mut().push(follow(1, "cc01"));
 
     // First compile: both relays present.
-    let _ = l
-        .recompile_and_diff(&mailboxes, None)
-        .expect("first compile");
+    let _ = l.recompile_and_diff(&mailboxes).expect("first compile");
     let before = l.current_plan.as_ref().expect("plan").per_relay.clone();
     assert!(before.contains_key("wss://alive.example"));
     assert!(before.contains_key("wss://dead.example"));
 
     // Mark dead.example as dead and recompile.
     assert!(l.mark_relay_dead("wss://dead.example".to_string()));
-    let _ = l
-        .recompile_and_diff(&mailboxes, None)
-        .expect("second compile");
+    let _ = l.recompile_and_diff(&mailboxes).expect("second compile");
     let after = &l.current_plan.as_ref().expect("plan").per_relay;
     assert!(
         after.contains_key("wss://alive.example"),
@@ -352,7 +344,7 @@ fn fully_dead_author_returns_when_relay_alive_again() {
     l.registry_mut().push(follow(1, "dd01"));
 
     // Compile, kill, recompile.
-    let _ = l.recompile_and_diff(&mailboxes, None).expect("compile 1");
+    let _ = l.recompile_and_diff(&mailboxes).expect("compile 1");
     assert!(l
         .current_plan
         .as_ref()
@@ -361,7 +353,7 @@ fn fully_dead_author_returns_when_relay_alive_again() {
         .contains_key("wss://only.example"));
 
     let _ = l.mark_relay_dead("wss://only.example".to_string());
-    let _ = l.recompile_and_diff(&mailboxes, None).expect("compile 2");
+    let _ = l.recompile_and_diff(&mailboxes).expect("compile 2");
     assert!(
         l.current_plan.as_ref().unwrap().per_relay.is_empty(),
         "all relays dead → empty plan"
@@ -369,7 +361,7 @@ fn fully_dead_author_returns_when_relay_alive_again() {
 
     // Resurrect.
     assert!(l.mark_relay_alive(&"wss://only.example".to_string()));
-    let _ = l.recompile_and_diff(&mailboxes, None).expect("compile 3");
+    let _ = l.recompile_and_diff(&mailboxes).expect("compile 3");
     assert!(l
         .current_plan
         .as_ref()
@@ -400,7 +392,7 @@ fn drain_tick_empty_inbox_returns_no_frames() {
     let mut l = SubscriptionLifecycle::new();
     // No interests, no triggers — inbox is empty.
     let mailboxes = InMemoryMailboxCache::new();
-    let frames = l.drain_tick(&mailboxes, None);
+    let frames = l.drain_tick(&mailboxes);
     assert!(frames.is_empty(), "empty inbox must return no frames");
     assert_eq!(
         l.compile_count(),
@@ -448,7 +440,7 @@ fn drain_tick_follow_list_changed_emits_req_frames() {
         new_follows: vec![author],
     });
 
-    let frames = l.drain_tick(&mailboxes, None);
+    let frames = l.drain_tick(&mailboxes);
     let req_count = frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { .. }))
@@ -480,7 +472,7 @@ fn drain_tick_relay_auth_changed_applies_side_effect() {
     });
 
     let mailboxes = InMemoryMailboxCache::new();
-    let _frames = l.drain_tick(&mailboxes, None);
+    let _frames = l.drain_tick(&mailboxes);
 
     // After drain_tick the side effect must be applied.
     assert!(
@@ -512,7 +504,7 @@ fn drain_tick_authenticated_flushes_pending_reqs() {
         url: relay_url.clone(),
         state: RelayAuthState::ChallengeReceived,
     });
-    let paused_frames = l.drain_tick(&mailboxes, None);
+    let paused_frames = l.drain_tick(&mailboxes);
     let paused_reqs = paused_frames
         .iter()
         .filter(
@@ -529,7 +521,7 @@ fn drain_tick_authenticated_flushes_pending_reqs() {
         url: relay_url.clone(),
         state: RelayAuthState::Authenticated,
     });
-    let flushed_frames = l.drain_tick(&mailboxes, None);
+    let flushed_frames = l.drain_tick(&mailboxes);
     let flushed_reqs = flushed_frames
         .iter()
         .filter(
@@ -557,7 +549,7 @@ fn drain_tick_coalesces_multiple_triggers() {
         });
     }
 
-    let _frames = l.drain_tick(&mailboxes, None);
+    let _frames = l.drain_tick(&mailboxes);
 
     assert_eq!(
         l.compile_count(),
@@ -740,7 +732,7 @@ fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
     };
     l.registry_mut().push(interest);
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let landed: Vec<&WireFrame> = frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://relay.primal.net"))
@@ -799,7 +791,7 @@ fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
         lifecycle: InterestLifecycle::OneShot,
     });
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let urls: std::collections::BTreeSet<String> = frames
         .iter()
         .filter_map(|f| match f {
@@ -850,7 +842,7 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
     };
     l.registry_mut().push(interest);
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let landed: Vec<&WireFrame> = frames
         .iter()
         .filter(

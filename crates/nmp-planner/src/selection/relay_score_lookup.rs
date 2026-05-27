@@ -14,7 +14,8 @@
 //! - **D6** — trait methods are total, return owned `f32` / `bool`; no
 //!   `Result`, no panic.
 //! - **D8** — `is_warm` delegates to `weight` which is an O(log N) BTreeMap
-//!   lookup; no allocation per call.
+//!   lookup; the production implementation canonicalizes the relay URL
+//!   (one allocation per call for non-canonical inputs).
 //!
 //! # `WARM_THRESHOLD`
 //!
@@ -42,6 +43,11 @@ pub trait RelayAuthorScoreLookup {
     ///
     /// Unknown pairs (no prior claims) return `0.0`.
     /// The URL is canonicalized internally by the implementation.
+    ///
+    /// Note: the production `Kernel` implementation performs O(log N)
+    /// BTreeMap lookups and may allocate for canonicalization of the relay
+    /// URL argument. Callers on hot paths should pre-canonicalize the URL
+    /// before calling if they read multiple authors against the same relay.
     fn weight(&self, author: &str, relay: &str) -> f32;
 
     /// `true` iff `weight(author, relay) >= WARM_THRESHOLD`.

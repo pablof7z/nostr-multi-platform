@@ -50,7 +50,7 @@ fn unknown_author_triggers_mailbox_probe() {
     let empty = InMemoryMailboxCache::new(); // nothing cached
     l.registry_mut().push(follow(1, "ab01"));
 
-    let frames = l.recompile_and_diff(&empty, None).expect("compile");
+    let frames = l.recompile_and_diff(&empty).expect("compile");
     let probes = probe_reqs(&frames);
     assert_eq!(probes.len(), 1, "exactly one indexer probe expected");
     if let WireFrame::Req {
@@ -78,10 +78,10 @@ fn probed_author_not_reprobed() {
     let empty = InMemoryMailboxCache::new();
     l.registry_mut().push(follow(1, "cd01"));
 
-    let first = l.recompile_and_diff(&empty, None).expect("compile 1");
+    let first = l.recompile_and_diff(&empty).expect("compile 1");
     assert_eq!(probe_reqs(&first).len(), 1);
 
-    let second = l.recompile_and_diff(&empty, None).expect("compile 2");
+    let second = l.recompile_and_diff(&empty).expect("compile 2");
     assert_eq!(
         probe_reqs(&second).len(),
         0,
@@ -90,7 +90,7 @@ fn probed_author_not_reprobed() {
 
     // refresh escape hatch re-probes.
     l.clear_probed_mailboxes();
-    let third = l.recompile_and_diff(&empty, None).expect("compile 3");
+    let third = l.recompile_and_diff(&empty).expect("compile 3");
     assert_eq!(
         probe_reqs(&third).len(),
         1,
@@ -113,7 +113,7 @@ fn cached_author_never_probed() {
     );
     l.registry_mut().push(follow(1, "ef01"));
 
-    let frames = l.recompile_and_diff(&cache, None).expect("compile");
+    let frames = l.recompile_and_diff(&cache).expect("compile");
     assert_eq!(
         probe_reqs(&frames).len(),
         0,
@@ -134,7 +134,7 @@ fn many_unknown_authors_batch_into_chunks() {
         let seed = format!("z{i:05}");
         l.registry_mut().push(follow(u64::from(i) + 1, &seed));
     }
-    let frames = l.recompile_and_diff(&empty, None).expect("compile");
+    let frames = l.recompile_and_diff(&empty).expect("compile");
     let probes = probe_reqs(&frames);
     let expected = n.div_ceil(MAILBOX_PROBE_BATCH); // 3
     assert_eq!(
@@ -166,7 +166,7 @@ fn current_plan_unroutable_reflects_plan() {
     l.registry_mut().push(follow(1, "rt01"));
     l.registry_mut().push(follow(2, "ur01"));
 
-    let _ = l.recompile_and_diff(&cache, None).expect("compile");
+    let _ = l.recompile_and_diff(&cache).expect("compile");
     let unroutable = l.current_plan_unroutable();
     assert!(
         unroutable.contains(&pubkey("ur01")),
@@ -201,7 +201,7 @@ fn current_plan_frames_materialises_full_content_plan() {
     );
     l.registry_mut().push(follow(1, "cp01"));
 
-    let _ = l.recompile_and_diff(&cache, None).expect("compile");
+    let _ = l.recompile_and_diff(&cache).expect("compile");
     let frames = l.current_plan_frames();
 
     // Expected: exactly one REQ per (relay, sub_shape) in current_plan.
@@ -242,7 +242,7 @@ fn no_indexer_means_no_probe() {
     l.set_indexer_relays(vec![]);
     let empty = InMemoryMailboxCache::new();
     l.registry_mut().push(follow(1, "aa99"));
-    let frames = l.recompile_and_diff(&empty, None).expect("compile");
+    let frames = l.recompile_and_diff(&empty).expect("compile");
     assert_eq!(probe_reqs(&frames).len(), 0);
     assert!(
         l.probed_mailboxes().is_empty(),
@@ -275,7 +275,7 @@ fn drain_tick_benign_empty_interest_set_does_not_record_planner_error() {
         new_follows: vec![],
     });
     let mailboxes = InMemoryMailboxCache::new();
-    let frames = l.drain_tick(&mailboxes, None);
+    let frames = l.drain_tick(&mailboxes);
 
     assert!(
         frames.is_empty(),

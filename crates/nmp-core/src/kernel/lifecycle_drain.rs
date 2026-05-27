@@ -54,7 +54,8 @@ impl Kernel {
         let now = self.now_secs();
         let score_lookup = Kernel::score_lookup_ref_from(&self.relay_score_map, now);
         let lookup: &dyn RelayAuthorScoreLookup = &score_lookup;
-        self.lifecycle.drain_tick(&mailboxes, Some(lookup))
+        self.lifecycle
+            .drain_tick_with_lookup(&mailboxes, Some(lookup))
     }
 
     /// V-04 Stage 2 — `KernelReducer` / wasm bridge: drain one

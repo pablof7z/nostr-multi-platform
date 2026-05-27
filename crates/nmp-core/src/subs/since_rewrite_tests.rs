@@ -115,7 +115,7 @@ fn rewrites_since_to_watermark_plus_one_when_filter_has_no_since() {
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     l.registry_mut().push(timeline_interest(1, "a"));
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
 
     assert!(!filters.is_empty(), "expected at least one REQ");
@@ -136,7 +136,7 @@ fn does_not_rewrite_when_watermark_is_none() {
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| None));
     l.registry_mut().push(timeline_interest(1, "a"));
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
 
     assert!(!filters.is_empty(), "expected at least one REQ");
@@ -158,7 +158,7 @@ fn user_since_wins_when_newer_than_watermark() {
     l.registry_mut()
         .push(timeline_interest_with_since(1, "a", 1800));
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
 
     assert!(!filters.is_empty(), "expected at least one REQ");
@@ -185,7 +185,7 @@ fn ephemeral_kinds_skip_since_rewrite() {
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     l.registry_mut().push(ephemeral_interest(1, "a"));
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
 
     assert!(
@@ -214,7 +214,7 @@ fn multi_relay_emits_identical_rewritten_since() {
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     l.registry_mut().push(timeline_interest(1, "a"));
 
-    let frames = l.recompile_and_diff(&mailboxes, None).expect("compile");
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
     let relays = relays_with_req(&frames);
 

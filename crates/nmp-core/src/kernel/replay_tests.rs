@@ -61,7 +61,7 @@ fn kernel_with_one_sub(
     // replay it.
     let _ = kernel
         .lifecycle_mut()
-        .recompile_and_diff(&mailboxes, None)
+        .recompile_and_diff(&mailboxes)
         .expect("compile");
     // Simulate the actor's first dial: register a `WireSub` row for the
     // sub-shape (mirrors what `req_for_relay` does on the normal hot path).
@@ -187,7 +187,7 @@ fn replay_applies_t129_watermark_to_since() {
         .push(timeline_interest(7, author));
     let _ = kernel
         .lifecycle_mut()
-        .recompile_and_diff(&mailboxes, None)
+        .recompile_and_diff(&mailboxes)
         .expect("compile");
 
     kernel.relay_connected(role);

@@ -200,6 +200,9 @@ pub fn apply_selection_with_lookup(
     // W4 warm-relay pre-filter: when a score_lookup is provided, drop
     // `(relay, author)` pairs where:
     //   - the relay is NOT operator-pinned (already excluded above), AND
+    //   - the relay's `role_tags` is EXACTLY `{Nip65}` (lane-1 PRUNER;
+    //     Hint, Provenance, NIP-17, UserConfigured lanes are never pruned
+    //     by the warm filter — D3: filter, not multi-lane gate), AND
     //   - the author has at least one warm relay in this plan, AND
     //   - this relay is cold for that author.
     // Authors with NO warm relays at all are passed through unchanged so that
@@ -217,25 +220,49 @@ pub fn apply_selection_with_lookup(
         })
         .collect();
 
+    // W4: the set of relay URLs that carry ONLY the Nip65 routing source.
+    // The warm filter is a lane-1 pruner — it must never touch relays that
+    // carry Hint, Provenance, NIP-17, or UserConfigured entries. A relay
+    // is warm-filterable iff its `role_tags` == `{Nip65}` exactly.
+    let nip65_only: BTreeSet<RelayUrl> = plan
+        .per_relay
+        .iter()
+        .filter(|(relay, relay_plan)| {
+            !selection_pinned.contains(*relay)
+                && relay_plan.role_tags.len() == 1
+                && relay_plan.role_tags.contains(&RoutingSource::Nip65)
+        })
+        .map(|(relay, _)| relay.clone())
+        .collect();
+
     // W4: compute per-author warm-relay set so we can decide whether to keep
     // cold pairs (fallback) or drop them (author has a warm alternative).
+    // Only Nip65-only relays participate in warm-score computation.
     let per_relay_authors: BTreeMap<RelayUrl, BTreeSet<Pubkey>> = if let Some(lookup) = score_lookup
     {
-        // Build a set of relays that are warm for each author.
+        // Build the set of authors that have at least one warm Nip65-only relay.
         let mut author_has_warm: BTreeSet<Pubkey> = BTreeSet::new();
         for (relay, authors) in &raw_per_relay_authors {
+            if !nip65_only.contains(relay) {
+                continue; // non-Nip65 relay: skip, preserve regardless
+            }
             for author in authors {
                 if lookup.is_warm(author, relay) {
                     author_has_warm.insert(author.clone());
                 }
             }
         }
-        // Filter: for each (relay, author) pair, keep it if:
-        //   - the relay is warm for that author, OR
-        //   - the author has NO warm relay at all (cold-start fallback).
+        // Filter: for each (relay, author) pair:
+        //   - Non-Nip65-only relay → keep always (D3 lane preservation).
+        //   - Nip65-only relay: keep if warm for that author OR author has
+        //     no warm Nip65 relay at all (cold-start fallback).
         raw_per_relay_authors
             .into_iter()
             .map(|(relay, authors)| {
+                if !nip65_only.contains(&relay) {
+                    // Not a pure Nip65 relay — preserve all authors unchanged.
+                    return (relay, authors);
+                }
                 let filtered: BTreeSet<Pubkey> = authors
                     .into_iter()
                     .filter(|author| {
