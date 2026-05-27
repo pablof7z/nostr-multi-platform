@@ -135,6 +135,26 @@ fn append_card(
         lines.push(line0);
     }
 
+    // Row 0b (partial chain heads only): "↳ reply in thread" — surfaces
+    // the fact that the displayed event is itself a reply to a missing
+    // ancestor (the true thread root is not in the local store), so it
+    // doesn't masquerade as a root post. Independent of repost row; in
+    // practice they never co-occur (reposts arrive as Standalone blocks).
+    if row.is_partial_chain_head {
+        let text = "\u{21B3} reply in thread";
+        let text_len = text.chars().count();
+        let pad = pad_for(content_width, text_len);
+        let indicator = Span::styled(
+            text.to_string(),
+            Style::default().fg(REPLY_COLOR).bg(row_bg),
+        );
+        lines.push(Line::from(vec![
+            gutter_span.clone(),
+            indicator,
+            Span::styled(pad, Style::default().bg(row_bg)),
+        ]));
+    }
+
     // Row 1: author · timestamp
     let author_style = Style::default()
         .fg(author_color(&row.author_pubkey))

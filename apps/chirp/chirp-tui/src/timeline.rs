@@ -18,6 +18,14 @@ pub struct TimelineRow {
     pub created_at: u64,
     pub depth: usize,
     pub has_gap: bool,
+    /// `true` only on the FIRST event of a `TimelineBlock::Module` whose
+    /// `root` pointer is `Some` — i.e. the chain's top event is itself a
+    /// reply to a missing ancestor (partial chain), NOT the true thread
+    /// root. The left-pane post list uses this to render a "↳ reply in
+    /// thread" indicator so partial-chain heads don't masquerade as roots.
+    /// `depth` is intentionally left at `0` for the head event so the
+    /// detail-pane navigation anchor (`depth == 0`) still works.
+    pub is_partial_chain_head: bool,
     pub relation_counts: RowRelationCounts,
     pub content_tree: Option<ContentTreeWire>,
     pub content_render: ContentRenderData,
@@ -57,10 +65,13 @@ impl TimelineRow {
         let mut rows = Vec::new();
         if let Some(blocks) = snapshot.get("blocks").and_then(Value::as_array) {
             for block in blocks {
-                let (ids, has_gap) = ids_from_block(block);
+                let (ids, has_gap, is_partial_chain) = ids_from_block(block);
                 for (depth, id) in ids.into_iter().enumerate() {
                     if let Some(card) = cards.get(id.as_str()) {
-                        rows.push(Self::from_card(card, depth, has_gap));
+                        // Flag belongs only to the chain's head event; the
+                        // rest of the chain are ordinary replies.
+                        let is_partial_chain_head = is_partial_chain && depth == 0;
+                        rows.push(Self::from_card(card, depth, has_gap, is_partial_chain_head));
                     }
                 }
             }
@@ -82,7 +93,7 @@ impl TimelineRow {
         urls
     }
 
-    fn from_card(card: &Value, depth: usize, has_gap: bool) -> Self {
+    fn from_card(card: &Value, depth: usize, has_gap: bool, is_partial_chain_head: bool) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
         let author_profile = author_profile_from_card(&author_pubkey, card);
@@ -118,6 +129,7 @@ impl TimelineRow {
             created_at,
             depth,
             has_gap,
+            is_partial_chain_head,
             relation_counts: RowRelationCounts::from_card(card),
             content_tree,
             content_render,
@@ -221,12 +233,20 @@ impl RowRelationCount {
     }
 }
 
-fn ids_from_block(block: &Value) -> (Vec<String>, bool) {
+/// Extract event ids from a `TimelineBlock`, plus two structural flags
+/// used downstream by the UI:
+///
+/// - `has_gap`: the module knows an ancestor / mid-chain event is missing.
+/// - `is_partial_chain`: the module's Event root pointer names a different
+///   id than the first event in the module. That means the displayed head is
+///   a reply to a missing event ancestor. Non-Event roots terminate the chain
+///   and do not imply a missing event head.
+fn ids_from_block(block: &Value) -> (Vec<String>, bool, bool) {
     if let Some(id) = block.get("Standalone").and_then(Value::as_str) {
-        return (vec![id.to_string()], false);
+        return (vec![id.to_string()], false, false);
     }
     let Some(module) = block.get("Module") else {
-        return (Vec::new(), false);
+        return (Vec::new(), false, false);
     };
     let ids = module
         .get("events")
@@ -240,7 +260,18 @@ fn ids_from_block(block: &Value) -> (Vec<String>, bool) {
         .get("has_gap")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    (ids, has_gap)
+    let is_partial_chain = event_root_mismatches_top(module.get("root"), ids.first());
+    (ids, has_gap, is_partial_chain)
+}
+
+fn event_root_mismatches_top(root: Option<&Value>, top: Option<&String>) -> bool {
+    let Some(top) = top else {
+        return false;
+    };
+    root.and_then(|root| root.get("Event"))
+        .and_then(|event| event.get("id"))
+        .and_then(Value::as_str)
+        .is_some_and(|root_id| root_id != top)
 }
 
 fn string_field(card: &Value, key: &str) -> String {
@@ -273,363 +304,5 @@ fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn snapshot_rows_follow_block_order() {
-        let snapshot = serde_json::json!({
-            "blocks": [
-                {"Module": {"events": ["root", "reply"], "has_gap": true, "root": null}},
-                {"Standalone": "solo"}
-            ],
-            "cards": [
-                {"id": "solo", "author_pubkey": "bbbbbbbbbbbbbbbb", "kind": 1, "created_at": 3, "content": "solo note"},
-                {"id": "reply", "author_pubkey": "cccccccccccccccc", "kind": 1, "created_at": 2, "content": "reply note"},
-                {"id": "root", "author_pubkey": "aaaaaaaaaaaaaaaa", "kind": 1, "created_at": 1, "content": "root note"}
-            ]
-        });
-
-        let rows = TimelineRow::from_snapshot(&snapshot);
-
-        assert_eq!(
-            rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
-            vec!["root", "reply", "solo"]
-        );
-        assert_eq!(rows[0].depth, 0);
-        assert_eq!(rows[1].depth, 1);
-        assert!(rows[1].has_gap);
-    }
-
-    #[test]
-    fn row_uses_profile_display_and_relation_counts_when_present() {
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "aaaaaaaaaaaaaaaa",
-                "author_display": {"name": "Alice"},
-                "created_at": 1,
-                "content": "hello",
-                "relation_counts": {
-                    "replies": {"state": "known", "count": 2},
-                    "reactions": {"state": "known", "count": 3},
-                    "reposts": {"state": "known", "count": 1},
-                    "zaps": {"state": "known", "count": 4}
-                }
-            }]
-        });
-
-        let rows = TimelineRow::from_snapshot(&snapshot);
-
-        assert_eq!(rows[0].author_label(), "Alice");
-        assert_eq!(
-            rows[0].author_profile.display_name.as_deref(),
-            Some("Alice")
-        );
-        assert_eq!(rows[0].relation_counts.replies, RowRelationCount::Known(2));
-        assert_eq!(
-            rows[0].relation_counts.reactions,
-            RowRelationCount::Known(3)
-        );
-        assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(1));
-        assert_eq!(rows[0].relation_counts.zaps, RowRelationCount::Known(4));
-    }
-
-    #[test]
-    fn mention_pubkeys_extracted_from_content_tree() {
-        let mention_a = "a".repeat(64);
-        let mention_b = "b".repeat(64);
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "aaaaaaaaaaaaaaaa",
-                "created_at": 1,
-                "content": "hello",
-                "content_tree": {
-                    "nodes": [
-                        {"kind": "text", "text": "hi "},
-                        {
-                            "kind": "mention",
-                            "uri": {
-                                "uri": "nostr:npub1...",
-                                "kind": "profile",
-                                "primary_id": mention_a,
-                                "relays": [],
-                            }
-                        },
-                        {"kind": "text", "text": " and "},
-                        {
-                            "kind": "mention",
-                            "uri": {
-                                "uri": "nostr:npub1...",
-                                "kind": "profile",
-                                "primary_id": mention_b,
-                                "relays": [],
-                            }
-                        },
-                    ],
-                    "roots": [0, 1, 2, 3],
-                    "mode": "plaintext"
-                }
-            }]
-        });
-        let rows = TimelineRow::from_snapshot(&snapshot);
-        assert_eq!(rows[0].mention_pubkeys, vec![mention_a, mention_b]);
-    }
-
-    #[test]
-    fn mention_pubkeys_filter_non_hex_and_short_ids() {
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "aaaaaaaaaaaaaaaa",
-                "created_at": 1,
-                "content": "hello",
-                "content_tree": {
-                    "nodes": [
-                        {
-                            "kind": "mention",
-                            "uri": {
-                                "uri": "nostr:npub1...",
-                                "kind": "profile",
-                                "primary_id": "too-short",
-                                "relays": [],
-                            }
-                        },
-                        {
-                            "kind": "mention",
-                            "uri": {
-                                "uri": "nostr:npub1...",
-                                "kind": "profile",
-                                // 64 chars but with a non-hex `z` mid-string.
-                                "primary_id": "zzzz1111111111111111111111111111111111111111111111111111111111zz",
-                                "relays": [],
-                            }
-                        },
-                    ],
-                    "roots": [0, 1],
-                    "mode": "plaintext"
-                }
-            }]
-        });
-        let rows = TimelineRow::from_snapshot(&snapshot);
-        assert!(
-            rows[0].mention_pubkeys.is_empty(),
-            "non-hex / wrong-length mention ids must be filtered, got {:?}",
-            rows[0].mention_pubkeys
-        );
-    }
-
-    #[test]
-    fn mention_pubkeys_dedup_and_sort() {
-        let a = "a".repeat(64);
-        let b = "b".repeat(64);
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "x",
-                "created_at": 1,
-                "content": "",
-                "content_tree": {
-                    "nodes": [
-                        // Duplicate mention should collapse to one entry.
-                        {"kind": "mention", "uri": {"uri": "", "kind": "profile", "primary_id": b, "relays": []}},
-                        {"kind": "mention", "uri": {"uri": "", "kind": "profile", "primary_id": a, "relays": []}},
-                        {"kind": "mention", "uri": {"uri": "", "kind": "profile", "primary_id": b, "relays": []}},
-                    ],
-                    "roots": [0, 1, 2],
-                    "mode": "plaintext"
-                }
-            }]
-        });
-        let rows = TimelineRow::from_snapshot(&snapshot);
-        assert_eq!(rows[0].mention_pubkeys, vec![a, b]);
-    }
-
-    #[test]
-    fn missing_content_tree_yields_empty_mention_pubkeys() {
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "x",
-                "created_at": 1,
-                "content": "hello",
-            }]
-        });
-        let rows = TimelineRow::from_snapshot(&snapshot);
-        assert!(rows[0].mention_pubkeys.is_empty());
-    }
-
-    #[test]
-    fn media_urls_include_direct_and_quoted_event_media() {
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "x",
-                "created_at": 1,
-                "content": "media note",
-                "content_tree": {
-                    "nodes": [{
-                        "kind": "media",
-                        "media_kind": "image",
-                        "urls": ["https://example.com/direct.jpg"],
-                    }],
-                    "roots": [0],
-                    "mode": "plaintext"
-                },
-                "content_render": {
-                    "events": {
-                        "quoted": {
-                            "id": "quoted",
-                            "author_pubkey": "y",
-                            "content_tree": {
-                                "nodes": [{
-                                    "kind": "image",
-                                    "alt": "",
-                                    "src": "https://example.com/quote.webp",
-                                }],
-                                "roots": [0],
-                                "mode": "plaintext"
-                            }
-                        }
-                    }
-                }
-            }]
-        });
-        let rows = TimelineRow::from_snapshot(&snapshot);
-        assert_eq!(
-            rows[0].media_urls(),
-            vec![
-                "https://example.com/direct.jpg".to_string(),
-                "https://example.com/quote.webp".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn repost_card_uses_inner_timestamp_and_attaches_repost_attribution() {
-        // The card represents the original note (kind:1 author, kind:1 content)
-        // but its outer `created_at` is the kind:6 repost time. The row's
-        // displayed `created_at` should be the inner note's publish time;
-        // `repost` carries the reposter + repost timestamp for the "↻ reposted
-        // by" line.
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "repost"}],
-            "cards": [{
-                "id": "repost",
-                "author_pubkey": "innerinnerinnerinnerinnerinnerinnerinnerinnerinnerinnerinner1234",
-                "author_display": {"name": "calle"},
-                "created_at": 100,
-                "content": "Imagine BlueSky but with Nutzaps",
-                "reposted_by": {
-                    "author_pubkey": "reposterreposterreposterreposterreposterreposterreposterreposte",
-                    "author_display": {"name": "pablof7z"},
-                    "note_created_at": 50,
-                }
-            }]
-        });
-
-        let rows = TimelineRow::from_snapshot(&snapshot);
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].author_label(), "calle");
-        assert_eq!(rows[0].created_at, 50, "displayed time is the original note's");
-        let repost = rows[0].repost.as_ref().expect("repost attribution present");
-        assert_eq!(
-            repost.author_pubkey,
-            "reposterreposterreposterreposterreposterreposterreposterreposte"
-        );
-        assert_eq!(repost.author_profile.display_name.as_deref(), Some("pablof7z"));
-        assert_eq!(
-            repost.repost_created_at, 100,
-            "repost line shows the kind:6 timestamp"
-        );
-    }
-
-    #[test]
-    fn ordinary_note_has_no_repost_attribution() {
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "aaaaaaaaaaaaaaaa",
-                "created_at": 1,
-                "content": "hello"
-            }]
-        });
-        let rows = TimelineRow::from_snapshot(&snapshot);
-        assert!(rows[0].repost.is_none());
-    }
-
-    #[test]
-    fn relation_counts_preserve_loading_vs_known_zero() {
-        let snapshot = serde_json::json!({
-            "blocks": [{"Standalone": "note"}],
-            "cards": [{
-                "id": "note",
-                "author_pubkey": "aaaaaaaaaaaaaaaa",
-                "created_at": 1,
-                "content": "hello",
-                "relation_counts": {
-                    "replies": {"state": "known", "count": 0},
-                    "reactions": {"state": "loading", "interest": {"namespace": "nmp.reactions.summary"}},
-                    "reposts": {"state": "known", "count": 0},
-                    "zaps": {"state": "known", "count": 0}
-                }
-            }]
-        });
-
-        let rows = TimelineRow::from_snapshot(&snapshot);
-
-        assert_eq!(rows[0].relation_counts.replies, RowRelationCount::Known(0));
-        assert_eq!(rows[0].relation_counts.reactions, RowRelationCount::Loading);
-        assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(0));
-        assert_eq!(
-            rows[0].relation_counts.summary(),
-            "reply 0  react ...  repost 0  zap 0"
-        );
-    }
-
-    /// Regression: when `blocks` is present but its IDs temporarily don't
-    /// match any card (blocks/cards desync mid-session), replies must NOT be
-    /// promoted to depth 0.  The correct result is an empty row list.
-    #[test]
-    fn blocks_present_but_ids_missing_from_cards_yields_empty() {
-        let snapshot = serde_json::json!({
-            "blocks": [
-                {"Module": {"events": ["root", "reply"], "has_gap": false, "root": null}}
-            ],
-            "cards": [
-                {"id": "other", "author_pubkey": "aaaaaaaaaaaaaaaa", "created_at": 1, "content": "reply text"}
-            ]
-        });
-
-        let rows = TimelineRow::from_snapshot(&snapshot);
-
-        assert!(
-            rows.is_empty(),
-            "blocks present but no matching cards → empty rows; got {:?}",
-            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn no_blocks_key_yields_empty_rows() {
-        let snapshot = serde_json::json!({
-            "cards": [
-                {"id": "a", "author_pubkey": "aaaaaaaaaaaaaaaa", "created_at": 2, "content": "root"},
-                {"id": "b", "author_pubkey": "bbbbbbbbbbbbbbbb", "created_at": 1, "content": "reply"}
-            ]
-        });
-
-        let rows = TimelineRow::from_snapshot(&snapshot);
-
-        assert!(rows.is_empty());
-    }
-}
+#[path = "timeline/tests.rs"]
+mod tests;

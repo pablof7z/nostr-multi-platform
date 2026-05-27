@@ -29,6 +29,7 @@ fn event_id_interest_with_hint(url: &str) -> LogicalInterest {
             },
         }],
         lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
     }
 }
 
