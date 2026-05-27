@@ -128,6 +128,19 @@
 .how-body strong {
   color: var(--fg);
 }
+.arch-diagram {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--fg-muted);
+  background: var(--bg-subtle, #f6f6f4);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+}
 
 /* Doctrine --------------------------------------------------------- */
 
