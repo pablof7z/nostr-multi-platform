@@ -16,17 +16,15 @@ The success criterion is qualitative: **a developer should be able to one-shot a
 
 ---
 
-## 2. Architectural foundation: the RMP bible
+## 2. Architectural foundation: The Elm Architecture
 
-The architectural skeleton is taken wholesale from the **`rust-multiplatform/rmp`** project and its central design document, `rmp-architecture-bible.md`. This is non-negotiable; the bible is the standard. The bible's commandments — quoted and paraphrased below — are the load-bearing structure of the entire framework. A new session must read the bible before writing code; we are not re-deriving it.
-
-The architectural model is **The Elm Architecture (TEA)**, also called Model-View-Update. Three primitives:
+The architectural skeleton follows the **`rust-multiplatform/rmp`** project's design. The load-bearing model is **The Elm Architecture (TEA)**, also called Model-View-Update. Three primitives:
 
 - **`AppState`** — a single struct containing all data the UI needs to render.
 - **`AppAction`** — an enum of every user intent or lifecycle event.
 - **`handle_message(state, action) -> state`** — a pure update function that takes current state and a message and produces new state.
 
-Data flow is **strictly unidirectional**: user interaction → action dispatch → actor processes synchronously → state emission → platform re-renders. From the bible: *"no data races. A single actor thread owns all mutable state. No locks, no concurrent mutation, no race conditions."*
+Data flow is **strictly unidirectional**: user interaction → action dispatch → actor processes synchronously → state emission → platform re-renders. *"No data races. A single actor thread owns all mutable state. No locks, no concurrent mutation, no race conditions."*
 
 The execution model is the **actor pattern**. A dedicated OS thread owns `AppState` and runs a synchronous event loop reading from a `flume` channel. A separate tokio runtime handles async I/O (relay connections, signing, database) and feeds results back through the same channel as `InternalEvent`. Only the actor thread mutates state.
 
@@ -44,7 +42,7 @@ Native UI calls dispatch(action)         [fire-and-forget, never blocks]
   → UI re-renders
 ```
 
-Critical invariants pulled directly from the bible, all of which the framework must honor:
+Critical invariants all framework implementation must honor:
 
 1. **Monotonic revision guard.** `rev: u64` increments on every state change. Platforms compare incoming `rev` to last applied and skip stale updates.
 2. **Errors do not cross FFI.** Operational errors become `toast: Option<String>` fields in state; long-running operation errors clear `busy` flags. Native `dispatch` calls never need try/catch.
@@ -57,9 +55,9 @@ Critical invariants pulled directly from the bible, all of which the framework m
 9. **No high-frequency FFI loops.** Callbacks above ~60Hz across FFI must be batched or delivered via direct memory, not serialized per event.
 10. **Snapshot semantics.** State crosses FFI as a full `Clone`d snapshot by default; granular updates are an optimization, not a default.
 
-The bible's reference crate layout — `rust/` for the core (cdylib + staticlib + rlib), `uniffi-bindgen/` for the binding generator, `ios/`, `android/`, `crates/<app>-desktop/`, a `justfile` for build orchestration, an optional Nix flake — is the layout this framework will scaffold for users. We adopt RMP's `rmp-cli` as the model for our own scaffolding tool.
+The reference crate layout from `rust-multiplatform/rmp` — `rust/` for the core (cdylib + staticlib + rlib), `uniffi-bindgen/` for the binding generator, `ios/`, `android/`, `crates/<app>-desktop/`, a `justfile` for build orchestration, an optional Nix flake — is the layout this framework will scaffold for users. We adopt RMP's `rmp-cli` as the model for our own scaffolding tool.
 
-The bible's anti-patterns must be enforced against:
+Anti-patterns the framework must prevent:
 
 - Presentation formatting in the backend — Rust sends raw data: pubkeys as hex, timestamps as Unix integers, display names verbatim from kind:0 (no truncation, no fallback-npub substitution). Presentation layers (Swift, Kotlin, TypeScript, TUI) own all formatting decisions: how to truncate a pubkey, how to display a timestamp, what to show when kind:0 is absent. Rust display helpers (`short_npub`, `avatar_initials`, `avatar_color_hex`, `format_ago_secs`, etc.) are legitimate only in TUI render code, CLI output, and test fixtures — never inside projection builders, snapshot types, or FFI serialization paths.
 - Business logic in ViewState derivation — derivation should be field renames and type conversions only.
@@ -130,7 +128,7 @@ Per-pubkey relay lists are fetched lazily via a gossip layer, cached in a swappa
 
 ### 4.5 Subscription planner
 
-The actor maintains a **global subscription planner**. Concurrent UI subscriptions with overlapping filters are coalesced into a single REQ on the wire — the kind of work clients typically do manually with hand-rolled grouping windows and dedup LRUs. Subscriptions auto-close when the last consumer drops them and when EOSE arrives if marked as one-shot. The planner buffers high-throughput events into batched UI updates (configurable; default ≤60Hz) to satisfy the RMP bible's constraint against high-frequency FFI loops.
+The actor maintains a **global subscription planner**. Concurrent UI subscriptions with overlapping filters are coalesced into a single REQ on the wire — the kind of work clients typically do manually with hand-rolled grouping windows and dedup LRUs. Subscriptions auto-close when the last consumer drops them and when EOSE arrives if marked as one-shot. The planner buffers high-throughput events into batched UI updates (configurable; default ≤60Hz) to satisfy the D8 constraint against high-frequency FFI loops.
 
 ### 4.6 Multi-account sessions
 
@@ -227,7 +225,7 @@ The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumer
 
 ## 6. Doctrine — the rules the API must make hard to violate
 
-These rules are the framework's identity. They derive from the RMP bible and from the protocol-correctness lessons of the libraries we are synthesizing:
+These rules are the framework's identity. They derive from the TEA + actor model and from the protocol-correctness lessons of the libraries we are synthesizing:
 
 1. **One event store per application.** Singleton enforced at the FFI boundary.
 2. **All reads through the store.** No "fetch from relay, return to caller" API exists. Relay results land in the store; callers subscribe to the store.
@@ -239,7 +237,7 @@ These rules are the framework's identity. They derive from the RMP bible and fro
 8. **No errors cross FFI.** All operational failure surfaces as state fields.
 9. **No business logic in native code.** Enforced by docs, examples, and an architectural lint where feasible.
 10. **Provenance preserved.** Every event in the store remembers which relays delivered it; private events cannot be accidentally republished to public relays.
-11. **Capabilities, not callbacks.** Native↔Rust interactions go through bounded, idempotent capability bridges modeled exactly on the RMP bible's pattern.
+11. **Capabilities, not callbacks.** Native↔Rust interactions go through bounded, idempotent capability bridges modeled on the same capability-bridge pattern.
 12. **Snapshots by default, granular updates as optimization.** Start with `AppUpdate::FullState`; add granular `AppUpdate::*` variants only where profiling demands.
 
 ---
@@ -247,9 +245,9 @@ These rules are the framework's identity. They derive from the RMP bible and fro
 ## 7. Open design questions (must resolve before substantive coding)
 
 1. **State granularity across FFI.** Full-state snapshots are clean but expensive for large stores. Where do we draw the line, and what granular update variants are needed (e.g. `EventAdded`, `ViewChanged { view_id }`, `SessionSwitched`)?
-2. **Where do views live?** (a) Materialized in `AppState`, (b) lazy with `ViewHandle` opaque references the UI subscribes to, (c) computed in platform code. Bible rules out (c). Pick between (a) and (b) — leaning (b) for efficiency, but it complicates the FFI surface.
+2. **Where do views live?** (a) Materialized in `AppState`, (b) lazy with `ViewHandle` opaque references the UI subscribes to, (c) computed in platform code. The actor model rules out (c). Pick between (a) and (b) — leaning (b) for efficiency, but it complicates the FFI surface.
 3. **Reactive cross-FFI subscription protocol.** UniFFI gives callback interfaces, not native reactive streams. Swift wants `@Observable`, Kotlin wants `Flow`, JS wants Observables/Promises. Define a single `Subscription` opaque handle + reconciler-style callback that adapts cleanly per platform.
-4. **NIP-46 bunker as a capability bridge.** Long-lived, stateful, involves user approval on another device. Needs careful design as an RMP-style capability bridge.
+4. **NIP-46 bunker as a capability bridge.** Long-lived, stateful, involves user approval on another device. Needs careful design as a capability bridge.
 5. **Background notification decryption.** iOS Notification Service Extensions and Android background workers must call into the Rust core for NIP-17 decryption without spinning up the full actor. Likely a smaller "decrypt-only" surface area in a sibling crate.
 6. **Frozen offline action queue.** Actions dispatched while offline must persist and replay on reconnect, with correct ordering and timestamping. Where does the queue live — in the actor, in SQLite, in a separate durable channel?
 7. **Naming.** Working name only. The eventual name should be memorable, available on crates.io and npm, and not conflict with existing Nostr or Rust-multiplatform projects.
@@ -258,7 +256,7 @@ These rules are the framework's identity. They derive from the RMP bible and fro
 
 ## 8. References
 
-- **`rust-multiplatform/rmp`** on GitHub — the architectural anchor. `rmp-architecture-bible.md` is required reading. Quoted commandments in this document are paraphrases of that file's content.
+- **`rust-multiplatform/rmp`** on GitHub — the architectural anchor. This framework's TEA + actor model and crate layout follow its design.
 - **`rust-nostr`** workspace on GitHub — the protocol foundation. We depend on its `nostr`, `nostr-database`, `nostr-lmdb`, `nostr-ndb`, `nostr-sqlite`, `nostr-gossip`, `nostr-keyring`, `nostr-blossom`, `nostr-relay-builder`, and `nwc` crates. We **do not** depend on `nostr-sdk` (own relay transport — see **ADR-0022**) or `nostr-connect` (own NIP-46 broker — see **ADR-0031** `docs/decisions/0031-signer-broker-nip46-transport.md`).
 - Two pre-existing TypeScript Nostr libraries — intentionally unnamed here — supply the high-level application architecture (event store, models, actions, sessions, outbox routing, NIP-77 sync, wallet, messaging, web-of-trust, developer guardrails) being translated into Rust idiom under the RMP architectural skeleton.
 
@@ -266,4 +264,4 @@ These rules are the framework's identity. They derive from the RMP bible and fro
 
 ## 9. What this document is not
 
-It is not a design document. It is not a roadmap. It does not commit to APIs, file structures beyond the workspace sketch, dependency versions, or scheduling. It defines the **aim** so that subsequent design and implementation work proceeds from shared, durable context. The next session should read this, read the RMP bible, and then begin design work on the items in §7 — in approximately that order.
+It is not a design document. It is not a roadmap. It does not commit to APIs, file structures beyond the workspace sketch, dependency versions, or scheduling. It defines the **aim** so that subsequent design and implementation work proceeds from shared, durable context.
