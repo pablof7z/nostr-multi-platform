@@ -42,7 +42,7 @@ use nmp_network::pool::{Pool, WireFrame};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
-use super::RelayControl;
+use super::{RelayConnectionKind, RelayControl};
 
 /// True when at least one URL on **every** lane has reported `Connected`.
 /// Used as the startup-send gate so the first burst of REQs has somewhere to
@@ -116,12 +116,39 @@ pub(super) fn ensure_relay_worker(
     role: RelayRole,
     relay_url: String,
 ) -> bool {
+    ensure_relay_worker_with_kind(
+        relay_controls,
+        slot_to_url,
+        pool,
+        kernel,
+        next_relay_generation,
+        role,
+        relay_url,
+        RelayConnectionKind::Persistent,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn ensure_relay_worker_with_kind(
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
+    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    pool: &Pool,
+    kernel: &mut Kernel,
+    next_relay_generation: &mut u64,
+    role: RelayRole,
+    relay_url: String,
+    connection_kind: RelayConnectionKind,
+) -> bool {
     // Canonicalize the URL so all callers (add, send_outbound, bootstrap)
     // agree on the pool key. Fall back to wrapping the raw string for URLs
     // that don't parse as ws/wss (e.g. bootstrap seeds that are already
     // canonical).
     let key = CanonicalRelayUrl::parse_or_raw(&relay_url);
-    if relay_controls.contains_key(&key) {
+    if let Some(control) = relay_controls.get_mut(&key) {
+        if connection_kind == RelayConnectionKind::Persistent {
+            control.connection_kind = RelayConnectionKind::Persistent;
+            control.idle_since = None;
+        }
         return false;
     }
     let generation = *next_relay_generation;
@@ -140,6 +167,8 @@ pub(super) fn ensure_relay_worker(
             role,
             relay_url: key_str,
             handle,
+            connection_kind,
+            idle_since: None,
         },
     );
     true
@@ -312,10 +341,17 @@ pub(super) fn send_outbound(
     // subsequent lookup agree on the same HashMap entry. `ensure_relay_worker`
     // takes a `String`; the `CanonicalRelayUrl` key is what indexes the pool here.
     let canonical_key = CanonicalRelayUrl::parse_or_raw(&message.relay_url);
+    let connection_kind = if message.role == RelayRole::Wallet
+        || kernel.relay_socket_is_persistent(&canonical_key, message.role)
+    {
+        RelayConnectionKind::Persistent
+    } else {
+        RelayConnectionKind::Temporary
+    };
 
     // Spawn on demand for any URL the pool has not seen before. The
     // diagnostic lane is `message.role`; the actual socket dials `canonical_key`.
-    let _spawned = ensure_relay_worker(
+    let _spawned = ensure_relay_worker_with_kind(
         relay_controls,
         slot_to_url,
         pool,
@@ -323,14 +359,17 @@ pub(super) fn send_outbound(
         next_relay_generation,
         message.role,
         canonical_key.clone().into_string(),
+        connection_kind,
     );
 
-    let Some(control) = relay_controls.get(&canonical_key) else {
+    let Some(control) = relay_controls.get_mut(&canonical_key) else {
         // ensure_relay_worker only fails to insert under a logic bug — defer
         // so the frame isn't dropped silently.
         kernel.defer_outbound(message);
         return;
     };
+    control.idle_since = None;
+    let handle = control.handle;
 
     kernel.record_tx_to(message.role, canonical_key.as_str(), message.text.len());
     // Phase F: a stale (or sentinel) handle returns false from `Pool::send`;
@@ -338,7 +377,7 @@ pub(super) fn send_outbound(
     // mark the per-URL row as retrying and move on. The pool's own
     // reconnect/backoff will surface a fresh `Opened` event when the socket
     // recovers (or `Failed`/`Closed` when it doesn't).
-    if !pool.send(control.handle, WireFrame::Text(message.text)) {
+    if !pool.send(handle, WireFrame::Text(message.text)) {
         // T105: the dead handle is this specific socket — scope the
         // `retrying` mark to its URL, not the whole role lane.
         kernel.relay_failed(

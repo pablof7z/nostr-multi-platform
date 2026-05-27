@@ -39,6 +39,8 @@ mod publish_relay_dispatch_tests;
 #[cfg(feature = "native")]
 pub(crate) mod raw_event_forwarder;
 #[cfg(feature = "native")]
+mod relay_idle;
+#[cfg(feature = "native")]
 mod relay_mgmt;
 mod relay_roles;
 #[cfg(all(test, feature = "native"))]
@@ -174,6 +176,8 @@ use crate::kernel::LifecyclePhase;
 
 use crate::app::KernelAction;
 
+#[cfg(feature = "native")]
+use relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
 #[cfg(feature = "native")]
 use relay_mgmt::{
     all_relays_connected, close_relays, maybe_send_startup, route_dispatch_outbound,
@@ -780,6 +784,15 @@ pub(super) struct RelayControl {
     #[allow(dead_code)] // The URL this worker dials — the routing key in the pool.
     pub(super) relay_url: String,
     pub(super) handle: RelayHandle,
+    pub(super) connection_kind: RelayConnectionKind,
+    pub(super) idle_since: Option<Instant>,
+}
+
+#[cfg(feature = "native")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum RelayConnectionKind {
+    Persistent,
+    Temporary,
 }
 
 #[cfg(feature = "native")]
@@ -1638,6 +1651,16 @@ pub fn run_actor_with_observers(
                     retry_frames,
                 );
             }
+        }
+        if running {
+            sweep_temporary_idle_relays(
+                &mut relay_controls,
+                &mut slot_to_url,
+                &pool,
+                &mut kernel,
+                Instant::now(),
+                TEMPORARY_RELAY_IDLE_GRACE,
+            );
         }
         // ── Poll parked NIP-46 remote sign ops ───────────────────────────
         // Non-blocking per D8: `SignerOp::poll` is a `try_recv`. Each parked

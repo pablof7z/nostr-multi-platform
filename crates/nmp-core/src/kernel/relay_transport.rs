@@ -95,6 +95,35 @@ impl RelayTransportMap {
 }
 
 impl Kernel {
+    pub(crate) fn relay_socket_is_persistent(
+        &self,
+        relay_url: &CanonicalRelayUrl,
+        role: RelayRole,
+    ) -> bool {
+        if role == RelayRole::Wallet {
+            return true;
+        }
+        RelayRole::all()
+            .into_iter()
+            .flat_map(|role| self.bootstrap_urls_for_role(role))
+            .any(|url| CanonicalRelayUrl::parse_or_raw(&url) == *relay_url)
+            || self
+                .relay_edit_rows
+                .iter()
+                .any(|row| CanonicalRelayUrl::parse_or_raw(&row.url) == *relay_url)
+    }
+
+    pub(crate) fn relay_has_active_demand(&self, relay_url: &CanonicalRelayUrl) -> bool {
+        self.wire.subs.values().any(|sub| {
+            sub.relay_url == *relay_url
+                && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
+        }) || self
+            .deferred_outbound
+            .iter()
+            .any(|message| CanonicalRelayUrl::parse_or_raw(&message.relay_url) == *relay_url)
+            || self.publish_engine.has_active_relay(relay_url.as_str())
+    }
+
     pub(super) fn relay_diagnostics_statuses(&self) -> Vec<RelayStatus> {
         if self.transport_relays.is_empty() {
             return self.relay_statuses();

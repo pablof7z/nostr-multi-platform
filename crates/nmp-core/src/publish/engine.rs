@@ -400,9 +400,16 @@ impl PublishEngine {
     }
 
     /// Snapshot accessor for views / FFI.
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(&self) -> &PublishStatusSnapshot {
         &self.view.snapshot
+    }
+
+    pub(crate) fn has_active_relay(&self, relay_url: &str) -> bool {
+        let key = helpers::canonical_relay_identity(relay_url);
+        self.in_flight
+            .values()
+            .any(|row| row.per_relay.contains_key(&key) || row.pending_retries.contains_key(&key))
     }
 
     /// D6 FFI mapping path: convert a `PublishEngineError` into a snapshot
@@ -441,12 +448,11 @@ impl PublishEngine {
 
     /// Test/diagnostic accessor — returns the per-relay state map for a
     /// handle, or empty if the publish completed and was evicted.
-    #[must_use] 
+    #[must_use]
     pub fn per_relay(&self, handle: &PublishHandle) -> BTreeMap<RelayUrl, PerRelayState> {
         self.in_flight
             .get(handle)
             .map(|row| row.per_relay.clone())
             .unwrap_or_default()
     }
-
 }
