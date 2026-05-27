@@ -4369,6 +4369,7 @@ dependencies = [
 name = "nmp-testing"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",

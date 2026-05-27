@@ -328,6 +328,68 @@ pub mod testing {
         (command_tx, update_rx)
     }
 
+    /// Spawn the kernel actor with a pre-set LMDB storage path.
+    ///
+    /// Identical to [`spawn_actor`] but writes `storage_path` into the slot
+    /// before the actor thread reads it, so `Kernel::with_storage_path` picks
+    /// it up at construction time (requires the `lmdb-backend` feature in
+    /// `nmp-core`).  Used by the W9 A3 restart-persistence acceptance test.
+    #[cfg(feature = "lmdb-backend")]
+    pub fn spawn_actor_with_storage_path(
+        storage_path: &str,
+    ) -> (
+        mpsc::Sender<ActorCommand>,
+        mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
+    ) {
+        use crate::actor::run_actor_with_observers;
+        use crate::slots::new_storage_path_slot;
+        use std::sync::atomic::AtomicU64;
+        use std::sync::{Arc, Mutex};
+
+        let (command_tx, command_rx) = mpsc::channel();
+        let (update_tx, update_rx) = mpsc::channel();
+        let actor_command_tx_self = command_tx.clone();
+
+        // Pre-populate the storage path slot so the actor reads it at startup.
+        let path_slot = new_storage_path_slot();
+        *path_slot.lock().expect("storage_path slot") = Some(storage_path.to_string());
+
+        // All other slots are throwaways matching the pattern in run_actor().
+        thread::spawn(move || {
+            run_actor_with_observers(
+                command_rx,
+                actor_command_tx_self,
+                update_tx,
+                crate::actor::new_lifecycle_observer_slot(),
+                crate::actor::new_event_observer_slot(),
+                crate::actor::new_raw_event_observer_slot(),
+                crate::kernel::new_snapshot_projection_slot(),
+                crate::substrate::new_relay_text_interceptor_slot(),
+                crate::actor::new_bunker_handshake_slot(),
+                crate::kernel::new_relay_edit_rows_slot(),
+                Arc::new(Mutex::new(None)),
+                Arc::new(Mutex::new(None)),
+                crate::capability_socket::new_capability_callback_slot(),
+                path_slot,
+                Arc::new(AtomicU64::new(0)),
+                Arc::new(Mutex::new(None)),
+                crate::substrate::new_req_frame_interceptor_slot(),
+                crate::substrate::new_host_op_handler_slot(),
+                Arc::new(std::sync::RwLock::new(
+                    crate::substrate::EventIngestDispatcher::new(),
+                )),
+                Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+                Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
+                Arc::new(Mutex::new(None)),
+                Arc::new(Mutex::new(None)),
+                Arc::new(Mutex::new(None)),
+                Arc::new(Mutex::new(None)),
+                crate::slots::new_raw_event_forward_policy_slot(),
+            );
+        });
+        (command_tx, update_rx)
+    }
+
     /// Build `count` real Schnorr-signed kind-1 events and enqueue them for
     /// ingest via `ActorCommand::IngestPreVerifiedEvents`.
     ///
