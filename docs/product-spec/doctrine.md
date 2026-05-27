@@ -25,16 +25,16 @@ This rules out:
 
 ## D1. Render now, refine in place
 
-Your UI never waits for data before it can render. If a user's display name hasn't loaded yet, the framework supplies a shortened version of their public key. When the real name arrives, the cell updates automatically. The type system enforces this: display fields in view payloads are never `Option` — they always carry a value, either real or a deterministic placeholder. There is no `if loading { spinner }` branch available in the API, because there is no loading state in the payload types.
+Your UI never waits for profile metadata before it can render. Every row carries the raw identity and event data needed to show something immediately. Profile-enriched fields, such as display names and picture URLs, may be absent until the corresponding kind:0 profile event arrives; when it does, the same cell refines in place. There is no `if loading { spinner }` branch in the framework model, because missing optional profile data is not a loading state.
 
 This rules out, by construction:
 
 - Hiding a post because the author's profile hasn't arrived yet.
 - Replacing cached data with a spinner on the theory that "fresher data might exist."
 - Refusing to render a thread because the root event isn't in the local cache.
-- Profile-picture flicker between a cached image and a placeholder.
+- Profile-picture flicker caused by the framework swapping between invented placeholders and real profile data.
 
-*Implementation detail: Placeholders are part of the type contract. Freshness is exposed as an optional "badge hint" (not a render gate) when relevant. The view payload type physically cannot represent an empty display-name field.*
+*Implementation detail: Projections emit raw protocol data. A display name or picture URL that is absent from kind:0 remains `None`; presentation layers may choose deterministic local placeholders, but the framework does not substitute `short_npub` or identicon values into projection fields. Freshness is exposed as an optional "badge hint" (not a render gate) when relevant.*
 
 ---
 
@@ -103,15 +103,15 @@ This rules out:
 
 ## D6. Errors show up in state, not as thrown exceptions
 
-When something goes wrong, it surfaces as a state field — a toast message, a cleared loading indicator, a diagnostic record. The dispatch function (`dispatch_action`) is fire-and-forget: it never throws, never blocks, never returns an error. Swift never wraps framework calls in `do { try }`. Kotlin never writes `try { } catch`. Every failure has at least one observable state field carrying its consequence.
+When something goes wrong, it surfaces as data — a state field, a toast message, a cleared loading indicator, a diagnostic record, or a JSON error envelope for immediate dispatch rejection. The dispatch function (`dispatch_action`) is fire-and-forget: it never throws, never blocks, and never exposes a native exception or typed `Result`. Swift never wraps framework calls in `do { try }`. Kotlin never writes `try { } catch`. Every accepted operation's failure has at least one observable state field carrying its consequence.
 
 This rules out, by construction:
 
 - Per-operation error types polluting the Swift/Kotlin API layer.
 - Silent failures — errors without any observable state consequence.
-- Native code needing to know whether a Rust operation succeeded.
+- Native code owning recovery policy for Rust operation failures.
 
-*Implementation detail: Failures surface as `toast: Option<String>` state fields. Long-running operations expose `busy` flags that clear on completion regardless of outcome. No `Result<T, E>` ever crosses the Rust ↔ native boundary.*
+*Implementation detail: Immediate validation failures return non-null JSON such as `{"error":"..."}`. Accepted long-running operations surface failures as state, for example `toast: Option<String>`, and clear `busy` flags on completion regardless of outcome. No native exception, panic, or typed `Result<T, E>` crosses the Rust ↔ native boundary.*
 
 ---
 
