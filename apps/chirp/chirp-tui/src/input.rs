@@ -3,7 +3,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::{AppRuntime, AppState, Mode, Pane};
 use crate::features::FeatureTab;
 
+mod forms;
 mod group_forms;
+mod outbox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFlow {
@@ -38,19 +40,19 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             return InputFlow::Continue;
         }
         Mode::InputBar => {
-            handle_input_bar_key(state, runtime, key);
+            forms::handle_input_bar_key(state, runtime, key);
             return InputFlow::Continue;
         }
         Mode::ModalForm => {
-            handle_modal_key(state, runtime, key);
+            forms::handle_modal_key(state, runtime, key);
             return InputFlow::Continue;
         }
         Mode::AccountSwitcher => {
-            handle_account_switcher_key(state, runtime, key);
+            forms::handle_account_switcher_key(state, runtime, key);
             return InputFlow::Continue;
         }
         Mode::RawEventModal { .. } => {
-            handle_raw_event_modal_key(state, key);
+            forms::handle_raw_event_modal_key(state, key);
             return InputFlow::Continue;
         }
         Mode::Normal => {}
@@ -112,8 +114,8 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             crate::features::FeatureTab::Chats => state.chat_select_next(),
             crate::features::FeatureTab::Groups => state.group_select_next(),
             crate::features::FeatureTab::Settings => {
-                if state.outbox_selected.is_some() {
-                    outbox_select_next(state);
+                if outbox::is_open(state) {
+                    outbox::select_next(state);
                 } else {
                     state.settings_account_select_next();
                 }
@@ -127,8 +129,8 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             crate::features::FeatureTab::Chats => state.chat_select_previous(),
             crate::features::FeatureTab::Groups => state.group_select_previous(),
             crate::features::FeatureTab::Settings => {
-                if state.outbox_selected.is_some() {
-                    outbox_select_previous(state);
+                if outbox::is_open(state) {
+                    outbox::select_previous(state);
                 } else {
                     state.settings_account_select_previous();
                 }
@@ -151,10 +153,16 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         }
         KeyCode::Enter => {
             if state.tab == FeatureTab::Settings {
-                toggle_outbox_selection(state);
+                outbox::open_or_focus(state);
             } else {
                 open_selected_thread(state, runtime);
             }
+        }
+        KeyCode::Char('r') if state.tab == FeatureTab::Settings && outbox::is_open(state) => {
+            outbox::retry_selected(state, runtime);
+        }
+        KeyCode::Char('d') if state.tab == FeatureTab::Settings && outbox::is_open(state) => {
+            outbox::clear_or_cancel_selected(state, runtime);
         }
         KeyCode::Char('p') => {
             if state.tab == FeatureTab::Wallet {
@@ -179,8 +187,7 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('f') => follow_selected(state, runtime, true),
         KeyCode::Char('F') => follow_selected(state, runtime, false),
         KeyCode::Esc => {
-            if state.tab == FeatureTab::Settings && state.outbox_selected.is_some() {
-                state.outbox_selected = None;
+            if state.tab == FeatureTab::Settings && outbox::close(state) {
             } else if !state.close_help() {
                 state.status = "detail closed".to_string();
             }
@@ -389,36 +396,6 @@ fn handle_z_key(state: &mut AppState, _runtime: &AppRuntime) {
     }
 }
 
-fn outbox_select_next(state: &mut AppState) {
-    if state.features.outbox.is_empty() {
-        state.outbox_selected = None;
-        return;
-    }
-    let max = state.features.outbox.len().saturating_sub(1);
-    state.outbox_selected = Some(state.outbox_selected.map(|i| (i + 1).min(max)).unwrap_or(0));
-}
-
-fn outbox_select_previous(state: &mut AppState) {
-    if state.features.outbox.is_empty() {
-        state.outbox_selected = None;
-        return;
-    }
-    state.outbox_selected = state.outbox_selected.map(|i| i.saturating_sub(1));
-}
-
-fn toggle_outbox_selection(state: &mut AppState) {
-    if state.features.outbox.is_empty() {
-        state.outbox_selected = None;
-        return;
-    }
-    // Enter on the Settings tab toggles the outbox detail pane:
-    // None → Some(0) enters the detail; Some(_) → None closes it.
-    state.outbox_selected = match state.outbox_selected {
-        None => Some(0),
-        Some(_) => None,
-    };
-}
-
 fn count_replies_for_selected(state: &AppState) -> usize {
     let start = state.selected.saturating_add(1);
     if start >= state.rows.len() {
@@ -441,185 +418,5 @@ fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
         FeatureTab::Groups => group_forms::start_create_group(state),
         FeatureTab::Wallet => state.start_input_bar("NWC URI", false, "nwc"),
         FeatureTab::Settings => state.push_toast("\u{2717} add relay/account not yet wired"),
-    }
-}
-
-fn handle_input_bar_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
-    match key.code {
-        KeyCode::Esc => state.cancel_input(),
-        KeyCode::Backspace => state.backspace_input(),
-        KeyCode::Enter => {
-            if let Some((action, value)) = state.take_input() {
-                dispatch_input_bar_action(&action, &value, state, runtime);
-            }
-        }
-        KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
-            state.push_input_char(ch);
-        }
-        _ => {}
-    }
-}
-
-fn dispatch_input_bar_action(
-    action: &str,
-    value: &str,
-    state: &mut AppState,
-    runtime: &AppRuntime,
-) {
-    match action {
-        "nsec" => {
-            let trimmed = value.trim();
-            let result = if trimmed.starts_with("bunker://") {
-                runtime.sign_in_bunker(trimmed)
-            } else {
-                runtime.sign_in_nsec(trimmed)
-            };
-            match result {
-                Ok(()) => state.push_toast("\u{2713} signing in…"),
-                Err(e) => state.push_toast(&format!("\u{2717} sign-in failed: {e}")),
-            }
-        }
-        "nwc" => match runtime.wallet_connect(value.trim()) {
-            Ok(()) => state.push_toast("\u{2713} wallet connect requested"),
-            Err(e) => state.push_toast(&format!("\u{2717} wallet connect failed: {e}")),
-        },
-        "bolt11" => match runtime.wallet_pay_invoice(value.trim(), None) {
-            Ok(()) => state.push_toast("\u{2713} payment requested"),
-            Err(e) => state.push_toast(&format!("\u{2717} pay failed: {e}")),
-        },
-        "relay" => match runtime.add_relay(value, "both,indexer") {
-            Ok(()) => state.push_toast("\u{2713} relay add requested"),
-            Err(e) => state.push_toast(&format!("\u{2717} add relay failed: {e}")),
-        },
-        "zap-amount" => {
-            let pubkey = match state.pending_zap_pubkey.take() {
-                Some(p) => p,
-                None => {
-                    state.push_toast("\u{2717} zap context lost");
-                    return;
-                }
-            };
-            let event_id = state.pending_zap_event_id.take();
-            let trimmed = value.trim();
-            let (sats_str, comment) = trimmed
-                .split_once(char::is_whitespace)
-                .map(|(s, c)| (s, c.trim()))
-                .unwrap_or((trimmed, ""));
-            let sats: u64 = match sats_str.parse() {
-                Ok(n) if n > 0 => n,
-                _ => {
-                    state.push_toast("\u{2717} enter a positive number of sats");
-                    return;
-                }
-            };
-            let mut body = serde_json::json!({
-                "recipient_pubkey": pubkey,
-                "amount_msats": sats * 1000,
-            });
-            if let Some(id) = event_id {
-                body["target_event_id"] = serde_json::Value::String(id);
-            }
-            if !comment.is_empty() {
-                body["comment"] = serde_json::Value::String(comment.to_string());
-            }
-            match runtime.zap(&body) {
-                Ok(cid) => {
-                    state.track_action(cid, &format!("zap {sats} sat"));
-                }
-                Err(e) => state.push_toast(&format!("\u{2717} zap failed: {e}")),
-            }
-        }
-        "dm-npub" => {
-            state.push_toast("\u{2717} DM open not yet wired");
-        }
-        _ => {
-            state.push_toast(&format!("unknown action: {action}"));
-        }
-    }
-}
-
-fn handle_modal_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
-    match key.code {
-        KeyCode::Esc => state.cancel_modal(),
-        KeyCode::Tab => state.next_modal_field(),
-        KeyCode::BackTab => state.prev_modal_field(),
-        KeyCode::Backspace => state.backspace_modal(),
-        KeyCode::Enter => {
-            if let Some((action, fields)) = state.take_modal() {
-                dispatch_modal_action(&action, &fields, state, runtime);
-            }
-        }
-        KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
-            state.push_modal_char(ch);
-        }
-        _ => {}
-    }
-}
-
-fn dispatch_modal_action(
-    action: &str,
-    fields: &[(String, String)],
-    state: &mut AppState,
-    runtime: &AppRuntime,
-) {
-    match action {
-        "create-account" => {
-            let name = fields.first().map(|(_, v)| v.trim()).unwrap_or("anon");
-            match runtime.create_account(name, &[], false) {
-                Ok(()) => state.push_toast("\u{2713} account creation requested…"),
-                Err(e) => state.push_toast(&format!("\u{2717} create failed: {e}")),
-            }
-        }
-        "bunker-connect" => {
-            let uri = fields.first().map(|(_, v)| v.trim()).unwrap_or("");
-            match runtime.sign_in_bunker(uri) {
-                Ok(()) => state.push_toast("\u{2713} bunker connect requested…"),
-                Err(e) => state.push_toast(&format!("\u{2717} bunker failed: {e}")),
-            }
-        }
-        group_forms::CREATE_GROUP_ACTION => {
-            group_forms::dispatch_create_group(fields, state, runtime);
-        }
-        _ => state.push_toast(&format!("\u{2717} modal action '{action}' not wired")),
-    }
-}
-
-fn handle_raw_event_modal_key(state: &mut AppState, key: KeyEvent) {
-    match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => state.close_raw_event_modal(),
-        KeyCode::Char('j') | KeyCode::Down => state.scroll_raw_modal_down(),
-        KeyCode::Char('k') | KeyCode::Up => state.scroll_raw_modal_up(),
-        _ => {}
-    }
-}
-
-fn handle_account_switcher_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
-    let n = state.features.accounts.len();
-    match key.code {
-        KeyCode::Esc => state.close_account_switcher(),
-        KeyCode::Char('j') | KeyCode::Down => {
-            if n > 0 {
-                state.account_switcher_cursor = (state.account_switcher_cursor + 1) % n;
-            }
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            if n > 0 {
-                state.account_switcher_cursor = state.account_switcher_cursor.saturating_sub(1);
-            }
-        }
-        KeyCode::Enter => {
-            if let Some(account) = state.features.accounts.get(state.account_switcher_cursor) {
-                let id = account.id.clone();
-                let name = account.display.clone();
-                state.close_account_switcher();
-                match runtime.switch_account(&id) {
-                    Ok(()) => state.push_toast(&format!("\u{2713} switched to @{name}")),
-                    Err(e) => state.push_toast(&format!("\u{2717} switch failed: {e}")),
-                }
-            } else {
-                state.close_account_switcher();
-            }
-        }
-        _ => {}
     }
 }

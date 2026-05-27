@@ -6,16 +6,16 @@
 //! layout still lives in `settings.rs`; this module owns only the right-hand
 //! Outbox pane.
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
-use crate::app::AppState;
+use crate::app::{AppState, OutboxSelection};
 use crate::feature_snapshot::{HistoryRelayLine, OutboxLine, OutboxRelayLine, PublishHistoryLine};
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, RELAY_CONNECTING, RELAY_DOWN,
+    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT, RELAY_CONNECTING, RELAY_DOWN,
     RELAY_OK, REPOST, ZAP,
 };
 use crate::ui::shared_snapshot_lines::action_summary;
@@ -24,29 +24,45 @@ pub(super) fn render_outbox(frame: &mut Frame, area: Rect, state: &AppState) {
     // When an outbox item is selected, split the pane vertically:
     // top = item list (with cursor), bottom = per-relay detail.
     // When nothing is selected, render the full flat list (legacy behavior).
-    let selected = state
-        .outbox_selected
-        .filter(|i| *i < state.features.outbox.len());
+    let selected = state.outbox_selected;
 
-    if let Some(idx) = selected {
+    if let Some(selection) = selected {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
             .split(area);
-        render_outbox_list(frame, rows[0], state, Some(idx));
-        render_outbox_detail(frame, rows[1], &state.features.outbox[idx]);
+        render_outbox_list(frame, rows[0], state, Some(selection));
+        match selection {
+            OutboxSelection::Active(idx) => {
+                if let Some(item) = state.features.outbox.get(idx) {
+                    render_outbox_detail(frame, rows[1], item);
+                }
+            }
+            OutboxSelection::History(idx) => {
+                if let Some(item) = state.features.history.get(idx) {
+                    render_history_detail(frame, rows[1], item);
+                }
+            }
+        }
     } else {
         render_outbox_list(frame, area, state, None);
     }
 }
 
-fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected: Option<usize>) {
+fn render_outbox_list(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    selected: Option<OutboxSelection>,
+) {
     let block = Block::default()
         .borders(Borders::NONE)
         .style(Style::default().bg(DETAIL_BG))
         .title(Span::styled(
             " Outbox ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);
@@ -66,7 +82,9 @@ fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected:
     if !state.features.outbox_summary.title.is_empty() {
         lines.push(Line::from(Span::styled(
             state.features.outbox_summary.title.clone(),
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(""));
     }
@@ -87,7 +105,12 @@ fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected:
         )));
     } else {
         for (i, item) in state.features.outbox.iter().take(10).enumerate() {
-            append_outbox_line(&mut lines, item, pane_width, selected == Some(i));
+            append_outbox_line(
+                &mut lines,
+                item,
+                pane_width,
+                selected == Some(OutboxSelection::Active(i)),
+            );
         }
     }
 
@@ -95,7 +118,7 @@ fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected:
     // outbox. Skipped entirely when the queue is empty so an empty section
     // header doesn't clutter the pane.
     if !state.features.history.is_empty() {
-        append_history_section(&mut lines, &state.features.history, pane_width);
+        append_history_section(&mut lines, &state.features.history, pane_width, selected);
     }
 
     let paragraph = Paragraph::new(lines)
@@ -106,12 +129,12 @@ fn render_outbox_list(frame: &mut Frame, area: Rect, state: &AppState, selected:
 
 /// Render the "Published" history section: a dim divider header followed by
 /// one block per settled publish (title + status on the header line, per-relay
-/// dot/url/reason rows underneath). History items are NOT selectable — j/k
-/// navigation is reserved for the active in-flight outbox above.
+/// dot/url/reason rows underneath).
 fn append_history_section(
     lines: &mut Vec<Line<'static>>,
     history: &[PublishHistoryLine],
     pane_width: usize,
+    selected: Option<OutboxSelection>,
 ) {
     // Separator line so the eye registers history as a distinct block from
     // the active outbox above. Render the bar/title in dim so the active
@@ -122,8 +145,13 @@ fn append_history_section(
         header,
         Style::default().fg(DIM_TEXT),
     )));
-    for item in history {
-        append_history_item(lines, item, pane_width);
+    for (i, item) in history.iter().enumerate() {
+        append_history_item(
+            lines,
+            item,
+            pane_width,
+            selected == Some(OutboxSelection::History(i)),
+        );
     }
 }
 
@@ -153,20 +181,19 @@ fn append_history_item(
     lines: &mut Vec<Line<'static>>,
     item: &PublishHistoryLine,
     pane_width: usize,
+    selected: bool,
 ) {
     let status_color = history_status_color(&item.status);
+    let cursor = if selected { "> " } else { "  " };
+    let cursor_color = if selected { ACCENT_CYAN } else { DIM_TEXT };
     let status = truncate(&item.status, 8);
     let status_len = status.chars().count();
-    // Two-space gutter mirrors `append_outbox_line` for visual alignment with
-    // the active outbox above (no cursor on history rows — they're read-only).
     let title_max = pane_width.saturating_sub(2 + status_len + 1);
     let title = truncate(&item.title, title_max);
     let title_len = title.chars().count();
-    let pad_len = pane_width
-        .saturating_sub(2 + title_len + status_len)
-        .max(1);
+    let pad_len = pane_width.saturating_sub(2 + title_len + status_len).max(1);
     lines.push(Line::from(vec![
-        Span::raw("  "),
+        Span::styled(cursor.to_string(), Style::default().fg(cursor_color)),
         Span::styled(
             title,
             Style::default().fg(BODY_TEXT).add_modifier(Modifier::BOLD),
@@ -233,8 +260,10 @@ fn render_outbox_detail(frame: &mut Frame, area: Rect, item: &OutboxLine) {
         .border_style(Style::default().fg(ACCENT_CYAN))
         .style(Style::default().bg(DETAIL_BG))
         .title(Span::styled(
-            " Relays ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            " Active Publish ",
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);
@@ -247,8 +276,83 @@ fn render_outbox_detail(frame: &mut Frame, area: Rect, item: &OutboxLine) {
             Style::default().fg(DIMMER_TEXT),
         )));
     } else {
+        lines.push(Line::from(vec![
+            Span::styled("  handle ", Style::default().fg(DIM_TEXT)),
+            Span::styled(item.handle.clone(), Style::default().fg(BODY_TEXT)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  action ", Style::default().fg(DIM_TEXT)),
+            Span::styled(
+                "r retry  d cancel  Esc close",
+                Style::default().fg(BODY_TEXT),
+            ),
+        ]));
+        lines.push(Line::from(""));
         for relay in item.relays.iter() {
             append_outbox_relay_lines(&mut lines, relay, pane_width);
+        }
+    }
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .style(Style::default().bg(DETAIL_BG).fg(BODY_TEXT));
+    frame.render_widget(paragraph, area);
+}
+
+fn render_history_detail(frame: &mut Frame, area: Rect, item: &PublishHistoryLine) {
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(ACCENT_CYAN))
+        .style(Style::default().bg(DETAIL_BG))
+        .title(Span::styled(
+            " Published Detail ",
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
+        ));
+
+    let inner = block.inner(area);
+    let pane_width = inner.width as usize;
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled("  status ", Style::default().fg(DIM_TEXT)),
+        Span::styled(
+            item.status.clone(),
+            Style::default().fg(history_status_color(&item.status)),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  event  ", Style::default().fg(DIM_TEXT)),
+        Span::styled(
+            truncate(&item.event_id, pane_width.saturating_sub(9)),
+            Style::default().fg(BODY_TEXT),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  kind   ", Style::default().fg(DIM_TEXT)),
+        Span::styled(
+            format!("{} ({})", item.title, item.kind),
+            Style::default().fg(BODY_TEXT),
+        ),
+    ]));
+    let actions = if item.can_retry {
+        "r retry  d clear  Esc close"
+    } else {
+        "d clear  Esc close"
+    };
+    lines.push(Line::from(vec![
+        Span::styled("  action ", Style::default().fg(DIM_TEXT)),
+        Span::styled(actions, Style::default().fg(BODY_TEXT)),
+    ]));
+    lines.push(Line::from(""));
+    if item.relays.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No relay verdicts were recorded",
+            Style::default().fg(DIMMER_TEXT),
+        )));
+    } else {
+        for relay in &item.relays {
+            append_history_relay_line(&mut lines, relay, pane_width);
         }
     }
 
@@ -270,8 +374,8 @@ fn append_outbox_line(
     let prefix_len = 2; // "> " or "  "
     let handle = truncate(&item.handle, 10);
     let status = truncate(&item.status_label, 8);
-    let title_max = pane_width
-        .saturating_sub(prefix_len + handle.chars().count() + status.chars().count() + 2);
+    let title_max =
+        pane_width.saturating_sub(prefix_len + handle.chars().count() + status.chars().count() + 2);
     let title = truncate(&item.title, title_max);
     lines.push(Line::from(vec![
         Span::styled(cursor.to_string(), Style::default().fg(cursor_color)),
@@ -295,9 +399,7 @@ fn append_outbox_relay_lines(
     let url_max = pane_width.saturating_sub(2 + status_len + 1);
     let url = truncate(&relay.relay_url, url_max);
     let url_len = url.chars().count();
-    let pad_len = pane_width
-        .saturating_sub(2 + url_len + status_len)
-        .max(1);
+    let pad_len = pane_width.saturating_sub(2 + url_len + status_len).max(1);
     lines.push(Line::from(vec![
         Span::styled(format!("{dot} "), Style::default().fg(dot_color)),
         Span::styled(url, Style::default().fg(BODY_TEXT)),

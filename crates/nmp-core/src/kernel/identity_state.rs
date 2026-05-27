@@ -13,6 +13,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::publish::PublishTarget;
+use crate::substrate::SignedEvent;
 use serde::Serialize;
 
 /// Shared slot for the currently active account pubkey.
@@ -117,10 +119,20 @@ pub(crate) struct PublishQueueEntry {
     pub(crate) title: String,
     pub(crate) target_relays: usize,
     pub(crate) status: String,
+    /// Rust-owned action decision: a shell renders/enables Retry directly
+    /// instead of reconstructing retry policy from status strings.
+    pub(crate) can_retry: bool,
     /// Per-relay terminal outcomes, in insertion order. Empty while
     /// `status == "accepted_locally"` (no terminal verdict yet).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) relay_outcomes: Vec<RelayAckOutcome>,
+    /// Internal retry payload for settled failures. Skipped from snapshots:
+    /// hosts address retries by handle, never by re-submitting event JSON.
+    #[serde(skip)]
+    pub(crate) signed_event: Option<SignedEvent>,
+    /// Internal retry target paired with `signed_event`.
+    #[serde(skip)]
+    pub(crate) target: Option<PublishTarget>,
 }
 
 /// One relay's terminal verdict for a publish. The string `status` keeps the
@@ -267,6 +279,30 @@ impl super::Kernel {
         self.changed_since_emit = true;
     }
 
+    pub(crate) fn remove_publish_entry(&mut self, event_id: &str) -> bool {
+        let Some(idx) = self
+            .publish_queue
+            .iter()
+            .rposition(|entry| entry.event_id == event_id)
+        else {
+            return false;
+        };
+        self.publish_queue.remove(idx);
+        self.changed_since_emit = true;
+        true
+    }
+
+    pub(crate) fn retry_payload_for_publish(
+        &self,
+        event_id: &str,
+    ) -> Option<(SignedEvent, PublishTarget)> {
+        self.publish_queue
+            .iter()
+            .rev()
+            .find(|entry| entry.event_id == event_id && entry.can_retry)
+            .and_then(|entry| Some((entry.signed_event.clone()?, entry.target.clone()?)))
+    }
+
     /// Patch the queue entry for `event_id` in place, flipping `status` and
     /// recording the per-relay outcome map. T128 — D1 (refine in place); the
     /// entry was originally pushed as `accepted_locally`, and the engine's
@@ -290,6 +326,7 @@ impl super::Kernel {
             return;
         }
         entry.status = status.to_string();
+        entry.can_retry = publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
     }
@@ -421,6 +458,19 @@ impl super::Kernel {
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
         &self.relay_edit_rows
     }
+}
+
+pub(in crate::kernel) fn publish_entry_can_retry(
+    status: &str,
+    outcomes: &[RelayAckOutcome],
+    has_retry_payload: bool,
+) -> bool {
+    if !has_retry_payload {
+        return false;
+    }
+    status == "failed"
+        || status == "pending_relays_unknown"
+        || outcomes.iter().any(|relay| relay.status == "failed")
 }
 
 #[cfg(test)]

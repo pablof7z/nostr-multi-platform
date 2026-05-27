@@ -142,10 +142,9 @@ impl Kernel {
             // routing. `_p_tags` is the legacy parameter; the engine
             // recomputes `#p` tags from `event.unsigned.tags` itself, so we
             // don't pass it through.
-            target,
+            target: target.clone(),
         };
         let event_id = signed.id.clone();
-        let kind = signed.unsigned.kind;
         // Cloned before the move into `start_publish` so the `Err` arm can
         // still honour the dispatch correlation_id (broken-promise fix).
         let correlation_id_for_failure = correlation_id_override.clone();
@@ -168,7 +167,7 @@ impl Kernel {
                     );
                 }
                 self.record_local_publish_intent(signed);
-                let frames = self.drain_publish_engine_frames(&event_id, kind);
+                let frames = self.drain_publish_engine_frames(signed, target);
                 // Synchronous dispatchers (e.g. some test fixtures) can settle
                 // a publish inside `start_publish` itself by returning OK acks
                 // from `dispatch_due`. Drain any terminal verdicts that
@@ -202,8 +201,11 @@ impl Kernel {
                     kind: signed.unsigned.kind,
                     title: super::publish_outbox::publish_event_title(signed.unsigned.kind),
                     target_relays: 0,
+                    can_retry: status == "pending_relays_unknown",
                     status,
                     relay_outcomes: Vec::new(),
+                    signed_event: Some(signed.clone()),
+                    target: Some(target),
                 });
                 Vec::new()
             }
@@ -213,7 +215,11 @@ impl Kernel {
     /// Drain every frame the engine pushed into the queue dispatcher since the
     /// last drain, wrap each as a `Content`-lane outbound message, and update
     /// the per-publish queue projection.
-    fn drain_publish_engine_frames(&mut self, event_id: &str, kind: u32) -> Vec<OutboundMessage> {
+    fn drain_publish_engine_frames(
+        &mut self,
+        signed: &SignedEvent,
+        target: PublishTarget,
+    ) -> Vec<OutboundMessage> {
         let frames = self.publish_dispatcher.drain();
         let target_relays = frames.len();
         if frames.is_empty() {
@@ -224,6 +230,8 @@ impl Kernel {
             // no-op for D6 (return cleanly, never assert).
             return Vec::new();
         }
+        let event_id = signed.id.as_str();
+        let kind = signed.unsigned.kind;
         self.log(format!(
             "PUBLISH via engine kind:{} id={} → {} outbox relay(s)",
             kind,
@@ -242,10 +250,13 @@ impl Kernel {
             title: super::publish_outbox::publish_event_title(kind),
             target_relays,
             status: "accepted_locally".to_string(),
+            can_retry: false,
             // Empty until the engine settles — T128 fills this via
             // `apply_engine_completions` once the per-relay state machine
             // reaches a terminal verdict.
             relay_outcomes: Vec::new(),
+            signed_event: Some(signed.clone()),
+            target: Some(target),
         });
         self.set_last_error_toast(None);
         self.changed_since_emit = true;

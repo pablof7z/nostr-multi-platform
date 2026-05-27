@@ -8,10 +8,7 @@ pub struct FeatureSnapshot {
     pub active_account: String,
     pub outbox: Vec<OutboxLine>,
     pub outbox_summary: SummaryLine,
-    /// Settled publish history projected from `projections.publish_queue`.
-    /// Read-only — the in-flight `outbox` field carries the active rows.
-    /// Newest-first; capped at 20 entries (the kernel additionally caps
-    /// `publish_queue` at 16, so this is effectively "the whole window").
+    /// Settled publish history from `projections.publish_queue`.
     pub history: Vec<PublishHistoryLine>,
     pub relay_edit_rows: Vec<RelayEditLine>,
     pub wallet: WalletLine,
@@ -109,15 +106,17 @@ pub struct OutboxRelayLine {
     pub message: String,
 }
 
-/// One settled publish row projected from `projections.publish_queue`.
-/// Read-only history — the in-flight `OutboxLine` carries the active rows.
+/// One settled publish row from `projections.publish_queue`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PublishHistoryLine {
     pub event_id: String,
+    pub kind: u32,
     /// Pre-formatted kind label (e.g. `"Note"`, `"Reaction"`).
     pub title: String,
-    /// Terminal status reported by the kernel: `"ok"` or `"failed"`.
+    /// Terminal status reported by the kernel.
     pub status: String,
+    /// Rust-owned retry decision.
+    pub can_retry: bool,
     pub relays: Vec<HistoryRelayLine>,
 }
 
@@ -233,12 +232,7 @@ fn outbox_from(projections: &Value) -> Vec<OutboxLine> {
         .collect()
 }
 
-/// Parse `projections.publish_queue` into a newest-first history list.
-///
-/// Skips rows still in flight (`status == "accepted_locally"` and no
-/// `relay_outcomes`) so the active outbox and the history pane never duplicate
-/// the same publish. Caps at 20 rows; the kernel additionally caps the queue
-/// at 16, so this is effectively "the whole window".
+/// Parse `projections.publish_queue` into newest-first settled history.
 fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLine> {
     let Some(rows) = projections.get("publish_queue").and_then(Value::as_array) else {
         return Vec::new();
@@ -253,7 +247,7 @@ fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLine> {
                 .get("status")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            status == "ok" || status == "failed"
+            !status.is_empty() && status != "accepted_locally"
         })
         .take(20)
         .map(|row| {
@@ -271,11 +265,17 @@ fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLine> {
                 .collect();
             PublishHistoryLine {
                 event_id: string_field(row, "event_id"),
+                kind: row
+                    .get("kind")
+                    .and_then(Value::as_u64)
+                    .and_then(|k| u32::try_from(k).ok())
+                    .unwrap_or_default(),
                 // Pre-formatted by the kernel (`PublishQueueEntry.title`) —
                 // the TUI no longer owns a kind→label mapping (RMP bible
                 // commandment #4: backend owns display strings).
                 title: string_field(row, "title"),
                 status: string_field(row, "status"),
+                can_retry: bool_field(row, "can_retry") || bool_field(row, "canRetry"),
                 relays,
             }
         })

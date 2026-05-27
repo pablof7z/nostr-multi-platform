@@ -673,6 +673,75 @@ fn user_retry_publish_now_dispatches_backoff_state() {
 }
 
 #[test]
+fn user_retry_publish_now_requeues_settled_failed_history_row() {
+    let author = "e1".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1]);
+    let signed = fake_signed("e2".repeat(32).as_str(), &author, 1, "retry terminal");
+
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    assert_eq!(outbound.len(), 1);
+    let retry = kernel.handle_publish_ok_at(
+        WRITE_R1,
+        ok_payload(&signed.id, false, "blocked: spam"),
+        100,
+    );
+    assert!(retry.is_empty());
+    let failed = kernel.publish_queue_snapshot().last().unwrap();
+    assert_eq!(failed.status, "failed");
+    assert!(failed.can_retry, "settled failure should expose retry");
+
+    let retried = kernel.retry_publish_now(&signed.id);
+    assert_eq!(retried.len(), 1);
+    assert_eq!(retried[0].relay_url, WRITE_R1);
+    let rows: Vec<_> = kernel
+        .publish_queue_snapshot()
+        .iter()
+        .filter(|entry| entry.event_id == signed.id)
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "retry should refine the existing history row"
+    );
+    assert_eq!(rows[0].status, "accepted_locally");
+    assert!(!rows[0].can_retry);
+}
+
+#[test]
+fn user_cancel_publish_clears_settled_history_row() {
+    let author = "e3".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1]);
+    let signed = fake_signed("e4".repeat(32).as_str(), &author, 1, "clear terminal");
+
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
+    assert_eq!(outbound.len(), 1);
+    let retry = kernel.handle_publish_ok_at(
+        WRITE_R1,
+        ok_payload(&signed.id, false, "blocked: spam"),
+        100,
+    );
+    assert!(retry.is_empty());
+    assert_eq!(
+        kernel.publish_queue_snapshot().last().unwrap().status,
+        "failed"
+    );
+
+    kernel.cancel_publish(&signed.id);
+
+    assert!(
+        kernel
+            .publish_queue_snapshot()
+            .iter()
+            .all(|entry| entry.event_id != signed.id),
+        "clear should remove the settled history row"
+    );
+}
+
+#[test]
 fn user_cancel_publish_removes_in_flight_and_store_intent() {
     let publish_store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let author = "ed".repeat(32);
