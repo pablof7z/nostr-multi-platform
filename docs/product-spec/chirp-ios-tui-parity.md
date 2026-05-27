@@ -27,6 +27,7 @@ action policy; the TUI renders projections and dispatches the same shared FFI or
 | Chats | Send direct message | `:dm <pubkey> <message>` |
 | Chats | Publish DM relay list | `:dm-relays <relay> [relay...]` |
 | Groups | Discover NIP-29 groups | `Groups` tab, `:group discover <relay>` |
+| Groups | Create NIP-29 or Marmot MLS group | `Groups` tab, `n` opens the centered Create group modal |
 | Groups | Join NIP-29 group | `:group join <relay> <local-id>` |
 | Groups | Open NIP-29 group chat projection | `:group open <relay> <local-id>` |
 | Groups | Post NIP-29 chat message | `:group post <relay> <local-id> <message>` |
@@ -55,8 +56,9 @@ other `10000..19999` lists) or expose why they did not.
 
 - Tab keys mirror iOS top-level navigation: `h` Home, `c` Chats, `g` Groups,
   `w` Wallet, `s` Settings; `Tab` and `BackTab` cycle.
-- The TUI intentionally uses command mode for forms-heavy iOS flows. This keeps
-  platform code small while preserving every shared Rust capability path.
+- The TUI uses modal forms for forms-heavy flows entered from task surfaces,
+  while command mode remains available as the power-user path into shared Rust
+  capability actions.
 - Author kind:0 rendering and note relation counts follow the render-intent
   model: visible note authors are claimed automatically, and names update when
   the shared projection emits newer metadata.

@@ -36,6 +36,29 @@ fn help_overlay_renders_keybindings() {
 }
 
 #[test]
+fn modal_form_renders_as_centered_overlay() {
+    let mut state = state_with_account();
+    state.start_modal(
+        "Create group",
+        vec![
+            "Protocol (nip29/mls)",
+            "Name",
+            "Relay(s)",
+            "NIP-29 local id",
+            "MLS invitees",
+        ],
+        "create-group",
+    );
+
+    let rendered = render_state(120, 40, state);
+
+    assert!(rendered.contains("Create group"));
+    assert!(rendered.contains("Protocol"));
+    assert!(rendered.contains("MLS invitees"));
+    assert!(rendered.contains("Shift+Tab"));
+}
+
+#[test]
 fn home_tab_handles_narrow_terminal_without_panicking() {
     let mut state = state_with_account();
     state.status = "narrow terminal smoke test".to_string();
