@@ -218,6 +218,7 @@ mod tests {
             created_at: 1,
             depth,
             has_gap: false,
+            is_partial_chain_head: false,
             relation_counts: Default::default(),
             content_tree: Some(media_tree(urls)),
             content_render: ContentRenderData::default(),

@@ -18,6 +18,14 @@ pub struct TimelineRow {
     pub created_at: u64,
     pub depth: usize,
     pub has_gap: bool,
+    /// `true` only on the FIRST event of a `TimelineBlock::Module` whose
+    /// `root` pointer is `Some` — i.e. the chain's top event is itself a
+    /// reply to a missing ancestor (partial chain), NOT the true thread
+    /// root. The left-pane post list uses this to render a "↳ reply in
+    /// thread" indicator so partial-chain heads don't masquerade as roots.
+    /// `depth` is intentionally left at `0` for the head event so the
+    /// detail-pane navigation anchor (`depth == 0`) still works.
+    pub is_partial_chain_head: bool,
     pub relation_counts: RowRelationCounts,
     pub content_tree: Option<ContentTreeWire>,
     pub content_render: ContentRenderData,
@@ -57,10 +65,13 @@ impl TimelineRow {
         let mut rows = Vec::new();
         if let Some(blocks) = snapshot.get("blocks").and_then(Value::as_array) {
             for block in blocks {
-                let (ids, has_gap) = ids_from_block(block);
+                let (ids, has_gap, is_partial_chain) = ids_from_block(block);
                 for (depth, id) in ids.into_iter().enumerate() {
                     if let Some(card) = cards.get(id.as_str()) {
-                        rows.push(Self::from_card(card, depth, has_gap));
+                        // Flag belongs only to the chain's head event; the
+                        // rest of the chain are ordinary replies.
+                        let is_partial_chain_head = is_partial_chain && depth == 0;
+                        rows.push(Self::from_card(card, depth, has_gap, is_partial_chain_head));
                     }
                 }
             }
@@ -82,7 +93,7 @@ impl TimelineRow {
         urls
     }
 
-    fn from_card(card: &Value, depth: usize, has_gap: bool) -> Self {
+    fn from_card(card: &Value, depth: usize, has_gap: bool, is_partial_chain_head: bool) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
         let author_profile = author_profile_from_card(&author_pubkey, card);
@@ -118,6 +129,7 @@ impl TimelineRow {
             created_at,
             depth,
             has_gap,
+            is_partial_chain_head,
             relation_counts: RowRelationCounts::from_card(card),
             content_tree,
             content_render,
@@ -221,12 +233,23 @@ impl RowRelationCount {
     }
 }
 
-fn ids_from_block(block: &Value) -> (Vec<String>, bool) {
+/// Extract event ids from a `TimelineBlock`, plus two structural flags
+/// used downstream by the UI:
+///
+/// - `has_gap`: the module knows an ancestor / mid-chain event is missing.
+/// - `is_partial_chain`: the module's `root` pointer is `Some(_)` — the
+///   chain's top event is a REPLY to a missing ancestor, not the true
+///   thread root. Per `nmp-threading::TimelineBlock::Module.root`, `None`
+///   (or absent, since the field uses `skip_serializing_if = Option::is_none`)
+///   means the head IS the root; `Some(_)` means it isn't. We must NOT use
+///   `has_gap` as a proxy here — `has_gap` also fires on mid-chain
+///   lookback gaps that don't change the head's root-ness.
+fn ids_from_block(block: &Value) -> (Vec<String>, bool, bool) {
     if let Some(id) = block.get("Standalone").and_then(Value::as_str) {
-        return (vec![id.to_string()], false);
+        return (vec![id.to_string()], false, false);
     }
     let Some(module) = block.get("Module") else {
-        return (Vec::new(), false);
+        return (Vec::new(), false, false);
     };
     let ids = module
         .get("events")
@@ -240,7 +263,13 @@ fn ids_from_block(block: &Value) -> (Vec<String>, bool) {
         .get("has_gap")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    (ids, has_gap)
+    // `root: Some(_)` ⇒ partial chain. Missing field (serde skips `None`)
+    // and explicit `null` both ⇒ head IS the true root.
+    let is_partial_chain = module
+        .get("root")
+        .map(|v| !v.is_null())
+        .unwrap_or(false);
+    (ids, has_gap, is_partial_chain)
 }
 
 fn string_field(card: &Value, key: &str) -> String {
@@ -299,6 +328,87 @@ mod tests {
         assert_eq!(rows[0].depth, 0);
         assert_eq!(rows[1].depth, 1);
         assert!(rows[1].has_gap);
+        // `root: null` ⇒ head IS the true thread root, so the partial-chain
+        // flag must stay false even though `has_gap` is true.
+        assert!(!rows[0].is_partial_chain_head);
+        assert!(!rows[1].is_partial_chain_head);
+    }
+
+    /// Regression: when a `TimelineBlock::Module` carries `root: Some(_)`,
+    /// the chain's head event is a reply to a missing ancestor (partial
+    /// chain) — NOT the true thread root. Only the head must be flagged;
+    /// subsequent in-module events are ordinary replies. `depth` must
+    /// stay `0` for the head so the detail-pane navigation anchor still
+    /// resolves correctly.
+    #[test]
+    fn partial_chain_module_head_gets_flag() {
+        let snapshot = serde_json::json!({
+            "blocks": [
+                {"Module": {
+                    "events": ["reply1", "reply2"],
+                    "has_gap": true,
+                    "root": {"Event": {"id": "missing_root", "relay": null, "kind": null}}
+                }}
+            ],
+            "cards": [
+                {"id": "reply1", "author_pubkey": "aaa", "created_at": 1, "content": "reply 1"},
+                {"id": "reply2", "author_pubkey": "bbb", "created_at": 2, "content": "reply 2"}
+            ]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows[0].is_partial_chain_head,
+            "first event of partial chain should be flagged"
+        );
+        assert!(
+            !rows[1].is_partial_chain_head,
+            "subsequent events should not be flagged"
+        );
+        assert_eq!(
+            rows[0].depth, 0,
+            "depth must stay 0 for navigation anchoring"
+        );
+        assert_eq!(rows[1].depth, 1);
+    }
+
+    /// A standalone block is by definition a single event with no chain
+    /// context — it can never be a partial-chain head.
+    #[test]
+    fn standalone_block_is_never_partial_chain_head() {
+        let snapshot = serde_json::json!({
+            "blocks": [{"Standalone": "solo"}],
+            "cards": [
+                {"id": "solo", "author_pubkey": "x", "created_at": 1, "content": "solo"}
+            ]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].is_partial_chain_head);
+    }
+
+    /// Per `TimelineBlock::Module.root`'s `#[serde(skip_serializing_if =
+    /// Option::is_none)]`, a `None` root may be entirely ABSENT from the
+    /// serialized JSON (not just `null`). Both shapes must yield
+    /// `is_partial_chain_head == false`.
+    #[test]
+    fn module_with_absent_root_field_is_not_partial_chain() {
+        let snapshot = serde_json::json!({
+            "blocks": [
+                // Note: no `root` key at all.
+                {"Module": {"events": ["a", "b"], "has_gap": false}}
+            ],
+            "cards": [
+                {"id": "a", "author_pubkey": "x", "created_at": 1, "content": "root"},
+                {"id": "b", "author_pubkey": "y", "created_at": 2, "content": "reply"}
+            ]
+        });
+        let rows = TimelineRow::from_snapshot(&snapshot);
+        assert_eq!(rows.len(), 2);
+        assert!(!rows[0].is_partial_chain_head);
+        assert!(!rows[1].is_partial_chain_head);
     }
 
     #[test]
