@@ -100,3 +100,24 @@ fn snapshot_emits_every_transport_url_for_same_role() {
     assert_eq!(relay_b.connection_label, "Connected");
     assert_eq!(relay_b.bytes_tx_display.as_deref(), Some("128 B"));
 }
+
+#[test]
+fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
+    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connecting_url(RelayRole::Indexer, "wss://purplepag.es/");
+    kernel.relay_connected_url(RelayRole::Indexer, "wss://purplepag.es/");
+    kernel.record_transport_event(RelayRole::Indexer, "wss://purplepag.es/", Instant::now());
+
+    let snap = kernel.relay_diagnostics_snapshot();
+    let row = snap
+        .relays
+        .iter()
+        .find(|row| row.relay_url == "wss://purplepag.es")
+        .expect("diagnostics must include the indexer socket URL");
+
+    assert_eq!(row.total_sub_count, 0, "completed subs may be evicted");
+    assert_eq!(row.total_events_rx, 1);
+    assert_eq!(row.total_events_display, "1");
+}

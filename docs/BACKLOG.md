@@ -512,7 +512,13 @@ follow-up promotes the router to the decision authority.
 **Phase 3 (Chirp inspector UI)** — not started. Pending the iOS / web
 shell consumers of the phase 2 JSON payload (a `RoutingInspectorView`
 long-press target on `ChirpEventCard` / publish-status row + a debug
-toolbar toggle on the wasm host).
+toolbar toggle on the wasm host) plus `chirp-tui` relay diagnostics. Every
+connected relay row must expose role, active wire-subscription count, durable
+session EVENT count, and enough status to explain a zero count as either no
+REQ, active REQ with no matches, EOSE/no matches, or a routing/configuration
+anomaly. Indexer relays are part of this acceptance criterion: for discovery
+kinds (`0`, `3`, `10002`, and other `10000..19999` lists), configured indexers
+must be visibly targeted or the diagnostics must show why they were not.
 
 ---
 

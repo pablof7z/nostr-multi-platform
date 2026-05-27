@@ -391,6 +391,9 @@ struct DiagRelayRow: View {
                 Text("\(row.activeSubCount) subs")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("\(row.totalEventsDisplay) events")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if row.reconnectCount > 0 {
                     Text("↩ \(row.reconnectCount)")
                         .font(.caption)

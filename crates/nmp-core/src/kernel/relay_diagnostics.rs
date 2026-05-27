@@ -1,7 +1,4 @@
 //! Diagnostics-screen projection: pre-rolled relay + wire-subscription rows.
-// Display-only formatters: float casts and count truncations are acceptable
-// for metrics labels that are never used in arithmetic.
-#![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 //!
 //! The three iOS diagnostics surfaces (`DiagnosticsView`, `RelayDetailView`,
 //! `WireSubscriptionDetailView`) used to filter / sort / reduce the raw
@@ -32,7 +29,13 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
+mod format;
+
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
+use format::{
+    auth_label, auth_tone, compact_count, connection_tone, format_ago_ms, format_bytes,
+    interest_state_tone, role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
+};
 
 /// Snapshot-projection key under which the diagnostics roll-up is emitted.
 /// Keep in sync with the Swift `SnapshotProjections.relayDiagnostics`
@@ -43,7 +46,7 @@ use super::{Kernel, RelayStatus, WireSubscriptionStatus};
 pub(super) const RELAY_DIAGNOSTICS_PROJECTION_KEY: &str = "relay_diagnostics";
 
 /// One rolled-up row per known relay URL. Every aggregate (`active_sub_count`,
-/// `eosed_sub_count`, `total_events_rx`) is computed here; every display
+/// `eosed_sub_count`, session `total_events_rx`) is computed here; every display
 /// string (`status_label`, `last_connected_display`, `last_event_display`) is
 /// pre-formatted here. The shell renders fields directly.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -76,7 +79,9 @@ pub(super) struct RelayDiagnosticsRow {
     pub(super) active_sub_count: u32,
     /// Wire subscriptions that have observed EOSE (`eose_at_ms.is_some()`).
     pub(super) eosed_sub_count: u32,
-    /// Sum of `events_rx` across every wire subscription on this relay.
+    /// Session EVENT frames received on this relay URL. This survives
+    /// completed one-shot subscription eviction; `wire_subs[*].events_rx`
+    /// remains the per-sub detail.
     pub(super) total_events_rx: u64,
     /// Pre-formatted total events (compact: `"1.2K"`, `"34"`).
     pub(super) total_events_display: String,
@@ -255,8 +260,21 @@ fn build_relay_row(
             "unknown"
         };
         let last_event = subs.iter().filter_map(|s| s.last_event_at_ms).max();
+        let total_events_rx = subs.iter().map(|s| s.events_rx).sum();
         return finish_row(
-            relay_url, "outbox", connection, "—", 0, None, last_event, None, None, 0, 0, subs,
+            relay_url,
+            "outbox",
+            connection,
+            "—",
+            0,
+            None,
+            last_event,
+            None,
+            None,
+            total_events_rx,
+            0,
+            0,
+            subs,
             now_ms,
         );
     };
@@ -269,6 +287,7 @@ fn build_relay_row(
         last_event,
         last_notice,
         last_error,
+        events_rx,
         bytes_rx,
         bytes_tx,
     ) = (
@@ -280,6 +299,7 @@ fn build_relay_row(
         s.last_event_at_ms,
         s.last_notice.clone(),
         s.last_error.clone(),
+        s.events_rx,
         s.bytes_rx,
         s.bytes_tx,
     );
@@ -293,6 +313,7 @@ fn build_relay_row(
         last_event,
         last_notice,
         last_error,
+        events_rx,
         bytes_rx,
         bytes_tx,
         subs,
@@ -311,6 +332,7 @@ fn finish_row(
     last_event: Option<u128>,
     last_notice: Option<String>,
     last_error: Option<String>,
+    events_rx: u64,
     bytes_rx: u64,
     bytes_tx: u64,
     subs: Vec<WireSubscriptionStatus>,
@@ -319,7 +341,7 @@ fn finish_row(
     let total_sub_count = subs.len() as u32;
     let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
     let eosed_sub_count = subs.iter().filter(|s| s.eose_at_ms.is_some()).count() as u32;
-    let total_events_rx: u64 = subs.iter().map(|s| s.events_rx).sum();
+    let total_events_rx = events_rx;
 
     let wire_subs = subs
         .into_iter()
@@ -391,163 +413,6 @@ fn build_wire_sub(s: WireSubscriptionStatus, now_ms: u128) -> RelayDiagnosticsWi
 
 fn is_active_state(state: &str) -> bool {
     matches!(state, "open" | "live" | "active" | "opening")
-}
-
-// ── Hue selectors (semantic tone, not a Color value) ─────────────────────
-
-fn role_tone(role: &str) -> &'static str {
-    match role {
-        "write" => "write",
-        _ => "accent",
-    }
-}
-
-fn connection_tone(connection: &str) -> &'static str {
-    let lower = connection.to_ascii_lowercase();
-    if lower == "connected" {
-        "ok"
-    } else if lower.starts_with("disconnect") || lower == "failed" {
-        "error"
-    } else if lower.contains("connect") {
-        // "reconnecting", "connecting", "auth_paused_will_reconnect", etc.
-        "warn"
-    } else if lower == "unknown" || lower == "idle" || lower == "—" {
-        "muted"
-    } else {
-        "error"
-    }
-}
-
-fn auth_tone(auth: &str) -> &'static str {
-    let lower = auth.to_ascii_lowercase();
-    if lower == "ok" || lower == "authenticated" {
-        "ok"
-    } else if lower == "pending" {
-        "warn"
-    } else {
-        "muted"
-    }
-}
-
-fn state_tone(state: &str) -> &'static str {
-    match state.to_ascii_lowercase().as_str() {
-        "open" | "active" | "live" => "ok",
-        "pending" | "warming" | "opening" | "auth_paused" => "warn",
-        _ => "muted",
-    }
-}
-
-fn interest_state_tone(state: &str) -> &'static str {
-    match state {
-        "active" | "warming" | "tailing" | "complete" => "ok",
-        "idle" => "muted",
-        _ => "warn",
-    }
-}
-
-// ── String formatters ────────────────────────────────────────────────────
-
-fn role_label(role: &str) -> String {
-    if role.is_empty() {
-        "—".to_string()
-    } else {
-        title_case(role)
-    }
-}
-
-fn auth_label(auth: &str) -> String {
-    if auth == "—" {
-        auth.to_string()
-    } else {
-        title_case(auth)
-    }
-}
-
-fn title_case(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut first = true;
-    for c in s.chars() {
-        if first {
-            for u in c.to_uppercase() {
-                out.push(u);
-            }
-            first = false;
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-fn short_relay_url(url: &str) -> String {
-    let stripped = url
-        .strip_prefix("wss://")
-        .or_else(|| url.strip_prefix("ws://"))
-        .unwrap_or(url);
-    stripped.trim_end_matches('/').to_string()
-}
-
-fn short_id(id: &str) -> String {
-    if id.chars().count() <= 12 {
-        id.to_string()
-    } else {
-        let head: String = id.chars().take(8).collect();
-        format!("{head}…")
-    }
-}
-
-fn format_bytes(bytes: u64) -> String {
-    let kb = bytes as f64 / 1024.0;
-    if kb < 1.0 {
-        format!("{bytes} B")
-    } else if kb < 1024.0 {
-        format!("{kb:.1} KB")
-    } else {
-        format!("{:.1} MB", kb / 1024.0)
-    }
-}
-
-fn compact_count(n: u64) -> String {
-    if n < 1_000 {
-        n.to_string()
-    } else if n < 1_000_000 {
-        let v = n as f64 / 1_000.0;
-        if v.fract() == 0.0 {
-            format!("{}K", v as u64)
-        } else {
-            format!("{v:.1}K")
-        }
-    } else if n < 1_000_000_000 {
-        let v = n as f64 / 1_000_000.0;
-        if v.fract() == 0.0 {
-            format!("{}M", v as u64)
-        } else {
-            format!("{v:.1}M")
-        }
-    } else {
-        let v = n as f64 / 1_000_000_000.0;
-        format!("{v:.1}B")
-    }
-}
-
-/// Format an "X ago" label given a `now` and a `then`, both in
-/// milliseconds-since-kernel-start. Returns `"now"` when `then >= now`
-/// (clock skew or 0-elapsed kernels).
-fn format_ago_ms(now_ms: u128, then_ms: u128) -> String {
-    if then_ms == 0 || now_ms <= then_ms {
-        return "now".to_string();
-    }
-    let diff_ms = now_ms - then_ms;
-    let secs = diff_ms / 1_000;
-    if secs < 60 {
-        format!("{secs}s ago")
-    } else if secs < 3_600 {
-        format!("{}m ago", secs / 60)
-    } else if secs < 86_400 {
-        format!("{}h ago", secs / 3_600)
-    } else {
-        format!("{}d ago", secs / 86_400)
-    }
 }
 
 #[cfg(test)]

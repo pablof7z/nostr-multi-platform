@@ -53,6 +53,13 @@ impl Kernel {
                 .filter(|sub| sub.relay_url == *url.as_str())
                 .filter_map(|sub| self.elapsed_ms(sub.last_event_at))
                 .max();
+            let events_rx = self
+                .wire
+                .subs
+                .values()
+                .filter(|sub| sub.relay_url == *url.as_str())
+                .map(|sub| sub.events_rx)
+                .sum();
             statuses.push(RelayStatus {
                 role: "outbox".to_string(),
                 relay_url: url,
@@ -70,6 +77,7 @@ impl Kernel {
                 last_notice: None,
                 last_error: None,
                 error_category: None,
+                events_rx,
                 bytes_rx: 0,
                 bytes_tx: 0,
                 denied: false,
@@ -121,6 +129,7 @@ impl Kernel {
             last_notice: relay.last_notice.clone(),
             last_error: relay.last_error.clone(),
             error_category: relay.error_category.clone(),
+            events_rx: relay.counters.events_rx,
             bytes_rx: relay.counters.bytes_rx,
             bytes_tx: relay.counters.bytes_tx,
             denied: relay.denied,
