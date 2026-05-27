@@ -65,7 +65,10 @@ fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
     let unsigned = Note::new("plug-in-test")
         .build("placeholder-pk", 1_700_000_200)
         .expect("note builder");
-    let cmd = ActorCommand::PublishUnsignedEvent { event: unsigned, correlation_id: None };
+    let cmd = ActorCommand::PublishUnsignedEvent {
+        event: unsigned,
+        correlation_id: None,
+    };
     // Confirm the variant carries the kind through unchanged — extracting
     // by pattern-match also doubles as a compile-time shape lock.
     if let ActorCommand::PublishUnsignedEvent { event: u, .. } = cmd {

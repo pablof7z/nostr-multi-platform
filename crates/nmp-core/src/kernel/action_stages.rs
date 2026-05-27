@@ -250,8 +250,7 @@ impl ActionStageTracker {
                 // Fall through to push the terminal below.
             } else {
                 // Non-terminal at cap: silent no-op. Diagnostic loss is safe.
-                self.per_correlation_cap_drops =
-                    self.per_correlation_cap_drops.saturating_add(1);
+                self.per_correlation_cap_drops = self.per_correlation_cap_drops.saturating_add(1);
                 return;
             }
         }
@@ -340,4 +339,3 @@ impl ActionStageTracker {
 #[cfg(test)]
 #[path = "action_stages/tests.rs"]
 mod tests;
-

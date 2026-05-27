@@ -10,8 +10,8 @@
 //! marks the corresponding fork entry) so the fork's `is_deleted` check
 //! continues to fire as a fast pre-filter inside `save_event_with_txn`.
 
-use heed::{Database, RoTxn, RwTxn};
 use heed::types::Bytes;
+use heed::{Database, RoTxn, RwTxn};
 
 use crate::types::{EventId, RelayUrl, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
@@ -72,7 +72,10 @@ pub(super) fn get(
     txn: &RoTxn,
     target: &EventId,
 ) -> Result<Option<TombstoneRow>, StoreError> {
-    match db.get(txn, target).map_err(|e| StoreError::Io(format!("tomb get: {e}")))? {
+    match db
+        .get(txn, target)
+        .map_err(|e| StoreError::Io(format!("tomb get: {e}")))?
+    {
         Some(b) => Ok(Some(decode(b)?)),
         None => Ok(None),
     }
@@ -83,7 +86,10 @@ fn get_rw(
     txn: &RwTxn,
     target: &EventId,
 ) -> Result<Option<TombstoneRow>, StoreError> {
-    match db.get(txn, target).map_err(|e| StoreError::Io(format!("tomb get: {e}")))? {
+    match db
+        .get(txn, target)
+        .map_err(|e| StoreError::Io(format!("tomb get: {e}")))?
+    {
         Some(b) => Ok(Some(decode(b)?)),
         None => Ok(None),
     }
@@ -144,7 +150,10 @@ pub(super) fn get_addr(
     txn: &RoTxn,
     addr_key: &[u8],
 ) -> Result<Option<TombstoneRow>, StoreError> {
-    match db.get(txn, addr_key).map_err(|e| StoreError::Io(format!("addr-tomb get: {e}")))? {
+    match db
+        .get(txn, addr_key)
+        .map_err(|e| StoreError::Io(format!("addr-tomb get: {e}")))?
+    {
         Some(b) => Ok(Some(decode(b)?)),
         None => Ok(None),
     }
@@ -155,7 +164,10 @@ fn get_addr_rw(
     txn: &RwTxn,
     addr_key: &[u8],
 ) -> Result<Option<TombstoneRow>, StoreError> {
-    match db.get(txn, addr_key).map_err(|e| StoreError::Io(format!("addr-tomb get: {e}")))? {
+    match db
+        .get(txn, addr_key)
+        .map_err(|e| StoreError::Io(format!("addr-tomb get: {e}")))?
+    {
         Some(b) => Ok(Some(decode(b)?)),
         None => Ok(None),
     }
@@ -195,7 +207,10 @@ pub(super) fn list_all(
     txn: &RoTxn,
 ) -> Result<Vec<TombstoneRow>, StoreError> {
     let mut out = Vec::new();
-    for entry in db.iter(txn).map_err(|e| StoreError::Io(format!("tomb iter: {e}")))? {
+    for entry in db
+        .iter(txn)
+        .map_err(|e| StoreError::Io(format!("tomb iter: {e}")))?
+    {
         let (_k, v) = entry.map_err(|e| StoreError::Io(format!("tomb iter step: {e}")))?;
         out.push(decode(v)?);
     }

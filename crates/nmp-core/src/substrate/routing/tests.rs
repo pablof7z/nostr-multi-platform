@@ -93,8 +93,14 @@ fn parsed_relay_list_read_and_write_sets_include_both() {
         write: vec!["wss://w.example".into()],
         both: vec!["wss://b.example".into()],
     };
-    assert_eq!(parsed.read_set(), vec!["wss://r.example", "wss://b.example"]);
-    assert_eq!(parsed.write_set(), vec!["wss://w.example", "wss://b.example"]);
+    assert_eq!(
+        parsed.read_set(),
+        vec!["wss://r.example", "wss://b.example"]
+    );
+    assert_eq!(
+        parsed.write_set(),
+        vec!["wss://w.example", "wss://b.example"]
+    );
 }
 
 #[test]
@@ -102,15 +108,15 @@ fn mailbox_cache_known_default_uses_read_or_write_presence() {
     let cache = TestMailboxCache::default();
     let pk: Pubkey = "alice".into();
     assert!(!cache.known(&pk));
-    cache.upsert(pk.clone(), ParsedRelayList {
-        read: vec!["wss://r.example".into()],
-        ..ParsedRelayList::default()
-    });
-    assert!(cache.known(&pk));
-    assert_eq!(
-        cache.read_relays(&pk),
-        Some(vec!["wss://r.example".into()]),
+    cache.upsert(
+        pk.clone(),
+        ParsedRelayList {
+            read: vec!["wss://r.example".into()],
+            ..ParsedRelayList::default()
+        },
     );
+    assert!(cache.known(&pk));
+    assert_eq!(cache.read_relays(&pk), Some(vec!["wss://r.example".into()]),);
 }
 
 #[test]
@@ -161,12 +167,19 @@ fn routed_relay_set_add_merges_sources_per_url() {
     let mut routed = RoutedRelaySet::new();
     let url: RelayUrl = "wss://r.example".into();
     routed.add(url.clone(), RoutingSource::Hint);
-    routed.add(url.clone(), RoutingSource::Nip65 { direction: Direction::Write });
+    routed.add(
+        url.clone(),
+        RoutingSource::Nip65 {
+            direction: Direction::Write,
+        },
+    );
 
     let sources = &routed.relays[&url];
     assert_eq!(sources.len(), 2);
     assert!(sources.contains(&RoutingSource::Hint));
-    assert!(sources.contains(&RoutingSource::Nip65 { direction: Direction::Write }));
+    assert!(sources.contains(&RoutingSource::Nip65 {
+        direction: Direction::Write
+    }));
 }
 
 #[test]
@@ -176,8 +189,12 @@ fn routing_source_ordering_is_stable() {
     let mut sources: Vec<RoutingSource> = vec![
         RoutingSource::Indexer,
         RoutingSource::Hint,
-        RoutingSource::Nip65 { direction: Direction::Read },
-        RoutingSource::AppRelay { mode: AppRelayMode::Fallback },
+        RoutingSource::Nip65 {
+            direction: Direction::Read,
+        },
+        RoutingSource::AppRelay {
+            mode: AppRelayMode::Fallback,
+        },
     ];
     sources.sort();
     sources.dedup();

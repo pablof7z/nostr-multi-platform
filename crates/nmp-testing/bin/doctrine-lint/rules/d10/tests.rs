@@ -8,7 +8,9 @@ fn file_in_scope_includes_target_crates() {
     assert!(file_in_scope(&PathBuf::from(
         "crates/nmp-core/src/actor/commands/dm.rs"
     )));
-    assert!(file_in_scope(&PathBuf::from("crates/nmp-nip17/src/action.rs")));
+    assert!(file_in_scope(&PathBuf::from(
+        "crates/nmp-nip17/src/action.rs"
+    )));
     assert!(file_in_scope(&PathBuf::from(
         "crates/nmp-marmot/src/projection/publish.rs"
     )));
@@ -21,11 +23,15 @@ fn file_in_scope_includes_target_crates() {
 fn file_in_scope_excludes_other_crates() {
     // D10 is private-kind-publish-oriented; other crates have no
     // kind:1059 publishers and stay silent.
-    assert!(!file_in_scope(&PathBuf::from("crates/nmp-nip29/src/lib.rs")));
+    assert!(!file_in_scope(&PathBuf::from(
+        "crates/nmp-nip29/src/lib.rs"
+    )));
     assert!(!file_in_scope(&PathBuf::from(
         "apps/chirp/nmp-app-chirp/src/ffi.rs"
     )));
-    assert!(!file_in_scope(&PathBuf::from("crates/nmp-testing/src/lib.rs")));
+    assert!(!file_in_scope(&PathBuf::from(
+        "crates/nmp-testing/src/lib.rs"
+    )));
 }
 
 // ── PrivatePublishTracker ────────────────────────────────────────────

@@ -230,7 +230,11 @@ pub(super) fn sweep_inflight_timeouts(
 ) -> bool {
     let mut changed = false;
     for state in in_flight.per_relay.values_mut() {
-        if let PerRelayState::InFlight { sent_at_ms, attempt } = *state {
+        if let PerRelayState::InFlight {
+            sent_at_ms,
+            attempt,
+        } = *state
+        {
             if now_ms.saturating_sub(sent_at_ms) >= deadline_ms {
                 *state = if attempt >= policy.transient_max_retries {
                     PerRelayState::FailedAfterRetries {
@@ -255,7 +259,7 @@ pub(super) fn sweep_inflight_timeouts(
 
 /// Coarse outcome computed from the current per-relay states. Used by the
 /// ledger to record a single verdict for the publish.
-#[must_use] 
+#[must_use]
 pub fn outcome_of(per_relay: &BTreeMap<RelayUrl, PerRelayState>) -> PublishOutcome {
     let mut accepted = Vec::new();
     let mut failed = Vec::new();

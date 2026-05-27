@@ -30,36 +30,36 @@ use crate::relay::CanonicalRelayUrl;
 /// (`weight = 1/(1+0+1) = 0.50`) but excludes a hit paired with a
 /// hypothetical (non-existent in §8.5) miss; in practice the threshold's
 /// only job is to gate the `successes == 0` cold start.
-pub(crate) const WARM_THRESHOLD: f32 = 0.40;
+pub const WARM_THRESHOLD: f32 = 0.40;
 
 /// Decay half-life in days. The score's exponential-decay multiplier
 /// halves every `DECAY_HALFLIFE_DAYS` of inactivity.
-pub(crate) const DECAY_HALFLIFE_DAYS: f32 = 14.0;
+pub const DECAY_HALFLIFE_DAYS: f32 = 14.0;
 
 /// Cap on total relays tried per claim (Phase 1 + Phase 2 union). Above
 /// this, the claim terminates `Exhausted`. Spec §6.
 #[allow(dead_code)] // consumed by W5 (claim_expansion.rs)
-pub(crate) const MAX_RELAYS_TRIED_PER_CLAIM: usize = 12;
+pub const MAX_RELAYS_TRIED_PER_CLAIM: usize = 12;
 
 /// Max concurrent Phase-2 candidate REQs per claim. Spec §6.
 #[allow(dead_code)] // consumed by W5
-pub(crate) const MAX_EXPANSION_CONCURRENCY: usize = 3;
+pub const MAX_EXPANSION_CONCURRENCY: usize = 3;
 
 /// Wall-clock budget before Phase 1 → Phase 2 transition. Spec §6.
 #[allow(dead_code)] // consumed by W5
-pub(crate) const PHASE_1_BUDGET_MS: u64 = 1500;
+pub const PHASE_1_BUDGET_MS: u64 = 1500;
 
 /// Wall-clock budget for any single per-relay REQ in Phase 1 or Phase 2.
 /// Beyond this the REQ is considered failed for scoring purposes
 /// regardless of whether the socket eventually replies.
 #[allow(dead_code)] // consumed by W5
-pub(crate) const PER_RELAY_REQ_TIMEOUT_MS: u64 = 5000;
+pub const PER_RELAY_REQ_TIMEOUT_MS: u64 = 5000;
 
 /// User-visible wall-clock budget. After this elapses the claim
 /// terminates `Budget`; Phase 2 in-flight REQs continue scoring in the
 /// background per spec §10 Q7.
 #[allow(dead_code)] // consumed by W5
-pub(crate) const PER_CLAIM_TOTAL_BUDGET_MS: u64 = 8000;
+pub const PER_CLAIM_TOTAL_BUDGET_MS: u64 = 8000;
 
 /// Per-`(Pubkey, RelayUrl)` score cell. Restart-stable: serializes to a
 /// 24-byte fixed-width record in LMDB (`u32 + u32 + u64 + u64 reserved`)
@@ -69,7 +69,7 @@ pub(crate) const PER_CLAIM_TOTAL_BUDGET_MS: u64 = 8000;
 /// `record_*` call. Decay is computed against this stamp; an old cell
 /// fades exponentially.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RelayAuthorScore {
+pub struct RelayAuthorScore {
     pub successes: u32,
     pub failures: u32,
     pub last_used_unix_s: u64,
@@ -138,7 +138,7 @@ impl RelayAuthorScore {
 /// same cell.
 #[inline]
 #[must_use]
-pub(crate) fn canon(relay_url: &str) -> String {
+pub fn canon(relay_url: &str) -> String {
     CanonicalRelayUrl::parse_or_raw(relay_url).into_string()
 }
 
@@ -146,7 +146,7 @@ pub(crate) fn canon(relay_url: &str) -> String {
 /// single source of truth at runtime; W2 persists dirty cells to LMDB on
 /// idle.
 #[derive(Debug, Default)]
-pub(crate) struct RelayAuthorScoreMap {
+pub struct RelayAuthorScoreMap {
     cells: BTreeMap<(Pubkey, RelayUrl), RelayAuthorScore>,
     /// `true` if at least one cell mutated since the last LMDB flush.
     /// W2's flush clears this; W3's `record_*` calls set it.
@@ -234,7 +234,7 @@ impl RelayAuthorScoreMap {
 /// `RelayAuthorScoreMap::record`. Mirrors §8.5's delta table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // W3 / W5 consumers land in later commits
-pub(crate) enum ClaimOutcome {
+pub enum ClaimOutcome {
     /// Phase-1 or Phase-2 EVENT match — successes += 1.
     Hit,
     /// Phase-1 or Phase-2 EOSE without a match — neutral; touches recency.

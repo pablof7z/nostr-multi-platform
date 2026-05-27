@@ -83,12 +83,12 @@ impl Default for InMemoryPool {
 }
 
 impl InMemoryPool {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::with_cap(DEFAULT_DEFERRED_CAP)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn with_cap(cap: usize) -> Self {
         Self {
             deferred: HashMap::new(),
@@ -99,12 +99,9 @@ impl InMemoryPool {
     }
 
     /// Read the sent log for a relay. Test-only; preserves order.
-    #[must_use] 
+    #[must_use]
     pub fn sent_log(&self, relay_url: &str) -> Vec<String> {
-        self.sent_log
-            .get(relay_url)
-            .cloned()
-            .unwrap_or_default()
+        self.sent_log.get(relay_url).cloned().unwrap_or_default()
     }
 }
 
@@ -127,7 +124,9 @@ impl ConnectionPool for InMemoryPool {
     }
 
     fn deferred_count(&self, relay_url: &str) -> usize {
-        self.deferred.get(relay_url).map_or(0, std::collections::VecDeque::len)
+        self.deferred
+            .get(relay_url)
+            .map_or(0, std::collections::VecDeque::len)
     }
 
     fn drain_deferred(&mut self, relay_url: &str) -> Vec<String> {
@@ -185,8 +184,14 @@ mod tests {
     #[test]
     fn cap_drops_overflow() {
         let mut pool = InMemoryPool::with_cap(2);
-        assert_eq!(pool.send("wss://r", "a".to_string()), PoolSendOutcome::Deferred);
-        assert_eq!(pool.send("wss://r", "b".to_string()), PoolSendOutcome::Deferred);
+        assert_eq!(
+            pool.send("wss://r", "a".to_string()),
+            PoolSendOutcome::Deferred
+        );
+        assert_eq!(
+            pool.send("wss://r", "b".to_string()),
+            PoolSendOutcome::Deferred
+        );
         assert_eq!(
             pool.send("wss://r", "c".to_string()),
             PoolSendOutcome::DroppedOverflow

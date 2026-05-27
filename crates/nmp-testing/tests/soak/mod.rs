@@ -135,7 +135,13 @@ pub fn run_soak() -> SoakResult {
         }
         req_opened.insert(id.clone());
         req_sent += 1;
-        conns.push(Conn { url, idx, socket, live_sub: Some(id), events: 0 });
+        conns.push(Conn {
+            url,
+            idx,
+            socket,
+            live_sub: Some(id),
+            events: 0,
+        });
     }
 
     let relays: Vec<&'static str> = conns.iter().map(|c| c.url).collect();
@@ -253,18 +259,44 @@ fn bullets<T: std::fmt::Display>(items: &[T], empty: &str) -> String {
 
 /// Render the one-page soak report (frontmatter + greppable verdict + body).
 pub fn render_report(r: &SoakResult) -> String {
-    let relays = if r.relays.is_empty() { "(none reachable)".into() } else { r.relays.join(", ") };
-    let per_relay: Vec<String> =
-        r.per_relay.iter().map(|(u, n)| format!("`{u}`: {n} EVENT frames")).collect();
+    let relays = if r.relays.is_empty() {
+        "(none reachable)".into()
+    } else {
+        r.relays.join(", ")
+    };
+    let per_relay: Vec<String> = r
+        .per_relay
+        .iter()
+        .map(|(u, n)| format!("`{u}`: {n} EVENT frames"))
+        .collect();
     let leak = if r.leaked.is_empty() {
         "zero leaked subscriptions — every REQ id was matched by a CLOSE.".into()
     } else {
-        format!("**LEAK DETECTED** — {} sub id(s) opened but never CLOSEd: {:?}",
-            r.leaked.len(), r.leaked)
+        format!(
+            "**LEAK DETECTED** — {} sub id(s) opened but never CLOSEd: {:?}",
+            r.leaked.len(),
+            r.leaked
+        )
     };
-    let ws_ok = if r.max_live_subs <= r.ceiling { "within bound" } else { "**EXCEEDED**" };
-    let (w, rid, st, d, win) = (WINDOW.as_secs(), &r.run_id, r.started_at, r.duration_s, r.windows);
-    let (op, cl, ml, ceil, ev) = (r.req_opened, r.req_closed, r.max_live_subs, r.ceiling, r.events_seen);
+    let ws_ok = if r.max_live_subs <= r.ceiling {
+        "within bound"
+    } else {
+        "**EXCEEDED**"
+    };
+    let (w, rid, st, d, win) = (
+        WINDOW.as_secs(),
+        &r.run_id,
+        r.started_at,
+        r.duration_s,
+        r.windows,
+    );
+    let (op, cl, ml, ceil, ev) = (
+        r.req_opened,
+        r.req_closed,
+        r.max_live_subs,
+        r.ceiling,
+        r.events_seen,
+    );
     let per_relay = bullets(&per_relay, "- (no relay survived to tally)");
     let errors = bullets(&r.errors, "_none — all relays survived the soak cleanly._");
     let body = format!(
@@ -292,8 +324,13 @@ pub fn render_report(r: &SoakResult) -> String {
          — only ZERO surviving relays is a SKIP, and a real leak is a loud FAIL.",
     );
     let relay_refs: Vec<&str> = r.relays.to_vec();
-    report_page("Real-relay soak — leak / working-set / no-panic",
-        "soak-multi-relay-churn", r.verdict, &relay_refs, &body)
+    report_page(
+        "Real-relay soak — leak / working-set / no-panic",
+        "soak-multi-relay-churn",
+        r.verdict,
+        &relay_refs,
+        &body,
+    )
 }
 
 /// Write the report unconditionally (pass/skip/fail) so a green run still

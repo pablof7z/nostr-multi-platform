@@ -87,7 +87,7 @@ where
     /// silently behaves as `1` — a degenerate value that would otherwise make
     /// every `insert` immediately evict itself. The minimum-of-one guard
     /// keeps the type safe to construct from configuration without a panic.
-    #[must_use] 
+    #[must_use]
     pub fn new(capacity: usize) -> Self {
         let capacity = capacity.max(1);
         Self {
@@ -174,20 +174,20 @@ where
     }
 
     /// Number of entries currently in the map.
-    #[must_use] 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.map.len()
     }
 
     /// Whether the map holds no entries.
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
 
     /// The capacity bound this map was constructed with. `len() <= capacity()`
     /// is an invariant.
-    #[must_use] 
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
@@ -246,7 +246,7 @@ where
     /// Borrow the oldest-by-insertion-order `(key, value)` pair, or `None`
     /// when the map is empty. Useful when callers need to react to eviction:
     /// peek at the oldest entry *before* calling [`Self::insert`] at capacity.
-    #[must_use] 
+    #[must_use]
     pub fn first(&self) -> Option<(&K, &V)> {
         self.map.first()
     }
@@ -282,4 +282,3 @@ where
 #[cfg(test)]
 #[path = "bounded/tests.rs"]
 mod tests;
-

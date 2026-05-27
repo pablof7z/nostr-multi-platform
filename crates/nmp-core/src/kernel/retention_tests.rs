@@ -144,7 +144,10 @@ fn dropped_claim_is_silent_noop() {
 
     // One past the cap.
     let overflow = kernel.claim_profile(pk.clone(), "overflow-consumer".into(), false);
-    assert!(overflow.is_empty(), "dropped claim must return empty outbound");
+    assert!(
+        overflow.is_empty(),
+        "dropped claim must return empty outbound"
+    );
     assert_eq!(kernel.claim_drops_total_test(), 1);
 
     // Re-claiming an already-present consumer is NOT a drop — it's an
@@ -171,7 +174,10 @@ fn claim_cap_is_per_pubkey_not_global() {
     for i in 0..(MAX_CLAIMS_PER_PUBKEY + 16) {
         kernel.claim_profile(pk_a.clone(), format!("a{i}"), false);
     }
-    assert_eq!(kernel.profile_claims_len_for_test(&pk_a), MAX_CLAIMS_PER_PUBKEY);
+    assert_eq!(
+        kernel.profile_claims_len_for_test(&pk_a),
+        MAX_CLAIMS_PER_PUBKEY
+    );
     assert_eq!(kernel.claim_drops_total_test(), 16);
 
     // pk_b is fresh — claims must succeed up to its own cap.
@@ -203,11 +209,17 @@ fn claim_recovers_after_release_post_drop() {
     // Release one existing consumer (c0..c1023 are in the set; the overflow
     // c1024 was dropped, so releasing c0 frees a slot).
     kernel.release_profile(&pk, "c0");
-    assert_eq!(kernel.profile_claims_len_for_test(&pk), MAX_CLAIMS_PER_PUBKEY - 1);
+    assert_eq!(
+        kernel.profile_claims_len_for_test(&pk),
+        MAX_CLAIMS_PER_PUBKEY - 1
+    );
 
     // The previously-dropped consumer can now claim.
     kernel.claim_profile(pk.clone(), "post-release-consumer".into(), false);
-    assert_eq!(kernel.profile_claims_len_for_test(&pk), MAX_CLAIMS_PER_PUBKEY);
+    assert_eq!(
+        kernel.profile_claims_len_for_test(&pk),
+        MAX_CLAIMS_PER_PUBKEY
+    );
     assert_eq!(
         kernel.claim_drops_total_test(),
         1,
@@ -417,8 +429,9 @@ fn eose_evicts_wire_sub_row() {
     let frame = serde_json::json!(["EOSE", "profile-claim-1-abcd1234"]).to_string();
     let outbound = kernel.handle_text(RelayRole::Indexer, "wss://relay.test", &frame);
     assert!(
-        outbound.iter().any(|m| m.text.contains("CLOSE")
-            && m.text.contains("profile-claim-1-abcd1234")),
+        outbound
+            .iter()
+            .any(|m| m.text.contains("CLOSE") && m.text.contains("profile-claim-1-abcd1234")),
         "EOSE for a oneshot must emit a CLOSE outbound"
     );
     assert_eq!(
@@ -443,8 +456,8 @@ fn closed_frame_evicts_wire_sub_row() {
     );
     assert_eq!(kernel.wire_subs_len_for_test(), 1);
 
-    let frame = serde_json::json!(["CLOSED", "author-notes-7-deadbeef", "rate-limited"])
-        .to_string();
+    let frame =
+        serde_json::json!(["CLOSED", "author-notes-7-deadbeef", "rate-limited"]).to_string();
     let _ = kernel.handle_text(RelayRole::Content, "wss://relay.test", &frame);
     assert_eq!(
         kernel.wire_subs_len_for_test(),

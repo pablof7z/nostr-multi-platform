@@ -78,7 +78,8 @@ pub fn file_is_exempt(path: &Path) -> bool {
     // 100+ meta-false-positives on `--path crates/` broad sweeps. The fixture
     // sub-tree (`/fixtures/`) is intentionally NOT exempted so the linter's
     // own conformance tests remain effective.
-    let in_doctrine_lint_source = (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/"))
+    let in_doctrine_lint_source = (s.contains("/doctrine-lint/")
+        || s.starts_with("doctrine-lint/"))
         && !s.contains("/fixtures/");
     if in_doctrine_lint_source {
         return true;
@@ -99,7 +100,10 @@ pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
             let col = start + rel;
             hits.push((
                 col + 1, // 1-indexed columns for clippy compatibility
-                format!("banned token `{}` — D0 forbids app nouns in `nmp-core`", token),
+                format!(
+                    "banned token `{}` — D0 forbids app nouns in `nmp-core`",
+                    token
+                ),
                 (*suggested).to_string(),
             ));
             start = col + token.len();

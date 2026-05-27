@@ -141,7 +141,7 @@ impl RelayEditRowList {
     /// the named slice affordance — without it the consumer would have to
     /// touch the inner `Vec` directly, which is exactly what the typed
     /// wrapper is meant to hide.
-    #[must_use] 
+    #[must_use]
     pub fn as_slice(&self) -> &[RelayEditRow] {
         &self.0
     }

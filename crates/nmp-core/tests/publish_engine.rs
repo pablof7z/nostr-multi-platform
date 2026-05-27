@@ -90,7 +90,8 @@ fn publish_auto_resolves_outbox() {
             event: signed("ev-auto", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        1_000, None,
+        1_000,
+        None,
     )
     .unwrap();
 
@@ -128,7 +129,8 @@ fn publish_p_tag_inbox_routing() {
             event: signed("ev-ptag", "alice", 1, &["bob"]),
             target: PublishTarget::Auto,
         },
-        1_000, None,
+        1_000,
+        None,
     )
     .unwrap();
 
@@ -168,7 +170,8 @@ fn publish_retry_on_connection_drop() {
             event: signed("ev-flaky", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        1_000, None,
+        1_000,
+        None,
     )
     .unwrap();
 
@@ -208,7 +211,8 @@ fn publish_giveup_after_three_attempts() {
             event: signed("ev-bad", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        0, None,
+        0,
+        None,
     )
     .unwrap();
 
@@ -245,7 +249,8 @@ fn publish_durable_across_restart() {
                 event: signed("ev-durable", "alice", 1, &[]),
                 target: PublishTarget::Auto,
             },
-            0, None,
+            0,
+            None,
         )
         .unwrap();
         // Row should be in the store after the first dispatch.
@@ -294,7 +299,8 @@ fn publish_dedup_on_same_event_multi_relay_single_rev_per_batch() {
             event: signed("ev-fanout", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        0, None,
+        0,
+        None,
     )
     .unwrap();
     let rev_after = e.snapshot().rev;
@@ -391,10 +397,7 @@ fn static_outbox_falls_back_to_indexer_when_author_has_no_writes() {
     // an empty set, mapped to `NoTargets`.)
     // Note: NO author_writes entry for "alice".
     let outbox = StaticOutbox {
-        indexer_fallback: vec![
-            "wss://indexer-1".to_string(),
-            "wss://indexer-2".to_string(),
-        ],
+        indexer_fallback: vec!["wss://indexer-1".to_string(), "wss://indexer-2".to_string()],
         ..StaticOutbox::default()
     };
     let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1);

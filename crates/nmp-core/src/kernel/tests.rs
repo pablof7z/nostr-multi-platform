@@ -86,8 +86,7 @@ fn open_author_with_cached_nip65_routes_notes_to_resolved_write_relays() {
         .filter(|r| r.text.contains("\"kinds\":[1,6]"))
         .collect();
     assert_eq!(notes.len(), 2, "one notes REQ per resolved write relay");
-    let urls: std::collections::BTreeSet<_> =
-        notes.iter().map(|r| r.relay_url.clone()).collect();
+    let urls: std::collections::BTreeSet<_> = notes.iter().map(|r| r.relay_url.clone()).collect();
     assert!(urls.contains("wss://fiatjaf.write"));
     assert!(urls.contains("wss://fiatjaf.archive"));
     for r in notes {
@@ -274,7 +273,10 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
         .map(|request| request.text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(joined.contains("\"CLOSE\""), "final close must emit CLOSE frames");
+    assert!(
+        joined.contains("\"CLOSE\""),
+        "final close must emit CLOSE frames"
+    );
     assert!(
         joined.contains("thread-ids-"),
         "final close must CLOSE the thread-ids subscription"
@@ -312,7 +314,11 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     );
 
     // Cold-start profile claim must go to the indexer relay ONLY (not the content relay).
-    assert_eq!(first.len(), 1, "cold-start profile claim must emit exactly one REQ");
+    assert_eq!(
+        first.len(),
+        1,
+        "cold-start profile claim must emit exactly one REQ"
+    );
     assert!(second.is_empty());
     let joined = first
         .iter()
@@ -527,8 +533,8 @@ const C13_KIND0_ID: &str = "f1f2f3f4f5f6f7f8f9faf1f2f3f4f5f6f7f8f9faf1f2f3f4f5f6
 /// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017.
 #[test]
 fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
-    use crate::substrate::placeholder::picture_placeholder;
     use crate::store::VerifiedEvent;
+    use crate::substrate::placeholder::picture_placeholder;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
@@ -565,17 +571,23 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
     // Insert the profile directly into the kernel's profile cache.
     // (inject_replaceable_event always uses empty content and therefore
     //  produces a profile with no picture_url — insufficient for this test.)
-    kernel.profiles.insert(C13_PK.to_string(), Profile {
-        event_id: C13_KIND0_ID.to_string(),
-        created_at: 2_000,
-        display: "c13".to_string(),
-        picture_url: Some(picture.to_string()),
-        nip05: String::new(),
-        about: String::new(),
-        lnurl: None,
-    });
+    kernel.profiles.insert(
+        C13_PK.to_string(),
+        Profile {
+            event_id: C13_KIND0_ID.to_string(),
+            created_at: 2_000,
+            display: "c13".to_string(),
+            picture_url: Some(picture.to_string()),
+            nip05: String::new(),
+            about: String::new(),
+            lnurl: None,
+        },
+    );
 
-    let event_after = kernel.events.get(C13_ID).expect("event must still be in cache");
+    let event_after = kernel
+        .events
+        .get(C13_ID)
+        .expect("event must still be in cache");
     let item_with_profile = kernel.timeline_item(event_after);
 
     // After kind:0 arrives, the real picture URL surfaces verbatim.
@@ -616,15 +628,18 @@ fn picture_url_is_none_when_profile_omits_picture() {
     kernel.sort_timeline_deferred();
 
     for picture in [None, Some(String::new())] {
-        kernel.profiles.insert(C13_PK.to_string(), Profile {
-            event_id: C13_KIND0_ID.to_string(),
-            created_at: 2_000,
-            display: "c13".to_string(),
-            picture_url: picture.clone(),
-            nip05: String::new(),
-            about: String::new(),
-            lnurl: None,
-        });
+        kernel.profiles.insert(
+            C13_PK.to_string(),
+            Profile {
+                event_id: C13_KIND0_ID.to_string(),
+                created_at: 2_000,
+                display: "c13".to_string(),
+                picture_url: picture.clone(),
+                nip05: String::new(),
+                about: String::new(),
+                lnurl: None,
+            },
+        );
 
         let event = kernel.events.get(C13_ID).expect("event must be in cache");
         let item = kernel.timeline_item(event);
@@ -807,7 +822,10 @@ fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
     let item = kernel.timeline_item(event);
     assert!(item.is_repost);
     assert_eq!(item.nav_target_id, REPOST_ID, "malformed JSON: id fallback");
-    assert_eq!(item.repost_inner_content, "", "malformed JSON: empty content");
+    assert_eq!(
+        item.repost_inner_content, "",
+        "malformed JSON: empty content"
+    );
 }
 
 /// V-26 — `Kernel::accounts_enriched` must recompute `avatar_initials` whenever
@@ -852,15 +870,18 @@ fn accounts_enriched_populates_display_name_when_kind0_lands() {
 
     // Land a kind:0 with a real display name. The enrichment branch in
     // `accounts_enriched` populates `display_name` from the cache.
-    kernel.profiles.insert(pubkey_hex.clone(), Profile {
-        event_id: "kind0-event".to_string(),
-        created_at: 2_000,
-        display: "Alice Smith".to_string(),
-        picture_url: Some("https://example.com/pic.png".to_string()),
-        nip05: String::new(),
-        about: String::new(),
-        lnurl: None,
-    });
+    kernel.profiles.insert(
+        pubkey_hex.clone(),
+        Profile {
+            event_id: "kind0-event".to_string(),
+            created_at: 2_000,
+            display: "Alice Smith".to_string(),
+            picture_url: Some("https://example.com/pic.png".to_string()),
+            nip05: String::new(),
+            about: String::new(),
+            lnurl: None,
+        },
+    );
 
     let after = kernel.accounts_enriched();
     assert_eq!(after.len(), 1);

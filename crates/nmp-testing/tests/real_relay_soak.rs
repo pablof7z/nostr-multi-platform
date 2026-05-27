@@ -86,10 +86,7 @@ fn multi_relay_subscription_soak() {
             println!(
                 "[soak] PASS — {} subs opened+closed cleanly, max live {}/{} \
                  over {}s",
-                result.req_opened,
-                result.max_live_subs,
-                result.ceiling,
-                result.duration_s
+                result.req_opened, result.max_live_subs, result.ceiling, result.duration_s
             );
         }
         Verdict::Fail => {

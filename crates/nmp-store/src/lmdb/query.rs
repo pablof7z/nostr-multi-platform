@@ -15,8 +15,8 @@ use nostr::prelude::*;
 use super::{conv, provenance, tombstones, Inner};
 use crate::events::EventIter;
 use crate::types::{
-    Coverage, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, SyncMethod,
-    TombstoneRow, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
+    Coverage, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, SyncMethod, TombstoneRow,
+    WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
 };
 use crate::StoreError;
 
@@ -43,7 +43,9 @@ pub(super) fn get_by_id(
     };
     let owned: Event = borrow.into_owned();
     let raw = conv::nostr_to_raw(&owned)?;
-    Ok(Some(conv::stored_from_raw(raw, /* received_at_ms */ 0)))
+    Ok(Some(conv::stored_from_raw(
+        raw, /* received_at_ms */ 0,
+    )))
 }
 
 // ─── Scans ───────────────────────────────────────────────────────────────────
@@ -70,7 +72,8 @@ fn run_filter(
     }
     // Mem orders newest-first by (created_at desc, id asc). Match it.
     out.sort_by(|a, b| {
-        b.raw.created_at
+        b.raw
+            .created_at
             .cmp(&a.raw.created_at)
             .then(a.raw.id.cmp(&b.raw.id))
     });
@@ -86,8 +89,7 @@ pub(super) fn scan_by_author_kind<'a>(
     until: Option<u64>,
     limit: usize,
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let pk = PublicKey::from_slice(author)
-        .map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
+    let pk = PublicKey::from_slice(author).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let mut f = Filter::new().author(pk);
     if !kinds.is_empty() {
         f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
@@ -151,8 +153,8 @@ pub(super) fn scan_by_etag<'a>(
     kinds: &[u32],
     limit: usize,
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let target = nostr::EventId::from_slice(target)
-        .map_err(|e| StoreError::Encoding(format!("id: {e}")))?;
+    let target =
+        nostr::EventId::from_slice(target).map_err(|e| StoreError::Encoding(format!("id: {e}")))?;
     let mut f = Filter::new().event(target);
     if !kinds.is_empty() {
         f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
@@ -167,8 +169,7 @@ pub(super) fn scan_by_ptag<'a>(
     kinds: &[u32],
     limit: usize,
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let pk = PublicKey::from_slice(target)
-        .map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
+    let pk = PublicKey::from_slice(target).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let mut f = Filter::new().pubkey(pk);
     if !kinds.is_empty() {
         f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
@@ -183,8 +184,7 @@ pub(super) fn get_param_replaceable(
     kind: u32,
     d_tag: &[u8],
 ) -> Result<Option<StoredEvent>, StoreError> {
-    let pk = PublicKey::from_slice(pubkey)
-        .map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
+    let pk = PublicKey::from_slice(pubkey).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let d_str = String::from_utf8_lossy(d_tag).into_owned();
     let coord = Coordinate::new(Kind::from(kind as u16), pk).identifier(d_str);
     let txn = inner
@@ -248,22 +248,32 @@ pub(super) fn query_visit(
         return Ok(());
     }
     let matched = match query {
-        StoreQuery::AuthorKind { author, kinds, since, until } => {
-            let v = collect(scan_by_author_kind(inner, author, kinds, *since, *until, limit)?)?;
+        StoreQuery::AuthorKind {
+            author,
+            kinds,
+            since,
+            until,
+        } => {
+            let v = collect(scan_by_author_kind(
+                inner, author, kinds, *since, *until, limit,
+            )?)?;
             v
         }
-        StoreQuery::KindTime { kinds, since, until } => {
-            collect(scan_by_kind_time(inner, kinds, *since, *until, limit)?)?
-        }
-        StoreQuery::KindDtag { kind, d_tag, since, until } => {
-            collect(scan_by_kind_dtag(inner, *kind, d_tag, *since, *until, limit)?)?
-        }
-        StoreQuery::Etag { target, kinds } => {
-            collect(scan_by_etag(inner, target, kinds, limit)?)?
-        }
-        StoreQuery::Ptag { target, kinds } => {
-            collect(scan_by_ptag(inner, target, kinds, limit)?)?
-        }
+        StoreQuery::KindTime {
+            kinds,
+            since,
+            until,
+        } => collect(scan_by_kind_time(inner, kinds, *since, *until, limit)?)?,
+        StoreQuery::KindDtag {
+            kind,
+            d_tag,
+            since,
+            until,
+        } => collect(scan_by_kind_dtag(
+            inner, *kind, d_tag, *since, *until, limit,
+        )?)?,
+        StoreQuery::Etag { target, kinds } => collect(scan_by_etag(inner, target, kinds, limit)?)?,
+        StoreQuery::Ptag { target, kinds } => collect(scan_by_ptag(inner, target, kinds, limit)?)?,
     };
     for ev in matched.into_iter().take(limit) {
         if let ControlFlow::Break(()) = visitor(&ev) {
@@ -287,12 +297,12 @@ pub(super) fn tombstones_for(
         .lmdb
         .read_txn()
         .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
-    Ok(tombstones::get(inner.tombstones, &txn, target)?.into_iter().collect())
+    Ok(tombstones::get(inner.tombstones, &txn, target)?
+        .into_iter()
+        .collect())
 }
 
-pub(super) fn list_tombstones(
-    inner: &Arc<Inner>,
-) -> Result<Vec<TombstoneRow>, StoreError> {
+pub(super) fn list_tombstones(inner: &Arc<Inner>) -> Result<Vec<TombstoneRow>, StoreError> {
     let txn = inner
         .lmdb
         .read_txn()
@@ -364,8 +374,8 @@ fn encode_row(row: &WatermarkRow) -> Result<Vec<u8>, StoreError> {
 }
 
 fn decode_row(bytes: &[u8]) -> Result<WatermarkRow, StoreError> {
-    let p: PersistWmRow = serde_json::from_slice(bytes)
-        .map_err(|e| StoreError::Encoding(format!("wm dec: {e}")))?;
+    let p: PersistWmRow =
+        serde_json::from_slice(bytes).map_err(|e| StoreError::Encoding(format!("wm dec: {e}")))?;
     let m = match p.last_sync_method {
         PersistSyncMethod::Negentropy => SyncMethod::Negentropy,
         PersistSyncMethod::ReqScan => SyncMethod::ReqScan,
@@ -403,10 +413,7 @@ pub(super) fn read_watermark(
     }
 }
 
-pub(super) fn write_watermark(
-    inner: &Arc<Inner>,
-    row: WatermarkRow,
-) -> Result<(), StoreError> {
+pub(super) fn write_watermark(inner: &Arc<Inner>, row: WatermarkRow) -> Result<(), StoreError> {
     let mut txn = inner
         .env
         .write_txn()
@@ -417,13 +424,11 @@ pub(super) fn write_watermark(
         .watermarks
         .put(&mut txn, &k, &b)
         .map_err(|e| StoreError::Io(format!("wm put: {e}")))?;
-    txn.commit().map_err(|e| StoreError::Io(format!("commit: {e}")))
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))
 }
 
-pub(super) fn coverage(
-    inner: &Arc<Inner>,
-    key: &WatermarkKey,
-) -> Result<Coverage, StoreError> {
+pub(super) fn coverage(inner: &Arc<Inner>, key: &WatermarkKey) -> Result<Coverage, StoreError> {
     let row = read_watermark(inner, key)?;
     let Some(row) = row else {
         return Ok(Coverage::Unknown);

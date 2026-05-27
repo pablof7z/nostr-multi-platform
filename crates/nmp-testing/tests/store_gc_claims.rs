@@ -37,12 +37,14 @@ for_each_backend!(claim_over_budget_returns_error, |h: &mut StoreHarness| {
     h.store.register_view_cover(claimer, 2).unwrap();
 
     // Insert 3 events and try to claim all of them (exceeds budget of 2).
-    let ids: Vec<_> = (0..3).map(|i| {
-        let ev = h.make_event(ALICE_HEX, 1, i as u64 + 1_000);
-        let id = ev.id_bytes();
-        h.insert_raw(ev, "wss://t/", (i as u64 + 1) * 1_000_000);
-        id
-    }).collect();
+    let ids: Vec<_> = (0..3)
+        .map(|i| {
+            let ev = h.make_event(ALICE_HEX, 1, i as u64 + 1_000);
+            let id = ev.id_bytes();
+            h.insert_raw(ev, "wss://t/", (i as u64 + 1) * 1_000_000);
+            id
+        })
+        .collect();
 
     let err = h.store.claim(claimer, &ids);
     assert!(
@@ -68,10 +70,13 @@ for_each_backend!(gc_step_runs_without_error, |h: &mut StoreHarness| {
         h.insert_raw(ev, "wss://t/", (i + 1) * 1_000_000);
     }
 
-    let report = h.store.gc_step(GcBudget {
-        max_events_per_step: 50,
-        max_duration_ms: 500,
-    }).unwrap();
+    let report = h
+        .store
+        .gc_step(GcBudget {
+            max_events_per_step: 50,
+            max_duration_ms: 500,
+        })
+        .unwrap();
 
     // No events should be reaped (none are expired).
     assert_eq!(report.expired_reaped, 0);

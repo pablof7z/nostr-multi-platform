@@ -43,7 +43,7 @@
 //! convention as `update_relay_auth_status` in `auth_handlers.rs`.
 
 use super::super::closed_reason::{classify, CloseReason};
-use super::super::{Kernel, RelayRole, truncate};
+use super::super::{truncate, Kernel, RelayRole};
 use crate::subs::RelayAuthState;
 
 impl Kernel {
@@ -100,10 +100,9 @@ impl Kernel {
         sub_id: &str,
         raw: &str,
     ) {
-        let _paused = self.lifecycle.handle_auth_state_change(
-            relay_url.to_string(),
-            RelayAuthState::ChallengeReceived,
-        );
+        let _paused = self
+            .lifecycle
+            .handle_auth_state_change(relay_url.to_string(), RelayAuthState::ChallengeReceived);
         self.update_relay_auth_status(
             role,
             RelayAuthState::ChallengeReceived,
@@ -121,13 +120,7 @@ impl Kernel {
 
     /// `restricted:` / `blocked:` / `shadowbanned:` — mark the relay denied
     /// for this client; the reconnect/REQ machinery suppresses retries.
-    fn on_closed_denied(
-        &mut self,
-        role: RelayRole,
-        sub_id: &str,
-        class: CloseReason,
-        raw: &str,
-    ) {
+    fn on_closed_denied(&mut self, role: RelayRole, sub_id: &str, class: CloseReason, raw: &str) {
         let key = class.as_key();
         let category = class.error_category();
         let relay = self.relay_mut(role);
@@ -152,7 +145,9 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.last_close_reason = Some(CloseReason::RateLimited.as_key().to_string());
         relay.last_error = Some(format!("rate-limited: {}", truncate(raw, 140)));
-        relay.error_category = CloseReason::RateLimited.error_category().map(str::to_string);
+        relay.error_category = CloseReason::RateLimited
+            .error_category()
+            .map(str::to_string);
         self.changed_since_emit = true;
         self.log(format!(
             "CLOSED rate-limited from {} sub={sub_id}: {}",
@@ -164,13 +159,7 @@ impl Kernel {
     /// `error:` / `invalid:` / `unsupported:` / `pow:` / unknown — log and
     /// give up. The sub is already marked `closed_by_relay` by the calling
     /// arm; we just record the classification so the UI can show why.
-    fn on_closed_give_up(
-        &mut self,
-        role: RelayRole,
-        sub_id: &str,
-        class: CloseReason,
-        raw: &str,
-    ) {
+    fn on_closed_give_up(&mut self, role: RelayRole, sub_id: &str, class: CloseReason, raw: &str) {
         let key = class.as_key();
         let category = class.error_category();
         let relay = self.relay_mut(role);

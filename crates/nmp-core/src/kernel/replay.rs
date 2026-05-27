@@ -12,7 +12,7 @@
 //! plan's sub-shapes targeting this URL, with `since` bumped through the T129
 //! watermark resolver so we don't re-download already-stored events.
 
-use super::{json, Kernel, RelayRole, OutboundMessage, Value};
+use super::{json, Kernel, OutboundMessage, RelayRole, Value};
 use crate::subs::WireFrame;
 
 impl Kernel {
@@ -42,9 +42,7 @@ impl Kernel {
         role: RelayRole,
         relay_url: &str,
     ) -> Vec<OutboundMessage> {
-        let frames = self
-            .lifecycle
-            .handle_reconnect(relay_url.to_string());
+        let frames = self.lifecycle.handle_reconnect(relay_url.to_string());
         if frames.is_empty() {
             return Vec::new();
         }

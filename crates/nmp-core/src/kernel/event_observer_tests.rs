@@ -96,7 +96,12 @@ fn observer_receives_event_with_correct_fields() {
         VerifiedEvent::from_raw_unchecked(raw(&id, 1)),
     );
 
-    let captured = observer.last.lock().unwrap().clone().expect("observer fired");
+    let captured = observer
+        .last
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("observer fired");
     assert_eq!(captured.id, id);
     assert_eq!(captured.kind, 1);
     assert_eq!(captured.author, "a".repeat(64));

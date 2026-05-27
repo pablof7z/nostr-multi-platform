@@ -91,7 +91,6 @@ impl Kernel {
     pub(crate) fn recipient_dm_relays(&self, pubkey: &str) -> Option<Vec<String>> {
         self.dm_inbox_relays_arc().dm_inbox_relays(pubkey)
     }
-
 }
 
 // ─── Router-driven REQ-relay resolution (Debt A) ─────────────────────────────
@@ -321,10 +320,7 @@ impl Kernel {
     /// Empty input yields an empty map (caller emits nothing). The
     /// returned map keys are deterministic ([`BTreeMap`]) so plan-id
     /// stability is preserved (D8).
-    pub(crate) fn partition_ids_via_router(
-        &self,
-        ids: &[String],
-    ) -> BTreeMap<String, Vec<String>> {
+    pub(crate) fn partition_ids_via_router(&self, ids: &[String]) -> BTreeMap<String, Vec<String>> {
         let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let bootstrap_app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
         let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);

@@ -80,7 +80,9 @@ pub struct ProtocolCommandError {
 
 impl ProtocolCommandError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 
     #[must_use]
@@ -323,7 +325,14 @@ impl<'a> ProtocolCommandContext<'a> {
     /// builders from the dispatch arm.
     pub fn new(parts: ProtocolCommandContextParts<'a>) -> Self {
         let ProtocolCommandContextParts {
-            send, command_sender, clock, signers, dms, errors, stages, recipients,
+            send,
+            command_sender,
+            clock,
+            signers,
+            dms,
+            errors,
+            stages,
+            recipients,
         } = parts;
         Self {
             send,
@@ -507,8 +516,10 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn dm_inbox_relays(&self, recipient: &str) -> Option<Vec<String>> {
         let d = self.dms;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| d.dm_inbox_relays(recipient)))
-            .unwrap_or(None)
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            d.dm_inbox_relays(recipient)
+        }))
+        .unwrap_or(None)
     }
 
     /// D15-wrapped [`ErrorSurface::set_last_error_toast`].
@@ -555,9 +566,11 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
         let kernel = self.kernel.as_deref()?;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| kernel.lnurl_for_pubkey(pubkey)))
-            .ok()
-            .flatten()
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            kernel.lnurl_for_pubkey(pubkey)
+        }))
+        .ok()
+        .flatten()
     }
 }
 

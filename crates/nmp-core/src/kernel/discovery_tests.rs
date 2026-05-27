@@ -81,10 +81,7 @@ fn quoted_note_missing_id_is_discovered_and_resolvable_via_oneshot() {
 
     // A kind:1 note quoting an event we do not have, plus a p-tag mention of
     // an unknown pubkey. This is the ingest seam input (borrowed visitor).
-    let tags = vec![
-        tag(&["q", QUOTED_ID]),
-        tag(&["p", MENTIONED_PK]),
-    ];
+    let tags = vec![tag(&["q", QUOTED_ID]), tag(&["p", MENTIONED_PK])];
     kernel.collect_unknown_refs(&tags);
 
     // Drain → two oneshot interests registered (events + profiles arms). The
@@ -164,7 +161,10 @@ fn known_references_do_not_spawn_oneshots_d8_fast_path() {
     );
     kernel.collect_unknown_refs(&[tag(&["e", KNOWN_ID])]);
     let drained = kernel.drain_unknown_oneshots();
-    assert!(drained.is_empty(), "known id is not re-fetched (M1 path retired anyway)");
+    assert!(
+        drained.is_empty(),
+        "known id is not re-fetched (M1 path retired anyway)"
+    );
     assert_eq!(
         kernel.discovery_in_flight(),
         0,
@@ -333,7 +333,6 @@ fn many_unknown_ids_collapse_to_few_batch_reqs() {
     );
 }
 
-
 #[test]
 fn oneshot_kind_typed_routing_replaces_string_prefix_matching() {
     // T104 acceptance criterion: `is_discovery_oneshot` returns true only for
@@ -392,10 +391,7 @@ fn discovery_seam_emits_no_m1_oneshot_disc_outbound_req() {
 
     // Mix of unknown event-id + pubkey to exercise BOTH arms of
     // `drain_unknown_oneshots` (the two former call sites of `self.req(...)`).
-    kernel.collect_unknown_refs(&[
-        tag(&["q", QUOTED_ID]),
-        tag(&["p", MENTIONED_PK]),
-    ]);
+    kernel.collect_unknown_refs(&[tag(&["q", QUOTED_ID]), tag(&["p", MENTIONED_PK])]);
 
     // M1 emission paths: `drain_unknown_oneshots` and the
     // `pending_view_requests` pump that calls it.
@@ -415,7 +411,9 @@ fn discovery_seam_emits_no_m1_oneshot_disc_outbound_req() {
     // indicate a regression to the M1 `oneshot-disc-<token>` sub-id format.
     let leaked: Vec<&&str> = m1_outbound_texts
         .iter()
-        .filter(|t| t.contains("oneshot-disc-") || t.contains(QUOTED_ID) || t.contains(MENTIONED_PK))
+        .filter(|t| {
+            t.contains("oneshot-disc-") || t.contains(QUOTED_ID) || t.contains(MENTIONED_PK)
+        })
         .collect();
     assert!(
         leaked.is_empty(),

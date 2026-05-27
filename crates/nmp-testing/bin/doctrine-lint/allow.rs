@@ -32,7 +32,10 @@ pub fn line_allows(line: &str, rule: &str) -> bool {
         // Each comma-separated chunk's first whitespace-delimited token
         // is the rule id (everything after the first space is reason prose
         // when the human omits the dash).
-        r.split_whitespace().next().map(|t| t == rule).unwrap_or(false)
+        r.split_whitespace()
+            .next()
+            .map(|t| t == rule)
+            .unwrap_or(false)
     })
 }
 

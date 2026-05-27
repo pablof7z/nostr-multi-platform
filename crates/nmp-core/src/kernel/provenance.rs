@@ -223,10 +223,8 @@ mod tests {
         // Snapshot-side ratio computation (design doc §2 line 161 —
         // `novelty_ratio: Option<f32>` is derived at projection time,
         // not stored here):
-        let a_ratio =
-            a.novel as f32 / (a.novel.saturating_add(a.duplicate) as f32);
-        let b_ratio =
-            b.novel as f32 / (b.novel.saturating_add(b.duplicate) as f32);
+        let a_ratio = a.novel as f32 / (a.novel.saturating_add(a.duplicate) as f32);
+        let b_ratio = b.novel as f32 / (b.novel.saturating_add(b.duplicate) as f32);
         assert!((a_ratio - 1.0).abs() < f32::EPSILON, "no dups → 1.0");
         assert!((b_ratio - 1.0).abs() < f32::EPSILON, "no dups → 1.0");
         assert_eq!(p.url_count(), 2);
@@ -250,13 +248,15 @@ mod tests {
     fn saturating_counters_never_wrap() {
         // D8 invariant: counter widths are saturating, never wrap.
         let mut p = EventProvenance::new();
-        p.counters
-            .insert("wss://a.example".to_string(), RelayCounters {
+        p.counters.insert(
+            "wss://a.example".to_string(),
+            RelayCounters {
                 novel: u64::MAX,
                 duplicate: 0,
                 replaced: 0,
                 rejected: 0,
-            });
+            },
+        );
         p.record_first_source("evt-X", "wss://a.example");
         let a = p.counters_for("wss://a.example").expect("a counted");
         assert_eq!(a.novel, u64::MAX, "saturating_add holds at u64::MAX");

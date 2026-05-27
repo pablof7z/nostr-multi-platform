@@ -98,7 +98,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// record stage transitions (`Requested` → `Publishing` →
     /// `Accepted`/`Failed`) via `Kernel::record_action_stage`; doctrine-lint
     /// rule **D12** enforces this statically per file.
-    #[must_use] 
+    #[must_use]
     fn is_async_completing() -> bool {
         false
     }

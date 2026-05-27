@@ -49,8 +49,14 @@ pub(crate) struct BootstrapRelayEntry {
 }
 
 const RELAY_BOOTSTRAP_DEFAULTS: &[BootstrapRelayEntry] = &[
-    BootstrapRelayEntry { url: FALLBACK_CONTENT_RELAY, role: "both,indexer" },
-    BootstrapRelayEntry { url: FALLBACK_INDEXER_RELAY, role: "indexer" },
+    BootstrapRelayEntry {
+        url: FALLBACK_CONTENT_RELAY,
+        role: "both,indexer",
+    },
+    BootstrapRelayEntry {
+        url: FALLBACK_INDEXER_RELAY,
+        role: "indexer",
+    },
 ];
 
 /// Substrate-level default relay bootstrap set used when a host passes no
@@ -144,7 +150,11 @@ impl OutboundMessage {
     /// JSON string.
     #[must_use]
     pub fn new(role: RelayRole, relay_url: String, text: String) -> Self {
-        Self { role, relay_url, text }
+        Self {
+            role,
+            relay_url,
+            text,
+        }
     }
 
     /// Diagnostics lane the frame belongs to. Forwarded by the WASM driver
@@ -168,7 +178,6 @@ impl OutboundMessage {
         &self.text
     }
 }
-
 
 /// A relay URL that is guaranteed to be in canonical form.
 ///

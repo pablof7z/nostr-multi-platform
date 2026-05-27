@@ -78,10 +78,9 @@ fn lifecycle_auth_gate_keys_on_delivering_url_on_authenticated() {
     // Independently arm the bootstrap URL's pause via the lifecycle directly
     // (simulates an earlier challenge that arrived on the seed socket).
     let bootstrap = RelayRole::Content.url().to_string();
-    let _ = kernel.lifecycle.handle_auth_state_change(
-        bootstrap.clone(),
-        RelayAuthState::ChallengeReceived,
-    );
+    let _ = kernel
+        .lifecycle
+        .handle_auth_state_change(bootstrap.clone(), RelayAuthState::ChallengeReceived);
     assert!(kernel.lifecycle.is_auth_paused_for_url(&bootstrap));
 
     // Now URL_B authenticates. The lifecycle must un-pause URL_B and leave
@@ -119,7 +118,11 @@ fn lifecycle_auth_gate_keys_on_delivering_url_on_failed() {
     let _ = kernel.handle_text(
         RelayRole::Content,
         NON_BOOTSTRAP_URL,
-        &ok_frame(AUTH_EVENT_ID, false, "auth-required: signer not on allowlist"),
+        &ok_frame(
+            AUTH_EVENT_ID,
+            false,
+            "auth-required: signer not on allowlist",
+        ),
     );
 
     // URL_B is failed → still considered paused (fail-closed).
@@ -129,7 +132,9 @@ fn lifecycle_auth_gate_keys_on_delivering_url_on_failed() {
     );
     // Bootstrap is untouched.
     assert!(
-        !kernel.lifecycle.is_auth_paused_for_url(RelayRole::Content.url()),
+        !kernel
+            .lifecycle
+            .is_auth_paused_for_url(RelayRole::Content.url()),
         "bootstrap URL must be unaffected by URL_B's Failed transition"
     );
 }
@@ -142,12 +147,8 @@ fn closed_auth_required_pauses_delivering_url_not_bootstrap() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Synthesize a CLOSED frame with reason `auth-required: <text>`.
-    let closed_frame = serde_json::json!([
-        "CLOSED",
-        "test-sub",
-        "auth-required: signer required"
-    ])
-    .to_string();
+    let closed_frame =
+        serde_json::json!(["CLOSED", "test-sub", "auth-required: signer required"]).to_string();
     let _ = kernel.handle_text(RelayRole::Content, NON_BOOTSTRAP_URL, &closed_frame);
 
     assert!(
@@ -155,7 +156,9 @@ fn closed_auth_required_pauses_delivering_url_not_bootstrap() {
         "delivering URL must be paused after `auth-required:` CLOSED frame"
     );
     assert!(
-        !kernel.lifecycle.is_auth_paused_for_url(RelayRole::Content.url()),
+        !kernel
+            .lifecycle
+            .is_auth_paused_for_url(RelayRole::Content.url()),
         "bootstrap URL must not be falsely paused"
     );
 }

@@ -64,8 +64,7 @@ pub const ID: &str = "D15";
 /// crates have no equivalent registries.
 pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
-    let in_core =
-        s.contains("/crates/nmp-core/src/") || s.starts_with("crates/nmp-core/src/");
+    let in_core = s.contains("/crates/nmp-core/src/") || s.starts_with("crates/nmp-core/src/");
     if !in_core {
         return false;
     }
@@ -160,7 +159,9 @@ pub fn check(
     // string-aware matcher so a guard token inside a string literal does
     // NOT register a guard scope — same robustness as `count_parens_ignoring_strings`.
     let opened_guard_on_this_line = !is_comment
-        && GUARD_TOKENS.iter().any(|tok| contains_outside_strings(line, tok));
+        && GUARD_TOKENS
+            .iter()
+            .any(|tok| contains_outside_strings(line, tok));
     if opened_guard_on_this_line {
         // Record the depth BEFORE this line's opens are applied — that is
         // the baseline we return to when the guard's outermost `)` closes.
@@ -290,8 +291,7 @@ pub fn check(
 /// also runs its own `allow::line_allows` check; this local one keeps the
 /// rule self-contained for unit tests.
 fn allow_line(line: &str) -> bool {
-    line.contains("doctrine-allow: D15")
-        || line.contains("doctrine-allow:D15")
+    line.contains("doctrine-allow: D15") || line.contains("doctrine-allow:D15")
 }
 
 /// True iff `path` is the actor command drain site whose panics are

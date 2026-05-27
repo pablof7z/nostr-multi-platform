@@ -1,9 +1,9 @@
 //! Integration tests for NIP-19 (bech32 entities) and NIP-21 (`nostr:` URI scheme).
 
 use nmp_core::nip19::{
-    self, NaddrData, NeventData, Nip19Entity, Nip19Error, NprofileData,
-    decode_naddr, decode_nevent, decode_npub, decode_nprofile, decode_note, decode_nsec,
-    encode_naddr, encode_nevent, encode_npub, encode_nprofile, encode_note, encode_nsec,
+    self, decode_naddr, decode_nevent, decode_note, decode_nprofile, decode_npub, decode_nsec,
+    encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec, NaddrData,
+    NeventData, Nip19Entity, Nip19Error, NprofileData,
 };
 use nmp_core::nip21::{format_nostr_uri, parse_nostr_uri, Nip21Error, NostrUri};
 
@@ -89,7 +89,10 @@ fn note_rejects_wrong_hrp() {
 
 #[test]
 fn nprofile_no_relays_round_trip() {
-    let data = NprofileData { pubkey: FIATJAF_HEX.into(), relays: vec![] };
+    let data = NprofileData {
+        pubkey: FIATJAF_HEX.into(),
+        relays: vec![],
+    };
     let bech = encode_nprofile(&data).unwrap();
     assert!(bech.starts_with("nprofile1"));
     assert_eq!(decode_nprofile(&bech).unwrap(), data);
@@ -101,14 +104,21 @@ fn nprofile_with_relays_round_trip() {
         pubkey: FIATJAF_HEX.into(),
         relays: vec!["wss://relay.damus.io".into(), "wss://nos.lol".into()],
     };
-    assert_eq!(decode_nprofile(&encode_nprofile(&data).unwrap()).unwrap(), data);
+    assert_eq!(
+        decode_nprofile(&encode_nprofile(&data).unwrap()).unwrap(),
+        data
+    );
 }
 
 #[test]
 fn nprofile_relay_order_preserved() {
     let data = NprofileData {
         pubkey: ZERO_HEX.into(),
-        relays: vec!["wss://a.io".into(), "wss://b.io".into(), "wss://c.io".into()],
+        relays: vec![
+            "wss://a.io".into(),
+            "wss://b.io".into(),
+            "wss://c.io".into(),
+        ],
     };
     let decoded = decode_nprofile(&encode_nprofile(&data).unwrap()).unwrap();
     assert_eq!(decoded.relays, data.relays);
@@ -122,7 +132,10 @@ fn nprofile_rejects_garbage() {
 #[test]
 fn nprofile_unknown_tlv_ignored() {
     use bech32::Bech32m;
-    let data = NprofileData { pubkey: FIATJAF_HEX.into(), relays: vec![] };
+    let data = NprofileData {
+        pubkey: FIATJAF_HEX.into(),
+        relays: vec![],
+    };
     let bech = encode_nprofile(&data).unwrap();
     let (hrp, mut bytes) = bech32::decode(&bech).unwrap();
     bytes.extend_from_slice(&[99u8, 1u8, 42u8]); // unknown TLV type
@@ -173,12 +186,15 @@ fn nevent_kind_max_u32() {
 #[test]
 fn nevent_rejects_missing_event_id() {
     use bech32::{Bech32m, Hrp};
-    use nmp_core::nip19::{TLV_RELAY, tlv_append};
+    use nmp_core::nip19::{tlv_append, TLV_RELAY};
     let mut tlv = Vec::new();
     tlv_append(&mut tlv, TLV_RELAY, b"wss://relay.io");
     let hrp = Hrp::parse("nevent").unwrap();
     let bech = bech32::encode::<Bech32m>(hrp, &tlv).unwrap();
-    assert!(matches!(decode_nevent(&bech), Err(Nip19Error::MissingField(_))));
+    assert!(matches!(
+        decode_nevent(&bech),
+        Err(Nip19Error::MissingField(_))
+    ));
 }
 
 // ─── NIP-19: naddr ────────────────────────────────────────────────────────
@@ -204,7 +220,12 @@ fn naddr_empty_identifier() {
         kind: 1,
         relays: vec![],
     };
-    assert_eq!(decode_naddr(&encode_naddr(&data).unwrap()).unwrap().identifier, "");
+    assert_eq!(
+        decode_naddr(&encode_naddr(&data).unwrap())
+            .unwrap()
+            .identifier,
+        ""
+    );
 }
 
 #[test]
@@ -221,20 +242,26 @@ fn naddr_with_relays() {
 #[test]
 fn naddr_missing_author_is_error() {
     use bech32::{Bech32m, Hrp};
-    use nmp_core::nip19::{TLV_KIND, TLV_SPECIAL, tlv_append};
+    use nmp_core::nip19::{tlv_append, TLV_KIND, TLV_SPECIAL};
     let mut tlv = Vec::new();
     tlv_append(&mut tlv, TLV_SPECIAL, b"test-id");
     tlv_append(&mut tlv, TLV_KIND, &30023u32.to_be_bytes());
     let hrp = Hrp::parse("naddr").unwrap();
     let bech = bech32::encode::<Bech32m>(hrp, &tlv).unwrap();
-    assert!(matches!(decode_naddr(&bech), Err(Nip19Error::MissingField(_))));
+    assert!(matches!(
+        decode_naddr(&bech),
+        Err(Nip19Error::MissingField(_))
+    ));
 }
 
 // ─── NIP-19: polymorphic parse / format ───────────────────────────────────
 
 #[test]
 fn parse_dispatches_npub() {
-    assert!(matches!(nip19::parse(FIATJAF_NPUB).unwrap(), Nip19Entity::Npub(_)));
+    assert!(matches!(
+        nip19::parse(FIATJAF_NPUB).unwrap(),
+        Nip19Entity::Npub(_)
+    ));
 }
 
 #[test]
@@ -251,33 +278,61 @@ fn parse_dispatches_note() {
 
 #[test]
 fn parse_dispatches_nprofile() {
-    let data = NprofileData { pubkey: FIATJAF_HEX.into(), relays: vec![] };
+    let data = NprofileData {
+        pubkey: FIATJAF_HEX.into(),
+        relays: vec![],
+    };
     let bech = encode_nprofile(&data).unwrap();
-    assert!(matches!(nip19::parse(&bech).unwrap(), Nip19Entity::Nprofile(_)));
+    assert!(matches!(
+        nip19::parse(&bech).unwrap(),
+        Nip19Entity::Nprofile(_)
+    ));
 }
 
 #[test]
 fn parse_dispatches_nevent() {
-    let data = NeventData { event_id: FIATJAF_HEX.into(), relays: vec![], author: None, kind: None };
+    let data = NeventData {
+        event_id: FIATJAF_HEX.into(),
+        relays: vec![],
+        author: None,
+        kind: None,
+    };
     let bech = encode_nevent(&data).unwrap();
-    assert!(matches!(nip19::parse(&bech).unwrap(), Nip19Entity::Nevent(_)));
+    assert!(matches!(
+        nip19::parse(&bech).unwrap(),
+        Nip19Entity::Nevent(_)
+    ));
 }
 
 #[test]
 fn parse_dispatches_naddr() {
-    let data = NaddrData { identifier: "x".into(), pubkey: ZERO_HEX.into(), kind: 30023, relays: vec![] };
+    let data = NaddrData {
+        identifier: "x".into(),
+        pubkey: ZERO_HEX.into(),
+        kind: 30023,
+        relays: vec![],
+    };
     let bech = encode_naddr(&data).unwrap();
-    assert!(matches!(nip19::parse(&bech).unwrap(), Nip19Entity::Naddr(_)));
+    assert!(matches!(
+        nip19::parse(&bech).unwrap(),
+        Nip19Entity::Naddr(_)
+    ));
 }
 
 #[test]
 fn parse_unknown_hrp_is_error() {
-    assert!(matches!(nip19::parse("nrelay1qq28qqqqg"), Err(Nip19Error::UnknownHrp(_))));
+    assert!(matches!(
+        nip19::parse("nrelay1qq28qqqqg"),
+        Err(Nip19Error::UnknownHrp(_))
+    ));
 }
 
 #[test]
 fn format_inverts_parse() {
-    let data = NprofileData { pubkey: FIATJAF_HEX.into(), relays: vec!["wss://relay.io".into()] };
+    let data = NprofileData {
+        pubkey: FIATJAF_HEX.into(),
+        relays: vec!["wss://relay.io".into()],
+    };
     let bech = encode_nprofile(&data).unwrap();
     let entity = nip19::parse(&bech).unwrap();
     assert_eq!(nip19::format(&entity).unwrap(), bech);
@@ -287,7 +342,10 @@ fn format_inverts_parse() {
 
 #[test]
 fn nip21_rejects_missing_scheme() {
-    assert_eq!(parse_nostr_uri(FIATJAF_NPUB), Err(Nip21Error::MissingScheme));
+    assert_eq!(
+        parse_nostr_uri(FIATJAF_NPUB),
+        Err(Nip21Error::MissingScheme)
+    );
 }
 
 #[test]
@@ -323,7 +381,10 @@ fn nip21_npub_uri_round_trip() {
 
 #[test]
 fn nip21_parses_nprofile_uri() {
-    let data = NprofileData { pubkey: FIATJAF_HEX.into(), relays: vec!["wss://relay.damus.io".into()] };
+    let data = NprofileData {
+        pubkey: FIATJAF_HEX.into(),
+        relays: vec!["wss://relay.damus.io".into()],
+    };
     let uri = format!("nostr:{}", encode_nprofile(&data).unwrap());
     let NostrUri::Profile { pubkey, relays } = parse_nostr_uri(&uri).unwrap() else {
         panic!("expected Profile");
@@ -335,7 +396,13 @@ fn nip21_parses_nprofile_uri() {
 #[test]
 fn nip21_parses_note_uri() {
     let uri = format!("nostr:{}", encode_note(ZERO_HEX).unwrap());
-    let NostrUri::Event { event_id, relays, author, kind } = parse_nostr_uri(&uri).unwrap() else {
+    let NostrUri::Event {
+        event_id,
+        relays,
+        author,
+        kind,
+    } = parse_nostr_uri(&uri).unwrap()
+    else {
         panic!("expected Event");
     };
     assert_eq!(event_id, ZERO_HEX);
@@ -358,7 +425,13 @@ fn nip21_parses_nevent_uri() {
         kind: Some(1),
     };
     let uri = format!("nostr:{}", encode_nevent(&data).unwrap());
-    let NostrUri::Event { event_id, relays, author, kind } = parse_nostr_uri(&uri).unwrap() else {
+    let NostrUri::Event {
+        event_id,
+        relays,
+        author,
+        kind,
+    } = parse_nostr_uri(&uri).unwrap()
+    else {
         panic!("expected Event");
     };
     assert_eq!(event_id, FIATJAF_HEX);
@@ -376,7 +449,13 @@ fn nip21_parses_naddr_uri() {
         relays: vec![],
     };
     let uri = format!("nostr:{}", encode_naddr(&data).unwrap());
-    let NostrUri::Address { identifier, pubkey, kind, .. } = parse_nostr_uri(&uri).unwrap() else {
+    let NostrUri::Address {
+        identifier,
+        pubkey,
+        kind,
+        ..
+    } = parse_nostr_uri(&uri).unwrap()
+    else {
         panic!("expected Address");
     };
     assert_eq!(identifier, "hello-world");
@@ -403,7 +482,10 @@ fn nip21_naddr_uri_round_trip() {
 #[test]
 fn nip21_spec_npub_example() {
     let uri = "nostr:npub1sn0wdenkukak0d9dfczzeacvhkrgz92ak56egt7vdgzn8pv2wfqqhrjdv9";
-    assert!(matches!(parse_nostr_uri(uri).unwrap(), NostrUri::Profile { .. }));
+    assert!(matches!(
+        parse_nostr_uri(uri).unwrap(),
+        NostrUri::Profile { .. }
+    ));
 }
 
 #[test]
@@ -419,8 +501,13 @@ fn nip21_spec_nprofile_example() {
 
 #[test]
 fn format_profile_no_relays_uses_npub() {
-    let target = NostrUri::Profile { pubkey: FIATJAF_HEX.into(), relays: vec![] };
-    assert!(format_nostr_uri(&target).unwrap().starts_with("nostr:npub1"));
+    let target = NostrUri::Profile {
+        pubkey: FIATJAF_HEX.into(),
+        relays: vec![],
+    };
+    assert!(format_nostr_uri(&target)
+        .unwrap()
+        .starts_with("nostr:npub1"));
 }
 
 #[test]
@@ -429,13 +516,22 @@ fn format_profile_with_relays_uses_nprofile() {
         pubkey: FIATJAF_HEX.into(),
         relays: vec!["wss://relay.io".into()],
     };
-    assert!(format_nostr_uri(&target).unwrap().starts_with("nostr:nprofile1"));
+    assert!(format_nostr_uri(&target)
+        .unwrap()
+        .starts_with("nostr:nprofile1"));
 }
 
 #[test]
 fn format_event_no_extras_uses_note() {
-    let target = NostrUri::Event { event_id: ZERO_HEX.into(), relays: vec![], author: None, kind: None };
-    assert!(format_nostr_uri(&target).unwrap().starts_with("nostr:note1"));
+    let target = NostrUri::Event {
+        event_id: ZERO_HEX.into(),
+        relays: vec![],
+        author: None,
+        kind: None,
+    };
+    assert!(format_nostr_uri(&target)
+        .unwrap()
+        .starts_with("nostr:note1"));
 }
 
 #[test]
@@ -446,5 +542,7 @@ fn format_event_with_relay_uses_nevent() {
         author: None,
         kind: None,
     };
-    assert!(format_nostr_uri(&target).unwrap().starts_with("nostr:nevent1"));
+    assert!(format_nostr_uri(&target)
+        .unwrap()
+        .starts_with("nostr:nevent1"));
 }

@@ -1,6 +1,6 @@
 //! Kind:0 (profile metadata) ingest.
 
-use super::super::{Kernel, NostrEvent, parse_profile};
+use super::super::{parse_profile, Kernel, NostrEvent};
 
 impl Kernel {
     /// Ingest a kind:0 profile metadata event into the local read-cache.

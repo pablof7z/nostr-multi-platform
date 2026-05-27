@@ -54,9 +54,7 @@ pub(super) fn split_ok_message(msg: &str) -> (String, String) {
 ///   resolve by re-issuing the publish.
 /// - `UnsupportedAction` → `permanent` — a wiring bug (the engine was handed
 ///   an action it does not service); retrying cannot fix a code-level miswire.
-pub(super) fn describe_engine_error(
-    err: &PublishEngineError,
-) -> (String, String, &'static str) {
+pub(super) fn describe_engine_error(err: &PublishEngineError) -> (String, String, &'static str) {
     match err {
         PublishEngineError::NoTargets => (
             "active account has no write-relays declared — add a relay in \
@@ -109,10 +107,7 @@ mod tests {
             split_ok_message("auth-required: please AUTH"),
             ("auth-required".to_string(), "please AUTH".to_string())
         );
-        assert_eq!(
-            split_ok_message(""),
-            ("error".to_string(), String::new())
-        );
+        assert_eq!(split_ok_message(""), ("error".to_string(), String::new()));
         assert_eq!(
             split_ok_message("just a notice"),
             ("error".to_string(), "just a notice".to_string())
@@ -121,8 +116,7 @@ mod tests {
 
     #[test]
     fn describe_engine_error_covers_every_variant() {
-        let (toast_nt, status_nt, cat_nt) =
-            describe_engine_error(&PublishEngineError::NoTargets);
+        let (toast_nt, status_nt, cat_nt) = describe_engine_error(&PublishEngineError::NoTargets);
         assert!(toast_nt.contains("write-relays"));
         assert_eq!(status_nt, "pending_relays_unknown");
         assert_eq!(cat_nt, ERR_PERMANENT);
@@ -133,10 +127,9 @@ mod tests {
         assert_eq!(status_dup, "duplicate");
         assert_eq!(cat_dup, ERR_TRANSIENT);
 
-        let (toast_store, status_store, cat_store) =
-            describe_engine_error(&PublishEngineError::Store(PublishStoreError::Backend(
-                "oom".into(),
-            )));
+        let (toast_store, status_store, cat_store) = describe_engine_error(
+            &PublishEngineError::Store(PublishStoreError::Backend("oom".into())),
+        );
         assert!(toast_store.contains("store error"));
         assert_eq!(status_store, "store_error");
         assert_eq!(cat_store, ERR_PERMANENT);

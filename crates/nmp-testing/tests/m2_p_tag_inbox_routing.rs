@@ -11,19 +11,17 @@
 //! Doctrine: D3 (outbox routing automatic).
 
 use nmp_core::planner::{
-    InMemoryMailboxCache,
-    InterestId,
-    InterestLifecycle,
-    InterestScope,
-    InterestShape,
-    LogicalInterest,
-    MailboxSnapshot,
-    SubscriptionCompiler,
+    InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+    LogicalInterest, MailboxSnapshot, SubscriptionCompiler,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 fn pubkey(seed: &str) -> String {
-    format!("{seed:0>64}").chars().take(64).collect::<String>().to_lowercase()
+    format!("{seed:0>64}")
+        .chars()
+        .take(64)
+        .collect::<String>()
+        .to_lowercase()
 }
 
 fn relay(url: &str) -> String {
@@ -147,7 +145,11 @@ fn inbox_split_preserves_original_authors() {
     let plan = compiler.compile(&[interest]).expect("compile");
 
     let bob_inbox = &plan.per_relay["wss://bob-read.example"];
-    assert_eq!(bob_inbox.sub_shapes.len(), 1, "one inbox sub-shape on Bob's read");
+    assert_eq!(
+        bob_inbox.sub_shapes.len(),
+        1,
+        "one inbox sub-shape on Bob's read"
+    );
     let inbox_shape = &bob_inbox.sub_shapes[0].shape;
     assert!(
         inbox_shape.authors.contains(&alice),
@@ -345,7 +347,10 @@ fn multi_p_tag_scopes_filter_per_tagged_pubkey() {
     let compiler = SubscriptionCompiler::new(&cache, &indexer);
 
     let mut tags: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    tags.insert("p".to_string(), [bob.clone(), carol.clone()].into_iter().collect());
+    tags.insert(
+        "p".to_string(),
+        [bob.clone(), carol.clone()].into_iter().collect(),
+    );
 
     let interest = LogicalInterest {
         id: interest_id(6),
@@ -362,13 +367,19 @@ fn multi_p_tag_scopes_filter_per_tagged_pubkey() {
     let plan = compiler.compile(&[interest]).expect("compile");
 
     // Bob's relay must appear with #p scoped to {Bob} only.
-    let bob_inbox = plan.per_relay.get("wss://bob-read.example")
+    let bob_inbox = plan
+        .per_relay
+        .get("wss://bob-read.example")
         .expect("Bob's read relay must appear");
     assert_eq!(bob_inbox.sub_shapes.len(), 1, "one sub-shape on Bob's read");
-    let bob_p = bob_inbox.sub_shapes[0].shape.tags.get("p")
+    let bob_p = bob_inbox.sub_shapes[0]
+        .shape
+        .tags
+        .get("p")
         .expect("Bob's relay sub-shape must have a #p filter");
     assert_eq!(
-        bob_p.len(), 1,
+        bob_p.len(),
+        1,
         "Bob's relay #p must be scoped to exactly one pubkey (the relay's owner)"
     );
     assert!(
@@ -382,7 +393,8 @@ fn multi_p_tag_scopes_filter_per_tagged_pubkey() {
 
     // Total relay count: only Bob's relay (Carol's unknown inbox fails closed).
     assert_eq!(
-        plan.per_relay.len(), 1,
+        plan.per_relay.len(),
+        1,
         "only Bob's relay should appear; Carol's unknown inbox fails closed"
     );
     assert!(

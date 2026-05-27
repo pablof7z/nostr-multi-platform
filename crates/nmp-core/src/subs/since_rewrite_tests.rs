@@ -188,7 +188,10 @@ fn ephemeral_kinds_skip_since_rewrite() {
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
 
-    assert!(!filters.is_empty(), "expected at least one REQ for ephemeral");
+    assert!(
+        !filters.is_empty(),
+        "expected at least one REQ for ephemeral"
+    );
     for filter in &filters {
         assert!(
             !filter.contains("\"since\""),
@@ -215,7 +218,11 @@ fn multi_relay_emits_identical_rewritten_since() {
     let filters = req_filters(&frames);
     let relays = relays_with_req(&frames);
 
-    assert_eq!(relays.len(), 3, "expected REQs to all 3 author write relays");
+    assert_eq!(
+        relays.len(),
+        3,
+        "expected REQs to all 3 author write relays"
+    );
     assert_eq!(
         filters.len(),
         3,

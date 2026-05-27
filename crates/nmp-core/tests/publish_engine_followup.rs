@@ -140,7 +140,8 @@ fn publish_pending_retries_durable_across_restart() {
                 event: signed("ev-backoff", "alice", 1, &[]),
                 target: PublishTarget::Auto,
             },
-            0, None,
+            0,
+            None,
         )
         .unwrap();
         // After the transient failure, the row is in RelayError and a
@@ -239,7 +240,8 @@ fn publish_partial_success_one_relay_rejected_others_accepted() {
                 event: signed("ev-mixed", "alice", 1, &[]),
                 target: PublishTarget::Auto,
             },
-            1_000, None,
+            1_000,
+            None,
         )
         .unwrap();
 
@@ -339,7 +341,8 @@ fn publish_all_relays_accepted_marks_publish_complete() {
             event: signed("ev-all-ok", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        1_000, None,
+        1_000,
+        None,
     )
     .unwrap();
 
@@ -402,7 +405,8 @@ fn publish_per_relay_states_tracked_independently_across_fanout() {
             event: signed("ev-indep", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        1_000, None,
+        1_000,
+        None,
     )
     .unwrap();
 
@@ -413,10 +417,7 @@ fn publish_per_relay_states_tracked_independently_across_fanout() {
 
     // wss://done settled Ok — independent of the other two.
     assert!(
-        matches!(
-            per_relay.get("wss://done"),
-            Some(PerRelayState::Ok { .. })
-        ),
+        matches!(per_relay.get("wss://done"), Some(PerRelayState::Ok { .. })),
         "wss://done settled Ok independently: {:?}",
         per_relay.get("wss://done")
     );

@@ -15,7 +15,9 @@
 //! wiring that glues the actor to the lifecycle.
 
 use super::*;
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::{CompileTrigger, InvalidateReason, WireFrame};
 use std::collections::BTreeSet;

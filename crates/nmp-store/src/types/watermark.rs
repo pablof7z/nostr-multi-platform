@@ -16,7 +16,7 @@ pub struct WatermarkKey {
 #[derive(Clone, Debug)]
 pub struct WatermarkRow {
     pub key: WatermarkKey,
-    pub synced_up_to: u64,    // unix seconds
+    pub synced_up_to: u64, // unix seconds
     pub last_sync_method: SyncMethod,
     /// Engine-opaque resume blob (M4).
     pub last_negentropy_state: Option<Vec<u8>>,

@@ -3,7 +3,10 @@
 //! Covers event storage, deduplication, timeline ordering, thread hydration
 //! queue management, and the seed-timeline open gate.
 
-use super::super::{Kernel, RelayRole, NostrEvent, StoredEvent, Instant, event_references, referenced_event_ids, OutboundMessage};
+use super::super::{
+    event_references, referenced_event_ids, Instant, Kernel, NostrEvent, OutboundMessage,
+    RelayRole, StoredEvent,
+};
 use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {

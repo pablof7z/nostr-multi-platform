@@ -36,7 +36,9 @@ fn follow(id: u64, author: &str) -> LogicalInterest {
 fn probe_reqs(frames: &[WireFrame]) -> Vec<&WireFrame> {
     frames
         .iter()
-        .filter(|f| matches!(f, WireFrame::Req { sub_id, .. } if sub_id.starts_with("mailbox-probe-")))
+        .filter(
+            |f| matches!(f, WireFrame::Req { sub_id, .. } if sub_id.starts_with("mailbox-probe-")),
+        )
         .collect()
 }
 
@@ -204,11 +206,7 @@ fn current_plan_frames_materialises_full_content_plan() {
 
     // Expected: exactly one REQ per (relay, sub_shape) in current_plan.
     let plan = l.current_plan.as_ref().expect("plan present");
-    let expected: usize = plan
-        .per_relay
-        .values()
-        .map(|rp| rp.sub_shapes.len())
-        .sum();
+    let expected: usize = plan.per_relay.values().map(|rp| rp.sub_shapes.len()).sum();
     assert_eq!(
         frames.len(),
         expected,

@@ -49,7 +49,7 @@
 //! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
 
 use super::super::mailboxes::BootstrapSeed;
-use super::super::{json, Kernel, OutboundMessage, ViewInterest, short_hex, truncate, RelayRole};
+use super::super::{json, short_hex, truncate, Kernel, OutboundMessage, RelayRole, ViewInterest};
 use crate::stable_hash::stable_hash64;
 
 /// Stable 8-hex-char suffix for a relay URL — used to disambiguate fan-out
@@ -316,8 +316,7 @@ impl Kernel {
         // discovery seed via the substrate `app_relays` lane 7.
         let relays: Vec<String> = match self.active_account.clone() {
             Some(active) => {
-                let interest_id =
-                    stable_hash64(("diag-firehose", tag.as_str(), seq));
+                let interest_id = stable_hash64(("diag-firehose", tag.as_str(), seq));
                 self.route_subscription_relays(
                     interest_id,
                     &[active.as_str()],
@@ -507,8 +506,11 @@ impl Kernel {
         // the trace projection records the per-kind decision. We emit a
         // paired set of REQs per resolved URL so the per-seed sub-id
         // format is preserved.
-        let discovery_urls: std::collections::BTreeSet<String> =
-            relays_discovery.iter().chain(profile_discovery.iter()).cloned().collect();
+        let discovery_urls: std::collections::BTreeSet<String> = relays_discovery
+            .iter()
+            .chain(profile_discovery.iter())
+            .cloned()
+            .collect();
         for seed in &discovery_urls {
             let tag = relay_tag(seed);
             requests.push(self.req_for_relay(

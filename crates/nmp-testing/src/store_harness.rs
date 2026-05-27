@@ -6,9 +6,7 @@
 //!
 //! See `docs/design/lmdb/tests.md` §1 for the harness specification.
 
-use nmp_core::store::{
-    EventId, EventStore, InsertOutcome, MemEventStore, RawEvent, VerifiedEvent,
-};
+use nmp_core::store::{EventId, EventStore, InsertOutcome, MemEventStore, RawEvent, VerifiedEvent};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ─── Known test keys ─────────────────────────────────────────────────────────
@@ -28,7 +26,7 @@ pub const BOB_PUBKEY: [u8; 32] = {
 };
 
 pub const ALICE_HEX: &str = "0100000000000000000000000000000000000000000000000000000000000000";
-pub const BOB_HEX: &str   = "0200000000000000000000000000000000000000000000000000000000000000";
+pub const BOB_HEX: &str = "0200000000000000000000000000000000000000000000000000000000000000";
 
 // ─── StoreHarness ────────────────────────────────────────────────────────────
 
@@ -63,12 +61,8 @@ impl StoreHarness {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!(
-            "nmp-test-{}-{}-{}",
-            std::process::id(),
-            seq,
-            nanos
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("nmp-test-{}-{}-{}", std::process::id(), seq, nanos));
         std::fs::create_dir_all(&tmp).expect("create lmdb temp dir");
         Self {
             store: Box::new(LmdbEventStore::open(&tmp).expect("open lmdb store")),
@@ -135,14 +129,10 @@ impl StoreHarness {
     ///
     /// Uses `VerifiedEvent::from_raw_unchecked` because test events carry
     /// synthetic placeholder signatures.
-    pub fn insert_raw(
-        &self,
-        event: RawEvent,
-        source: &str,
-        received_at_ms: u64,
-    ) -> InsertOutcome {
+    pub fn insert_raw(&self, event: RawEvent, source: &str, received_at_ms: u64) -> InsertOutcome {
         let verified = VerifiedEvent::from_raw_unchecked(event);
-        self.store.insert(verified, &source.to_string(), received_at_ms)
+        self.store
+            .insert(verified, &source.to_string(), received_at_ms)
             .expect("insert should not error")
     }
 
@@ -163,7 +153,10 @@ impl StoreHarness {
     /// Assert an event is present in primary storage.
     pub fn assert_present(&self, id: &EventId) {
         assert!(
-            self.store.get_by_id(id).expect("get_by_id should not error").is_some(),
+            self.store
+                .get_by_id(id)
+                .expect("get_by_id should not error")
+                .is_some(),
             "expected event {:?} to be present",
             id
         );
@@ -172,7 +165,10 @@ impl StoreHarness {
     /// Assert an event is absent from primary storage (tombstoned or never inserted).
     pub fn assert_absent(&self, id: &EventId) {
         assert!(
-            self.store.get_by_id(id).expect("get_by_id should not error").is_none(),
+            self.store
+                .get_by_id(id)
+                .expect("get_by_id should not error")
+                .is_none(),
             "expected event {:?} to be absent",
             id
         );
@@ -180,19 +176,26 @@ impl StoreHarness {
 
     /// Assert a tombstone row exists for this event id.
     pub fn assert_tombstoned(&self, id: &EventId) {
-        let rows = self.store.tombstones_for(id).expect("tombstones_for should not error");
+        let rows = self
+            .store
+            .tombstones_for(id)
+            .expect("tombstones_for should not error");
         assert!(!rows.is_empty(), "expected tombstone for {:?}", id);
     }
 
     /// Assert invariants that must hold after every test (§4 of tests.md).
     pub fn assert_invariants(&self) {
         // 1. Every event in the primary store has at least one provenance entry.
-        let events_iter = self.store.scan_by_kind_time(&[], None, None, usize::MAX)
+        let events_iter = self
+            .store
+            .scan_by_kind_time(&[], None, None, usize::MAX)
             .expect("scan_by_kind_time should not error");
         for ev_result in events_iter {
             let ev = ev_result.expect("event iteration should not error");
             let id = ev.raw.id_bytes();
-            let prov = self.store.provenance_for(&id)
+            let prov = self
+                .store
+                .provenance_for(&id)
                 .expect("provenance_for should not error");
             assert!(
                 !prov.is_empty(),
@@ -202,11 +205,15 @@ impl StoreHarness {
         }
 
         // 3. Every tombstone's target_id does NOT exist in the primary store.
-        let tombs = self.store.list_tombstones()
+        let tombs = self
+            .store
+            .list_tombstones()
             .expect("list_tombstones should not error");
         for tomb_result in tombs {
             let tomb = tomb_result.expect("tombstone iteration should not error");
-            let present = self.store.get_by_id(&tomb.target_id)
+            let present = self
+                .store
+                .get_by_id(&tomb.target_id)
                 .expect("get_by_id should not error");
             assert!(
                 present.is_none(),
@@ -220,9 +227,13 @@ impl StoreHarness {
 /// Helper to convert a hex event id to bytes.
 pub fn hex_to_id(hex: &str) -> EventId {
     let mut out = [0u8; 32];
-    if hex.len() != 64 { return out; }
+    if hex.len() != 64 {
+        return out;
+    }
     for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
-        if i >= 32 { break; }
+        if i >= 32 {
+            break;
+        }
         if let (Some(&hi), Some(&lo)) = (chunk.first(), chunk.get(1)) {
             out[i] = (nibble(hi) << 4) | nibble(lo);
         }

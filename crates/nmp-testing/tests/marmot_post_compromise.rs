@@ -55,19 +55,19 @@ fn post_compromise_attacker_epoch_n_cannot_decrypt_epoch_n_plus_1() {
     let bob = harness::service_at(&bob_db, bob_keys.clone());
 
     // ── Epoch N: establish Alice + Bob group ──────────────────────────────────
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys,
-        &bob, &bob_keys,
-        "post-compromise",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "post-compromise");
 
     // Verify both can exchange messages at epoch N (sanity).
-    let epoch_n_rumor = EventBuilder::new(Kind::TextNote, "epoch-n-msg")
-        .build(alice_keys.public_key());
+    let epoch_n_rumor =
+        EventBuilder::new(Kind::TextNote, "epoch-n-msg").build(alice_keys.public_key());
     let epoch_n_event = alice
         .create_message(&group_id, epoch_n_rumor)
         .expect("alice create epoch-N message");
-    match bob.process_message(&epoch_n_event).expect("bob process epoch-N msg") {
+    match bob
+        .process_message(&epoch_n_event)
+        .expect("bob process epoch-N msg")
+    {
         MessageProcessingResult::ApplicationMessage(m) => {
             assert_eq!(m.content, "epoch-n-msg");
         }
@@ -104,8 +104,8 @@ fn post_compromise_attacker_epoch_n_cannot_decrypt_epoch_n_plus_1() {
     }
 
     // ── Epoch N+1: Alice sends a message ─────────────────────────────────────
-    let epoch_n1_rumor = EventBuilder::new(Kind::TextNote, "epoch-n+1-secret")
-        .build(alice_keys.public_key());
+    let epoch_n1_rumor =
+        EventBuilder::new(Kind::TextNote, "epoch-n+1-secret").build(alice_keys.public_key());
     let epoch_n1_event = alice
         .create_message(&group_id, epoch_n1_rumor)
         .expect("alice create epoch-N+1 message");
@@ -116,7 +116,10 @@ fn post_compromise_attacker_epoch_n_cannot_decrypt_epoch_n_plus_1() {
         .expect("real Bob process epoch-N+1")
     {
         MessageProcessingResult::ApplicationMessage(m) => {
-            assert_eq!(m.content, "epoch-n+1-secret", "Bob must decrypt at epoch N+1");
+            assert_eq!(
+                m.content, "epoch-n+1-secret",
+                "Bob must decrypt at epoch N+1"
+            );
         }
         other => panic!("real Bob: expected ApplicationMessage at N+1, got {other:?}"),
     }

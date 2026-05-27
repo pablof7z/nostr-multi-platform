@@ -194,7 +194,7 @@ impl RelayEditRow {
 /// This is the canonical relay-role filter for any Rust host/app module that
 /// needs the user's configured inbox/read relay set. Keeping it here avoids
 /// platform shells re-parsing `RelayEditRow.role` tokens.
-#[must_use] 
+#[must_use]
 pub fn read_eligible_relay_urls(rows: &[RelayEditRow]) -> Vec<String> {
     rows.iter()
         .filter(|r| crate::actor::has_role(&r.role, "read"))
@@ -360,12 +360,10 @@ impl super::Kernel {
         // events-oneshot arm (Case D, `OneShot + Global + event_ids`) and the
         // profile-oneshot arm (Case A, `OneShot + Global + authors` with no
         // NIP-65 mailbox).
-        let bootstrap_content_urls = self
-            .bootstrap_urls_for_role(crate::relay::RelayRole::Content);
+        let bootstrap_content_urls = self.bootstrap_urls_for_role(crate::relay::RelayRole::Content);
         self.lifecycle
             .set_bootstrap_content_relays(bootstrap_content_urls);
-        let bootstrap_indexer_urls = self
-            .bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let bootstrap_indexer_urls = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
         self.lifecycle
             .set_bootstrap_indexer_relays(bootstrap_indexer_urls);
         let write_urls = rows
@@ -420,9 +418,7 @@ impl super::Kernel {
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
         &self.relay_edit_rows
     }
-
 }
-
 
 #[cfg(test)]
 #[path = "identity_state/tests.rs"]

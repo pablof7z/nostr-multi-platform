@@ -63,7 +63,10 @@ fn same_url_two_roles_yields_one_control() {
     );
 
     assert!(spawned_a, "first call must spawn");
-    assert!(!spawned_b, "second call MUST short-circuit on canonical URL match");
+    assert!(
+        !spawned_b,
+        "second call MUST short-circuit on canonical URL match"
+    );
     assert_eq!(
         relay_controls.len(),
         1,
@@ -163,7 +166,9 @@ fn t_remove_relay_shuts_down_worker() {
             Ok(s) => s,
             Err(_) => return,
         };
-        stream.set_read_timeout(Some(Duration::from_millis(50))).ok();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .ok();
         let mut socket = match tungstenite::accept(stream) {
             Ok(s) => s,
             Err(_) => return,
@@ -199,8 +204,15 @@ fn t_remove_relay_shuts_down_worker() {
         RelayRole::Content,
         relay_url.clone(),
     );
-    assert!(spawned, "first ensure_relay_worker call must spawn a worker");
-    assert_eq!(relay_controls.len(), 1, "pool must have exactly one entry after add");
+    assert!(
+        spawned,
+        "first ensure_relay_worker call must spawn a worker"
+    );
+    assert_eq!(
+        relay_controls.len(),
+        1,
+        "pool must have exactly one entry after add"
+    );
 
     // Wait for the Opened event (PoolEvent variant for "socket dial completed").
     let mut got_opened = false;
@@ -222,9 +234,11 @@ fn t_remove_relay_shuts_down_worker() {
     );
 
     // Step 2: shutdown — closes the pool slot and drops the control row.
-    let removed =
-        shutdown_relay_worker(&mut relay_controls, &mut slot_to_url, &pool, &relay_url);
-    assert!(removed, "T162: shutdown_relay_worker must return true for a known URL");
+    let removed = shutdown_relay_worker(&mut relay_controls, &mut slot_to_url, &pool, &relay_url);
+    assert!(
+        removed,
+        "T162: shutdown_relay_worker must return true for a known URL"
+    );
     assert!(
         !relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(&relay_url)),
         "T162: relay_controls must NOT contain the URL after RemoveRelay shutdown"
@@ -284,7 +298,9 @@ fn t158_ensure_relay_worker_dials_and_emits_connected() {
             Ok(s) => s,
             Err(_) => return,
         };
-        stream.set_read_timeout(Some(Duration::from_millis(50))).ok();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .ok();
         let mut socket = match tungstenite::accept(stream) {
             Ok(s) => s,
             Err(_) => return,
@@ -319,7 +335,10 @@ fn t158_ensure_relay_worker_dials_and_emits_connected() {
         RelayRole::Content,
         relay_url.clone(),
     );
-    assert!(spawned, "first ensure_relay_worker call must spawn a worker");
+    assert!(
+        spawned,
+        "first ensure_relay_worker call must spawn a worker"
+    );
     assert_eq!(relay_controls.len(), 1, "pool must have exactly one entry");
 
     // Wait for the Opened event — proves the socket actually dialled.
@@ -385,7 +404,9 @@ fn t_normalize_send_outbound_non_canonical_url_routes_not_deferred() {
             Ok(s) => s,
             Err(_) => return,
         };
-        stream.set_read_timeout(Some(Duration::from_millis(100))).ok();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .ok();
         let mut socket = match tungstenite::accept(stream) {
             Ok(s) => s,
             Err(_) => return,

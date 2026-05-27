@@ -51,7 +51,10 @@ fn t_canonicalize_path_distinctness() {
     // A relay with a real path is distinct from the no-path form.
     let with_path = canonical_relay_url("wss://r.ex/nostr");
     let no_path = canonical_relay_url("wss://r.ex");
-    assert_ne!(with_path, no_path, "wss://r.ex/nostr must be distinct from wss://r.ex");
+    assert_ne!(
+        with_path, no_path,
+        "wss://r.ex/nostr must be distinct from wss://r.ex"
+    );
 }
 
 #[test]
@@ -101,7 +104,11 @@ fn t_canonicalize_reject_https() {
 
 #[test]
 fn t_canonicalize_reject_empty() {
-    assert_eq!(canonical_relay_url(""), None, "empty string must be rejected");
+    assert_eq!(
+        canonical_relay_url(""),
+        None,
+        "empty string must be rejected"
+    );
 }
 
 #[test]
@@ -153,7 +160,11 @@ fn t_newtype_equal_spellings_collapse_to_one_key() {
         u.hash(&mut h);
         h.finish()
     };
-    assert_eq!(hash(&a), hash(&b), "equal values must hash equal (HashMap key)");
+    assert_eq!(
+        hash(&a),
+        hash(&b),
+        "equal values must hash equal (HashMap key)"
+    );
 }
 
 #[test]
@@ -164,7 +175,10 @@ fn t_newtype_parse_or_raw_fails_open_for_bad_input() {
     let raw = CanonicalRelayUrl::parse_or_raw("not-a-url");
     assert_eq!(raw.as_str(), "not-a-url");
     let same = CanonicalRelayUrl::parse_or_raw("not-a-url");
-    assert_eq!(raw, same, "fail-open keys for the same raw input must match");
+    assert_eq!(
+        raw, same,
+        "fail-open keys for the same raw input must match"
+    );
 }
 
 #[test]

@@ -28,7 +28,9 @@ fn group_config(name: &str, admin_key: &Keys) -> NostrGroupConfigData {
     NostrGroupConfigData::new(
         name.to_string(),
         "perf".to_string(),
-        None, None, None,
+        None,
+        None,
+        None,
         test_relays(),
         vec![admin_key.public_key()],
     )
@@ -94,7 +96,9 @@ fn perf_group_messages_cold_render_10_members_100_msgs() {
         let gift = admin
             .wrap_welcome(&mk.public_key(), rumor)
             .expect("gift wrap");
-        let (w, _) = ms.unwrap_and_process_welcome(&gift).expect("unwrap welcome");
+        let (w, _) = ms
+            .unwrap_and_process_welcome(&gift)
+            .expect("unwrap welcome");
         ms.accept_welcome(&w).expect("accept welcome");
     }
     pending.commit().expect("admin merge create");
@@ -117,9 +121,11 @@ fn perf_group_messages_cold_render_10_members_100_msgs() {
 
     // Send N_MSGS messages from admin.
     for i in 0..N_MSGS {
-        let rumor = EventBuilder::new(Kind::TextNote, format!("msg-{i}"))
-            .build(admin_keys.public_key());
-        let ev = admin.create_message(&group_id, rumor).expect("create_message");
+        let rumor =
+            EventBuilder::new(Kind::TextNote, format!("msg-{i}")).build(admin_keys.public_key());
+        let ev = admin
+            .create_message(&group_id, rumor)
+            .expect("create_message");
         // Each member must process to build history in their local store.
         for ms in &members {
             let _ = ms.process_message(&ev);
@@ -135,9 +141,7 @@ fn perf_group_messages_cold_render_10_members_100_msgs() {
     let mut latencies = Vec::with_capacity(N_RUNS);
     for _ in 0..N_RUNS {
         let t = Instant::now();
-        let history = target_member
-            .get_messages(&group_id)
-            .expect("get_messages");
+        let history = target_member.get_messages(&group_id).expect("get_messages");
         let elapsed = t.elapsed();
         assert_eq!(history.len(), N_MSGS, "history must have {N_MSGS} messages");
         latencies.push(elapsed);
@@ -177,9 +181,8 @@ fn perf_send_message_encrypt_local_roundtrip() {
     let alice = harness::service_at(&alice_dir.db_path("alice"), alice_keys.clone());
     let bob = harness::service_at(&bob_dir.db_path("bob"), bob_keys.clone());
 
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys, &bob, &bob_keys, "perf-send",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "perf-send");
 
     let mut encrypt_latencies = Vec::with_capacity(N_RUNS);
     let mut decrypt_latencies = Vec::with_capacity(N_RUNS);
@@ -252,9 +255,8 @@ fn perf_invite_member_create_welcome_peer_join() {
     // We create a two-member group first (Alice+Bob), then for each run we
     // add a fresh Carol. This isolates the add_members timing.
 
-    let group_id = harness::setup_two_member_group(
-        &alice, &alice_keys, &bob, &bob_keys, "perf-invite-base",
-    );
+    let group_id =
+        harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "perf-invite-base");
 
     let mut invite_latencies = Vec::with_capacity(N_RUNS);
 
@@ -291,7 +293,9 @@ fn perf_invite_member_create_welcome_peer_join() {
         let (carol_welcome, _) = carol
             .unwrap_and_process_welcome(&gift)
             .expect("unwrap welcome");
-        carol.accept_welcome(&carol_welcome).expect("accept welcome");
+        carol
+            .accept_welcome(&carol_welcome)
+            .expect("accept welcome");
 
         // post-join self_update (MIP-02 mandatory — included in invite latency)
         let su = carol.self_update(&group_id).expect("carol su");

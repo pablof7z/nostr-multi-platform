@@ -2,7 +2,7 @@
 //! negentropy_efficiency, background_decryption.
 
 use crate::config::{
-    DISCONNECT_DETECT_GATE_MS, NSE_DECRYPT_GATE_MS, NSE_MEMORY_GATE_MB, RECONNECT_GATE_MS, Scale,
+    Scale, DISCONNECT_DETECT_GATE_MS, NSE_DECRYPT_GATE_MS, NSE_MEMORY_GATE_MB, RECONNECT_GATE_MS,
 };
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{fake_decrypt, finish_scenario, gate_eq, gate_max, gate_min, round2};

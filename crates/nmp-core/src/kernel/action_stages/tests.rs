@@ -234,7 +234,9 @@ fn per_correlation_cap_evicts_non_terminal_to_seat_terminal() {
     }
     t2.record(
         "c2",
-        ActionStage::Failed { reason: "fail".to_string() },
+        ActionStage::Failed {
+            reason: "fail".to_string(),
+        },
         None,
         999,
     );
@@ -258,7 +260,9 @@ fn per_correlation_cap_terminal_at_cap_full_of_terminals() {
 
     t.record(
         cid,
-        ActionStage::Failed { reason: "final".to_string() },
+        ActionStage::Failed {
+            reason: "final".to_string(),
+        },
         None,
         999,
     );
@@ -270,7 +274,11 @@ fn per_correlation_cap_terminal_at_cap_full_of_terminals() {
         ActionStage::Failed { reason } => assert_eq!(reason, "final"),
         other => panic!("expected Failed terminal at tail, got {other:?}"),
     }
-    assert_eq!(history.first().unwrap().at_ms, 1, "oldest entry was evicted");
+    assert_eq!(
+        history.first().unwrap().at_ms,
+        1,
+        "oldest entry was evicted"
+    );
     assert_eq!(t.per_correlation_terminal_evictions, 1);
 }
 
@@ -322,6 +330,10 @@ fn record_after_ack_starts_fresh() {
 
     t.record(cid, ActionStage::Requested, None, 3);
     let h = t.history(cid).unwrap();
-    assert_eq!(h.len(), 1, "post-ack record is the first of a fresh history");
+    assert_eq!(
+        h.len(),
+        1,
+        "post-ack record is the first of a fresh history"
+    );
     assert_eq!(h[0].at_ms, 3);
 }

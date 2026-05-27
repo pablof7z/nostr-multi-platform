@@ -84,10 +84,7 @@ pub fn capability_error_envelope(request_json: &str, reason: &str) -> String {
 mod tests {
     use super::*;
 
-    extern "C" fn echo_handler(
-        _ctx: *mut c_void,
-        req: *const c_char,
-    ) -> *mut c_char {
+    extern "C" fn echo_handler(_ctx: *mut c_void, req: *const c_char) -> *mut c_char {
         // Echo the request back as the response — simplest valid handler.
         let s = unsafe { std::ffi::CStr::from_ptr(req) }
             .to_string_lossy()
@@ -95,10 +92,7 @@ mod tests {
         CString::new(s).unwrap().into_raw()
     }
 
-    extern "C" fn null_handler(
-        _ctx: *mut c_void,
-        _req: *const c_char,
-    ) -> *mut c_char {
+    extern "C" fn null_handler(_ctx: *mut c_void, _req: *const c_char) -> *mut c_char {
         std::ptr::null_mut()
     }
 
@@ -116,7 +110,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["namespace"], "test");
         assert_eq!(v["correlation_id"], "c1");
-        assert!(v["result_json"].as_str().unwrap().contains("no-capability-handler"));
+        assert!(v["result_json"]
+            .as_str()
+            .unwrap()
+            .contains("no-capability-handler"));
     }
 
     #[test]
@@ -125,7 +122,10 @@ mod tests {
         install(&slot, null_handler);
         let out = dispatch_capability(&slot, r#"{"namespace":"ns","correlation_id":"c2"}"#);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(v["result_json"].as_str().unwrap().contains("handler-returned-null"));
+        assert!(v["result_json"]
+            .as_str()
+            .unwrap()
+            .contains("handler-returned-null"));
     }
 
     #[test]

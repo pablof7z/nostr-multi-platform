@@ -22,10 +22,10 @@
 //! Invocation: `cargo test -p nmp-testing --test framework_magic_contract`
 
 mod framework_magic_contract {
+    pub mod c12;
     pub mod c1_c4_c6_c9;
     pub mod c5_c8_c13;
     pub mod c7_c11;
-    pub mod c12;
 }
 
 // ── Coverage meta-test ────────────────────────────────────────────────────────

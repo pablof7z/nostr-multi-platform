@@ -205,14 +205,12 @@ impl ActionModule for PublishModule {
     /// `projections["action_results"]` on a later tick.  Recording sites:
     /// `actor/dispatch.rs` (Requested), `kernel/publish_engine.rs`
     /// (Publishing / Accepted), `kernel/publish_cmd.rs` (Failed).
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (actor/dispatch.rs + kernel/publish_*.rs); exercised by kernel/action_stages_tests.rs
+    #[rustfmt::skip]
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites in actor/dispatch.rs + kernel/publish_*.rs
         true
     }
 
-    fn start(
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
+    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match action {
             PublishAction::Publish { event, target, .. } => {
                 if event.id.is_empty() || event.sig.is_empty() {
@@ -252,13 +250,15 @@ impl ActionModule for PublishModule {
                 // protocol-specific processing.
                 if kind == 0 {
                     return Err(ActionRejection::Invalid(
-                        "use PublishProfile (not PublishRaw) for kind:0 profile updates".to_string(),
+                        "use PublishProfile (not PublishRaw) for kind:0 profile updates"
+                            .to_string(),
                     ));
                 }
                 if kind == 3 {
                     return Err(ActionRejection::Invalid(
                         "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
-                         not PublishRaw (the actor owns the follow-list state)".to_string(),
+                         not PublishRaw (the actor owns the follow-list state)"
+                            .to_string(),
                     ));
                 }
                 validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
@@ -294,7 +294,11 @@ impl ActionModule for PublishModule {
                 });
                 Ok(())
             }
-            PublishAction::PublishNote { content, reply_to_id, target } => {
+            PublishAction::PublishNote {
+                content,
+                reply_to_id,
+                target,
+            } => {
                 send(ActorCommand::PublishNote {
                     content,
                     reply_to_id,
@@ -310,7 +314,12 @@ impl ActionModule for PublishModule {
                 });
                 Ok(())
             }
-            PublishAction::PublishRaw { kind, tags, content, target } => {
+            PublishAction::PublishRaw {
+                kind,
+                tags,
+                content,
+                target,
+            } => {
                 send(ActorCommand::PublishRawEvent {
                     kind,
                     tags,
@@ -345,4 +354,3 @@ fn publish_signed_event_to_raw(event: SignedEvent) -> crate::store::RawEvent {
 #[cfg(test)]
 #[path = "action/tests.rs"]
 mod tests;
-

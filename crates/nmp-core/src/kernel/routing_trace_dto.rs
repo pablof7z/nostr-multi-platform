@@ -212,8 +212,7 @@ fn event_class_to_json(c: &EventClass) -> Value {
 mod tests {
     use super::*;
     use crate::substrate::{
-        PublishTrace, RoutedRelaySet, RoutingSource as Src, RoutingTraceObserver,
-        SubscriptionTrace,
+        PublishTrace, RoutedRelaySet, RoutingSource as Src, RoutingTraceObserver, SubscriptionTrace,
     };
 
     fn make_routed(url: &str, source: Src) -> RoutedRelaySet {
@@ -244,7 +243,9 @@ mod tests {
             },
             &make_routed(
                 "wss://r.example/",
-                Src::Nip65 { direction: Direction::Write },
+                Src::Nip65 {
+                    direction: Direction::Write,
+                },
             ),
         );
         let v = projection_to_json(&p);
@@ -318,10 +319,18 @@ mod tests {
         // pretty form; the JSON form keeps the same labels so the two
         // surfaces never drift.
         let cases = vec![
-            (Src::Nip65 { direction: Direction::Read }, "Nip65"),
+            (
+                Src::Nip65 {
+                    direction: Direction::Read,
+                },
+                "Nip65",
+            ),
             (Src::Hint, "Hint"),
             (Src::Provenance, "Provenance"),
-            (Src::UserConfigured(UserConfiguredCategory::Debug), "UserConfigured"),
+            (
+                Src::UserConfigured(UserConfiguredCategory::Debug),
+                "UserConfigured",
+            ),
             (
                 Src::ClassRouted {
                     class: EventClass::Search,
@@ -330,7 +339,12 @@ mod tests {
                 "ClassRouted",
             ),
             (Src::Indexer, "Indexer"),
-            (Src::AppRelay { mode: AppRelayMode::Always }, "AppRelay"),
+            (
+                Src::AppRelay {
+                    mode: AppRelayMode::Always,
+                },
+                "AppRelay",
+            ),
         ];
         for (src, expected_kind) in cases {
             let v = lane_to_json(&src);
@@ -357,7 +371,9 @@ mod tests {
             },
             &make_routed(
                 "wss://r.example/",
-                Src::AppRelay { mode: AppRelayMode::Fallback },
+                Src::AppRelay {
+                    mode: AppRelayMode::Fallback,
+                },
             ),
         );
         let v = projection_to_json(&p);

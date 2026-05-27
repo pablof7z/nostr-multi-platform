@@ -19,8 +19,7 @@ use crate::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
 
-const TEST_AUTHOR_HEX: &str =
-    "abababababababababababababababababababababababababababababababab";
+const TEST_AUTHOR_HEX: &str = "abababababababababababababababababababababababababababababababab";
 const TEST_D_TAG: &str = "kind-dispatch";
 
 /// Helper: build a 64-hex event id from a single-char prefix (rest zeros).

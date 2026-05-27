@@ -3,7 +3,12 @@ use std::path::PathBuf;
 
 fn check_one(line: &str) -> Vec<(usize, String, String)> {
     let mut state = State::default();
-    check(&mut state, &PathBuf::from("crates/nmp-core/src/foo.rs"), line, false)
+    check(
+        &mut state,
+        &PathBuf::from("crates/nmp-core/src/foo.rs"),
+        line,
+        false,
+    )
 }
 
 fn check_lines(lines: &[&str]) -> Vec<(usize, usize, String)> {
@@ -28,8 +33,7 @@ fn flags_bare_observer_invocation_unguarded() {
 
 #[test]
 fn allows_observer_invocation_inside_catch_unwind_same_line() {
-    let hits =
-        check_one("    let _ = catch_unwind(AssertUnwindSafe(|| observer(result)));");
+    let hits = check_one("    let _ = catch_unwind(AssertUnwindSafe(|| observer(result)));");
     assert!(
         hits.is_empty(),
         "same-line `catch_unwind` must allow the invocation; got {hits:?}"
@@ -58,14 +62,17 @@ fn flags_observer_invocation_after_block_closes() {
         "    }));",
         "    observer(payload);", // <- this one is OUTSIDE the guard
     ]);
-    assert_eq!(hits.len(), 1, "the post-block invocation must fire; got {hits:?}");
+    assert_eq!(
+        hits.len(),
+        1,
+        "the post-block invocation must fire; got {hits:?}"
+    );
     assert_eq!(hits[0].0, 4, "line number must point at the unguarded call");
 }
 
 #[test]
 fn allows_guard_ffi_callback_wrap() {
-    let hits =
-        check_one("    guard_ffi_callback(\"site\", || callback(ctx, payload));");
+    let hits = check_one("    guard_ffi_callback(\"site\", || callback(ctx, payload));");
     assert!(
         hits.is_empty(),
         "guard_ffi_callback must be recognised as a guard; got {hits:?}"
@@ -75,21 +82,26 @@ fn allows_guard_ffi_callback_wrap() {
 #[test]
 fn flags_parens_wrapped_invocation_unguarded() {
     let hits = check_one("    (self.validate)(action_json);");
-    assert_eq!(hits.len(), 1, "(self.validate)(...) must fire when unguarded");
+    assert_eq!(
+        hits.len(),
+        1,
+        "(self.validate)(...) must fire when unguarded"
+    );
 }
 
 #[test]
 fn allows_parens_wrapped_invocation_in_catch_unwind() {
-    let hits =
-        check_one("    catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json)));");
-    assert!(hits.is_empty(), "guarded (self.validate)(...) must NOT fire");
+    let hits = check_one("    catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json)));");
+    assert!(
+        hits.is_empty(),
+        "guarded (self.validate)(...) must NOT fire"
+    );
 }
 
 #[test]
 fn allows_doctrine_allow_d15_optout() {
-    let hits = check_one(
-        "    observer(result); // doctrine-allow: D15 — fixture observer for unit test",
-    );
+    let hits =
+        check_one("    observer(result); // doctrine-allow: D15 — fixture observer for unit test");
     assert!(
         hits.is_empty(),
         "doctrine-allow opt-out must suppress the finding; got {hits:?}"
@@ -101,7 +113,10 @@ fn does_not_flag_my_observer_token_boundary() {
     // `my_observer(` ends with `observer(` but the leading `_` is part of
     // the identifier — the bare-name rule must not fire on it.
     let hits = check_one("    my_observer.do_something();");
-    assert!(hits.is_empty(), "non-token-boundary substring must not fire");
+    assert!(
+        hits.is_empty(),
+        "non-token-boundary substring must not fire"
+    );
 }
 
 #[test]
@@ -134,15 +149,17 @@ fn ignores_comment_lines() {
     // Even though the comment text contains `observer(`, comments are
     // exempt — D15 is about runtime behaviour, not docs.
     let hits = check(&mut state, &path, "    // observer(result) — example", true);
-    assert!(hits.is_empty(), "comment lines must never fire; got {hits:?}");
+    assert!(
+        hits.is_empty(),
+        "comment lines must never fire; got {hits:?}"
+    );
 }
 
 #[test]
 fn command_drain_site_is_allowlisted() {
     let path = PathBuf::from("crates/nmp-core/src/actor/mod.rs");
     let mut state = State::default();
-    let hits =
-        check(&mut state, &path, "    observer(payload);", false);
+    let hits = check(&mut state, &path, "    observer(payload);", false);
     assert!(
         hits.is_empty(),
         "actor/mod.rs command-drain allowlist must suppress the finding"
@@ -184,10 +201,7 @@ fn guard_token_inside_string_does_not_open_guard_scope() {
     // guard scope — `contains_outside_strings` mirrors the brace
     // counter's string-skipping rules. A subsequent unguarded
     // `observer(...)` therefore fires.
-    let hits = check_lines(&[
-        "    let s = \"catch_unwind(\";",
-        "    observer(result);",
-    ]);
+    let hits = check_lines(&["    let s = \"catch_unwind(\";", "    observer(result);"]);
     assert_eq!(
         hits.len(),
         1,

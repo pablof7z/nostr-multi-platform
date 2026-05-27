@@ -19,7 +19,10 @@ impl ActionModule for M {
     assert_eq!(hits.len(), 1);
     assert!(hits[0].message.contains("D12"));
     assert!(hits[0].message.contains("is_async_completing"));
-    assert_eq!(hits[0].line, 3, "finding points at the marker declaration line");
+    assert_eq!(
+        hits[0].line, 3,
+        "finding points at the marker declaration line"
+    );
 }
 
 #[test]
@@ -66,7 +69,10 @@ impl ActionModule for M {
 }
 ";
     let hits = scan(src);
-    assert!(hits.is_empty(), "a `false` marker is synchronous; no recording required");
+    assert!(
+        hits.is_empty(),
+        "a `false` marker is synchronous; no recording required"
+    );
 }
 
 #[test]
@@ -98,7 +104,9 @@ fn observe(_: &M) {
 fn contains_word_true_rejects_truncated_identifiers() {
     // The `true` in `truely` is not a literal; the boundary check filters it.
     assert!(contains_word_true("    fn f() -> bool { true }"));
-    assert!(!contains_word_true("    fn f() -> Truely { return Truely; }"));
+    assert!(!contains_word_true(
+        "    fn f() -> Truely { return Truely; }"
+    ));
     assert!(!contains_word_true("    let x = intrue;"));
 }
 

@@ -16,8 +16,7 @@ use crate::StoreError;
 pub(super) fn raw_to_nostr(raw: &RawEvent) -> Result<Event, StoreError> {
     let json = serde_json::to_string(raw)
         .map_err(|e| StoreError::Encoding(format!("raw_to_nostr: serialize: {e}")))?;
-    Event::from_json(&json)
-        .map_err(|e| StoreError::Encoding(format!("raw_to_nostr: parse: {e}")))
+    Event::from_json(&json).map_err(|e| StoreError::Encoding(format!("raw_to_nostr: parse: {e}")))
 }
 
 /// Parse a `nostr::Event` JSON blob back into a `RawEvent`.
@@ -25,7 +24,8 @@ pub(super) fn raw_to_nostr(raw: &RawEvent) -> Result<Event, StoreError> {
 /// Used by the query path: the fork returns `EventBorrow<'a>` which we
 /// serialize via its `as_json()`/`From` impl and re-parse as `RawEvent`.
 pub(super) fn nostr_to_raw(ev: &Event) -> Result<RawEvent, StoreError> {
-    let json = ev.try_as_json()
+    let json = ev
+        .try_as_json()
         .map_err(|e| StoreError::Encoding(format!("nostr_to_raw: serialize: {e}")))?;
     serde_json::from_str(&json)
         .map_err(|e| StoreError::Encoding(format!("nostr_to_raw: parse: {e}")))
