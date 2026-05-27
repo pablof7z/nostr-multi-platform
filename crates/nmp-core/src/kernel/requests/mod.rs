@@ -15,7 +15,9 @@ mod relay_lifecycle;
 mod startup;
 mod thread;
 
-use super::{discovery, json, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value};
+use super::{
+    discovery, json, wire_log, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value,
+};
 
 impl Kernel {
     #[allow(dead_code)] // Per-lane snapshot retained for diagnostic surface (M11).
@@ -297,7 +299,26 @@ impl Kernel {
                             let canonical_relay = key.as_str().to_string();
                             claim
                                 .in_flight_attempts
-                                .insert((canonical_relay, sub_id.clone()));
+                                .insert((canonical_relay.clone(), sub_id.clone()));
+                            // W8b: emit ReqEmit at the wire-frame emission seam
+                            // (option b from impl plan §W8b — keeps instrumentation
+                            // in nmp-core, not nmp-planner). Phase discriminant:
+                            // Phase1 → "phase1", Phase2InFlight → "phase2".
+                            // D0: "phase" is a string discriminant, not a protocol noun.
+                            let phase = match &claim.phase {
+                                super::claim_expansion::Phase::Phase1 => "phase1",
+                                super::claim_expansion::Phase::Phase2InFlight => "phase2",
+                                super::claim_expansion::Phase::Terminal(_) => "terminal",
+                            };
+                            let author = claim.author.as_deref().unwrap_or("");
+                            let has_hint = !claim.candidate_queue.is_empty();
+                            wire_log::log_wire(wire_log::WireLogEvent::ReqEmit {
+                                sub_id,
+                                relay_url: &canonical_relay,
+                                phase,
+                                author,
+                                has_hint,
+                            });
                         }
                     }
                     // PD-033-C Stage 0: route through the single-writer helper.

@@ -399,9 +399,11 @@ impl Kernel {
         // mutation kind-agnostically.
         match event.kind {
             1 | 6 => {
+                // W8b: capture event_id before ingest_timeline_event consumes `event`.
+                let event_id = event.id.clone();
                 if self.ingest_timeline_event(role, relay_url, sub_id, event) {
                     if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                        self.record_claim_expansion_hit(sub_id, relay_url, author, &event_id);
                     }
                 }
             }
@@ -414,7 +416,7 @@ impl Kernel {
                 );
                 if accepted {
                     if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                        self.record_claim_expansion_hit(sub_id, relay_url, author, &event.id);
                     }
                     let kernel_event = kernel_event_from_nostr(&event);
                     self.ingest_profile(event);
@@ -431,7 +433,7 @@ impl Kernel {
                 );
                 if accepted {
                     if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                        self.record_claim_expansion_hit(sub_id, relay_url, author, &event.id);
                     }
                     let kernel_event = kernel_event_from_nostr(&event);
                     self.ingest_contacts(event);
@@ -482,7 +484,14 @@ impl Kernel {
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
                 ) {
                     if let Some(author) = claim_match_author.as_deref() {
-                        self.record_claim_expansion_hit(sub_id, relay_url, author);
+                        // W8b: `event_id_for_trace` holds the event id captured
+                        // before `verify_and_persist` consumed the event borrow.
+                        self.record_claim_expansion_hit(
+                            sub_id,
+                            relay_url,
+                            author,
+                            &event_id_for_trace,
+                        );
                     }
                     let kernel_event = kernel_event_from_nostr(&event);
                     self.notify_event_observers(&kernel_event);

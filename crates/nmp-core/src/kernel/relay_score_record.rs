@@ -70,6 +70,10 @@ impl Kernel {
 
     /// Record an accepted matching EVENT for a claim-expansion sub.
     ///
+    /// W8b: emits `WireLogEvent::EventRx` (NMP_CLAIM_LOG gate) before
+    /// recording the score so the telemetry line captures the actual
+    /// `event_id`.
+    ///
     /// B1: after recording the score, calls `on_claim_outcome_hit(sub_id)`
     /// so the W5 controller transitions the claim to Terminal(Hit) and
     /// claims never linger in pending_claims after a matching EVENT.
@@ -78,7 +82,15 @@ impl Kernel {
         sub_id: &str,
         relay_url: &str,
         author: &str,
+        event_id: &str,
     ) {
+        // W8b: structured telemetry for the claim hit path.
+        log_wire(WireLogEvent::EventRx {
+            sub_id,
+            relay_url,
+            event_id,
+            author,
+        });
         self.record_claim_outcome(author, relay_url, ClaimOutcome::Hit);
         self.mark_claim_expansion_match_seen(sub_id, relay_url);
         // B1: drive the W5 controller state machine (production wire-up).
