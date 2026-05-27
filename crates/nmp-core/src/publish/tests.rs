@@ -386,6 +386,7 @@ fn classify_ack_maps_codes_to_engine_policy_d7_boundary() {
         "restricted",
         "invalid",
         "duplicate",
+        "mute",
     ] {
         let ack = RelayAck::failed("wss://r", code, "nope");
         assert_eq!(
