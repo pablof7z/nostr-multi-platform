@@ -185,6 +185,8 @@ mod types;
 mod update;
 pub(crate) mod wire_log;
 #[cfg(test)]
+mod wire_log_callsite_tests;
+#[cfg(test)]
 mod wire_log_tests;
 
 #[cfg(test)]

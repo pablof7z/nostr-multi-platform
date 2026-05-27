@@ -14,11 +14,18 @@
 //! semantics are incompatible, so this layer uses a distinct name (§7.4 of
 //! the impl plan).
 //!
-//! # Call-site instrumentation (W8b)
+//! # Call-site instrumentation (W8b — completed)
 //!
-//! This module provides the enum and helpers; actual [`log_wire`] call sites
-//! (EVENT/EOSE/FailedAfterRetries/phase-transitions/score-updates) will be
-//! added in Workstream W8b, after the W3 + W5 files they instrument land.
+//! Call sites wired by W8b (all env-gated via `NMP_CLAIM_LOG`):
+//!
+//! | Event              | File                        | Function                          |
+//! |--------------------|-----------------------------|------------------------------------|
+//! | `ReqEmit`          | `kernel/requests/mod.rs`    | `register_planner_wire_frames`     |
+//! | `EventRx`          | `kernel/relay_score_record.rs` | `record_claim_expansion_hit`    |
+//! | `EoseRx{matched:true}`  | `kernel/relay_score_record.rs` | `record_claim_expansion_eose_no_match` (early-return branch) |
+//! | `EoseRx{matched:false}` | `kernel/claim_expansion.rs` | `on_claim_outcome_eose_no_match` |
+//! | `ClaimPhaseAdvance` | `kernel/claim_expansion.rs` + `claim_expansion_helpers.rs` | register / advance / terminate |
+//! | `ScoreUpdate`      | `kernel/relay_score_record.rs` | `record_claim_outcome`          |
 //!
 //! # D6 — panic safety
 //!
