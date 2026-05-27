@@ -51,6 +51,8 @@ use nmp_core::substrate::{
     RoutingTraceObserver, SubscriptionTrace, UnsignedEvent, UserConfiguredCategory,
 };
 
+use crate::relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
+
 /// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
 /// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002
 /// relay-list). The indexer lane is ALWAYS-ON for these kinds — it
@@ -141,7 +143,6 @@ fn explicit_set_for_kind(
     out
 }
 
-#[derive(Default)]
 pub struct GenericOutboxRouter {
     /// V-51 phase 1 — optional trace observer fired after every successful
     /// `route_publish` / `route_subscription`. `None` by default; production
@@ -149,6 +150,20 @@ pub struct GenericOutboxRouter {
     /// [`Self::with_trace_observer`]. D8: the `Option::is_some` gate keeps
     /// the no-observer path zero-alloc.
     trace_observer: Option<Arc<dyn RoutingTraceObserver>>,
+    /// Admission policy applied to **untrusted lanes 1–3** (NIP-65 mailbox,
+    /// event-tag hints, provenance). Operator-controlled lanes (4, 6, 7) are
+    /// exempt so local dev relays work as configured. Default is
+    /// [`PrivateNetworkPolicy`].
+    admission: Arc<dyn RelayAdmissionPolicy>,
+}
+
+impl Default for GenericOutboxRouter {
+    fn default() -> Self {
+        Self {
+            trace_observer: None,
+            admission: Arc::new(PrivateNetworkPolicy),
+        }
+    }
 }
 
 impl GenericOutboxRouter {
@@ -163,6 +178,16 @@ impl GenericOutboxRouter {
     #[must_use]
     pub fn with_trace_observer(mut self, obs: Arc<dyn RoutingTraceObserver>) -> Self {
         self.trace_observer = Some(obs);
+        self
+    }
+
+    /// Override the relay admission policy for untrusted lanes (1–3). The
+    /// default is [`PrivateNetworkPolicy`]; pass a custom impl to extend or
+    /// replace it (e.g. an operator deny-list composed with the private-network
+    /// check).
+    #[must_use]
+    pub fn with_admission_policy(mut self, policy: Arc<dyn RelayAdmissionPolicy>) -> Self {
+        self.admission = policy;
         self
     }
 }
@@ -189,6 +214,9 @@ impl OutboxRouter for GenericOutboxRouter {
                     if ctx.blocked_relays.contains(&url) {
                         continue;
                     }
+                    if !self.admission.is_admissible(&url) {
+                        continue;
+                    }
                     out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
                 }
             }
@@ -200,6 +228,9 @@ impl OutboxRouter for GenericOutboxRouter {
             // `RoutedRelaySet::add`).
             for url in relay_hints_from_tags(&evt.tags) {
                 if ctx.blocked_relays.contains(&url) {
+                    continue;
+                }
+                if !self.admission.is_admissible(&url) {
                     continue;
                 }
                 out.add(url, RoutingSource::Hint);
@@ -304,6 +335,9 @@ impl OutboxRouter for GenericOutboxRouter {
                         if ctx.blocked_relays.contains(&url) {
                             continue;
                         }
+                        if !self.admission.is_admissible(&url) {
+                            continue;
+                        }
                         out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
                     }
                 }
@@ -319,6 +353,9 @@ impl OutboxRouter for GenericOutboxRouter {
             // lane 4 below for symmetry with the publish path.
             for hint in &interest.hints {
                 if ctx.blocked_relays.contains(&hint.url) {
+                    continue;
+                }
+                if !self.admission.is_admissible(&hint.url) {
                     continue;
                 }
                 let lane = match hint.source {

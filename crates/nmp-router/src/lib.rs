@@ -1,6 +1,6 @@
 //! `nmp-router` — Layer-2 routing (`docs/architecture/crate-boundaries.md` §3).
 //!
-//! Six responsibilities:
+//! Seven responsibilities:
 //!
 //! 1. [`InMemoryMailboxCache`] — the NIP-65 / kind:10002 cache the substrate
 //!    [`nmp_core::substrate::MailboxCache`] trait points at. The kind:10002
@@ -33,6 +33,10 @@
 //!    accepted replaceable events to indexer relays. `nmp-core` owns the
 //!    generic raw-event observer and pool send; this crate owns the
 //!    replaceable-kind, provenance, source-skip, and bounded-dedup rules.
+//! 7. [`RelayAdmissionPolicy`] / [`PrivateNetworkPolicy`] — structural URL
+//!    guard applied to untrusted lanes (1–3) before a relay URL is ever
+//!    used. Rejects loopback, RFC-1918, link-local, and unspecified
+//!    addresses. Composable via [`GenericOutboxRouter::with_admission_policy`].
 //!
 //! Step 3 cuts the kernel over to `Arc<dyn OutboxRouter>` injection,
 //! deletes `nmp_core::kernel::outbox`, and replaces the kernel's
@@ -44,6 +48,7 @@ mod cache;
 mod indexer_republish;
 mod ingest;
 mod nip65_resolver;
+mod relay_admission;
 mod router;
 
 pub mod publish_relay_list;
@@ -59,4 +64,5 @@ pub use publish_relay_list::{
     build_relay_list_event, register_actions, PublishRelayListAction, PublishRelayListInput,
     RelayListEntry, RelayMarker,
 };
+pub use relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
 pub use router::GenericOutboxRouter;
