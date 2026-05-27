@@ -1,5 +1,7 @@
 # Repository Guidance
 
+This is the authoritative contributor guide for the repository — for agents and humans equally. It covers worktree discipline, PR workflow, test scope, planning rules, and the doctrine corollaries that govern every implementation decision. Everything here is enforced, not suggested. `CLAUDE.md` defers to this file.
+
 ## Agent workflow
 
 - All implementation work must happen in a git worktree owned by the agent doing the work.
