@@ -3,6 +3,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::{AppRuntime, AppState, Mode, Pane};
 use crate::features::FeatureTab;
 
+mod group_forms;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFlow {
     Continue,
@@ -428,7 +430,7 @@ fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
     match state.tab {
         FeatureTab::Home => state.start_compose(),
         FeatureTab::Chats => state.start_input_bar("New DM to", false, "dm-npub"),
-        FeatureTab::Groups => state.push_toast("\u{2717} group discover not yet wired"),
+        FeatureTab::Groups => group_forms::start_create_group(state),
         FeatureTab::Wallet => state.start_input_bar("NWC URI", false, "nwc"),
         FeatureTab::Settings => state.push_toast("\u{2717} add relay/account not yet wired"),
     }
@@ -566,6 +568,9 @@ fn dispatch_modal_action(
                 Ok(()) => state.push_toast("\u{2713} bunker connect requested…"),
                 Err(e) => state.push_toast(&format!("\u{2717} bunker failed: {e}")),
             }
+        }
+        group_forms::CREATE_GROUP_ACTION => {
+            group_forms::dispatch_create_group(fields, state, runtime);
         }
         _ => state.push_toast(&format!("\u{2717} modal action '{action}' not wired")),
     }

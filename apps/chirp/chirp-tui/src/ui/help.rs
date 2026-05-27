@@ -109,7 +109,7 @@ fn right_column() -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     section_header(&mut lines, "Groups tab");
-    binding(&mut lines, "n", "discover / join group");
+    binding(&mut lines, "n", "create NIP-29 or MLS group");
     binding(&mut lines, "i", "compose group message");
     binding(&mut lines, "+", "react to message");
     binding(&mut lines, "L", "leave group");
