@@ -49,6 +49,10 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
             handle_account_switcher_key(state, runtime, key);
             return InputFlow::Continue;
         }
+        Mode::RawEventModal { .. } => {
+            handle_raw_event_modal_key(state, key);
+            return InputFlow::Continue;
+        }
         Mode::Normal => {}
     }
 
@@ -351,6 +355,18 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
         },
         "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
         "Reply" => state.start_reply(),
+        "View raw event" => {
+            let raw = if state.focused == Pane::Detail && state.detail_cursor > 0 {
+                let reply_idx = state.selected.saturating_add(state.detail_cursor);
+                state.rows.get(reply_idx).map(|r| r.raw_card.clone())
+            } else {
+                state.selected_row().map(|r| r.raw_card.clone())
+            };
+            match raw {
+                Some(content) => state.open_raw_event_modal(content),
+                None => state.status = "no event selected".to_string(),
+            }
+        }
         "Zap" => {
             state.pending_zap_pubkey = Some(author_pubkey);
             state.pending_zap_event_id = Some(note_id);
@@ -573,6 +589,15 @@ fn dispatch_modal_action(
             group_forms::dispatch_create_group(fields, state, runtime);
         }
         _ => state.push_toast(&format!("\u{2717} modal action '{action}' not wired")),
+    }
+}
+
+fn handle_raw_event_modal_key(state: &mut AppState, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => state.close_raw_event_modal(),
+        KeyCode::Char('j') | KeyCode::Down => state.scroll_raw_modal_down(),
+        KeyCode::Char('k') | KeyCode::Up => state.scroll_raw_modal_up(),
+        _ => {}
     }
 }
 

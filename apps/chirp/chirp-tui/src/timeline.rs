@@ -30,6 +30,8 @@ pub struct TimelineRow {
     /// `author_*` fields above name the original note's author; this struct
     /// names the reposter so the UI can show "↻ reposted by @<reposter>".
     pub repost: Option<RowRepost>,
+    /// Pretty-printed JSON of the raw card object from the NMP snapshot.
+    pub raw_card: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +55,8 @@ impl TimelineRow {
             .collect::<std::collections::HashMap<_, _>>();
 
         let mut rows = Vec::new();
-        if let Some(blocks) = snapshot.get("blocks").and_then(Value::as_array) {
+        let blocks = snapshot.get("blocks").and_then(Value::as_array);
+        if let Some(blocks) = blocks {
             for block in blocks {
                 let (ids, has_gap) = ids_from_block(block);
                 for (depth, id) in ids.into_iter().enumerate() {
@@ -62,9 +65,12 @@ impl TimelineRow {
                     }
                 }
             }
-        }
-
-        if rows.is_empty() {
+        } else {
+            // No block structure at all (e.g. very first snapshot before the
+            // feed projection is ready): show all cards in reverse-chron order,
+            // all at depth 0.  We do NOT fall back here when blocks exists but
+            // is empty or has IDs missing from cards — that would incorrectly
+            // promote replies to depth 0 if blocks and cards briefly desync.
             rows.extend(cards.values().map(|card| Self::from_card(card, 0, false)));
             rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         }
@@ -126,6 +132,7 @@ impl TimelineRow {
             content_render,
             mention_pubkeys,
             repost,
+            raw_card: serde_json::to_string_pretty(card).unwrap_or_default(),
         }
     }
 }
@@ -587,5 +594,49 @@ mod tests {
             rows[0].relation_counts.summary(),
             "reply 0  react ...  repost 0  zap 0"
         );
+    }
+
+    /// Regression: when `blocks` is present but its IDs temporarily don't
+    /// match any card (blocks/cards desync mid-session), replies must NOT be
+    /// promoted to depth 0 via the fallback.  The correct result is an empty
+    /// row list, not all cards at depth 0.
+    #[test]
+    fn blocks_present_but_ids_missing_from_cards_yields_empty_not_fallback() {
+        let snapshot = serde_json::json!({
+            "blocks": [
+                {"Module": {"events": ["root", "reply"], "has_gap": false, "root": null}}
+            ],
+            "cards": [
+                // Cards use different IDs — simulates a desync where the block
+                // projection and the card map are temporarily out of step.
+                {"id": "other", "author_pubkey": "aaaaaaaaaaaaaaaa", "created_at": 1, "content": "reply text"}
+            ]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert!(
+            rows.is_empty(),
+            "blocks present but no matching cards → empty rows, not fallback; got {:?}",
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    /// Regression: when `blocks` is completely absent (early startup before
+    /// the feed projection arrives), the fallback should still show all cards
+    /// at depth 0 so the user sees something.
+    #[test]
+    fn no_blocks_key_falls_back_to_all_cards_at_depth_zero() {
+        let snapshot = serde_json::json!({
+            "cards": [
+                {"id": "a", "author_pubkey": "aaaaaaaaaaaaaaaa", "created_at": 2, "content": "root"},
+                {"id": "b", "author_pubkey": "bbbbbbbbbbbbbbbb", "created_at": 1, "content": "reply"}
+            ]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|r| r.depth == 0));
     }
 }
