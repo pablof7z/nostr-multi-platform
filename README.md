@@ -29,7 +29,8 @@ The scaffold compiles on first try and is wired to the local `nmp-core`. From th
 ## Where to go
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
-- **[`docs/aim.md`](docs/aim.md)** — the north star. Read first.
+- **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
+- **[`docs/aim.md`](docs/aim.md)** — the architectural north star.
 - **[`AGENTS.md`](AGENTS.md)** — contributor guide, file-size rules, planning discipline.
 
 NMP is open source and in active development. Issues and pull requests are read by people who care about correctness. If you find a bug, the framework has a place where that class of bug can never happen again — and we'll put it there.
