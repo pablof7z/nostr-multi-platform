@@ -22,9 +22,12 @@ the symptom by editing generated files.
 CI runs `gen modules --check`. Your local tree has uncommitted regenerated
 output, or you edited a generated file. Regenerate, diff, commit.
 
-**Q4. `nmp init` not found.**
-It does not exist. The starter CLI is **M16, PLANNED**. Scaffold by hand per
-[19a](19a-walkthrough-microblog.md) and run `gen modules`.
+**Q4. What does `nmp init` scaffold?**
+`nmp init my-app` creates a Rust workspace with an app-core crate, an `nmp.toml`
+manifest, a starter domain/view/action module, and a headless shell example. It does
+**not** produce an Xcode project or Android Compose module — that's the platform shell
+layer you wire yourself. See [17 — iOS shell](17-ios-shell.md) for the Swift wiring and
+`apps/chirp/android/` as the Android reference.
 
 **Q5. Where is UniFFI / the typed `AppUpdate` enum?**
 **M14, PLANNED.** UniFFI is the binding/lifecycle/capability surface, not the
