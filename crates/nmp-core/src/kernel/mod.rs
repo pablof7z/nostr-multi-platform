@@ -124,6 +124,11 @@ mod raw_event_observer;
 #[cfg(test)]
 mod raw_event_observer_tests;
 mod relay_score_flush;
+// W3 — score-update seam: edge-triggered hooks translate wire-frame outcomes
+// (EVENT = Hit, EOSE = EoseNoMatch, relay_failed = Failed) into score deltas.
+// Stub predicates (`is_claim_expansion_oneshot`, `lookup_claim_expansion_author`)
+// return false/None until W5 populates `claim_expansion_subs`.
+mod relay_score_record;
 mod replay;
 #[cfg(test)]
 mod replay_tests;

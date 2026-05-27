@@ -205,6 +205,24 @@ impl Kernel {
                 if self.is_discovery_oneshot(sub_id) {
                     self.complete_unknown_oneshot(sub_id);
                 }
+                // W3 — claim-expansion score hook (EOSE = EoseNoMatch, §8.5 neutral).
+                //
+                // Guard: `is_claim_expansion_oneshot` is a stub returning `false` until
+                // W5 populates `claim_expansion_subs`. When W5 lands, this records a
+                // neutral EoseNoMatch outcome (recency stamp only, counters unchanged).
+                //
+                // D0: keys are (author, relay_url) — no protocol noun.
+                // D4: `&mut self` — sole writer.
+                // D8: called from an already-edge-triggered frame-ingest seam.
+                if self.is_claim_expansion_oneshot(sub_id) {
+                    if let Some(author) = self.lookup_claim_expansion_author(sub_id) {
+                        self.record_claim_outcome(
+                            &author,
+                            relay_url,
+                            super::relay_score::ClaimOutcome::EoseNoMatch,
+                        );
+                    }
+                }
                 if !keep_live {
                     // T105: CLOSE must travel back to the same socket the REQ
                     // went out on — the transport pool is URL-keyed, so a
@@ -379,6 +397,27 @@ impl Kernel {
             }
             sub.events_rx = sub.events_rx.saturating_add(1);
             sub.last_event_at = Some(now);
+        }
+
+        // W3 — claim-expansion score hook (EVENT = Hit).
+        //
+        // Guard: `is_claim_expansion_oneshot` is a stub returning `false` until
+        // W5 populates `claim_expansion_subs`. When W5 lands, the predicate will
+        // identify the sub as a claim-expansion oneshot and `lookup_claim_expansion_author`
+        // will resolve the author. Until then this branch is dormant: correct on
+        // the path, never fires.
+        //
+        // D0: keys are (author, relay_url) — no protocol noun.
+        // D4: `&mut self` — sole writer.
+        // D8: called from an already-edge-triggered frame-ingest seam.
+        if self.is_claim_expansion_oneshot(sub_id) {
+            if let Some(author) = self.lookup_claim_expansion_author(sub_id) {
+                self.record_claim_outcome(
+                    &author,
+                    relay_url,
+                    super::relay_score::ClaimOutcome::Hit,
+                );
+            }
         }
 
         // D4: all events are persisted before kind-specific dispatch.
