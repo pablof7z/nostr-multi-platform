@@ -314,6 +314,11 @@ impl AppState {
                     result.status
                 ),
             };
+            if result.status.eq_ignore_ascii_case("failed")
+                || result.error.as_ref().is_some_and(|error| !error.is_empty())
+            {
+                self.push_toast(&message);
+            }
             self.status = message;
             self.last_action_result = Some(result);
         }
@@ -370,5 +375,30 @@ mod tests {
 
         assert_eq!(payload, Some(("hi".to_string(), None)));
         assert_eq!(state.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn failed_action_result_adds_toast() {
+        let (runtime, _rx) = AppRuntime::new().expect("runtime starts without live relays");
+        let mut state = AppState::default();
+
+        let handled = state.apply_action_results(
+            &runtime,
+            vec![ActionResult {
+                correlation_id: "abcdef1234567890fedcba".to_string(),
+                status: "failed".to_string(),
+                error: Some("blocked: duplicate group".to_string()),
+            }],
+        );
+
+        assert!(handled);
+        assert_eq!(
+            state.status,
+            "action abcdef12...fedcba failed: blocked: duplicate group"
+        );
+        assert_eq!(
+            state.toasts.last().map(|(message, _)| message.as_str()),
+            Some("action abcdef12...fedcba failed: blocked: duplicate group")
+        );
     }
 }

@@ -26,6 +26,7 @@ nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"
+fastrand = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 ratatui = { version = "0.30", features = ["crossterm"] }
