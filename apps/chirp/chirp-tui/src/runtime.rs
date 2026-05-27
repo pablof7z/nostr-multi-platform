@@ -1,13 +1,16 @@
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_marmot_unregister,
-    nmp_signer_broker_init, ChirpHandle, MarmotHandle,
+    nmp_app_chirp_identity_restore, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_marmot_unregister, nmp_signer_broker_init, ChirpHandle, MarmotHandle,
 };
+use nmp_core::{KindFilter, RawEventObserver};
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
     nmp_app_load_older_feed, nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
@@ -21,11 +24,30 @@ use crate::Result;
 const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
 const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
 
+/// Caches verbatim NIP-01 wire-format event JSON (with `sig`) keyed by
+/// event id. Populated by the raw event observer registered at startup.
+struct RawEventCacheObserver {
+    cache: Arc<Mutex<HashMap<String, String>>>,
+}
+
+impl RawEventObserver for RawEventCacheObserver {
+    fn on_raw_event(&self, _kind: u32, json: &str) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+            if let Some(id) = v.get("id").and_then(|id| id.as_str()) {
+                if let Ok(mut guard) = self.cache.lock() {
+                    guard.insert(id.to_string(), json.to_string());
+                }
+            }
+        }
+    }
+}
+
 pub struct AppRuntime {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
     pub(crate) marmot: Cell<*mut MarmotHandle>,
     update_bridge: Option<Box<NmpUpdateBridge>>,
+    raw_event_cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl AppRuntime {
@@ -53,16 +75,45 @@ impl AppRuntime {
         NmpUpdateBridge::register(app, &mut bridge);
         nmp_app_chirp_register_dm_inbox(app);
         nmp_app_chirp_register_follow_list(app, ptr::null());
-        nmp_app_start(app, 0, 200, 10);
 
+        // Register a raw event observer before nmp_app_start so every
+        // accepted inbound event (sig included) is cached by id for the
+        // "View raw event" modal. D8-clean: callback is cheap lock+insert.
+        let raw_event_cache: Arc<Mutex<HashMap<String, String>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        // SAFETY: `app` is a valid, non-null pointer from `nmp_app_new`.
+        // The borrow is not held past this statement.
+        let _ = unsafe { &*app }.register_raw_event_observer(
+            KindFilter::default(),
+            Arc::new(RawEventCacheObserver {
+                cache: Arc::clone(&raw_event_cache),
+            }),
+        );
+
+        let db_dir = crate::keyring::chirp_data_dir()
+            .map(|p| p.join("marmot"))
+            .and_then(|p| std::fs::create_dir_all(&p).ok().map(|_| p));
+        let marmot = db_dir.and_then(|dir| {
+            let dir_c = CString::new(dir.to_string_lossy().as_ref()).ok()?;
+            let h = nmp_app_chirp_identity_restore(app, dir_c.as_ptr(), ptr::null());
+            if h.is_null() {
+                None
+            } else {
+                Some(h)
+            }
+        });
+        let initial_marmot = marmot.unwrap_or(ptr::null_mut());
+
+        nmp_app_start(app, 0, 200, 10);
         nmp_app_open_timeline(app);
 
         Ok((
             Self {
                 app,
                 chirp,
-                marmot: Cell::new(ptr::null_mut()),
+                marmot: Cell::new(initial_marmot),
                 update_bridge: Some(bridge),
+                raw_event_cache,
             },
             rx,
         ))
@@ -182,6 +233,13 @@ impl AppRuntime {
             .map_err(|_| "profile consumer id contains NUL byte".to_string())?;
         f(&pubkey, &consumer_id);
         Ok(())
+    }
+
+    /// Return the verbatim NIP-01 wire-format JSON for `event_id` (including
+    /// `tags` and `sig`), or `None` if the event arrived before the observer
+    /// was registered (should not happen in normal operation).
+    pub fn raw_event_json(&self, event_id: &str) -> Option<String> {
+        self.raw_event_cache.lock().ok()?.get(event_id).cloned()
     }
 
     fn dispatch_visible_note_relations(&self, op: &str, event_id: &str) -> Result<()> {

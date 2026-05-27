@@ -355,18 +355,15 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
         },
         "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
         "Reply" => state.start_reply(),
-        "View raw event" => {
-            let raw = if state.focused == Pane::Detail && state.detail_cursor > 0 {
-                let reply_idx = state.selected.saturating_add(state.detail_cursor);
-                state.rows.get(reply_idx).map(|r| r.raw_card.clone())
-            } else {
-                state.selected_row().map(|r| r.raw_card.clone())
-            };
-            match raw {
-                Some(content) => state.open_raw_event_modal(content),
-                None => state.status = "no event selected".to_string(),
+        "View raw event" => match runtime.raw_event_json(&note_id) {
+            Some(content) => state.open_raw_event_modal(content),
+            None => {
+                state.status = format!(
+                    "wire event {} not cached (arrived before observer?)",
+                    &note_id[..8.min(note_id.len())]
+                )
             }
-        }
+        },
         "Zap" => {
             state.pending_zap_pubkey = Some(author_pubkey);
             state.pending_zap_event_id = Some(note_id);
@@ -398,12 +395,7 @@ fn outbox_select_next(state: &mut AppState) {
         return;
     }
     let max = state.features.outbox.len().saturating_sub(1);
-    state.outbox_selected = Some(
-        state
-            .outbox_selected
-            .map(|i| (i + 1).min(max))
-            .unwrap_or(0),
-    );
+    state.outbox_selected = Some(state.outbox_selected.map(|i| (i + 1).min(max)).unwrap_or(0));
 }
 
 fn outbox_select_previous(state: &mut AppState) {
