@@ -4,6 +4,7 @@ use std::io::Read as _;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use iced::widget::image::Handle as ImageHandle;
 use iced::widget::{button, column, container, row, rule, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Subscription};
 
@@ -41,10 +42,13 @@ pub struct GalleryApp {
     embed_host: EmbedHostState,
     selected: usize,
     last_rev: u64,
-    // Avatar image: URL we started fetching, pending slot, resolved bytes.
+    // Avatar image: URL being fetched, pending bytes slot, and the cached
+    // Handle created once on arrival. Storing the Handle (not raw bytes) is
+    // critical — Handle has a stable ID so iced reuses the same GPU texture
+    // every frame instead of re-uploading on each render call.
     avatar_url_fetching: Option<String>,
     avatar_pending: Arc<Mutex<Option<Vec<u8>>>>,
-    avatar_bytes: Option<Vec<u8>>,
+    avatar_handle: Option<ImageHandle>,
 }
 
 impl GalleryApp {
@@ -59,7 +63,7 @@ impl GalleryApp {
             last_rev: 0,
             avatar_url_fetching: None,
             avatar_pending: Arc::new(Mutex::new(None)),
-            avatar_bytes: None,
+            avatar_handle: None,
         }
     }
 }
@@ -103,9 +107,11 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             claim_tree_refs(&app.bridge, &app.data.embed_note.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_highlight.tree.nodes);
 
-            // 4. Check if a background avatar fetch completed.
+            // 4. Check if a background avatar fetch completed. Create the Handle
+            //    exactly once here — never in view() — so the same Handle ID is
+            //    passed to iced every frame and the GPU texture is not re-uploaded.
             if let Some(bytes) = app.avatar_pending.lock().ok().and_then(|mut s| s.take()) {
-                app.avatar_bytes = Some(bytes);
+                app.avatar_handle = Some(ImageHandle::from_bytes(bytes));
             }
 
             // 5. Start fetching the primary pubkey's picture_url if it changed.
@@ -284,8 +290,8 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
             let mut av = UserAvatar::new(&primary.pubkey)
                 .display_name(primary.display_name.as_deref())
                 .size(96.0);
-            if let Some(ref bytes) = app.avatar_bytes {
-                av = av.picture_bytes(bytes);
+            if let Some(handle) = app.avatar_handle.clone() {
+                av = av.picture_handle(handle);
             }
             let avatar = av.into_element::<Message>();
 

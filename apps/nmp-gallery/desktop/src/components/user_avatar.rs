@@ -11,7 +11,7 @@ use iced::{Border, Color, Element, Length};
 pub struct UserAvatar {
     pubkey_hex: String,
     display_name: Option<String>,
-    picture_bytes: Option<Vec<u8>>,
+    picture_handle: Option<Handle>,
     size: f32,
 }
 
@@ -21,7 +21,7 @@ impl UserAvatar {
         Self {
             pubkey_hex: pubkey_hex.to_string(),
             display_name: None,
-            picture_bytes: None,
+            picture_handle: None,
             size: 36.0,
         }
     }
@@ -32,11 +32,13 @@ impl UserAvatar {
         self
     }
 
-    /// Supply decoded image bytes. When present, renders the actual profile
-    /// picture (clipped to a circle) instead of the initials fallback.
+    /// Supply a pre-built image Handle (created once in update(), never in
+    /// view()). When present, renders the actual profile picture clipped to a
+    /// circle. Passing a Handle with a stable ID prevents per-frame GPU
+    /// re-uploads and the flickering that would cause.
     #[must_use]
-    pub fn picture_bytes(mut self, bytes: &[u8]) -> Self {
-        self.picture_bytes = Some(bytes.to_vec());
+    pub fn picture_handle(mut self, handle: Handle) -> Self {
+        self.picture_handle = Some(handle);
         self
     }
 
@@ -49,9 +51,8 @@ impl UserAvatar {
     pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {
         let size = self.size;
 
-        if let Some(bytes) = self.picture_bytes {
+        if let Some(handle) = self.picture_handle {
             // Render actual profile picture clipped to a circle.
-            let handle = Handle::from_bytes(bytes);
             container(
                 iced::widget::image(handle)
                     .width(Length::Fixed(size))
