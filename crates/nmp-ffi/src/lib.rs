@@ -11,6 +11,11 @@
 #[cfg(test)]
 #[path = "active_account_handle_tests.rs"]
 mod active_account_handle_tests;
+// V-83 — `NmpApp::event_by_id()` synchronous event-read tests (real event
+// ingest driven through the actor thread; publish-back slot survives Reset).
+#[cfg(test)]
+#[path = "event_by_id_tests.rs"]
+mod event_by_id_tests;
 mod action;
 mod capability;
 mod event_observer;
