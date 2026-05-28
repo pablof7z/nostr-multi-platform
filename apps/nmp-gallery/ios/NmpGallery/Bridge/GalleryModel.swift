@@ -27,11 +27,6 @@ let DEMO_NPUB =
 /// Rust-computed `npubShort`).
 let DEMO_NPUB_SHORT = "npub1l2vyh…utajft"
 
-/// Stable consumer id for the gallery's profile interest. The kernel
-/// refcounts profile claims per `(pubkey, consumer_id)` pair; using one stable
-/// id means claim/release stays balanced even across re-renders.
-let GALLERY_PROFILE_CONSUMER_ID = "gallery"
-
 /// Bootstrap relay set seeded into the kernel on cold start. The gallery has
 /// no logged-in user, so there is no kind:10002 to source app relays from;
 /// without these seeds the kernel has nowhere to send a kind:0 fetch and
@@ -82,18 +77,18 @@ private struct AuthorViewWire: Decodable {
 
 /// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The
 /// kernel's `KernelSnapshot` ships a host-extensible `projections` map; the
-/// gallery reads two keys from it:
+/// gallery reads three profile keys from it:
 ///
+///   * `projections.claimed_profiles[pubkey]` — populated by component-owned
+///     `claim_profile` lifecycles. This is the registry component happy path.
 ///   * `projections.author_view.profile` — populated by `open_author`,
 ///     carries a full `ProfileCard` with `npub`, `nip05`, and `about`.
-///     This is the primary source for the gallery's demo author.
 ///   * `projections.mention_profiles[pubkey]` — populated for every author
 ///     whose notes appear in a visible timeline / author view / thread
 ///     view. Carries `display_name` + `picture_url` only (no `npub`).
-///     Secondary source; useful once the author_view's items are visible.
 ///
 /// `snapshot.profiles[pubkey] -> ProfileWire?` is synthesised from those
-/// two surfaces so the per-component pages stay decoupled from the wire
+/// surfaces so the per-component pages stay decoupled from the wire
 /// shape. Decoding is fault-tolerant — a missing/null projection key
 /// degrades to an empty map instead of failing the whole tick.
 struct GallerySnapshot: Decodable, Equatable {
@@ -114,7 +109,7 @@ struct GallerySnapshot: Decodable, Equatable {
     }
 
     private enum ProjectionsKeys: String, CodingKey {
-        case authorView, mentionProfiles, accounts
+        case claimedProfiles, authorView, mentionProfiles, accounts
     }
 
     init(from decoder: Decoder) throws {
@@ -130,6 +125,14 @@ struct GallerySnapshot: Decodable, Equatable {
             keyedBy: ProjectionsKeys.self,
             forKey: .projections
         ) {
+            if let claimed = try? projections.decodeIfPresent(
+                [String: AuthorProfileWire].self,
+                forKey: .claimedProfiles
+            ) {
+                for (pubkey, card) in claimed {
+                    assembled[pubkey] = profileWire(fromAuthorProfile: card, pubkey: pubkey)
+                }
+            }
             if let view = try? projections.decodeIfPresent(
                 AuthorViewWire.self,
                 forKey: .authorView
@@ -251,7 +254,7 @@ struct AccountWire: Decodable, Equatable {
 /// decodes them and republishes for SwiftUI consumption.
 @MainActor
 @Observable
-final class GalleryModel {
+final class GalleryModel: NostrProfileHost {
     private(set) var snapshot: GallerySnapshot = .empty
     private(set) var lastDecodeError: String?
     private let kernel: GalleryKernelHandle
@@ -289,33 +292,24 @@ final class GalleryModel {
         kernel.start()
         // Seed bootstrap relays. The gallery has no logged-in user → no
         // kind:10002 → empty `app_relays` and no routing target. Adding these
-        // BEFORE the author-view open means the very first compile pass
-        // already has candidates, so the kind:0 fetch ships on tick 1
-        // instead of waiting for an external mailbox to arrive.
+        // before any component-owned profile claim means the first claim
+        // already has candidates instead of waiting for an external mailbox
+        // to arrive.
         for url in GALLERY_BOOTSTRAP_RELAYS {
             kernel.addRelay(url: url, role: "both")
         }
-        // Open an author view on the demo pubkey (pablof7z). The kernel
-        // fetches kind:10002 + kind:0 from the discovery relays seeded
-        // above and surfaces the resolved `ProfileCard` under
-        // `projections.author_view.profile` in the push-callback snapshot.
-        //
-        // We deliberately do NOT use `claim_profile` here even though it
-        // is semantically the right primitive for "I want this profile":
-        // the kernel populates its internal `self.profiles` cache on
-        // kind:0 arrival, but no projection on the snapshot wire surface
-        // exposes that map for a claim-only pubkey (only the active
-        // account lands in `projections.profile`). `open_author` is the
-        // shortest path to the same data with a decoder-visible projection.
-        kernel.openAuthor(pubkey: DEMO_PUBKEY_HEX)
+        // Do not open the demo author here. The user-avatar registry component
+        // claims `DEMO_PUBKEY_HEX` when it mounts, and the kernel surfaces the
+        // result through `projections.claimed_profiles`.
     }
 
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
     /// The decode is split into two reads of the same JSON blob:
-    ///   1. Typed `GallerySnapshot` decode — author_view / mention_profiles /
-    ///      accounts. Lean: stays decoupled from any embed-projection drift.
+    ///   1. Typed `GallerySnapshot` decode — claimed_profiles / author_view /
+    ///      mention_profiles / accounts. Lean: stays decoupled from any
+    ///      embed-projection drift.
     ///   2. Raw JSONSerialization read passed through to `embedHost` so the
     ///      kind-dispatched embed projection (`projections.claimed_events`)
     ///      flows into the SwiftUI environment without expanding the typed
@@ -385,6 +379,16 @@ final class GalleryModel {
     /// Lookup any profile that arrived through the gallery's profiles map.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         snapshot.profiles[pubkey]
+    }
+
+    /// NostrProfileHost: demand a profile projection for a mounted component.
+    func claimProfile(pubkey: String, consumerID: String) {
+        kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
+    }
+
+    /// NostrProfileHost: release a component's profile interest on unmount.
+    func releaseProfile(pubkey: String, consumerID: String) {
+        kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
 
     /// Demo write surface (phase 2). Dispatches a sign-in action without

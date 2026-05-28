@@ -134,6 +134,28 @@ use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{build_actor_claim_sink, register_op_feed, ActorCommandDispatch};
 use nmp_nip01::OpFeedEngine;
+use nmp_nip02::ActiveFollowSet;
+
+/// What [`register_op_feed_defaults`] hands back to the composition caller.
+///
+/// Rung 6 originally returned only the `Arc<OpFeedEngine>`. Rung 7 (the Chirp
+/// cut-over) also needs the `Arc<ActiveFollowSet>` so the host can drive
+/// [`ActiveFollowSet::notify_account_changed`] from the real identity-change
+/// path (logout / switch-before-kind:3 — the cases the kind:3-driven observer
+/// does not cover). Returning both is the minimal rung-6 amendment that closes
+/// the loop the module docs already telegraph ("Driving
+/// `notify_account_changed()` from the real identity-change path is rung 7's
+/// responsibility").
+pub struct OpFeedDefaults {
+    /// The registered OP-feed engine — already wired as a `KernelEventObserver`
+    /// (ingest) and a `FeedController` under `"nmp.feed.home"` (output).
+    pub engine: Arc<OpFeedEngine>,
+    /// The follow-set producer — already wired as a `KernelEventObserver` so
+    /// the active account's kind:3 keeps it current. Held by the caller so the
+    /// identity-change path can call [`ActiveFollowSet::notify_account_changed`]
+    /// on logout / pre-kind:3 switch.
+    pub follow_set: Arc<ActiveFollowSet>,
+}
 
 /// Wire the OP-centric home feed into `app`.
 ///
@@ -144,8 +166,11 @@ use nmp_nip01::OpFeedEngine;
 /// `ActiveFollowSet` as its own `KernelEventObserver` and an `on_change`
 /// callback that resets the engine on an account switch.
 ///
-/// Returns the `Arc<OpFeedEngine>` so callers (and tests) can drive the engine
-/// directly or interrogate it. The engine is already registered with `app`.
+/// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` (so callers
+/// and tests can drive the engine directly or interrogate it) and the
+/// `Arc<ActiveFollowSet>` (so rung 7's host can drive
+/// [`ActiveFollowSet::notify_account_changed`] on identity change). Both are
+/// already registered with `app`.
 ///
 /// **This function is NOT called by [`crate::register_defaults`] and is not
 /// wired into any production app in this rung.** Rung 7 makes Chirp call it
@@ -170,7 +195,7 @@ pub fn register_op_feed_defaults(
     app: &NmpApp,
     viewer: Pubkey,
     active_account_slot: ActiveAccountSlot,
-) -> Arc<OpFeedEngine> {
+) -> OpFeedDefaults {
     // ── 1. Follow-set producer ───────────────────────────────────────────
     //
     // Constructed over the kernel's active-account slot (NOT `&NmpApp` — see
@@ -235,7 +260,7 @@ pub fn register_op_feed_defaults(
         }
     }));
 
-    engine
+    OpFeedDefaults { engine, follow_set }
 }
 
 /// Read the active account's hex pubkey from the slot, or `None` when no

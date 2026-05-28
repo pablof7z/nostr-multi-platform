@@ -2,6 +2,7 @@ import type { Component } from "./types";
 
 // User profile — SwiftUI
 import profileWireSwift from "../vendor/swiftui/user-avatar/ProfileWire.swift?raw";
+import nostrProfileHostSwift from "../vendor/swiftui/user-avatar/NostrProfileHost.swift?raw";
 import nostrAvatarSwift from "../vendor/swiftui/user-avatar/NostrAvatar.swift?raw";
 import nostrProfileNameSwift from "../vendor/swiftui/user-name/NostrProfileName.swift?raw";
 import nostrNip05BadgeSwift from "../vendor/swiftui/user-nip05/NostrNip05Badge.swift?raw";
@@ -10,6 +11,7 @@ import nostrUserCardSwift from "../vendor/swiftui/user-card/NostrUserCard.swift?
 
 // User profile — Compose
 import profileWireKotlin from "../vendor/compose/user-avatar/ProfileWire.kt?raw";
+import nostrProfileHostKotlin from "../vendor/compose/user-avatar/NostrProfileHost.kt?raw";
 import nostrAvatarKotlin from "../vendor/compose/user-avatar/NostrAvatar.kt?raw";
 import nostrProfileNameKotlin from "../vendor/compose/user-name/NostrProfileName.kt?raw";
 import nostrNip05BadgeKotlin from "../vendor/compose/user-nip05/NostrNip05Badge.kt?raw";
@@ -52,7 +54,7 @@ export const userComponents: Component[] = [
     slug: "user-avatar",
     routeId: "user-avatar",
     version: "0.1.0",
-    description: "ProfileWire wire type and circular avatar with deterministic identicon fallback.",
+    description: "Reference-first avatar that claims and observes its profile projection.",
     platforms: {
       swiftui: {
         status: "stable",
@@ -60,9 +62,10 @@ export const userComponents: Component[] = [
         version: "0.1.0",
         dependencies: [],
         longDescription:
-          "`ProfileWire` is the Codable struct decoded from the `nmp-profile` projection. `NostrAvatar` renders the picture URL with a deterministic identicon fallback. Install once; every other user component depends on these.",
+          "`NostrAvatar(pubkey:)` claims/releases its own profile interest through `NostrProfileHost`, reads the current Rust-owned profile projection, and falls back to a deterministic identicon until the picture URL arrives. Install once; every other user component depends on the shared `ProfileWire`.",
         files: [
           { source: "swiftui/user-avatar/ProfileWire.swift", target: "Components/NostrUser/ProfileWire.swift", role: "source", content: profileWireSwift },
+          { source: "swiftui/user-avatar/NostrProfileHost.swift", target: "Components/NostrUser/NostrProfileHost.swift", role: "source", content: nostrProfileHostSwift },
           { source: "swiftui/user-avatar/NostrAvatar.swift", target: "Components/NostrUser/NostrAvatar.swift", role: "source", content: nostrAvatarSwift },
         ],
         screenshots: ["user-avatar-ios-gallery-preview.png"],
@@ -77,9 +80,10 @@ export const userComponents: Component[] = [
         version: "0.1.0",
         dependencies: [],
         longDescription:
-          "`ProfileWire` is the `@Serializable` data class decoded from the `nmp-profile` projection. `NostrAvatar` renders the picture URL via Coil with a deterministic identicon fallback. Install once; every other Compose user component depends on these.",
+          "`NostrAvatar(pubkey = ...)` claims/releases its own profile interest through `LocalNostrProfileHost`, reads the current Rust-owned profile projection, and falls back to a deterministic identicon until the picture URL arrives. Install once; every other Compose user component depends on the shared `ProfileWire`.",
         files: [
           { source: "compose/user-avatar/ProfileWire.kt", target: "Components/NostrUser/ProfileWire.kt", role: "source", content: profileWireKotlin },
+          { source: "compose/user-avatar/NostrProfileHost.kt", target: "Components/NostrUser/NostrProfileHost.kt", role: "source", content: nostrProfileHostKotlin },
           { source: "compose/user-avatar/NostrAvatar.kt", target: "Components/NostrUser/NostrAvatar.kt", role: "source", content: nostrAvatarKotlin },
         ],
         screenshots: ["user-avatar-kotlin-preview.png"],
@@ -94,7 +98,7 @@ export const userComponents: Component[] = [
         version: "0.1.1",
         dependencies: ["user-core"],
         longDescription:
-          "`ProfileWire` mirrors the Rust-owned profile projection. `NostrAvatar` accepts an optional `ratatui-image` protocol supplied by the host app and falls back to initials with a deterministic pubkey-derived accent.",
+          "`NostrAvatar::for_pubkey(pubkey, host)` claims its own profile interest through `NostrProfileHost`, reads the current Rust-owned profile projection each frame, accepts an optional `ratatui-image` protocol supplied by the host app, and falls back to deterministic initials until the image is available.",
         files: [
           { source: "tui/user-core/profile_wire.rs", target: "src/components/nostr_user/profile_wire.rs", role: "source", content: profileWireRust },
           { source: "tui/user-avatar/nostr_avatar.rs", target: "src/components/nostr_user/nostr_avatar.rs", role: "source", content: nostrAvatarRust },

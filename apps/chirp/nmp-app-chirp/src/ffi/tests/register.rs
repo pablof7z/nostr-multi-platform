@@ -27,9 +27,10 @@ fn register_snapshot_unregister_round_trip() {
     // SAFETY: snap is a valid C string from our own CString.
     let json = unsafe { CStr::from_ptr(snap) }.to_str().unwrap().to_owned();
     nmp_app_chirp_snapshot_free(snap);
-    // Empty snapshot decodes to empty arrays.
-    assert!(json.contains("\"blocks\":[]"));
-    assert!(json.contains("\"cards\":[]"));
+    // V-80 rung 7: the snapshot is now the OP-centric `RootFeedSnapshot` —
+    // `{ "cards": [], "page": … }`. The old `blocks` array is gone.
+    assert!(json.contains("\"cards\":[]"), "empty OP feed snapshot, got {json}");
+    assert!(!json.contains("\"blocks\""), "RootFeedSnapshot carries no `blocks` key, got {json}");
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);

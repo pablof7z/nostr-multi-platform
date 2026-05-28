@@ -16,6 +16,8 @@
 //!    the next snapshot push delivers them; the redraw shows them.
 
 use std::{
+    cell::RefCell,
+    collections::BTreeSet,
     io,
     sync::{
         mpsc::{self, RecvError, Sender, TryRecvError},
@@ -119,9 +121,8 @@ fn main() -> io::Result<()> {
 
     let data = GalleryData::live_initial(PRIMARY_PUBKEY);
 
-    // Build the renderer's embed sink (forwards claim/release to the
-    // persistent kernel via the new claim_event FFI). `Arc` so the sink
-    // can be passed `&dyn EventClaimSink` to NostrContentView each frame.
+    // Build the renderer's registry sink (forwards event/profile claim
+    // lifecycles to the persistent kernel).
     let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: kernel.app });
     let mut host = EmbedHostState::new();
 
@@ -144,16 +145,6 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    // Open the primary author's view so the kernel fetches the kind:0 and
-    // surfaces the full `ProfileCard` in `projections.author_view.profile`
-    // (and the author's items in `mention_profiles`) — the exact projections
-    // `LiveProfileMap::update_from_snapshot` ingests. A bare `claim_profile`
-    // alone would NOT surface here: `mention_profiles` is derived only from
-    // open-view item sets (see `nmp-core` `kernel/update.rs`), so without an
-    // open view the user-* components would sit on the npub_short fallback
-    // forever. The resolved profile arrives on a later snapshot tick.
-    sink.open_author(PRIMARY_PUBKEY);
-
     // Take the snapshot stream off the kernel so the snapshot thread can
     // own it. The kernel's internal `wait_for_*` paths are no longer used
     // after this point — the main loop is the sole consumer.
@@ -161,7 +152,14 @@ fn main() -> io::Result<()> {
         .take_receiver()
         .expect("snapshot receiver must still be present after bootstrap");
 
-    run_terminal(&args, &data, &sink, &mut host, &mut live_profiles, snapshot_rx)?;
+    run_terminal(
+        &args,
+        &data,
+        &sink,
+        &mut host,
+        &mut live_profiles,
+        snapshot_rx,
+    )?;
 
     // Kernel drops here at end of scope — clears the update callback and
     // frees the app.
@@ -193,7 +191,10 @@ fn run_smoke(
     fn primary_id_for(uri: &str) -> Option<String> {
         let stripped = uri.strip_prefix("nostr:").unwrap_or(uri);
         if let Ok(naddr) = decode_naddr(stripped) {
-            return Some(format!("{}:{}:{}", naddr.kind, naddr.pubkey, naddr.identifier));
+            return Some(format!(
+                "{}:{}:{}",
+                naddr.kind, naddr.pubkey, naddr.identifier
+            ));
         }
         if let Ok(nevent) = decode_nevent(stripped) {
             return Some(nevent.event_id);
@@ -209,8 +210,7 @@ fn run_smoke(
     // known kind:1 event encoded as a `note1` so the smoke covers both
     // URI shapes (event-id form + naddr coordinate form). The event id is
     // a real pablof7z note from the workspace's existing fixture set.
-    const SMOKE_NOTE_HEX: &str =
-        "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660";
+    const SMOKE_NOTE_HEX: &str = "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660";
     let smoke_note_uri = match nmp_core::nip19::encode_note(SMOKE_NOTE_HEX) {
         Ok(bech) => format!("nostr:{bech}"),
         Err(error) => {
@@ -252,15 +252,17 @@ fn run_smoke(
     );
     for t in &targets {
         println!("  target: {} → {}", t.label, t.uri);
-        println!("    primary_id expected in claimed_events: {}", t.primary_id);
+        println!(
+            "    primary_id expected in claimed_events: {}",
+            t.primary_id
+        );
     }
     println!();
 
     let started = Instant::now();
     let mut claims_issued = false;
     let mut snapshot_tick = 0u32;
-    let mut resolved_ids: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut resolved_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
         let remaining = timeout - started.elapsed();
@@ -278,9 +280,7 @@ fn run_smoke(
                 // relay is connected — at which point the OneshotApi
                 // interest registers and the planner compiles a wire REQ.
                 if !claims_issued && any_relay_connected(&value) {
-                    println!(
-                        "  + relay connected — claims firing on tick #{snapshot_tick}"
-                    );
+                    println!("  + relay connected — claims firing on tick #{snapshot_tick}");
                     for t in &targets {
                         println!("    claim: {}", t.uri);
                         sink.claim(&t.uri, consumer_id);
@@ -315,8 +315,15 @@ fn run_smoke(
     println!();
     println!("Summary:");
     println!("  snapshot ticks observed: {snapshot_tick}");
-    println!("  claims issued:           {}", if claims_issued { "yes" } else { "no" });
-    println!("  resolved targets:        {}/{}", resolved_ids.len(), targets.len());
+    println!(
+        "  claims issued:           {}",
+        if claims_issued { "yes" } else { "no" }
+    );
+    println!(
+        "  resolved targets:        {}/{}",
+        resolved_ids.len(),
+        targets.len()
+    );
     let unresolved: Vec<&SmokeTarget> = targets
         .iter()
         .filter(|t| !resolved_ids.contains(&t.primary_id))
@@ -343,22 +350,16 @@ fn run_smoke(
             );
         }
         println!();
-        println!(
-            "  Most likely cause: the target event isn't on the seeded relays."
-        );
-        println!(
-            "  The seeded relays are purplepag.es (indexer), nos.lol, relay.damus.io,"
-        );
-        println!(
-            "  relay.nostr.band. Architecture is validated by the resolved targets above."
-        );
+        println!("  Most likely cause: the target event isn't on the seeded relays.");
+        println!("  The seeded relays are purplepag.es (indexer), nos.lol, relay.damus.io,");
+        println!("  relay.nostr.band. Architecture is validated by the resolved targets above.");
         println!();
-        println!("Host envelope map ({} entries):", host.current_envelopes().len());
+        println!(
+            "Host envelope map ({} entries):",
+            host.current_envelopes().len()
+        );
         for (k, env) in host.current_envelopes() {
-            println!(
-                "  - {k} → {}",
-                projection_label(&env.projection)
-            );
+            println!("  - {k} → {}", projection_label(&env.projection));
         }
         1
     }
@@ -367,9 +368,9 @@ fn run_smoke(
 fn any_relay_connected(snapshot: &Value) -> bool {
     relay_status_array(snapshot)
         .map(|relays| {
-            relays.iter().any(|r| {
-                r.get("connection").and_then(Value::as_str) == Some("connected")
-            })
+            relays
+                .iter()
+                .any(|r| r.get("connection").and_then(Value::as_str) == Some("connected"))
         })
         .unwrap_or(false)
 }
@@ -385,11 +386,7 @@ fn relay_status_array(snapshot: &Value) -> Option<&Vec<Value>> {
                 .and_then(|d| d.get("relays"))
                 .and_then(Value::as_array)
         })
-        .or_else(|| {
-            snapshot
-                .get("relay_status")
-                .and_then(Value::as_array)
-        })
+        .or_else(|| snapshot.get("relay_status").and_then(Value::as_array))
 }
 
 fn projection_label(p: &nmp_content::embed_projection::EmbedKindProjection) -> &'static str {
@@ -430,7 +427,10 @@ fn print_resolved(label: &str, env: &nmp_content::embed_projection::EmbeddedEven
         EmbedKindProjection::Highlight(h) => {
             println!("✓ {label} → HighlightProjection (kind:9802)");
             println!("    id:        {}", h.id);
-            println!("    quoted:    {}", truncate_for_display(&h.highlighted_text, 80));
+            println!(
+                "    quoted:    {}",
+                truncate_for_display(&h.highlighted_text, 80)
+            );
         }
         EmbedKindProjection::Profile(p) => {
             println!("✓ {label} → ProfileProjection (kind:0)");
@@ -505,7 +505,15 @@ fn run_terminal(
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let result = drive(&mut terminal, args, data, sink, host, live_profiles, snapshot_rx);
+    let result = drive(
+        &mut terminal,
+        args,
+        data,
+        sink,
+        host,
+        live_profiles,
+        snapshot_rx,
+    );
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -523,6 +531,7 @@ fn drive(
     snapshot_rx: std::sync::mpsc::Receiver<String>,
 ) -> io::Result<()> {
     let mut selected_index = gallery::component_index(&args.component);
+    let mut profile_claims = VisibleProfileClaims::default();
 
     // Single channel multiplexing input + snapshot. Both threads block on
     // their respective sources (no polling, D8). The main loop blocks on
@@ -531,7 +540,15 @@ fn drive(
     spawn_input_thread(tx.clone());
     spawn_snapshot_thread(tx.clone(), snapshot_rx);
 
-    draw(terminal, selected_index, data, sink, host, live_profiles)?;
+    draw(
+        terminal,
+        selected_index,
+        data,
+        sink,
+        host,
+        live_profiles,
+        &mut profile_claims,
+    )?;
 
     loop {
         match rx.recv() {
@@ -553,10 +570,26 @@ fn drive(
                     }
                     _ => continue, // unknown key — no redraw
                 }
-                draw(terminal, selected_index, data, sink, host, live_profiles)?;
+                draw(
+                    terminal,
+                    selected_index,
+                    data,
+                    sink,
+                    host,
+                    live_profiles,
+                    &mut profile_claims,
+                )?;
             }
             Ok(GalleryEvent::Input(Event::Resize(_, _))) => {
-                draw(terminal, selected_index, data, sink, host, live_profiles)?;
+                draw(
+                    terminal,
+                    selected_index,
+                    data,
+                    sink,
+                    host,
+                    live_profiles,
+                    &mut profile_claims,
+                )?;
             }
             Ok(GalleryEvent::Input(_)) => {
                 // Other input events (mouse, etc.) — ignore.
@@ -583,26 +616,33 @@ fn drive(
                             match other {
                                 GalleryEvent::Input(ev) => {
                                     // Recurse-ish: just handle right after redraw.
-                                    handle_input_after_snapshot(
-                                        ev,
-                                        &mut selected_index,
-                                    );
+                                    handle_input_after_snapshot(ev, &mut selected_index);
                                 }
-                                GalleryEvent::Quit => return draw_then_quit(
-                                    terminal,
-                                    selected_index,
-                                    data,
-                                    sink,
-                                    host,
-                                    live_profiles,
-                                ),
+                                GalleryEvent::Quit => {
+                                    return draw_then_quit(
+                                        terminal,
+                                        selected_index,
+                                        data,
+                                        sink,
+                                        host,
+                                        live_profiles,
+                                    )
+                                }
                                 GalleryEvent::Snapshot(_) => unreachable!(),
                             }
                             break;
                         }
                     }
                 }
-                draw(terminal, selected_index, data, sink, host, live_profiles)?;
+                draw(
+                    terminal,
+                    selected_index,
+                    data,
+                    sink,
+                    host,
+                    live_profiles,
+                    &mut profile_claims,
+                )?;
             }
             Err(RecvError) => return Ok(()),
         }
@@ -657,7 +697,16 @@ fn draw_then_quit(
     host: &mut EmbedHostState,
     live_profiles: &LiveProfileMap,
 ) -> io::Result<()> {
-    draw(terminal, selected_index, data, sink, host, live_profiles)?;
+    let mut profile_claims = VisibleProfileClaims::default();
+    draw(
+        terminal,
+        selected_index,
+        data,
+        sink,
+        host,
+        live_profiles,
+        &mut profile_claims,
+    )?;
     Ok(())
 }
 
@@ -677,10 +726,7 @@ fn spawn_input_thread(tx: Sender<GalleryEvent>) {
     });
 }
 
-fn spawn_snapshot_thread(
-    tx: Sender<GalleryEvent>,
-    rx: std::sync::mpsc::Receiver<String>,
-) {
+fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<String>) {
     thread::spawn(move || {
         for payload in rx {
             let Some(value) = parse_snapshot(&payload) else {
@@ -700,11 +746,13 @@ fn draw(
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
     live_profiles: &LiveProfileMap,
+    profile_claims: &mut VisibleProfileClaims,
 ) -> io::Result<()> {
-    let sink_ref: &dyn nmp_content::EventClaimSink = sink.as_ref();
+    let frame_profile_claims = RefCell::new(BTreeSet::new());
     let embed_ctx = EmbedFrameContext {
         envelopes: host.current_envelopes(),
-        sink: Some(sink_ref),
+        sink: Some(sink.as_ref()),
+        profile_claims: Some(&frame_profile_claims),
         consumer_id: EMBED_CONSUMER_ID,
         profiles: live_profiles,
     };
@@ -714,7 +762,22 @@ fn draw(
             frame.area(),
         )
     })?;
+    profile_claims.reconcile(sink, frame_profile_claims.into_inner());
     // Avoid unused-Result lint when channel is dropped during coalesce.
     let _ = TryRecvError::Empty;
     Ok(())
+}
+
+#[derive(Default)]
+struct VisibleProfileClaims {
+    active: BTreeSet<(String, String)>,
+}
+
+impl VisibleProfileClaims {
+    fn reconcile(&mut self, sink: &LiveKernelSink, current: BTreeSet<(String, String)>) {
+        for (pubkey, consumer_id) in self.active.difference(&current) {
+            sink.release_profile(pubkey, consumer_id);
+        }
+        self.active = current;
+    }
 }

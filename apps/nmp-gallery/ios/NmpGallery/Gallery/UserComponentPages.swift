@@ -24,30 +24,30 @@ private struct PageFrame<Content: View>: View {
 
 // MARK: - user-avatar
 
-/// Renders the avatar component using the best-effort profile passed in.
+/// Renders the avatar component from only a pubkey.
 ///
-/// Never gates on kind:0 arrival — the registry's `NostrAvatar` falls back
-/// to a deterministic identicon when `pictureUrl` is nil, so the first
-/// frame always shows a meaningful preview. When the real kind:0 lands
-/// `GalleryModel.bestEffortProfile` flips to the kernel-supplied
-/// `ProfileWire` and SwiftUI re-renders automatically.
+/// The page does not pre-hydrate `ProfileWire`. `NostrAvatar` claims the
+/// profile through `NostrProfileHost`, reads the current projection, and
+/// falls back to a deterministic identicon until kind:0 arrives.
 struct UserAvatarPage: View {
-    let profile: ProfileWire
+    let pubkey: String
+    private let fallbackPubkey =
+        "0000000000000000000000000000000000000000000000000000000000000000"
 
     var body: some View {
         VStack(spacing: 16) {
-            PageFrame(caption: "NostrAvatar(profile:)") {
-                NostrAvatar(profile: profile, size: 80)
+            PageFrame(caption: "NostrAvatar(pubkey:)") {
+                NostrAvatar(pubkey: pubkey, size: 80)
             }
             PageFrame(caption: "Smaller size") {
                 HStack(spacing: 12) {
-                    NostrAvatar(profile: profile, size: 32)
-                    NostrAvatar(profile: profile, size: 48)
-                    NostrAvatar(profile: profile, size: 64)
+                    NostrAvatar(pubkey: pubkey, size: 32)
+                    NostrAvatar(pubkey: pubkey, size: 48)
+                    NostrAvatar(pubkey: pubkey, size: 64)
                 }
             }
             PageFrame(caption: "Identicon fallback (no picture URL)") {
-                NostrAvatar(pubkey: profile.pubkey, pictureUrl: nil, size: 80)
+                NostrAvatar(pubkey: fallbackPubkey, pictureUrl: nil, size: 80)
             }
         }
     }
