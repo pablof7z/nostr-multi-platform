@@ -38,6 +38,10 @@ pub mod ffi;
 #[cfg(feature = "wallet")]
 mod wallet_runtime;
 
+// ADR-0035: `nmp_app_chirp_snapshot` is `#[deprecated]` (diagnostics-only) but
+// stays in the crate's public C-ABI surface (host links the `#[no_mangle]`
+// symbol). Allow the deprecation lint on this re-export only.
+#[allow(deprecated)]
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
     nmp_app_chirp_unregister, ChirpHandle,

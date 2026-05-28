@@ -1027,6 +1027,22 @@ impl NmpApp {
         }
     }
 
+    /// Register a typed FlatBuffers projection closure for a named projection key.
+    ///
+    /// The typed sidecar is emitted alongside the existing generic `Value` tree in
+    /// every `SnapshotFrame` (ADR-0035). `f` runs on the actor thread on every
+    /// tick — it MUST be non-blocking (D8) and returns `None` when there is
+    /// nothing to emit this tick.
+    pub fn register_typed_snapshot_projection(
+        &self,
+        key: impl Into<String>,
+        f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    ) {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.register_typed(key, f);
+        }
+    }
+
     /// Register a reusable feed surface. The controller owns ordering,
     /// viewport state, paging, and render payload selection; native shells
     /// only render the emitted projection and report viewport intent.
