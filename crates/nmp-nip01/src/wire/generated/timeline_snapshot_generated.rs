@@ -2,2468 +2,3691 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_01 {
-
-
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MIN_THREAD_POINTER_KIND: u8 = 0;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_THREAD_POINTER_KIND: u8 = 2;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-#[allow(non_camel_case_types)]
-pub const ENUM_VALUES_THREAD_POINTER_KIND: [ThreadPointerKind; 3] = [
-  ThreadPointerKind::Event,
-  ThreadPointerKind::Address,
-  ThreadPointerKind::External,
-];
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[repr(transparent)]
-pub struct ThreadPointerKind(pub u8);
-#[allow(non_upper_case_globals)]
-impl ThreadPointerKind {
-  pub const Event: Self = Self(0);
-  pub const Address: Self = Self(1);
-  pub const External: Self = Self(2);
-
-  pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 2;
-  pub const ENUM_VALUES: &'static [Self] = &[
-    Self::Event,
-    Self::Address,
-    Self::External,
-  ];
-  /// Returns the variant's name or "" if unknown.
-  pub fn variant_name(self) -> Option<&'static str> {
-    match self {
-      Self::Event => Some("Event"),
-      Self::Address => Some("Address"),
-      Self::External => Some("External"),
-      _ => None,
-    }
-  }
-}
-impl ::core::fmt::Debug for ThreadPointerKind {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    if let Some(name) = self.variant_name() {
-      f.write_str(name)
-    } else {
-      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-    }
-  }
-}
-impl<'a> ::flatbuffers::Follow<'a> for ThreadPointerKind {
-  type Inner = Self;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-    Self(b)
-  }
-}
-
-impl ::flatbuffers::Push for ThreadPointerKind {
-    type Output = ThreadPointerKind;
-    #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-    }
-}
-
-impl ::flatbuffers::EndianScalar for ThreadPointerKind {
-  type Scalar = u8;
-  #[inline]
-  fn to_little_endian(self) -> u8 {
-    self.0.to_le()
-  }
-  #[inline]
-  #[allow(clippy::wrong_self_convention)]
-  fn from_little_endian(v: u8) -> Self {
-    let b = u8::from_le(v);
-    Self(b)
-  }
-}
-
-impl<'a> ::flatbuffers::Verifiable for ThreadPointerKind {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    u8::run_verifier(v, pos)
-  }
-}
-
-impl ::flatbuffers::SimpleToVerifyInSlice for ThreadPointerKind {}
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MIN_TIMELINE_BLOCK_KIND: u8 = 0;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_TIMELINE_BLOCK_KIND: u8 = 1;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-#[allow(non_camel_case_types)]
-pub const ENUM_VALUES_TIMELINE_BLOCK_KIND: [TimelineBlockKind; 2] = [
-  TimelineBlockKind::Standalone,
-  TimelineBlockKind::Module,
-];
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[repr(transparent)]
-pub struct TimelineBlockKind(pub u8);
-#[allow(non_upper_case_globals)]
-impl TimelineBlockKind {
-  pub const Standalone: Self = Self(0);
-  pub const Module: Self = Self(1);
-
-  pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 1;
-  pub const ENUM_VALUES: &'static [Self] = &[
-    Self::Standalone,
-    Self::Module,
-  ];
-  /// Returns the variant's name or "" if unknown.
-  pub fn variant_name(self) -> Option<&'static str> {
-    match self {
-      Self::Standalone => Some("Standalone"),
-      Self::Module => Some("Module"),
-      _ => None,
-    }
-  }
-}
-impl ::core::fmt::Debug for TimelineBlockKind {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    if let Some(name) = self.variant_name() {
-      f.write_str(name)
-    } else {
-      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-    }
-  }
-}
-impl<'a> ::flatbuffers::Follow<'a> for TimelineBlockKind {
-  type Inner = Self;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-    Self(b)
-  }
-}
-
-impl ::flatbuffers::Push for TimelineBlockKind {
-    type Output = TimelineBlockKind;
-    #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-    }
-}
-
-impl ::flatbuffers::EndianScalar for TimelineBlockKind {
-  type Scalar = u8;
-  #[inline]
-  fn to_little_endian(self) -> u8 {
-    self.0.to_le()
-  }
-  #[inline]
-  #[allow(clippy::wrong_self_convention)]
-  fn from_little_endian(v: u8) -> Self {
-    let b = u8::from_le(v);
-    Self(b)
-  }
-}
-
-impl<'a> ::flatbuffers::Verifiable for TimelineBlockKind {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    u8::run_verifier(v, pos)
-  }
-}
-
-impl ::flatbuffers::SimpleToVerifyInSlice for TimelineBlockKind {}
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MIN_RELATION_COUNT_STATE: u8 = 0;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_RELATION_COUNT_STATE: u8 = 1;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-#[allow(non_camel_case_types)]
-pub const ENUM_VALUES_RELATION_COUNT_STATE: [RelationCountState; 2] = [
-  RelationCountState::Known,
-  RelationCountState::Loading,
-];
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[repr(transparent)]
-pub struct RelationCountState(pub u8);
-#[allow(non_upper_case_globals)]
-impl RelationCountState {
-  pub const Known: Self = Self(0);
-  pub const Loading: Self = Self(1);
-
-  pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 1;
-  pub const ENUM_VALUES: &'static [Self] = &[
-    Self::Known,
-    Self::Loading,
-  ];
-  /// Returns the variant's name or "" if unknown.
-  pub fn variant_name(self) -> Option<&'static str> {
-    match self {
-      Self::Known => Some("Known"),
-      Self::Loading => Some("Loading"),
-      _ => None,
-    }
-  }
-}
-impl ::core::fmt::Debug for RelationCountState {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    if let Some(name) = self.variant_name() {
-      f.write_str(name)
-    } else {
-      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-    }
-  }
-}
-impl<'a> ::flatbuffers::Follow<'a> for RelationCountState {
-  type Inner = Self;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-    Self(b)
-  }
-}
-
-impl ::flatbuffers::Push for RelationCountState {
-    type Output = RelationCountState;
-    #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-    }
-}
-
-impl ::flatbuffers::EndianScalar for RelationCountState {
-  type Scalar = u8;
-  #[inline]
-  fn to_little_endian(self) -> u8 {
-    self.0.to_le()
-  }
-  #[inline]
-  #[allow(clippy::wrong_self_convention)]
-  fn from_little_endian(v: u8) -> Self {
-    let b = u8::from_le(v);
-    Self(b)
-  }
-}
-
-impl<'a> ::flatbuffers::Verifiable for RelationCountState {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    u8::run_verifier(v, pos)
-  }
-}
-
-impl ::flatbuffers::SimpleToVerifyInSlice for RelationCountState {}
-pub enum ThreadPointerOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct ThreadPointer<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for ThreadPointer<'a> {
-  type Inner = ThreadPointer<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> ThreadPointer<'a> {
-  pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
-  pub const VT_ID: ::flatbuffers::VOffsetT = 6;
-  pub const VT_COORD: ::flatbuffers::VOffsetT = 8;
-  pub const VT_URI: ::flatbuffers::VOffsetT = 10;
-  pub const VT_RELAY: ::flatbuffers::VOffsetT = 12;
-  pub const VT_HAS_KIND_NUM: ::flatbuffers::VOffsetT = 14;
-  pub const VT_KIND_NUM: ::flatbuffers::VOffsetT = 16;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ThreadPointer { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ThreadPointerArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ThreadPointer<'bldr>> {
-    let mut builder = ThreadPointerBuilder::new(_fbb);
-    builder.add_kind_num(args.kind_num);
-    if let Some(x) = args.relay { builder.add_relay(x); }
-    if let Some(x) = args.uri { builder.add_uri(x); }
-    if let Some(x) = args.coord { builder.add_coord(x); }
-    if let Some(x) = args.id { builder.add_id(x); }
-    builder.add_has_kind_num(args.has_kind_num);
-    builder.add_kind(args.kind);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn kind(&self) -> ThreadPointerKind {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<ThreadPointerKind>(ThreadPointer::VT_KIND, Some(ThreadPointerKind::Event)).unwrap()}
-  }
-  #[inline]
-  pub fn id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_ID, None)}
-  }
-  #[inline]
-  pub fn coord(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_COORD, None)}
-  }
-  #[inline]
-  pub fn uri(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_URI, None)}
-  }
-  #[inline]
-  pub fn relay(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_RELAY, None)}
-  }
-  #[inline]
-  pub fn has_kind_num(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ThreadPointer::VT_HAS_KIND_NUM, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn kind_num(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(ThreadPointer::VT_KIND_NUM, Some(0)).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for ThreadPointer<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<ThreadPointerKind>("kind", Self::VT_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("coord", Self::VT_COORD, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("uri", Self::VT_URI, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay", Self::VT_RELAY, false)?
-     .visit_field::<bool>("has_kind_num", Self::VT_HAS_KIND_NUM, false)?
-     .visit_field::<u32>("kind_num", Self::VT_KIND_NUM, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ThreadPointerArgs<'a> {
-    pub kind: ThreadPointerKind,
-    pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub coord: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub uri: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub relay: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_kind_num: bool,
-    pub kind_num: u32,
-}
-impl<'a> Default for ThreadPointerArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ThreadPointerArgs {
-      kind: ThreadPointerKind::Event,
-      id: None,
-      coord: None,
-      uri: None,
-      relay: None,
-      has_kind_num: false,
-      kind_num: 0,
-    }
-  }
-}
-
-pub struct ThreadPointerBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ThreadPointerBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_kind(&mut self, kind: ThreadPointerKind) {
-    self.fbb_.push_slot::<ThreadPointerKind>(ThreadPointer::VT_KIND, kind, ThreadPointerKind::Event);
-  }
-  #[inline]
-  pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ThreadPointer::VT_ID, id);
-  }
-  #[inline]
-  pub fn add_coord(&mut self, coord: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ThreadPointer::VT_COORD, coord);
-  }
-  #[inline]
-  pub fn add_uri(&mut self, uri: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ThreadPointer::VT_URI, uri);
-  }
-  #[inline]
-  pub fn add_relay(&mut self, relay: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ThreadPointer::VT_RELAY, relay);
-  }
-  #[inline]
-  pub fn add_has_kind_num(&mut self, has_kind_num: bool) {
-    self.fbb_.push_slot::<bool>(ThreadPointer::VT_HAS_KIND_NUM, has_kind_num, false);
-  }
-  #[inline]
-  pub fn add_kind_num(&mut self, kind_num: u32) {
-    self.fbb_.push_slot::<u32>(ThreadPointer::VT_KIND_NUM, kind_num, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ThreadPointerBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ThreadPointerBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ThreadPointer<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for ThreadPointer<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ThreadPointer");
-      ds.field("kind", &self.kind());
-      ds.field("id", &self.id());
-      ds.field("coord", &self.coord());
-      ds.field("uri", &self.uri());
-      ds.field("relay", &self.relay());
-      ds.field("has_kind_num", &self.has_kind_num());
-      ds.field("kind_num", &self.kind_num());
-      ds.finish()
-  }
-}
-pub enum BlockEventIdOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct BlockEventId<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for BlockEventId<'a> {
-  type Inner = BlockEventId<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> BlockEventId<'a> {
-  pub const VT_ID: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    BlockEventId { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args BlockEventIdArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<BlockEventId<'bldr>> {
-    let mut builder = BlockEventIdBuilder::new(_fbb);
-    if let Some(x) = args.id { builder.add_id(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BlockEventId::VT_ID, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for BlockEventId<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct BlockEventIdArgs<'a> {
-    pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for BlockEventIdArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    BlockEventIdArgs {
-      id: None,
-    }
-  }
-}
-
-pub struct BlockEventIdBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BlockEventIdBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BlockEventId::VT_ID, id);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BlockEventIdBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    BlockEventIdBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<BlockEventId<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for BlockEventId<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("BlockEventId");
-      ds.field("id", &self.id());
-      ds.finish()
-  }
-}
-pub enum TimelineBlockEntryOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct TimelineBlockEntry<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for TimelineBlockEntry<'a> {
-  type Inner = TimelineBlockEntry<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> TimelineBlockEntry<'a> {
-  pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
-  pub const VT_STANDALONE_ID: ::flatbuffers::VOffsetT = 6;
-  pub const VT_STANDALONE_ROOT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_MODULE_EVENT_IDS: ::flatbuffers::VOffsetT = 10;
-  pub const VT_MODULE_HAS_GAP: ::flatbuffers::VOffsetT = 12;
-  pub const VT_MODULE_ROOT: ::flatbuffers::VOffsetT = 14;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    TimelineBlockEntry { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args TimelineBlockEntryArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<TimelineBlockEntry<'bldr>> {
-    let mut builder = TimelineBlockEntryBuilder::new(_fbb);
-    if let Some(x) = args.module_root { builder.add_module_root(x); }
-    if let Some(x) = args.module_event_ids { builder.add_module_event_ids(x); }
-    if let Some(x) = args.standalone_root { builder.add_standalone_root(x); }
-    if let Some(x) = args.standalone_id { builder.add_standalone_id(x); }
-    builder.add_module_has_gap(args.module_has_gap);
-    builder.add_kind(args.kind);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn kind(&self) -> TimelineBlockKind {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<TimelineBlockKind>(TimelineBlockEntry::VT_KIND, Some(TimelineBlockKind::Standalone)).unwrap()}
-  }
-  #[inline]
-  pub fn standalone_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineBlockEntry::VT_STANDALONE_ID, None)}
-  }
-  #[inline]
-  pub fn standalone_root(&self) -> Option<ThreadPointer<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<ThreadPointer>>(TimelineBlockEntry::VT_STANDALONE_ROOT, None)}
-  }
-  #[inline]
-  pub fn module_event_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<BlockEventId<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<BlockEventId>>>>(TimelineBlockEntry::VT_MODULE_EVENT_IDS, None)}
-  }
-  #[inline]
-  pub fn module_has_gap(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(TimelineBlockEntry::VT_MODULE_HAS_GAP, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn module_root(&self) -> Option<ThreadPointer<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<ThreadPointer>>(TimelineBlockEntry::VT_MODULE_ROOT, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for TimelineBlockEntry<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<TimelineBlockKind>("kind", Self::VT_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("standalone_id", Self::VT_STANDALONE_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<ThreadPointer>>("standalone_root", Self::VT_STANDALONE_ROOT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<BlockEventId>>>>("module_event_ids", Self::VT_MODULE_EVENT_IDS, false)?
-     .visit_field::<bool>("module_has_gap", Self::VT_MODULE_HAS_GAP, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<ThreadPointer>>("module_root", Self::VT_MODULE_ROOT, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct TimelineBlockEntryArgs<'a> {
-    pub kind: TimelineBlockKind,
-    pub standalone_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub standalone_root: Option<::flatbuffers::WIPOffset<ThreadPointer<'a>>>,
-    pub module_event_ids: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<BlockEventId<'a>>>>>,
-    pub module_has_gap: bool,
-    pub module_root: Option<::flatbuffers::WIPOffset<ThreadPointer<'a>>>,
-}
-impl<'a> Default for TimelineBlockEntryArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    TimelineBlockEntryArgs {
-      kind: TimelineBlockKind::Standalone,
-      standalone_id: None,
-      standalone_root: None,
-      module_event_ids: None,
-      module_has_gap: false,
-      module_root: None,
-    }
-  }
-}
-
-pub struct TimelineBlockEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TimelineBlockEntryBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_kind(&mut self, kind: TimelineBlockKind) {
-    self.fbb_.push_slot::<TimelineBlockKind>(TimelineBlockEntry::VT_KIND, kind, TimelineBlockKind::Standalone);
-  }
-  #[inline]
-  pub fn add_standalone_id(&mut self, standalone_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineBlockEntry::VT_STANDALONE_ID, standalone_id);
-  }
-  #[inline]
-  pub fn add_standalone_root(&mut self, standalone_root: ::flatbuffers::WIPOffset<ThreadPointer<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<ThreadPointer>>(TimelineBlockEntry::VT_STANDALONE_ROOT, standalone_root);
-  }
-  #[inline]
-  pub fn add_module_event_ids(&mut self, module_event_ids: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<BlockEventId<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineBlockEntry::VT_MODULE_EVENT_IDS, module_event_ids);
-  }
-  #[inline]
-  pub fn add_module_has_gap(&mut self, module_has_gap: bool) {
-    self.fbb_.push_slot::<bool>(TimelineBlockEntry::VT_MODULE_HAS_GAP, module_has_gap, false);
-  }
-  #[inline]
-  pub fn add_module_root(&mut self, module_root: ::flatbuffers::WIPOffset<ThreadPointer<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<ThreadPointer>>(TimelineBlockEntry::VT_MODULE_ROOT, module_root);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TimelineBlockEntryBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    TimelineBlockEntryBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<TimelineBlockEntry<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for TimelineBlockEntry<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("TimelineBlockEntry");
-      ds.field("kind", &self.kind());
-      ds.field("standalone_id", &self.standalone_id());
-      ds.field("standalone_root", &self.standalone_root());
-      ds.field("module_event_ids", &self.module_event_ids());
-      ds.field("module_has_gap", &self.module_has_gap());
-      ds.field("module_root", &self.module_root());
-      ds.finish()
-  }
-}
-pub enum RelationCountInterestOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct RelationCountInterest<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for RelationCountInterest<'a> {
-  type Inner = RelationCountInterest<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> RelationCountInterest<'a> {
-  pub const VT_NAMESPACE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_TARGET_EVENT_ID: ::flatbuffers::VOffsetT = 6;
-  pub const VT_TAG: ::flatbuffers::VOffsetT = 8;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    RelationCountInterest { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args RelationCountInterestArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<RelationCountInterest<'bldr>> {
-    let mut builder = RelationCountInterestBuilder::new(_fbb);
-    if let Some(x) = args.tag { builder.add_tag(x); }
-    if let Some(x) = args.target_event_id { builder.add_target_event_id(x); }
-    if let Some(x) = args.namespace { builder.add_namespace(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn namespace(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelationCountInterest::VT_NAMESPACE, None)}
-  }
-  #[inline]
-  pub fn target_event_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelationCountInterest::VT_TARGET_EVENT_ID, None)}
-  }
-  #[inline]
-  pub fn tag(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelationCountInterest::VT_TAG, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for RelationCountInterest<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("namespace", Self::VT_NAMESPACE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target_event_id", Self::VT_TARGET_EVENT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("tag", Self::VT_TAG, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct RelationCountInterestArgs<'a> {
-    pub namespace: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub target_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub tag: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for RelationCountInterestArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    RelationCountInterestArgs {
-      namespace: None,
-      target_event_id: None,
-      tag: None,
-    }
-  }
-}
-
-pub struct RelationCountInterestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelationCountInterestBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_namespace(&mut self, namespace: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelationCountInterest::VT_NAMESPACE, namespace);
-  }
-  #[inline]
-  pub fn add_target_event_id(&mut self, target_event_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelationCountInterest::VT_TARGET_EVENT_ID, target_event_id);
-  }
-  #[inline]
-  pub fn add_tag(&mut self, tag: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelationCountInterest::VT_TAG, tag);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelationCountInterestBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    RelationCountInterestBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<RelationCountInterest<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for RelationCountInterest<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("RelationCountInterest");
-      ds.field("namespace", &self.namespace());
-      ds.field("target_event_id", &self.target_event_id());
-      ds.field("tag", &self.tag());
-      ds.finish()
-  }
-}
-pub enum RelationCountOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct RelationCount<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for RelationCount<'a> {
-  type Inner = RelationCount<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> RelationCount<'a> {
-  pub const VT_STATE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_COUNT: ::flatbuffers::VOffsetT = 6;
-  pub const VT_INTEREST: ::flatbuffers::VOffsetT = 8;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    RelationCount { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args RelationCountArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<RelationCount<'bldr>> {
-    let mut builder = RelationCountBuilder::new(_fbb);
-    builder.add_count(args.count);
-    if let Some(x) = args.interest { builder.add_interest(x); }
-    builder.add_state(args.state);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn state(&self) -> RelationCountState {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<RelationCountState>(RelationCount::VT_STATE, Some(RelationCountState::Known)).unwrap()}
-  }
-  #[inline]
-  pub fn count(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(RelationCount::VT_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn interest(&self) -> Option<RelationCountInterest<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelationCountInterest>>(RelationCount::VT_INTEREST, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for RelationCount<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<RelationCountState>("state", Self::VT_STATE, false)?
-     .visit_field::<u64>("count", Self::VT_COUNT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<RelationCountInterest>>("interest", Self::VT_INTEREST, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct RelationCountArgs<'a> {
-    pub state: RelationCountState,
-    pub count: u64,
-    pub interest: Option<::flatbuffers::WIPOffset<RelationCountInterest<'a>>>,
-}
-impl<'a> Default for RelationCountArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    RelationCountArgs {
-      state: RelationCountState::Known,
-      count: 0,
-      interest: None,
-    }
-  }
-}
-
-pub struct RelationCountBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelationCountBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_state(&mut self, state: RelationCountState) {
-    self.fbb_.push_slot::<RelationCountState>(RelationCount::VT_STATE, state, RelationCountState::Known);
-  }
-  #[inline]
-  pub fn add_count(&mut self, count: u64) {
-    self.fbb_.push_slot::<u64>(RelationCount::VT_COUNT, count, 0);
-  }
-  #[inline]
-  pub fn add_interest(&mut self, interest: ::flatbuffers::WIPOffset<RelationCountInterest<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelationCountInterest>>(RelationCount::VT_INTEREST, interest);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelationCountBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    RelationCountBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<RelationCount<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for RelationCount<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("RelationCount");
-      ds.field("state", &self.state());
-      ds.field("count", &self.count());
-      ds.field("interest", &self.interest());
-      ds.finish()
-  }
-}
-pub enum NoteRelationCountsOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct NoteRelationCounts<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for NoteRelationCounts<'a> {
-  type Inner = NoteRelationCounts<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> NoteRelationCounts<'a> {
-  pub const VT_REPLIES: ::flatbuffers::VOffsetT = 4;
-  pub const VT_REACTIONS: ::flatbuffers::VOffsetT = 6;
-  pub const VT_REPOSTS: ::flatbuffers::VOffsetT = 8;
-  pub const VT_ZAPS: ::flatbuffers::VOffsetT = 10;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    NoteRelationCounts { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args NoteRelationCountsArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'bldr>> {
-    let mut builder = NoteRelationCountsBuilder::new(_fbb);
-    if let Some(x) = args.zaps { builder.add_zaps(x); }
-    if let Some(x) = args.reposts { builder.add_reposts(x); }
-    if let Some(x) = args.reactions { builder.add_reactions(x); }
-    if let Some(x) = args.replies { builder.add_replies(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn replies(&self) -> Option<RelationCount<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelationCount>>(NoteRelationCounts::VT_REPLIES, None)}
-  }
-  #[inline]
-  pub fn reactions(&self) -> Option<RelationCount<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelationCount>>(NoteRelationCounts::VT_REACTIONS, None)}
-  }
-  #[inline]
-  pub fn reposts(&self) -> Option<RelationCount<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelationCount>>(NoteRelationCounts::VT_REPOSTS, None)}
-  }
-  #[inline]
-  pub fn zaps(&self) -> Option<RelationCount<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RelationCount>>(NoteRelationCounts::VT_ZAPS, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for NoteRelationCounts<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>("replies", Self::VT_REPLIES, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>("reactions", Self::VT_REACTIONS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>("reposts", Self::VT_REPOSTS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>("zaps", Self::VT_ZAPS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct NoteRelationCountsArgs<'a> {
-    pub replies: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-    pub reactions: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-    pub reposts: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-    pub zaps: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-}
-impl<'a> Default for NoteRelationCountsArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    NoteRelationCountsArgs {
-      replies: None,
-      reactions: None,
-      reposts: None,
-      zaps: None,
-    }
-  }
-}
-
-pub struct NoteRelationCountsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> NoteRelationCountsBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_replies(&mut self, replies: ::flatbuffers::WIPOffset<RelationCount<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(NoteRelationCounts::VT_REPLIES, replies);
-  }
-  #[inline]
-  pub fn add_reactions(&mut self, reactions: ::flatbuffers::WIPOffset<RelationCount<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(NoteRelationCounts::VT_REACTIONS, reactions);
-  }
-  #[inline]
-  pub fn add_reposts(&mut self, reposts: ::flatbuffers::WIPOffset<RelationCount<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(NoteRelationCounts::VT_REPOSTS, reposts);
-  }
-  #[inline]
-  pub fn add_zaps(&mut self, zaps: ::flatbuffers::WIPOffset<RelationCount<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(NoteRelationCounts::VT_ZAPS, zaps);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> NoteRelationCountsBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    NoteRelationCountsBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for NoteRelationCounts<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("NoteRelationCounts");
-      ds.field("replies", &self.replies());
-      ds.field("reactions", &self.reactions());
-      ds.field("reposts", &self.reposts());
-      ds.field("zaps", &self.zaps());
-      ds.finish()
-  }
-}
-pub enum AuthorDisplayOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct AuthorDisplay<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for AuthorDisplay<'a> {
-  type Inner = AuthorDisplay<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> AuthorDisplay<'a> {
-  pub const VT_HAS_NAME: ::flatbuffers::VOffsetT = 4;
-  pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
-  pub const VT_HAS_NPUB: ::flatbuffers::VOffsetT = 8;
-  pub const VT_NPUB: ::flatbuffers::VOffsetT = 10;
-  pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    AuthorDisplay { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args AuthorDisplayArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<AuthorDisplay<'bldr>> {
-    let mut builder = AuthorDisplayBuilder::new(_fbb);
-    if let Some(x) = args.picture_url { builder.add_picture_url(x); }
-    if let Some(x) = args.npub { builder.add_npub(x); }
-    if let Some(x) = args.name { builder.add_name(x); }
-    builder.add_has_picture_url(args.has_picture_url);
-    builder.add_has_npub(args.has_npub);
-    builder.add_has_name(args.has_name);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn has_name(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(AuthorDisplay::VT_HAS_NAME, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(AuthorDisplay::VT_NAME, None)}
-  }
-  #[inline]
-  pub fn has_npub(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(AuthorDisplay::VT_HAS_NPUB, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn npub(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(AuthorDisplay::VT_NPUB, None)}
-  }
-  #[inline]
-  pub fn has_picture_url(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(AuthorDisplay::VT_HAS_PICTURE_URL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn picture_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(AuthorDisplay::VT_PICTURE_URL, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for AuthorDisplay<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<bool>("has_name", Self::VT_HAS_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
-     .visit_field::<bool>("has_npub", Self::VT_HAS_NPUB, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("npub", Self::VT_NPUB, false)?
-     .visit_field::<bool>("has_picture_url", Self::VT_HAS_PICTURE_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("picture_url", Self::VT_PICTURE_URL, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct AuthorDisplayArgs<'a> {
-    pub has_name: bool,
-    pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_npub: bool,
-    pub npub: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_picture_url: bool,
-    pub picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for AuthorDisplayArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    AuthorDisplayArgs {
-      has_name: false,
-      name: None,
-      has_npub: false,
-      npub: None,
-      has_picture_url: false,
-      picture_url: None,
-    }
-  }
-}
-
-pub struct AuthorDisplayBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AuthorDisplayBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_has_name(&mut self, has_name: bool) {
-    self.fbb_.push_slot::<bool>(AuthorDisplay::VT_HAS_NAME, has_name, false);
-  }
-  #[inline]
-  pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(AuthorDisplay::VT_NAME, name);
-  }
-  #[inline]
-  pub fn add_has_npub(&mut self, has_npub: bool) {
-    self.fbb_.push_slot::<bool>(AuthorDisplay::VT_HAS_NPUB, has_npub, false);
-  }
-  #[inline]
-  pub fn add_npub(&mut self, npub: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(AuthorDisplay::VT_NPUB, npub);
-  }
-  #[inline]
-  pub fn add_has_picture_url(&mut self, has_picture_url: bool) {
-    self.fbb_.push_slot::<bool>(AuthorDisplay::VT_HAS_PICTURE_URL, has_picture_url, false);
-  }
-  #[inline]
-  pub fn add_picture_url(&mut self, picture_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(AuthorDisplay::VT_PICTURE_URL, picture_url);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AuthorDisplayBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    AuthorDisplayBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<AuthorDisplay<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for AuthorDisplay<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("AuthorDisplay");
-      ds.field("has_name", &self.has_name());
-      ds.field("name", &self.name());
-      ds.field("has_npub", &self.has_npub());
-      ds.field("npub", &self.npub());
-      ds.field("has_picture_url", &self.has_picture_url());
-      ds.field("picture_url", &self.picture_url());
-      ds.finish()
-  }
-}
-pub enum RepostAttributionOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct RepostAttribution<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for RepostAttribution<'a> {
-  type Inner = RepostAttribution<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> RepostAttribution<'a> {
-  pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_AUTHOR_DISPLAY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-  pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-  pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-  pub const VT_NOTE_CREATED_AT: ::flatbuffers::VOffsetT = 16;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    RepostAttribution { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args RepostAttributionArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<RepostAttribution<'bldr>> {
-    let mut builder = RepostAttributionBuilder::new(_fbb);
-    builder.add_note_created_at(args.note_created_at);
-    if let Some(x) = args.author_picture_url { builder.add_author_picture_url(x); }
-    if let Some(x) = args.author_display_name { builder.add_author_display_name(x); }
-    if let Some(x) = args.author_display { builder.add_author_display(x); }
-    if let Some(x) = args.author_pubkey { builder.add_author_pubkey(x); }
-    builder.add_has_author_picture_url(args.has_author_picture_url);
-    builder.add_has_author_display_name(args.has_author_display_name);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn author_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RepostAttribution::VT_AUTHOR_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn author_display(&self) -> Option<AuthorDisplay<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(RepostAttribution::VT_AUTHOR_DISPLAY, None)}
-  }
-  #[inline]
-  pub fn has_author_display_name(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RepostAttribution::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn author_display_name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RepostAttribution::VT_AUTHOR_DISPLAY_NAME, None)}
-  }
-  #[inline]
-  pub fn has_author_picture_url(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RepostAttribution::VT_HAS_AUTHOR_PICTURE_URL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn author_picture_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RepostAttribution::VT_AUTHOR_PICTURE_URL, None)}
-  }
-  #[inline]
-  pub fn note_created_at(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(RepostAttribution::VT_NOTE_CREATED_AT, Some(0)).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for RepostAttribution<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_pubkey", Self::VT_AUTHOR_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>("author_display", Self::VT_AUTHOR_DISPLAY, false)?
-     .visit_field::<bool>("has_author_display_name", Self::VT_HAS_AUTHOR_DISPLAY_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_display_name", Self::VT_AUTHOR_DISPLAY_NAME, false)?
-     .visit_field::<bool>("has_author_picture_url", Self::VT_HAS_AUTHOR_PICTURE_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_picture_url", Self::VT_AUTHOR_PICTURE_URL, false)?
-     .visit_field::<u64>("note_created_at", Self::VT_NOTE_CREATED_AT, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct RepostAttributionArgs<'a> {
-    pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub author_display: Option<::flatbuffers::WIPOffset<AuthorDisplay<'a>>>,
-    pub has_author_display_name: bool,
-    pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_author_picture_url: bool,
-    pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub note_created_at: u64,
-}
-impl<'a> Default for RepostAttributionArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    RepostAttributionArgs {
-      author_pubkey: None,
-      author_display: None,
-      has_author_display_name: false,
-      author_display_name: None,
-      has_author_picture_url: false,
-      author_picture_url: None,
-      note_created_at: 0,
-    }
-  }
-}
-
-pub struct RepostAttributionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RepostAttributionBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_author_pubkey(&mut self, author_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RepostAttribution::VT_AUTHOR_PUBKEY, author_pubkey);
-  }
-  #[inline]
-  pub fn add_author_display(&mut self, author_display: ::flatbuffers::WIPOffset<AuthorDisplay<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<AuthorDisplay>>(RepostAttribution::VT_AUTHOR_DISPLAY, author_display);
-  }
-  #[inline]
-  pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-    self.fbb_.push_slot::<bool>(RepostAttribution::VT_HAS_AUTHOR_DISPLAY_NAME, has_author_display_name, false);
-  }
-  #[inline]
-  pub fn add_author_display_name(&mut self, author_display_name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RepostAttribution::VT_AUTHOR_DISPLAY_NAME, author_display_name);
-  }
-  #[inline]
-  pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
-    self.fbb_.push_slot::<bool>(RepostAttribution::VT_HAS_AUTHOR_PICTURE_URL, has_author_picture_url, false);
-  }
-  #[inline]
-  pub fn add_author_picture_url(&mut self, author_picture_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RepostAttribution::VT_AUTHOR_PICTURE_URL, author_picture_url);
-  }
-  #[inline]
-  pub fn add_note_created_at(&mut self, note_created_at: u64) {
-    self.fbb_.push_slot::<u64>(RepostAttribution::VT_NOTE_CREATED_AT, note_created_at, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepostAttributionBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    RepostAttributionBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<RepostAttribution<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for RepostAttribution<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("RepostAttribution");
-      ds.field("author_pubkey", &self.author_pubkey());
-      ds.field("author_display", &self.author_display());
-      ds.field("has_author_display_name", &self.has_author_display_name());
-      ds.field("author_display_name", &self.author_display_name());
-      ds.field("has_author_picture_url", &self.has_author_picture_url());
-      ds.field("author_picture_url", &self.author_picture_url());
-      ds.field("note_created_at", &self.note_created_at());
-      ds.finish()
-  }
-}
-pub enum TimelineEventCardOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct TimelineEventCard<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for TimelineEventCard<'a> {
-  type Inner = TimelineEventCard<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> TimelineEventCard<'a> {
-  pub const VT_ID: ::flatbuffers::VOffsetT = 4;
-  pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_AUTHOR_DISPLAY: ::flatbuffers::VOffsetT = 8;
-  pub const VT_KIND: ::flatbuffers::VOffsetT = 10;
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 12;
-  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 14;
-  pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 16;
-  pub const VT_CONTENT_RENDER_BYTES: ::flatbuffers::VOffsetT = 18;
-  pub const VT_RELATION_COUNTS: ::flatbuffers::VOffsetT = 20;
-  pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 22;
-  pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 24;
-  pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 26;
-  pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 28;
-  pub const VT_CONTENT_PREVIEW: ::flatbuffers::VOffsetT = 30;
-  pub const VT_REPOSTED_BY: ::flatbuffers::VOffsetT = 32;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    TimelineEventCard { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args TimelineEventCardArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<TimelineEventCard<'bldr>> {
-    let mut builder = TimelineEventCardBuilder::new(_fbb);
-    builder.add_created_at(args.created_at);
-    if let Some(x) = args.reposted_by { builder.add_reposted_by(x); }
-    if let Some(x) = args.content_preview { builder.add_content_preview(x); }
-    if let Some(x) = args.author_picture_url { builder.add_author_picture_url(x); }
-    if let Some(x) = args.author_display_name { builder.add_author_display_name(x); }
-    if let Some(x) = args.relation_counts { builder.add_relation_counts(x); }
-    if let Some(x) = args.content_render_bytes { builder.add_content_render_bytes(x); }
-    if let Some(x) = args.content_tree_bytes { builder.add_content_tree_bytes(x); }
-    if let Some(x) = args.content { builder.add_content(x); }
-    builder.add_kind(args.kind);
-    if let Some(x) = args.author_display { builder.add_author_display(x); }
-    if let Some(x) = args.author_pubkey { builder.add_author_pubkey(x); }
-    if let Some(x) = args.id { builder.add_id(x); }
-    builder.add_has_author_picture_url(args.has_author_picture_url);
-    builder.add_has_author_display_name(args.has_author_display_name);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_ID, None)}
-  }
-  #[inline]
-  pub fn author_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_AUTHOR_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn author_display(&self) -> Option<AuthorDisplay<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(TimelineEventCard::VT_AUTHOR_DISPLAY, None)}
-  }
-  #[inline]
-  pub fn kind(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(TimelineEventCard::VT_KIND, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn created_at(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(TimelineEventCard::VT_CREATED_AT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn content(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_CONTENT, None)}
-  }
-  #[inline]
-  pub fn content_tree_bytes(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(TimelineEventCard::VT_CONTENT_TREE_BYTES, None)}
-  }
-  #[inline]
-  pub fn content_render_bytes(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(TimelineEventCard::VT_CONTENT_RENDER_BYTES, None)}
-  }
-  #[inline]
-  pub fn relation_counts(&self) -> Option<NoteRelationCounts<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<NoteRelationCounts>>(TimelineEventCard::VT_RELATION_COUNTS, None)}
-  }
-  #[inline]
-  pub fn has_author_display_name(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(TimelineEventCard::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn author_display_name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_AUTHOR_DISPLAY_NAME, None)}
-  }
-  #[inline]
-  pub fn has_author_picture_url(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(TimelineEventCard::VT_HAS_AUTHOR_PICTURE_URL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn author_picture_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_AUTHOR_PICTURE_URL, None)}
-  }
-  #[inline]
-  pub fn content_preview(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_CONTENT_PREVIEW, None)}
-  }
-  #[inline]
-  pub fn reposted_by(&self) -> Option<RepostAttribution<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<RepostAttribution>>(TimelineEventCard::VT_REPOSTED_BY, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for TimelineEventCard<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_pubkey", Self::VT_AUTHOR_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>("author_display", Self::VT_AUTHOR_DISPLAY, false)?
-     .visit_field::<u32>("kind", Self::VT_KIND, false)?
-     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("content_tree_bytes", Self::VT_CONTENT_TREE_BYTES, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("content_render_bytes", Self::VT_CONTENT_RENDER_BYTES, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<NoteRelationCounts>>("relation_counts", Self::VT_RELATION_COUNTS, false)?
-     .visit_field::<bool>("has_author_display_name", Self::VT_HAS_AUTHOR_DISPLAY_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_display_name", Self::VT_AUTHOR_DISPLAY_NAME, false)?
-     .visit_field::<bool>("has_author_picture_url", Self::VT_HAS_AUTHOR_PICTURE_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_picture_url", Self::VT_AUTHOR_PICTURE_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content_preview", Self::VT_CONTENT_PREVIEW, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<RepostAttribution>>("reposted_by", Self::VT_REPOSTED_BY, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct TimelineEventCardArgs<'a> {
-    pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub author_display: Option<::flatbuffers::WIPOffset<AuthorDisplay<'a>>>,
-    pub kind: u32,
-    pub created_at: u64,
-    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub content_tree_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
-    pub content_render_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
-    pub relation_counts: Option<::flatbuffers::WIPOffset<NoteRelationCounts<'a>>>,
-    pub has_author_display_name: bool,
-    pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_author_picture_url: bool,
-    pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub content_preview: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub reposted_by: Option<::flatbuffers::WIPOffset<RepostAttribution<'a>>>,
-}
-impl<'a> Default for TimelineEventCardArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    TimelineEventCardArgs {
-      id: None,
-      author_pubkey: None,
-      author_display: None,
-      kind: 0,
-      created_at: 0,
-      content: None,
-      content_tree_bytes: None,
-      content_render_bytes: None,
-      relation_counts: None,
-      has_author_display_name: false,
-      author_display_name: None,
-      has_author_picture_url: false,
-      author_picture_url: None,
-      content_preview: None,
-      reposted_by: None,
-    }
-  }
-}
-
-pub struct TimelineEventCardBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TimelineEventCardBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_ID, id);
-  }
-  #[inline]
-  pub fn add_author_pubkey(&mut self, author_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_AUTHOR_PUBKEY, author_pubkey);
-  }
-  #[inline]
-  pub fn add_author_display(&mut self, author_display: ::flatbuffers::WIPOffset<AuthorDisplay<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<AuthorDisplay>>(TimelineEventCard::VT_AUTHOR_DISPLAY, author_display);
-  }
-  #[inline]
-  pub fn add_kind(&mut self, kind: u32) {
-    self.fbb_.push_slot::<u32>(TimelineEventCard::VT_KIND, kind, 0);
-  }
-  #[inline]
-  pub fn add_created_at(&mut self, created_at: u64) {
-    self.fbb_.push_slot::<u64>(TimelineEventCard::VT_CREATED_AT, created_at, 0);
-  }
-  #[inline]
-  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_CONTENT, content);
-  }
-  #[inline]
-  pub fn add_content_tree_bytes(&mut self, content_tree_bytes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , u8>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_CONTENT_TREE_BYTES, content_tree_bytes);
-  }
-  #[inline]
-  pub fn add_content_render_bytes(&mut self, content_render_bytes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , u8>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_CONTENT_RENDER_BYTES, content_render_bytes);
-  }
-  #[inline]
-  pub fn add_relation_counts(&mut self, relation_counts: ::flatbuffers::WIPOffset<NoteRelationCounts<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<NoteRelationCounts>>(TimelineEventCard::VT_RELATION_COUNTS, relation_counts);
-  }
-  #[inline]
-  pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-    self.fbb_.push_slot::<bool>(TimelineEventCard::VT_HAS_AUTHOR_DISPLAY_NAME, has_author_display_name, false);
-  }
-  #[inline]
-  pub fn add_author_display_name(&mut self, author_display_name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_AUTHOR_DISPLAY_NAME, author_display_name);
-  }
-  #[inline]
-  pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
-    self.fbb_.push_slot::<bool>(TimelineEventCard::VT_HAS_AUTHOR_PICTURE_URL, has_author_picture_url, false);
-  }
-  #[inline]
-  pub fn add_author_picture_url(&mut self, author_picture_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_AUTHOR_PICTURE_URL, author_picture_url);
-  }
-  #[inline]
-  pub fn add_content_preview(&mut self, content_preview: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_CONTENT_PREVIEW, content_preview);
-  }
-  #[inline]
-  pub fn add_reposted_by(&mut self, reposted_by: ::flatbuffers::WIPOffset<RepostAttribution<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RepostAttribution>>(TimelineEventCard::VT_REPOSTED_BY, reposted_by);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TimelineEventCardBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    TimelineEventCardBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<TimelineEventCard<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for TimelineEventCard<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("TimelineEventCard");
-      ds.field("id", &self.id());
-      ds.field("author_pubkey", &self.author_pubkey());
-      ds.field("author_display", &self.author_display());
-      ds.field("kind", &self.kind());
-      ds.field("created_at", &self.created_at());
-      ds.field("content", &self.content());
-      ds.field("content_tree_bytes", &self.content_tree_bytes());
-      ds.field("content_render_bytes", &self.content_render_bytes());
-      ds.field("relation_counts", &self.relation_counts());
-      ds.field("has_author_display_name", &self.has_author_display_name());
-      ds.field("author_display_name", &self.author_display_name());
-      ds.field("has_author_picture_url", &self.has_author_picture_url());
-      ds.field("author_picture_url", &self.author_picture_url());
-      ds.field("content_preview", &self.content_preview());
-      ds.field("reposted_by", &self.reposted_by());
-      ds.finish()
-  }
-}
-pub enum FeedCursorOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct FeedCursor<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for FeedCursor<'a> {
-  type Inner = FeedCursor<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> FeedCursor<'a> {
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 4;
-  pub const VT_ID: ::flatbuffers::VOffsetT = 6;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FeedCursor { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FeedCursorArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<FeedCursor<'bldr>> {
-    let mut builder = FeedCursorBuilder::new(_fbb);
-    builder.add_created_at(args.created_at);
-    if let Some(x) = args.id { builder.add_id(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn created_at(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(FeedCursor::VT_CREATED_AT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(FeedCursor::VT_ID, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for FeedCursor<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FeedCursorArgs<'a> {
-    pub created_at: u64,
-    pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for FeedCursorArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FeedCursorArgs {
-      created_at: 0,
-      id: None,
-    }
-  }
-}
-
-pub struct FeedCursorBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedCursorBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_created_at(&mut self, created_at: u64) {
-    self.fbb_.push_slot::<u64>(FeedCursor::VT_CREATED_AT, created_at, 0);
-  }
-  #[inline]
-  pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(FeedCursor::VT_ID, id);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FeedCursorBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FeedCursorBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedCursor<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for FeedCursor<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FeedCursor");
-      ds.field("created_at", &self.created_at());
-      ds.field("id", &self.id());
-      ds.finish()
-  }
-}
-pub enum FeedPageOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct FeedPage<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for FeedPage<'a> {
-  type Inner = FeedPage<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> FeedPage<'a> {
-  pub const VT_LIMIT: ::flatbuffers::VOffsetT = 4;
-  pub const VT_NEXT_CURSOR: ::flatbuffers::VOffsetT = 6;
-  pub const VT_HAS_MORE: ::flatbuffers::VOffsetT = 8;
-  pub const VT_TOTAL_BLOCKS: ::flatbuffers::VOffsetT = 10;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FeedPage { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FeedPageArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<FeedPage<'bldr>> {
-    let mut builder = FeedPageBuilder::new(_fbb);
-    builder.add_total_blocks(args.total_blocks);
-    builder.add_limit(args.limit);
-    if let Some(x) = args.next_cursor { builder.add_next_cursor(x); }
-    builder.add_has_more(args.has_more);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn limit(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(FeedPage::VT_LIMIT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn next_cursor(&self) -> Option<FeedCursor<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<FeedCursor>>(FeedPage::VT_NEXT_CURSOR, None)}
-  }
-  #[inline]
-  pub fn has_more(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(FeedPage::VT_HAS_MORE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn total_blocks(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(FeedPage::VT_TOTAL_BLOCKS, Some(0)).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for FeedPage<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u64>("limit", Self::VT_LIMIT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<FeedCursor>>("next_cursor", Self::VT_NEXT_CURSOR, false)?
-     .visit_field::<bool>("has_more", Self::VT_HAS_MORE, false)?
-     .visit_field::<u64>("total_blocks", Self::VT_TOTAL_BLOCKS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FeedPageArgs<'a> {
-    pub limit: u64,
-    pub next_cursor: Option<::flatbuffers::WIPOffset<FeedCursor<'a>>>,
-    pub has_more: bool,
-    pub total_blocks: u64,
-}
-impl<'a> Default for FeedPageArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FeedPageArgs {
-      limit: 0,
-      next_cursor: None,
-      has_more: false,
-      total_blocks: 0,
-    }
-  }
-}
-
-pub struct FeedPageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedPageBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_limit(&mut self, limit: u64) {
-    self.fbb_.push_slot::<u64>(FeedPage::VT_LIMIT, limit, 0);
-  }
-  #[inline]
-  pub fn add_next_cursor(&mut self, next_cursor: ::flatbuffers::WIPOffset<FeedCursor<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<FeedCursor>>(FeedPage::VT_NEXT_CURSOR, next_cursor);
-  }
-  #[inline]
-  pub fn add_has_more(&mut self, has_more: bool) {
-    self.fbb_.push_slot::<bool>(FeedPage::VT_HAS_MORE, has_more, false);
-  }
-  #[inline]
-  pub fn add_total_blocks(&mut self, total_blocks: u64) {
-    self.fbb_.push_slot::<u64>(FeedPage::VT_TOTAL_BLOCKS, total_blocks, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FeedPageBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FeedPageBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedPage<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for FeedPage<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FeedPage");
-      ds.field("limit", &self.limit());
-      ds.field("next_cursor", &self.next_cursor());
-      ds.field("has_more", &self.has_more());
-      ds.field("total_blocks", &self.total_blocks());
-      ds.finish()
-  }
-}
-pub enum FeedWindowMetricsOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct FeedWindowMetrics<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for FeedWindowMetrics<'a> {
-  type Inner = FeedWindowMetrics<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> FeedWindowMetrics<'a> {
-  pub const VT_MAKE_WINDOW_US: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FeedWindowMetrics { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FeedWindowMetricsArgs
-  ) -> ::flatbuffers::WIPOffset<FeedWindowMetrics<'bldr>> {
-    let mut builder = FeedWindowMetricsBuilder::new(_fbb);
-    builder.add_make_window_us(args.make_window_us);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn make_window_us(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(FeedWindowMetrics::VT_MAKE_WINDOW_US, Some(0)).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for FeedWindowMetrics<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u64>("make_window_us", Self::VT_MAKE_WINDOW_US, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FeedWindowMetricsArgs {
-    pub make_window_us: u64,
-}
-impl<'a> Default for FeedWindowMetricsArgs {
-  #[inline]
-  fn default() -> Self {
-    FeedWindowMetricsArgs {
-      make_window_us: 0,
-    }
-  }
-}
-
-pub struct FeedWindowMetricsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedWindowMetricsBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_make_window_us(&mut self, make_window_us: u64) {
-    self.fbb_.push_slot::<u64>(FeedWindowMetrics::VT_MAKE_WINDOW_US, make_window_us, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FeedWindowMetricsBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FeedWindowMetricsBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedWindowMetrics<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for FeedWindowMetrics<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FeedWindowMetrics");
-      ds.field("make_window_us", &self.make_window_us());
-      ds.finish()
-  }
-}
-pub enum ModularTimelineSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct ModularTimelineSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for ModularTimelineSnapshot<'a> {
-  type Inner = ModularTimelineSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> ModularTimelineSnapshot<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_BLOCKS: ::flatbuffers::VOffsetT = 6;
-  pub const VT_CARDS: ::flatbuffers::VOffsetT = 8;
-  pub const VT_PAGE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_METRICS: ::flatbuffers::VOffsetT = 12;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ModularTimelineSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ModularTimelineSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'bldr>> {
-    let mut builder = ModularTimelineSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.metrics { builder.add_metrics(x); }
-    if let Some(x) = args.page { builder.add_page(x); }
-    if let Some(x) = args.cards { builder.add_cards(x); }
-    if let Some(x) = args.blocks { builder.add_blocks(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(ModularTimelineSnapshot::VT_SCHEMA_VERSION, Some(1)).unwrap()}
-  }
-  #[inline]
-  pub fn blocks(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineBlockEntry<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineBlockEntry>>>>(ModularTimelineSnapshot::VT_BLOCKS, None)}
-  }
-  #[inline]
-  pub fn cards(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineEventCard<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineEventCard>>>>(ModularTimelineSnapshot::VT_CARDS, None)}
-  }
-  #[inline]
-  pub fn page(&self) -> Option<FeedPage<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<FeedPage>>(ModularTimelineSnapshot::VT_PAGE, None)}
-  }
-  #[inline]
-  pub fn metrics(&self) -> Option<FeedWindowMetrics<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<FeedWindowMetrics>>(ModularTimelineSnapshot::VT_METRICS, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for ModularTimelineSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TimelineBlockEntry>>>>("blocks", Self::VT_BLOCKS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TimelineEventCard>>>>("cards", Self::VT_CARDS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<FeedPage>>("page", Self::VT_PAGE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<FeedWindowMetrics>>("metrics", Self::VT_METRICS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ModularTimelineSnapshotArgs<'a> {
-    pub schema_version: u32,
-    pub blocks: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineBlockEntry<'a>>>>>,
-    pub cards: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineEventCard<'a>>>>>,
-    pub page: Option<::flatbuffers::WIPOffset<FeedPage<'a>>>,
-    pub metrics: Option<::flatbuffers::WIPOffset<FeedWindowMetrics<'a>>>,
-}
-impl<'a> Default for ModularTimelineSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ModularTimelineSnapshotArgs {
-      schema_version: 1,
-      blocks: None,
-      cards: None,
-      page: None,
-      metrics: None,
-    }
-  }
-}
-
-pub struct ModularTimelineSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ModularTimelineSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(ModularTimelineSnapshot::VT_SCHEMA_VERSION, schema_version, 1);
-  }
-  #[inline]
-  pub fn add_blocks(&mut self, blocks: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<TimelineBlockEntry<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ModularTimelineSnapshot::VT_BLOCKS, blocks);
-  }
-  #[inline]
-  pub fn add_cards(&mut self, cards: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<TimelineEventCard<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ModularTimelineSnapshot::VT_CARDS, cards);
-  }
-  #[inline]
-  pub fn add_page(&mut self, page: ::flatbuffers::WIPOffset<FeedPage<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<FeedPage>>(ModularTimelineSnapshot::VT_PAGE, page);
-  }
-  #[inline]
-  pub fn add_metrics(&mut self, metrics: ::flatbuffers::WIPOffset<FeedWindowMetrics<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<FeedWindowMetrics>>(ModularTimelineSnapshot::VT_METRICS, metrics);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ModularTimelineSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ModularTimelineSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for ModularTimelineSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ModularTimelineSnapshot");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("blocks", &self.blocks());
-      ds.field("cards", &self.cards());
-      ds.field("page", &self.page());
-      ds.field("metrics", &self.metrics());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `ModularTimelineSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_modular_timeline_snapshot_unchecked`.
-pub fn root_as_modular_timeline_snapshot(buf: &[u8]) -> Result<ModularTimelineSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<ModularTimelineSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `ModularTimelineSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_modular_timeline_snapshot_unchecked`.
-pub fn size_prefixed_root_as_modular_timeline_snapshot(buf: &[u8]) -> Result<ModularTimelineSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<ModularTimelineSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `ModularTimelineSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_modular_timeline_snapshot_unchecked`.
-pub fn root_as_modular_timeline_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ModularTimelineSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<ModularTimelineSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `ModularTimelineSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_modular_timeline_snapshot_unchecked`.
-pub fn size_prefixed_root_as_modular_timeline_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ModularTimelineSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<ModularTimelineSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a ModularTimelineSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `ModularTimelineSnapshot`.
-pub unsafe fn root_as_modular_timeline_snapshot_unchecked(buf: &[u8]) -> ModularTimelineSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<ModularTimelineSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed ModularTimelineSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `ModularTimelineSnapshot`.
-pub unsafe fn size_prefixed_root_as_modular_timeline_snapshot_unchecked(buf: &[u8]) -> ModularTimelineSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ModularTimelineSnapshot>(buf) }
-}
-pub const MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER: &str = "NFTS";
-
-#[inline]
-pub fn modular_timeline_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn modular_timeline_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_modular_timeline_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'a>>) {
-  fbb.finish(root, Some(MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_modular_timeline_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip01
-}  // pub mod nmp
-
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_01 {
+
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_THREAD_POINTER_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_THREAD_POINTER_KIND: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_THREAD_POINTER_KIND: [ThreadPointerKind; 3] = [
+            ThreadPointerKind::Event,
+            ThreadPointerKind::Address,
+            ThreadPointerKind::External,
+        ];
+
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ThreadPointerKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl ThreadPointerKind {
+            pub const Event: Self = Self(0);
+            pub const Address: Self = Self(1);
+            pub const External: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Event, Self::Address, Self::External];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Event => Some("Event"),
+                    Self::Address => Some("Address"),
+                    Self::External => Some("External"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ThreadPointerKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ThreadPointerKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ThreadPointerKind {
+            type Output = ThreadPointerKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ThreadPointerKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ThreadPointerKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ThreadPointerKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_TIMELINE_BLOCK_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_TIMELINE_BLOCK_KIND: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_TIMELINE_BLOCK_KIND: [TimelineBlockKind; 2] =
+            [TimelineBlockKind::Standalone, TimelineBlockKind::Module];
+
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct TimelineBlockKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl TimelineBlockKind {
+            pub const Standalone: Self = Self(0);
+            pub const Module: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Standalone, Self::Module];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Standalone => Some("Standalone"),
+                    Self::Module => Some("Module"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for TimelineBlockKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for TimelineBlockKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for TimelineBlockKind {
+            type Output = TimelineBlockKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for TimelineBlockKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for TimelineBlockKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for TimelineBlockKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_RELATION_COUNT_STATE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_RELATION_COUNT_STATE: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_RELATION_COUNT_STATE: [RelationCountState; 2] =
+            [RelationCountState::Known, RelationCountState::Loading];
+
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RelationCountState(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RelationCountState {
+            pub const Known: Self = Self(0);
+            pub const Loading: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Known, Self::Loading];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Known => Some("Known"),
+                    Self::Loading => Some("Loading"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RelationCountState {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RelationCountState {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RelationCountState {
+            type Output = RelationCountState;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RelationCountState {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RelationCountState {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RelationCountState {}
+        pub enum ThreadPointerOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ThreadPointer<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ThreadPointer<'a> {
+            type Inner = ThreadPointer<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ThreadPointer<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COORD: ::flatbuffers::VOffsetT = 8;
+            pub const VT_URI: ::flatbuffers::VOffsetT = 10;
+            pub const VT_RELAY: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HAS_KIND_NUM: ::flatbuffers::VOffsetT = 14;
+            pub const VT_KIND_NUM: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ThreadPointer { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ThreadPointerArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ThreadPointer<'bldr>> {
+                let mut builder = ThreadPointerBuilder::new(_fbb);
+                builder.add_kind_num(args.kind_num);
+                if let Some(x) = args.relay {
+                    builder.add_relay(x);
+                }
+                if let Some(x) = args.uri {
+                    builder.add_uri(x);
+                }
+                if let Some(x) = args.coord {
+                    builder.add_coord(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.add_has_kind_num(args.has_kind_num);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> ThreadPointerKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ThreadPointerKind>(
+                            ThreadPointer::VT_KIND,
+                            Some(ThreadPointerKind::Event),
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn coord(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_COORD, None)
+                }
+            }
+            #[inline]
+            pub fn uri(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_URI, None)
+                }
+            }
+            #[inline]
+            pub fn relay(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ThreadPointer::VT_RELAY, None)
+                }
+            }
+            #[inline]
+            pub fn has_kind_num(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ThreadPointer::VT_HAS_KIND_NUM, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn kind_num(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(ThreadPointer::VT_KIND_NUM, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ThreadPointer<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<ThreadPointerKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "coord",
+                        Self::VT_COORD,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "uri",
+                        Self::VT_URI,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "relay",
+                        Self::VT_RELAY,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_kind_num", Self::VT_HAS_KIND_NUM, false)?
+                    .visit_field::<u32>("kind_num", Self::VT_KIND_NUM, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ThreadPointerArgs<'a> {
+            pub kind: ThreadPointerKind,
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub coord: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub uri: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub relay: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_kind_num: bool,
+            pub kind_num: u32,
+        }
+        impl<'a> Default for ThreadPointerArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ThreadPointerArgs {
+                    kind: ThreadPointerKind::Event,
+                    id: None,
+                    coord: None,
+                    uri: None,
+                    relay: None,
+                    has_kind_num: false,
+                    kind_num: 0,
+                }
+            }
+        }
+
+        pub struct ThreadPointerBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ThreadPointerBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: ThreadPointerKind) {
+                self.fbb_.push_slot::<ThreadPointerKind>(
+                    ThreadPointer::VT_KIND,
+                    kind,
+                    ThreadPointerKind::Event,
+                );
+            }
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ThreadPointer::VT_ID, id);
+            }
+            #[inline]
+            pub fn add_coord(&mut self, coord: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ThreadPointer::VT_COORD,
+                    coord,
+                );
+            }
+            #[inline]
+            pub fn add_uri(&mut self, uri: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ThreadPointer::VT_URI, uri);
+            }
+            #[inline]
+            pub fn add_relay(&mut self, relay: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ThreadPointer::VT_RELAY,
+                    relay,
+                );
+            }
+            #[inline]
+            pub fn add_has_kind_num(&mut self, has_kind_num: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ThreadPointer::VT_HAS_KIND_NUM, has_kind_num, false);
+            }
+            #[inline]
+            pub fn add_kind_num(&mut self, kind_num: u32) {
+                self.fbb_
+                    .push_slot::<u32>(ThreadPointer::VT_KIND_NUM, kind_num, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ThreadPointerBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ThreadPointerBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ThreadPointer<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ThreadPointer<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ThreadPointer");
+                ds.field("kind", &self.kind());
+                ds.field("id", &self.id());
+                ds.field("coord", &self.coord());
+                ds.field("uri", &self.uri());
+                ds.field("relay", &self.relay());
+                ds.field("has_kind_num", &self.has_kind_num());
+                ds.field("kind_num", &self.kind_num());
+                ds.finish()
+            }
+        }
+        pub enum BlockEventIdOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct BlockEventId<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for BlockEventId<'a> {
+            type Inner = BlockEventId<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> BlockEventId<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BlockEventId { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BlockEventIdArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BlockEventId<'bldr>> {
+                let mut builder = BlockEventIdBuilder::new(_fbb);
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(BlockEventId::VT_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for BlockEventId<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct BlockEventIdArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for BlockEventIdArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BlockEventIdArgs { id: None }
+            }
+        }
+
+        pub struct BlockEventIdBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BlockEventIdBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BlockEventId::VT_ID, id);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BlockEventIdBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BlockEventIdBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BlockEventId<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for BlockEventId<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BlockEventId");
+                ds.field("id", &self.id());
+                ds.finish()
+            }
+        }
+        pub enum TimelineBlockEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct TimelineBlockEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TimelineBlockEntry<'a> {
+            type Inner = TimelineBlockEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TimelineBlockEntry<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_STANDALONE_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_STANDALONE_ROOT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MODULE_EVENT_IDS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_MODULE_HAS_GAP: ::flatbuffers::VOffsetT = 12;
+            pub const VT_MODULE_ROOT: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TimelineBlockEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TimelineBlockEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TimelineBlockEntry<'bldr>> {
+                let mut builder = TimelineBlockEntryBuilder::new(_fbb);
+                if let Some(x) = args.module_root {
+                    builder.add_module_root(x);
+                }
+                if let Some(x) = args.module_event_ids {
+                    builder.add_module_event_ids(x);
+                }
+                if let Some(x) = args.standalone_root {
+                    builder.add_standalone_root(x);
+                }
+                if let Some(x) = args.standalone_id {
+                    builder.add_standalone_id(x);
+                }
+                builder.add_module_has_gap(args.module_has_gap);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> TimelineBlockKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<TimelineBlockKind>(
+                            TimelineBlockEntry::VT_KIND,
+                            Some(TimelineBlockKind::Standalone),
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn standalone_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TimelineBlockEntry::VT_STANDALONE_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn standalone_root(&self) -> Option<ThreadPointer<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ThreadPointer>>(
+                            TimelineBlockEntry::VT_STANDALONE_ROOT,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn module_event_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<BlockEventId<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<BlockEventId>>,
+                    >>(TimelineBlockEntry::VT_MODULE_EVENT_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn module_has_gap(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(TimelineBlockEntry::VT_MODULE_HAS_GAP, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn module_root(&self) -> Option<ThreadPointer<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ThreadPointer>>(
+                            TimelineBlockEntry::VT_MODULE_ROOT,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TimelineBlockEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<TimelineBlockKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "standalone_id",
+                        Self::VT_STANDALONE_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ThreadPointer>>(
+                        "standalone_root",
+                        Self::VT_STANDALONE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<BlockEventId>>,
+                    >>("module_event_ids", Self::VT_MODULE_EVENT_IDS, false)?
+                    .visit_field::<bool>("module_has_gap", Self::VT_MODULE_HAS_GAP, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ThreadPointer>>(
+                        "module_root",
+                        Self::VT_MODULE_ROOT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct TimelineBlockEntryArgs<'a> {
+            pub kind: TimelineBlockKind,
+            pub standalone_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub standalone_root: Option<::flatbuffers::WIPOffset<ThreadPointer<'a>>>,
+            pub module_event_ids: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<BlockEventId<'a>>>,
+                >,
+            >,
+            pub module_has_gap: bool,
+            pub module_root: Option<::flatbuffers::WIPOffset<ThreadPointer<'a>>>,
+        }
+        impl<'a> Default for TimelineBlockEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TimelineBlockEntryArgs {
+                    kind: TimelineBlockKind::Standalone,
+                    standalone_id: None,
+                    standalone_root: None,
+                    module_event_ids: None,
+                    module_has_gap: false,
+                    module_root: None,
+                }
+            }
+        }
+
+        pub struct TimelineBlockEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TimelineBlockEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: TimelineBlockKind) {
+                self.fbb_.push_slot::<TimelineBlockKind>(
+                    TimelineBlockEntry::VT_KIND,
+                    kind,
+                    TimelineBlockKind::Standalone,
+                );
+            }
+            #[inline]
+            pub fn add_standalone_id(&mut self, standalone_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineBlockEntry::VT_STANDALONE_ID,
+                    standalone_id,
+                );
+            }
+            #[inline]
+            pub fn add_standalone_root(
+                &mut self,
+                standalone_root: ::flatbuffers::WIPOffset<ThreadPointer<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ThreadPointer>>(
+                        TimelineBlockEntry::VT_STANDALONE_ROOT,
+                        standalone_root,
+                    );
+            }
+            #[inline]
+            pub fn add_module_event_ids(
+                &mut self,
+                module_event_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<BlockEventId<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineBlockEntry::VT_MODULE_EVENT_IDS,
+                    module_event_ids,
+                );
+            }
+            #[inline]
+            pub fn add_module_has_gap(&mut self, module_has_gap: bool) {
+                self.fbb_.push_slot::<bool>(
+                    TimelineBlockEntry::VT_MODULE_HAS_GAP,
+                    module_has_gap,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_module_root(
+                &mut self,
+                module_root: ::flatbuffers::WIPOffset<ThreadPointer<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ThreadPointer>>(
+                        TimelineBlockEntry::VT_MODULE_ROOT,
+                        module_root,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> TimelineBlockEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TimelineBlockEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TimelineBlockEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TimelineBlockEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TimelineBlockEntry");
+                ds.field("kind", &self.kind());
+                ds.field("standalone_id", &self.standalone_id());
+                ds.field("standalone_root", &self.standalone_root());
+                ds.field("module_event_ids", &self.module_event_ids());
+                ds.field("module_has_gap", &self.module_has_gap());
+                ds.field("module_root", &self.module_root());
+                ds.finish()
+            }
+        }
+        pub enum RelationCountInterestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct RelationCountInterest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RelationCountInterest<'a> {
+            type Inner = RelationCountInterest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RelationCountInterest<'a> {
+            pub const VT_NAMESPACE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TARGET_EVENT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TAG: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RelationCountInterest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RelationCountInterestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RelationCountInterest<'bldr>> {
+                let mut builder = RelationCountInterestBuilder::new(_fbb);
+                if let Some(x) = args.tag {
+                    builder.add_tag(x);
+                }
+                if let Some(x) = args.target_event_id {
+                    builder.add_target_event_id(x);
+                }
+                if let Some(x) = args.namespace {
+                    builder.add_namespace(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn namespace(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelationCountInterest::VT_NAMESPACE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn target_event_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelationCountInterest::VT_TARGET_EVENT_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn tag(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelationCountInterest::VT_TAG,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RelationCountInterest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "namespace",
+                        Self::VT_NAMESPACE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "target_event_id",
+                        Self::VT_TARGET_EVENT_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "tag",
+                        Self::VT_TAG,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RelationCountInterestArgs<'a> {
+            pub namespace: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub target_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub tag: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for RelationCountInterestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RelationCountInterestArgs {
+                    namespace: None,
+                    target_event_id: None,
+                    tag: None,
+                }
+            }
+        }
+
+        pub struct RelationCountInterestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelationCountInterestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_namespace(&mut self, namespace: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelationCountInterest::VT_NAMESPACE,
+                    namespace,
+                );
+            }
+            #[inline]
+            pub fn add_target_event_id(
+                &mut self,
+                target_event_id: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelationCountInterest::VT_TARGET_EVENT_ID,
+                    target_event_id,
+                );
+            }
+            #[inline]
+            pub fn add_tag(&mut self, tag: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelationCountInterest::VT_TAG,
+                    tag,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RelationCountInterestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RelationCountInterestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelationCountInterest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RelationCountInterest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RelationCountInterest");
+                ds.field("namespace", &self.namespace());
+                ds.field("target_event_id", &self.target_event_id());
+                ds.field("tag", &self.tag());
+                ds.finish()
+            }
+        }
+        pub enum RelationCountOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct RelationCount<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RelationCount<'a> {
+            type Inner = RelationCount<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RelationCount<'a> {
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_COUNT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INTEREST: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RelationCount { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RelationCountArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RelationCount<'bldr>> {
+                let mut builder = RelationCountBuilder::new(_fbb);
+                builder.add_count(args.count);
+                if let Some(x) = args.interest {
+                    builder.add_interest(x);
+                }
+                builder.add_state(args.state);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn state(&self) -> RelationCountState {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RelationCountState>(
+                            RelationCount::VT_STATE,
+                            Some(RelationCountState::Known),
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RelationCount::VT_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn interest(&self) -> Option<RelationCountInterest<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelationCountInterest>>(
+                            RelationCount::VT_INTEREST,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RelationCount<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RelationCountState>("state", Self::VT_STATE, false)?
+                    .visit_field::<u64>("count", Self::VT_COUNT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCountInterest>>(
+                        "interest",
+                        Self::VT_INTEREST,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RelationCountArgs<'a> {
+            pub state: RelationCountState,
+            pub count: u64,
+            pub interest: Option<::flatbuffers::WIPOffset<RelationCountInterest<'a>>>,
+        }
+        impl<'a> Default for RelationCountArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RelationCountArgs {
+                    state: RelationCountState::Known,
+                    count: 0,
+                    interest: None,
+                }
+            }
+        }
+
+        pub struct RelationCountBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelationCountBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_state(&mut self, state: RelationCountState) {
+                self.fbb_.push_slot::<RelationCountState>(
+                    RelationCount::VT_STATE,
+                    state,
+                    RelationCountState::Known,
+                );
+            }
+            #[inline]
+            pub fn add_count(&mut self, count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(RelationCount::VT_COUNT, count, 0);
+            }
+            #[inline]
+            pub fn add_interest(
+                &mut self,
+                interest: ::flatbuffers::WIPOffset<RelationCountInterest<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCountInterest>>(
+                        RelationCount::VT_INTEREST,
+                        interest,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RelationCountBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RelationCountBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelationCount<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RelationCount<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RelationCount");
+                ds.field("state", &self.state());
+                ds.field("count", &self.count());
+                ds.field("interest", &self.interest());
+                ds.finish()
+            }
+        }
+        pub enum NoteRelationCountsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct NoteRelationCounts<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for NoteRelationCounts<'a> {
+            type Inner = NoteRelationCounts<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> NoteRelationCounts<'a> {
+            pub const VT_REPLIES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REACTIONS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REPOSTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_ZAPS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                NoteRelationCounts { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args NoteRelationCountsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'bldr>> {
+                let mut builder = NoteRelationCountsBuilder::new(_fbb);
+                if let Some(x) = args.zaps {
+                    builder.add_zaps(x);
+                }
+                if let Some(x) = args.reposts {
+                    builder.add_reposts(x);
+                }
+                if let Some(x) = args.reactions {
+                    builder.add_reactions(x);
+                }
+                if let Some(x) = args.replies {
+                    builder.add_replies(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn replies(&self) -> Option<RelationCount<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                            NoteRelationCounts::VT_REPLIES,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn reactions(&self) -> Option<RelationCount<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                            NoteRelationCounts::VT_REACTIONS,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn reposts(&self) -> Option<RelationCount<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                            NoteRelationCounts::VT_REPOSTS,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn zaps(&self) -> Option<RelationCount<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                            NoteRelationCounts::VT_ZAPS,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for NoteRelationCounts<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                        "replies",
+                        Self::VT_REPLIES,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                        "reactions",
+                        Self::VT_REACTIONS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                        "reposts",
+                        Self::VT_REPOSTS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
+                        "zaps",
+                        Self::VT_ZAPS,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct NoteRelationCountsArgs<'a> {
+            pub replies: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
+            pub reactions: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
+            pub reposts: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
+            pub zaps: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
+        }
+        impl<'a> Default for NoteRelationCountsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                NoteRelationCountsArgs {
+                    replies: None,
+                    reactions: None,
+                    reposts: None,
+                    zaps: None,
+                }
+            }
+        }
+
+        pub struct NoteRelationCountsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> NoteRelationCountsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_replies(&mut self, replies: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
+                        NoteRelationCounts::VT_REPLIES,
+                        replies,
+                    );
+            }
+            #[inline]
+            pub fn add_reactions(
+                &mut self,
+                reactions: ::flatbuffers::WIPOffset<RelationCount<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
+                        NoteRelationCounts::VT_REACTIONS,
+                        reactions,
+                    );
+            }
+            #[inline]
+            pub fn add_reposts(&mut self, reposts: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
+                        NoteRelationCounts::VT_REPOSTS,
+                        reposts,
+                    );
+            }
+            #[inline]
+            pub fn add_zaps(&mut self, zaps: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
+                        NoteRelationCounts::VT_ZAPS,
+                        zaps,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> NoteRelationCountsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                NoteRelationCountsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for NoteRelationCounts<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("NoteRelationCounts");
+                ds.field("replies", &self.replies());
+                ds.field("reactions", &self.reactions());
+                ds.field("reposts", &self.reposts());
+                ds.field("zaps", &self.zaps());
+                ds.finish()
+            }
+        }
+        pub enum AuthorDisplayOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct AuthorDisplay<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for AuthorDisplay<'a> {
+            type Inner = AuthorDisplay<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> AuthorDisplay<'a> {
+            pub const VT_HAS_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_NPUB: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NPUB: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                AuthorDisplay { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args AuthorDisplayArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<AuthorDisplay<'bldr>> {
+                let mut builder = AuthorDisplayBuilder::new(_fbb);
+                if let Some(x) = args.picture_url {
+                    builder.add_picture_url(x);
+                }
+                if let Some(x) = args.npub {
+                    builder.add_npub(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_has_picture_url(args.has_picture_url);
+                builder.add_has_npub(args.has_npub);
+                builder.add_has_name(args.has_name);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn has_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(AuthorDisplay::VT_HAS_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AuthorDisplay::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn has_npub(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(AuthorDisplay::VT_HAS_NPUB, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn npub(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(AuthorDisplay::VT_NPUB, None)
+                }
+            }
+            #[inline]
+            pub fn has_picture_url(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(AuthorDisplay::VT_HAS_PICTURE_URL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn picture_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        AuthorDisplay::VT_PICTURE_URL,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for AuthorDisplay<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>("has_name", Self::VT_HAS_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_npub", Self::VT_HAS_NPUB, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "npub",
+                        Self::VT_NPUB,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_picture_url", Self::VT_HAS_PICTURE_URL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "picture_url",
+                        Self::VT_PICTURE_URL,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct AuthorDisplayArgs<'a> {
+            pub has_name: bool,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_npub: bool,
+            pub npub: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_picture_url: bool,
+            pub picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for AuthorDisplayArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                AuthorDisplayArgs {
+                    has_name: false,
+                    name: None,
+                    has_npub: false,
+                    npub: None,
+                    has_picture_url: false,
+                    picture_url: None,
+                }
+            }
+        }
+
+        pub struct AuthorDisplayBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AuthorDisplayBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_has_name(&mut self, has_name: bool) {
+                self.fbb_
+                    .push_slot::<bool>(AuthorDisplay::VT_HAS_NAME, has_name, false);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AuthorDisplay::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_has_npub(&mut self, has_npub: bool) {
+                self.fbb_
+                    .push_slot::<bool>(AuthorDisplay::VT_HAS_NPUB, has_npub, false);
+            }
+            #[inline]
+            pub fn add_npub(&mut self, npub: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(AuthorDisplay::VT_NPUB, npub);
+            }
+            #[inline]
+            pub fn add_has_picture_url(&mut self, has_picture_url: bool) {
+                self.fbb_.push_slot::<bool>(
+                    AuthorDisplay::VT_HAS_PICTURE_URL,
+                    has_picture_url,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_picture_url(&mut self, picture_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    AuthorDisplay::VT_PICTURE_URL,
+                    picture_url,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> AuthorDisplayBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                AuthorDisplayBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<AuthorDisplay<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for AuthorDisplay<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("AuthorDisplay");
+                ds.field("has_name", &self.has_name());
+                ds.field("name", &self.name());
+                ds.field("has_npub", &self.has_npub());
+                ds.field("npub", &self.npub());
+                ds.field("has_picture_url", &self.has_picture_url());
+                ds.field("picture_url", &self.picture_url());
+                ds.finish()
+            }
+        }
+        pub enum RepostAttributionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct RepostAttribution<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RepostAttribution<'a> {
+            type Inner = RepostAttribution<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RepostAttribution<'a> {
+            pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_AUTHOR_DISPLAY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
+            pub const VT_NOTE_CREATED_AT: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RepostAttribution { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RepostAttributionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RepostAttribution<'bldr>> {
+                let mut builder = RepostAttributionBuilder::new(_fbb);
+                builder.add_note_created_at(args.note_created_at);
+                if let Some(x) = args.author_picture_url {
+                    builder.add_author_picture_url(x);
+                }
+                if let Some(x) = args.author_display_name {
+                    builder.add_author_display_name(x);
+                }
+                if let Some(x) = args.author_display {
+                    builder.add_author_display(x);
+                }
+                if let Some(x) = args.author_pubkey {
+                    builder.add_author_pubkey(x);
+                }
+                builder.add_has_author_picture_url(args.has_author_picture_url);
+                builder.add_has_author_display_name(args.has_author_display_name);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn author_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RepostAttribution::VT_AUTHOR_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn author_display(&self) -> Option<AuthorDisplay<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                            RepostAttribution::VT_AUTHOR_DISPLAY,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn has_author_display_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RepostAttribution::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn author_display_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RepostAttribution::VT_AUTHOR_DISPLAY_NAME,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_author_picture_url(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RepostAttribution::VT_HAS_AUTHOR_PICTURE_URL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn author_picture_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RepostAttribution::VT_AUTHOR_PICTURE_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn note_created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RepostAttribution::VT_NOTE_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RepostAttribution<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_pubkey",
+                        Self::VT_AUTHOR_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                        "author_display",
+                        Self::VT_AUTHOR_DISPLAY,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "has_author_display_name",
+                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_display_name",
+                        Self::VT_AUTHOR_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "has_author_picture_url",
+                        Self::VT_HAS_AUTHOR_PICTURE_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_picture_url",
+                        Self::VT_AUTHOR_PICTURE_URL,
+                        false,
+                    )?
+                    .visit_field::<u64>("note_created_at", Self::VT_NOTE_CREATED_AT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RepostAttributionArgs<'a> {
+            pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_display: Option<::flatbuffers::WIPOffset<AuthorDisplay<'a>>>,
+            pub has_author_display_name: bool,
+            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_author_picture_url: bool,
+            pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub note_created_at: u64,
+        }
+        impl<'a> Default for RepostAttributionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RepostAttributionArgs {
+                    author_pubkey: None,
+                    author_display: None,
+                    has_author_display_name: false,
+                    author_display_name: None,
+                    has_author_picture_url: false,
+                    author_picture_url: None,
+                    note_created_at: 0,
+                }
+            }
+        }
+
+        pub struct RepostAttributionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RepostAttributionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_author_pubkey(&mut self, author_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RepostAttribution::VT_AUTHOR_PUBKEY,
+                    author_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_author_display(
+                &mut self,
+                author_display: ::flatbuffers::WIPOffset<AuthorDisplay<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<AuthorDisplay>>(
+                        RepostAttribution::VT_AUTHOR_DISPLAY,
+                        author_display,
+                    );
+            }
+            #[inline]
+            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
+                self.fbb_.push_slot::<bool>(
+                    RepostAttribution::VT_HAS_AUTHOR_DISPLAY_NAME,
+                    has_author_display_name,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_author_display_name(
+                &mut self,
+                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RepostAttribution::VT_AUTHOR_DISPLAY_NAME,
+                    author_display_name,
+                );
+            }
+            #[inline]
+            pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
+                self.fbb_.push_slot::<bool>(
+                    RepostAttribution::VT_HAS_AUTHOR_PICTURE_URL,
+                    has_author_picture_url,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_author_picture_url(
+                &mut self,
+                author_picture_url: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RepostAttribution::VT_AUTHOR_PICTURE_URL,
+                    author_picture_url,
+                );
+            }
+            #[inline]
+            pub fn add_note_created_at(&mut self, note_created_at: u64) {
+                self.fbb_.push_slot::<u64>(
+                    RepostAttribution::VT_NOTE_CREATED_AT,
+                    note_created_at,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RepostAttributionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RepostAttributionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RepostAttribution<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RepostAttribution<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RepostAttribution");
+                ds.field("author_pubkey", &self.author_pubkey());
+                ds.field("author_display", &self.author_display());
+                ds.field("has_author_display_name", &self.has_author_display_name());
+                ds.field("author_display_name", &self.author_display_name());
+                ds.field("has_author_picture_url", &self.has_author_picture_url());
+                ds.field("author_picture_url", &self.author_picture_url());
+                ds.field("note_created_at", &self.note_created_at());
+                ds.finish()
+            }
+        }
+        pub enum ContentProfileRenderEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ContentProfileRenderEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ContentProfileRenderEntry<'a> {
+            type Inner = ContentProfileRenderEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ContentProfileRenderEntry<'a> {
+            pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_DISPLAY: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ContentProfileRenderEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ContentProfileRenderEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ContentProfileRenderEntry<'bldr>> {
+                let mut builder = ContentProfileRenderEntryBuilder::new(_fbb);
+                if let Some(x) = args.display {
+                    builder.add_display(x);
+                }
+                if let Some(x) = args.pubkey {
+                    builder.add_pubkey(x);
+                }
+                if let Some(x) = args.key {
+                    builder.add_key(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn key(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ContentProfileRenderEntry::VT_KEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ContentProfileRenderEntry::VT_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn display(&self) -> Option<AuthorDisplay<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                            ContentProfileRenderEntry::VT_DISPLAY,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ContentProfileRenderEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "key",
+                        Self::VT_KEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "pubkey",
+                        Self::VT_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                        "display",
+                        Self::VT_DISPLAY,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ContentProfileRenderEntryArgs<'a> {
+            pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub display: Option<::flatbuffers::WIPOffset<AuthorDisplay<'a>>>,
+        }
+        impl<'a> Default for ContentProfileRenderEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ContentProfileRenderEntryArgs {
+                    key: None,
+                    pubkey: None,
+                    display: None,
+                }
+            }
+        }
+
+        pub struct ContentProfileRenderEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ContentProfileRenderEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_key(&mut self, key: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentProfileRenderEntry::VT_KEY,
+                    key,
+                );
+            }
+            #[inline]
+            pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentProfileRenderEntry::VT_PUBKEY,
+                    pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_display(&mut self, display: ::flatbuffers::WIPOffset<AuthorDisplay<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<AuthorDisplay>>(
+                        ContentProfileRenderEntry::VT_DISPLAY,
+                        display,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ContentProfileRenderEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ContentProfileRenderEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ContentProfileRenderEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ContentProfileRenderEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ContentProfileRenderEntry");
+                ds.field("key", &self.key());
+                ds.field("pubkey", &self.pubkey());
+                ds.field("display", &self.display());
+                ds.finish()
+            }
+        }
+        pub enum ContentEventRenderEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ContentEventRenderEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ContentEventRenderEntry<'a> {
+            type Inner = ContentEventRenderEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ContentEventRenderEntry<'a> {
+            pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 8;
+            pub const VT_AUTHOR_DISPLAY: ::flatbuffers::VOffsetT = 10;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_CONTENT_PREVIEW: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ContentEventRenderEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ContentEventRenderEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ContentEventRenderEntry<'bldr>> {
+                let mut builder = ContentEventRenderEntryBuilder::new(_fbb);
+                builder.add_created_at(args.created_at);
+                if let Some(x) = args.content_tree_bytes {
+                    builder.add_content_tree_bytes(x);
+                }
+                if let Some(x) = args.content_preview {
+                    builder.add_content_preview(x);
+                }
+                builder.add_kind(args.kind);
+                if let Some(x) = args.author_display {
+                    builder.add_author_display(x);
+                }
+                if let Some(x) = args.author_pubkey {
+                    builder.add_author_pubkey(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                if let Some(x) = args.key {
+                    builder.add_key(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn key(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ContentEventRenderEntry::VT_KEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ContentEventRenderEntry::VT_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn author_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ContentEventRenderEntry::VT_AUTHOR_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn author_display(&self) -> Option<AuthorDisplay<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                            ContentEventRenderEntry::VT_AUTHOR_DISPLAY,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(ContentEventRenderEntry::VT_KIND, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(ContentEventRenderEntry::VT_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn content_preview(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ContentEventRenderEntry::VT_CONTENT_PREVIEW,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn content_tree_bytes(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            ContentEventRenderEntry::VT_CONTENT_TREE_BYTES,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ContentEventRenderEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "key",
+                        Self::VT_KEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_pubkey",
+                        Self::VT_AUTHOR_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                        "author_display",
+                        Self::VT_AUTHOR_DISPLAY,
+                        false,
+                    )?
+                    .visit_field::<u32>("kind", Self::VT_KIND, false)?
+                    .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content_preview",
+                        Self::VT_CONTENT_PREVIEW,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content_tree_bytes",
+                        Self::VT_CONTENT_TREE_BYTES,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ContentEventRenderEntryArgs<'a> {
+            pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_display: Option<::flatbuffers::WIPOffset<AuthorDisplay<'a>>>,
+            pub kind: u32,
+            pub created_at: u64,
+            pub content_preview: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content_tree_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for ContentEventRenderEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ContentEventRenderEntryArgs {
+                    key: None,
+                    id: None,
+                    author_pubkey: None,
+                    author_display: None,
+                    kind: 0,
+                    created_at: 0,
+                    content_preview: None,
+                    content_tree_bytes: None,
+                }
+            }
+        }
+
+        pub struct ContentEventRenderEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ContentEventRenderEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_key(&mut self, key: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentEventRenderEntry::VT_KEY,
+                    key,
+                );
+            }
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentEventRenderEntry::VT_ID,
+                    id,
+                );
+            }
+            #[inline]
+            pub fn add_author_pubkey(&mut self, author_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentEventRenderEntry::VT_AUTHOR_PUBKEY,
+                    author_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_author_display(
+                &mut self,
+                author_display: ::flatbuffers::WIPOffset<AuthorDisplay<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<AuthorDisplay>>(
+                        ContentEventRenderEntry::VT_AUTHOR_DISPLAY,
+                        author_display,
+                    );
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: u32) {
+                self.fbb_
+                    .push_slot::<u32>(ContentEventRenderEntry::VT_KIND, kind, 0);
+            }
+            #[inline]
+            pub fn add_created_at(&mut self, created_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(ContentEventRenderEntry::VT_CREATED_AT, created_at, 0);
+            }
+            #[inline]
+            pub fn add_content_preview(
+                &mut self,
+                content_preview: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentEventRenderEntry::VT_CONTENT_PREVIEW,
+                    content_preview,
+                );
+            }
+            #[inline]
+            pub fn add_content_tree_bytes(
+                &mut self,
+                content_tree_bytes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentEventRenderEntry::VT_CONTENT_TREE_BYTES,
+                    content_tree_bytes,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ContentEventRenderEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ContentEventRenderEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ContentEventRenderEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ContentEventRenderEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ContentEventRenderEntry");
+                ds.field("key", &self.key());
+                ds.field("id", &self.id());
+                ds.field("author_pubkey", &self.author_pubkey());
+                ds.field("author_display", &self.author_display());
+                ds.field("kind", &self.kind());
+                ds.field("created_at", &self.created_at());
+                ds.field("content_preview", &self.content_preview());
+                ds.field("content_tree_bytes", &self.content_tree_bytes());
+                ds.finish()
+            }
+        }
+        pub enum ContentRenderDataOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ContentRenderData<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ContentRenderData<'a> {
+            type Inner = ContentRenderData<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ContentRenderData<'a> {
+            pub const VT_PROFILES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EVENTS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ContentRenderData { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ContentRenderDataArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ContentRenderData<'bldr>> {
+                let mut builder = ContentRenderDataBuilder::new(_fbb);
+                if let Some(x) = args.events {
+                    builder.add_events(x);
+                }
+                if let Some(x) = args.profiles {
+                    builder.add_profiles(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn profiles(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<
+                    'a,
+                    ::flatbuffers::ForwardsUOffset<ContentProfileRenderEntry<'a>>,
+                >,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<ContentProfileRenderEntry>,
+                        >,
+                    >>(ContentRenderData::VT_PROFILES, None)
+                }
+            }
+            #[inline]
+            pub fn events(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<
+                    'a,
+                    ::flatbuffers::ForwardsUOffset<ContentEventRenderEntry<'a>>,
+                >,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<ContentEventRenderEntry>,
+                        >,
+                    >>(ContentRenderData::VT_EVENTS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ContentRenderData<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<ContentProfileRenderEntry>,
+                        >,
+                    >>("profiles", Self::VT_PROFILES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<ContentEventRenderEntry>,
+                        >,
+                    >>("events", Self::VT_EVENTS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ContentRenderDataArgs<'a> {
+            pub profiles: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<ContentProfileRenderEntry<'a>>,
+                    >,
+                >,
+            >,
+            pub events: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<ContentEventRenderEntry<'a>>,
+                    >,
+                >,
+            >,
+        }
+        impl<'a> Default for ContentRenderDataArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ContentRenderDataArgs {
+                    profiles: None,
+                    events: None,
+                }
+            }
+        }
+
+        pub struct ContentRenderDataBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ContentRenderDataBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_profiles(
+                &mut self,
+                profiles: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<ContentProfileRenderEntry<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentRenderData::VT_PROFILES,
+                    profiles,
+                );
+            }
+            #[inline]
+            pub fn add_events(
+                &mut self,
+                events: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<ContentEventRenderEntry<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ContentRenderData::VT_EVENTS,
+                    events,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ContentRenderDataBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ContentRenderDataBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ContentRenderData<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ContentRenderData<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ContentRenderData");
+                ds.field("profiles", &self.profiles());
+                ds.field("events", &self.events());
+                ds.finish()
+            }
+        }
+        pub enum TimelineEventCardOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct TimelineEventCard<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TimelineEventCard<'a> {
+            type Inner = TimelineEventCard<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TimelineEventCard<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_AUTHOR_DISPLAY: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONTENT_RENDER: ::flatbuffers::VOffsetT = 18;
+            pub const VT_RELATION_COUNTS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 22;
+            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 24;
+            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 26;
+            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 28;
+            pub const VT_CONTENT_PREVIEW: ::flatbuffers::VOffsetT = 30;
+            pub const VT_REPOSTED_BY: ::flatbuffers::VOffsetT = 32;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TimelineEventCard { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TimelineEventCardArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TimelineEventCard<'bldr>> {
+                let mut builder = TimelineEventCardBuilder::new(_fbb);
+                builder.add_created_at(args.created_at);
+                if let Some(x) = args.reposted_by {
+                    builder.add_reposted_by(x);
+                }
+                if let Some(x) = args.content_preview {
+                    builder.add_content_preview(x);
+                }
+                if let Some(x) = args.author_picture_url {
+                    builder.add_author_picture_url(x);
+                }
+                if let Some(x) = args.author_display_name {
+                    builder.add_author_display_name(x);
+                }
+                if let Some(x) = args.relation_counts {
+                    builder.add_relation_counts(x);
+                }
+                if let Some(x) = args.content_render {
+                    builder.add_content_render(x);
+                }
+                if let Some(x) = args.content_tree_bytes {
+                    builder.add_content_tree_bytes(x);
+                }
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                builder.add_kind(args.kind);
+                if let Some(x) = args.author_display {
+                    builder.add_author_display(x);
+                }
+                if let Some(x) = args.author_pubkey {
+                    builder.add_author_pubkey(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.add_has_author_picture_url(args.has_author_picture_url);
+                builder.add_has_author_display_name(args.has_author_display_name);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(TimelineEventCard::VT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn author_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TimelineEventCard::VT_AUTHOR_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn author_display(&self) -> Option<AuthorDisplay<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                            TimelineEventCard::VT_AUTHOR_DISPLAY,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(TimelineEventCard::VT_KIND, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(TimelineEventCard::VT_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TimelineEventCard::VT_CONTENT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn content_tree_bytes(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            TimelineEventCard::VT_CONTENT_TREE_BYTES,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn content_render(&self) -> Option<ContentRenderData<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ContentRenderData>>(
+                            TimelineEventCard::VT_CONTENT_RENDER,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn relation_counts(&self) -> Option<NoteRelationCounts<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<NoteRelationCounts>>(
+                            TimelineEventCard::VT_RELATION_COUNTS,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn has_author_display_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(TimelineEventCard::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn author_display_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TimelineEventCard::VT_AUTHOR_DISPLAY_NAME,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_author_picture_url(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(TimelineEventCard::VT_HAS_AUTHOR_PICTURE_URL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn author_picture_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TimelineEventCard::VT_AUTHOR_PICTURE_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn content_preview(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TimelineEventCard::VT_CONTENT_PREVIEW,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn reposted_by(&self) -> Option<RepostAttribution<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RepostAttribution>>(
+                            TimelineEventCard::VT_REPOSTED_BY,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TimelineEventCard<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_pubkey",
+                        Self::VT_AUTHOR_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<AuthorDisplay>>(
+                        "author_display",
+                        Self::VT_AUTHOR_DISPLAY,
+                        false,
+                    )?
+                    .visit_field::<u32>("kind", Self::VT_KIND, false)?
+                    .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content_tree_bytes",
+                        Self::VT_CONTENT_TREE_BYTES,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ContentRenderData>>(
+                        "content_render",
+                        Self::VT_CONTENT_RENDER,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<NoteRelationCounts>>(
+                        "relation_counts",
+                        Self::VT_RELATION_COUNTS,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "has_author_display_name",
+                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_display_name",
+                        Self::VT_AUTHOR_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "has_author_picture_url",
+                        Self::VT_HAS_AUTHOR_PICTURE_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "author_picture_url",
+                        Self::VT_AUTHOR_PICTURE_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content_preview",
+                        Self::VT_CONTENT_PREVIEW,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RepostAttribution>>(
+                        "reposted_by",
+                        Self::VT_REPOSTED_BY,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct TimelineEventCardArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_display: Option<::flatbuffers::WIPOffset<AuthorDisplay<'a>>>,
+            pub kind: u32,
+            pub created_at: u64,
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content_tree_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+            pub content_render: Option<::flatbuffers::WIPOffset<ContentRenderData<'a>>>,
+            pub relation_counts: Option<::flatbuffers::WIPOffset<NoteRelationCounts<'a>>>,
+            pub has_author_display_name: bool,
+            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_author_picture_url: bool,
+            pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content_preview: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reposted_by: Option<::flatbuffers::WIPOffset<RepostAttribution<'a>>>,
+        }
+        impl<'a> Default for TimelineEventCardArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TimelineEventCardArgs {
+                    id: None,
+                    author_pubkey: None,
+                    author_display: None,
+                    kind: 0,
+                    created_at: 0,
+                    content: None,
+                    content_tree_bytes: None,
+                    content_render: None,
+                    relation_counts: None,
+                    has_author_display_name: false,
+                    author_display_name: None,
+                    has_author_picture_url: false,
+                    author_picture_url: None,
+                    content_preview: None,
+                    reposted_by: None,
+                }
+            }
+        }
+
+        pub struct TimelineEventCardBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TimelineEventCardBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TimelineEventCard::VT_ID, id);
+            }
+            #[inline]
+            pub fn add_author_pubkey(&mut self, author_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineEventCard::VT_AUTHOR_PUBKEY,
+                    author_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_author_display(
+                &mut self,
+                author_display: ::flatbuffers::WIPOffset<AuthorDisplay<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<AuthorDisplay>>(
+                        TimelineEventCard::VT_AUTHOR_DISPLAY,
+                        author_display,
+                    );
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: u32) {
+                self.fbb_
+                    .push_slot::<u32>(TimelineEventCard::VT_KIND, kind, 0);
+            }
+            #[inline]
+            pub fn add_created_at(&mut self, created_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(TimelineEventCard::VT_CREATED_AT, created_at, 0);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineEventCard::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn add_content_tree_bytes(
+                &mut self,
+                content_tree_bytes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineEventCard::VT_CONTENT_TREE_BYTES,
+                    content_tree_bytes,
+                );
+            }
+            #[inline]
+            pub fn add_content_render(
+                &mut self,
+                content_render: ::flatbuffers::WIPOffset<ContentRenderData<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ContentRenderData>>(
+                        TimelineEventCard::VT_CONTENT_RENDER,
+                        content_render,
+                    );
+            }
+            #[inline]
+            pub fn add_relation_counts(
+                &mut self,
+                relation_counts: ::flatbuffers::WIPOffset<NoteRelationCounts<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<NoteRelationCounts>>(
+                        TimelineEventCard::VT_RELATION_COUNTS,
+                        relation_counts,
+                    );
+            }
+            #[inline]
+            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
+                self.fbb_.push_slot::<bool>(
+                    TimelineEventCard::VT_HAS_AUTHOR_DISPLAY_NAME,
+                    has_author_display_name,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_author_display_name(
+                &mut self,
+                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineEventCard::VT_AUTHOR_DISPLAY_NAME,
+                    author_display_name,
+                );
+            }
+            #[inline]
+            pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
+                self.fbb_.push_slot::<bool>(
+                    TimelineEventCard::VT_HAS_AUTHOR_PICTURE_URL,
+                    has_author_picture_url,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_author_picture_url(
+                &mut self,
+                author_picture_url: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineEventCard::VT_AUTHOR_PICTURE_URL,
+                    author_picture_url,
+                );
+            }
+            #[inline]
+            pub fn add_content_preview(
+                &mut self,
+                content_preview: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TimelineEventCard::VT_CONTENT_PREVIEW,
+                    content_preview,
+                );
+            }
+            #[inline]
+            pub fn add_reposted_by(
+                &mut self,
+                reposted_by: ::flatbuffers::WIPOffset<RepostAttribution<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RepostAttribution>>(
+                        TimelineEventCard::VT_REPOSTED_BY,
+                        reposted_by,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> TimelineEventCardBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TimelineEventCardBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TimelineEventCard<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TimelineEventCard<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TimelineEventCard");
+                ds.field("id", &self.id());
+                ds.field("author_pubkey", &self.author_pubkey());
+                ds.field("author_display", &self.author_display());
+                ds.field("kind", &self.kind());
+                ds.field("created_at", &self.created_at());
+                ds.field("content", &self.content());
+                ds.field("content_tree_bytes", &self.content_tree_bytes());
+                ds.field("content_render", &self.content_render());
+                ds.field("relation_counts", &self.relation_counts());
+                ds.field("has_author_display_name", &self.has_author_display_name());
+                ds.field("author_display_name", &self.author_display_name());
+                ds.field("has_author_picture_url", &self.has_author_picture_url());
+                ds.field("author_picture_url", &self.author_picture_url());
+                ds.field("content_preview", &self.content_preview());
+                ds.field("reposted_by", &self.reposted_by());
+                ds.finish()
+            }
+        }
+        pub enum ModularTimelineSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ModularTimelineSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ModularTimelineSnapshot<'a> {
+            type Inner = ModularTimelineSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ModularTimelineSnapshot<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_BLOCKS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CARDS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_FEED_WINDOW_BYTES: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ModularTimelineSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ModularTimelineSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'bldr>> {
+                let mut builder = ModularTimelineSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.feed_window_bytes {
+                    builder.add_feed_window_bytes(x);
+                }
+                if let Some(x) = args.cards {
+                    builder.add_cards(x);
+                }
+                if let Some(x) = args.blocks {
+                    builder.add_blocks(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(ModularTimelineSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn blocks(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineBlockEntry<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<TimelineBlockEntry>,
+                        >,
+                    >>(ModularTimelineSnapshot::VT_BLOCKS, None)
+                }
+            }
+            #[inline]
+            pub fn cards(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TimelineEventCard<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<TimelineEventCard>,
+                        >,
+                    >>(ModularTimelineSnapshot::VT_CARDS, None)
+                }
+            }
+            #[inline]
+            pub fn feed_window_bytes(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            ModularTimelineSnapshot::VT_FEED_WINDOW_BYTES,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ModularTimelineSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<TimelineBlockEntry>,
+                        >,
+                    >>("blocks", Self::VT_BLOCKS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<TimelineEventCard>,
+                        >,
+                    >>("cards", Self::VT_CARDS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "feed_window_bytes",
+                        Self::VT_FEED_WINDOW_BYTES,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ModularTimelineSnapshotArgs<'a> {
+            pub schema_version: u32,
+            pub blocks: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<TimelineBlockEntry<'a>>,
+                    >,
+                >,
+            >,
+            pub cards: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<TimelineEventCard<'a>>,
+                    >,
+                >,
+            >,
+            pub feed_window_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for ModularTimelineSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ModularTimelineSnapshotArgs {
+                    schema_version: 1,
+                    blocks: None,
+                    cards: None,
+                    feed_window_bytes: None,
+                }
+            }
+        }
+
+        pub struct ModularTimelineSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ModularTimelineSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_.push_slot::<u32>(
+                    ModularTimelineSnapshot::VT_SCHEMA_VERSION,
+                    schema_version,
+                    1,
+                );
+            }
+            #[inline]
+            pub fn add_blocks(
+                &mut self,
+                blocks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<TimelineBlockEntry<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ModularTimelineSnapshot::VT_BLOCKS,
+                    blocks,
+                );
+            }
+            #[inline]
+            pub fn add_cards(
+                &mut self,
+                cards: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<TimelineEventCard<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ModularTimelineSnapshot::VT_CARDS,
+                    cards,
+                );
+            }
+            #[inline]
+            pub fn add_feed_window_bytes(
+                &mut self,
+                feed_window_bytes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ModularTimelineSnapshot::VT_FEED_WINDOW_BYTES,
+                    feed_window_bytes,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ModularTimelineSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ModularTimelineSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ModularTimelineSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ModularTimelineSnapshot");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("blocks", &self.blocks());
+                ds.field("cards", &self.cards());
+                ds.field("feed_window_bytes", &self.feed_window_bytes());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `ModularTimelineSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_modular_timeline_snapshot_unchecked`.
+        pub fn root_as_modular_timeline_snapshot(
+            buf: &[u8],
+        ) -> Result<ModularTimelineSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<ModularTimelineSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `ModularTimelineSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_modular_timeline_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_modular_timeline_snapshot(
+            buf: &[u8],
+        ) -> Result<ModularTimelineSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<ModularTimelineSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `ModularTimelineSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_modular_timeline_snapshot_unchecked`.
+        pub fn root_as_modular_timeline_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ModularTimelineSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<ModularTimelineSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `ModularTimelineSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_modular_timeline_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_modular_timeline_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ModularTimelineSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<ModularTimelineSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a ModularTimelineSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `ModularTimelineSnapshot`.
+        pub unsafe fn root_as_modular_timeline_snapshot_unchecked(
+            buf: &[u8],
+        ) -> ModularTimelineSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<ModularTimelineSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed ModularTimelineSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `ModularTimelineSnapshot`.
+        pub unsafe fn size_prefixed_root_as_modular_timeline_snapshot_unchecked(
+            buf: &[u8],
+        ) -> ModularTimelineSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ModularTimelineSnapshot>(buf) }
+        }
+        pub const MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER: &str = "NFTS";
+
+        #[inline]
+        pub fn modular_timeline_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER, false)
+        }
+
+        #[inline]
+        pub fn modular_timeline_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER, true)
+        }
+
+        #[inline]
+        pub fn finish_modular_timeline_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER));
+        }
+
+        #[inline]
+        pub fn finish_size_prefixed_modular_timeline_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ModularTimelineSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(MODULAR_TIMELINE_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip01
+} // pub mod nmp

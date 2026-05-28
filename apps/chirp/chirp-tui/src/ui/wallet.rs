@@ -1,14 +1,14 @@
 //! Approach-b Wallet tab: single rich pane showing connection status and balance.
 
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, DIMMER_TEXT, RELAY_CONNECTING, RELAY_DOWN,
+    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT, RELAY_CONNECTING, RELAY_DOWN,
     RELAY_OK, ZAP,
 };
 
@@ -21,7 +21,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(DETAIL_BG))
         .title(Span::styled(
             " Wallet ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let lines = build_lines(wallet);
@@ -64,9 +66,7 @@ fn build_lines(wallet: &crate::feature_snapshot::WalletLine) -> Vec<Line<'static
             Span::raw(" "),
             Span::styled(
                 status_label,
-                Style::default()
-                    .fg(dot_color)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(dot_color).add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(""),
@@ -80,7 +80,10 @@ fn build_lines(wallet: &crate::feature_snapshot::WalletLine) -> Vec<Line<'static
             lines.push(Line::from(vec![
                 Span::raw("   "),
                 Span::styled("Balance   ", Style::default().fg(DIM_TEXT)),
-                Span::styled(sats_str, Style::default().fg(ZAP).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    sats_str,
+                    Style::default().fg(ZAP).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" "),
                 Span::styled("sats", Style::default().fg(DIMMER_TEXT)),
             ]));
@@ -112,7 +115,11 @@ fn build_lines(wallet: &crate::feature_snapshot::WalletLine) -> Vec<Line<'static
 
 fn status_dot(status: &str) -> (char, ratatui::style::Color) {
     let lower = status.to_ascii_lowercase();
-    if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") || lower.is_empty() {
+    if lower.contains("disconnected")
+        || lower.contains("down")
+        || lower.contains("failed")
+        || lower.is_empty()
+    {
         ('\u{25cb}', RELAY_DOWN) // ○
     } else if lower.contains("connected") || lower == "open" || lower.contains("active") {
         ('\u{25cf}', RELAY_OK) // ●

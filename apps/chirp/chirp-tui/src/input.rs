@@ -404,7 +404,6 @@ fn handle_z_key(state: &mut AppState, _runtime: &AppRuntime) {
     }
 }
 
-
 fn count_replies_for_selected(state: &AppState) -> usize {
     let start = state.selected.saturating_add(1);
     if start >= state.rows.len() {

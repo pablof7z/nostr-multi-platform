@@ -62,7 +62,7 @@ pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'stati
 /// Where a [`ProjectionFn`] returns a generic `serde_json::Value` appended to
 /// `KernelSnapshot::projections`, a `TypedProjectionFn` returns opaque
 /// FlatBuffers bytes ([`TypedProjectionData`]) carried in the snapshot frame's
-/// `typed_projections` sidecar (ADR-0035). `nmp-core` never interprets those
+/// `typed_projections` sidecar (ADR-0037). `nmp-core` never interprets those
 /// bytes — the closure (owned by an app/protocol crate) encodes its own typed
 /// schema and tags it with `schema_id` / `schema_version` / `file_identifier`.
 ///
@@ -72,8 +72,7 @@ pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'stati
 /// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with
 /// the actor thread (D8: the closure itself must also be non-blocking — it runs
 /// inside the snapshot tick, exactly like a generic projection).
-pub type TypedProjectionFn =
-    Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync + 'static>;
+pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
 /// Registry of host-supplied snapshot projections.
 ///
@@ -149,7 +148,7 @@ impl SnapshotRegistry {
     /// `key` is the same host-chosen snapshot namespace used by [`Self::register`]
     /// (e.g. `"nmp.feed.home"`); the typed and generic registries share the key
     /// space so a host can choose, per key, whether to read the typed sidecar or
-    /// fall back to the generic `Value` subtree (ADR-0035 Commitment 4).
+    /// fall back to the generic `Value` subtree (ADR-0037 Commitment 4).
     /// Registering the same key twice replaces the first — last-writer-wins, with
     /// no duplicate-closure CPU cost on subsequent ticks.
     pub fn register_typed(
@@ -249,7 +248,7 @@ impl Kernel {
     }
 
     /// Run every registered **typed** snapshot projection and return the vector
-    /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0035).
+    /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0037).
     ///
     /// Empty when no slot is bound, the mutex is poisoned, or nothing is
     /// registered — D6: a projection failure is data, never a panic at the

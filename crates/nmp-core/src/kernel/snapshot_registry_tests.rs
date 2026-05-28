@@ -13,7 +13,7 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::TypedProjectionData;
 
 /// Build a minimal opaque [`TypedProjectionData`] entry for the typed-sidecar
-/// tests (ADR-0035). The payload bytes are arbitrary — `nmp-core` never
+/// tests (ADR-0037). The payload bytes are arbitrary — `nmp-core` never
 /// interprets them.
 fn typed_entry(key: &str, payload: &[u8]) -> TypedProjectionData {
     TypedProjectionData {
@@ -253,18 +253,16 @@ fn panicking_projection_is_contained_and_others_survive() {
     );
 }
 
-/// ADR-0035 — a registered typed projection's opaque bytes are collected by
+/// ADR-0037 — a registered typed projection's opaque bytes are collected by
 /// `run_typed`, keyed by the projection key, carried verbatim. The typed
 /// registry shares the slot with the generic one but is a separate map, so a
 /// typed-only registration contributes nothing to `run` (the generic path).
 #[test]
 fn registered_typed_projection_surfaces_through_run_typed() {
     let slot = new_snapshot_projection_slot();
-    slot.lock()
-        .unwrap()
-        .register_typed("nmp.feed.home", || {
-            Some(typed_entry("nmp.feed.home", &[0xde, 0xad, 0xbe, 0xef]))
-        });
+    slot.lock().unwrap().register_typed("nmp.feed.home", || {
+        Some(typed_entry("nmp.feed.home", &[0xde, 0xad, 0xbe, 0xef]))
+    });
 
     let registry = slot.lock().unwrap();
     let typed = registry.run_typed();
@@ -330,11 +328,9 @@ fn unbound_slot_yields_empty_typed_projections() {
 fn typed_projection_surfaces_through_kernel_run_typed_projections() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let slot = new_snapshot_projection_slot();
-    slot.lock()
-        .unwrap()
-        .register_typed("nmp.feed.home", || {
-            Some(typed_entry("nmp.feed.home", &[0xab, 0xcd]))
-        });
+    slot.lock().unwrap().register_typed("nmp.feed.home", || {
+        Some(typed_entry("nmp.feed.home", &[0xab, 0xcd]))
+    });
     kernel.set_snapshot_projection_handle(slot);
 
     let typed = kernel.run_typed_projections();

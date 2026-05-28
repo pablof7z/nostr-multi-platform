@@ -1,15 +1,12 @@
 namespace nmp.feed;
 
-// Typed FlatBuffers wire shape for the OUTER feed-window envelope.
+// Typed FlatBuffers wire shape for the feed-window envelope.
 //
-// This schema encodes ONLY the structural window/page/cursor/metrics
-// types. It deliberately carries no event cards — those live in the
-// nmp-nip01 typed wire and reference these tables structurally. The
-// nmp-feed layer owns the window envelope; the protocol layer owns the
-// cards inside it.
-//
-// Raw bytes only on the wire: event ids are raw 32-byte vectors. No
-// display helpers, no npub/bech32 encoding, no profile names.
+// This schema encodes ONLY the structural window/page/cursor/metrics types.
+// It deliberately carries no event cards — those live in protocol-specific
+// typed projection schemas. The nmp-feed layer owns the cursor/page/window
+// semantics; protocol layers embed this typed buffer instead of duplicating
+// cursor tables.
 //
 // Regenerate the checked-in Rust bindings only with the matching
 // workspace flatc pin (25.12.19):
@@ -18,29 +15,33 @@ namespace nmp.feed;
 // then move the file to crates/nmp-feed/src/typed_wire/generated/.
 // ci/check-flatbuffers-version-pins.sh enforces the runtime guard.
 
-// A position in the feed: the oldest visible item's timestamp plus its
-// raw 32-byte event id (empty when the cursor is unanchored).
+// A position in the feed. The in-memory type stores the event id as the raw
+// protocol hex string, so the wire keeps that exact value.
 table FeedCursor {
-  oldest_created_at:int64 = 0;
-  oldest_event_id:[ubyte];    // 32 bytes or empty
+  created_at:uint64 = 0;
+  id:string;
 }
 
-// One page of the feed expressed purely as its cursor boundaries plus a
-// terminal flag. Contains no cards — only the structural window shape.
+// One page of the feed expressed as the current request bound plus the next
+// opaque cursor.
 table FeedPage {
-  start_cursor:FeedCursor;
-  end_cursor:FeedCursor;
-  is_complete:bool = false;
+  limit:uint64 = 0;
+  next_cursor:FeedCursor;
+  has_more:bool = false;
+  total_blocks:uint64 = 0;
 }
 
-// Aggregate window statistics: how many items are visible and the
-// requested vs. effective window bounds.
+// Timing instrument for building the window. This mirrors nmp_feed's
+// in-memory FeedWindowMetrics exactly.
 table FeedWindowMetrics {
-  total_items:uint32 = 0;
-  window_limit:uint32 = 50;
-  window_offset:uint32 = 0;
-  requested_limit:uint32 = 50;
+  make_window_us:uint64 = 0;
 }
 
-root_type FeedWindowMetrics;
+// The structural feed-window envelope embedded by protocol projections.
+table FeedWindow {
+  page:FeedPage;
+  metrics:FeedWindowMetrics;
+}
+
+root_type FeedWindow;
 file_identifier "NFWM";

@@ -1,7 +1,7 @@
 //! Generic register / snapshot / unregister round-trip tests for the
 //! Chirp per-app FFI surface.
 
-// ADR-0035: this module imports and exercises the now-`#[deprecated]`
+// ADR-0037: this module imports and exercises the now-`#[deprecated]`
 // `nmp_app_chirp_snapshot` (diagnostics-only). Opt the whole test module out of
 // the deprecation lint so the `use` import and call sites stay warning-clean.
 #![allow(deprecated)]

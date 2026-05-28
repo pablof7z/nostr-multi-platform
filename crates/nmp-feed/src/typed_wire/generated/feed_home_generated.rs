@@ -2,487 +2,681 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod feed {
+    #[allow(unused_imports, dead_code)]
+    pub mod feed {
 
+        pub enum FeedCursorOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum FeedCursorOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct FeedCursor<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct FeedCursor<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for FeedCursor<'a> {
+            type Inner = FeedCursor<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for FeedCursor<'a> {
-  type Inner = FeedCursor<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> FeedCursor<'a> {
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ID: ::flatbuffers::VOffsetT = 6;
 
-impl<'a> FeedCursor<'a> {
-  pub const VT_OLDEST_CREATED_AT: ::flatbuffers::VOffsetT = 4;
-  pub const VT_OLDEST_EVENT_ID: ::flatbuffers::VOffsetT = 6;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FeedCursor { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FeedCursorArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FeedCursor<'bldr>> {
+                let mut builder = FeedCursorBuilder::new(_fbb);
+                builder.add_created_at(args.created_at);
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FeedCursor { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FeedCursorArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<FeedCursor<'bldr>> {
-    let mut builder = FeedCursorBuilder::new(_fbb);
-    builder.add_oldest_created_at(args.oldest_created_at);
-    if let Some(x) = args.oldest_event_id { builder.add_oldest_event_id(x); }
-    builder.finish()
-  }
+            #[inline]
+            pub fn created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(FeedCursor::VT_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FeedCursor::VT_ID, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for FeedCursor<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FeedCursorArgs<'a> {
+            pub created_at: u64,
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for FeedCursorArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FeedCursorArgs {
+                    created_at: 0,
+                    id: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn oldest_created_at(&self) -> i64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<i64>(FeedCursor::VT_OLDEST_CREATED_AT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn oldest_event_id(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(FeedCursor::VT_OLDEST_EVENT_ID, None)}
-  }
-}
+        pub struct FeedCursorBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedCursorBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_created_at(&mut self, created_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(FeedCursor::VT_CREATED_AT, created_at, 0);
+            }
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FeedCursor::VT_ID, id);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> FeedCursorBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FeedCursorBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedCursor<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for FeedCursor<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<i64>("oldest_created_at", Self::VT_OLDEST_CREATED_AT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("oldest_event_id", Self::VT_OLDEST_EVENT_ID, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FeedCursorArgs<'a> {
-    pub oldest_created_at: i64,
-    pub oldest_event_id: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
-}
-impl<'a> Default for FeedCursorArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FeedCursorArgs {
-      oldest_created_at: 0,
-      oldest_event_id: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for FeedCursor<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FeedCursor");
+                ds.field("created_at", &self.created_at());
+                ds.field("id", &self.id());
+                ds.finish()
+            }
+        }
+        pub enum FeedPageOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct FeedCursorBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedCursorBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_oldest_created_at(&mut self, oldest_created_at: i64) {
-    self.fbb_.push_slot::<i64>(FeedCursor::VT_OLDEST_CREATED_AT, oldest_created_at, 0);
-  }
-  #[inline]
-  pub fn add_oldest_event_id(&mut self, oldest_event_id: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , u8>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(FeedCursor::VT_OLDEST_EVENT_ID, oldest_event_id);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FeedCursorBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FeedCursorBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedCursor<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct FeedPage<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for FeedCursor<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FeedCursor");
-      ds.field("oldest_created_at", &self.oldest_created_at());
-      ds.field("oldest_event_id", &self.oldest_event_id());
-      ds.finish()
-  }
-}
-pub enum FeedPageOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for FeedPage<'a> {
+            type Inner = FeedPage<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct FeedPage<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> FeedPage<'a> {
+            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NEXT_CURSOR: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_MORE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TOTAL_BLOCKS: ::flatbuffers::VOffsetT = 10;
 
-impl<'a> ::flatbuffers::Follow<'a> for FeedPage<'a> {
-  type Inner = FeedPage<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FeedPage { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FeedPageArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FeedPage<'bldr>> {
+                let mut builder = FeedPageBuilder::new(_fbb);
+                builder.add_total_blocks(args.total_blocks);
+                builder.add_limit(args.limit);
+                if let Some(x) = args.next_cursor {
+                    builder.add_next_cursor(x);
+                }
+                builder.add_has_more(args.has_more);
+                builder.finish()
+            }
 
-impl<'a> FeedPage<'a> {
-  pub const VT_START_CURSOR: ::flatbuffers::VOffsetT = 4;
-  pub const VT_END_CURSOR: ::flatbuffers::VOffsetT = 6;
-  pub const VT_IS_COMPLETE: ::flatbuffers::VOffsetT = 8;
+            #[inline]
+            pub fn limit(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(FeedPage::VT_LIMIT, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn next_cursor(&self) -> Option<FeedCursor<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<FeedCursor>>(
+                        FeedPage::VT_NEXT_CURSOR,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_more(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FeedPage::VT_HAS_MORE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn total_blocks(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(FeedPage::VT_TOTAL_BLOCKS, Some(0))
+                        .unwrap()
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FeedPage { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FeedPageArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<FeedPage<'bldr>> {
-    let mut builder = FeedPageBuilder::new(_fbb);
-    if let Some(x) = args.end_cursor { builder.add_end_cursor(x); }
-    if let Some(x) = args.start_cursor { builder.add_start_cursor(x); }
-    builder.add_is_complete(args.is_complete);
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for FeedPage<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("limit", Self::VT_LIMIT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<FeedCursor>>(
+                        "next_cursor",
+                        Self::VT_NEXT_CURSOR,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_more", Self::VT_HAS_MORE, false)?
+                    .visit_field::<u64>("total_blocks", Self::VT_TOTAL_BLOCKS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FeedPageArgs<'a> {
+            pub limit: u64,
+            pub next_cursor: Option<::flatbuffers::WIPOffset<FeedCursor<'a>>>,
+            pub has_more: bool,
+            pub total_blocks: u64,
+        }
+        impl<'a> Default for FeedPageArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FeedPageArgs {
+                    limit: 0,
+                    next_cursor: None,
+                    has_more: false,
+                    total_blocks: 0,
+                }
+            }
+        }
 
+        pub struct FeedPageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedPageBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_limit(&mut self, limit: u64) {
+                self.fbb_.push_slot::<u64>(FeedPage::VT_LIMIT, limit, 0);
+            }
+            #[inline]
+            pub fn add_next_cursor(
+                &mut self,
+                next_cursor: ::flatbuffers::WIPOffset<FeedCursor<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FeedCursor>>(
+                        FeedPage::VT_NEXT_CURSOR,
+                        next_cursor,
+                    );
+            }
+            #[inline]
+            pub fn add_has_more(&mut self, has_more: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FeedPage::VT_HAS_MORE, has_more, false);
+            }
+            #[inline]
+            pub fn add_total_blocks(&mut self, total_blocks: u64) {
+                self.fbb_
+                    .push_slot::<u64>(FeedPage::VT_TOTAL_BLOCKS, total_blocks, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> FeedPageBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FeedPageBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedPage<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn start_cursor(&self) -> Option<FeedCursor<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<FeedCursor>>(FeedPage::VT_START_CURSOR, None)}
-  }
-  #[inline]
-  pub fn end_cursor(&self) -> Option<FeedCursor<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<FeedCursor>>(FeedPage::VT_END_CURSOR, None)}
-  }
-  #[inline]
-  pub fn is_complete(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(FeedPage::VT_IS_COMPLETE, Some(false)).unwrap()}
-  }
-}
+        impl ::core::fmt::Debug for FeedPage<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FeedPage");
+                ds.field("limit", &self.limit());
+                ds.field("next_cursor", &self.next_cursor());
+                ds.field("has_more", &self.has_more());
+                ds.field("total_blocks", &self.total_blocks());
+                ds.finish()
+            }
+        }
+        pub enum FeedWindowMetricsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-impl ::flatbuffers::Verifiable for FeedPage<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<FeedCursor>>("start_cursor", Self::VT_START_CURSOR, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<FeedCursor>>("end_cursor", Self::VT_END_CURSOR, false)?
-     .visit_field::<bool>("is_complete", Self::VT_IS_COMPLETE, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FeedPageArgs<'a> {
-    pub start_cursor: Option<::flatbuffers::WIPOffset<FeedCursor<'a>>>,
-    pub end_cursor: Option<::flatbuffers::WIPOffset<FeedCursor<'a>>>,
-    pub is_complete: bool,
-}
-impl<'a> Default for FeedPageArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FeedPageArgs {
-      start_cursor: None,
-      end_cursor: None,
-      is_complete: false,
-    }
-  }
-}
+        pub struct FeedWindowMetrics<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct FeedPageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedPageBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_start_cursor(&mut self, start_cursor: ::flatbuffers::WIPOffset<FeedCursor<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<FeedCursor>>(FeedPage::VT_START_CURSOR, start_cursor);
-  }
-  #[inline]
-  pub fn add_end_cursor(&mut self, end_cursor: ::flatbuffers::WIPOffset<FeedCursor<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<FeedCursor>>(FeedPage::VT_END_CURSOR, end_cursor);
-  }
-  #[inline]
-  pub fn add_is_complete(&mut self, is_complete: bool) {
-    self.fbb_.push_slot::<bool>(FeedPage::VT_IS_COMPLETE, is_complete, false);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FeedPageBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FeedPageBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedPage<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        impl<'a> ::flatbuffers::Follow<'a> for FeedWindowMetrics<'a> {
+            type Inner = FeedWindowMetrics<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl ::core::fmt::Debug for FeedPage<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FeedPage");
-      ds.field("start_cursor", &self.start_cursor());
-      ds.field("end_cursor", &self.end_cursor());
-      ds.field("is_complete", &self.is_complete());
-      ds.finish()
-  }
-}
-pub enum FeedWindowMetricsOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> FeedWindowMetrics<'a> {
+            pub const VT_MAKE_WINDOW_US: ::flatbuffers::VOffsetT = 4;
 
-pub struct FeedWindowMetrics<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FeedWindowMetrics { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FeedWindowMetricsArgs,
+            ) -> ::flatbuffers::WIPOffset<FeedWindowMetrics<'bldr>> {
+                let mut builder = FeedWindowMetricsBuilder::new(_fbb);
+                builder.add_make_window_us(args.make_window_us);
+                builder.finish()
+            }
 
-impl<'a> ::flatbuffers::Follow<'a> for FeedWindowMetrics<'a> {
-  type Inner = FeedWindowMetrics<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub fn make_window_us(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(FeedWindowMetrics::VT_MAKE_WINDOW_US, Some(0))
+                        .unwrap()
+                }
+            }
+        }
 
-impl<'a> FeedWindowMetrics<'a> {
-  pub const VT_TOTAL_ITEMS: ::flatbuffers::VOffsetT = 4;
-  pub const VT_WINDOW_LIMIT: ::flatbuffers::VOffsetT = 6;
-  pub const VT_WINDOW_OFFSET: ::flatbuffers::VOffsetT = 8;
-  pub const VT_REQUESTED_LIMIT: ::flatbuffers::VOffsetT = 10;
+        impl ::flatbuffers::Verifiable for FeedWindowMetrics<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("make_window_us", Self::VT_MAKE_WINDOW_US, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FeedWindowMetricsArgs {
+            pub make_window_us: u64,
+        }
+        impl<'a> Default for FeedWindowMetricsArgs {
+            #[inline]
+            fn default() -> Self {
+                FeedWindowMetricsArgs { make_window_us: 0 }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FeedWindowMetrics { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FeedWindowMetricsArgs
-  ) -> ::flatbuffers::WIPOffset<FeedWindowMetrics<'bldr>> {
-    let mut builder = FeedWindowMetricsBuilder::new(_fbb);
-    builder.add_requested_limit(args.requested_limit);
-    builder.add_window_offset(args.window_offset);
-    builder.add_window_limit(args.window_limit);
-    builder.add_total_items(args.total_items);
-    builder.finish()
-  }
+        pub struct FeedWindowMetricsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedWindowMetricsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_make_window_us(&mut self, make_window_us: u64) {
+                self.fbb_
+                    .push_slot::<u64>(FeedWindowMetrics::VT_MAKE_WINDOW_US, make_window_us, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> FeedWindowMetricsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FeedWindowMetricsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedWindowMetrics<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
+        impl ::core::fmt::Debug for FeedWindowMetrics<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FeedWindowMetrics");
+                ds.field("make_window_us", &self.make_window_us());
+                ds.finish()
+            }
+        }
+        pub enum FeedWindowOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-  #[inline]
-  pub fn total_items(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(FeedWindowMetrics::VT_TOTAL_ITEMS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn window_limit(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(FeedWindowMetrics::VT_WINDOW_LIMIT, Some(50)).unwrap()}
-  }
-  #[inline]
-  pub fn window_offset(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(FeedWindowMetrics::VT_WINDOW_OFFSET, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn requested_limit(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(FeedWindowMetrics::VT_REQUESTED_LIMIT, Some(50)).unwrap()}
-  }
-}
+        pub struct FeedWindow<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::flatbuffers::Verifiable for FeedWindowMetrics<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("total_items", Self::VT_TOTAL_ITEMS, false)?
-     .visit_field::<u32>("window_limit", Self::VT_WINDOW_LIMIT, false)?
-     .visit_field::<u32>("window_offset", Self::VT_WINDOW_OFFSET, false)?
-     .visit_field::<u32>("requested_limit", Self::VT_REQUESTED_LIMIT, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FeedWindowMetricsArgs {
-    pub total_items: u32,
-    pub window_limit: u32,
-    pub window_offset: u32,
-    pub requested_limit: u32,
-}
-impl<'a> Default for FeedWindowMetricsArgs {
-  #[inline]
-  fn default() -> Self {
-    FeedWindowMetricsArgs {
-      total_items: 0,
-      window_limit: 50,
-      window_offset: 0,
-      requested_limit: 50,
-    }
-  }
-}
+        impl<'a> ::flatbuffers::Follow<'a> for FeedWindow<'a> {
+            type Inner = FeedWindow<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct FeedWindowMetricsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedWindowMetricsBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_total_items(&mut self, total_items: u32) {
-    self.fbb_.push_slot::<u32>(FeedWindowMetrics::VT_TOTAL_ITEMS, total_items, 0);
-  }
-  #[inline]
-  pub fn add_window_limit(&mut self, window_limit: u32) {
-    self.fbb_.push_slot::<u32>(FeedWindowMetrics::VT_WINDOW_LIMIT, window_limit, 50);
-  }
-  #[inline]
-  pub fn add_window_offset(&mut self, window_offset: u32) {
-    self.fbb_.push_slot::<u32>(FeedWindowMetrics::VT_WINDOW_OFFSET, window_offset, 0);
-  }
-  #[inline]
-  pub fn add_requested_limit(&mut self, requested_limit: u32) {
-    self.fbb_.push_slot::<u32>(FeedWindowMetrics::VT_REQUESTED_LIMIT, requested_limit, 50);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FeedWindowMetricsBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FeedWindowMetricsBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedWindowMetrics<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        impl<'a> FeedWindow<'a> {
+            pub const VT_PAGE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_METRICS: ::flatbuffers::VOffsetT = 6;
 
-impl ::core::fmt::Debug for FeedWindowMetrics<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FeedWindowMetrics");
-      ds.field("total_items", &self.total_items());
-      ds.field("window_limit", &self.window_limit());
-      ds.field("window_offset", &self.window_offset());
-      ds.field("requested_limit", &self.requested_limit());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `FeedWindowMetrics`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_feed_window_metrics_unchecked`.
-pub fn root_as_feed_window_metrics(buf: &[u8]) -> Result<FeedWindowMetrics<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<FeedWindowMetrics>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `FeedWindowMetrics` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_feed_window_metrics_unchecked`.
-pub fn size_prefixed_root_as_feed_window_metrics(buf: &[u8]) -> Result<FeedWindowMetrics<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<FeedWindowMetrics>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `FeedWindowMetrics` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_feed_window_metrics_unchecked`.
-pub fn root_as_feed_window_metrics_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<FeedWindowMetrics<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<FeedWindowMetrics<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `FeedWindowMetrics` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_feed_window_metrics_unchecked`.
-pub fn size_prefixed_root_as_feed_window_metrics_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<FeedWindowMetrics<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<FeedWindowMetrics<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a FeedWindowMetrics and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `FeedWindowMetrics`.
-pub unsafe fn root_as_feed_window_metrics_unchecked(buf: &[u8]) -> FeedWindowMetrics<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<FeedWindowMetrics>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed FeedWindowMetrics and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `FeedWindowMetrics`.
-pub unsafe fn size_prefixed_root_as_feed_window_metrics_unchecked(buf: &[u8]) -> FeedWindowMetrics<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<FeedWindowMetrics>(buf) }
-}
-pub const FEED_WINDOW_METRICS_IDENTIFIER: &str = "NFWM";
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FeedWindow { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FeedWindowArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FeedWindow<'bldr>> {
+                let mut builder = FeedWindowBuilder::new(_fbb);
+                if let Some(x) = args.metrics {
+                    builder.add_metrics(x);
+                }
+                if let Some(x) = args.page {
+                    builder.add_page(x);
+                }
+                builder.finish()
+            }
 
-#[inline]
-pub fn feed_window_metrics_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, FEED_WINDOW_METRICS_IDENTIFIER, false)
-}
+            #[inline]
+            pub fn page(&self) -> Option<FeedPage<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FeedPage>>(FeedWindow::VT_PAGE, None)
+                }
+            }
+            #[inline]
+            pub fn metrics(&self) -> Option<FeedWindowMetrics<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FeedWindowMetrics>>(
+                            FeedWindow::VT_METRICS,
+                            None,
+                        )
+                }
+            }
+        }
 
-#[inline]
-pub fn feed_window_metrics_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, FEED_WINDOW_METRICS_IDENTIFIER, true)
-}
+        impl ::flatbuffers::Verifiable for FeedWindow<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<FeedPage>>(
+                        "page",
+                        Self::VT_PAGE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<FeedWindowMetrics>>(
+                        "metrics",
+                        Self::VT_METRICS,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FeedWindowArgs<'a> {
+            pub page: Option<::flatbuffers::WIPOffset<FeedPage<'a>>>,
+            pub metrics: Option<::flatbuffers::WIPOffset<FeedWindowMetrics<'a>>>,
+        }
+        impl<'a> Default for FeedWindowArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FeedWindowArgs {
+                    page: None,
+                    metrics: None,
+                }
+            }
+        }
 
-#[inline]
-pub fn finish_feed_window_metrics_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<FeedWindowMetrics<'a>>) {
-  fbb.finish(root, Some(FEED_WINDOW_METRICS_IDENTIFIER));
-}
+        pub struct FeedWindowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FeedWindowBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_page(&mut self, page: ::flatbuffers::WIPOffset<FeedPage<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FeedPage>>(
+                        FeedWindow::VT_PAGE,
+                        page,
+                    );
+            }
+            #[inline]
+            pub fn add_metrics(
+                &mut self,
+                metrics: ::flatbuffers::WIPOffset<FeedWindowMetrics<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FeedWindowMetrics>>(
+                        FeedWindow::VT_METRICS,
+                        metrics,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> FeedWindowBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FeedWindowBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FeedWindow<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-#[inline]
-pub fn finish_size_prefixed_feed_window_metrics_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<FeedWindowMetrics<'a>>) {
-  fbb.finish_size_prefixed(root, Some(FEED_WINDOW_METRICS_IDENTIFIER));
-}
-}  // pub mod feed
-}  // pub mod nmp
+        impl ::core::fmt::Debug for FeedWindow<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FeedWindow");
+                ds.field("page", &self.page());
+                ds.field("metrics", &self.metrics());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `FeedWindow`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_feed_window_unchecked`.
+        pub fn root_as_feed_window(
+            buf: &[u8],
+        ) -> Result<FeedWindow<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<FeedWindow>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `FeedWindow` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_feed_window_unchecked`.
+        pub fn size_prefixed_root_as_feed_window(
+            buf: &[u8],
+        ) -> Result<FeedWindow<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<FeedWindow>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `FeedWindow` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_feed_window_unchecked`.
+        pub fn root_as_feed_window_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<FeedWindow<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<FeedWindow<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `FeedWindow` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_feed_window_unchecked`.
+        pub fn size_prefixed_root_as_feed_window_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<FeedWindow<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<FeedWindow<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a FeedWindow and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `FeedWindow`.
+        pub unsafe fn root_as_feed_window_unchecked(buf: &[u8]) -> FeedWindow<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<FeedWindow>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed FeedWindow and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `FeedWindow`.
+        pub unsafe fn size_prefixed_root_as_feed_window_unchecked(buf: &[u8]) -> FeedWindow<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<FeedWindow>(buf) }
+        }
+        pub const FEED_WINDOW_IDENTIFIER: &str = "NFWM";
 
+        #[inline]
+        pub fn feed_window_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, FEED_WINDOW_IDENTIFIER, false)
+        }
+
+        #[inline]
+        pub fn feed_window_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, FEED_WINDOW_IDENTIFIER, true)
+        }
+
+        #[inline]
+        pub fn finish_feed_window_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<FeedWindow<'a>>,
+        ) {
+            fbb.finish(root, Some(FEED_WINDOW_IDENTIFIER));
+        }
+
+        #[inline]
+        pub fn finish_size_prefixed_feed_window_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<FeedWindow<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(FEED_WINDOW_IDENTIFIER));
+        }
+    } // pub mod feed
+} // pub mod nmp

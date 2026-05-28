@@ -7,7 +7,7 @@
 //! failure rather than a silent break of the Swift / Kotlin / TypeScript shells.
 //!
 //! It also asserts the cross-platform identity invariants (`FILE_IDENTIFIER`,
-//! `SCHEMA_ID`, `SCHEMA_VERSION`) and an ADR-0035 parity property: the typed
+//! `SCHEMA_ID`, `SCHEMA_VERSION`) and an ADR-0037 parity property: the typed
 //! binary decode is semantically equivalent to the authoritative serde
 //! projection.
 //!
@@ -44,13 +44,7 @@ fn event_id(byte: u8) -> String {
 /// — so the card fixture pins the nested `ContentTreeWire` shape too.
 fn card_content_tree() -> nmp_content::ContentTreeWire {
     use nmp_content::{tokenize_with_kind, RenderMode};
-    tokenize_with_kind(
-        "hello #nostr https://example.com",
-        &[],
-        RenderMode::Auto,
-        1,
-    )
-    .to_wire()
+    tokenize_with_kind("hello #nostr https://example.com", &[], RenderMode::Auto, 1).to_wire()
 }
 
 fn full_author_display() -> AuthorDisplay {
@@ -165,7 +159,10 @@ fn timeline_snapshot_empty_golden_fixture_is_stable() {
     let wire = encode_modular_timeline_snapshot(&snapshot);
     let expected = decode_hex(include_str!("fixtures/timeline_snapshot_empty_v1.fb.hex"));
     if wire != expected {
-        eprintln!("actual timeline_snapshot_empty_v1 hex:\n{}", encode_hex(&wire));
+        eprintln!(
+            "actual timeline_snapshot_empty_v1 hex:\n{}",
+            encode_hex(&wire)
+        );
     }
     assert_eq!(
         wire, expected,
@@ -177,7 +174,9 @@ fn timeline_snapshot_empty_golden_fixture_is_stable() {
 fn timeline_snapshot_with_card_golden_fixture_is_stable() {
     let snapshot = golden_card_snapshot();
     let wire = encode_modular_timeline_snapshot(&snapshot);
-    let expected = decode_hex(include_str!("fixtures/timeline_snapshot_with_card_v1.fb.hex"));
+    let expected = decode_hex(include_str!(
+        "fixtures/timeline_snapshot_with_card_v1.fb.hex"
+    ));
     if wire != expected {
         eprintln!(
             "actual timeline_snapshot_with_card_v1 hex:\n{}",
@@ -207,7 +206,7 @@ fn schema_id_is_stable() {
     assert_eq!(SCHEMA_VERSION, 1);
 }
 
-/// ADR-0035 acceptance criterion: parity between typed and generic. The typed
+/// ADR-0037 acceptance criterion: parity between typed and generic. The typed
 /// encoder must produce bytes that decode back to a shape semantically
 /// equivalent to the authoritative serde projection. Asserted on a card-bearing
 /// snapshot — where the comparison actually probes every card / render-data /
@@ -224,7 +223,7 @@ fn assert_typed_serde_parity(snapshot: &ModularTimelineSnapshot) {
 }
 
 #[test]
-fn typed_snapshot_schema_id_matches_adr_0035() {
+fn typed_snapshot_schema_id_matches_adr_0037() {
     // Empty shell: trivial but pins the no-events parity invariant.
     assert_typed_serde_parity(&ModularTimelineSnapshot::empty());
     // Card-bearing: the meaningful parity probe across all card paths.

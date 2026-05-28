@@ -773,19 +773,6 @@ pub struct Kernel {
     last_payload_bytes: usize,
     last_make_update_us: u128,
     last_serialize_us: u128,
-    /// ADR-0035: microseconds spent running the host-registered typed
-    /// projection closures on the PREVIOUS `make_update` tick (one-tick lag,
-    /// same pattern as `last_serialize_us`). This is a sub-measurement of
-    /// `last_serialize_us` — the typed-projection run happens inside the same
-    /// `before_serialize` window — so it lets diagnostics separate typed-sidecar
-    /// cost from the generic-value encode. `0` on the first tick.
-    last_typed_encode_us: u128,
-    /// ADR-0035: total byte size of all typed-projection payloads emitted on the
-    /// PREVIOUS `make_update` tick (one-tick lag). Lets diagnostics watch the
-    /// typed sidecar's contribution to total frame size independently of
-    /// `last_payload_bytes` (which is the full encoded frame). `0` on the first
-    /// tick or when no typed projection is registered.
-    last_typed_payload_bytes: usize,
     update_frame_degradations_total: u64,
     events_since_last_update: u64,
     max_event_to_emit_ms: u128,
@@ -1590,8 +1577,6 @@ impl Kernel {
             last_payload_bytes: 0,
             last_make_update_us: 0,
             last_serialize_us: 0,
-            last_typed_encode_us: 0,
-            last_typed_payload_bytes: 0,
             update_frame_degradations_total: 0,
             events_since_last_update: 0,
             max_event_to_emit_ms: 0,

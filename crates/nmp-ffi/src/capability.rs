@@ -64,7 +64,9 @@ pub extern "C" fn nmp_app_dispatch_capability(
     };
     // JSON never contains an interior NUL; the `c"{}"` literal fallback is
     // NUL-checked at compile time, so there is no runtime panic path (D6).
-    CString::new(envelope).unwrap_or_else(|_| c"{}".to_owned()).into_raw()
+    CString::new(envelope)
+        .unwrap_or_else(|_| c"{}".to_owned())
+        .into_raw()
 }
 
 /// Release a string previously returned by [`nmp_app_dispatch_capability`].

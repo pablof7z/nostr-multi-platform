@@ -51,7 +51,7 @@ public struct nmp_nip01_ThreadPointer: FlatBufferTable, FlatbuffersVectorInitial
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_ThreadPointer.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -129,7 +129,7 @@ public struct nmp_nip01_BlockEventId: FlatBufferTable, FlatbuffersVectorInitiali
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_BlockEventId.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -167,7 +167,7 @@ public struct nmp_nip01_TimelineBlockEntry: FlatBufferTable, FlatbuffersVectorIn
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_TimelineBlockEntry.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -236,7 +236,7 @@ public struct nmp_nip01_RelationCountInterest: FlatBufferTable, FlatbuffersVecto
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_RelationCountInterest.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -288,7 +288,7 @@ public struct nmp_nip01_RelationCount: FlatBufferTable, FlatbuffersVectorInitial
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_RelationCount.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -337,7 +337,7 @@ public struct nmp_nip01_NoteRelationCounts: FlatBufferTable, FlatbuffersVectorIn
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_NoteRelationCounts.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -392,7 +392,7 @@ public struct nmp_nip01_AuthorDisplay: FlatBufferTable, FlatbuffersVectorInitial
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_AuthorDisplay.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -465,7 +465,7 @@ public struct nmp_nip01_RepostAttribution: FlatBufferTable, FlatbuffersVectorIni
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_RepostAttribution.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -537,13 +537,191 @@ public struct nmp_nip01_RepostAttribution: FlatBufferTable, FlatbuffersVectorIni
   }
 }
 
+public struct nmp_nip01_ContentProfileRenderEntry: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NFTS" }
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_ContentProfileRenderEntry.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case key = 4
+    case pubkey = 6
+    case display = 8
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var key: String? { let o = _accessor.offset(VTOFFSET.key.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var keySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.key.v) }
+  public var pubkey: String? { let o = _accessor.offset(VTOFFSET.pubkey.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var pubkeySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.pubkey.v) }
+  public var display: nmp_nip01_AuthorDisplay? { let o = _accessor.offset(VTOFFSET.display.v); return o == 0 ? nil : nmp_nip01_AuthorDisplay(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
+  public static func startContentProfileRenderEntry(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 3) }
+  public static func add(key: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: key, at: VTOFFSET.key.p) }
+  public static func add(pubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pubkey, at: VTOFFSET.pubkey.p) }
+  public static func add(display: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: display, at: VTOFFSET.display.p) }
+  public static func endContentProfileRenderEntry(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createContentProfileRenderEntry(
+    _ fbb: inout FlatBufferBuilder,
+    keyOffset key: Offset = Offset(),
+    pubkeyOffset pubkey: Offset = Offset(),
+    displayOffset display: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_nip01_ContentProfileRenderEntry.startContentProfileRenderEntry(&fbb)
+    nmp_nip01_ContentProfileRenderEntry.add(key: key, &fbb)
+    nmp_nip01_ContentProfileRenderEntry.add(pubkey: pubkey, &fbb)
+    nmp_nip01_ContentProfileRenderEntry.add(display: display, &fbb)
+    return nmp_nip01_ContentProfileRenderEntry.endContentProfileRenderEntry(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.key.p, fieldName: "key", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.pubkey.p, fieldName: "pubkey", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.display.p, fieldName: "display", required: false, type: ForwardOffset<nmp_nip01_AuthorDisplay>.self)
+    _v.finish()
+  }
+}
+
+public struct nmp_nip01_ContentEventRenderEntry: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NFTS" }
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_ContentEventRenderEntry.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case key = 4
+    case id = 6
+    case authorPubkey = 8
+    case authorDisplay = 10
+    case kind = 12
+    case createdAt = 14
+    case contentPreview = 16
+    case contentTreeBytes = 18
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var key: String? { let o = _accessor.offset(VTOFFSET.key.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var keySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.key.v) }
+  public var id: String? { let o = _accessor.offset(VTOFFSET.id.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var idSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.id.v) }
+  public var authorPubkey: String? { let o = _accessor.offset(VTOFFSET.authorPubkey.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var authorPubkeySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorPubkey.v) }
+  public var authorDisplay: nmp_nip01_AuthorDisplay? { let o = _accessor.offset(VTOFFSET.authorDisplay.v); return o == 0 ? nil : nmp_nip01_AuthorDisplay(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
+  public var kind: UInt32 { let o = _accessor.offset(VTOFFSET.kind.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var createdAt: UInt64 { let o = _accessor.offset(VTOFFSET.createdAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var contentPreview: String? { let o = _accessor.offset(VTOFFSET.contentPreview.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var contentPreviewSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.contentPreview.v) }
+  public var contentTreeBytes: FlatbufferVector<UInt8> { return _accessor.vector(at: VTOFFSET.contentTreeBytes.v, byteSize: 1) }
+  public func withUnsafePointerToContentTreeBytes<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.contentTreeBytes.v, body: body) }
+  public static func startContentEventRenderEntry(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
+  public static func add(key: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: key, at: VTOFFSET.key.p) }
+  public static func add(id: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: id, at: VTOFFSET.id.p) }
+  public static func add(authorPubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkey, at: VTOFFSET.authorPubkey.p) }
+  public static func add(authorDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorDisplay, at: VTOFFSET.authorDisplay.p) }
+  public static func add(kind: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: kind, def: 0, at: VTOFFSET.kind.p) }
+  public static func add(createdAt: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: createdAt, def: 0, at: VTOFFSET.createdAt.p) }
+  public static func add(contentPreview: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentPreview, at: VTOFFSET.contentPreview.p) }
+  public static func addVectorOf(contentTreeBytes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentTreeBytes, at: VTOFFSET.contentTreeBytes.p) }
+  public static func endContentEventRenderEntry(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createContentEventRenderEntry(
+    _ fbb: inout FlatBufferBuilder,
+    keyOffset key: Offset = Offset(),
+    idOffset id: Offset = Offset(),
+    authorPubkeyOffset authorPubkey: Offset = Offset(),
+    authorDisplayOffset authorDisplay: Offset = Offset(),
+    kind: UInt32 = 0,
+    createdAt: UInt64 = 0,
+    contentPreviewOffset contentPreview: Offset = Offset(),
+    contentTreeBytesVectorOffset contentTreeBytes: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_nip01_ContentEventRenderEntry.startContentEventRenderEntry(&fbb)
+    nmp_nip01_ContentEventRenderEntry.add(key: key, &fbb)
+    nmp_nip01_ContentEventRenderEntry.add(id: id, &fbb)
+    nmp_nip01_ContentEventRenderEntry.add(authorPubkey: authorPubkey, &fbb)
+    nmp_nip01_ContentEventRenderEntry.add(authorDisplay: authorDisplay, &fbb)
+    nmp_nip01_ContentEventRenderEntry.add(kind: kind, &fbb)
+    nmp_nip01_ContentEventRenderEntry.add(createdAt: createdAt, &fbb)
+    nmp_nip01_ContentEventRenderEntry.add(contentPreview: contentPreview, &fbb)
+    nmp_nip01_ContentEventRenderEntry.addVectorOf(contentTreeBytes: contentTreeBytes, &fbb)
+    return nmp_nip01_ContentEventRenderEntry.endContentEventRenderEntry(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.key.p, fieldName: "key", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.id.p, fieldName: "id", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.authorPubkey.p, fieldName: "authorPubkey", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.authorDisplay.p, fieldName: "authorDisplay", required: false, type: ForwardOffset<nmp_nip01_AuthorDisplay>.self)
+    try _v.visit(field: VTOFFSET.kind.p, fieldName: "kind", required: false, type: UInt32.self)
+    try _v.visit(field: VTOFFSET.createdAt.p, fieldName: "createdAt", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.contentPreview.p, fieldName: "contentPreview", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.contentTreeBytes.p, fieldName: "contentTreeBytes", required: false, type: ForwardOffset<Vector<UInt8, UInt8>>.self)
+    _v.finish()
+  }
+}
+
+public struct nmp_nip01_ContentRenderData: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NFTS" }
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_ContentRenderData.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case profiles = 4
+    case events = 6
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var profiles: FlatbufferVector<nmp_nip01_ContentProfileRenderEntry> { return _accessor.vector(at: VTOFFSET.profiles.v, byteSize: 4) }
+  public var events: FlatbufferVector<nmp_nip01_ContentEventRenderEntry> { return _accessor.vector(at: VTOFFSET.events.v, byteSize: 4) }
+  public static func startContentRenderData(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public static func addVectorOf(profiles: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: profiles, at: VTOFFSET.profiles.p) }
+  public static func addVectorOf(events: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: events, at: VTOFFSET.events.p) }
+  public static func endContentRenderData(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createContentRenderData(
+    _ fbb: inout FlatBufferBuilder,
+    profilesVectorOffset profiles: Offset = Offset(),
+    eventsVectorOffset events: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_nip01_ContentRenderData.startContentRenderData(&fbb)
+    nmp_nip01_ContentRenderData.addVectorOf(profiles: profiles, &fbb)
+    nmp_nip01_ContentRenderData.addVectorOf(events: events, &fbb)
+    return nmp_nip01_ContentRenderData.endContentRenderData(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.profiles.p, fieldName: "profiles", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip01_ContentProfileRenderEntry>, nmp_nip01_ContentProfileRenderEntry>>.self)
+    try _v.visit(field: VTOFFSET.events.p, fieldName: "events", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip01_ContentEventRenderEntry>, nmp_nip01_ContentEventRenderEntry>>.self)
+    _v.finish()
+  }
+}
+
 public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_TimelineEventCard.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -556,7 +734,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     case createdAt = 12
     case content = 14
     case contentTreeBytes = 16
-    case contentRenderBytes = 18
+    case contentRender = 18
     case relationCounts = 20
     case hasAuthorDisplayName = 22
     case authorDisplayName = 24
@@ -579,8 +757,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
   public var contentSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.content.v) }
   public var contentTreeBytes: FlatbufferVector<UInt8> { return _accessor.vector(at: VTOFFSET.contentTreeBytes.v, byteSize: 1) }
   public func withUnsafePointerToContentTreeBytes<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.contentTreeBytes.v, body: body) }
-  public var contentRenderBytes: FlatbufferVector<UInt8> { return _accessor.vector(at: VTOFFSET.contentRenderBytes.v, byteSize: 1) }
-  public func withUnsafePointerToContentRenderBytes<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.contentRenderBytes.v, body: body) }
+  public var contentRender: nmp_nip01_ContentRenderData? { let o = _accessor.offset(VTOFFSET.contentRender.v); return o == 0 ? nil : nmp_nip01_ContentRenderData(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
   public var relationCounts: nmp_nip01_NoteRelationCounts? { let o = _accessor.offset(VTOFFSET.relationCounts.v); return o == 0 ? nil : nmp_nip01_NoteRelationCounts(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
   public var hasAuthorDisplayName: Bool { let o = _accessor.offset(VTOFFSET.hasAuthorDisplayName.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var authorDisplayName: String? { let o = _accessor.offset(VTOFFSET.authorDisplayName.v); return o == 0 ? nil : _accessor.string(at: o) }
@@ -599,7 +776,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
   public static func add(createdAt: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: createdAt, def: 0, at: VTOFFSET.createdAt.p) }
   public static func add(content: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: content, at: VTOFFSET.content.p) }
   public static func addVectorOf(contentTreeBytes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentTreeBytes, at: VTOFFSET.contentTreeBytes.p) }
-  public static func addVectorOf(contentRenderBytes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentRenderBytes, at: VTOFFSET.contentRenderBytes.p) }
+  public static func add(contentRender: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentRender, at: VTOFFSET.contentRender.p) }
   public static func add(relationCounts: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relationCounts, at: VTOFFSET.relationCounts.p) }
   public static func add(hasAuthorDisplayName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAuthorDisplayName, def: false,
    at: VTOFFSET.hasAuthorDisplayName.p) }
@@ -619,7 +796,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     createdAt: UInt64 = 0,
     contentOffset content: Offset = Offset(),
     contentTreeBytesVectorOffset contentTreeBytes: Offset = Offset(),
-    contentRenderBytesVectorOffset contentRenderBytes: Offset = Offset(),
+    contentRenderOffset contentRender: Offset = Offset(),
     relationCountsOffset relationCounts: Offset = Offset(),
     hasAuthorDisplayName: Bool = false,
     authorDisplayNameOffset authorDisplayName: Offset = Offset(),
@@ -636,7 +813,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     nmp_nip01_TimelineEventCard.add(createdAt: createdAt, &fbb)
     nmp_nip01_TimelineEventCard.add(content: content, &fbb)
     nmp_nip01_TimelineEventCard.addVectorOf(contentTreeBytes: contentTreeBytes, &fbb)
-    nmp_nip01_TimelineEventCard.addVectorOf(contentRenderBytes: contentRenderBytes, &fbb)
+    nmp_nip01_TimelineEventCard.add(contentRender: contentRender, &fbb)
     nmp_nip01_TimelineEventCard.add(relationCounts: relationCounts, &fbb)
     nmp_nip01_TimelineEventCard.add(hasAuthorDisplayName: hasAuthorDisplayName, &fbb)
     nmp_nip01_TimelineEventCard.add(authorDisplayName: authorDisplayName, &fbb)
@@ -656,7 +833,7 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
     try _v.visit(field: VTOFFSET.createdAt.p, fieldName: "createdAt", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.content.p, fieldName: "content", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.contentTreeBytes.p, fieldName: "contentTreeBytes", required: false, type: ForwardOffset<Vector<UInt8, UInt8>>.self)
-    try _v.visit(field: VTOFFSET.contentRenderBytes.p, fieldName: "contentRenderBytes", required: false, type: ForwardOffset<Vector<UInt8, UInt8>>.self)
+    try _v.visit(field: VTOFFSET.contentRender.p, fieldName: "contentRender", required: false, type: ForwardOffset<nmp_nip01_ContentRenderData>.self)
     try _v.visit(field: VTOFFSET.relationCounts.p, fieldName: "relationCounts", required: false, type: ForwardOffset<nmp_nip01_NoteRelationCounts>.self)
     try _v.visit(field: VTOFFSET.hasAuthorDisplayName.p, fieldName: "hasAuthorDisplayName", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.authorDisplayName.p, fieldName: "authorDisplayName", required: false, type: ForwardOffset<String>.self)
@@ -668,150 +845,13 @@ public struct nmp_nip01_TimelineEventCard: FlatBufferTable, FlatbuffersVectorIni
   }
 }
 
-public struct nmp_nip01_FeedCursor: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
-
-  static func validateVersion() { FlatBuffersVersion_25_12_19() }
-  public var __buffer: ByteBuffer! { return _accessor.bb }
-  private var _accessor: Table
-
-  public static var id: String { "NFTS" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_FeedCursor.id, addPrefix: prefix) }
-  private init(_ t: Table) { _accessor = t }
-  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
-
-  private enum VTOFFSET: VOffset {
-    case createdAt = 4
-    case id = 6
-    var v: Int32 { Int32(self.rawValue) }
-    var p: VOffset { self.rawValue }
-  }
-
-  public var createdAt: UInt64 { let o = _accessor.offset(VTOFFSET.createdAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var id: String? { let o = _accessor.offset(VTOFFSET.id.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var idSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.id.v) }
-  public static func startFeedCursor(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
-  public static func add(createdAt: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: createdAt, def: 0, at: VTOFFSET.createdAt.p) }
-  public static func add(id: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: id, at: VTOFFSET.id.p) }
-  public static func endFeedCursor(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createFeedCursor(
-    _ fbb: inout FlatBufferBuilder,
-    createdAt: UInt64 = 0,
-    idOffset id: Offset = Offset()
-  ) -> Offset {
-    let __start = nmp_nip01_FeedCursor.startFeedCursor(&fbb)
-    nmp_nip01_FeedCursor.add(createdAt: createdAt, &fbb)
-    nmp_nip01_FeedCursor.add(id: id, &fbb)
-    return nmp_nip01_FeedCursor.endFeedCursor(&fbb, start: __start)
-  }
-
-  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
-    var _v = try verifier.visitTable(at: position)
-    try _v.visit(field: VTOFFSET.createdAt.p, fieldName: "createdAt", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.id.p, fieldName: "id", required: false, type: ForwardOffset<String>.self)
-    _v.finish()
-  }
-}
-
-public struct nmp_nip01_FeedPage: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
-
-  static func validateVersion() { FlatBuffersVersion_25_12_19() }
-  public var __buffer: ByteBuffer! { return _accessor.bb }
-  private var _accessor: Table
-
-  public static var id: String { "NFTS" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_FeedPage.id, addPrefix: prefix) }
-  private init(_ t: Table) { _accessor = t }
-  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
-
-  private enum VTOFFSET: VOffset {
-    case limit = 4
-    case nextCursor = 6
-    case hasMore = 8
-    case totalBlocks = 10
-    var v: Int32 { Int32(self.rawValue) }
-    var p: VOffset { self.rawValue }
-  }
-
-  public var limit: UInt64 { let o = _accessor.offset(VTOFFSET.limit.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public var nextCursor: nmp_nip01_FeedCursor? { let o = _accessor.offset(VTOFFSET.nextCursor.v); return o == 0 ? nil : nmp_nip01_FeedCursor(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public var hasMore: Bool { let o = _accessor.offset(VTOFFSET.hasMore.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var totalBlocks: UInt64 { let o = _accessor.offset(VTOFFSET.totalBlocks.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startFeedPage(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
-  public static func add(limit: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: limit, def: 0, at: VTOFFSET.limit.p) }
-  public static func add(nextCursor: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: nextCursor, at: VTOFFSET.nextCursor.p) }
-  public static func add(hasMore: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasMore, def: false,
-   at: VTOFFSET.hasMore.p) }
-  public static func add(totalBlocks: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: totalBlocks, def: 0, at: VTOFFSET.totalBlocks.p) }
-  public static func endFeedPage(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createFeedPage(
-    _ fbb: inout FlatBufferBuilder,
-    limit: UInt64 = 0,
-    nextCursorOffset nextCursor: Offset = Offset(),
-    hasMore: Bool = false,
-    totalBlocks: UInt64 = 0
-  ) -> Offset {
-    let __start = nmp_nip01_FeedPage.startFeedPage(&fbb)
-    nmp_nip01_FeedPage.add(limit: limit, &fbb)
-    nmp_nip01_FeedPage.add(nextCursor: nextCursor, &fbb)
-    nmp_nip01_FeedPage.add(hasMore: hasMore, &fbb)
-    nmp_nip01_FeedPage.add(totalBlocks: totalBlocks, &fbb)
-    return nmp_nip01_FeedPage.endFeedPage(&fbb, start: __start)
-  }
-
-  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
-    var _v = try verifier.visitTable(at: position)
-    try _v.visit(field: VTOFFSET.limit.p, fieldName: "limit", required: false, type: UInt64.self)
-    try _v.visit(field: VTOFFSET.nextCursor.p, fieldName: "nextCursor", required: false, type: ForwardOffset<nmp_nip01_FeedCursor>.self)
-    try _v.visit(field: VTOFFSET.hasMore.p, fieldName: "hasMore", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.totalBlocks.p, fieldName: "totalBlocks", required: false, type: UInt64.self)
-    _v.finish()
-  }
-}
-
-public struct nmp_nip01_FeedWindowMetrics: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
-
-  static func validateVersion() { FlatBuffersVersion_25_12_19() }
-  public var __buffer: ByteBuffer! { return _accessor.bb }
-  private var _accessor: Table
-
-  public static var id: String { "NFTS" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_FeedWindowMetrics.id, addPrefix: prefix) }
-  private init(_ t: Table) { _accessor = t }
-  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
-
-  private enum VTOFFSET: VOffset {
-    case makeWindowUs = 4
-    var v: Int32 { Int32(self.rawValue) }
-    var p: VOffset { self.rawValue }
-  }
-
-  public var makeWindowUs: UInt64 { let o = _accessor.offset(VTOFFSET.makeWindowUs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
-  public static func startFeedWindowMetrics(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 1) }
-  public static func add(makeWindowUs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: makeWindowUs, def: 0, at: VTOFFSET.makeWindowUs.p) }
-  public static func endFeedWindowMetrics(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createFeedWindowMetrics(
-    _ fbb: inout FlatBufferBuilder,
-    makeWindowUs: UInt64 = 0
-  ) -> Offset {
-    let __start = nmp_nip01_FeedWindowMetrics.startFeedWindowMetrics(&fbb)
-    nmp_nip01_FeedWindowMetrics.add(makeWindowUs: makeWindowUs, &fbb)
-    return nmp_nip01_FeedWindowMetrics.endFeedWindowMetrics(&fbb, start: __start)
-  }
-
-  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
-    var _v = try verifier.visitTable(at: position)
-    try _v.visit(field: VTOFFSET.makeWindowUs.p, fieldName: "makeWindowUs", required: false, type: UInt64.self)
-    _v.finish()
-  }
-}
-
 public struct nmp_nip01_ModularTimelineSnapshot: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NFTS" } 
+  public static var id: String { "NFTS" }
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip01_ModularTimelineSnapshot.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -820,8 +860,7 @@ public struct nmp_nip01_ModularTimelineSnapshot: FlatBufferTable, FlatbuffersVec
     case schemaVersion = 4
     case blocks = 6
     case cards = 8
-    case page = 10
-    case metrics = 12
+    case feedWindowBytes = 10
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -829,29 +868,26 @@ public struct nmp_nip01_ModularTimelineSnapshot: FlatBufferTable, FlatbuffersVec
   public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 1 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var blocks: FlatbufferVector<nmp_nip01_TimelineBlockEntry> { return _accessor.vector(at: VTOFFSET.blocks.v, byteSize: 4) }
   public var cards: FlatbufferVector<nmp_nip01_TimelineEventCard> { return _accessor.vector(at: VTOFFSET.cards.v, byteSize: 4) }
-  public var page: nmp_nip01_FeedPage? { let o = _accessor.offset(VTOFFSET.page.v); return o == 0 ? nil : nmp_nip01_FeedPage(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public var metrics: nmp_nip01_FeedWindowMetrics? { let o = _accessor.offset(VTOFFSET.metrics.v); return o == 0 ? nil : nmp_nip01_FeedWindowMetrics(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startModularTimelineSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 5) }
+  public var feedWindowBytes: FlatbufferVector<UInt8> { return _accessor.vector(at: VTOFFSET.feedWindowBytes.v, byteSize: 1) }
+  public func withUnsafePointerToFeedWindowBytes<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.feedWindowBytes.v, body: body) }
+  public static func startModularTimelineSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
   public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
   public static func addVectorOf(blocks: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: blocks, at: VTOFFSET.blocks.p) }
   public static func addVectorOf(cards: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: cards, at: VTOFFSET.cards.p) }
-  public static func add(page: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: page, at: VTOFFSET.page.p) }
-  public static func add(metrics: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: metrics, at: VTOFFSET.metrics.p) }
+  public static func addVectorOf(feedWindowBytes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: feedWindowBytes, at: VTOFFSET.feedWindowBytes.p) }
   public static func endModularTimelineSnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createModularTimelineSnapshot(
     _ fbb: inout FlatBufferBuilder,
     schemaVersion: UInt32 = 1,
     blocksVectorOffset blocks: Offset = Offset(),
     cardsVectorOffset cards: Offset = Offset(),
-    pageOffset page: Offset = Offset(),
-    metricsOffset metrics: Offset = Offset()
+    feedWindowBytesVectorOffset feedWindowBytes: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip01_ModularTimelineSnapshot.startModularTimelineSnapshot(&fbb)
     nmp_nip01_ModularTimelineSnapshot.add(schemaVersion: schemaVersion, &fbb)
     nmp_nip01_ModularTimelineSnapshot.addVectorOf(blocks: blocks, &fbb)
     nmp_nip01_ModularTimelineSnapshot.addVectorOf(cards: cards, &fbb)
-    nmp_nip01_ModularTimelineSnapshot.add(page: page, &fbb)
-    nmp_nip01_ModularTimelineSnapshot.add(metrics: metrics, &fbb)
+    nmp_nip01_ModularTimelineSnapshot.addVectorOf(feedWindowBytes: feedWindowBytes, &fbb)
     return nmp_nip01_ModularTimelineSnapshot.endModularTimelineSnapshot(&fbb, start: __start)
   }
 
@@ -860,8 +896,7 @@ public struct nmp_nip01_ModularTimelineSnapshot: FlatBufferTable, FlatbuffersVec
     try _v.visit(field: VTOFFSET.schemaVersion.p, fieldName: "schemaVersion", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.blocks.p, fieldName: "blocks", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip01_TimelineBlockEntry>, nmp_nip01_TimelineBlockEntry>>.self)
     try _v.visit(field: VTOFFSET.cards.p, fieldName: "cards", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip01_TimelineEventCard>, nmp_nip01_TimelineEventCard>>.self)
-    try _v.visit(field: VTOFFSET.page.p, fieldName: "page", required: false, type: ForwardOffset<nmp_nip01_FeedPage>.self)
-    try _v.visit(field: VTOFFSET.metrics.p, fieldName: "metrics", required: false, type: ForwardOffset<nmp_nip01_FeedWindowMetrics>.self)
+    try _v.visit(field: VTOFFSET.feedWindowBytes.p, fieldName: "feedWindowBytes", required: false, type: ForwardOffset<Vector<UInt8, UInt8>>.self)
     _v.finish()
   }
 }

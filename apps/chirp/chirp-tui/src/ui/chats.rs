@@ -1,15 +1,15 @@
 //! Approach-b Chats tab: 2-pane split showing DM conversation list + message thread.
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::feature_snapshot::{DmConversationLine, MessageLine};
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, LIST_BG, SELECTED_BG, author_color,
+    author_color, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, LIST_BG, SELECTED_BG,
 };
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -29,7 +29,9 @@ fn render_conversation_list(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(LIST_BG))
         .title(Span::styled(
             " Chats ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);
@@ -116,16 +118,15 @@ fn render_message_thread(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(DETAIL_BG))
         .title(Span::styled(
             " Messages ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);
     let pane_width = inner.width as usize;
 
-    let conv = state
-        .features
-        .dm_conversations
-        .get(state.chat_selected);
+    let conv = state.features.dm_conversations.get(state.chat_selected);
 
     let lines = match conv {
         None => vec![
@@ -189,7 +190,11 @@ fn short_author(value: &str) -> String {
     if value.len() <= 12 {
         value.to_string()
     } else {
-        format!("{}..{}", &value[..6], &value[value.len().saturating_sub(4)..])
+        format!(
+            "{}..{}",
+            &value[..6],
+            &value[value.len().saturating_sub(4)..]
+        )
     }
 }
 

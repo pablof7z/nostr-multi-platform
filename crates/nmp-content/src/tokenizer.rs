@@ -25,7 +25,7 @@ use crate::segment::{ContentTree, InvoiceKind, Segment};
 /// `mode` selects the parser. `RenderMode::Auto` requires a separate
 /// `kind` hint via [`tokenize_with_kind`]; when called as `tokenize(_, _,
 /// Auto)` without a kind, it degrades to `Plain`.
-#[must_use] 
+#[must_use]
 pub fn tokenize(content: &str, tags: &[Vec<String>], mode: RenderMode) -> ContentTree {
     let resolved = match mode {
         RenderMode::Auto => RenderMode::Plain,
@@ -36,7 +36,7 @@ pub fn tokenize(content: &str, tags: &[Vec<String>], mode: RenderMode) -> Conten
 
 /// Tokenize with an explicit kind hint — used when `mode` is `Auto`. If
 /// `mode` is already `Plain` / `Markdown`, the kind is ignored.
-#[must_use] 
+#[must_use]
 pub fn tokenize_with_kind(
     content: &str,
     tags: &[Vec<String>],
@@ -101,8 +101,8 @@ fn collect_matches(content: &str) -> Vec<RawMatch> {
     for pat in patterns() {
         for caps in pat.re.captures_iter(content) {
             let whole = caps.get(0).expect("group 0 always exists"); // doctrine-allow: D6 — `regex` crate API guarantees capture group 0 (the whole match) is always present for any `Captures`; this is a type-level invariant, not an operational failure
-            // Hashtag uses group 1 to skip the leading whitespace; everything
-            // else uses group 0.
+                                                                     // Hashtag uses group 1 to skip the leading whitespace; everything
+                                                                     // else uses group 0.
             let cap = caps.get(1).unwrap_or(whole);
             out.push(RawMatch {
                 start: whole.start(),
@@ -208,7 +208,9 @@ fn classify_match(
                 use nmp_core::nip21::NostrUri;
                 match uri {
                     NostrUri::Profile { .. } => Some(Segment::Mention(uri)),
-                    NostrUri::Event { .. } | NostrUri::Address { .. } => Some(Segment::EventRef(uri)),
+                    NostrUri::Event { .. } | NostrUri::Address { .. } => {
+                        Some(Segment::EventRef(uri))
+                    }
                 }
             }
             Err(_) => None,
@@ -297,7 +299,10 @@ mod tests {
     #[test]
     fn plain_text_passes_through() {
         let tree = tokenize("hello world", &[], RenderMode::Plain);
-        assert_eq!(tree.segments, vec![Segment::Text("hello world".to_string())]);
+        assert_eq!(
+            tree.segments,
+            vec![Segment::Text("hello world".to_string())]
+        );
     }
 
     #[test]
@@ -328,7 +333,10 @@ mod tests {
         assert_eq!(tree.segments.len(), 1);
         assert!(matches!(
             tree.segments[0],
-            Segment::Media { kind: crate::segment::MediaKind::Image, .. }
+            Segment::Media {
+                kind: crate::segment::MediaKind::Image,
+                ..
+            }
         ));
     }
 

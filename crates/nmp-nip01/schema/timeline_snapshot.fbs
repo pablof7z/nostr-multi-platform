@@ -1,19 +1,14 @@
 // Typed FlatBuffers wire for `nmp_nip01::ModularTimelineSnapshot`.
 //
-// Relates to ADR-0035 (typed FlatBuffers runtime projections) and ADR-0032
-// (raw-data projection doctrine). ADR-0035's authorized pilot is the
-// `nmp.feed.home` projection whose card shape lives in
-// `crates/nmp-feed/schema/feed_home.fbs`. This schema is the nmp-nip01-owned
-// *full* `ModularTimelineSnapshot` view — it carries every field of the
-// projection's serde types (blocks, cards, page, metrics) for hosts that want
-// the complete assembled snapshot in one typed buffer. It co-exists with the
-// `nmp.feed.home` typed wire pending ADR-0035 reconciliation of the two
-// card-shape owners.
+// Relates to ADR-0037 (typed FlatBuffers runtime projections) and ADR-0032
+// (raw-data projection doctrine). ADR-0037's authorized pilot is the
+// `nmp.feed.home` projection. This schema is the nmp-nip01-owned timeline/card
+// view. Feed cursor/page/window semantics stay in nmp-feed and are embedded as
+// that crate's typed `FeedWindow` buffer.
 //
 // ## Identity encoding: strings, not raw bytes
 //
-// Unlike `feed_home.fbs` (which uses raw 32-byte `[ubyte]` ids), this schema
-// uses `string` for every event id / pubkey / coord. The source serde types
+// This schema uses `string` for every event id / pubkey / coord. The source serde types
 // (`TimelineEventCard.id`, `author_pubkey`; `TimelineBlock` event ids;
 // `ThreadPointer::Event.id` / `Address.coord` / `External.uri`) are all hex
 // `String`s, so `string` is byte-for-byte parity with no hex bridge on either
@@ -22,21 +17,20 @@
 //
 // ## Display fields
 //
-// Per ADR-0035 Commitment 3, display names and picture URLs travel verbatim
+// Per ADR-0037 Commitment 3, display names and picture URLs travel verbatim
 // from kind:0 (absent when unseen). `AuthorDisplay` carries `name`, `npub`,
 // `picture_url`; cards carry both the structured table and flat mirrors. This
 // is the documented content contract for `ModularTimelineSnapshot`.
 //
-// ## Opaque sub-payloads
+// ## Typed sub-payloads
 //
 // `content_tree` (ContentTreeWire) is embedded as the typed nmp-content
 // FlatBuffers buffer (`schema_id = "nmp.content.tree"`, `file_identifier =
 // "NFCT"`) via `nmp_content::wire::typed_fb::encode_content_tree`. The bytes
 // are opaque to *this* schema — a host decodes them with the nmp-content
-// decoder. `content_render` (ContentRenderData, owned by nmp-nip01) is
-// embedded as opaque serde_json bytes for now; both keep this schema stable
-// against their churn. TODO: swap content_render to a typed encoder once one
-// exists.
+// decoder. `content_render` is nmp-nip01-owned and encoded as typed tables
+// below. Feed page/cursor/metrics travel as the typed nmp-feed `FeedWindow`
+// buffer (`schema_id = "nmp.feed.window"`, `file_identifier = "NFWM"`).
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
@@ -161,6 +155,33 @@ table RepostAttribution {
 }
 
 // ---------------------------------------------------------------------------
+// Content render data (nmp_nip01::ContentRenderData)
+// ---------------------------------------------------------------------------
+
+table ContentProfileRenderEntry {
+  key:string;
+  pubkey:string;
+  display:AuthorDisplay;
+}
+
+table ContentEventRenderEntry {
+  key:string;
+  id:string;
+  author_pubkey:string;
+  author_display:AuthorDisplay;
+  kind:uint32;
+  created_at:uint64;
+  content_preview:string;
+  // Typed nmp-content `ContentTreeWire` buffer (NFCT).
+  content_tree_bytes:[ubyte];
+}
+
+table ContentRenderData {
+  profiles:[ContentProfileRenderEntry];
+  events:[ContentEventRenderEntry];
+}
+
+// ---------------------------------------------------------------------------
 // Timeline event card (nmp_nip01::TimelineEventCard)
 // ---------------------------------------------------------------------------
 
@@ -171,10 +192,10 @@ table TimelineEventCard {
   kind:uint32;
   created_at:uint64;
   content:string;
-  // Opaque embedded sub-payloads. content_tree_bytes is the typed nmp-content
-  // FlatBuffers buffer (NFCT); content_render_bytes is serde_json for now.
+  // Typed embedded sub-payloads. content_tree_bytes is the typed nmp-content
+  // FlatBuffers buffer (NFCT); content_render is typed nmp-nip01 data.
   content_tree_bytes:[ubyte];
-  content_render_bytes:[ubyte];
+  content_render:ContentRenderData;
   relation_counts:NoteRelationCounts;
   // Flat mirrors of author_display.{name,picture_url}. `has_*` distinguishes
   // absent (no kind:0 yet) from present.
@@ -188,28 +209,6 @@ table TimelineEventCard {
 }
 
 // ---------------------------------------------------------------------------
-// Feed page / cursor / metrics (nmp_feed types, re-exported as
-// TimelineWindowPage / TimelineWindowCursor / TimelineWindowMetrics)
-// ---------------------------------------------------------------------------
-
-table FeedCursor {
-  created_at:uint64;
-  id:string;
-}
-
-table FeedPage {
-  limit:uint64;
-  // Optional next-page cursor (null when no more pages).
-  next_cursor:FeedCursor;
-  has_more:bool;
-  total_blocks:uint64;
-}
-
-table FeedWindowMetrics {
-  make_window_us:uint64;
-}
-
-// ---------------------------------------------------------------------------
 // Root: the full ModularTimelineSnapshot
 // ---------------------------------------------------------------------------
 
@@ -217,9 +216,9 @@ table ModularTimelineSnapshot {
   schema_version:uint32 = 1;
   blocks:[TimelineBlockEntry];
   cards:[TimelineEventCard];
-  // Optional (None in the unpaged `snapshot()` path).
-  page:FeedPage;
-  metrics:FeedWindowMetrics;
+  // Typed nmp-feed `FeedWindow` buffer (NFWM). Empty/absent when both page and
+  // metrics are absent in the unpaged diagnostics snapshot path.
+  feed_window_bytes:[ubyte];
 }
 
 root_type ModularTimelineSnapshot;

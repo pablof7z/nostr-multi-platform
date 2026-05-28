@@ -1,5 +1,5 @@
 //! Parity tests: typed `nmp.feed.home` sidecar encodes and decodes without
-//! losing the projection's semantics (ADR-0035 acceptance criterion).
+//! losing the projection's semantics (ADR-0037 acceptance criterion).
 
 use nmp_core::{decode_snapshot_with_typed, encode_snapshot_with_typed, TypedProjectionData};
 use nmp_nip01::typed_wire::{
@@ -39,7 +39,7 @@ fn typed_decode_round_trips_empty_snapshot() {
 }
 
 #[test]
-fn schema_constants_match_adr_0035() {
+fn schema_constants_match_adr_0037() {
     assert_eq!(SCHEMA_ID, "nmp.nip01.timeline");
     assert_eq!(FILE_IDENTIFIER, b"NFTS");
     assert_eq!(SCHEMA_VERSION, 1);

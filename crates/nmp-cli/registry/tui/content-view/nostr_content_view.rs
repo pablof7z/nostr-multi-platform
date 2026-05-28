@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 
-use nmp_content::EventClaimSink;
 use nmp_content::embed_projection::EmbeddedEventEnvelope;
+use nmp_content::EventClaimSink;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},

@@ -67,7 +67,7 @@ pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
-// ADR-0035: `nmp_app_chirp_snapshot` is `#[deprecated]` (diagnostics-only) but
+// ADR-0037: `nmp_app_chirp_snapshot` is `#[deprecated]` (diagnostics-only) but
 // must stay re-exported — it is a `#[no_mangle]` C-ABI symbol the host links
 // against. Allow the deprecation lint on this re-export only.
 #[allow(deprecated)]

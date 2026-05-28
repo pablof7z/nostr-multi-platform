@@ -36,11 +36,21 @@ pub(crate) fn group_consecutive_media(input: Vec<Segment>) -> Vec<Segment> {
                             continue;
                         }
                     }
-                    flush_media(&mut out, &mut pending_urls, &mut pending_kind, &mut pending_bridge);
+                    flush_media(
+                        &mut out,
+                        &mut pending_urls,
+                        &mut pending_kind,
+                        &mut pending_bridge,
+                    );
                     pending_urls.push(url);
                     pending_kind = Some(kind);
                 } else {
-                    flush_media(&mut out, &mut pending_urls, &mut pending_kind, &mut pending_bridge);
+                    flush_media(
+                        &mut out,
+                        &mut pending_urls,
+                        &mut pending_kind,
+                        &mut pending_bridge,
+                    );
                     out.push(Segment::Url(url));
                 }
             }
@@ -48,13 +58,23 @@ pub(crate) fn group_consecutive_media(input: Vec<Segment>) -> Vec<Segment> {
                 pending_bridge.push(Segment::Text(t));
             }
             other => {
-                flush_media(&mut out, &mut pending_urls, &mut pending_kind, &mut pending_bridge);
+                flush_media(
+                    &mut out,
+                    &mut pending_urls,
+                    &mut pending_kind,
+                    &mut pending_bridge,
+                );
                 out.push(other);
             }
         }
     }
 
-    flush_media(&mut out, &mut pending_urls, &mut pending_kind, &mut pending_bridge);
+    flush_media(
+        &mut out,
+        &mut pending_urls,
+        &mut pending_kind,
+        &mut pending_bridge,
+    );
     out
 }
 
@@ -67,9 +87,15 @@ fn flush_media(
     if let Some(k) = kind.take() {
         if urls.len() == 1 {
             let only = urls.remove(0);
-            out.push(Segment::Media { urls: vec![only], kind: k });
+            out.push(Segment::Media {
+                urls: vec![only],
+                kind: k,
+            });
         } else {
-            out.push(Segment::Media { urls: std::mem::take(urls), kind: k });
+            out.push(Segment::Media {
+                urls: std::mem::take(urls),
+                kind: k,
+            });
         }
     }
     out.extend(std::mem::take(bridge));
@@ -79,7 +105,8 @@ fn flush_media(
 /// Whitespace + bridging punctuation (commas, newlines). Anything heavier
 /// (letters, digits) breaks the media run.
 fn is_bridging_text(s: &str) -> bool {
-    s.chars().all(|c| c.is_whitespace() || matches!(c, ',' | '·' | '|'))
+    s.chars()
+        .all(|c| c.is_whitespace() || matches!(c, ',' | '·' | '|'))
 }
 
 /// Classify a URL as media by extension. Returns `None` for non-media URLs.
@@ -107,21 +134,42 @@ mod tests {
 
     #[test]
     fn classifies_image_extensions() {
-        assert_eq!(media_kind_for_url(&u("https://x/a.jpg")), Some(MediaKind::Image));
-        assert_eq!(media_kind_for_url(&u("https://x/a.PNG")), Some(MediaKind::Image));
-        assert_eq!(media_kind_for_url(&u("https://x/a.webp?q=1")), Some(MediaKind::Image));
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.jpg")),
+            Some(MediaKind::Image)
+        );
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.PNG")),
+            Some(MediaKind::Image)
+        );
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.webp?q=1")),
+            Some(MediaKind::Image)
+        );
     }
 
     #[test]
     fn classifies_video_extensions() {
-        assert_eq!(media_kind_for_url(&u("https://x/a.mp4")), Some(MediaKind::Video));
-        assert_eq!(media_kind_for_url(&u("https://x/a.MOV")), Some(MediaKind::Video));
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.mp4")),
+            Some(MediaKind::Video)
+        );
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.MOV")),
+            Some(MediaKind::Video)
+        );
     }
 
     #[test]
     fn classifies_audio_extensions() {
-        assert_eq!(media_kind_for_url(&u("https://x/a.mp3")), Some(MediaKind::Audio));
-        assert_eq!(media_kind_for_url(&u("https://x/a.opus")), Some(MediaKind::Audio));
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.mp3")),
+            Some(MediaKind::Audio)
+        );
+        assert_eq!(
+            media_kind_for_url(&u("https://x/a.opus")),
+            Some(MediaKind::Audio)
+        );
     }
 
     #[test]
@@ -139,7 +187,9 @@ mod tests {
         ];
         let out = group_consecutive_media(input);
         assert_eq!(out.len(), 1);
-        assert!(matches!(out[0], Segment::Media { kind: MediaKind::Image, ref urls } if urls.len() == 2));
+        assert!(
+            matches!(out[0], Segment::Media { kind: MediaKind::Image, ref urls } if urls.len() == 2)
+        );
     }
 
     #[test]
@@ -157,7 +207,13 @@ mod tests {
         let input = vec![Segment::Url(u("https://x/a.jpg"))];
         let out = group_consecutive_media(input);
         assert_eq!(out.len(), 1);
-        assert!(matches!(out[0], Segment::Media { kind: MediaKind::Image, .. }));
+        assert!(matches!(
+            out[0],
+            Segment::Media {
+                kind: MediaKind::Image,
+                ..
+            }
+        ));
     }
 
     #[test]

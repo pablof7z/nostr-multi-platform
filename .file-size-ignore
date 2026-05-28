@@ -30,3 +30,7 @@ crates/nmp-testing/fixtures/file-size-gate/oversized.rs
 
 # UniFFI-generated Swift bindings (machine-generated, not hand-authored)
 ios/*/Sources/*/Core/Generated/*.swift
+
+# FlatBuffers generated bindings (machine-generated, not hand-authored)
+crates/**/src/**/generated/*.rs
+ios/*/*/Bridge/Generated/*.swift

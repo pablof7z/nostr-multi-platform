@@ -1,4 +1,4 @@
-# ADR-0035 — Typed FlatBuffers sidecar for high-volume runtime projections
+# ADR-0037 — Typed FlatBuffers sidecar for high-volume runtime projections
 
 - **Status:** Proposed (2026-05-28)
 - **Relates to:** the FlatBuffers update-transport envelope (commits `021ba295`
@@ -10,10 +10,9 @@
   union-free design avoids recurring).
 - **Scope:** the `nmp-core` transport schema
   (`crates/nmp-core/schema/nmp_update.fbs`) and its checked-in bindings; the
-  snapshot-projection emission path; app/protocol crates that own a typed
-  projection schema (first: `nmp-feed` + `nmp-nip01` for `nmp.feed.home`); and
-  every platform host that consumes the NMP update stream (iOS Chirp, chirp-tui,
-  web, Android gallery).
+  snapshot-projection emission path; typed protocol/feed schemas for
+  `nmp.feed.home`; and every platform host that consumes the NMP update stream
+  (iOS Chirp, chirp-tui, web, Android gallery).
 
 ## Context
 
@@ -80,7 +79,7 @@ app's table shape.
 // knows which decoder to apply. nmp-core never declares the app table type — that
 // is the whole point.
 table TypedPayload {
-  schema_id:string;          // e.g. "nmp.feed.home"
+  schema_id:string;          // e.g. "nmp.nip01.timeline"
   schema_version:uint = 1;   // bumped by the schema-owning crate on shape change
   file_identifier:string;    // the app FlatBuffers file_identifier (e.g. "NFHM")
   payload:[ubyte];           // opaque to nmp-core; host-decoded via the descriptor
@@ -118,17 +117,20 @@ bindings and its own FlatBuffers runtime pin (subject to the same
 
 For the `nmp.feed.home` pilot:
 
-- `nmp-feed` owns the feed-shaped envelope (blocks, page/cursor metadata, viewport
-  metrics) — it already owns those mechanics per ADR-0033. The typed schema lives at
-  `crates/nmp-feed/schema/feed_home.fbs`.
-- `nmp-nip01` contributes the per-card shape (the typed equivalent of
-  `TimelineEventCard` / `ModularTimelineSnapshot`), since it owns the protocol
-  projection that builds those cards.
+- `nmp-feed` owns cursor/page/window semantics and the typed structural envelope at
+  `crates/nmp-feed/schema/feed_home.fbs` (`schema_id "nmp.feed.window"`,
+  `file_identifier "NFWM"`). Protocol crates must not duplicate cursor/page tables.
+- `nmp-content` owns the typed content-tree buffer (`schema_id
+  "nmp.content.tree"`, `file_identifier "NFCT"`).
+- `nmp-nip01` owns the timeline/card/content-render schema for the home-feed pilot
+  at `crates/nmp-nip01/schema/timeline_snapshot.fbs`.
 
-The pilot descriptor is `schema_id "nmp.feed.home"`, `schema_version 1`, with the
-feed buffer carrying its own FlatBuffers `file_identifier`. The `schema_version` is
-owned by the schema-owning crate and bumped when the typed table shape changes in a
-way a host must distinguish.
+The pilot descriptor carried in `TypedProjection` is `key "nmp.feed.home"`,
+`schema_id "nmp.nip01.timeline"`, `schema_version 1`, `file_identifier "NFTS"`.
+Inside the NFTS buffer, nmp-nip01 embeds typed nmp-content (`NFCT`) buffers for
+content trees and a typed nmp-feed (`NFWM`) buffer for the feed window. The
+`schema_version` is owned by the schema-owning crate and bumped when the typed
+table shape changes in a way a host must distinguish.
 
 ### Commitment 3 — raw data only, same as ADR-0032
 
@@ -139,6 +141,12 @@ from kind:0 (absent when unseen), picture URLs verbatim. The banned
 `nmp_core::display::*` forwarders are no more permitted in a typed projection than
 in a `Value`-tree projection. Typing is a transport optimization, not a license to
 pre-format.
+
+The pilot is a strict typed slice: no production JSON subpayloads are allowed
+inside the typed `nmp.feed.home` payload. Low-frequency, not-yet-typed
+projections may continue to use the generic `payload:Value` tree, but once a
+field is inside the NFTS/NFCT/NFWM sidecar path it is represented by typed
+FlatBuffers tables or typed FlatBuffers sub-buffers.
 
 ### Commitment 4 — the host preference and fallback contract
 
@@ -226,11 +234,13 @@ legacy pull helper for REPL/tests/diagnostics.
 
 `nmp.feed.home` — the Chirp home feed, currently projected from
 `nmp-nip01::ModularTimelineSnapshot` with viewport mechanics in `nmp-feed`
-(ADR-0033). The typed schema (`crates/nmp-feed/schema/feed_home.fbs`,
-`schema_id "nmp.feed.home"`, `schema_version 1`) is the first and only typed
-projection this ADR authorizes. It is chosen because it is the highest-volume
-projection and the one
-whose host-side `Value`-tree walk is the most expensive on the 4 Hz tick.
+(ADR-0033). The typed projection key is `nmp.feed.home`; the typed payload
+descriptor is `schema_id "nmp.nip01.timeline"`, `schema_version 1`,
+`file_identifier "NFTS"`. The NFTS payload embeds the nmp-feed `FeedWindow`
+typed buffer for page/cursor/window data and nmp-content `ContentTreeWire`
+typed buffers for content trees. It is chosen because it is the highest-volume
+projection and the one whose host-side `Value`-tree walk is the most expensive
+on the 4 Hz tick.
 
 ## Rollout order
 

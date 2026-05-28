@@ -242,7 +242,12 @@ mod tests {
     fn request_registers_a_oneshot_interest() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        let (t, _id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            Vec::new(),
+        );
         assert_eq!(api.in_flight(), 1);
         assert_eq!(reg.iter_active().len(), 1);
         assert!(matches!(
@@ -256,8 +261,18 @@ mod tests {
     fn identical_oneshots_dedup_to_one_registry_slot() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (a, a_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
-        let (b, b_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        let (a, a_id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            Vec::new(),
+        );
+        let (b, b_id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            Vec::new(),
+        );
         assert_ne!(a, b, "distinct tokens");
         assert_eq!(
             a_id, b_id,
@@ -282,7 +297,12 @@ mod tests {
     fn complete_then_drain_is_idempotent() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("bob"), Vec::new());
+        let (t, _id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("bob"),
+            Vec::new(),
+        );
         api.complete(t);
         assert!(api.is_complete(t));
 
@@ -312,8 +332,18 @@ mod tests {
     fn distinct_shapes_get_distinct_slots() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (_, alice_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
-        let (_, carol_id) = api.request(&mut reg, InterestScope::Global, profile_shape("carol"), Vec::new());
+        let (_, alice_id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            Vec::new(),
+        );
+        let (_, carol_id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("carol"),
+            Vec::new(),
+        );
         assert_eq!(reg.iter_active().len(), 2);
         assert_ne!(
             alice_id, carol_id,
@@ -331,13 +361,20 @@ mod tests {
     fn empty_hints_registers_interest_with_no_hints() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (_, id) =
-            api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        let (_, id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            Vec::new(),
+        );
 
         let active = reg.iter_active();
         assert_eq!(active.len(), 1, "exactly one slot");
         let interest = &active[0];
-        assert_eq!(interest.id, id, "returned id matches the registered interest");
+        assert_eq!(
+            interest.id, id,
+            "returned id matches the registered interest"
+        );
         assert!(
             interest.hints.is_empty(),
             "an empty-hints request must register an interest with no hints — \
@@ -378,8 +415,12 @@ mod tests {
         // A second request for the same (scope, shape) with EMPTY hints dedups
         // to the same slot and returns the same InterestId — hints are not part
         // of the dedup key.
-        let (_, empty_id) =
-            api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        let (_, empty_id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            Vec::new(),
+        );
         assert_eq!(
             hinted_id, empty_id,
             "hints must not fork the dedup key — same (scope, shape) → same InterestId"

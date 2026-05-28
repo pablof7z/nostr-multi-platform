@@ -7,7 +7,7 @@ use super::handle::ChirpHandle;
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
 ///
-/// **Deprecated**: this is a diagnostics-only export as of ADR-0035. Runtime
+/// **Deprecated**: this is a diagnostics-only export as of ADR-0037. Runtime
 /// hosts should consume the typed `nmp.feed.home` projection from the update
 /// stream instead. This function remains for diagnostics/REPL use only and
 /// will be removed in a future release.

@@ -26,7 +26,7 @@ enum KernelUpdateFrame {
     case panic(String)
 }
 
-/// ADR-0035: a typed FlatBuffers sidecar carried alongside the generic
+/// ADR-0037: a typed FlatBuffers sidecar carried alongside the generic
 /// `payload` Value tree. Each envelope wraps one named projection's opaque
 /// NFTS/NFCT bytes plus its schema identity. Hosts that recognise a `schemaId`
 /// decode the bytes with the matching typed decoder; others ignore it and fall
@@ -64,7 +64,7 @@ enum KernelUpdateFrameDecoder {
         }
     }
 
-    /// ADR-0035: lift the typed projection sidecar into plain Swift envelopes.
+    /// ADR-0037: lift the typed projection sidecar into plain Swift envelopes.
     /// Projections missing a key, schema id, or payload table are skipped so a
     /// malformed entry never aborts the whole snapshot.
     private static func extractTypedProjections(

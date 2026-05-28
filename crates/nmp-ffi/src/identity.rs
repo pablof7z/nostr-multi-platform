@@ -13,8 +13,8 @@
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use nmp_core::ActorCommand;
 use crate::action::INFLIGHT_DISPATCH_TTL;
+use nmp_core::ActorCommand;
 use std::ffi::c_char;
 
 #[no_mangle]
@@ -62,14 +62,18 @@ pub extern "C" fn nmp_app_create_new_account(
     };
 
     let profile: std::collections::HashMap<String, String> =
-        if let Ok(p) = serde_json::from_str(&profile_json) { p } else {
+        if let Ok(p) = serde_json::from_str(&profile_json) {
+            p
+        } else {
             app.send_cmd(ActorCommand::ShowToast {
                 message: "Failed to decode profile JSON".to_string(),
             });
             return;
         };
 
-    let relays: Vec<(String, String)> = if let Ok(r) = serde_json::from_str(&relays_json) { r } else {
+    let relays: Vec<(String, String)> = if let Ok(r) = serde_json::from_str(&relays_json) {
+        r
+    } else {
         app.send_cmd(ActorCommand::ShowToast {
             message: "Failed to decode relays JSON".to_string(),
         });
@@ -134,11 +138,7 @@ pub extern "C" fn nmp_app_remove_account(app: *mut NmpApp, identity_id: *const c
 // generic command shape the host executors enqueue.
 
 #[no_mangle]
-pub extern "C" fn nmp_app_add_relay(
-    app: *mut NmpApp,
-    url: *const c_char,
-    role: *const c_char,
-) {
+pub extern "C" fn nmp_app_add_relay(app: *mut NmpApp, url: *const c_char, role: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
     };

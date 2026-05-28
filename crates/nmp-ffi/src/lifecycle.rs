@@ -33,7 +33,9 @@
 
 use super::{app_ref, NmpApp};
 use nmp_core::ActorCommand;
-use nmp_core::__ffi_internal::{LifecycleObserverFn, LifecycleObserverRegistration, LifecyclePhase};
+use nmp_core::__ffi_internal::{
+    LifecycleObserverFn, LifecycleObserverRegistration, LifecyclePhase,
+};
 use std::ffi::c_void;
 
 /// Report iOS `scenePhase == .active` (or platform equivalent). Fire-and-
@@ -150,8 +152,8 @@ mod tests {
     //! thread.
 
     use super::*;
-    use nmp_core::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
     use crate::nmp_app_new;
+    use nmp_core::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
     use std::sync::mpsc::{channel, Sender};
     use std::sync::{Mutex, OnceLock};
     use std::time::Duration;

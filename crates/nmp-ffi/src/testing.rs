@@ -102,11 +102,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
 /// production FFI ABI.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn nmp_app_inject_signed_events(
-    app: *mut NmpApp,
-    base_created_at: u64,
-    count: u32,
-) {
+pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at: u64, count: u32) {
     use nostr::{EventBuilder, Keys, Timestamp};
 
     let Some(app) = app_ref(app) else {
@@ -127,7 +123,11 @@ pub extern "C" fn nmp_app_inject_signed_events(
                 pubkey: nostr_event.pubkey.to_hex(),
                 created_at: nostr_event.created_at.as_secs(),
                 kind: nostr_event.kind.as_u16() as u32,
-                tags: nostr_event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+                tags: nostr_event
+                    .tags
+                    .iter()
+                    .map(|t| t.as_slice().to_vec())
+                    .collect(),
                 content: nostr_event.content.clone(),
                 sig: nostr_event.sig.to_string(),
             };
@@ -185,7 +185,11 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         pubkey: nostr_event.pubkey.to_hex(),
         created_at: nostr_event.created_at.as_secs(),
         kind: nostr_event.kind.as_u16() as u32,
-        tags: nostr_event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+        tags: nostr_event
+            .tags
+            .iter()
+            .map(|t| t.as_slice().to_vec())
+            .collect(),
         content: nostr_event.content.clone(),
         sig: nostr_event.sig.to_string(),
     };

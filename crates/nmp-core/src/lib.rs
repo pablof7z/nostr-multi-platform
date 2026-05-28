@@ -279,7 +279,7 @@ pub mod __ffi_internal {
         new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
         SnapshotProjectionSlot,
     };
-    // ADR-0035: the typed-projection closure type lives alongside the generic
+    // ADR-0037: the typed-projection closure type lives alongside the generic
     // `ProjectionFn` in `snapshot_registry`; `nmp-ffi` reaches it through this
     // internal surface to type the `NmpApp::register_typed_snapshot_projection`
     // seam (the typed counterpart to `register_snapshot_projection`).

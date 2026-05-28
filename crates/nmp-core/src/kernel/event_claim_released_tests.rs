@@ -110,7 +110,7 @@ fn eose_no_match_notifies_registered_observer() {
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.register_event_claim_released_observer(
-        Arc::clone(&recorder) as Arc<dyn EventClaimReleasedObserver>,
+        Arc::clone(&recorder) as Arc<dyn EventClaimReleasedObserver>
     );
 
     let id = hex64("f2");

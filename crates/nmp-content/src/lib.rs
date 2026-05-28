@@ -39,13 +39,13 @@
 pub mod context;
 pub mod embed_projection;
 pub mod embed_registry;
+mod grouper;
 pub mod markdown;
 pub mod mode;
-pub mod segment;
-pub mod wire;
-mod grouper;
 mod regex_set;
+pub mod segment;
 mod tokenizer;
+pub mod wire;
 
 pub use context::{render_context_can_descend, RenderContext};
 pub use embed_projection::{
@@ -62,6 +62,5 @@ pub use mode::{sniff_mode_from_kind, RenderMode};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};
 pub use tokenizer::{tokenize, tokenize_with_kind};
 pub use wire::{
-    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind,
-    WIRE_MAX_DEPTH,
+    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind, WIRE_MAX_DEPTH,
 };

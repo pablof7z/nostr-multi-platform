@@ -52,8 +52,7 @@ fn gift_wrapped_dm(
         .tags(tags)
         .custom_created_at(Timestamp::from(created_at))
         .build(sender.public_key());
-    let signer: std::sync::Arc<dyn nmp_nip59::SignerForSeal> =
-        std::sync::Arc::new(sender.clone());
+    let signer: std::sync::Arc<dyn nmp_nip59::SignerForSeal> = std::sync::Arc::new(sender.clone());
     nmp_nip59::gift_wrap_with_signer(&signer, receiver, &rumor, Timestamp::from(created_at))
         .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
         .expect("gift wrap succeeds")
@@ -198,9 +197,15 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     let typed: DmInboxSnapshot = serde_json::from_value(snapshot_value.clone())
         .expect("snapshot JSON must decode to DmInboxSnapshot — wire shape contract");
     assert_eq!(typed.conversations.len(), 1);
-    assert_eq!(typed.conversations[0].peer_pubkey, alice.public_key().to_hex());
+    assert_eq!(
+        typed.conversations[0].peer_pubkey,
+        alice.public_key().to_hex()
+    );
     assert_eq!(typed.conversations[0].messages.len(), 1);
-    assert_eq!(typed.conversations[0].messages[0].content, "wire-shape check");
+    assert_eq!(
+        typed.conversations[0].messages[0].content,
+        "wire-shape check"
+    );
 
     // Empty-inbox shape contract: when no local keys slot is present the
     // snapshot surfaces `{"conversations":[], "remote_signer_unsupported":true}`,
@@ -290,8 +295,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
     // actor dispatches to `kernel.ingest_pre_verified_event` — which now
     // fans out to `notify_raw_event_observers` so the registered
     // `DmInboxProjection` sees the kind:1059 envelope.
-    let json_cstr = CString::new(envelope_json.as_str())
-        .expect("envelope JSON must be NUL-free");
+    let json_cstr = CString::new(envelope_json.as_str()).expect("envelope JSON must be NUL-free");
     // The FFI symbol is `extern "C" fn` (no `unsafe`) with
     // `#[allow(clippy::not_unsafe_ptr_arg_deref)]` — pointer validity is
     // upheld by the caller, but the call itself is language-safe.
@@ -343,7 +347,11 @@ fn dm_inbox_full_round_trip_through_ffi() {
         alice.public_key().to_hex(),
         "conversation peer must be Alice (the sender, taken from the verified seal)",
     );
-    assert_eq!(convo.messages.len(), 1, "exactly one decrypted message expected");
+    assert_eq!(
+        convo.messages.len(),
+        1,
+        "exactly one decrypted message expected"
+    );
     assert_eq!(
         convo.messages[0].content, "round-trip",
         "decrypted content must round-trip verbatim from gift_wrap → DmInboxProjection",

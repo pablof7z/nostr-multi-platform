@@ -33,11 +33,7 @@ pub(super) fn run_module_execute<M: ActionModule>(
 
 /// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and
 /// return the parsed JSON result. The returned C string is freed.
-pub(super) fn dispatch(
-    app: *mut NmpApp,
-    namespace: &str,
-    action_json: &str,
-) -> serde_json::Value {
+pub(super) fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {
     let ns = CString::new(namespace).unwrap();
     let body = CString::new(action_json).unwrap();
     let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());

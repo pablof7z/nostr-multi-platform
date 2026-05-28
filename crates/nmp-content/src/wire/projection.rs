@@ -10,8 +10,7 @@ use crate::markdown::{MarkdownInline, MarkdownNode};
 use crate::segment::{ContentTree, Segment};
 
 use super::{
-    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind,
-    WIRE_MAX_DEPTH,
+    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind, WIRE_MAX_DEPTH,
 };
 
 impl ContentTree {
@@ -19,7 +18,7 @@ impl ContentTree {
     /// form. Pure; allocates a fresh arena. Honours D1 (unprojectable content
     /// becomes a typed [`WireNode::Placeholder`], never dropped) and D6 (no
     /// panics).
-    #[must_use] 
+    #[must_use]
     pub fn to_wire(&self) -> ContentTreeWire {
         let mut builder = WireBuilder::default();
         let roots = self
@@ -71,9 +70,7 @@ impl WireBuilder {
                 None => self.placeholder(PlaceholderReason::UnresolvedUri),
             },
             Segment::Hashtag(h) => self.push(WireNode::Hashtag { tag: h.clone() }),
-            Segment::Url(u) => self.push(WireNode::Url {
-                url: u.to_string(),
-            }),
+            Segment::Url(u) => self.push(WireNode::Url { url: u.to_string() }),
             Segment::Media { urls, kind } => self.push(WireNode::Media {
                 urls: urls.iter().map(Url::to_string).collect(),
                 media_kind: *kind,
@@ -158,9 +155,7 @@ impl WireBuilder {
                 let children = self.push_inlines(children, depth + 1);
                 self.push(WireNode::Strong { children })
             }
-            MarkdownInline::Code(code) => self.push(WireNode::InlineCode {
-                code: code.clone(),
-            }),
+            MarkdownInline::Code(code) => self.push(WireNode::InlineCode { code: code.clone() }),
             MarkdownInline::Link { label, href } => {
                 let children = self.push_inlines(label, depth + 1);
                 self.push(WireNode::Link {

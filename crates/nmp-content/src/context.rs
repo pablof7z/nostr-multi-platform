@@ -39,7 +39,7 @@ impl Default for RenderContext {
 
 impl RenderContext {
     /// Construct a top-level context with the default max depth (4).
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             depth: 0,
@@ -50,7 +50,7 @@ impl RenderContext {
 
     /// Construct a top-level context with an explicit `max_depth`. Apps
     /// configure once at app startup; per-render overrides should be rare.
-    #[must_use] 
+    #[must_use]
     pub fn with_max_depth(max_depth: u8) -> Self {
         Self {
             depth: 0,
@@ -63,7 +63,7 @@ impl RenderContext {
     /// link rather than descend. Per PD-015 the conditions are:
     ///   - `depth >= max_depth` (budget exhausted), OR
     ///   - `visited.contains(into)` (cycle detected on this path).
-    #[must_use] 
+    #[must_use]
     pub fn should_collapse(&self, into: &EventId) -> bool {
         self.depth >= self.max_depth || self.visited.iter().any(|id| id == into)
     }
@@ -76,7 +76,7 @@ impl RenderContext {
     /// `descend` when the budget is exhausted silently increments past
     /// `max_depth` and downstream `should_collapse` will keep returning
     /// `true`, but better-behaved callers gate on it.
-    #[must_use] 
+    #[must_use]
     pub fn descend(&self, into: EventId) -> Self {
         let mut visited = self.visited.clone();
         visited.push(into);
@@ -92,7 +92,7 @@ impl RenderContext {
 /// methods. Returns `true` when the renderer may descend into `into`.
 ///
 /// This is the inverse of [`RenderContext::should_collapse`].
-#[must_use] 
+#[must_use]
 pub fn render_context_can_descend(ctx: &RenderContext, into: &EventId) -> bool {
     !ctx.should_collapse(into)
 }
@@ -140,7 +140,10 @@ mod tests {
         assert_eq!(child.visited.as_slice(), &["a".to_string()]);
         let grand = child.descend("b".to_string());
         assert_eq!(grand.depth, 2);
-        assert_eq!(grand.visited.as_slice(), &["a".to_string(), "b".to_string()]);
+        assert_eq!(
+            grand.visited.as_slice(),
+            &["a".to_string(), "b".to_string()]
+        );
     }
 
     #[test]

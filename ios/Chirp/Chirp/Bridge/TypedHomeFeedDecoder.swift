@@ -3,7 +3,7 @@ import FlatBuffers
 
 /// Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers NFTS buffer.
 ///
-/// ADR-0035 introduced typed FlatBuffers runtime projections carried alongside
+/// ADR-0037 introduced typed FlatBuffers runtime projections carried alongside
 /// the generic snapshot `payload`. The authorized pilot is `nmp.feed.home`,
 /// whose full assembled view is the nmp-nip01 `ModularTimelineSnapshot`
 /// (`schema_id = "nmp.nip01.timeline"`, `file_identifier = "NFTS"`).

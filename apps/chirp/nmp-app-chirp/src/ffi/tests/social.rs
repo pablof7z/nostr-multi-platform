@@ -19,7 +19,10 @@ fn social_verbs_dispatch_through_action_registry() {
     assert!(!handle.is_null());
 
     for (namespace, body) in [
-        ("nmp.nip25.react", r#"{"target_event_id":"abc","reaction":"+"}"#),
+        (
+            "nmp.nip25.react",
+            r#"{"target_event_id":"abc","reaction":"+"}"#,
+        ),
         ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
         ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
     ] {
