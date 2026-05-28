@@ -4,47 +4,64 @@ import os.log
 
 private let gmLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryModel")
 
-/// Pubkey of the demo account whose profile the gallery claims on startup.
-/// pablof7z — picked as a known well-populated kind:0 source for live data.
-let DEMO_PUBKEY_HEX = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
+/// Shared real Nostr references for every NmpGallery host.
+///
+/// The source of truth is `apps/nmp-gallery/showcase-references.json`, embedded
+/// by `nmp-app-gallery` and exposed here through
+/// `nmp_app_gallery_showcase_references_json`. Swift does not duplicate these
+/// pubkeys, URIs, event ids, or relay roles.
+struct GalleryShowcaseReferences: Decodable, Sendable {
+    let schema: String
+    let profile: GalleryShowcaseProfile
+    let article: GalleryShowcaseEvent
+    let note: GalleryShowcaseEvent
+    let highlight: GalleryShowcaseEvent
+    let relays: [GalleryShowcaseRelay]
 
-/// Full bech32 `npub1…` form of [`DEMO_PUBKEY_HEX`]. Used as a fallback
-/// before kind:0 arrives so user-* component pages can render real-shape
-/// data immediately (no spinner).
-///
-/// Computed once in Rust via `nmp_core::display::to_npub(DEMO_PUBKEY_HEX)`
-/// and pinned here as a literal — Swift never reformats npubs (aim.md §6.9).
-let DEMO_NPUB =
-    "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft"
+    static func loadFromRust() -> GalleryShowcaseReferences {
+        guard let ptr = nmp_app_gallery_showcase_references_json() else {
+            fatalError("nmp_app_gallery_showcase_references_json returned null")
+        }
+        let json = String(cString: ptr)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        do {
+            return try decoder.decode(GalleryShowcaseReferences.self, from: Data(json.utf8))
+        } catch {
+            fatalError("failed to decode gallery showcase references: \(error)")
+        }
+    }
+}
 
-/// Rust-truncated `npub1…` form of [`DEMO_PUBKEY_HEX`]: first 10 chars +
-/// `"…"` + last 6 chars. Matches `nmp_core::display::short_npub` exactly
-/// — pinned by a `nmp-core` unit test so any drift in the canonical
-/// abbreviation algorithm fails CI before this constant goes stale.
-///
-/// Used only as a placeholder in [`GalleryModel.bestEffortProfile`] until
-/// the kernel pushes the real `ProfileWire` (which carries its own
-/// Rust-computed `npubShort`).
-let DEMO_NPUB_SHORT = "npub1l2vyh…utajft"
+struct GalleryShowcaseProfile: Decodable, Sendable {
+    let pubkeyHex: String
+    let npub: String
+    let npubShort: String
+}
 
-/// Bootstrap relay set seeded into the kernel on cold start. The gallery has
-/// no logged-in user, so there is no kind:10002 to source app relays from;
-/// without these seeds the kernel has nowhere to send a kind:0 fetch and
-/// every component page hangs on a placeholder.
-///
-///   • `wss://purplepag.es`  — canonical kind:0 / kind:10002 indexer
-///     (`FALLBACK_INDEXER_RELAY` in `crates/nmp-core/src/relay.rs`).
-///   • `wss://relay.primal.net` — primal's indexed mirror; carries pablof7z's
-///     own kind:1/9802/30023 events used by the embed showcase. Matches the
-///     TUI gallery's relay set so both surfaces resolve the same embeds.
-///
-/// Role `"both"` lets the same socket carry inbox + outbox legs of the
-/// planner's interest set (the diagnostic lane is `RelayRole::Content`; the
-/// NIP-65 read/write split lives on the `RelayEditRow`, not on the pool key).
-let GALLERY_BOOTSTRAP_RELAYS: [String] = [
-    "wss://purplepag.es",
-    "wss://relay.primal.net",
-]
+struct GalleryShowcaseEvent: Decodable, Sendable {
+    let uri: String
+    let primaryId: String
+    let kind: UInt32
+    let label: String
+    let expectedTitle: String?
+}
+
+struct GalleryShowcaseRelay: Decodable, Sendable {
+    let url: String
+    let role: String
+}
+
+let GALLERY_SHOWCASE = GalleryShowcaseReferences.loadFromRust()
+let SHOWCASE_PUBKEY_HEX = GALLERY_SHOWCASE.profile.pubkeyHex
+let SHOWCASE_NPUB = GALLERY_SHOWCASE.profile.npub
+let SHOWCASE_NPUB_SHORT = GALLERY_SHOWCASE.profile.npubShort
+let SHOWCASE_ARTICLE_NADDR = GALLERY_SHOWCASE.article.uri
+let SHOWCASE_ARTICLE_PRIMARY_ID = GALLERY_SHOWCASE.article.primaryId
+let SHOWCASE_NOTE_EVENT_ID = GALLERY_SHOWCASE.note.primaryId
+let SHOWCASE_NOTE_NEVENT = GALLERY_SHOWCASE.note.uri
+let SHOWCASE_HIGHLIGHT_EVENT_ID = GALLERY_SHOWCASE.highlight.primaryId
+let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 
 /// Wire-shape of `projections.author_view.profile` — the kernel's
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
@@ -227,7 +244,7 @@ private extension String {
 }
 
 /// Minimal `accounts` row decoder. Phase 1 doesn't render accounts but
-/// keeping a typed slot here means phase 2 (sign-in demo) can wire UI
+/// keeping a typed slot here means phase 2 (sign-in showcase) can wire UI
 /// without re-writing the model.
 struct AccountWire: Decodable, Equatable {
     let pubkey: String
@@ -277,8 +294,7 @@ final class GalleryModel: NostrProfileHost {
     }
 
     /// One-shot bootstrap. Wires the push callback, starts the kernel actor,
-    /// seeds the bootstrap relay set, then opens an author view on the demo
-    /// pubkey so user-* component pages have real data to render.
+    /// seeds the bootstrap relay set so component-owned claims have relays.
     func start() {
         // Wire the push callback BEFORE start so the very first snapshot
         // tick lands in our model. The callback fires from the kernel actor
@@ -295,11 +311,11 @@ final class GalleryModel: NostrProfileHost {
         // before any component-owned profile claim means the first claim
         // already has candidates instead of waiting for an external mailbox
         // to arrive.
-        for url in GALLERY_BOOTSTRAP_RELAYS {
-            kernel.addRelay(url: url, role: "both")
+        for relay in GALLERY_SHOWCASE.relays {
+            kernel.addRelay(url: relay.url, role: relay.role)
         }
-        // Do not open the demo author here. The user-avatar registry component
-        // claims `DEMO_PUBKEY_HEX` when it mounts, and the kernel surfaces the
+        // Do not open the showcase author here. The user-avatar registry component
+        // claims `SHOWCASE_PUBKEY_HEX` when it mounts, and the kernel surfaces the
         // result through `projections.claimed_profiles`.
     }
 
@@ -340,16 +356,16 @@ final class GalleryModel: NostrProfileHost {
         }
     }
 
-    /// Convenience accessor for the demo profile. Returns nil while kind:0
+    /// Convenience accessor for the showcase profile. Returns nil while kind:0
     /// is still in flight — most call sites should prefer
     /// [`bestEffortProfile`] which never returns nil.
-    var demoProfile: ProfileWire? {
-        snapshot.profiles[DEMO_PUBKEY_HEX]
+    var showcaseProfile: ProfileWire? {
+        snapshot.profiles[SHOWCASE_PUBKEY_HEX]
     }
 
-    /// Always-renderable `ProfileWire` for the demo account. Returns the
+    /// Always-renderable `ProfileWire` for the showcase identity. Returns the
     /// real kernel-supplied profile when kind:0 has arrived; otherwise a
-    /// placeholder built from `(DEMO_PUBKEY_HEX, DEMO_NPUB, DEMO_NPUB_SHORT)`
+    /// fallback built from `(SHOWCASE_PUBKEY_HEX, SHOWCASE_NPUB, SHOWCASE_NPUB_SHORT)`
     /// with every optional field set to nil.
     ///
     /// The registry components are designed to degrade gracefully on
@@ -360,19 +376,19 @@ final class GalleryModel: NostrProfileHost {
     ///
     /// `GalleryModel` is `@Observable`; SwiftUI re-evaluates this
     /// computed property on every snapshot change, so the cutover from
-    /// placeholder → real profile is automatic.
+    /// fallback → real profile is automatic.
     var bestEffortProfile: ProfileWire {
-        if let real = snapshot.profiles[DEMO_PUBKEY_HEX] {
+        if let real = snapshot.profiles[SHOWCASE_PUBKEY_HEX] {
             return real
         }
         return ProfileWire(
-            pubkey: DEMO_PUBKEY_HEX,
+            pubkey: SHOWCASE_PUBKEY_HEX,
             displayName: nil,
             about: nil,
             pictureUrl: nil,
             nip05: nil,
-            npub: DEMO_NPUB,
-            npubShort: DEMO_NPUB_SHORT
+            npub: SHOWCASE_NPUB,
+            npubShort: SHOWCASE_NPUB_SHORT
         )
     }
 
@@ -391,9 +407,9 @@ final class GalleryModel: NostrProfileHost {
         kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
 
-    /// Demo write surface (phase 2). Dispatches a sign-in action without
+    /// Showcase write surface (phase 2). Dispatches a sign-in action without
     /// holding the secret on the Swift side beyond this call.
-    func signInDemo(nsec: String) {
+    func signInShowcase(nsec: String) {
         kernel.signInNsec(nsec)
     }
 }

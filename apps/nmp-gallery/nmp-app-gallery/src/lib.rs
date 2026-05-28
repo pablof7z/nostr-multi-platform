@@ -2,7 +2,7 @@
 //!
 //! Sibling of `nmp-app-chirp` and `nmp-app-notes`, distinguished by what it
 //! does NOT carry: no `ModularTimelineProjection`, no Marmot, no wallet
-//! runtime. The gallery is a pure framework demonstrator — its single value
+//! runtime. The gallery is a pure framework showcase — its single value
 //! is showing that an NMP-based Nostr app can be assembled from the
 //! substrate primitives alone, via the canonical
 //! [`nmp_app_template::register_defaults`] one-shot.
@@ -16,7 +16,7 @@
 //! `U` (undefined) in the archive and the platform link step fails.
 //! Mirrors the `apps/notes/nmp-app-notes` pattern exactly.
 //!
-//! The crate adds three new `#[no_mangle]` symbols of its own:
+//! The crate adds four new `#[no_mangle]` symbols of its own:
 //!
 //! * [`nmp_app_gallery_register`] — one-shot installer. Forwards to
 //!   [`nmp_app_template::register_defaults`]. MUST be called once after
@@ -27,6 +27,8 @@
 //! * [`nmp_app_gallery_snapshot_free`] — companion deallocator for the
 //!   string returned by [`nmp_app_gallery_snapshot`]. Mirrors
 //!   `nmp_app_chirp_snapshot_free` and `nmp_broker_free_string`.
+//! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
+//!   pointer for the shared gallery references used by every host shell.
 //!
 //! # Snapshot semantics — read this before extending the schema
 //!
@@ -67,6 +69,8 @@
 // when building with the `android-ffi` feature (cargo ndk build).
 #[cfg(feature = "android-ffi")]
 mod android;
+
+pub mod showcase;
 
 // Re-export every C-ABI symbol the platform shells need. As with
 // `apps/notes/nmp-app-notes/src/lib.rs`, the glob is what causes rustc to
@@ -260,7 +264,10 @@ mod tests {
             "snapshot must carry the alive bit"
         );
         assert!(
-            parsed.get("projections").and_then(|v| v.as_object()).is_some(),
+            parsed
+                .get("projections")
+                .and_then(|v| v.as_object())
+                .is_some(),
             "snapshot must carry an (empty) projections object"
         );
 

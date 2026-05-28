@@ -8,7 +8,7 @@ public enum NostrQuoteCardVariant: Equatable {
     case collapsed
     /// Author + truncated content text, framed only by a border.
     case compact
-    /// Author avatar stub + name + truncated content + optional media thumb.
+    /// Author avatar fallback + name + truncated content + optional media thumb.
     case rich
     /// "Content unavailable" placeholder, surfaces `unresolvedUri` to the user.
     case missing

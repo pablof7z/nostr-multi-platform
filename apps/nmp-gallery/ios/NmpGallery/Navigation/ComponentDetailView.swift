@@ -37,7 +37,7 @@ struct ComponentDetailView: View {
     @ViewBuilder
     private var pageBody: some View {
         switch component.id {
-        // Relay pages — static sample data; no kernel connection needed.
+        // Relay pages render current gallery relay state without an embed claim.
         case "relay-list":
             RelayListPage()
         // User pages — never block on relay data. `bestEffortProfile`
@@ -46,7 +46,7 @@ struct ComponentDetailView: View {
         // only the pubkey, then the registry component claims/releases and
         // observes through `NostrProfileHost`.
         case "user-avatar":
-            UserAvatarPage(pubkey: DEMO_PUBKEY_HEX)
+            UserAvatarPage(pubkey: SHOWCASE_PUBKEY_HEX)
         case "user-name":
             UserProfileNamePage(profile: model.bestEffortProfile)
         case "user-nip05":

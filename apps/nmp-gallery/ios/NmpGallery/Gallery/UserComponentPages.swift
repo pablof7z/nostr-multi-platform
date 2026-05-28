@@ -31,8 +31,6 @@ private struct PageFrame<Content: View>: View {
 /// falls back to a deterministic identicon until kind:0 arrives.
 struct UserAvatarPage: View {
     let pubkey: String
-    private let fallbackPubkey =
-        "0000000000000000000000000000000000000000000000000000000000000000"
 
     var body: some View {
         VStack(spacing: 16) {
@@ -46,8 +44,8 @@ struct UserAvatarPage: View {
                     NostrAvatar(pubkey: pubkey, size: 64)
                 }
             }
-            PageFrame(caption: "Identicon fallback (no picture URL)") {
-                NostrAvatar(pubkey: fallbackPubkey, pictureUrl: nil, size: 80)
+            PageFrame(caption: "Identicon fallback (same pubkey, no picture URL)") {
+                NostrAvatar(pubkey: pubkey, pictureUrl: nil, size: 80)
             }
         }
     }
@@ -81,10 +79,10 @@ struct UserProfileNamePage: View {
 ///
 /// When the profile has no `nip05` field the failable initializer
 /// returns nil and the first `PageFrame` shows the documented
-/// "(no NIP-05 on this profile)" hint — that IS the correct demo for the
+/// "(no NIP-05 on this profile)" hint — that is the correct showcase for the
 /// real-world behaviour, not a loading state. The second `PageFrame`
-/// always renders via the direct `nip05:` init so the component visual
-/// is on screen regardless of whether kind:0 has landed.
+/// renders the direct initializer only when the same relay-backed profile
+/// supplies a NIP-05 value.
 struct UserNip05Page: View {
     let profile: ProfileWire
 
@@ -99,8 +97,14 @@ struct UserNip05Page: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            PageFrame(caption: "Always renders (direct init)") {
-                NostrNip05Badge(nip05: "demo@nmp.dev")
+            PageFrame(caption: "Direct init from profile value") {
+                if let nip05 = profile.nip05 {
+                    NostrNip05Badge(nip05: nip05)
+                } else {
+                    Text("(no NIP-05 on this profile)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -110,7 +114,7 @@ struct UserNip05Page: View {
 
 /// Renders the npub-chip component using the best-effort profile.
 ///
-/// `npub` and `npubShort` are always Rust-formatted (placeholder values
+/// `npub` and `npubShort` are always Rust-formatted (fallback values
 /// pinned in `GalleryModel.swift` match `nmp_core::display::short_npub`
 /// before kind:0 arrives; replaced by the kernel-supplied values once
 /// the real profile lands).

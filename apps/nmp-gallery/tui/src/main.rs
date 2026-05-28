@@ -2,8 +2,8 @@
 //!
 //! The program flow:
 //! 1. Spin up `LiveKernel` (the persistent `nmp_app_*` actor handle).
-//! 2. Boot `LiveKernel` without blocking prefetch. The initial frame uses
-//!    synthetic placeholder data from `GalleryData::render_test_data()`.
+//! 2. Boot `LiveKernel` without blocking prefetch. The initial frame carries
+//!    canonical Nostr references; relay-backed projections refine it in place.
 //! 3. Take the snapshot receiver off the kernel; spawn two threads:
 //!    - input thread (crossterm `event::read` blocking)
 //!    - snapshot thread (snapshot push receiver blocking)
@@ -37,7 +37,7 @@ use nmp_gallery_tui::{
     data::{GalleryData, LiveProfileMap},
     embed_host::EmbedHostState,
     gallery,
-    live::{parse_snapshot, LiveGallerySource, LiveKernel, LiveKernelSink, PRIMARY_PUBKEY},
+    live::{parse_snapshot, primary_pubkey, LiveGallerySource, LiveKernel, LiveKernelSink},
     render::{self, EmbedFrameContext},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -109,8 +109,8 @@ fn main() -> io::Result<()> {
         std::process::exit(2);
     }
 
-    // Boot the kernel only — no blocking prefetch. Initial frame uses
-    // synthetic placeholder data; reactive snapshots update embeds.
+    // Boot the kernel only — no blocking prefetch. Initial frame uses the same
+    // real Nostr references as every gallery surface; snapshots update embeds.
     let mut kernel = match LiveKernel::new() {
         Ok(k) => k,
         Err(error) => {
@@ -119,7 +119,7 @@ fn main() -> io::Result<()> {
         }
     };
 
-    let data = GalleryData::live_initial(PRIMARY_PUBKEY);
+    let data = GalleryData::live_initial(primary_pubkey());
 
     // Build the renderer's registry sink (forwards event/profile claim
     // lifecycles to the persistent kernel).
@@ -205,27 +205,18 @@ fn run_smoke(
         None
     }
 
-    // The article naddr is the canonical kind-dispatch demo (coordinate-
-    // form URI → addressable kind:30023 interest shape). We also include a
-    // known kind:1 event encoded as a `note1` so the smoke covers both
-    // URI shapes (event-id form + naddr coordinate form). The event id is
-    // a real pablof7z note from the workspace's existing fixture set.
-    const SMOKE_NOTE_HEX: &str = "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660";
-    let smoke_note_uri = match nmp_core::nip19::encode_note(SMOKE_NOTE_HEX) {
-        Ok(bech) => format!("nostr:{bech}"),
-        Err(error) => {
-            eprintln!("smoke: failed to encode note1 from hex {SMOKE_NOTE_HEX}: {error}");
-            return 1;
-        }
-    };
-
+    // The smoke uses the same real references rendered by the gallery:
+    // addressable article naddr + showcase kind:1 nevent.
     let mut targets: Vec<SmokeTarget> = Vec::new();
     for (label, uri) in [
         (
             "embed_article (kind:30023 naddr)",
-            nmp_gallery_tui::data::ARTICLE_NADDR.to_string(),
+            nmp_gallery_tui::data::article_naddr().to_string(),
         ),
-        ("embed_note (kind:1 note1)", smoke_note_uri),
+        (
+            "embed_note (kind:1 nevent)",
+            nmp_gallery_tui::data::note_nevent().to_string(),
+        ),
     ] {
         match primary_id_for(&uri) {
             Some(primary_id) => targets.push(SmokeTarget {

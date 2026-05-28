@@ -24,14 +24,18 @@ import org.nmp.gallery.registry.ProfileWire
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
  * the push callback only. Registry components claim pubkeys while visible and
- * resolved profile cards arrive in `projections.claimed_profiles`.
+ * claimed profile cards arrive in `projections.claimed_profiles`.
  */
 class GalleryModel : ViewModel() {
 
     private val bridge = KernelBridge()
+    val showcase: GalleryShowcaseReferences =
+        GalleryShowcaseReferences.decode(bridge.showcaseReferencesJson())
 
     private val _profileMap = MutableStateFlow<Map<String, ProfileWire>>(emptyMap())
     val profileMap: StateFlow<Map<String, ProfileWire>> = _profileMap.asStateFlow()
+    private val _claimedEvents = MutableStateFlow<Map<String, ClaimedEventWire>>(emptyMap())
+    val claimedEvents: StateFlow<Map<String, ClaimedEventWire>> = _claimedEvents.asStateFlow()
 
     private val json: Json = Json {
         ignoreUnknownKeys = true
@@ -56,6 +60,14 @@ class GalleryModel : ViewModel() {
 
     fun releaseProfile(pubkey: String, consumerId: String = CONSUMER_ID) {
         bridge.releaseProfile(pubkey, consumerId)
+    }
+
+    fun claimEvent(uri: String, consumerId: String = CONSUMER_ID) {
+        bridge.claimEvent(uri, consumerId)
+    }
+
+    fun releaseEvent(uri: String, consumerId: String = CONSUMER_ID) {
+        bridge.releaseEvent(uri, consumerId)
     }
 
     fun dispatchAction(action: String, payload: String): String? =
@@ -83,7 +95,7 @@ class GalleryModel : ViewModel() {
     /**
      * Decode one FlatBuffers snapshot frame. Profiles are assembled from
      * component-owned `projections.claimed_profiles`, plus the author/mention
-     * projections used by other gallery demos.
+     * projections used by other gallery showcases.
      */
     private fun applyFrame(raw: ByteArray) {
         val v = try {
@@ -136,6 +148,19 @@ class GalleryModel : ViewModel() {
         if (assembled.isNotEmpty()) {
             _profileMap.value = _profileMap.value + assembled
         }
+
+        val events = mutableMapOf<String, ClaimedEventWire>()
+        (projections["claimed_events"] as? JsonObject)?.let { claimed ->
+            for ((primaryId, el) in claimed) {
+                val event = runCatching {
+                    json.decodeFromJsonElement<ClaimedEventWire>(el)
+                }.getOrNull() ?: continue
+                events[primaryId] = event
+            }
+        }
+        if (events.isNotEmpty()) {
+            _claimedEvents.value = _claimedEvents.value + events
+        }
     }
 
     override fun onCleared() {
@@ -147,13 +172,21 @@ class GalleryModel : ViewModel() {
     }
 
     companion object {
-        /** jack — used to demo user-* components against real profile data. */
-        const val DEMO_PUBKEY: String =
-            "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
-
         const val CONSUMER_ID: String = "nmp-gallery"
     }
 }
+
+@Serializable
+data class ClaimedEventWire(
+    @SerialName("id") val id: String = "",
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("kind") val kind: Long = 0L,
+    @SerialName("created_at") val createdAt: Long = 0L,
+    @SerialName("tags") val tags: List<List<String>> = emptyList(),
+    @SerialName("content") val content: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+)
 
 /**
  * Wire shape of `projections.author_view.profile` — the kernel's ProfileCard.

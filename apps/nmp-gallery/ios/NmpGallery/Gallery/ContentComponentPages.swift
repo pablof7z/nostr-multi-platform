@@ -23,13 +23,13 @@ private struct ContentPageFrame<Content: View>: View {
 
 /// Reusable toggle shown at the top of pages that render inline mentions.
 /// When on, `NostrContentView` receives the raw wire URI; when off, the
-/// kernel-resolved display name (or truncated pubkey while loading).
+/// kernel-backed display name (or truncated pubkey while loading).
 private struct RawToggle: View {
     @Binding var rawMode: Bool
 
     var body: some View {
         HStack {
-            Text(rawMode ? "Raw wire" : "Resolved")
+            Text(rawMode ? "Raw wire" : "Profile")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -39,55 +39,36 @@ private struct RawToggle: View {
     }
 }
 
-// MARK: - Sample data
+// MARK: - Showcase references
 
 /// A reusable rich `ContentTreeWire` exercise. Mirrors the registry's
-/// `NostrContentViewPreview` arena and adds a media node so the
-/// content-media-grid page can reuse it.
-private enum SampleContent {
+/// `NostrContentViewPreview` arena and uses the same relay-backed references
+/// as the TUI and Android galleries.
+private enum ShowcaseContent {
     static var richTree: ContentTreeWire {
         // Arena layout:
-        //   0  text "hello "
-        //   1  mention(DEMO_PUBKEY_HEX)
-        //   2  text " and "
-        //   3  hashtag "nostr"
-        //   4  text " — "
-        //   5  url "https://nmp.dev"
-        //   6  paragraph(children: [0,1,2,3,4,5])
-        //   7  text "Section"
-        //   8  heading(level: 2, children: [7])
-        //   9  code_block info=rust body=fn main()
+        //   0  text "relay note "
+        //   1  mention(SHOWCASE_PUBKEY_HEX)
+        //   2  text " "
+        //   3  eventRef(SHOWCASE_NOTE_NEVENT)
+        //   4  paragraph(children: [0,1,2,3])
         return ContentTreeWire(
             nodes: [
-                .text("hello "),
+                .text("relay note "),
                 .mention(
                     NostrWireUri(
-                        uri: "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
+                        uri: "nostr:\(SHOWCASE_NPUB)",
                         kind: .profile,
-                        primaryId: DEMO_PUBKEY_HEX
+                        primaryId: SHOWCASE_PUBKEY_HEX
                     )
                 ),
-                .text(" and "),
-                .hashtag("nostr"),
-                .text(" — "),
-                .url("https://nmp.dev"),
-                .paragraph(children: [0, 1, 2, 3, 4, 5]),
-                .text("Section"),
-                .heading(level: 2, children: [7]),
-                .codeBlock(info: "rust", body: "fn main() {}"),
+                .text(" "),
+                .eventRef(showcaseNoteURI),
+                .paragraph(children: [0, 1, 2, 3]),
             ],
-            roots: [6, 8, 9],
+            roots: [4],
             mode: nil
         )
-    }
-
-    static var imageUrls: [URL] {
-        [
-            URL(string: "https://picsum.photos/seed/nmp1/800/600")!,
-            URL(string: "https://picsum.photos/seed/nmp2/800/600")!,
-            URL(string: "https://picsum.photos/seed/nmp3/800/600")!,
-            URL(string: "https://picsum.photos/seed/nmp4/800/600")!,
-        ]
     }
 }
 
@@ -97,7 +78,7 @@ struct ContentCorePage: View {
     var body: some View {
         VStack(spacing: 16) {
             ContentPageFrame(caption: "ContentTreeWire — arena dump") {
-                let tree = SampleContent.richTree
+                let tree = ShowcaseContent.richTree
                 Text("nodes: \(tree.nodes.count)   roots: \(tree.roots.count)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
@@ -106,10 +87,10 @@ struct ContentCorePage: View {
             }
             ContentPageFrame(caption: "NostrIdenticon.identiconView(forPubkey:size:)") {
                 HStack(spacing: 16) {
-                    NostrIdenticon.identiconView(forPubkey: "deadbeef0001", size: 48)
-                    NostrIdenticon.identiconView(forPubkey: "deadbeef0002", size: 48)
-                    NostrIdenticon.identiconView(forPubkey: "deadbeef0003", size: 48)
-                    NostrIdenticon.identiconView(forPubkey: "deadbeef0004", size: 48)
+                    NostrIdenticon.identiconView(forPubkey: SHOWCASE_PUBKEY_HEX, size: 32)
+                    NostrIdenticon.identiconView(forPubkey: SHOWCASE_PUBKEY_HEX, size: 40)
+                    NostrIdenticon.identiconView(forPubkey: SHOWCASE_PUBKEY_HEX, size: 48)
+                    NostrIdenticon.identiconView(forPubkey: SHOWCASE_PUBKEY_HEX, size: 56)
                 }
             }
         }
@@ -127,7 +108,7 @@ struct ContentViewPage: View {
             RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrContentView(tree:)") {
                 NostrContentView(
-                    tree: SampleContent.richTree,
+                    tree: ShowcaseContent.richTree,
                     mentionLabel: { uri in
                         rawMode
                             ? uri.uri
@@ -142,15 +123,15 @@ struct ContentViewPage: View {
 
 // MARK: - content-mention-chip
 
-/// Inline-mention demo: a `ContentTreeWire` that renders "Hey @pablof7z,
-/// how are you?". The mention node's `primaryId` is `DEMO_PUBKEY_HEX`
+/// Inline-mention showcase: a `ContentTreeWire` that renders "Hey @pablof7z,
+/// how are you?". The mention node's `primaryId` is `SHOWCASE_PUBKEY_HEX`
 /// and the `mentionLabel` closure looks up the live kind:0 profile the
-/// kernel claimed at startup. Raw toggle shows the wire URI vs the
+/// kernel claimed for the mounted component. Raw toggle shows the wire URI vs the
 /// resolved display name.
-private enum MentionSample {
+private enum MentionShowcase {
     /// Arena layout:
     ///   0  text "Hey "
-    ///   1  mention(DEMO_PUBKEY_HEX)
+    ///   1  mention(SHOWCASE_PUBKEY_HEX)
     ///   2  text ", how are you?"
     ///   3  paragraph(children: [0, 1, 2])
     static var note: ContentTreeWire {
@@ -159,9 +140,9 @@ private enum MentionSample {
                 .text("Hey "),
                 .mention(
                     NostrWireUri(
-                        uri: "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
+                        uri: "nostr:\(SHOWCASE_NPUB)",
                         kind: .profile,
-                        primaryId: DEMO_PUBKEY_HEX
+                        primaryId: SHOWCASE_PUBKEY_HEX
                     )
                 ),
                 .text(", how are you?"),
@@ -178,12 +159,12 @@ struct ContentMentionChipPage: View {
     @State private var rawMode = false
 
     var body: some View {
-        let profile = model.profile(forPubkey: DEMO_PUBKEY_HEX)
+        let profile = model.profile(forPubkey: SHOWCASE_PUBKEY_HEX)
         VStack(spacing: 16) {
             RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrContentView — live mention resolution") {
                 NostrContentView(
-                    tree: MentionSample.note,
+                    tree: MentionShowcase.note,
                     mentionLabel: { uri in
                         rawMode
                             ? uri.uri
@@ -196,22 +177,22 @@ struct ContentMentionChipPage: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
             }
-            ContentPageFrame(caption: "NostrMentionChip — kernel-resolved profile") {
+            ContentPageFrame(caption: "NostrMentionChip — kernel-backed profile") {
                 NostrMentionChip(
-                    pubkey: DEMO_PUBKEY_HEX,
+                    pubkey: SHOWCASE_PUBKEY_HEX,
                     displayName: profile?.displayName,
                     avatarUrl: profile?.avatarURL
                 )
             }
-            ContentPageFrame(caption: "NostrMentionChip — identicon fallback (unknown pubkey)") {
+            ContentPageFrame(caption: "NostrMentionChip — reference fallback") {
                 NostrMentionChip(
-                    pubkey: "deadbeefcafebabedeadbeefcafebabe",
+                    pubkey: SHOWCASE_PUBKEY_HEX,
                     displayName: nil
                 )
             }
             ContentPageFrame(caption: "NostrMentionChip — no avatar") {
                 NostrMentionChip(
-                    pubkey: DEMO_PUBKEY_HEX,
+                    pubkey: SHOWCASE_PUBKEY_HEX,
                     displayName: profile?.displayName,
                     showsAvatar: false
                 )
@@ -236,7 +217,7 @@ struct ContentMinimalPage: View {
     }
 
     private var runs: [NostrContentRun] {
-        SampleContent.richTree.nostrMinimalRuns(
+        ShowcaseContent.richTree.nostrMinimalRuns(
             mentionLabel: rawMode
                 ? { uri in uri.uri }
                 : { uri in
@@ -250,20 +231,32 @@ struct ContentMinimalPage: View {
 // MARK: - content-media-grid
 
 struct ContentMediaGridPage: View {
+    @Environment(GalleryModel.self) private var model
+
     var body: some View {
+        let imageUrls = relayMediaUrls(from: model.embedHost)
         VStack(spacing: 16) {
-            ContentPageFrame(caption: "1 image") {
-                NostrMediaGrid(imageUrls: Array(SampleContent.imageUrls.prefix(1)))
+            ContentPageFrame(caption: "NostrMediaGrid — relay-backed article media") {
+                if imageUrls.isEmpty {
+                    Text("Waiting for relay-backed media from the claimed article.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    NostrMediaGrid(imageUrls: imageUrls)
+                }
             }
-            ContentPageFrame(caption: "2 images") {
-                NostrMediaGrid(imageUrls: Array(SampleContent.imageUrls.prefix(2)))
-            }
-            ContentPageFrame(caption: "3 images") {
-                NostrMediaGrid(imageUrls: Array(SampleContent.imageUrls.prefix(3)))
-            }
-            ContentPageFrame(caption: "4 images (2×2)") {
-                NostrMediaGrid(imageUrls: SampleContent.imageUrls)
-            }
+        }
+        .task(id: SHOWCASE_ARTICLE_NADDR) {
+            model.embedClaimSink.claim(
+                uri: SHOWCASE_ARTICLE_NADDR,
+                consumerId: "nmp-gallery-ios.content-media-grid"
+            )
+        }
+        .onDisappear {
+            model.embedClaimSink.release(
+                uri: SHOWCASE_ARTICLE_NADDR,
+                consumerId: "nmp-gallery-ios.content-media-grid"
+            )
         }
     }
 }
@@ -274,49 +267,91 @@ struct ContentQuoteCardPage: View {
     @Environment(GalleryModel.self) private var model
 
     var body: some View {
-        let profile = model.profile(forPubkey: DEMO_PUBKEY_HEX)
+        let quoteModel = relayQuoteModel(from: model)
         VStack(spacing: 16) {
             ContentPageFrame(caption: "NostrQuoteCard — rich") {
                 NostrQuoteCard(
-                    model: NostrQuoteCardModel(
-                        id: "demo-event-1",
-                        authorPubkey: DEMO_PUBKEY_HEX,
-                        authorDisplayName: profile?.displayName,
-                        content: "GM Nostr. This is what an embedded note quote card looks like.",
-                        createdAtDisplay: "2026-05-25"
-                    ),
+                    model: quoteModel,
                     variant: .rich
                 )
             }
             ContentPageFrame(caption: "NostrQuoteCard — compact") {
                 NostrQuoteCard(
-                    model: NostrQuoteCardModel(
-                        id: "demo-event-2",
-                        authorPubkey: DEMO_PUBKEY_HEX,
-                        authorDisplayName: profile?.displayName,
-                        content: "Compact card variant — single-line attribution + truncated body."
-                    ),
+                    model: quoteModel,
                     variant: .compact
                 )
             }
             ContentPageFrame(caption: "NostrQuoteCard — collapsed") {
                 NostrQuoteCard(
-                    model: NostrQuoteCardModel(
-                        id: "demo-event-3",
-                        unresolvedUri: "nostr:nevent1example"
-                    ),
+                    model: quoteModel,
                     variant: .collapsed
                 )
             }
             ContentPageFrame(caption: "NostrQuoteCard — missing") {
                 NostrQuoteCard(
                     model: NostrQuoteCardModel(
-                        id: "missing",
-                        unresolvedUri: "nostr:nevent1unresolved"
+                        id: SHOWCASE_NOTE_EVENT_ID,
+                        unresolvedUri: SHOWCASE_NOTE_NEVENT
                     ),
                     variant: .missing
                 )
             }
         }
+        .task(id: SHOWCASE_NOTE_NEVENT) {
+            model.embedClaimSink.claim(
+                uri: SHOWCASE_NOTE_NEVENT,
+                consumerId: "nmp-gallery-ios.content-quote-card"
+            )
+        }
+        .onDisappear {
+            model.embedClaimSink.release(
+                uri: SHOWCASE_NOTE_NEVENT,
+                consumerId: "nmp-gallery-ios.content-quote-card"
+            )
+        }
     }
+}
+
+private let showcaseNoteURI = NostrWireUri(
+    uri: SHOWCASE_NOTE_NEVENT,
+    kind: .event,
+    primaryId: SHOWCASE_NOTE_EVENT_ID
+)
+
+@MainActor
+private func relayMediaUrls(from host: EmbedHost) -> [URL] {
+    var values: [String] = []
+    if let article = host.envelopeForPrimaryID(SHOWCASE_ARTICLE_PRIMARY_ID),
+       case .article(let projection) = article.projection,
+       let hero = projection.heroImageUrl {
+        values.append(hero)
+    }
+    if let note = host.envelopeForPrimaryID(SHOWCASE_NOTE_EVENT_ID),
+       case .shortNote(let projection) = note.projection {
+        values.append(contentsOf: projection.mediaUrls)
+    }
+    return values.compactMap(URL.init(string:))
+}
+
+@MainActor
+private func relayQuoteModel(from model: GalleryModel) -> NostrQuoteCardModel {
+    guard let envelope = model.embedHost.envelopeForPrimaryID(SHOWCASE_NOTE_EVENT_ID),
+          case .shortNote(let note) = envelope.projection
+    else {
+        return NostrQuoteCardModel(
+            id: SHOWCASE_NOTE_EVENT_ID,
+            unresolvedUri: SHOWCASE_NOTE_NEVENT
+        )
+    }
+    let profile = model.profile(forPubkey: note.authorPubkey)
+    return NostrQuoteCardModel(
+        id: note.id,
+        unresolvedUri: SHOWCASE_NOTE_NEVENT,
+        authorPubkey: note.authorPubkey,
+        authorDisplayName: note.authorDisplayName ?? profile?.displayName,
+        authorAvatarUrl: (note.authorPictureUrl ?? profile?.pictureUrl).flatMap(URL.init(string:)),
+        content: note.content,
+        mediaThumbnailUrl: note.mediaUrls.first.flatMap(URL.init(string:)),
+        createdAtDisplay: note.createdAt == 0 ? nil : "\(note.createdAt)"
+    )
 }

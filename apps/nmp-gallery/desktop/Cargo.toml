@@ -10,7 +10,7 @@ name = "nmp-gallery-desktop"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio", "image"] }
+iced = { version = "0.14", features = ["tokio", "image-without-codecs"] }
 nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-gallery-tui = { path = "../tui" }

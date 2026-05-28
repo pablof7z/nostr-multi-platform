@@ -2,7 +2,7 @@
   "name": "tui-content-quote-card",
   "type": "registry:ui",
   "title": "Content Quote Card (tui)",
-  "description": "Ratatui quote/event reference card with resolved event content and optional inline media.",
+  "description": "Ratatui quote/event reference card with claimed event content and optional inline media.",
   "dependencies": [],
   "registryDependencies": [
     "tui-content-core"

@@ -378,6 +378,12 @@ Registry components promise:
   placeholder, fallback, missing, deleted, unauthorized, or stale state, then
   refine in place as Rust projections update. Blank UI while data is fetchable is
   a framework defect.
+- **No invented Nostr data.** Components, previews, and galleries may render a
+  neutral fallback derived from the exact reference they were given, but they must
+  not invent profile names, profile pictures, pubkeys, event ids, note bodies, or
+  media URLs. If a gallery needs to prove hydration, it uses the same canonical
+  real relay-backed references from `apps/nmp-gallery/showcase-references.json`
+  across every platform and lets Rust-owned projections fill in the visible data.
 - **App-owned source.** Components are copied into the app tree so teams can edit
   styling, layout, accessibility, and callbacks. `nmp update component` preserves
   local edits against an upstream baseline.

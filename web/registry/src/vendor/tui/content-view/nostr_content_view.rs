@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 
-use nmp_content::EventClaimSink;
 use nmp_content::embed_projection::EmbeddedEventEnvelope;
+use nmp_content::EventClaimSink;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -16,7 +16,7 @@ use super::{
     content_render_data::ContentRenderData,
     content_tree_wire::{ContentTreeWire, WireNode},
     nostr_media_grid::NostrMediaGrid,
-    nostr_mention_chip::NostrMentionChip,
+    nostr_mention_chip::{NostrMentionChip, NostrMentionProfileHost},
     nostr_quote_card::NostrQuoteCard,
     ratatui_text_wrap::{wrap_plain, wrap_prefixed, wrap_spans},
 };
@@ -28,6 +28,7 @@ pub struct NostrContentView<'a> {
     kind_registry: Option<&'a NostrKindRegistry>,
     embedded_events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
     claim_sink: Option<&'a dyn EventClaimSink>,
+    profile_host: Option<&'a dyn NostrMentionProfileHost>,
     consumer_id: Option<&'a str>,
     // Per-render-pass seen-set. `Widget::render` consumes `self`, so the widget
     // is built fresh by the builder each frame — this set is naturally scoped
@@ -45,6 +46,7 @@ impl<'a> NostrContentView<'a> {
             kind_registry: None,
             embedded_events: None,
             claim_sink: None,
+            profile_host: None,
             consumer_id: None,
             claimed_this_frame: RefCell::new(HashSet::new()),
         }
@@ -75,10 +77,18 @@ impl<'a> NostrContentView<'a> {
 
     /// Optional host-side sink used to initiate an upstream fetch the first
     /// time a `nostr:` event URI is encountered in a render pass (ADR-0034 /
-    /// M16). Defaults to `None`, which preserves fixture-only behaviour: no
+    /// M16). Defaults to `None`, which preserves preview-only behaviour: no
     /// claims are issued and only pre-populated `embedded_events` resolve.
     pub fn claim_sink(mut self, sink: Option<&'a dyn EventClaimSink>) -> Self {
         self.claim_sink = sink;
+        self
+    }
+
+    /// Optional host-side bridge used to claim and read profile projections for
+    /// inline `nostr:npub` mentions. Defaults to `None`, which preserves
+    /// preview-only behaviour and renders the reference fallback.
+    pub fn profile_host(mut self, host: Option<&'a dyn NostrMentionProfileHost>) -> Self {
+        self.profile_host = host;
         self
     }
 
@@ -274,6 +284,8 @@ impl<'a> NostrContentView<'a> {
             WireNode::Mention(uri) => spans.push(
                 NostrMentionChip::new(uri)
                     .profile(self.render_data.and_then(|data| data.profile_for(uri)))
+                    .profile_host(self.profile_host)
+                    .consumer_id(self.consumer_id)
                     .span(),
             ),
             WireNode::EventRef(uri) => {

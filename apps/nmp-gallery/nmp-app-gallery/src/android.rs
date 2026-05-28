@@ -17,17 +17,10 @@ use jni::sys::{jbyteArray, jint, jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free,
-    nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_release_profile,
-    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile, nmp_app_dispatch_action,
+    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_release_event,
+    nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
-
-/// Bootstrap relays — mirrors the iOS `GalleryModel.bootstrapRelays` list.
-const BOOTSTRAP_RELAYS: &[&str] = &[
-    "wss://purplepag.es",
-    "wss://relay.damus.io",
-    "wss://nos.lol",
-];
 
 /// Owns the kernel handle, snapshot receiver, and boxed sender held by the
 /// kernel callback. Freed exactly once in `nativeFree`.
@@ -113,6 +106,17 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryReg
 }
 
 #[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeShowcaseReferencesJson<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+) -> jstring {
+    match env.new_string(crate::showcase::raw_json()) {
+        Ok(js) => js.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
     _env: JNIEnv,
     _class: JClass,
@@ -124,11 +128,11 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
     let Some(s) = session_ref(handle) else {
         return;
     };
-    for url in BOOTSTRAP_RELAYS {
-        let Ok(url_c) = CString::new(*url) else {
+    for relay in &crate::showcase::references().relays {
+        let Ok(url_c) = CString::new(relay.url.as_str()) else {
             continue;
         };
-        let Ok(role_c) = CString::new("both") else {
+        let Ok(role_c) = CString::new(relay.role.as_str()) else {
             continue;
         };
         nmp_app_add_relay(s.app, url_c.as_ptr(), role_c.as_ptr());
@@ -204,6 +208,46 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleasePro
         return;
     };
     nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    uri: JString,
+    consumer_id: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(uri) = jstring_to_cstring(&mut env, &uri) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    nmp_app_claim_event(s.app, uri.as_ptr(), consumer_id.as_ptr());
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    uri: JString,
+    consumer_id: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(uri) = jstring_to_cstring(&mut env, &uri) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    nmp_app_release_event(s.app, uri.as_ptr(), consumer_id.as_ptr());
 }
 
 /// Drain one FlatBuffers update frame from the kernel callback channel.

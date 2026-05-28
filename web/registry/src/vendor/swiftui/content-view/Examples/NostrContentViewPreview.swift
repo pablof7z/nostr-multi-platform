@@ -6,7 +6,7 @@ struct NostrContentViewPreview: View {
     var body: some View {
         // Arena layout:
         //   0  text "hello "
-        //   1  mention(deadbeef…)
+        //   1  mention(fa984b…018f52)
         //   2  text " and "
         //   3  hashtag "nostr"
         //   4  text " — "
@@ -20,9 +20,9 @@ struct NostrContentViewPreview: View {
                 .text("hello "),
                 .mention(
                     NostrWireUri(
-                        uri: "nostr:npub1example",
+                        uri: "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
                         kind: .profile,
-                        primaryId: "deadbeefcafebabedeadbeefcafebabe"
+                        primaryId: "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
                     )
                 ),
                 .text(" and "),

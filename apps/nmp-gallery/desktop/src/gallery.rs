@@ -13,7 +13,7 @@ use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
 use nmp_gallery_tui::data::{GalleryData, LiveProfileMap};
 use nmp_gallery_tui::embed_host::EmbedHostState;
 use nmp_gallery_tui::gallery::{component_at, ComponentSpec, REGISTRY_SECTIONS};
-use nmp_gallery_tui::live::PRIMARY_PUBKEY;
+use nmp_gallery_tui::live::primary_pubkey;
 
 use crate::bridge::GalleryBridge;
 use crate::components::embed_article::ArticleCard;
@@ -27,11 +27,36 @@ const CONSUMER_ID: &str = "nmp-gallery-desktop.preview";
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
-const SECTION_BLUE: Color = Color { r: 0.490, g: 0.827, b: 0.988, a: 1.0 };
-const INACTIVE_TEXT: Color = Color { r: 0.796, g: 0.835, b: 0.894, a: 1.0 };
-const MUTED_TEXT: Color = Color { r: 0.580, g: 0.639, b: 0.722, a: 1.0 };
-const ACTIVE_BG: Color = Color { r: 0.118, g: 0.161, b: 0.231, a: 1.0 };
-const DARK_BG: Color = Color { r: 0.059, g: 0.082, b: 0.118, a: 1.0 };
+const SECTION_BLUE: Color = Color {
+    r: 0.490,
+    g: 0.827,
+    b: 0.988,
+    a: 1.0,
+};
+const INACTIVE_TEXT: Color = Color {
+    r: 0.796,
+    g: 0.835,
+    b: 0.894,
+    a: 1.0,
+};
+const MUTED_TEXT: Color = Color {
+    r: 0.580,
+    g: 0.639,
+    b: 0.722,
+    a: 1.0,
+};
+const ACTIVE_BG: Color = Color {
+    r: 0.118,
+    g: 0.161,
+    b: 0.231,
+    a: 1.0,
+};
+const DARK_BG: Color = Color {
+    r: 0.059,
+    g: 0.082,
+    b: 0.118,
+    a: 1.0,
+};
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -56,7 +81,7 @@ impl GalleryApp {
     pub fn new() -> Self {
         Self {
             bridge: GalleryBridge::start(),
-            data: GalleryData::live_initial(PRIMARY_PUBKEY),
+            data: GalleryData::live_initial(primary_pubkey()),
             profiles: LiveProfileMap::new(),
             embed_host: EmbedHostState::new(),
             selected: 0,
@@ -99,7 +124,7 @@ pub fn update(app: &mut GalleryApp, message: Message) {
 
             // 2. Re-claim primary pubkey on every tick so the kind:0 fetch
             //    sticks once a relay connects (kernel deduplicates per pair).
-            app.bridge.claim_profile(PRIMARY_PUBKEY, CONSUMER_ID);
+            app.bridge.claim_profile(primary_pubkey(), CONSUMER_ID);
 
             // 3. Claim embed event refs from the four showcase content trees.
             claim_tree_refs(&app.bridge, &app.data.embed_article.tree.nodes);
@@ -115,7 +140,7 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             }
 
             // 5. Start fetching the primary pubkey's picture_url if it changed.
-            let primary = app.profiles.resolve(PRIMARY_PUBKEY);
+            let primary = app.profiles.resolve(primary_pubkey());
             if let Some(url) = primary.picture_url {
                 if app.avatar_url_fetching.as_deref() != Some(&url) {
                     app.avatar_url_fetching = Some(url.clone());
@@ -197,7 +222,9 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
         text("Components")
             .size(13)
             .font(Font::MONOSPACE)
-            .style(|_| text::Style { color: Some(MUTED_TEXT) }),
+            .style(|_| text::Style {
+                color: Some(MUTED_TEXT)
+            }),
         Space::new().height(Length::Fixed(6.0)),
     ]
     .spacing(2)
@@ -208,7 +235,9 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
             text(section.label)
                 .size(12)
                 .font(Font::MONOSPACE)
-                .style(|_| text::Style { color: Some(SECTION_BLUE) }),
+                .style(|_| text::Style {
+                    color: Some(SECTION_BLUE),
+                }),
         );
 
         for comp in section.components {
@@ -217,13 +246,13 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
             flat_index += 1;
 
             let label = comp.label;
-            let btn = button(
-                text(label)
-                    .size(13)
-                    .style(move |_| text::Style {
-                        color: Some(if is_active { Color::WHITE } else { INACTIVE_TEXT }),
-                    }),
-            )
+            let btn = button(text(label).size(13).style(move |_| text::Style {
+                color: Some(if is_active {
+                    Color::WHITE
+                } else {
+                    INACTIVE_TEXT
+                }),
+            }))
             .on_press(Message::Select(idx))
             .width(Length::Fill)
             .padding([4, 8])
@@ -237,7 +266,11 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
                     radius: 4.0.into(),
                     ..Default::default()
                 },
-                text_color: if is_active { Color::WHITE } else { INACTIVE_TEXT },
+                text_color: if is_active {
+                    Color::WHITE
+                } else {
+                    INACTIVE_TEXT
+                },
                 ..Default::default()
             });
 
@@ -260,9 +293,9 @@ fn build_detail(app: &GalleryApp) -> Element<'_, Message> {
 
     let heading = column![
         text(spec.label).size(20),
-        text(spec.description)
-            .size(13)
-            .style(|_| text::Style { color: Some(MUTED_TEXT) }),
+        text(spec.description).size(13).style(|_| text::Style {
+            color: Some(MUTED_TEXT)
+        }),
         rule::horizontal(1),
     ]
     .spacing(4);
@@ -283,7 +316,7 @@ fn build_detail(app: &GalleryApp) -> Element<'_, Message> {
 // ── Component rendering ───────────────────────────────────────────────────────
 
 fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a, Message> {
-    let primary = app.profiles.resolve(PRIMARY_PUBKEY);
+    let primary = app.profiles.resolve(primary_pubkey());
 
     match spec.id {
         "user-avatar" => {
@@ -302,7 +335,9 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
                 container(
                     text(format!("Pubkey: {}", primary.npub_short))
                         .size(12)
-                        .style(|_| text::Style { color: Some(MUTED_TEXT) })
+                        .style(|_| text::Style {
+                            color: Some(MUTED_TEXT)
+                        })
                 )
                 .align_x(Alignment::Center)
                 .width(Length::Fill),
@@ -317,7 +352,9 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
             Some(b) => b.into_element::<Message>(),
             None => text("no nip05 yet")
                 .size(13)
-                .style(|_| text::Style { color: Some(MUTED_TEXT) })
+                .style(|_| text::Style {
+                    color: Some(MUTED_TEXT),
+                })
                 .into(),
         },
 
@@ -356,17 +393,21 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
             content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
 
-        "embed-article" => {
-            render_embed(&app.data.embed_article.tree.nodes, &app.embed_host, |proj| {
+        "embed-article" => render_embed(
+            &app.data.embed_article.tree.nodes,
+            &app.embed_host,
+            |proj| {
                 if let EmbedKindProjection::Article(a) = proj {
                     Some(ArticleCard::new(a).into_element())
                 } else {
                     None
                 }
-            })
-        }
-        "embed-profile" => {
-            render_embed(&app.data.embed_profile.tree.nodes, &app.embed_host, |proj| {
+            },
+        ),
+        "embed-profile" => render_embed(
+            &app.data.embed_profile.tree.nodes,
+            &app.embed_host,
+            |proj| {
                 if let EmbedKindProjection::Profile(p) = proj {
                     Some(
                         text(format!(
@@ -379,49 +420,49 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
                 } else {
                     None
                 }
-            })
-        }
-        "embed-note" => {
-            render_embed(&app.data.embed_note.tree.nodes, &app.embed_host, |proj| {
-                if let EmbedKindProjection::ShortNote(n) = proj {
+            },
+        ),
+        "embed-note" => render_embed(&app.data.embed_note.tree.nodes, &app.embed_host, |proj| {
+            if let EmbedKindProjection::ShortNote(n) = proj {
+                Some(
+                    column![
+                        text(n.author_display_name.as_deref().unwrap_or("Unknown"))
+                            .size(13)
+                            .font(iced::Font {
+                                weight: iced::font::Weight::Bold,
+                                ..iced::Font::default()
+                            }),
+                        text(format!("kind:1 · {}", &n.author_pubkey[..12]))
+                            .size(12)
+                            .style(|_| text::Style {
+                                color: Some(INACTIVE_TEXT)
+                            }),
+                    ]
+                    .spacing(4)
+                    .into(),
+                )
+            } else {
+                None
+            }
+        }),
+        "embed-highlight" => render_embed(
+            &app.data.embed_highlight.tree.nodes,
+            &app.embed_host,
+            |proj| {
+                if let EmbedKindProjection::Highlight(h) = proj {
                     Some(
-                        column![
-                            text(n.author_display_name.as_deref().unwrap_or("Unknown"))
-                                .size(13)
-                                .font(iced::Font {
-                                    weight: iced::font::Weight::Bold,
-                                    ..iced::Font::default()
-                                }),
-                            text(format!("kind:1 · {}", &n.author_pubkey[..12]))
-                                .size(12)
-                                .style(|_| text::Style { color: Some(INACTIVE_TEXT) }),
-                        ]
-                        .spacing(4)
-                        .into(),
+                        text(format!("\u{201c}{}\u{201d}", h.highlighted_text))
+                            .size(13)
+                            .style(|_| text::Style {
+                                color: Some(INACTIVE_TEXT),
+                            })
+                            .into(),
                     )
                 } else {
                     None
                 }
-            })
-        }
-        "embed-highlight" => {
-            render_embed(
-                &app.data.embed_highlight.tree.nodes,
-                &app.embed_host,
-                |proj| {
-                    if let EmbedKindProjection::Highlight(h) = proj {
-                        Some(
-                            text(format!("\u{201c}{}\u{201d}", h.highlighted_text))
-                                .size(13)
-                                .style(|_| text::Style { color: Some(INACTIVE_TEXT) })
-                                .into(),
-                        )
-                    } else {
-                        None
-                    }
-                },
-            )
-        }
+            },
+        ),
 
         _ => text("Unknown component").into(),
     }
@@ -455,17 +496,29 @@ where
     } else {
         text("Fetching from relay…")
             .size(13)
-            .style(|_| text::Style { color: Some(MUTED_TEXT) })
+            .style(|_| text::Style {
+                color: Some(MUTED_TEXT),
+            })
             .into()
     }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn content_tree_info<'a>(scenario_id: &str, title: &str, nodes: &[WireNode]) -> Element<'a, Message> {
+fn content_tree_info<'a>(
+    scenario_id: &str,
+    title: &str,
+    nodes: &[WireNode],
+) -> Element<'a, Message> {
     let snippet: String = nodes
         .iter()
-        .filter_map(|n| if let WireNode::Text(t) = n { Some(t.as_str()) } else { None })
+        .filter_map(|n| {
+            if let WireNode::Text(t) = n {
+                Some(t.as_str())
+            } else {
+                None
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ")
         .chars()
@@ -476,13 +529,21 @@ fn content_tree_info<'a>(scenario_id: &str, title: &str, nodes: &[WireNode]) -> 
         text(format!("scenario: {scenario_id}"))
             .size(12)
             .font(Font::MONOSPACE)
-            .style(|_| text::Style { color: Some(MUTED_TEXT) }),
+            .style(|_| text::Style {
+                color: Some(MUTED_TEXT)
+            }),
         text(format!("title: {title}")).size(13),
         text(format!("nodes: {}", nodes.len())).size(13),
         rule::horizontal(1),
-        text(if snippet.is_empty() { "(no plain-text nodes)".to_string() } else { snippet })
-            .size(13)
-            .style(|_| text::Style { color: Some(INACTIVE_TEXT) }),
+        text(if snippet.is_empty() {
+            "(no plain-text nodes)".to_string()
+        } else {
+            snippet
+        })
+        .size(13)
+        .style(|_| text::Style {
+            color: Some(INACTIVE_TEXT)
+        }),
     ]
     .spacing(6)
     .into()

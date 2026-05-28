@@ -83,7 +83,7 @@ impl EmbedHostState {
             // ClaimedEventDto. None when no kind:0 has been ingested yet —
             // we return the author pubkey to the caller so the main loop
             // can trigger a `claim_profile` and the next snapshot tick
-            // brings the resolved profile.
+            // brings the claimed profile projection.
             let author_display_name = dto
                 .get("author_display_name")
                 .and_then(Value::as_str)
@@ -143,7 +143,10 @@ impl EmbedHostState {
 
 fn kernel_event_from_dto(primary_id: &str, dto: &Value) -> Option<KernelEvent> {
     let id = dto.get("id").and_then(Value::as_str)?.to_string();
-    let author = dto.get("author_pubkey").and_then(Value::as_str)?.to_string();
+    let author = dto
+        .get("author_pubkey")
+        .and_then(Value::as_str)?
+        .to_string();
     let kind = dto.get("kind").and_then(Value::as_u64)? as u32;
     let created_at = dto.get("created_at").and_then(Value::as_u64).unwrap_or(0);
     let content = dto
@@ -220,6 +223,10 @@ fn apply_author_profile(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{
+        article_expected_title, article_primary_id, highlight_event_id, note_event_id,
+        showcase_pubkey,
+    };
     use nmp_content::embed_projection::EmbedKindProjection;
     use serde_json::json;
 
@@ -237,34 +244,34 @@ mod tests {
 
     fn article_dto() -> Value {
         json!({
-            "id": "aaaa000000000000000000000000000000000000000000000000000000000001",
-            "author_pubkey": "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
+            "id": article_primary_id(),
+            "author_pubkey": "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93",
             "kind": 30023,
             "created_at": 1716000000_u64,
-            "tags": [["d", "kind-dispatch"], ["title", "Kind-Dispatch Content Rendering"]],
+            "tags": [["d", "the-internet-left-me"], ["title", article_expected_title()]],
             "content": "Long-form article body."
         })
     }
 
     fn short_note_dto() -> Value {
         json!({
-            "id": "bbbb000000000000000000000000000000000000000000000000000000000001",
-            "author_pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+            "id": note_event_id(),
+            "author_pubkey": showcase_pubkey(),
             "kind": 1,
             "created_at": 1716000001_u64,
             "tags": [],
-            "content": "Hello from fiatjaf."
+            "content": "Relay-backed pablof7z note."
         })
     }
 
     fn highlight_dto() -> Value {
         json!({
-            "id": "cccc000000000000000000000000000000000000000000000000000000000001",
-            "author_pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+            "id": highlight_event_id(),
+            "author_pubkey": showcase_pubkey(),
             "kind": 9802,
             "created_at": 1716000002_u64,
-            "tags": [["r", "https://fiatjaf.com"]],
-            "content": "The simplest protocol wins."
+            "tags": [["r", "https://pablof7z.com"]],
+            "content": "Vibe-coding is what brought me back to programming."
         })
     }
 
@@ -276,7 +283,7 @@ mod tests {
 
     #[test]
     fn article_dto_resolves_to_article_projection() {
-        let primary = "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:kind-dispatch";
+        let primary = article_primary_id();
         let snap = snapshot_with(vec![(primary, article_dto())]);
 
         let mut host = EmbedHostState::new();
@@ -289,8 +296,8 @@ mod tests {
         match &env.projection {
             EmbedKindProjection::Article(a) => {
                 assert_eq!(a.kind_optional_check(), 30023);
-                assert_eq!(a.d_tag, "kind-dispatch");
-                assert_eq!(a.title.as_deref(), Some("Kind-Dispatch Content Rendering"));
+                assert_eq!(a.d_tag, "the-internet-left-me");
+                assert_eq!(a.title.as_deref(), article_expected_title());
             }
             other => panic!("expected Article projection, got {:?}", other),
         }
@@ -298,7 +305,7 @@ mod tests {
 
     #[test]
     fn short_note_dto_resolves_to_short_note_projection() {
-        let primary = "bbbb000000000000000000000000000000000000000000000000000000000001";
+        let primary = note_event_id();
         let snap = snapshot_with(vec![(primary, short_note_dto())]);
 
         let mut host = EmbedHostState::new();
@@ -308,15 +315,12 @@ mod tests {
             .current_envelopes()
             .get(primary)
             .expect("short note envelope should be present");
-        assert!(matches!(
-            env.projection,
-            EmbedKindProjection::ShortNote(_)
-        ));
+        assert!(matches!(env.projection, EmbedKindProjection::ShortNote(_)));
     }
 
     #[test]
     fn highlight_dto_resolves_to_highlight_projection() {
-        let primary = "cccc000000000000000000000000000000000000000000000000000000000001";
+        let primary = highlight_event_id();
         let snap = snapshot_with(vec![(primary, highlight_dto())]);
 
         let mut host = EmbedHostState::new();
@@ -326,28 +330,31 @@ mod tests {
             .current_envelopes()
             .get(primary)
             .expect("highlight envelope should be present");
-        assert!(matches!(
-            env.projection,
-            EmbedKindProjection::Highlight(_)
-        ));
+        assert!(matches!(env.projection, EmbedKindProjection::Highlight(_)));
     }
 
     #[test]
     fn malformed_dto_skipped_without_panic() {
-        let primary = "deadbeef";
-        let snap = snapshot_with(vec![(primary, json!({"id": "x", "author_pubkey": null, "kind": 1, "created_at": 0, "tags": [], "content": ""}))]);
+        let primary = note_event_id();
+        let snap = snapshot_with(vec![(
+            primary,
+            json!({"id": "x", "author_pubkey": null, "kind": 1, "created_at": 0, "tags": [], "content": ""}),
+        )]);
 
         let mut host = EmbedHostState::new();
         host.update_from_snapshot(&snap);
 
-        assert!(host.is_empty(), "malformed dto must be silently skipped (D6)");
+        assert!(
+            host.is_empty(),
+            "malformed dto must be silently skipped (D6)"
+        );
     }
 
     #[test]
     fn snapshot_without_claimed_events_leaves_host_untouched() {
         let mut host = EmbedHostState::new();
         // First load a real entry.
-        let primary = "bbbb000000000000000000000000000000000000000000000000000000000001";
+        let primary = note_event_id();
         host.update_from_snapshot(&snapshot_with(vec![(primary, short_note_dto())]));
         assert_eq!(host.len(), 1);
 
@@ -360,8 +367,8 @@ mod tests {
     #[test]
     fn replacement_snapshot_replaces_state() {
         let mut host = EmbedHostState::new();
-        let primary_a = "bbbb000000000000000000000000000000000000000000000000000000000001";
-        let primary_b = "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:kind-dispatch";
+        let primary_a = note_event_id();
+        let primary_b = article_primary_id();
 
         host.update_from_snapshot(&snapshot_with(vec![(primary_a, short_note_dto())]));
         assert!(host.current_envelopes().contains_key(primary_a));

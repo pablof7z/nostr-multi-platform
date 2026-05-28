@@ -26,7 +26,7 @@ class KernelBridge {
     /**
      * Boot the kernel + gallery projection.
      *
-     * @param eventsPerSec Synthetic ingest cap for the demo (0 disables).
+     * @param eventsPerSec Optional Rust ingest cap (0 disables).
      * @param visibleLimit Per-projection ring buffer size.
      * @param emitHz       Snapshot emission frequency (Hz). Chirp uses 4 Hz.
      */
@@ -42,6 +42,8 @@ class KernelBridge {
     fun galleryRegister() {
         if (handle != 0L) nativeGalleryRegister(handle)
     }
+
+    fun showcaseReferencesJson(): String = nativeShowcaseReferencesJson()
 
     /**
      * Open the author view for [pubkey]. Triggers kind:0 + kind:10002 fetch
@@ -63,6 +65,14 @@ class KernelBridge {
 
     fun releaseProfile(pubkey: String, consumerId: String) {
         if (handle != 0L) nativeReleaseProfile(handle, pubkey, consumerId)
+    }
+
+    fun claimEvent(uri: String, consumerId: String) {
+        if (handle != 0L) nativeClaimEvent(handle, uri, consumerId)
+    }
+
+    fun releaseEvent(uri: String, consumerId: String) {
+        if (handle != 0L) nativeReleaseEvent(handle, uri, consumerId)
     }
 
     /**
@@ -109,11 +119,14 @@ class KernelBridge {
     private external fun nativeNew(): Long
     private external fun nativeFree(handle: Long)
     private external fun nativeGalleryRegister(handle: Long)
+    private external fun nativeShowcaseReferencesJson(): String
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
     private external fun nativeStop(handle: Long)
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
+    private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
+    private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): ByteArray?
     private external fun nativeGallerySnapshot(handle: Long): String?
     private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?

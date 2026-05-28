@@ -12,7 +12,7 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
 ///     `UpdateFrame`; the gallery reads `projections.claimed_profiles[pubkey]`
 ///     for component-owned profile claims, with `author_view` /
-///     `mention_profiles` as secondary projections for other demos.
+    ///     `mention_profiles` as secondary projections for other showcases.
 ///   • `nmp_app_gallery_snapshot` is a status envelope only
 ///     (`{schema, alive, projections:{}}`); it is NOT a profile source. The
 ///     gallery does not rely on it for component data.
@@ -169,7 +169,7 @@ final class GalleryKernelHandle {
         }
     }
 
-    // ── Demo sign-in (phase 2) ───────────────────────────────────────────
+    // ── Showcase sign-in (phase 2) ───────────────────────────────────────
 
     func signInNsec(_ secret: String) {
         secret.withCString { nmp_app_signin_nsec(raw, $0) }

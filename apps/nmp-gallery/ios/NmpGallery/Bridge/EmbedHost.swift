@@ -25,7 +25,7 @@ private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 @MainActor
 @Observable
 final class EmbedHost {
-    /// Resolved envelopes keyed by `primary_id` (event-id hex for nevent/note,
+    /// Claimed envelopes keyed by `primary_id` (event-id hex for nevent/note,
     /// `"kind:pubkey:d"` coordinate for naddr). Latest-snapshot-wins; rebuilt
     /// from scratch on every non-empty `claimed_events` payload (mirrors the
     /// TUI's `EmbedHostState`).

@@ -1494,6 +1494,11 @@ pass references; components own platform lifecycle; Rust owns truth and policy.
 embedded event by passing a reference and local styling/callbacks only. No
 feature screen directly calls claim/release for that reference; those lifecycle
 calls are owned by the installed component or the one-time registry host adapter.
+Registry demos/previews use one canonical set of real relay-backed references
+from `apps/nmp-gallery/showcase-references.json` across SwiftUI, Compose, TUI,
+and desktop; visible hydrated profile/content/media values come from Rust-owned
+projections or neutral fallback from the exact reference, never invented fixture
+identities or event payloads.
 
 **Dependencies:** source-of-truth update in product spec and M16 plan. **Scope:**
 medium-large.
