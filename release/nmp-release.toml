@@ -213,6 +213,7 @@ path = "apps/nmp-gallery/tui"
 reason = "gallery reference TUI application"
 
 [[private_packages]]
-name = "zap-smoke"
-path = "tools/zap-smoke"
-reason = "repository-local smoke test tool"
+name = "nmp-gallery-desktop"
+path = "apps/nmp-gallery/desktop"
+reason = "gallery reference desktop (egui) application"
+
