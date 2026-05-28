@@ -24,6 +24,7 @@ pub mod decode;
 pub mod kinds;
 pub mod meta_timeline;
 mod note_relations;
+pub mod op_feed;
 mod profile_display;
 pub mod timeline_projection;
 pub mod view;
@@ -37,7 +38,8 @@ pub use meta_timeline::{
     Nip10ModularTimelineView, Nip10Resolver,
 };
 pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-pub use profile_display::AuthorDisplay;
+pub use op_feed::{register_op_feed, Nip10ReplyAttribution, OpFeedEngine};
+pub use profile_display::{AuthorDisplay, ProfileDisplay};
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,
     TimelineWindowMetrics, TimelineWindowPage, TimelineWindowRequest,
