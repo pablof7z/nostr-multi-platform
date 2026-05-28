@@ -222,3 +222,9 @@ required-features = ["real-relay"]
 name = "relay_search_radius_a6_concurrent_claims"
 path = "tests/relay_search_radius_a6_concurrent_claims.rs"
 required-features = ["real-relay"]
+
+# OP-feed engine doctrine gate (V-80 rung 3): asserts crates/nmp-feed/src names
+# zero protocol/profile tokens (nipNN, marmot, ProfileDisplay). No features.
+[[test]]
+name = "op_feed_doctrine_lint"
+path = "tests/op_feed_doctrine_lint.rs"

@@ -954,7 +954,20 @@ root-dropping bug. Every Rust + Swift consumer of the serialized shape was
 patched atomically. Behavior delta: chirp-tui's ↳ "reply in thread"
 indicator now fires for `Standalone` reply rows (it previously only lit for
 `Module` blocks). Home feed still rides `ModularTimelineProjection` (the
-projection swap is rung 7). Rungs 3–7 remain.
+projection swap is rung 7).
+**Rung 3 (Stage 2 — generic `RootIndexedFeed` engine in `nmp-feed`) landed
+2026-05-28** — `trait AttributionPayload` (associated `type Profile`, the B1
+dep-cycle fix), `struct RootIndexedFeed<R, A, C>` state machine
+(`KernelEventObserver` + `FeedController`), `RootCard<C, A>` /
+`RootFeedSnapshot<C, A>` (raw `Vec<A>` attribution, no `attribution_total` —
+Q1), `ClaimRequest{Claim,Release}` carrying a `ThreadPointer` (codex M2).
+Capabilities are closures, not traits (D7): follow predicate, event lookup,
+claim sink. ADR-0035. CI grep gate
+(`crates/nmp-testing/tests/op_feed_doctrine_lint.rs`) enforces zero
+protocol/profile tokens in `crates/nmp-feed/src/`. V-81 resolved via option
+(a) — the engine treats `event_claim_released` as non-terminal (see V-81).
+Engine ships **unwired** with 17 synthetic tests; Chirp unchanged, master
+green. Rungs 4–7 remain.
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
@@ -1048,6 +1061,21 @@ puts the burden on every future consumer. The rung-3 implementer (the
 release observer to attribution eviction. See
 [`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
 §3-K for the buffering model this protects.
+
+**Resolution (rung 3, 2026-05-28): option (a) implemented.**
+`RootIndexedFeed::on_event_claim_released` is a no-op beyond a diagnostic
+`AtomicU64` counter — it does NOT drop `pending_attributions`. (This
+supersedes the design doc §3-D, which predates V-81 and said to drop on the
+signal.) A pending attribution survives a release signal and is dropped only
+when the root actually arrives (drain) or the bounded map evicts it under D5
+pressure. Proven by
+`v81_release_signal_does_not_drop_pending_attribution`. Recorded in ADR-0035.
+**Option (b) — moving the `nmp-core` ring push from Phase-1 EOSE to
+`terminate_claim` — remains a possible rung-1 follow-up.** It is no longer
+load-bearing for OP-feed correctness (the engine is robust to the current
+Phase-1-EOSE behavior), so this item is downgraded to a cleanup. If pursued,
+it would let the engine treat the signal as terminal and proactively emit
+`Release` + drop pending, instead of relying on arrival/eviction.
 
 ---
 
