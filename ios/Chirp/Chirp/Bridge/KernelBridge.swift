@@ -511,7 +511,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update) = frame else {
+            guard case let .snapshot(frameSchemaVersion, update, _) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)

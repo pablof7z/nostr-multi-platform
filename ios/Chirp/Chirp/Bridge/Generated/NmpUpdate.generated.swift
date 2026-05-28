@@ -44,7 +44,7 @@ public struct nmp_transport_Pair: FlatBufferTable, FlatbuffersVectorInitializabl
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NMPU" }
+  public static var id: String { "NMPU" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_Pair.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -88,7 +88,7 @@ public struct nmp_transport_Value: FlatBufferTable, FlatbuffersVectorInitializab
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NMPU" }
+  public static var id: String { "NMPU" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_Value.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -163,13 +163,115 @@ public struct nmp_transport_Value: FlatBufferTable, FlatbuffersVectorInitializab
   }
 }
 
+public struct nmp_transport_TypedPayload: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NMPU" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_TypedPayload.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case schemaId = 4
+    case schemaVersion = 6
+    case fileIdentifier = 8
+    case payload = 10
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var schemaId: String? { let o = _accessor.offset(VTOFFSET.schemaId.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var schemaIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.schemaId.v) }
+  public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 1 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var fileIdentifier: String? { let o = _accessor.offset(VTOFFSET.fileIdentifier.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var fileIdentifierSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.fileIdentifier.v) }
+  public var payload: FlatbufferVector<UInt8> { return _accessor.vector(at: VTOFFSET.payload.v, byteSize: 1) }
+  public func withUnsafePointerToPayload<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.payload.v, body: body) }
+  public static func startTypedPayload(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
+  public static func add(schemaId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: schemaId, at: VTOFFSET.schemaId.p) }
+  public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
+  public static func add(fileIdentifier: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: fileIdentifier, at: VTOFFSET.fileIdentifier.p) }
+  public static func addVectorOf(payload: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: payload, at: VTOFFSET.payload.p) }
+  public static func endTypedPayload(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createTypedPayload(
+    _ fbb: inout FlatBufferBuilder,
+    schemaIdOffset schemaId: Offset = Offset(),
+    schemaVersion: UInt32 = 1,
+    fileIdentifierOffset fileIdentifier: Offset = Offset(),
+    payloadVectorOffset payload: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_transport_TypedPayload.startTypedPayload(&fbb)
+    nmp_transport_TypedPayload.add(schemaId: schemaId, &fbb)
+    nmp_transport_TypedPayload.add(schemaVersion: schemaVersion, &fbb)
+    nmp_transport_TypedPayload.add(fileIdentifier: fileIdentifier, &fbb)
+    nmp_transport_TypedPayload.addVectorOf(payload: payload, &fbb)
+    return nmp_transport_TypedPayload.endTypedPayload(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.schemaId.p, fieldName: "schemaId", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.schemaVersion.p, fieldName: "schemaVersion", required: false, type: UInt32.self)
+    try _v.visit(field: VTOFFSET.fileIdentifier.p, fieldName: "fileIdentifier", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.payload.p, fieldName: "payload", required: false, type: ForwardOffset<Vector<UInt8, UInt8>>.self)
+    _v.finish()
+  }
+}
+
+public struct nmp_transport_TypedProjection: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NMPU" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_TypedProjection.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case key = 4
+    case payload = 6
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var key: String? { let o = _accessor.offset(VTOFFSET.key.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var keySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.key.v) }
+  public var payload: nmp_transport_TypedPayload? { let o = _accessor.offset(VTOFFSET.payload.v); return o == 0 ? nil : nmp_transport_TypedPayload(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
+  public static func startTypedProjection(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public static func add(key: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: key, at: VTOFFSET.key.p) }
+  public static func add(payload: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: payload, at: VTOFFSET.payload.p) }
+  public static func endTypedProjection(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createTypedProjection(
+    _ fbb: inout FlatBufferBuilder,
+    keyOffset key: Offset = Offset(),
+    payloadOffset payload: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_transport_TypedProjection.startTypedProjection(&fbb)
+    nmp_transport_TypedProjection.add(key: key, &fbb)
+    nmp_transport_TypedProjection.add(payload: payload, &fbb)
+    return nmp_transport_TypedProjection.endTypedProjection(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.key.p, fieldName: "key", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.payload.p, fieldName: "payload", required: false, type: ForwardOffset<nmp_transport_TypedPayload>.self)
+    _v.finish()
+  }
+}
+
 public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NMPU" }
+  public static var id: String { "NMPU" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_SnapshotFrame.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -177,24 +279,29 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
   private enum VTOFFSET: VOffset {
     case schemaVersion = 4
     case payload = 6
+    case typedProjections = 8
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
   public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 1 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var payload: nmp_transport_Value? { let o = _accessor.offset(VTOFFSET.payload.v); return o == 0 ? nil : nmp_transport_Value(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startSnapshotFrame(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public var typedProjections: FlatbufferVector<nmp_transport_TypedProjection> { return _accessor.vector(at: VTOFFSET.typedProjections.v, byteSize: 4) }
+  public static func startSnapshotFrame(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 3) }
   public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
   public static func add(payload: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: payload, at: VTOFFSET.payload.p) }
+  public static func addVectorOf(typedProjections: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: typedProjections, at: VTOFFSET.typedProjections.p) }
   public static func endSnapshotFrame(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createSnapshotFrame(
     _ fbb: inout FlatBufferBuilder,
     schemaVersion: UInt32 = 1,
-    payloadOffset payload: Offset = Offset()
+    payloadOffset payload: Offset = Offset(),
+    typedProjectionsVectorOffset typedProjections: Offset = Offset()
   ) -> Offset {
     let __start = nmp_transport_SnapshotFrame.startSnapshotFrame(&fbb)
     nmp_transport_SnapshotFrame.add(schemaVersion: schemaVersion, &fbb)
     nmp_transport_SnapshotFrame.add(payload: payload, &fbb)
+    nmp_transport_SnapshotFrame.addVectorOf(typedProjections: typedProjections, &fbb)
     return nmp_transport_SnapshotFrame.endSnapshotFrame(&fbb, start: __start)
   }
 
@@ -202,6 +309,7 @@ public struct nmp_transport_SnapshotFrame: FlatBufferTable, FlatbuffersVectorIni
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.schemaVersion.p, fieldName: "schemaVersion", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.payload.p, fieldName: "payload", required: false, type: ForwardOffset<nmp_transport_Value>.self)
+    try _v.visit(field: VTOFFSET.typedProjections.p, fieldName: "typedProjections", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_transport_TypedProjection>, nmp_transport_TypedProjection>>.self)
     _v.finish()
   }
 }
@@ -212,7 +320,7 @@ public struct nmp_transport_PanicFrame: FlatBufferTable, FlatbuffersVectorInitia
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NMPU" }
+  public static var id: String { "NMPU" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_PanicFrame.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -250,7 +358,7 @@ public struct nmp_transport_UpdateFrame: FlatBufferTable, FlatbuffersVectorIniti
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NMPU" }
+  public static var id: String { "NMPU" } 
   public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_transport_UpdateFrame.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
@@ -292,3 +400,4 @@ public struct nmp_transport_UpdateFrame: FlatBufferTable, FlatbuffersVectorIniti
     _v.finish()
   }
 }
+
