@@ -77,7 +77,11 @@ pub use meta_timeline::{
     Nip10ModularTimelineView, Nip10Resolver,
 };
 pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-pub use op_feed::{register_op_feed, Nip10ReplyAttribution, OpFeedEngine};
+pub use op_feed::{
+    decode_op_feed_snapshot, encode_op_feed_snapshot, register_op_feed, Nip10ReplyAttribution,
+    OpFeedEngine, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID,
+    OP_FEED_SCHEMA_VERSION,
+};
 pub use profile_display::{AuthorDisplay, ProfileDisplay};
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,

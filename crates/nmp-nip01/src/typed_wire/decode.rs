@@ -183,7 +183,13 @@ fn decode_repost_attribution(
     })
 }
 
-fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEventCard, String> {
+/// Decode one shared `nmp.nip01.TimelineEventCard` FlatBuffers table back into
+/// the owned [`TimelineEventCard`].
+///
+/// `pub(crate)` so the OP-feed decoder (`crate::op_feed::typed_wire`) reuses the
+/// identical per-card decoding — including the embedded typed NFCT content tree
+/// and `content_render` — rather than re-deriving it (ADR-0038 Commitment 2).
+pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEventCard, String> {
     let author_display =
         decode_author_display(card.author_display().ok_or("card missing author_display")?);
     let relation_counts = decode_relation_counts(

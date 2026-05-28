@@ -36,11 +36,11 @@
 //!       crates/nmp-nip01/schema/timeline_snapshot.fbs
 //! ```
 
-mod decode;
 // `pub(crate)` so the sibling `op_feed::typed_wire` can reuse the per-card
-// encoder (`encode::encode_card`) — the single biggest reuse win (ADR-0038
-// Commitment 2): the embedded NFCT / content_render bytes are produced by
-// exactly the code NFTS uses today.
+// encoder (`encode::encode_card`) / decoder (`decode::decode_card`) — the single
+// biggest reuse win (ADR-0038 Commitment 2): the embedded NFCT / content_render
+// bytes are produced by exactly the code NFTS uses today.
+pub(crate) mod decode;
 pub(crate) mod encode;
 
 use crate::timeline_projection::ModularTimelineSnapshot;
