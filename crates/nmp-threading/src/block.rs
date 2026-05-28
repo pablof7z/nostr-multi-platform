@@ -11,7 +11,18 @@ use crate::pointer::ThreadPointer;
 /// events (root-first newest-last when fully chained; see [`crate::Grouper`]).
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TimelineBlock {
-    Standalone(EventId),
+    Standalone {
+        /// The single event rendered by this block.
+        id: EventId,
+        /// Terminal root pointer resolved for the event. `None` when the
+        /// event is itself a thread root; `Some` when the event is a reply
+        /// that could not be stitched into a chain (parent absent, leaf
+        /// taken, or `max_module_size` hit). Preserving the pointer lets
+        /// renderers flag the block as a partial-chain head rather than
+        /// mistaking the reply for a root.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        root: Option<ThreadPointer>,
+    },
     Module {
         /// Event ids in display order: root-first (oldest) to leaf (newest).
         events: Vec<EventId>,
@@ -32,7 +43,7 @@ impl TimelineBlock {
     #[must_use] 
     pub fn len(&self) -> usize {
         match self {
-            Self::Standalone(_) => 1,
+            Self::Standalone { .. } => 1,
             Self::Module { events, .. } => events.len(),
         }
     }

@@ -9,8 +9,14 @@ import Foundation
 //
 // `TimelineBlock` is a tagged enum on the Rust side (serde default
 // representation). The two variants are:
-//   { "Standalone": "<event_id>" }
+//   { "Standalone": { "id": "<event_id>", "root": ThreadPointer? } }
 //   { "Module": { "events": [...], "has_gap": bool, "root": ThreadPointer? } }
+//
+// `Standalone.root` carries `#[serde(default, skip_serializing_if =
+// "Option::is_none")]` on the Rust side, so the `root` field is ABSENT
+// (not `null`) when the standalone event is itself a thread root. It is
+// present only when the event is a reply that could not be stitched into a
+// chain (partial-chain head).
 //
 // `ThreadPointer` is another tagged enum (Event / Address / External).
 // Chirp only ever displays the Event variant's id (for the "show this
@@ -27,12 +33,12 @@ import Foundation
 /// existing tweet row; `module` renders as a vertical-line stack of two or
 /// three events sharing the same thread.
 enum TimelineBlock: Decodable, Equatable {
-    case standalone(eventID: String)
+    case standalone(eventID: String, root: ThreadPointer?)
     case module(events: [String], hasGap: Bool, root: ThreadPointer?)
 
     var stableID: String {
         switch self {
-        case .standalone(let id):
+        case .standalone(let id, _):
             return "standalone:\(id)"
         case .module(let events, _, let root):
             return "module:\(root?.eventID ?? events.first ?? "unknown"):\(events.joined(separator: ","))"
@@ -43,7 +49,7 @@ enum TimelineBlock: Decodable, Equatable {
     /// returns its `events` array (root-first newest-last).
     var eventIDs: [String] {
         switch self {
-        case .standalone(let id): return [id]
+        case .standalone(let id, _): return [id]
         case .module(let events, _, _): return events
         }
     }
@@ -68,6 +74,11 @@ enum TimelineBlock: Decodable, Equatable {
         case module = "Module"
     }
 
+    private struct StandalonePayload: Decodable {
+        let id: String
+        let root: ThreadPointer?
+    }
+
     private struct ModulePayload: Decodable {
         let events: [String]
         let hasGap: Bool
@@ -76,8 +87,8 @@ enum TimelineBlock: Decodable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let id = try container.decodeIfPresent(String.self, forKey: .standalone) {
-            self = .standalone(eventID: id)
+        if let standalone = try container.decodeIfPresent(StandalonePayload.self, forKey: .standalone) {
+            self = .standalone(eventID: standalone.id, root: standalone.root)
             return
         }
         if let module = try container.decodeIfPresent(ModulePayload.self, forKey: .module) {

@@ -87,7 +87,7 @@ pub trait FeedBlock: Clone {
 impl FeedBlock for TimelineBlock {
     fn feed_event_ids(&self) -> Vec<String> {
         match self {
-            Self::Standalone(id) => vec![id.clone()],
+            Self::Standalone { id, .. } => vec![id.clone()],
             Self::Module { events, .. } => events.clone(),
         }
     }

@@ -917,8 +917,16 @@ part of the deleted scratch plan.
 **Status:** spec proposed 2026-05-27 in
 [`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md).
 **Rung 1 (Stage 0 kernel substrate additions) landed 2026-05-28** — five pure
-kernel additions with no consumer yet (see WIP.md / the rung-1 PR). Rungs 2–7
-remain.
+kernel additions with no consumer yet (see WIP.md / the rung-1 PR).
+**Rung 2 (Stage 1 — lossless `TimelineBlock::Standalone`) landed 2026-05-28**
+— `Standalone(EventId)` reshaped to `Standalone { id, root: Option<ThreadPointer> }`;
+the grouper's chain-length-1 path (`grouper.rs:367`) and the module-collapse
+removal path now preserve the resolved root pointer, closing the
+root-dropping bug. Every Rust + Swift consumer of the serialized shape was
+patched atomically. Behavior delta: chirp-tui's ↳ "reply in thread"
+indicator now fires for `Standalone` reply rows (it previously only lit for
+`Module` blocks). Home feed still rides `ModularTimelineProjection` (the
+projection swap is rung 7). Rungs 3–7 remain.
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"

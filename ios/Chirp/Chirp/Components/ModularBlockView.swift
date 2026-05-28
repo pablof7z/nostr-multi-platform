@@ -60,7 +60,7 @@ struct ModularBlockView: View {
 
     var body: some View {
         switch block {
-        case .standalone(let id):
+        case .standalone(let id, _):
             standaloneRow(id: id)
         case .module(let events, let hasGap, let root):
             moduleStack(events: events, hasGap: hasGap, root: root)
