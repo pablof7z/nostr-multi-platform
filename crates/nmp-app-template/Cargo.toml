@@ -27,6 +27,16 @@ nmp-wot = { path = "../nmp-wot" }
 # policy data); this assembly crate is one of the layers entitled to depend
 # on both `nmp-core` and the coverage-gate crate.
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+# V-80 rung 6 (`register_op_feed_defaults`): the OP-centric home-feed
+# composition. The composition root is the ONE crate entitled to name
+# `NmpApp` (`nmp-ffi`) in production — every other crate goes through the
+# `AppHost` trait or `nmp-core` primitives to avoid the dependency-graph
+# inversion rungs 4/5 rejected. `nmp-nip01` supplies the NIP-10 OP-feed
+# instance (`register_op_feed`, `build_actor_claim_sink`); `nmp-feed`
+# supplies the `FeedController` / `EventLookup` types the engine is cast to.
+nmp-ffi = { path = "../nmp-ffi" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-feed = { path = "../nmp-feed" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 nostr = { version = "0.44", default-features = false, features = ["std"] }

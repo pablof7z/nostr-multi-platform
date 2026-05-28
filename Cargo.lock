@@ -3935,7 +3935,9 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "nmp-coverage-gate",
+ "nmp-feed",
  "nmp-ffi",
+ "nmp-nip01",
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip57",
