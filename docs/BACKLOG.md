@@ -1121,6 +1121,44 @@ is zero new lines. Tracked separately when `nmp-nip22` crate is created.
 
 ---
 
+### V-82 · `NmpApp` does not expose the kernel's active-account slot — OP-feed composition root (rung 7) + Chirp cannot read the live active account [MEDIUM · sub-item of V-80, rung-7 prerequisite] — LANDED 2026-05-28
+
+**Origin (rung-6 finding):** the kernel owns the authoritative
+`ActiveAccountSlot` (`Arc<Mutex<Option<String>>>`, the active account's hex
+pubkey, written by the actor reducer on sign-in / account-switch / logout).
+The kernel "makes its own, never threaded back" — `NmpApp` exposed no
+accessor — so host code (the V-80 OP-feed composition root at rung 7, and
+Chirp) could not read the real slot to seed `ActiveFollowSet::new` or drive
+`ActiveFollowSet::notify_account_changed` on an account switch.
+
+**Fix (LANDED):** `NmpApp::active_account_handle(&self) -> ActiveAccountSlot`
+in `nmp-ffi` (`crates/nmp-ffi/src/lib.rs`). Single source of truth, no
+divergent mirror: `nmp_app_new` constructs the slot once and hands the SAME
+`Arc` to the kernel at actor startup via the new
+`Kernel::with_storage_path_and_account_slot` constructor (the kernel's
+internal `Arc::clone` — including the test-support outbox resolver — references
+the supplied slot, so no internal consumer diverges). The `Reset` dispatch arm
+rebuilds the kernel through the same constructor with the actor-held slot, so
+the shared handle survives a state wipe (mirrors the routing-trace re-publish
+contract). The actor reducer remains the sole writer (D4); reads happen
+through the host handle. Substrate-clean: the slot holds a raw pubkey `String`
+— no NIP noun, D0 stays clean (generic identity plumbing).
+
+**Tests:** 3 nmp-ffi tests driving REAL sign-in / account-switch / Reset
+through the actor (not a direct slot poke), incl. an `Arc::as_ptr` identity
+check that rules out two divergent slots and a Reset-then-sign-in survival
+test (`crates/nmp-ffi/src/active_account_handle_tests.rs`). `cargo test -p
+nmp-ffi` 61 pass; `cargo test -p nmp-core --lib` 997 pass; doctrine-lint smoke
+42 pass; `cargo build -p nmp-app-template -p nmp-app-chirp` clean.
+
+**Spec-vs-code drift:** the kernel's `ActiveAccountSlot` construction is at
+`crates/nmp-core/src/kernel/mod.rs` ~line 1413 (`new_active_account_slot()`),
+not ~1406 (the repo moved); the kernel already had a `active_account_handle()`
+accessor (`kernel/mod.rs` ~line 1340) — the gap was only the `NmpApp` → kernel
+*sharing* at construction, which this item closes.
+
+---
+
 ### V-81 · `event_claim_released` signal fires on Phase-1 EOSE, not final give-up — rung-3 consumer must not drop pending attribution early [MEDIUM · sub-item of V-80, blocks rung 3 correctness]
 
 **Origin:** rung-1 (PR #727, commit `171090d3`) added the
