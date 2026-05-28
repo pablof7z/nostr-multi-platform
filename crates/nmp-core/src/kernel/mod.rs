@@ -27,6 +27,12 @@ mod action_lifecycle_tests;
 pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_stages_tests;
+// V-59 rung 1 — public typed accessor over the active account's
+// `timeline_authors` projection (raw pubkeys). The OP-centric feed's
+// `FollowSetLookup` capability (later rung) reads through this seam.
+mod active_timeline_authors;
+#[cfg(test)]
+mod active_timeline_authors_tests;
 mod auth;
 mod clock;
 #[cfg(test)]
