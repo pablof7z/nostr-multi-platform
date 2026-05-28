@@ -79,6 +79,8 @@ mod nostr;
 #[cfg(test)]
 mod outbox_tests;
 #[cfg(test)]
+mod pre_kind3_buffer_tests;
+#[cfg(test)]
 mod profile_claim_tests;
 mod provenance;
 #[cfg(test)]
@@ -378,8 +380,8 @@ use crate::substrate::EmptyMailboxCache;
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
     empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
-    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
-    ParsedRelayList,
+    BoundedMessageMap, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache,
+    OutboxRouter, ParsedRelayList, MAX_PROJECTION_MESSAGES,
 };
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
@@ -615,6 +617,32 @@ pub struct Kernel {
     #[cfg(any(test, feature = "test-support"))]
     test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
     timeline_authors: BTreeSet<String>,
+    /// V-59 rung 1 (Q7) — pre-kind:3 ingest buffer. Holds kind:1 / kind:6
+    /// events that arrived BEFORE the active account's follow set named their
+    /// author — i.e. `should_store_event` returned `false` solely because
+    /// `!timeline_authors.contains(author)`. Instead of dropping such an event
+    /// (which is the historical behavior), `ingest_timeline_event` parks it
+    /// here keyed by event id.
+    ///
+    /// `sync_follow_feed_interests` walks the buffer after rebuilding
+    /// `timeline_authors`: any entry whose author is now followed is re-fed
+    /// through `ingest_timeline_event` (and thus stored); the rest are dropped.
+    /// Cleared on identity change so a switched-out account's parked events
+    /// never leak into the new account's stream.
+    ///
+    /// Bounded by [`MAX_PROJECTION_MESSAGES`] (D5): a burst of events for
+    /// authors that never become followed evicts oldest-first rather than
+    /// growing without bound. No consumer reads this buffer outside the kernel
+    /// ingest path — it is purely an internal staging area.
+    ///
+    /// The value pairs the parked `NostrEvent` with the delivering relay URL
+    /// (its provenance) so the replay through `ingest_timeline_event`
+    /// re-records the SAME first-source provenance the event would have had if
+    /// the follow set had named its author on first arrival. (The V-59 §5
+    /// sketch typed this `BoundedMessageMap<EventId, NostrEvent>`; the tuple
+    /// preserves provenance for the replay — the buffer has no external
+    /// consumer, so the value shape is an internal detail.)
+    pre_kind3_buffer: BoundedMessageMap<String, (NostrEvent, String)>,
     /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
     /// stale entries before re-registering on kind:3 change. Derived from the
@@ -1495,6 +1523,7 @@ impl Kernel {
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,
             timeline_authors: BTreeSet::new(),
+            pre_kind3_buffer: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
             event_claims: HashMap::new(),

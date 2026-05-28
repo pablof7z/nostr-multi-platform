@@ -480,6 +480,18 @@ impl Kernel {
         &self.timeline_authors
     }
 
+    /// Count of events currently parked in the V-59 pre-kind:3 buffer.
+    #[cfg(test)]
+    pub(crate) fn pre_kind3_buffer_len_for_test(&self) -> usize {
+        self.pre_kind3_buffer.len()
+    }
+
+    /// Whether the pre-kind:3 buffer holds an event with `event_id`.
+    #[cfg(test)]
+    pub(crate) fn pre_kind3_buffer_contains_for_test(&self, event_id: &str) -> bool {
+        self.pre_kind3_buffer.contains_key(event_id)
+    }
+
     /// Read-only snapshot of `profile_requests.pending` (the queued kind:0
     /// fetch set).
     #[cfg(test)]

@@ -25,6 +25,22 @@ impl Kernel {
         event: NostrEvent,
     ) -> bool {
         if !self.should_store_event(sub_id, &event) {
+            // V-59 rung 1 (Q7) — pre-kind:3 buffer. A kind:1 / kind:6 event
+            // whose author is not (yet) in the active account's follow set
+            // would otherwise be dropped here. Park it instead: a later kind:3
+            // (`sync_follow_feed_interests`) that adds the author replays it.
+            //
+            // `should_store_event`'s FIRST clause is
+            // `timeline_authors.contains(author)`, so reaching this branch
+            // already implies `!timeline_authors.contains(author)`; the
+            // explicit re-check below is kept for self-documenting intent and
+            // to stay correct if that clause is ever reordered. We only buffer
+            // note/repost kinds — other kinds dropped here have their own
+            // ingest arms and never depend on the follow set.
+            if matches!(event.kind, 1 | 6) && !self.timeline_authors.contains(&event.pubkey) {
+                self.pre_kind3_buffer
+                    .insert(event.id.clone(), (event, relay_url.to_string()));
+            }
             return false;
         }
 
