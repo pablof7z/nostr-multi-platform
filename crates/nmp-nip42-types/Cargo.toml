@@ -3,6 +3,7 @@ name = "nmp-nip42-types"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "Dependency-free NIP-42 wire/type substrate: the RelayAuthState lifecycle enum and the AUTH/OK frame shapes + parsers. Shared verbatim by nmp-core (kernel-inlined FSM) and nmp-nip42 (standalone protocol module) so the two surfaces cannot drift. Depends on nothing in the workspace (serde / serde_json only)."
 
 [dependencies]

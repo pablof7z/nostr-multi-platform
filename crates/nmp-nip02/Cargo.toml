@@ -3,6 +3,7 @@ name = "nmp-nip02"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "NIP-02 (Follow List, kind:3) + NIP-25 (Reactions, kind:7) ActionModules — substrate-level social-graph primitives. The crate name reflects the originating substrate seam (NIP-02 follow lists are the core social primitive); the kind:7 reaction module is co-located here because Follow/Unfollow/React form the minimal social-verb cluster every Nostr client implements and they share the `nmp.*` namespace shape that D9 requires of every protocol crate."
 
 [lib]

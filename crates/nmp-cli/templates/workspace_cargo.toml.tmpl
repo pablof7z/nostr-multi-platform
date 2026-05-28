@@ -1,9 +1,9 @@
 # Scaffolded by `nmp init {{name}}`.
 #
 # The generated FFI crate (apps/{{name}}/nmp-app-{{name}}, produced by
-# `nmp gen modules`) is intentionally NOT a member here: it expects a
-# monorepo layout (../../../crates/nmp-core). Add it as a member once you
-# are building inside an nmp checkout. See README.md.
+# `nmp gen modules`) is intentionally NOT a member here until you are ready
+# to link a native shell. See README.md for the release vs. local NMP
+# dependency modes.
 [workspace]
 members = ["crates/{{pkg}}"]
 resolver = "2"

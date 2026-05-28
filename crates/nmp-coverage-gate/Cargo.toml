@@ -3,6 +3,7 @@ name = "nmp-coverage-gate"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "D2 coverage-gate policy — thresholds and back-off rules for negentropy-before-REQ enforcement."
 
 [dependencies]

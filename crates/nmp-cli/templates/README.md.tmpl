@@ -6,7 +6,7 @@ Scaffolded by `nmp init {{name}}`.
 
 | Path | What |
 |------|------|
-| `nmp.toml` | App manifest. Declares the kernel, protocol modules, and app modules. Consumed by `nmp gen modules`. |
+| `nmp.toml` | App manifest. Declares the NMP dependency policy, kernel, protocol modules, and app modules. Consumed by `nmp gen modules`. |
 | `crates/{{pkg}}/` | Your app's core. Owns the app's nouns (`EntryRecord`, …). One Domain / View / Action module. **App nouns never go in `nmp-core`** (doctrine D0). |
 | `crates/{{pkg}}/examples/shell.rs` | Minimal headless shell stub. |
 
@@ -26,13 +26,19 @@ nmp gen modules --check    # verifies it is up to date (deterministic)
 ```
 
 `nmp gen modules` produces the per-app FFI crate `nmp-app-{{name}}`
-(`AppAction` / `AppUpdate` / `ViewSpec` enums, the `FfiApp` wrapper). That
-crate references the kernel via a **monorepo-relative** path
-(`../../../crates/nmp-core`). To build it, place this app inside an `nmp`
-checkout (so `crates/nmp-core` resolves) and add
-`apps/{{name}}/nmp-app-{{name}}` to the `[workspace] members` list. The
-`{{pkg}}` skeleton itself builds standalone — its `nmp-core` path was
-resolved to an absolute location at `nmp init` time.
+(`AppAction` / `AppUpdate` / `ViewSpec` enums, the `FfiApp` wrapper). The
+generated crate follows the `[nmp]` dependency policy in `nmp.toml`: versioned
+release-consumer apps use published `nmp-*` crates, while framework-development
+apps use a local checkout path.
+
+## Upgrade NMP
+
+```sh
+nmp upgrade --to 0.2.0
+nmp gen modules
+nmp gen modules --check
+nmp doctor
+```
 
 ## Next steps
 

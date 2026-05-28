@@ -54,6 +54,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/pablof7z/nostr-multi-platform"
 version = "0.1.0"
 
 # Shared third-party dependency versions. Declare the *version* and the

@@ -3,6 +3,7 @@ name = "nmp-nip01"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "NIP-01 short text notes (kind:1) relation surface as an NMP protocol crate — NoteRecord decoder (+ NIP-10 refs), NoteBuilder, RepliesView + ThreadView per docs/design/kind-wrappers.md §3 and view-catalog §5. Relation read-views + note builder only; kernel timeline extraction is a separate effort."
 
 [dependencies]

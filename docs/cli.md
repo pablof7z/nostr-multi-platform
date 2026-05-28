@@ -23,13 +23,15 @@ cargo run -p nmp-cli -- <args>
 
 ## Commands
 
-### `nmp init <app-name> [--path DIR]`
+### `nmp init <app-name> [--path DIR] [--nmp-version VERSION | --nmp-path DIR]`
 
 Scaffolds a new, immediately-buildable NMP app.
 
 ```sh
 nmp init my-app                 # scaffolds ./my-app
 nmp init my-app --path /tmp/x   # scaffolds /tmp/x
+nmp init my-app --nmp-version 0.2.0
+nmp init my-app --nmp-path ../nostr-multi-platform
 ```
 
 App-name rules: lowercase letters, digits, and single hyphens; must start
@@ -41,7 +43,7 @@ Produced layout:
 ```text
 <root>/
   Cargo.toml                 # workspace: members = ["crates/<name>-core"]
-  nmp.toml                   # app manifest (kernel + protocol + app modules)
+  nmp.toml                   # app manifest (NMP baseline + modules)
   README.md                  # per-app next steps
   crates/<name>-core/
     Cargo.toml               # nmp-core (absolute path) + serde
@@ -63,10 +65,11 @@ cargo test -p my-app-core            # 2 tests pass
 cargo run --example shell -p my-app-core
 ```
 
-This works because `nmp init` resolves the `nmp-core` path dependency to the
-**absolute** location of the checkout that ran it, so the skeleton builds
-from any directory (including a tempdir — see the integration test
-`crates/nmp-cli/tests/init.rs`).
+By default, `nmp init` writes `dependency_mode = "path"` and resolves the
+NMP checkout path to the absolute location of the checkout that ran it, so the
+skeleton builds from any directory (including a tempdir — see the integration
+test `crates/nmp-cli/tests/init.rs`). Use `--nmp-version` for apps consuming a
+published NMP release; use `--nmp-path` when developing NMP and an app together.
 
 ### `nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]`
 
@@ -85,13 +88,37 @@ nmp gen modules            # emit apps/<name>/nmp-app-<name>
 nmp gen modules --check     # verify it is up to date (deterministic)
 ```
 
-**Monorepo-path caveat.** The generated `nmp-app-<name>/Cargo.toml`
-references the kernel monorepo-relatively (`../../../crates/nmp-core`), per
-ADR-0010 — that crate is designed to live inside an `nmp` checkout. To build
-the generated FFI crate, place the app under an `nmp` checkout so
-`crates/nmp-core` resolves, and add `apps/<name>/nmp-app-<name>` to the
-workspace members. The hand-written `<name>-core` skeleton has no such
-constraint (its `nmp-core` path is absolute).
+The generated `nmp-app-<name>/Cargo.toml` follows `[nmp]` in `nmp.toml`:
+
+- `dependency_mode = "version"` emits versioned dependencies for `nmp-core`,
+  `nmp-ffi`, and any `nmp-*` protocol modules. App-local modules remain path
+  dependencies.
+- `dependency_mode = "path"` emits local path dependencies against the NMP
+  checkout and workspace layout. This is the mode for framework development.
+
+### `nmp upgrade --to VERSION [--manifest nmp.toml]`
+
+Moves an app manifest to a pinned NMP release baseline.
+
+```sh
+nmp upgrade --to 0.2.0
+nmp gen modules
+nmp gen modules --check
+nmp doctor
+```
+
+The command updates the `[nmp]` section to `dependency_mode = "version"`,
+records the target release, and rewrites direct `nmp-*` dependencies in local
+app-module crates listed under `[modules].app`. Regeneration then rewrites
+generated FFI crate dependencies to the matching `nmp-*` release train.
+Component source updates remain explicit through `nmp update component` so
+local app edits are not silently overwritten.
+
+### `nmp doctor [--manifest nmp.toml]`
+
+Reports the app name, dependency mode, pinned NMP version or checkout path, and
+module count. It is the lightweight post-upgrade sanity check for app repos and
+the seed for deeper toolchain checks.
 
 ### `nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]`
 
@@ -161,6 +188,12 @@ Component contract:
 5. `nmp gen modules --check` → no drift (codegen is deterministic).
 
 A second test asserts invalid app names are rejected.
+
+`crates/nmp-cli/tests/upgrade.rs` covers the release-consumer path:
+
+1. `nmp upgrade --to <version>` rewrites `[nmp]`.
+2. `nmp gen modules` emits versioned `nmp-core` / `nmp-ffi` dependencies.
+3. `nmp doctor` reports the pinned baseline.
 
 `crates/nmp-cli/tests/component.rs` covers component installation:
 

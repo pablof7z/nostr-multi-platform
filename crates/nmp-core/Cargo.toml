@@ -3,6 +3,8 @@ name = "nmp-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "NMP kernel substrate: actor runtime, state, capabilities, action registry, snapshots, and protocol extension seams."
 
 [lib]
 name = "nmp_core"

@@ -3,6 +3,7 @@ name = "nmp-signer-iface"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Transport interface types shared by nmp-core and nmp-signers — SignerError, SignerOp, and the NIP-46 Nip46Rpc / Nip46Transport contract. Leaf crate: depends on nothing in the workspace so it can sit below the doctrine D0 boundary."
 
 [lib]

@@ -3,6 +3,7 @@ name = "nmp-signer-broker"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "App-neutral bunker (NIP-46) handshake + transport broker."
 
 [lib]

@@ -3,6 +3,7 @@ name = "nmp-wasm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Browser-facing NMP worker protocol and wasm runtime facade."
 
 [lib]

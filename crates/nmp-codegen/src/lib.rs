@@ -23,7 +23,7 @@ pub mod swift_projections_registry;
 use std::path::Path;
 
 pub use generate::{generate_modules, GenerationReport};
-pub use manifest::{AppManifest, ModuleSet};
+pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
 
 #[must_use]
@@ -65,7 +65,7 @@ pub(crate) fn variant_name(package: &str) -> String {
         .collect()
 }
 
-#[must_use] 
+#[must_use]
 pub fn app_crate_name(app_name: &str) -> String {
     format!("nmp-app-{}", app_name.replace('_', "-"))
 }

@@ -3,6 +3,7 @@ name = "nmp-nip57"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptRecord decoder (kind:9735) + ZapRequestBuilder (kind:9734) + ZapAction ActionModule + ZapsView + LNURL-pay fetcher (FetchLnurlInvoiceCommand)."
 
 [dependencies]

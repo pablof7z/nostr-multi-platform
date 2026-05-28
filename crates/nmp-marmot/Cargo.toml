@@ -3,6 +3,7 @@ name = "nmp-marmot"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "Marmot Protocol (MLS-over-Nostr) as a Layer-4 NIP crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Mutating ops dispatch through the generic nmp_app_dispatch_action(\"nmp.marmot\", …) seam (ADR-0025 retired in PR 3, 2026-05-23); the surviving nmp_marmot_* C-ABI cluster is read-side / stateful-handle lifecycle (per-app FFI, the same pattern Chirp's nmp_app_chirp_* cluster uses). See docs/plan/marmot-mls.md."
 
 [lib]

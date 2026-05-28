@@ -3,6 +3,7 @@ name = "nmp-feed"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "Reusable bounded Nostr feed windowing, cursor paging, and feed controller registry for NMP apps."
 
 [dependencies]

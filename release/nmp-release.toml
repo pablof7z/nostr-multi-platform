@@ -1,0 +1,227 @@
+# Canonical release-train manifest for NMP.
+#
+# This file is operational configuration, not a planning document. The product
+# plan lives in docs/plan/m17-release.md and docs/BACKLOG.md.
+
+schema_version = 1
+release_train = "nmp"
+version_source = "workspace.package.version"
+tag_pattern = "nmp-v{version}"
+crates_io_tool = "release-plz"
+npm_cli_package = "@nmp/cli"
+npm_publish_mode = "trusted-publishing"
+
+required_gates = [
+  "cargo test --workspace --exclude nmp-android-ffi --exclude nmp-app-chirp --exclude nmp-desktop",
+  "cargo test -p nmp-testing --test doctrine_lint_smoke",
+  "bash ci/check-release-manifest.sh",
+  "bash ci/release-package-dry-run.sh",
+  "bash ci/check-flatbuffers-version-pins.sh",
+  "bash ci/check-ffi-header-drift.sh",
+  "bash ci/check-ffi-surface-freeze.sh",
+]
+
+[[public_crates]]
+name = "nmp-core"
+path = "crates/nmp-core"
+
+[[public_crates]]
+name = "nmp-store"
+path = "crates/nmp-store"
+
+[[public_crates]]
+name = "nmp-network"
+path = "crates/nmp-network"
+
+[[public_crates]]
+name = "nmp-planner"
+path = "crates/nmp-planner"
+
+[[public_crates]]
+name = "nmp-router"
+path = "crates/nmp-router"
+
+[[public_crates]]
+name = "nmp-ffi"
+path = "crates/nmp-ffi"
+
+[[public_crates]]
+name = "nmp-wasm"
+path = "crates/nmp-wasm"
+
+[[public_crates]]
+name = "nmp-app-template"
+path = "crates/nmp-app-template"
+
+[[public_crates]]
+name = "nmp-cli"
+path = "crates/nmp-cli"
+
+[[public_crates]]
+name = "nmp-codegen"
+path = "crates/nmp-codegen"
+
+[[public_crates]]
+name = "nmp-content"
+path = "crates/nmp-content"
+
+[[public_crates]]
+name = "nmp-content-fixtures"
+path = "crates/nmp-content-fixtures"
+
+[[public_crates]]
+name = "nmp-coverage-gate"
+path = "crates/nmp-coverage-gate"
+
+[[public_crates]]
+name = "nmp-feed"
+path = "crates/nmp-feed"
+
+[[public_crates]]
+name = "nmp-marmot"
+path = "crates/nmp-marmot"
+
+[[public_crates]]
+name = "nmp-nip01"
+path = "crates/nmp-nip01"
+
+[[public_crates]]
+name = "nmp-nip02"
+path = "crates/nmp-nip02"
+
+[[public_crates]]
+name = "nmp-nip17"
+path = "crates/nmp-nip17"
+
+[[public_crates]]
+name = "nmp-nip18"
+path = "crates/nmp-nip18"
+
+[[public_crates]]
+name = "nmp-nip29"
+path = "crates/nmp-nip29"
+
+[[public_crates]]
+name = "nmp-nip42"
+path = "crates/nmp-nip42"
+
+[[public_crates]]
+name = "nmp-nip42-types"
+path = "crates/nmp-nip42-types"
+
+[[public_crates]]
+name = "nmp-nip47"
+path = "crates/nmp-nip47"
+
+[[public_crates]]
+name = "nmp-nip57"
+path = "crates/nmp-nip57"
+
+[[public_crates]]
+name = "nmp-nip59"
+path = "crates/nmp-nip59"
+
+[[public_crates]]
+name = "nmp-nip77"
+path = "crates/nmp-nip77"
+
+[[public_crates]]
+name = "nmp-nostr-lmdb"
+path = "crates/nmp-nostr-lmdb"
+
+[[public_crates]]
+name = "nmp-nwc"
+path = "crates/nmp-nwc"
+
+[[public_crates]]
+name = "nmp-repl"
+path = "crates/nmp-repl"
+
+[[public_crates]]
+name = "nmp-signer-broker"
+path = "crates/nmp-signer-broker"
+
+[[public_crates]]
+name = "nmp-signer-iface"
+path = "crates/nmp-signer-iface"
+
+[[public_crates]]
+name = "nmp-signers"
+path = "crates/nmp-signers"
+
+[[public_crates]]
+name = "nmp-testing"
+path = "crates/nmp-testing"
+
+[[public_crates]]
+name = "nmp-threading"
+path = "crates/nmp-threading"
+
+[[public_crates]]
+name = "nmp-wot"
+path = "crates/nmp-wot"
+
+[[private_packages]]
+name = "nmp-android-ffi"
+path = "crates/nmp-android-ffi"
+reason = "standalone Android/JNI workspace; versioned from the same tag but not published through root cargo package dry-run"
+
+[[private_packages]]
+name = "nmp-desktop"
+path = "crates/nmp-desktop"
+reason = "reference shell binary, not a reusable framework crate for the first release train"
+
+[[private_packages]]
+name = "nmp-app-chirp"
+path = "apps/chirp/nmp-app-chirp"
+reason = "app composition crate"
+
+[[private_packages]]
+name = "nmp-chirp-config"
+path = "apps/chirp/nmp-chirp-config"
+reason = "Chirp-specific configuration crate"
+
+[[private_packages]]
+name = "chirp-tui"
+path = "apps/chirp/chirp-tui"
+reason = "Chirp reference TUI application"
+
+[[private_packages]]
+name = "chirp-repl"
+path = "apps/chirp/chirp-repl"
+reason = "Chirp developer REPL application"
+
+[[private_packages]]
+name = "nmp-app-fixture"
+path = "apps/fixture/nmp-app-fixture"
+reason = "fixture app composition crate"
+
+[[private_packages]]
+name = "fixture-todo-core"
+path = "apps/fixture/fixture-todo-core"
+reason = "fixture app domain crate"
+
+[[private_packages]]
+name = "nmp-app-longform"
+path = "apps/longform/nmp-app-longform"
+reason = "example app composition crate"
+
+[[private_packages]]
+name = "nmp-app-notes"
+path = "apps/notes/nmp-app-notes"
+reason = "example app composition crate"
+
+[[private_packages]]
+name = "nmp-app-gallery"
+path = "apps/nmp-gallery/nmp-app-gallery"
+reason = "gallery app composition crate"
+
+[[private_packages]]
+name = "nmp-gallery-tui"
+path = "apps/nmp-gallery/tui"
+reason = "gallery reference TUI application"
+
+[[private_packages]]
+name = "zap-smoke"
+path = "tools/zap-smoke"
+reason = "repository-local smoke test tool"

@@ -5,7 +5,14 @@ use std::path::Path;
 pub struct AppManifest {
     pub name: String,
     pub display_name: String,
+    pub nmp: NmpDependency,
     pub modules: ModuleSet,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NmpDependency {
+    Path { path: String },
+    Version { version: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -26,6 +33,9 @@ impl AppManifest {
         let mut section = "";
         let mut name = None;
         let mut display_name = None;
+        let mut dependency_mode = None;
+        let mut nmp_version = None;
+        let mut nmp_path = None;
         let mut kernel = None;
         let mut protocol = Vec::new();
         let mut app = Vec::new();
@@ -47,6 +57,9 @@ impl AppManifest {
             match (section, key) {
                 ("app", "name") => name = Some(parse_string(value)?),
                 ("app", "display_name") => display_name = Some(parse_string(value)?),
+                ("nmp", "dependency_mode") => dependency_mode = Some(parse_string(value)?),
+                ("nmp", "version") => nmp_version = Some(parse_string(value)?),
+                ("nmp", "path") => nmp_path = Some(parse_string(value)?),
                 ("modules", "kernel") => kernel = Some(parse_string(value)?),
                 ("modules", "protocol") => protocol = parse_array(value)?,
                 ("modules", "app") => app = parse_array(value)?,
@@ -55,9 +68,28 @@ impl AppManifest {
         }
 
         let name = name.ok_or_else(|| "missing [app].name".to_string())?;
+        let nmp = match dependency_mode.as_deref() {
+            Some("version") => NmpDependency::Version {
+                version: nmp_version.ok_or_else(|| {
+                    "missing [nmp].version for dependency_mode = \"version\"".to_string()
+                })?,
+            },
+            Some("path") => NmpDependency::Path {
+                path: nmp_path.unwrap_or_else(|| ".".to_string()),
+            },
+            Some(other) => {
+                return Err(format!(
+                    "invalid [nmp].dependency_mode `{other}`: expected `path` or `version`"
+                ))
+            }
+            None => NmpDependency::Path {
+                path: nmp_path.unwrap_or_else(|| ".".to_string()),
+            },
+        };
         Ok(Self {
             display_name: display_name.clone().unwrap_or_else(|| name.clone()),
             name,
+            nmp,
             modules: ModuleSet {
                 kernel: kernel.unwrap_or_else(|| "nmp-core".to_string()),
                 protocol,
@@ -66,7 +98,7 @@ impl AppManifest {
         })
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn ordered_modules(&self) -> Vec<String> {
         self.modules
             .protocol
@@ -166,6 +198,46 @@ mod tests {
     }
 
     #[test]
+    fn nmp_dependency_defaults_to_local_path_mode() {
+        let parsed = AppManifest::parse(
+            r#"
+            [app]
+            name = "fixture"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parsed.nmp,
+            NmpDependency::Path {
+                path: ".".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn parses_versioned_nmp_dependency_policy() {
+        let parsed = AppManifest::parse(
+            r#"
+            [app]
+            name = "fixture"
+
+            [nmp]
+            dependency_mode = "version"
+            version = "0.2.0"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parsed.nmp,
+            NmpDependency::Version {
+                version: "0.2.0".to_string()
+            }
+        );
+    }
+
+    #[test]
     fn comments_after_a_value_are_stripped() {
         // A `#` begins a comment anywhere on the line, including after a
         // key/value pair. The comment text must not leak into the parsed value.
@@ -179,7 +251,10 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(parsed.name, "fixture", "trailing comment must not be captured");
+        assert_eq!(
+            parsed.name, "fixture",
+            "trailing comment must not be captured"
+        );
         assert_eq!(parsed.modules.kernel, "nmp-core");
     }
 
@@ -223,7 +298,12 @@ mod tests {
         .unwrap();
         assert_eq!(
             parsed.ordered_modules(),
-            vec!["nmp-nip01", "nmp-nip22", "fixture-todo-core", "fixture-extra"],
+            vec![
+                "nmp-nip01",
+                "nmp-nip22",
+                "fixture-todo-core",
+                "fixture-extra"
+            ],
             "protocol modules come first, then app modules, declaration order within each"
         );
     }
@@ -239,7 +319,10 @@ mod tests {
             "#,
         )
         .unwrap_err();
-        assert!(err.contains("name"), "the error must name the missing key: {err}");
+        assert!(
+            err.contains("name"),
+            "the error must name the missing key: {err}"
+        );
     }
 
     #[test]
