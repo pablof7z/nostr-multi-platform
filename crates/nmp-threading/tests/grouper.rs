@@ -466,6 +466,37 @@ fn mismatched_root_id_marks_has_gap() {
 // it as a partial-chain head.
 
 #[test]
+fn standalone_wire_shape_is_object_with_optional_root() {
+    // The serialized wire contract every non-Rust consumer depends on
+    // (chirp-tui JSON fixtures + the iOS hand-decoder): `root: None` omits
+    // the field; `root: Some(_)` nests the tagged ThreadPointer. Pins the
+    // shape against future serde-attribute drift.
+    let rootless = TimelineBlock::Standalone {
+        id: "x".to_string(),
+        root: None,
+    };
+    assert_eq!(
+        serde_json::to_string(&rootless).expect("serialize rootless standalone"),
+        r#"{"Standalone":{"id":"x"}}"#
+    );
+
+    let rooted = TimelineBlock::Standalone {
+        id: "x".to_string(),
+        root: Some(ThreadPointer::Event {
+            id: "r".to_string(),
+            relay: None,
+            kind: None,
+        }),
+    };
+    let json = serde_json::to_string(&rooted).expect("serialize rooted standalone");
+    assert_eq!(json, r#"{"Standalone":{"id":"x","root":{"Event":{"id":"r"}}}}"#);
+
+    // Round-trips back to the same value.
+    let back: TimelineBlock = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, rooted);
+}
+
+#[test]
 fn length_one_reply_chain_preserves_root_pointer() {
     // S declares a root ("ROOT") but no in-store parent, so `walk_chain`
     // produces a single-element chain whose `terminal_root` is the declared
