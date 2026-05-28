@@ -132,7 +132,12 @@ pub fn event_by_id_from_store(
     slot: &EventStoreSlot,
     id: &str,
 ) -> Option<crate::substrate::KernelEvent> {
-    let key = crate::kernel::hex_to_pubkey_bytes(id)?;
+    // Event ids and pubkeys are both 32-byte values rendered as 64 lowercase
+    // hex chars; `hex_to_pubkey_bytes` is the in-tree generic 64-hex → `[u8;32]`
+    // decoder (`None` on malformed input). Re-aliased so this V-83 call site
+    // reads honestly without renaming the V-82-shared original.
+    use crate::kernel::hex_to_pubkey_bytes as hex_to_id_bytes;
+    let key = hex_to_id_bytes(id)?;
     let store = slot.lock().ok()?.clone()?;
     let stored = store.get_by_id(&key).ok()??;
     let raw = &stored.raw;
