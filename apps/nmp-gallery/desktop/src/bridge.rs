@@ -1,107 +1,75 @@
-//! In-process kernel bridge with claim support.
+//! Live kernel bridge — wraps `LiveKernel` (nmp_ffi path + relay connections)
+//! and exposes a snapshot slot the iced poll subscription drains each tick.
 //!
-//! Mirrors nmp-desktop/src/bridge.rs but adds EventClaimSink so embeds
-//! resolve reactively (ADR-0034). The gallery spawns the actor in-process
-//! (Rust→Rust, no FFI), drives it via ActorCommand, and decodes snapshot
-//! pushes into serde_json::Value for EmbedHostState.
+//! Uses the same kernel flows as `nmp-gallery-tui`: `LiveKernel::new()` boots
+//! the actor, registers `nmp_app_gallery` defaults via `register_defaults`,
+//! adds the gallery relays, and installs the JSON push callback. The reader
+//! thread parses inbound JSON snapshots via `parse_snapshot` and stores the
+//! latest in `Arc<Mutex<Option<Value>>>`.
+//!
+//! Doctrine: D8 — no polling in the reader thread; it blocks on
+//! `Receiver<String>::recv` (the snapshot channel is push-driven by the
+//! kernel's emit tick). The iced subscription polls the slot at ~4 Hz to
+//! match the kernel's own emit_hz.
 
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use nmp_content::EventClaimSink;
-use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::{decode_update_frame, UpdateEnvelope};
+use nmp_gallery_tui::live::{LiveKernel, LiveKernelSink, parse_snapshot};
 use serde_json::Value;
 
-/// Shared latest snapshot cell. The reader thread writes; the egui frame reads.
-pub type SharedSnapshot = Arc<Mutex<Option<Value>>>;
-
-/// Handle the UI keeps to dispatch actions and claims into the kernel.
 pub struct GalleryBridge {
-    tx: Sender<ActorCommand>,
-    pub latest: SharedSnapshot,
+    pub sink: LiveKernelSink,
+    // Keep the kernel alive — its Drop frees the NmpApp the sink points into.
+    _kernel: LiveKernel,
+    latest: Arc<Mutex<Option<Value>>>,
 }
 
 impl GalleryBridge {
-    /// Spawn the actor, start it, and wire a reader thread that repaints
-    /// egui_ctx whenever a new snapshot lands.
-    #[must_use]
-    pub fn start(egui_ctx: egui::Context) -> Self {
-        let (tx, rx) = spawn_actor();
-        let latest: SharedSnapshot = Arc::new(Mutex::new(None));
+    /// Boot the live kernel, register gallery defaults, seed relays, and
+    /// start the reader thread. Panics on kernel boot failure (gallery is a
+    /// dev tool; a failed boot is a hard error).
+    pub fn start() -> Self {
+        let mut kernel = LiveKernel::new().expect("LiveKernel boot failed");
+        let app = kernel.app;
+        let sink = LiveKernelSink { app };
 
-        let reader_latest = Arc::clone(&latest);
+        let latest: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+        let rx = kernel
+            .take_receiver()
+            .expect("snapshot receiver available immediately after LiveKernel::new");
+
+        let writer = Arc::clone(&latest);
         thread::spawn(move || {
-            for frame in rx {
-                let env: UpdateEnvelope = match decode_update_frame(&frame) {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                let UpdateEnvelope::Snapshot(v) = env else {
+            for payload in rx {
+                let Some(v) = parse_snapshot(&payload) else {
                     continue;
                 };
-                if let Ok(mut slot) = reader_latest.lock() {
+                if let Ok(mut slot) = writer.lock() {
                     *slot = Some(v);
                 }
-                egui_ctx.request_repaint();
             }
         });
 
-        let _ = tx.send(ActorCommand::Start {
-            visible_limit: 80,
-            emit_hz: 4,
-        });
-
-        Self { tx, latest }
+        Self {
+            sink,
+            _kernel: kernel,
+            latest,
+        }
     }
 
-    /// Read the current snapshot Value (clone — the UI never holds the lock
-    /// across a frame, and never mutates kernel state: D7).
-    #[must_use]
-    pub fn snapshot_value(&self) -> Option<Value> {
-        self.latest.lock().ok().and_then(|s| s.clone())
+    /// Take the latest snapshot (clears the slot — the iced update loop only
+    /// processes each snapshot once, keeping `update_from_snapshot` from
+    /// rerunning against the same data every poll tick).
+    pub fn take_snapshot(&self) -> Option<Value> {
+        self.latest.lock().ok().and_then(|mut s| s.take())
     }
 
-    /// Claim a profile (kind:0) for the given pubkey.
+    /// Forward a kind:0 profile claim into the kernel's `OneshotApi` interest
+    /// registry. Idempotent per `(pubkey, consumer_id)` pair. Call on every
+    /// poll tick so the claim sticks once a relay connects (the kernel
+    /// silently drops claims issued before any relay is ready).
     pub fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
-        let _ = self.tx.send(ActorCommand::ClaimProfile {
-            pubkey: pubkey.to_string(),
-            consumer_id: consumer_id.to_string(),
-        });
-    }
-
-    /// Release a previously claimed profile.
-    pub fn release_profile(&self, pubkey: &str, consumer_id: &str) {
-        let _ = self.tx.send(ActorCommand::ReleaseProfile {
-            pubkey: pubkey.to_string(),
-            consumer_id: consumer_id.to_string(),
-        });
-    }
-
-    /// Claim an event (nevent/note/naddr) by URI.
-    pub fn claim_event(&self, uri: &str, consumer_id: &str) {
-        let _ = self.tx.send(ActorCommand::ClaimEvent {
-            uri: uri.to_string(),
-            consumer_id: consumer_id.to_string(),
-        });
-    }
-
-    /// Release a previously claimed event.
-    pub fn release_event(&self, uri: &str, consumer_id: &str) {
-        let _ = self.tx.send(ActorCommand::ReleaseEvent {
-            uri: uri.to_string(),
-            consumer_id: consumer_id.to_string(),
-        });
-    }
-}
-
-impl EventClaimSink for GalleryBridge {
-    fn claim(&self, uri: &str, consumer_id: &str) {
-        self.claim_event(uri, consumer_id);
-    }
-
-    fn release(&self, uri: &str, consumer_id: &str) {
-        self.release_event(uri, consumer_id);
+        self.sink.claim_profile(pubkey, consumer_id);
     }
 }

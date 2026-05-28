@@ -3,12 +3,14 @@ name = "nmp-gallery-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "iced component gallery for NMP desktop widgets. Showcases UserAvatar and future components with static sample data."
+description = "iced component gallery for NMP desktop widgets. Sidebar lists all REGISTRY_SECTIONS components; user-* components show live kind:0 data via the same kernel flows as the TUI gallery."
 
 [[bin]]
 name = "nmp-gallery-desktop"
 path = "src/main.rs"
 
 [dependencies]
-iced = "0.14"
+iced = { version = "0.14", features = ["tokio"] }
 nmp-core = { path = "../../../crates/nmp-core" }
+nmp-gallery-tui = { path = "../tui" }
+serde_json = { workspace = true }

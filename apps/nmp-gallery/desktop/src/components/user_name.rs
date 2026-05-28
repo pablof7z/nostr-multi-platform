@@ -1,28 +1,48 @@
-use egui::Ui;
-
+use iced::widget::text;
+use iced::{Color, Element};
 use nmp_gallery_tui::profile_wire::ProfileWire;
 
-/// Profile name label — display name with npub fallback.
+/// Display name with npub fallback.
 ///
-/// Mirrors `NostrProfileName` from the TUI registry. If `display_name` is
-/// present and non-empty it is rendered strong; otherwise the short npub
-/// is rendered weak.
-pub struct UserName<'a> {
-    profile: &'a ProfileWire,
+/// Clones display data at construction so the element lifetime is `'static`.
+pub struct UserName {
+    display_name: Option<String>,
+    npub_short: String,
 }
 
-impl<'a> UserName<'a> {
+impl UserName {
     #[must_use]
-    pub fn new(profile: &'a ProfileWire) -> Self {
-        Self { profile }
+    pub fn from_profile(profile: &ProfileWire) -> Self {
+        Self {
+            display_name: profile.display_name.clone(),
+            npub_short: profile.npub_short.clone(),
+        }
     }
 
-    pub fn show(self, ui: &mut Ui) {
-        let label = self.profile.display_name.as_deref().filter(|n| !n.trim().is_empty());
-        if let Some(name) = label {
-            ui.label(egui::RichText::new(name).strong());
+    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {
+        let has_name = self
+            .display_name
+            .as_deref()
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+
+        if has_name {
+            let name = self.display_name.unwrap_or_default();
+            text(name)
+                .size(16)
+                .font(iced::Font {
+                    weight: iced::font::Weight::Bold,
+                    ..iced::Font::default()
+                })
+                .into()
         } else {
-            ui.label(egui::RichText::new(&self.profile.npub_short).weak());
+            const MUTED: Color = Color::from_rgb(0.6, 0.6, 0.6);
+            text(self.npub_short)
+                .size(16)
+                .style(move |_theme| iced::widget::text::Style {
+                    color: Some(MUTED),
+                })
+                .into()
         }
     }
 }

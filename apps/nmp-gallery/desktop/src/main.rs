@@ -2,13 +2,13 @@
 //!
 //! Run: `cargo run -p nmp-gallery-desktop`
 
+mod bridge;
 mod components;
 mod gallery;
 
-use gallery::{update, view, GalleryApp};
-
 fn main() -> iced::Result {
-    iced::application(GalleryApp::new, update, view)
+    iced::application(gallery::GalleryApp::new, gallery::update, gallery::view)
+        .subscription(gallery::subscription)
         .title("NMP Desktop Component Gallery")
         .run()
 }
