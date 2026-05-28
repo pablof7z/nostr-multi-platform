@@ -27,7 +27,13 @@
 //! - **D0-clean** — no UI nouns; `EmbedClaimRegistry` exposes only generic
 //!   claim/release + event-ingest methods.
 
-#![forbid(unsafe_code)]
+// `deny` (not `forbid`) so the single generated FlatBuffers bindings module in
+// `wire::typed_fb` may opt back in via `#[allow(unsafe_code)]`. FlatBuffers
+// accessors are intrinsically `unsafe`; `forbid` cannot be locally overridden.
+// All hand-written code in this crate remains unsafe-free — the allow is scoped
+// to the `#[path]`-included generated file only. (nmp-core uses the same
+// generated-FlatBuffers approach with no crate-level `unsafe` ban.)
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod context;

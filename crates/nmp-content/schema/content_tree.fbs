@@ -1,0 +1,93 @@
+namespace nmp.content;
+
+// Typed FlatBuffers wire for `ContentTreeWire`.
+//
+// The internal `Segment` / `MarkdownNode` tree is recursive and serde-free;
+// `ContentTreeWire` is its flat index-arena projection (see
+// `crates/nmp-content/src/wire/mod.rs`). This schema mirrors that arena one
+// table per node, using the optional-fields approach (a `WireNodeKind`
+// discriminator plus optional payload fields on a single `WireNode` table)
+// rather than a union — unions are harder to keep stable across the Swift /
+// Kotlin / TypeScript runtimes this buffer crosses.
+//
+// Scope: this schema encodes ONLY `ContentTreeWire` and its node arena. The
+// `ContentRenderData` sidecar (profile/event embed lookup tables) is owned by
+// `nmp-nip01` (`crates/nmp-nip01/src/timeline_projection.rs`) and is encoded
+// there, not here — nmp-content is Layer A and must not gain a backward edge
+// to nmp-nip01.
+//
+// FlatBuffers runtime pins follow the project policy documented in
+// `crates/nmp-core/schema/nmp_update.fbs`. Regenerate the checked-in Rust
+// bindings only with the matching `flatc` (Rust + Swift line: 25.12.19).
+
+enum WireNodeKind:ubyte {
+  Text = 0, Mention = 1, EventRef = 2, Hashtag = 3,
+  Url = 4, Media = 5, Emoji = 6, Invoice = 7,
+  Heading = 8, Paragraph = 9, BlockQuote = 10, CodeBlock = 11,
+  List = 12, Rule = 13, Emphasis = 14, Strong = 15,
+  InlineCode = 16, Link = 17, Image = 18,
+  SoftBreak = 19, HardBreak = 20, Placeholder = 21
+}
+
+enum WireNostrUriKind:ubyte { Profile = 0, Event = 1, Address = 2 }
+enum PlaceholderReason:ubyte { DepthLimit = 0, UnresolvedUri = 1 }
+enum RenderMode:ubyte { Auto = 0, Markdown = 1, Text = 2 }
+
+table WireNostrUri {
+  uri:string;
+  kind:WireNostrUriKind;
+  primary_id:string;
+  relays:[string];
+  author:string;
+  event_kind:uint32;
+}
+
+table ListItem { children:[uint32]; }
+
+table WireNode {
+  kind:WireNodeKind = Text;
+  // Text / InlineCode body / CodeBlock body
+  text:string;
+  // Url
+  url:string;
+  // Hashtag
+  tag:string;
+  // children (Heading, Paragraph, BlockQuote, Emphasis, Strong, Link)
+  children:[uint32];
+  // Mention / EventRef
+  nostr_uri:WireNostrUri;
+  // Media
+  media_urls:[string];
+  media_kind:uint8;
+  // Emoji
+  shortcode:string;
+  emoji_url:string;
+  // Heading
+  level:uint8;
+  // List
+  list_items:[ListItem];
+  // ordered_start: -1 == unordered (None); n >= 0 == ordered list starting at n.
+  // u64::MAX would alias -1, but no real ordered list starts at 2^63 — accepted.
+  ordered_start:int64 = -1;
+  // CodeBlock
+  code_info:string;
+  // Link
+  href:string;
+  // Image
+  alt:string;
+  img_title:string;
+  // Placeholder
+  placeholder_reason:PlaceholderReason;
+  // Invoice — discriminant (0=Bolt11, 1=Bolt12, 2=Cashu) + opaque payload.
+  invoice_kind:uint8;
+  invoice_payload:string;
+}
+
+table ContentTreeWire {
+  nodes:[WireNode];
+  roots:[uint32];
+  mode:RenderMode;
+}
+
+file_identifier "NFCT";
+root_type ContentTreeWire;

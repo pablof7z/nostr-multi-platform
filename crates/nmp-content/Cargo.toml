@@ -10,6 +10,7 @@ description = "Layer A content-rendering substrate — tokenizer, embed claim re
 name = "nmp_content"
 
 [dependencies]
+flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core" }
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1.11"
