@@ -251,12 +251,14 @@ impl<R: ParentResolver> Grouper<R> {
 
         for (idx, block) in self.blocks.iter_mut().enumerate() {
             match block {
-                TimelineBlock::Standalone(eid) if eid == id => {
+                TimelineBlock::Standalone { id: eid, .. } if eid == id => {
                     removed_idx = Some(idx);
                     break;
                 }
                 TimelineBlock::Module {
-                    events, has_gap, ..
+                    events,
+                    has_gap,
+                    root,
                 } => {
                     if events.iter().any(|e| e == id) {
                         events.retain(|e| e != id);
@@ -266,7 +268,14 @@ impl<R: ParentResolver> Grouper<R> {
                             removed_idx = Some(idx);
                         } else if events.len() == 1 {
                             let only = events.remove(0);
-                            *block = TimelineBlock::Standalone(only);
+                            // Collapsing a module to a single event must keep
+                            // the module's resolved root pointer — otherwise
+                            // the survivor reads as a thread root rather than
+                            // the partial-chain head it actually is.
+                            *block = TimelineBlock::Standalone {
+                                id: only,
+                                root: root.take(),
+                            };
                             block_replaced_idx = Some(idx);
                         } else {
                             block_replaced_idx = Some(idx);
@@ -274,7 +283,7 @@ impl<R: ParentResolver> Grouper<R> {
                         break;
                     }
                 }
-                TimelineBlock::Standalone(_) => {}
+                TimelineBlock::Standalone { .. } => {}
             }
         }
 
@@ -293,7 +302,7 @@ impl<R: ParentResolver> Grouper<R> {
     /// can be restored if every superseder is later removed.
     fn unplace_standalone(&mut self, id: &EventId) {
         let standalone_idx = self.blocks.iter().position(|block| match block {
-            TimelineBlock::Standalone(eid) => eid == id,
+            TimelineBlock::Standalone { id: eid, .. } => eid == id,
             TimelineBlock::Module { .. } => false,
         });
         if let Some(idx) = standalone_idx {
@@ -364,7 +373,13 @@ impl<R: ParentResolver> Grouper<R> {
         // degrade silently (skip placement) rather than panic across the
         // public API boundary.
         let block = match chain.as_slice() {
-            [_] => TimelineBlock::Standalone(chain.into_iter().next()?),
+            // A length-1 chain is still a reply when `terminal_root` is
+            // set (parent absent / leaf taken / max_module_size hit). Carry
+            // the root so the block is not mistaken for a thread root.
+            [_] => TimelineBlock::Standalone {
+                id: chain.into_iter().next()?,
+                root: terminal_root,
+            },
             [] => return None,
             _ => TimelineBlock::Module {
                 events: chain,
@@ -391,7 +406,7 @@ impl<R: ParentResolver> Grouper<R> {
         let leaf_gap = gap_between(parent_kev, Some(event), gap_threshold);
 
         match &mut self.blocks[idx] {
-            TimelineBlock::Standalone(parent_id) => {
+            TimelineBlock::Standalone { id: parent_id, .. } => {
                 if max_size < 2 {
                     return false;
                 }
@@ -435,7 +450,7 @@ impl<R: ParentResolver> Grouper<R> {
     /// Standalone and Module blocks.
     fn find_block_with_leaf(&self, parent_id: &str) -> Option<usize> {
         self.blocks.iter().position(|b| match b {
-            TimelineBlock::Standalone(id) => id == parent_id,
+            TimelineBlock::Standalone { id, .. } => id == parent_id,
             TimelineBlock::Module { events, .. } => {
                 events.last().is_some_and(|leaf| leaf == parent_id)
             }
@@ -555,7 +570,7 @@ impl<R: ParentResolver> Grouper<R> {
 
     fn find_block_containing(&self, event_id: &str) -> Option<usize> {
         self.blocks.iter().position(|block| match block {
-            TimelineBlock::Standalone(id) => id == event_id,
+            TimelineBlock::Standalone { id, .. } => id == event_id,
             TimelineBlock::Module { events, .. } => events.iter().any(|id| id == event_id),
         })
     }
@@ -563,7 +578,7 @@ impl<R: ParentResolver> Grouper<R> {
 
 fn block_sort_key(block: &TimelineBlock, by_id: &BTreeMap<EventId, KernelEvent>) -> (u64, EventId) {
     match block {
-        TimelineBlock::Standalone(id) => by_id
+        TimelineBlock::Standalone { id, .. } => by_id
             .get(id)
             .map(|event| (event.created_at, event.id.clone()))
             .unwrap_or_else(|| (0, id.clone())),

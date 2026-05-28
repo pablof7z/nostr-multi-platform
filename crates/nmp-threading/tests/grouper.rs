@@ -122,7 +122,7 @@ fn fresh() -> Grouper<FakeResolver> {
 
 fn block_ids(b: &TimelineBlock) -> Vec<&str> {
     match b {
-        TimelineBlock::Standalone(id) => vec![id.as_str()],
+        TimelineBlock::Standalone { id, .. } => vec![id.as_str()],
         TimelineBlock::Module { events, .. } => events.iter().map(|s| s.as_str()).collect(),
     }
 }
@@ -136,7 +136,7 @@ fn standalone_event_yields_one_block() {
     let delta = g.on_insert(&e);
     assert!(matches!(delta, Some(GroupDelta::BlockInserted(0))));
     assert_eq!(g.blocks().len(), 1);
-    assert!(matches!(g.blocks()[0], TimelineBlock::Standalone(_)));
+    assert!(matches!(g.blocks()[0], TimelineBlock::Standalone { .. }));
     assert_eq!(block_ids(&g.blocks()[0]), vec!["A"]);
 }
 
@@ -258,7 +258,7 @@ fn addressable_parent_terminates_walk() {
         Some(GroupDelta::BlockInserted(0))
     ));
     assert_eq!(g.blocks().len(), 1);
-    assert!(matches!(g.blocks()[0], TimelineBlock::Standalone(_)));
+    assert!(matches!(g.blocks()[0], TimelineBlock::Standalone { .. }));
 
     let reply = ev_addr_root("R", 2, Some("C"), "30023:alice:intro");
     let _ = g.on_insert(&reply);
@@ -447,12 +447,70 @@ fn mismatched_root_id_marks_has_gap() {
     let _ = g.on_insert(&ev("R", 2, Some("MID"), Some("ROOT")));
     match &g.blocks()[0] {
         TimelineBlock::Module { has_gap, .. } => assert!(*has_gap),
-        TimelineBlock::Standalone(_) => {
+        TimelineBlock::Standalone { .. } => {
             // The reply may have splicd onto MID and adopted the
             // mismatched-root hint; the resulting Module should have
             // has_gap = true. Reach the module via the splice path test.
             panic!("expected Module after splice");
         }
+    }
+}
+
+// ── Lossless Standalone root preservation (rung 2 regression guard) ──────
+//
+// A reply that cannot be stitched into a chain (parent absent / leaf
+// taken / max_module_size hit) collapses to a length-1 chain. Before the
+// rung-2 reshape that 1-event chain became `Standalone(id)`, DROPPING the
+// resolved `terminal_root`, so a reply rendered as if it were a thread
+// root. The reshape preserves the pointer so downstream renderers can flag
+// it as a partial-chain head.
+
+#[test]
+fn length_one_reply_chain_preserves_root_pointer() {
+    // S declares a root ("ROOT") but no in-store parent, so `walk_chain`
+    // produces a single-element chain whose `terminal_root` is the declared
+    // root hint. The emitted Standalone block must carry that root.
+    let mut g = fresh();
+    let delta = g.on_insert(&ev("S", 1, None, Some("ROOT")));
+    assert!(matches!(delta, Some(GroupDelta::BlockInserted(0))));
+    assert_eq!(g.blocks().len(), 1);
+    match &g.blocks()[0] {
+        TimelineBlock::Standalone { id, root } => {
+            assert_eq!(id, "S");
+            assert!(
+                matches!(root, Some(ThreadPointer::Event { id, .. }) if id == "ROOT"),
+                "length-1 reply chain must keep its resolved root pointer, got {root:?}"
+            );
+        }
+        other => panic!("expected Standalone with root, got {other:?}"),
+    }
+}
+
+#[test]
+fn module_collapsed_to_standalone_on_removal_keeps_root() {
+    // [ROOT_HINT-anchored] module [P, C] loses its mid event; the surviving
+    // single event must remain a Standalone that still carries the module's
+    // root pointer (the removal collapse path is the sibling of the
+    // chain-build path and must not re-drop the root).
+    let mut g = fresh();
+    // P has a non-in-store root "ROOT" so the eventual module carries an
+    // Event root pointer; C splices onto P.
+    let _ = g.on_insert(&ev("P", 1, None, Some("ROOT")));
+    let _ = g.on_insert(&ev("C", 2, Some("P"), Some("ROOT")));
+    assert!(matches!(&g.blocks()[0], TimelineBlock::Module { .. }));
+
+    // Remove the leaf; the module collapses to a single-event Standalone.
+    let _ = g.on_remove(&"C".to_string());
+    assert_eq!(g.blocks().len(), 1);
+    match &g.blocks()[0] {
+        TimelineBlock::Standalone { id, root } => {
+            assert_eq!(id, "P");
+            assert!(
+                matches!(root, Some(ThreadPointer::Event { id, .. }) if id == "ROOT"),
+                "collapsed Standalone must keep the module's root, got {root:?}"
+            );
+        }
+        other => panic!("expected collapsed Standalone with root, got {other:?}"),
     }
 }
 
@@ -471,7 +529,7 @@ fn supersede_removes_standalone_target_already_in_layout() {
 
     let _ = g.on_insert(&ev_supersedes("S", 2, "R"));
     assert_eq!(g.blocks().len(), 1, "target's standalone block must be evicted");
-    assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone(id) if id == "S"));
+    assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone { id, .. } if id == "S"));
 }
 
 #[test]
@@ -483,7 +541,7 @@ fn supersede_suppresses_late_arriving_target() {
     // Target arrives after its superseder — must not produce a duplicate block.
     let _ = g.on_insert(&ev("R", 1, None, None));
     assert_eq!(g.blocks().len(), 1, "late-arriving target must stay suppressed");
-    assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone(id) if id == "S"));
+    assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone { id, .. } if id == "S"));
     // Target's payload is still recorded so chains can resolve it as a parent.
     assert!(g.event(&"R".to_string()).is_some());
 }
@@ -505,7 +563,7 @@ fn supersede_leaves_target_inside_a_module_chain_intact() {
     let has_superseder = g
         .blocks()
         .iter()
-        .any(|b| matches!(b, TimelineBlock::Standalone(id) if id == "S"));
+        .any(|b| matches!(b, TimelineBlock::Standalone { id, .. } if id == "S"));
     assert!(has_chain, "reply chain must survive");
     assert!(has_superseder, "superseder must be placed");
 }
@@ -519,7 +577,7 @@ fn removing_sole_superseder_restores_target_block() {
 
     let _ = g.on_remove(&"S".to_string());
     assert_eq!(g.blocks().len(), 1, "R must come back once its superseder is gone");
-    assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone(id) if id == "R"));
+    assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone { id, .. } if id == "R"));
 }
 
 #[test]
@@ -534,14 +592,14 @@ fn multiple_superseders_keep_target_suppressed_until_all_are_removed() {
     let still_suppressed = !g
         .blocks()
         .iter()
-        .any(|b| matches!(b, TimelineBlock::Standalone(id) if id == "R"));
+        .any(|b| matches!(b, TimelineBlock::Standalone { id, .. } if id == "R"));
     assert!(still_suppressed, "R must stay suppressed while S2 remains");
 
     let _ = g.on_remove(&"S2".to_string());
     let restored = g
         .blocks()
         .iter()
-        .any(|b| matches!(b, TimelineBlock::Standalone(id) if id == "R"));
+        .any(|b| matches!(b, TimelineBlock::Standalone { id, .. } if id == "R"));
     assert!(restored, "R must be restored once every superseder is gone");
 }
 

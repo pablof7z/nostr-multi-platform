@@ -73,7 +73,7 @@ fn standalone_event_becomes_standalone_block() {
     proj.on_kernel_event(&note("S", 1, vec![]));
     let snap = proj.snapshot();
     assert_eq!(snap.blocks.len(), 1);
-    assert!(matches!(snap.blocks[0], TimelineBlock::Standalone(_)));
+    assert!(matches!(snap.blocks[0], TimelineBlock::Standalone { .. }));
 }
 
 #[test]
@@ -87,8 +87,8 @@ fn snapshot_sorts_backfilled_events_newest_first() {
     assert_eq!(
         snap.blocks,
         vec![
-            TimelineBlock::Standalone("new".to_string()),
-            TimelineBlock::Standalone("old".to_string())
+            TimelineBlock::Standalone { id: "new".to_string(), root: None },
+            TimelineBlock::Standalone { id: "old".to_string(), root: None }
         ]
     );
 }
@@ -105,8 +105,8 @@ fn window_snapshot_pages_blocks_with_stable_cursor() {
     assert_eq!(
         first.blocks,
         vec![
-            TimelineBlock::Standalone("new".to_string()),
-            TimelineBlock::Standalone("mid".to_string())
+            TimelineBlock::Standalone { id: "new".to_string(), root: None },
+            TimelineBlock::Standalone { id: "mid".to_string(), root: None }
         ]
     );
     assert_eq!(
@@ -136,7 +136,7 @@ fn window_snapshot_pages_blocks_with_stable_cursor() {
 
     assert_eq!(
         second.blocks,
-        vec![TimelineBlock::Standalone("old".to_string())]
+        vec![TimelineBlock::Standalone { id: "old".to_string(), root: None }]
     );
     assert!(!second.page.expect("page").has_more);
 }
@@ -161,7 +161,7 @@ fn window_snapshot_includes_visible_quote_cards() {
 
     assert_eq!(
         snap.blocks,
-        vec![TimelineBlock::Standalone("root".to_string())]
+        vec![TimelineBlock::Standalone { id: "root".to_string(), root: None }]
     );
     assert_eq!(
         snap.cards

@@ -100,7 +100,7 @@ struct HomeFeedView: View {
         if !model.modularTimeline.blocks.isEmpty {
             return model.modularTimeline.blocks
         }
-        return model.items.map { .standalone(eventID: $0.id) }
+        return model.items.map { .standalone(eventID: $0.id, root: nil) }
     }
 
     // ── Empty / loading state ─────────────────────────────────────────────

@@ -5,7 +5,7 @@ fn snapshot_rows_follow_block_order() {
     let snapshot = serde_json::json!({
         "blocks": [
             {"Module": {"events": ["root", "reply"], "has_gap": true, "root": null}},
-            {"Standalone": "solo"}
+            {"Standalone": {"id": "solo"}}
         ],
         "cards": [
             {"id": "solo", "author_pubkey": "bbbbbbbbbbbbbbbb", "kind": 1, "created_at": 3, "content": "solo note"},
@@ -120,12 +120,12 @@ fn address_and_external_roots_are_not_partial_event_chains() {
     assert!(!rows[1].is_partial_chain_head);
 }
 
-/// A standalone block is by definition a single event with no chain
-/// context — it can never be a partial-chain head.
+/// A rootless standalone block (`root` field absent) is a genuine thread
+/// root — it is never a partial-chain head.
 #[test]
-fn standalone_block_is_never_partial_chain_head() {
+fn rootless_standalone_block_is_never_partial_chain_head() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "solo"}],
+        "blocks": [{"Standalone": {"id": "solo"}}],
         "cards": [
             {"id": "solo", "author_pubkey": "x", "created_at": 1, "content": "solo"}
         ]
@@ -133,6 +133,61 @@ fn standalone_block_is_never_partial_chain_head() {
     let rows = TimelineRow::from_snapshot(&snapshot);
     assert_eq!(rows.len(), 1);
     assert!(!rows[0].is_partial_chain_head);
+}
+
+/// Rung 2 behaviour delta: a standalone whose `root` Event pointer names a
+/// DIFFERENT id is a reply that could not be stitched into a chain. The
+/// grouper now preserves that root, so the renderer flags the row as a
+/// partial-chain head (the ↳ "reply in thread" indicator lights up).
+#[test]
+fn standalone_with_mismatched_event_root_is_partial_chain_head() {
+    let snapshot = serde_json::json!({
+        "blocks": [{"Standalone": {
+            "id": "reply",
+            "root": {"Event": {"id": "missing_root", "relay": null, "kind": null}}
+        }}],
+        "cards": [
+            {"id": "reply", "author_pubkey": "x", "created_at": 1, "content": "a reply"}
+        ]
+    });
+    let rows = TimelineRow::from_snapshot(&snapshot);
+    assert_eq!(rows.len(), 1);
+    assert!(
+        rows[0].is_partial_chain_head,
+        "a standalone reply with a mismatched event root is a partial-chain head"
+    );
+    assert_eq!(rows[0].depth, 0, "depth stays 0 for navigation anchoring");
+}
+
+/// A standalone whose `root` Event pointer matches its own id (degenerate
+/// self-root) is NOT a partial chain. Likewise Address / External roots
+/// terminate the chain and never imply a missing event head.
+#[test]
+fn standalone_with_non_event_or_self_root_is_not_partial_chain() {
+    let snapshot = serde_json::json!({
+        "blocks": [
+            {"Standalone": {
+                "id": "self_rooted",
+                "root": {"Event": {"id": "self_rooted", "relay": null, "kind": null}}
+            }},
+            {"Standalone": {
+                "id": "article_reply",
+                "root": {"Address": {"coord": "30023:pubkey:slug", "relay": null, "kind": 30023}}
+            }},
+            {"Standalone": {
+                "id": "uri_reply",
+                "root": {"External": {"uri": "https://example.com/post"}}
+            }}
+        ],
+        "cards": [
+            {"id": "self_rooted", "author_pubkey": "a", "created_at": 3, "content": "self"},
+            {"id": "article_reply", "author_pubkey": "b", "created_at": 2, "content": "article"},
+            {"id": "uri_reply", "author_pubkey": "c", "created_at": 1, "content": "uri"}
+        ]
+    });
+    let rows = TimelineRow::from_snapshot(&snapshot);
+    assert_eq!(rows.len(), 3);
+    assert!(rows.iter().all(|row| !row.is_partial_chain_head));
 }
 
 /// Per `TimelineBlock::Module.root`'s `#[serde(skip_serializing_if =
@@ -160,7 +215,7 @@ fn module_with_absent_root_field_is_not_partial_chain() {
 #[test]
 fn row_uses_profile_display_and_relation_counts_when_present() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -197,7 +252,7 @@ fn mention_pubkeys_extracted_from_content_tree() {
     let mention_a = "a".repeat(64);
     let mention_b = "b".repeat(64);
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -238,7 +293,7 @@ fn mention_pubkeys_extracted_from_content_tree() {
 #[test]
 fn mention_pubkeys_filter_non_hex_and_short_ids() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -284,7 +339,7 @@ fn mention_pubkeys_dedup_and_sort() {
     let a = "a".repeat(64);
     let b = "b".repeat(64);
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "x",
@@ -309,7 +364,7 @@ fn mention_pubkeys_dedup_and_sort() {
 #[test]
 fn missing_content_tree_yields_empty_mention_pubkeys() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "x",
@@ -324,7 +379,7 @@ fn missing_content_tree_yields_empty_mention_pubkeys() {
 #[test]
 fn media_urls_include_direct_and_quoted_event_media() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "x",
@@ -376,7 +431,7 @@ fn repost_card_uses_inner_timestamp_and_attaches_repost_attribution() {
     // `repost` carries the reposter + repost timestamp for the "↻ reposted
     // by" line.
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "repost"}],
+        "blocks": [{"Standalone": {"id": "repost"}}],
         "cards": [{
             "id": "repost",
             "author_pubkey": "innerinnerinnerinnerinnerinnerinnerinnerinnerinnerinnerinner1234",
@@ -417,7 +472,7 @@ fn repost_card_uses_inner_timestamp_and_attaches_repost_attribution() {
 #[test]
 fn ordinary_note_has_no_repost_attribution() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "aaaaaaaaaaaaaaaa",
@@ -432,7 +487,7 @@ fn ordinary_note_has_no_repost_attribution() {
 #[test]
 fn relation_counts_preserve_loading_vs_known_zero() {
     let snapshot = serde_json::json!({
-        "blocks": [{"Standalone": "note"}],
+        "blocks": [{"Standalone": {"id": "note"}}],
         "cards": [{
             "id": "note",
             "author_pubkey": "aaaaaaaaaaaaaaaa",

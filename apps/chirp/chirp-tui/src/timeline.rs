@@ -237,13 +237,24 @@ impl RowRelationCount {
 /// used downstream by the UI:
 ///
 /// - `has_gap`: the module knows an ancestor / mid-chain event is missing.
-/// - `is_partial_chain`: the module's Event root pointer names a different
-///   id than the first event in the module. That means the displayed head is
-///   a reply to a missing event ancestor. Non-Event roots terminate the chain
-///   and do not imply a missing event head.
+/// - `is_partial_chain`: the block's Event root pointer names a different
+///   id than the displayed head. That means the displayed head is a reply to
+///   a missing event ancestor. Applies to both `Standalone` (a 1-event reply
+///   chain that could not be stitched) and `Module` blocks. Non-Event roots
+///   (Address / External) terminate the chain and do not imply a missing
+///   event head.
 fn ids_from_block(block: &Value) -> (Vec<String>, bool, bool) {
-    if let Some(id) = block.get("Standalone").and_then(Value::as_str) {
-        return (vec![id.to_string()], false, false);
+    // `Standalone` is the serde object form `{ "id": "<id>", "root"?: ... }`.
+    if let Some(standalone) = block.get("Standalone") {
+        let Some(id) = standalone.get("id").and_then(Value::as_str) else {
+            return (Vec::new(), false, false);
+        };
+        let id = id.to_string();
+        // A standalone whose `root` Event pointer differs from its own id is
+        // a reply that could not be stitched into a chain — flag it so the
+        // "reply in thread" (↳) indicator lights up.
+        let is_partial_chain = event_root_mismatches_top(standalone.get("root"), Some(&id));
+        return (vec![id], false, is_partial_chain);
     }
     let Some(module) = block.get("Module") else {
         return (Vec::new(), false, false);

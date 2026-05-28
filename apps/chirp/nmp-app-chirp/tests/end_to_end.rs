@@ -127,7 +127,7 @@ fn standalone_note_renders_as_standalone_block() {
 
     let snap = feed_projection_for(app);
     assert_eq!(snap.blocks.len(), 1);
-    assert!(matches!(snap.blocks[0], TimelineBlock::Standalone(_)));
+    assert!(matches!(snap.blocks[0], TimelineBlock::Standalone { .. }));
     assert_eq!(snap.cards.len(), 1);
 
     nmp_app_chirp_unregister(handle);
