@@ -610,7 +610,7 @@ relays even when the active account has a NIP-65 write set covering them.
 **What we did:** ADR-0032 (commit ef9a9e50) records the raw-data projection
 doctrine — the kernel and the four Layer-4 NIP projections now ship raw
 protocol data; presentation layers own all formatting.
-Rust shells (chirp-tui, nmp-desktop), the web TS shell, and the Android model +
+Rust shells (chirp-tui), the web TS shell, and the Android model +
 TimelineScreen Compose row are aligned with the new doctrine.
 
 **What's open:** the iOS Swift shell still reads the deleted projection fields
@@ -638,7 +638,7 @@ Xcode pass.
    `avatarColor(_ hex: String)` static helpers (8+8 / `Xs/Xm/Xh/Xd ago`
    buckets / djb2 — matches the canonical `nmp_core::display::*` algorithms
    the Rust shells use). Mirrors the equivalent shell-side helpers added to
-   `chirp-tui` / `nmp-desktop` in the doctrine PR.
+   `chirp-tui` in the doctrine PR.
 2. For every Bridge Decodable file, drop the now-deleted CodingKeys + struct
    fields. Where the field becomes `Optional` (`authorDisplayName`,
    `authorPictureUrl`, `displayName`, `pictureUrl`, etc.), use `String?` +

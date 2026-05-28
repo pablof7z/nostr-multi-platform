@@ -364,7 +364,6 @@ all live together. A NIP crate cannot leak into Layer 3.
 | `nmp-content` | Layer A content-rendering substrate — tokenizer, embed claim registry, recursion guard. | ✅ |
 | `nmp-content-fixtures` | Offline signed-event + DTO bundles for `nmp-content`. | ✅ |
 | `nmp-repl` | Diagnostic REPL for the planner + outbox. | ✅ |
-| `nmp-desktop` | Native desktop shell (iced/Tauri) running the kernel in-process. | ✅ |
 | `nmp-chirp-config` | Shared Chirp app configuration object. | ⚠️ — belongs in `apps/chirp/` (Chirp-specific), not in `crates/`. Move alongside V-02's nmp-marmot precedent. |
 | `chirp-repl`, `chirp-tui` | Chirp diagnostic shells. | ⚠️ — same — move to `apps/chirp/` per AGENTS.md §What belongs in NMP crates. |
 | `fixture-todo-core` | Per-app fixture state. | ✅ — lives at `apps/fixture/fixture-todo-core/`. |
