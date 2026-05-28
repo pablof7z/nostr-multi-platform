@@ -77,7 +77,12 @@ unsafe impl Send for ChirpHandle {}
 unsafe impl Sync for ChirpHandle {}
 
 impl ChirpHandle {
-    pub fn snapshot(&self) -> nmp_nip01::ModularTimelineSnapshot {
-        self.projection.snapshot()
+    /// Snapshot the OP-feed engine into the OP-centric
+    /// [`crate::ChirpTimelineSnapshot`] (`RootFeedSnapshot`). V-80 rung 7
+    /// repointed the handle from the old `ModularTimelineProjection` to the
+    /// `OpFeedEngine`; this mirrors what [`super::nmp_app_chirp_snapshot`] does
+    /// for the FFI boundary.
+    pub fn snapshot(&self) -> crate::ChirpTimelineSnapshot {
+        self.engine.snapshot(&nmp_feed::FeedRequest::default())
     }
 }
