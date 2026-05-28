@@ -51,3 +51,13 @@ pub struct ChirpHandle {
 // thread is separate and is not joined by `nmp_app_free`.
 unsafe impl Send for ChirpHandle {}
 unsafe impl Sync for ChirpHandle {}
+
+impl ChirpHandle {
+    /// Return the current [`nmp_nip01::ModularTimelineSnapshot`] directly,
+    /// without going through the C ABI. Safe to call from any thread that
+    /// holds a valid pointer to this handle (same contract as the other
+    /// methods on this type).
+    pub fn snapshot(&self) -> nmp_nip01::ModularTimelineSnapshot {
+        self.projection.snapshot()
+    }
+}
