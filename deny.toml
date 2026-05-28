@@ -47,7 +47,7 @@ allow = [
     "LGPL-2.1-or-later",
     # Boost license in clipboard-win / error-code via desktop + repl stacks.
     "BSL-1.0",
-    # Font licenses used by egui default embedded fonts.
+    # Font licenses used by iced / egui default embedded fonts.
     "OFL-1.1",
     "LicenseRef-UFL-1.0",
 ]
