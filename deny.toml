@@ -35,6 +35,11 @@ allow = [
     "Zlib",
     "Unlicense",
     "CC0-1.0",
+    # University of Illinois/NCSA Open Source License — OSI-approved, MIT-style
+    # permissive (the license LLVM historically shipped under). Pulled in only
+    # by `libfuzzer-sys`, a dev/build transitive dep of `rav1e` (the AVIF
+    # encoder behind the gallery-desktop avatar-image pipeline).
+    "NCSA",
     # Unicode / ICU data crates (icu_* family)
     "Unicode-DFS-2016",
     "Unicode-3.0",
