@@ -60,19 +60,35 @@
 //! only needs to wire the **engine** (predicate + event_lookup + claim sink +
 //! card builder) and the `ActiveFollowSet` `on_change`; no interest expansion.
 //!
-//! # Why `event_lookup` is a no-op this rung
+//! # `event_lookup` reads the kernel event store (V-83)
 //!
 //! The engine's `event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` is
-//! consulted only by the repost L-2/L-5 rebuild paths to read a parent/target
-//! event the engine has not yet observed. There is **no synchronous
-//! event-by-id read API on `NmpApp`** — the kernel's `EventStore`
-//! (`get_by_id`) lives on the actor thread and is never published back to
-//! `NmpApp`. A `|_| None` lookup is correctness-preserving: the engine's L-2
-//! fallback holds the attribution against the wrapper id and re-keys it when
-//! the wrapper later arrives via the observer fan-out (§3-L step 2); L-5 simply
-//! shows the placeholder card until the target arrives. The optimization (skip
-//! the round-trip when the event is already cached) is deferred — see the
-//! BACKLOG `V-83` TODO.
+//! consulted by the repost L-2/L-5 rebuild paths to read a parent/target/wrapper
+//! event the engine has not yet observed but the kernel has already cached:
+//!
+//! * **L-5** (`OpFeedEngine::ingest_root`): a kind:6 repost wrapper keyed the
+//!   target id first (placeholder card); when the target arrives, the engine
+//!   re-fetches the **wrapper** via `event_lookup` to rebuild the card from the
+//!   `(wrapper, target)` pair so the "reposted by" provenance survives. Without
+//!   a real lookup the card rebuilds from `(target, None)` — provenance lost.
+//! * **L-2** (`OpFeedEngine::ingest_reply`): a reply points at a repost wrapper;
+//!   the engine looks the wrapper up to discover it `supersedes` a different
+//!   target and re-keys the attribution onto that target instead of the wrapper.
+//!
+//! V-83 added [`NmpApp::event_by_id`](nmp_ffi::NmpApp::event_by_id) over the
+//! kernel's published `EventStore` handle (the actor publishes
+//! `Kernel::event_store_handle()` into a shared slot right after kernel
+//! construction and re-publishes on `Reset` — see `nmp-ffi`). The closure here
+//! captures [`NmpApp::event_store_handle`](nmp_ffi::NmpApp::event_store_handle)
+//! (the slot `Arc`, NOT `&app` — the closure outlives the borrow) and reads
+//! through it on every call, so a `Reset` is observed without re-capturing.
+//! `EventStore::get_by_id` is a `&self` read; the actor reducer is the sole
+//! writer (D4) and the store insert is ordered before the observer fan-out, so
+//! a read from a `KernelEventObserver` callback (actor thread) sees the
+//! just-ingested event without re-entrancy. Before `nmp_app_start` the slot is
+//! empty → `None`, which is exactly the prior no-op behaviour (still
+//! correctness-preserving: the L-2 fallback re-keys on a later observer arrival
+//! and L-5 shows the placeholder until the target lands).
 //!
 //! # Why the constructor takes `ActiveAccountSlot`, not an `NmpApp` accessor
 //!
@@ -225,12 +241,24 @@ pub fn register_op_feed_defaults(
     });
     let claim_sink = build_actor_claim_sink(dispatch);
 
-    // ── 3. Event lookup (no-op this rung — see module docs / BACKLOG V-83) ─
+    // ── 3. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
-    // `Fn(&EventId) -> Option<KernelEvent>`. No synchronous event-by-id read
-    // API exists on `NmpApp`; the engine's L-2 fallback (re-key on later
-    // observer arrival) keeps the no-op correctness-preserving.
-    let event_lookup: nmp_feed::EventLookup = Arc::new(|_id| None);
+    // `Fn(&EventId) -> Option<KernelEvent>`. The engine's repost L-2/L-5
+    // backward-hydration paths consult this to read a parent/target/wrapper
+    // event the engine has not yet observed but the kernel has already cached.
+    // V-83 added `NmpApp::event_by_id` over the kernel's published `EventStore`
+    // handle (`event_store_handle()` returns the shared `Arc` slot the actor
+    // publishes into — see `nmp-ffi`). The closure captures the slot handle (NOT
+    // `&app`, which it would outlive) and reads through it on every call, so a
+    // `Reset` (which re-publishes a fresh store into the same slot) is observed
+    // without re-capturing. Pre-`nmp_app_start` the slot is empty → `None`,
+    // which is exactly the prior no-op behaviour, so wiring is safe before the
+    // kernel exists. Mirrors V-82's slot-capture in the `on_change` callback
+    // below.
+    let event_store = app.event_store_handle();
+    let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
+        nmp_core::slots::event_by_id_from_store(&event_store, id)
+    });
 
     // ── 4. Construct the engine ──────────────────────────────────────────
     let engine = register_op_feed(viewer, follow_set.predicate(), event_lookup, claim_sink);

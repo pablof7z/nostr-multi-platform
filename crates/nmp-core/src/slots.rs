@@ -50,6 +50,23 @@ pub type StoragePathSlot = Arc<Mutex<Option<String>>>;
 pub type RoutingTraceSlot =
     Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>;
 
+/// V-83 — typed slot the actor publishes the kernel's `EventStore` handle into,
+/// right after kernel construction (and re-publishes on `Reset`).
+///
+/// The `EventStore` is kernel-owned (built by `build_event_store` inside the
+/// kernel constructor — it is NOT created host-side and handed down, unlike
+/// [`ActiveAccountSlot`]). So this follows the [`RoutingTraceSlot`]
+/// **publish-back** pattern, not the V-82 hand-down pattern: the actor (the
+/// sole writer per D4) clones `Kernel::event_store_handle()` into the slot, and
+/// host code reads through it synchronously via `NmpApp::event_by_id`.
+///
+/// `EventStore::get_by_id` is a `&self` read; the actor reducer is the only
+/// writer (`EventStore::insert`, ordered before the observer fan-out — see
+/// `kernel/ingest/timeline.rs`). A read from another thread therefore never
+/// observes a torn write. Substrate-generic: an event id maps to a
+/// [`KernelEvent`] with no NIP noun (D0 stays clean).
+pub type EventStoreSlot = Arc<Mutex<Option<Arc<dyn crate::store::EventStore>>>>;
+
 /// V-51 phase 5 — per-app substrate-routing factory.
 ///
 /// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke the
@@ -88,6 +105,45 @@ pub fn new_storage_path_slot() -> StoragePathSlot {
 #[must_use]
 pub fn new_routing_trace_slot() -> RoutingTraceSlot {
     Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`EventStoreSlot`].
+#[must_use]
+pub fn new_event_store_slot() -> EventStoreSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// V-83 — synchronous event-by-id read over the kernel's published
+/// [`EventStoreSlot`].
+///
+/// Returns the [`KernelEvent`] the store holds for `id` (a 64-char lowercase
+/// hex event id), or `None` when: the slot has not been published yet
+/// (pre-`nmp_app_start`), `id` is malformed, the store has no such event, or
+/// the store lock / slot lock is poisoned (D6 — a missing lookup degrades
+/// gracefully; it never panics across the FFI boundary).
+///
+/// This is the substrate-generic body behind `NmpApp::event_by_id`. The
+/// mapping is lossless across the fields the substrate guarantees for every
+/// protocol (`id`, `author`, `kind`, `created_at`, `tags`, `content`) — the
+/// same field set `KernelEventObserver` sees on the ingest fan-out, so a card
+/// rebuilt from a lookup is byte-identical to one rebuilt from the observer.
+#[must_use]
+pub fn event_by_id_from_store(
+    slot: &EventStoreSlot,
+    id: &str,
+) -> Option<crate::substrate::KernelEvent> {
+    let key = crate::kernel::hex_to_pubkey_bytes(id)?;
+    let store = slot.lock().ok()?.clone()?;
+    let stored = store.get_by_id(&key).ok()??;
+    let raw = &stored.raw;
+    Some(crate::substrate::KernelEvent {
+        id: raw.id.clone(),
+        author: raw.pubkey.clone(),
+        kind: raw.kind,
+        created_at: raw.created_at,
+        tags: raw.tags.clone(),
+        content: raw.content.clone(),
+    })
 }
 
 /// Construct a fresh, empty [`RoutingSubstrateSlot`].

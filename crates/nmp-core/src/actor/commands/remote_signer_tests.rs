@@ -606,6 +606,9 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // V-82 — test wiring; nothing outside the actor reads the
             // active-account slot here (private throwaway).
             crate::slots::new_active_account_slot(),
+            // V-83 — test wiring; nothing outside the actor reads the
+            // event-store slot here (private throwaway).
+            crate::slots::new_event_store_slot(),
         );
     });
 
