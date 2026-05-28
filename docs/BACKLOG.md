@@ -1089,7 +1089,7 @@ before picking up Section 4 work to avoid duplicating an in-progress task.
 Items that cannot be resolved autonomously. An agent that encounters one of these must log
 its finding in the decision thread below and move on to the next item, not block.
 
-### PD-033-A · Framework thesis — second non-social app — NEEDS REVALIDATION
+### PD-033-A · Framework thesis — second non-social app — CLOSED BY DELETION (2026-05-28)
 
 **Original closure (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
 client, 299 LOC Swift, 25 LOC Rust, zero new C-ABI protocol symbols. Closed as "confirmed."
@@ -1109,15 +1109,14 @@ artifact found it does NOT use the framework's defining properties:
 - `NotesBridge.swift:36–37` sets `isSignedIn = true` synchronously with no handshake-
   success gate.
 
-**The 299 LOC count is accurate; the proof is not.** Notes proves the substrate *can be
-bypassed* cheaply — not that the framework guidance produces correct apps.
-
-**Required to re-close:** rewrite `apps/notes/` so it (a) registers a `LogicalInterest` for
-kind:1 from the active user's follow set (outbox-routed through the planner, D3), (b)
-consumes a kernel-owned timeline projection (no JSON in Swift, no list ordering in Swift),
-and (c) gates `isSignedIn` on a real handshake-success callback. If that requires new
-framework affordances, those affordances are the real v1-A gap. Milestone: 30-day call from
-Opus direction review #13.
+**Resolution (user decision 2026-05-28):** `apps/notes/` deleted, along with the
+superseded read-only spike `apps/longform/`. The framework thesis remains **unproven**
+for stateful non-social apps — the substrate does not yet expose the three affordances
+required (`NmpSnapshotProjector` context pointer, generic `nmp_app_get_snapshot` pull
+path, `LogicalInterest::FollowSetKind1` or equivalent). PD-033-A is closed with the
+explicit acknowledgement that the framework is not yet expressive enough to host an
+honest second app. The thesis may be revisited when V-37 (snapshot output seam for
+non-Chirp apps) and V-45 (`LogicalInterest` follow-set variant) land.
 
 ### PD-039 · Bespoke FFI deprecation calendar (D11 expansion) — DECISION MADE 2026-05-23
 

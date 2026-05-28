@@ -2,13 +2,12 @@
 members = [
     "apps/chirp/nmp-app-chirp",
     "apps/fixture/nmp-app-fixture",
-    "apps/longform/nmp-app-longform",
-    "apps/notes/nmp-app-notes",
     "apps/fixture/fixture-todo-core",
     "apps/chirp/chirp-tui",
     "apps/chirp/chirp-repl",
     "apps/chirp/nmp-chirp-config",
     "apps/nmp-gallery/tui",
+    "apps/nmp-gallery/desktop",
     "crates/nmp-cli",
     "crates/nmp-codegen",
     "crates/nmp-content",
@@ -47,7 +46,6 @@ members = [
     "crates/nmp-wot",
     "crates/nmp-desktop",
     "crates/nmp-wasm",
-    "tools/zap-smoke",
 ]
 resolver = "2"
 

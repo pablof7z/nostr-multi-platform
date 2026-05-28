@@ -3930,24 +3930,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-app-longform"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-ffi",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nmp-app-notes"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-ffi",
-]
-
-[[package]]
 name = "nmp-app-template"
 version = "0.1.0"
 dependencies = [
@@ -4081,6 +4063,15 @@ dependencies = [
  "serde",
  "serde_json",
  "zeroize",
+]
+
+[[package]]
+name = "nmp-gallery-desktop"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "nmp-core",
 ]
 
 [[package]]
@@ -8551,18 +8542,6 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "synstructure",
-]
-
-[[package]]
-name = "zap-smoke"
-version = "0.1.0"
-dependencies = [
- "nmp-nip57",
- "nmp-nwc",
- "nostr",
- "serde_json",
- "tungstenite",
- "ureq",
 ]
 
 [[package]]

@@ -16,4 +16,3 @@ dependencyResolutionManagement {
 rootProject.name = "NmpChirpAndroid"
 include(":app")
 include(":gallery")
-include(":podcast")
