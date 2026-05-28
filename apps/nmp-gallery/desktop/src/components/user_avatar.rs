@@ -124,17 +124,17 @@ mod tests {
 
     #[test]
     fn avatar_renders_with_display_name_initials() {
-        let avatar = UserAvatar::new("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
-            .display_name(Some("Alice Smith"))
+        let avatar = UserAvatar::new(&nmp_gallery_tui::live::primary_pubkey())
+            .display_name(Some("pablof7z"))
             .size(48.0);
-        assert_eq!(avatar.display_name, Some("Alice Smith".to_string()));
+        assert_eq!(avatar.display_name, Some("pablof7z".to_string()));
         assert_eq!(avatar.size, 48.0);
         let _ = avatar.into_element::<()>();
     }
 
     #[test]
     fn avatar_falls_back_to_npub_initials_when_no_name() {
-        let avatar = UserAvatar::new("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+        let avatar = UserAvatar::new(&nmp_gallery_tui::live::primary_pubkey());
         assert!(avatar.display_name.is_none());
         assert_eq!(avatar.size, 36.0);
         let _ = avatar.into_element::<()>();

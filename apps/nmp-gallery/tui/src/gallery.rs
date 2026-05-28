@@ -80,7 +80,7 @@ const CONTENT_COMPONENTS: &[ComponentSpec] = &[
     ComponentSpec {
         id: "content-mention-chip",
         label: "NostrMentionChip",
-        description: "Resolved @mention with deterministic color",
+        description: "Reactive @mention with deterministic color",
     },
     ComponentSpec {
         id: "content-minimal",

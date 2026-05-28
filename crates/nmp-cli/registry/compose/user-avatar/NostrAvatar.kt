@@ -90,7 +90,7 @@ private val IDENTICON_PALETTE = listOf(
     Color(0xFF218C6A),
     Color(0xFFD1542E),
     Color(0xFFC12573),
-    Color(0xFF333333),
+    Color(0xFF2F3437),
 )
 
 private fun identiconColor(pubkey: String): Color {

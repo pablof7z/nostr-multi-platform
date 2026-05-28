@@ -339,7 +339,7 @@ role = "source"
 id = "tui/content-quote-card"
 version = "0.1.1"
 target = "tui"
-description = "Ratatui quote/event reference card with resolved event content and optional inline media."
+description = "Ratatui quote/event reference card with claimed event content and optional inline media."
 dependencies = ["tui/content-core"]
 [[components.files]]
 source = "tui/content-quote-card/nostr_quote_card.rs"
@@ -395,7 +395,7 @@ role = "source"
 id = "tui/content-view"
 version = "0.1.3"
 target = "tui"
-description = "Full Ratatui ContentTreeWire renderer with resolved mentions, quote cards, and inline media."
+description = "Full Ratatui ContentTreeWire renderer with reactive mentions, quote cards, and inline media."
 dependencies = [
     "tui/content-core",
     "tui/content-kind-registry",

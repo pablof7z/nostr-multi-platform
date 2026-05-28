@@ -38,6 +38,7 @@ nmp-ffi = { path = "../../../crates/nmp-ffi", default-features = false }
 # one-line forward to this call — that is the whole point of the crate.
 nmp-app-template = { path = "../../../crates/nmp-app-template" }
 nmp-core = { path = "../../../crates/nmp-core" }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # JNI surface for the Android shell — only active under `android-ffi`.
 jni = { version = "0.21", optional = true }

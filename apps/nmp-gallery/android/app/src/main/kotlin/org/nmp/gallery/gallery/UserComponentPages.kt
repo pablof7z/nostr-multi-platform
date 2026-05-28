@@ -8,7 +8,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,12 +32,13 @@ fun UserComponentPage(
     componentId: String,
 ) {
     val profiles by model.profileMap.collectAsStateWithLifecycle()
-    val pubkey = remember { GalleryModel.DEMO_PUBKEY }
+    val showcase = model.showcase
+    val pubkey = showcase.profile.pubkeyHex
 
     val profile = profiles[pubkey] ?: ProfileWire(
         pubkey = pubkey,
-        npub = "",
-        npubShort = pubkey.take(8) + "…" + pubkey.takeLast(8),
+        npub = showcase.profile.npub,
+        npubShort = showcase.profile.npubShort,
     )
 
     Column(

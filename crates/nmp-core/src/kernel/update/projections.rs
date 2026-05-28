@@ -214,7 +214,7 @@ impl Kernel {
         // claimed UI profile. This is the reference-first component path:
         // native registry components call `claim_profile(pubkey, consumer)`,
         // the kernel owns relay/cache policy, and the next snapshot exposes the
-        // resolved profile card here. Missing kind:0 data still emits a
+        // claimed profile card here. Missing kind:0 data still emits a
         // placeholder card so components can render an honest fallback
         // immediately and refine in place when the profile arrives.
         let mut claimed_profiles: std::collections::BTreeMap<String, _> =

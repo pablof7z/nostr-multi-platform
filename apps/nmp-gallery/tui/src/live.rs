@@ -32,22 +32,16 @@ use std::{
 use nmp_content::EventClaimSink;
 use serde_json::Value;
 
+use crate::data::showcase_pubkey;
+
 /// Hex pubkey of the gallery's primary showcase author — pablof7z, the
-/// NmpGallery demo account (see `nmp_core::display` tests). The user-*
+/// NmpGallery showcase identity. The user-*
 /// components resolve this identity to a `ProfileWire` reactively through
 /// `LiveProfileMap`; `tui/user-avatar` fires `claim_profile` when rendered so
 /// the kernel fetches the kind:0 and a later snapshot carries real metadata.
-pub const PRIMARY_PUBKEY: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
-
-const RELAYS: &[(&str, &str)] = &[
-    ("wss://purplepag.es", "indexer"),
-    // Primal serves as BOTH content AND indexer. Combined role on a
-    // single RelayEditRow so `read_eligible_relay_urls` (which feeds
-    // `lifecycle.set_app_relays`) picks it up. Otherwise a second
-    // `add_relay` for the same URL replaces the prior role rather than
-    // unioning, leaving app_relays missing.
-    ("wss://relay.primal.net", "both,indexer"),
-];
+pub fn primary_pubkey() -> &'static str {
+    showcase_pubkey()
+}
 
 pub struct LiveGallerySource;
 
@@ -166,8 +160,8 @@ impl LiveKernel {
             bridge: Some(bridge),
             rx: Some(rx),
         };
-        for (url, role) in RELAYS {
-            kernel.add_relay(url, role)?;
+        for relay in &nmp_app_gallery::showcase::references().relays {
+            kernel.add_relay(&relay.url, &relay.role)?;
         }
         Ok(kernel)
     }

@@ -34,14 +34,11 @@ private struct EmbedPageFrame<Content: View>: View {
     }
 }
 
-// MARK: - Article — kind:30023 (Gigi's "What's left of the internet?")
+// MARK: - Article — kind:30023
 
-/// Gigi's long-form article naddr. Matches the TUI's `ARTICLE_NADDR`; the
-/// kernel's seeded relays (relay.primal.net + purplepag.es) resolve it via
-/// the OneshotApi cache or one round-trip.
-private let GIGI_ARTICLE_NADDR =
-    "nostr:naddr1qvzqqqr4gupzqmjxss3dld622uu8q25gywum9qtg4w4cv4064jmg20xsac2aam5nqy6xsar5wpen5te0v3jhyemfva5jucm0d5hnyvpjxchnqve0xgcz7argv5kkjmn5v4exuet594kx2en594kk2tcqz36xsefdd9h8getjdejhgttvv4n8gttdv55zqsmp"
-
+/// Gigi's long-form article naddr from the shared gallery showcase references.
+/// The kernel's seeded relays resolve it via the OneshotApi cache or one
+/// round-trip.
 struct ArticleEmbedPage: View {
     @Environment(GalleryModel.self) private var model
 
@@ -68,7 +65,7 @@ struct ArticleEmbedPage: View {
             nodes: [
                 .text("hey, check out my article "),
                 .eventRef(NostrWireUri(
-                    uri: GIGI_ARTICLE_NADDR,
+                    uri: SHOWCASE_ARTICLE_NADDR,
                     kind: .address,
                     // Coordinate must match the kernel-emitted
                     // `claimed_events` key exactly — `<kind>:<pubkey>:<d>`,
@@ -78,7 +75,7 @@ struct ArticleEmbedPage: View {
                     // `primary_id` doesn't match, `EmbedHost`'s map lookup
                     // returns nil and the article stays on the loading
                     // placeholder forever. Decoded via `nak decode <naddr>`.
-                    primaryId: "30023:6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93:the-internet-left-me"
+                    primaryId: SHOWCASE_ARTICLE_PRIMARY_ID
                 )),
                 .text(" I hope you enjoy it!"),
                 .paragraph(children: [0, 1, 2]),
@@ -115,16 +112,16 @@ struct ProfileEmbedPage: View {
     private var tree: ContentTreeWire {
         // Arena:
         //   0  text "met "
-        //   1  mention(DEMO_PUBKEY)
+        //   1  mention(SHOWCASE_PUBKEY_HEX)
         //   2  text " at a nostr conference last week, brilliant mind"
         //   3  paragraph([0, 1, 2])
         ContentTreeWire(
             nodes: [
                 .text("met "),
                 .mention(NostrWireUri(
-                    uri: "nostr:\(DEMO_NPUB)",
+                    uri: "nostr:\(SHOWCASE_NPUB)",
                     kind: .profile,
-                    primaryId: DEMO_PUBKEY_HEX
+                    primaryId: SHOWCASE_PUBKEY_HEX
                 )),
                 .text(" at a nostr conference last week, brilliant mind"),
                 .paragraph(children: [0, 1, 2]),
@@ -136,15 +133,6 @@ struct ProfileEmbedPage: View {
 }
 
 // MARK: - Note — kind:1 short text note via nevent
-
-/// pablof7z kind:1 note "grok cli is INSANELY bad, jesus" — verified on
-/// wss://relay.primal.net via `nak req`. Same author as the gallery's
-/// PRIMARY_PUBKEY so the kind:0 mention resolution is reused.
-private let DEMO_NOTE_EVENT_ID =
-    "276d69d6d2dc8348d2a0b7a67245503909dc5a405d7bae61a824dc224e11d784"
-
-private let DEMO_NOTE_NEVENT =
-    "nostr:nevent1qqszwmtf6mfdeq6g62st0fnjg4grjzwutfq967awvx5zfhpzfcga0pqpzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqlxqxcq"
 
 struct NoteEmbedPage: View {
     @Environment(GalleryModel.self) private var model
@@ -171,9 +159,9 @@ struct NoteEmbedPage: View {
             nodes: [
                 .text("this is a great point "),
                 .eventRef(NostrWireUri(
-                    uri: DEMO_NOTE_NEVENT,
+                    uri: SHOWCASE_NOTE_NEVENT,
                     kind: .event,
-                    primaryId: DEMO_NOTE_EVENT_ID
+                    primaryId: SHOWCASE_NOTE_EVENT_ID
                 )),
                 .text(" what do you think?"),
                 .paragraph(children: [0, 1, 2]),
@@ -185,14 +173,6 @@ struct NoteEmbedPage: View {
 }
 
 // MARK: - Highlight — kind:9802 via nevent
-
-/// pablof7z kind:9802 highlight "Vibe-coding is what brought me back to
-/// programming" — verified on wss://relay.primal.net via `nak req`.
-private let DEMO_HIGHLIGHT_EVENT_ID =
-    "4fb59c3c2a175fa56000ce0df75d5aa449f9f7236da38c2dc297aefcb502393a"
-
-private let DEMO_HIGHLIGHT_NEVENT =
-    "nostr:nevent1qqsyldvu8s4pwha9vqqvur0ht4d2gj0e7u3kmguv9hpf0thuk5prjwspzemhxue69uhhyetvv9ujuurjd9kkzmpwdejhgq3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afq2dlzvt"
 
 struct HighlightEmbedPage: View {
     @Environment(GalleryModel.self) private var model
@@ -218,9 +198,9 @@ struct HighlightEmbedPage: View {
             nodes: [
                 .text("found this interesting "),
                 .eventRef(NostrWireUri(
-                    uri: DEMO_HIGHLIGHT_NEVENT,
+                    uri: SHOWCASE_HIGHLIGHT_NEVENT,
                     kind: .event,
-                    primaryId: DEMO_HIGHLIGHT_EVENT_ID
+                    primaryId: SHOWCASE_HIGHLIGHT_EVENT_ID
                 )),
                 .paragraph(children: [0, 1]),
             ],

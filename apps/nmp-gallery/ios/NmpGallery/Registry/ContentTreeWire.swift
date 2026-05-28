@@ -10,7 +10,7 @@ import SwiftUI
 /// This file is shipped as a registry component so apps that install
 /// `swiftui/content-core` get a complete, drift-resistant mirror without
 /// hand-rolling Decodables.
-public struct ContentTreeWire: Decodable, Equatable {
+public struct ContentTreeWire: Decodable, Equatable, Sendable {
     public let nodes: [NostrWireNode]
     public let roots: [UInt32]
     public let mode: String?
@@ -31,27 +31,27 @@ public struct ContentTreeWire: Decodable, Equatable {
 
 /// Typed mirror of the Rust `nmp_content::MediaKind` enum. Raw values match the
 /// PascalCase Rust serde representation (the Rust enum has no `rename_all`).
-public enum NostrMediaKind: String, Decodable, Equatable {
+public enum NostrMediaKind: String, Decodable, Equatable, Sendable {
     case image = "Image"
     case video = "Video"
     case audio = "Audio"
 }
 
 /// NIP-21 entity discriminator on the wire.
-public enum NostrWireUriKind: String, Decodable, Equatable {
+public enum NostrWireUriKind: String, Decodable, Equatable, Sendable {
     case profile
     case event
     case address
 }
 
 /// Why a `placeholder` wire node was emitted.
-public enum NostrWirePlaceholderReason: String, Decodable, Equatable {
+public enum NostrWirePlaceholderReason: String, Decodable, Equatable, Sendable {
     case depthLimit = "depth_limit"
     case unresolvedUri = "unresolved_uri"
 }
 
 /// Reserved payment segment (`WireNode::Invoice`).
-public enum NostrWireInvoice: Decodable, Equatable {
+public enum NostrWireInvoice: Decodable, Equatable, Sendable {
     case bolt11(String)
     case bolt12(String)
     case cashu(String)
@@ -81,7 +81,7 @@ public enum NostrWireInvoice: Decodable, Equatable {
 /// Flattened, Codable projection of `nmp_core::nip21::NostrUri`. `uri` is the
 /// round-trippable canonical `nostr:` URI; `primaryId` is the hex pubkey for
 /// profiles, event id for events, or author pubkey for addresses.
-public struct NostrWireUri: Decodable, Equatable {
+public struct NostrWireUri: Decodable, Equatable, Sendable {
     public let uri: String
     public let kind: NostrWireUriKind
     public let primaryId: String
@@ -114,7 +114,7 @@ public struct NostrWireUri: Decodable, Equatable {
 
 /// One node in the `ContentTreeWire` arena. Covers every variant of the Rust
 /// `WireNode` enum.
-public enum NostrWireNode: Decodable, Equatable {
+public enum NostrWireNode: Decodable, Equatable, Sendable {
     case text(String)
     case mention(NostrWireUri)
     case eventRef(NostrWireUri)

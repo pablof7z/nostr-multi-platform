@@ -14,13 +14,14 @@ use ratatui_image::protocol::Protocol;
 
 use crate::{
     content_kind_registry::NostrKindRegistry,
+    content_render_data::ContentProfileRenderData,
     content_tree_wire::WireNode,
-    data::{ContentExample, GalleryData, LiveProfileMap},
+    data::{article_naddr, ContentExample, GalleryData, LiveProfileMap},
     live::LiveKernelSink,
     nostr_avatar::{NostrAvatar, NostrProfileHost},
     nostr_content_view::NostrContentView,
     nostr_media_grid::NostrMediaGrid,
-    nostr_mention_chip::NostrMentionChip,
+    nostr_mention_chip::{NostrMentionChip, NostrMentionProfileHost},
     nostr_minimal_content::NostrMinimalContent,
     nostr_nip05_badge::NostrNip05Badge,
     nostr_npub_chip::NostrNpubChip,
@@ -86,19 +87,50 @@ pub fn render_body(
             area.width as usize,
         ))
         .render(area, buf),
-        "content-minimal" => NostrMinimalContent::new(&data.content_minimal.tree)
-            .render_data(Some(&data.content_minimal.render_data))
-            .render(area, buf),
-        "content-view" => NostrContentView::new(&data.content_view.tree)
-            .render_data(Some(&data.content_view.render_data))
-            .media_images(&media_images)
-            .render(area, buf),
-        "content-mention-chip" => render_mention_chip(area, buf, &data.content_mention_chip),
-        "content-media-grid" => {
-            render_media_grid(area, buf, &data.content_media_grid, &media_images)
+        "content-minimal" => {
+            let profile_host = profile_host_from_context(embed_ctx);
+            NostrMinimalContent::new(&data.content_minimal.tree)
+                .render_data(Some(&data.content_minimal.render_data))
+                .profile_host(Some(&profile_host))
+                .consumer_id(Some(embed_ctx.consumer_id))
+                .render(area, buf)
         }
+        "content-view" => {
+            let profile_host = profile_host_from_context(embed_ctx);
+            let registry = NostrKindRegistry::make_default();
+            NostrContentView::new(&data.content_view.tree)
+                .render_data(Some(&data.content_view.render_data))
+                .media_images(&media_images)
+                .kind_registry(Some(&registry))
+                .embedded_events(Some(embed_ctx.envelopes))
+                .profile_host(Some(&profile_host))
+                .claim_sink(
+                    embed_ctx
+                        .sink
+                        .map(|sink| sink as &dyn nmp_content::EventClaimSink),
+                )
+                .consumer_id(Some(embed_ctx.consumer_id))
+                .render(area, buf)
+        }
+        "content-mention-chip" => {
+            let profile_host = profile_host_from_context(embed_ctx);
+            render_mention_chip(
+                area,
+                buf,
+                &data.content_mention_chip,
+                Some(&profile_host),
+                Some(embed_ctx.consumer_id),
+            )
+        }
+        "content-media-grid" => render_media_grid(
+            area,
+            buf,
+            &data.content_media_grid,
+            &media_images,
+            embed_ctx,
+        ),
         "content-quote-card" => {
-            render_quote_card(area, buf, &data.content_quote_card, &media_images)
+            render_embed_showcase("embed-note", area, buf, data, &media_images, embed_ctx)
         }
         "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
             render_embed_showcase(id, area, buf, data, &media_images, embed_ctx)
@@ -128,46 +160,68 @@ pub fn render_body(
     }
 }
 
-fn render_mention_chip(area: Rect, buf: &mut Buffer, example: &ContentExample) {
+fn render_mention_chip(
+    area: Rect,
+    buf: &mut Buffer,
+    example: &ContentExample,
+    profile_host: Option<&dyn NostrMentionProfileHost>,
+    consumer_id: Option<&str>,
+) {
     let Some(uri) = first_mention(example) else {
         return;
     };
     NostrMentionChip::new(uri)
         .profile(example.render_data.profile_for(uri))
+        .profile_host(profile_host)
+        .consumer_id(consumer_id)
         .render(area, buf);
 }
 
 fn render_media_grid(
     area: Rect,
     buf: &mut Buffer,
-    example: &ContentExample,
+    _example: &ContentExample,
     media_images: &[(&str, &Protocol)],
+    embed_ctx: EmbedFrameContext<'_>,
 ) {
-    let Some((urls, kind)) = first_media(example) else {
-        NostrContentView::new(&example.tree)
-            .render_data(Some(&example.render_data))
-            .media_images(media_images)
-            .render(area, buf);
+    if let Some(sink) = embed_ctx.sink {
+        nmp_content::EventClaimSink::claim(sink, article_naddr(), embed_ctx.consumer_id);
+    }
+    let urls = relay_media_urls(embed_ctx.envelopes);
+    if urls.is_empty() {
+        paragraph(vec![Line::from(
+            "Waiting for relay-backed media from the claimed article.",
+        )])
+        .render(area, buf);
         return;
-    };
-    NostrMediaGrid::new(urls, kind)
+    }
+    NostrMediaGrid::new(&urls, "image")
         .images(media_images)
         .render(area, buf);
 }
 
-fn render_quote_card(
-    area: Rect,
-    buf: &mut Buffer,
-    example: &ContentExample,
-    media_images: &[(&str, &Protocol)],
-) {
-    let Some(node) = first_event_ref(example) else {
-        return;
-    };
-    NostrQuoteCard::new(&example.tree, node)
-        .render_data(Some(&example.render_data))
-        .media_images(media_images)
-        .render(area, buf);
+fn relay_media_urls(envelopes: &BTreeMap<String, EmbeddedEventEnvelope>) -> Vec<String> {
+    let mut out = Vec::new();
+    for envelope in envelopes.values() {
+        match &envelope.projection {
+            nmp_content::embed_projection::EmbedKindProjection::Article(article) => {
+                if let Some(url) = article
+                    .hero_image_url
+                    .as_ref()
+                    .filter(|url| !url.is_empty())
+                {
+                    out.push(url.clone());
+                }
+            }
+            nmp_content::embed_projection::EmbedKindProjection::ShortNote(note) => {
+                out.extend(note.media_urls.iter().cloned());
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn render_avatar(
@@ -182,14 +236,18 @@ fn render_avatar(
         width: area.width.min(20),
         height: area.height.min(10),
     };
-    let profile_host = GalleryProfileHost {
-        sink: embed_ctx.sink,
-        profiles: embed_ctx.profiles,
-        claims: embed_ctx.profile_claims,
-    };
+    let profile_host = profile_host_from_context(embed_ctx);
     NostrAvatar::for_pubkey(&data.primary_pubkey, &profile_host)
         .image(data.avatar_image.as_ref())
         .render(centered, buf);
+}
+
+fn profile_host_from_context<'a>(embed_ctx: EmbedFrameContext<'a>) -> GalleryProfileHost<'a> {
+    GalleryProfileHost {
+        sink: embed_ctx.sink,
+        profiles: embed_ctx.profiles,
+        claims: embed_ctx.profile_claims,
+    }
 }
 
 struct GalleryProfileHost<'a> {
@@ -200,10 +258,42 @@ struct GalleryProfileHost<'a> {
 
 impl NostrProfileHost for GalleryProfileHost<'_> {
     fn profile_for_pubkey(&self, pubkey: &str) -> crate::profile_wire::ProfileWire {
-        self.profiles.resolve(pubkey)
+        self.resolve_profile(pubkey)
     }
 
     fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+        self.claim(pubkey, consumer_id);
+    }
+
+    fn release_profile(&self, pubkey: &str, consumer_id: &str) {
+        if let Some(sink) = self.sink {
+            sink.release_profile(pubkey, consumer_id);
+        }
+    }
+}
+
+impl NostrMentionProfileHost for GalleryProfileHost<'_> {
+    fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData> {
+        let profile = self.resolve_profile(pubkey);
+        Some(ContentProfileRenderData {
+            pubkey: profile.pubkey,
+            display_name: profile.display_name,
+            npub: Some(profile.npub),
+            picture_url: profile.picture_url,
+        })
+    }
+
+    fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+        self.claim(pubkey, consumer_id);
+    }
+}
+
+impl GalleryProfileHost<'_> {
+    fn resolve_profile(&self, pubkey: &str) -> crate::profile_wire::ProfileWire {
+        self.profiles.resolve(pubkey)
+    }
+
+    fn claim(&self, pubkey: &str, consumer_id: &str) {
         if let Some(claims) = self.claims {
             claims
                 .borrow_mut()
@@ -211,12 +301,6 @@ impl NostrProfileHost for GalleryProfileHost<'_> {
         }
         if let Some(sink) = self.sink {
             sink.claim_profile(pubkey, consumer_id);
-        }
-    }
-
-    fn release_profile(&self, pubkey: &str, consumer_id: &str) {
-        if let Some(sink) = self.sink {
-            sink.release_profile(pubkey, consumer_id);
         }
     }
 }
@@ -284,13 +368,6 @@ fn first_event_ref(example: &ContentExample) -> Option<&WireNode> {
         .find(|node| matches!(node, WireNode::EventRef(_)))
 }
 
-fn first_media(example: &ContentExample) -> Option<(&[String], &str)> {
-    example.tree.nodes.iter().find_map(|node| match node {
-        WireNode::Media { urls, kind } => Some((urls.as_slice(), kind.as_str())),
-        _ => None,
-    })
-}
-
 fn paragraph(lines: Vec<Line<'static>>) -> Paragraph<'static> {
     Paragraph::new(lines)
         .wrap(Wrap { trim: false })
@@ -346,6 +423,7 @@ fn render_embed_showcase(
     };
 
     let registry = NostrKindRegistry::make_default();
+    let profile_host = profile_host_from_context(embed_ctx);
 
     // M16 / ADR-0034: the renderer is frontend-driven. When `NostrContentView`
     // hits an EventRef(uri), it calls `sink.claim(uri, consumer_id)` — the
@@ -359,6 +437,7 @@ fn render_embed_showcase(
         .media_images(media_images)
         .kind_registry(Some(&registry))
         .embedded_events(Some(embed_ctx.envelopes))
+        .profile_host(Some(&profile_host))
         .claim_sink(
             embed_ctx
                 .sink
@@ -373,25 +452,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mention_chip_uses_resolved_profile_name() {
+    fn mention_chip_uses_reference_fallback() {
         let data = GalleryData::render_test_data();
         let profiles = LiveProfileMap::new();
         let lines = plain_lines("content-mention-chip", &data, &profiles, 80).join(" ");
-        assert!(lines.contains("@Resolved Profile"), "{lines}");
+        assert!(lines.contains("@fa984b…018f52"), "{lines}");
         assert!(!lines.contains("npub1"), "{lines}");
     }
 
     #[test]
-    fn quote_card_uses_event_render_data_instead_of_nevent_text() {
+    fn quote_card_uses_real_reference_fallback() {
         let data = GalleryData::render_test_data();
         let profiles = LiveProfileMap::new();
         let lines = plain_lines("content-quote-card", &data, &profiles, 80).join(" ");
-        assert!(lines.contains("quote Quoted Author"), "{lines}");
-        assert!(
-            lines.contains("Quoted event body from render data"),
-            "{lines}"
-        );
-        assert!(!lines.contains("nostr:nevent"), "{lines}");
+        assert!(lines.contains("quote 276d69"), "{lines}");
+        assert!(lines.contains("276d69"), "{lines}");
+        assert!(!lines.contains("Quoted event body"), "{lines}");
     }
 
     #[test]
@@ -404,11 +480,9 @@ mod tests {
             .map(line_text)
             .collect::<Vec<_>>()
             .join(" ");
-        assert!(lines.contains("quote Quoted Author"), "{lines}");
-        assert!(
-            lines.contains("Quoted event body from render data"),
-            "{lines}"
-        );
+        assert!(lines.contains("quote 276d69"), "{lines}");
+        assert!(lines.contains("276d69"), "{lines}");
+        assert!(!lines.contains("Quoted event body"), "{lines}");
     }
 
     // Embed-envelope projection tests live in `embed_host::tests` now —

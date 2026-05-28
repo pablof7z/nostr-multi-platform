@@ -218,6 +218,15 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
 }
 
+fn remove_empty_precreated_db_file(db_path: &str) {
+    let Ok(metadata) = std::fs::metadata(db_path) else {
+        return;
+    };
+    if metadata.is_file() && metadata.len() == 0 {
+        let _ = std::fs::remove_file(db_path);
+    }
+}
+
 /// Inner registration logic shared by `nmp_marmot_register` and
 /// `nmp_marmot_register_active`. `app` must be non-null and valid.
 pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
@@ -238,6 +247,13 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
                     if crate::credential_store::install_mock_store().is_none() {
                         return std::ptr::null_mut();
                     }
+                    // `MdkSqliteStorage::new` pre-creates the file before
+                    // touching the keyring. If the platform keyring then
+                    // fails before encryption is applied, the retry sees an
+                    // empty plaintext placeholder. Removing only that
+                    // zero-byte placeholder preserves real MLS state while
+                    // allowing the mock fallback to initialize cleanly.
+                    remove_empty_precreated_db_file(db_path);
                     match MarmotService::new(
                         db_path,
                         KEYRING_SERVICE_ID,

@@ -18,7 +18,7 @@ import org.nmp.gallery.screens.SectionListScreen
  *
  *   sections                       — top-level RegistrySection list
  *   components/{sectionId}         — components within a section
- *   detail/{sectionId}/{compId}    — live demo of a single component
+ *   detail/{sectionId}/{compId}    — live view of a single component
  *
  * `sectionId` lives in the detail route alongside `componentId` so the
  * detail screen can route to the user / content rendering family without

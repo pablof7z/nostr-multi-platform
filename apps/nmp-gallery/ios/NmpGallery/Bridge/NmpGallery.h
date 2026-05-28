@@ -72,12 +72,12 @@ void nmp_app_remove_relay(void *app, const char *url);
 // ── Generic action dispatch (phase 2 / write surface) ────────────────────
 
 // Single namespace-keyed entry point for the M6 `ActionModule` family. The
-// gallery uses it (phase 2) for the demo "publish a note" page. Returns a
+// gallery uses it (phase 2) for the showcase "publish a note" page. Returns a
 // heap-allocated JSON envelope (`{"correlation_id":"<32-hex>"}` or
 // `{"error":"…"}`) the caller MUST free via `nmp_app_free_string`.
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
 
-// ── Demo sign-in (phase 2) ───────────────────────────────────────────────
+// ── Showcase sign-in (phase 2) ───────────────────────────────────────────
 
 // Sign in with a raw nsec / hex secret. Fire-and-forget (D6): outcome arrives
 // through the snapshot's `accounts` / `last_error_toast` fields.
@@ -114,6 +114,7 @@ void nmp_app_signin_nsec(void *app, const char *secret);
 void nmp_app_gallery_register(void *app);
 char *nmp_app_gallery_snapshot(void *app);
 void nmp_app_gallery_snapshot_free(char *ptr);
+const char *nmp_app_gallery_showcase_references_json(void);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 

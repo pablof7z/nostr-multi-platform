@@ -11,7 +11,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,7 +20,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.nmp.gallery.bridge.ClaimedEventWire
 import org.nmp.gallery.bridge.GalleryModel
+import org.nmp.gallery.bridge.GalleryShowcaseReferences
 import org.nmp.gallery.registry.ContentTreeWire
 import org.nmp.gallery.registry.LocalNostrContentRenderer
 import org.nmp.gallery.registry.MediaKind
@@ -40,11 +42,19 @@ import org.nmp.gallery.registry.defaultMentionLabel
 @Composable
 fun ContentComponentPage(model: GalleryModel, componentId: String) {
     val profileMap by model.profileMap.collectAsState()
+    val claimedEvents by model.claimedEvents.collectAsState()
+    val showcase = model.showcase
     var rawMode by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        model.claimProfile(DEMO_PUBKEY, GalleryModel.CONSUMER_ID)
-        model.claimProfile(DEMO_OTHER_PUBKEY, GalleryModel.CONSUMER_ID)
+    DisposableEffect(showcase) {
+        model.claimProfile(showcase.profile.pubkeyHex, GalleryModel.CONSUMER_ID)
+        model.claimEvent(showcase.note.uri, GalleryModel.CONSUMER_ID)
+        model.claimEvent(showcase.article.uri, GalleryModel.CONSUMER_ID)
+        onDispose {
+            model.releaseProfile(showcase.profile.pubkeyHex, GalleryModel.CONSUMER_ID)
+            model.releaseEvent(showcase.note.uri, GalleryModel.CONSUMER_ID)
+            model.releaseEvent(showcase.article.uri, GalleryModel.CONSUMER_ID)
+        }
     }
 
     val renderer = NostrContentRenderer(
@@ -83,7 +93,7 @@ fun ContentComponentPage(model: GalleryModel, componentId: String) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = if (rawMode) "Raw wire" else "Resolved",
+                        text = if (rawMode) "Raw wire" else "Rendered",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -92,7 +102,9 @@ fun ContentComponentPage(model: GalleryModel, componentId: String) {
             }
             ContentComponentBody(
                 componentId = componentId,
+                showcase = showcase,
                 profileMap = profileMap,
+                claimedEvents = claimedEvents,
                 mentionLabel = mentionLabel,
             )
         }
@@ -102,60 +114,62 @@ fun ContentComponentPage(model: GalleryModel, componentId: String) {
 @Composable
 private fun ContentComponentBody(
     componentId: String,
+    showcase: GalleryShowcaseReferences,
     profileMap: Map<String, ProfileWire>,
+    claimedEvents: Map<String, ClaimedEventWire>,
     mentionLabel: (WireNostrUri) -> String,
 ) {
     when (componentId) {
-        "content-core" -> ContentCoreDemo(mentionLabel)
-        "content-view" -> ContentViewDemo(mentionLabel)
-        "content-mention-chip" -> MentionChipDemo(profileMap, mentionLabel)
-        "content-minimal" -> MinimalContentDemo(mentionLabel)
-        "content-media-grid" -> MediaGridDemo()
-        "content-quote-card" -> QuoteCardDemo(profileMap)
+        "content-core" -> ContentCoreShowcase(showcase, mentionLabel)
+        "content-view" -> ContentViewShowcase(showcase, mentionLabel, claimedEvents)
+        "content-mention-chip" -> MentionChipShowcase(showcase, profileMap, mentionLabel)
+        "content-minimal" -> MinimalContentShowcase(showcase, mentionLabel)
+        "content-media-grid" -> MediaGridShowcase(claimedEvents)
+        "content-quote-card" -> QuoteCardShowcase(showcase, profileMap, claimedEvents)
         else -> Text("Unknown content component: $componentId")
     }
 }
 
 @Composable
-private fun ContentCoreDemo(mentionLabel: (WireNostrUri) -> String) {
-    NostrContentView(tree = demoTextTree(), mentionLabel = mentionLabel)
+private fun ContentCoreShowcase(
+    showcase: GalleryShowcaseReferences,
+    mentionLabel: (WireNostrUri) -> String,
+) {
+    NostrContentView(tree = showcaseTextTree(showcase), mentionLabel = mentionLabel)
 }
 
 @Composable
-private fun ContentViewDemo(mentionLabel: (WireNostrUri) -> String) {
-    NostrContentView(tree = demoRichTree(), mentionLabel = mentionLabel)
+private fun ContentViewShowcase(
+    showcase: GalleryShowcaseReferences,
+    mentionLabel: (WireNostrUri) -> String,
+    claimedEvents: Map<String, ClaimedEventWire>,
+) {
+    NostrContentView(
+        tree = showcaseRichTree(showcase),
+        mentionLabel = mentionLabel,
+        quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents) },
+    )
 }
 
 @Composable
-private fun MentionChipDemo(
+private fun MentionChipShowcase(
+    showcase: GalleryShowcaseReferences,
     profileMap: Map<String, ProfileWire>,
     mentionLabel: (WireNostrUri) -> String,
 ) {
-    val primary = profileMap[DEMO_PUBKEY]
-    val other = profileMap[DEMO_OTHER_PUBKEY]
+    val primary = profileMap[showcase.profile.pubkeyHex]
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("NostrContentView — inline mention", style = MaterialTheme.typography.bodySmall)
-        NostrContentView(tree = demoMentionTree(), mentionLabel = mentionLabel)
-        Text("NostrMentionChip — live kernel-resolved", style = MaterialTheme.typography.bodySmall)
+        NostrContentView(tree = showcaseMentionTree(showcase), mentionLabel = mentionLabel)
+        Text("NostrMentionChip — live kernel-backed", style = MaterialTheme.typography.bodySmall)
         NostrMentionChip(
-            pubkey = DEMO_PUBKEY,
+            pubkey = showcase.profile.pubkeyHex,
             displayName = primary?.displayName,
             avatarUrl = primary?.pictureUrl,
         )
-        Text("Second profile (resolved)", style = MaterialTheme.typography.bodySmall)
-        NostrMentionChip(
-            pubkey = DEMO_OTHER_PUBKEY,
-            displayName = other?.displayName,
-            avatarUrl = other?.pictureUrl,
-        )
-        Text("Identicon fallback (unknown pubkey)", style = MaterialTheme.typography.bodySmall)
-        NostrMentionChip(
-            pubkey = "deadbeefcafebabedeadbeefcafebabe",
-            displayName = null,
-        )
         Text("No avatar variant", style = MaterialTheme.typography.bodySmall)
         NostrMentionChip(
-            pubkey = DEMO_PUBKEY,
+            pubkey = showcase.profile.pubkeyHex,
             displayName = primary?.displayName,
             showsAvatar = false,
         )
@@ -163,32 +177,40 @@ private fun MentionChipDemo(
 }
 
 @Composable
-private fun MinimalContentDemo(mentionLabel: (WireNostrUri) -> String) {
-    NostrContentView(tree = demoShortTree(), mentionLabel = mentionLabel)
+private fun MinimalContentShowcase(
+    showcase: GalleryShowcaseReferences,
+    mentionLabel: (WireNostrUri) -> String,
+) {
+    NostrContentView(tree = showcaseShortTree(showcase), mentionLabel = mentionLabel)
 }
 
 @Composable
-private fun MediaGridDemo() {
+private fun MediaGridShowcase(claimedEvents: Map<String, ClaimedEventWire>) {
+    val urls = mediaUrlsFromClaims(claimedEvents)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("1 image", style = MaterialTheme.typography.bodySmall)
-        NostrMediaGrid(imageUrls = listOf(SAMPLE_IMAGE_1))
-        Text("3 images", style = MaterialTheme.typography.bodySmall)
-        NostrMediaGrid(
-            imageUrls = listOf(SAMPLE_IMAGE_1, SAMPLE_IMAGE_2, SAMPLE_IMAGE_3),
-        )
+        Text("Relay-backed media", style = MaterialTheme.typography.bodySmall)
+        if (urls.isEmpty()) {
+            Text("Waiting for media from the claimed article.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            NostrMediaGrid(imageUrls = urls)
+        }
     }
 }
 
 @Composable
-private fun QuoteCardDemo(profileMap: Map<String, ProfileWire>) {
-    val profile = profileMap[DEMO_PUBKEY]
-    val quoteModel = NostrQuoteCardModel(
-        id = "demo-event-1",
-        authorPubkey = DEMO_PUBKEY,
-        authorDisplayName = profile?.displayName,
-        content = "Bitcoin solves this. We're early.",
-        createdAtDisplay = "2026-05-25",
-    )
+private fun QuoteCardShowcase(
+    showcase: GalleryShowcaseReferences,
+    profileMap: Map<String, ProfileWire>,
+    claimedEvents: Map<String, ClaimedEventWire>,
+) {
+    val noteUri = noteUri(showcase)
+    val quoteModel = quoteCardFor(noteUri, claimedEvents)?.let { model ->
+        val profile = model.authorPubkey?.let { profileMap[it] }
+        model.copy(
+            authorDisplayName = model.authorDisplayName ?: profile?.displayName,
+            authorAvatarUrl = model.authorAvatarUrl ?: profile?.pictureUrl,
+        )
+    } ?: NostrQuoteCardModel(id = showcase.note.primaryId, unresolvedUri = showcase.note.uri)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Rich", style = MaterialTheme.typography.bodySmall)
         NostrQuoteCard(model = quoteModel, variant = NostrQuoteCardVariant.Rich)
@@ -197,96 +219,118 @@ private fun QuoteCardDemo(profileMap: Map<String, ProfileWire>) {
         Text("Collapsed", style = MaterialTheme.typography.bodySmall)
         NostrQuoteCard(model = quoteModel, variant = NostrQuoteCardVariant.Collapsed)
         Text("Missing", style = MaterialTheme.typography.bodySmall)
-        NostrQuoteCard(
-            model = NostrQuoteCardModel.Missing.copy(unresolvedUri = "nostr:nevent1…"),
-            variant = NostrQuoteCardVariant.Missing,
-        )
+        NostrQuoteCard(model = quoteModel.copy(unresolvedUri = showcase.note.uri), variant = NostrQuoteCardVariant.Missing)
     }
 }
 
-// ── Synthetic content trees ──────────────────────────────────────────────────
+// ── Relay-reference content trees ────────────────────────────────────────────
 
-private fun demoMentionTree(): ContentTreeWire {
+private fun showcaseMentionTree(showcase: GalleryShowcaseReferences): ContentTreeWire {
     val nodes = listOf<WireNode>(
         WireNode.Text("Hey "),
         WireNode.Mention(
-            uri = WireNostrUri(
-                uri = "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
-                kind = WireNostrUriKind.Profile,
-                primaryId = DEMO_PUBKEY,
-            ),
+            uri = profileUri(showcase),
         ),
-        WireNode.Text(", how are you?"),
-        WireNode.Paragraph(children = listOf(0u, 1u, 2u)),
+        WireNode.Paragraph(children = listOf(0u, 1u)),
     )
-    return ContentTreeWire(nodes = nodes, roots = listOf(3u))
+    return ContentTreeWire(nodes = nodes, roots = listOf(2u))
 }
 
-private fun demoTextTree(): ContentTreeWire {
+private fun showcaseTextTree(showcase: GalleryShowcaseReferences): ContentTreeWire {
     val nodes = listOf<WireNode>(
-        WireNode.Text("ContentTreeWire is a flat arena of inline + block nodes."),
+        WireNode.EventRef(noteUri(showcase)),
         WireNode.Paragraph(children = listOf(0u)),
     )
     return ContentTreeWire(nodes = nodes, roots = listOf(1u))
 }
 
-private fun demoShortTree(): ContentTreeWire {
+private fun showcaseShortTree(showcase: GalleryShowcaseReferences): ContentTreeWire {
     val nodes = listOf<WireNode>(
-        WireNode.Text("Minimal flow renderer demo — single paragraph."),
+        WireNode.Mention(profileUri(showcase)),
         WireNode.Paragraph(children = listOf(0u)),
     )
     return ContentTreeWire(nodes = nodes, roots = listOf(1u))
 }
 
-private fun demoRichTree(): ContentTreeWire {
+private fun showcaseRichTree(showcase: GalleryShowcaseReferences): ContentTreeWire {
     val nodes = listOf<WireNode>(
         // 0
-        WireNode.Text("Hello "),
+        WireNode.Text("Relay note "),
         // 1
         WireNode.Mention(
-            uri = WireNostrUri(
-                uri = "nostr:npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft",
-                kind = WireNostrUriKind.Profile,
-                primaryId = DEMO_PUBKEY,
-            ),
+            uri = profileUri(showcase),
         ),
         // 2
         WireNode.Text(", "),
         // 3
-        WireNode.Hashtag(tag = "nostr"),
+        WireNode.EventRef(noteUri(showcase)),
         // 4
-        WireNode.Text(" lives in a flat arena."),
+        WireNode.Text(" "),
         // 5
         WireNode.Paragraph(children = listOf(0u, 1u, 2u, 3u, 4u)),
         // 6
-        WireNode.CodeBlock(info = "kotlin", body = "val world = \"hello\""),
-        // 7
-        WireNode.Media(urls = listOf(SAMPLE_IMAGE_1), mediaKind = MediaKind.Image),
     )
     return ContentTreeWire(
         nodes = nodes,
-        roots = listOf(5u, 6u, 7u),
+        roots = listOf(5u),
     )
 }
 
-// ── Constants ────────────────────────────────────────────────────────────────
+private fun noteUri(showcase: GalleryShowcaseReferences) = WireNostrUri(
+    uri = showcase.note.uri,
+    kind = WireNostrUriKind.Event,
+    primaryId = showcase.note.primaryId,
+)
 
-private const val DEMO_PUBKEY = GalleryModel.DEMO_PUBKEY
+private fun profileUri(showcase: GalleryShowcaseReferences) = WireNostrUri(
+    uri = "nostr:${showcase.profile.npub}",
+    kind = WireNostrUriKind.Profile,
+    primaryId = showcase.profile.pubkeyHex,
+)
 
-// jb55 (William Casarin)
-private const val DEMO_OTHER_PUBKEY =
-    "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+private fun quoteCardFor(
+    uri: WireNostrUri,
+    claimedEvents: Map<String, ClaimedEventWire>,
+): NostrQuoteCardModel? {
+    val event = claimedEvents[uri.primaryId] ?: return null
+    return NostrQuoteCardModel(
+        id = event.id,
+        unresolvedUri = uri.uri,
+        authorPubkey = event.authorPubkey,
+        authorDisplayName = event.authorDisplayName,
+        authorAvatarUrl = event.authorPictureUrl,
+        content = event.content,
+        mediaThumbnailUrl = mediaUrls(event).firstOrNull(),
+        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.toString(),
+    )
+}
 
-private const val SAMPLE_IMAGE_1 = "https://picsum.photos/seed/nmp1/640/360"
-private const val SAMPLE_IMAGE_2 = "https://picsum.photos/seed/nmp2/640/360"
-private const val SAMPLE_IMAGE_3 = "https://picsum.photos/seed/nmp3/640/360"
+private fun mediaUrlsFromClaims(claimedEvents: Map<String, ClaimedEventWire>): List<String> =
+    claimedEvents.values.flatMap(::mediaUrls).distinct()
+
+private fun mediaUrls(event: ClaimedEventWire): List<String> {
+    val tagged = event.tags
+        .filter { row -> row.firstOrNull() in setOf("image", "thumb", "r", "url") }
+        .mapNotNull { row -> row.getOrNull(1) }
+        .filter(::looksLikeMedia)
+    val inline = event.content
+        .split(Regex("\\s+"))
+        .filter(::looksLikeMedia)
+    return (tagged + inline).distinct()
+}
+
+private fun looksLikeMedia(value: String): Boolean {
+    val lower = value.lowercase()
+    return (lower.startsWith("http://") || lower.startsWith("https://")) &&
+        listOf(".jpg", ".jpeg", ".png", ".gif", ".webp").any { lower.contains(it) }
+}
 
 private fun labelFor(componentId: String): String = when (componentId) {
     "content-core" -> "ContentTreeWire (flat arena)"
     "content-view" -> "NostrContentView — live mention resolution"
-    "content-mention-chip" -> "NostrMentionChip — kernel-resolved profiles"
+    "content-mention-chip" -> "NostrMentionChip — kernel-backed profiles"
     "content-minimal" -> "NostrMinimalContentView"
     "content-media-grid" -> "NostrMediaGrid"
-    "content-quote-card" -> "NostrQuoteCard — kernel-resolved author"
+    "content-quote-card" -> "NostrQuoteCard — kernel-backed author"
     else -> componentId
 }

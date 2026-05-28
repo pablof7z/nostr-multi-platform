@@ -8,10 +8,22 @@ use ratatui::{
 
 use super::{content_render_data::ContentProfileRenderData, content_tree_wire::WireUri};
 
-/// Inline terminal chip for a pre-resolved profile mention.
+/// Host bridge for profile projections owned by the NMP kernel.
+///
+/// Immediate-mode mention widgets call this while rendering visible profile
+/// references. The host supplies the platform adapter; the widget owns the
+/// claim intent and reads the current projection each frame.
+pub trait NostrMentionProfileHost {
+    fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData>;
+    fn claim_profile(&self, pubkey: &str, consumer_id: &str);
+}
+
+/// Inline terminal chip for a profile mention.
 pub struct NostrMentionChip<'a> {
     uri: &'a WireUri,
     profile: Option<&'a ContentProfileRenderData>,
+    profile_host: Option<&'a dyn NostrMentionProfileHost>,
+    consumer_id: Option<&'a str>,
     style: Style,
 }
 
@@ -20,6 +32,8 @@ impl<'a> NostrMentionChip<'a> {
         Self {
             uri,
             profile: None,
+            profile_host: None,
+            consumer_id: None,
             style: Style::default()
                 .fg(mention_color(&uri.primary_id))
                 .add_modifier(Modifier::BOLD),
@@ -31,18 +45,30 @@ impl<'a> NostrMentionChip<'a> {
         self
     }
 
+    pub fn profile_host(mut self, host: Option<&'a dyn NostrMentionProfileHost>) -> Self {
+        self.profile_host = host;
+        self
+    }
+
+    pub fn consumer_id(mut self, id: Option<&'a str>) -> Self {
+        self.consumer_id = id;
+        self
+    }
+
     pub fn style(mut self, style: Style) -> Self {
         self.style = style;
         self
     }
 
     pub fn label(&self) -> String {
-        let raw = self
-            .profile
+        let claimed = self.claimed_profile();
+        let profile = self.profile.or(claimed.as_ref());
+        let raw = profile
             .map(ContentProfileRenderData::label)
             .unwrap_or(&self.uri.primary_id);
         let label = self
             .profile
+            .or(profile)
             .and_then(|profile| profile.display_name.as_deref())
             .map(str::to_string)
             .unwrap_or_else(|| short_id(raw));
@@ -51,6 +77,17 @@ impl<'a> NostrMentionChip<'a> {
 
     pub fn span(&self) -> Span<'static> {
         Span::styled(self.label(), self.style)
+    }
+
+    fn claimed_profile(&self) -> Option<ContentProfileRenderData> {
+        if !is_hex_id_64(&self.uri.primary_id) {
+            return None;
+        }
+        let host = self.profile_host?;
+        if let Some(consumer_id) = self.consumer_id {
+            host.claim_profile(&self.uri.primary_id, consumer_id);
+        }
+        host.profile_for_pubkey(&self.uri.primary_id)
     }
 }
 
@@ -76,6 +113,10 @@ fn short_id(id: &str) -> String {
             .collect::<String>();
         format!("{head}…{tail}")
     }
+}
+
+fn is_hex_id_64(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn mention_color(id: &str) -> Color {
@@ -112,17 +153,71 @@ fn channel(value: f32) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use super::*;
 
     #[test]
     fn mention_color_is_deterministic_per_pubkey() {
-        let first =
-            mention_color("1111111111111111111111111111111111111111111111111111111111111111");
-        let second =
-            mention_color("1111111111111111111111111111111111111111111111111111111111111111");
-        let other =
-            mention_color("2222222222222222222222222222222222222222222222222222222222222222");
+        const SHOWCASE_PUBKEY: &str =
+            "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+        const SHOWCASE_NOTE_ID: &str =
+            "276d69d6d2dc8348d2a0b7a67245503909dc5a405d7bae61a824dc224e11d784";
+        let first = mention_color(SHOWCASE_PUBKEY);
+        let second = mention_color(SHOWCASE_PUBKEY);
+        let other = mention_color(SHOWCASE_NOTE_ID);
         assert_eq!(first, second);
         assert_ne!(first, other);
+    }
+
+    #[test]
+    fn mention_label_claims_and_reads_host_projection() {
+        struct Host {
+            claimed: RefCell<Vec<(String, String)>>,
+        }
+
+        impl NostrMentionProfileHost for Host {
+            fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData> {
+                Some(ContentProfileRenderData {
+                    pubkey: pubkey.to_string(),
+                    display_name: Some("pablof7z".to_string()),
+                    npub: None,
+                    picture_url: None,
+                })
+            }
+
+            fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+                self.claimed
+                    .borrow_mut()
+                    .push((pubkey.to_string(), consumer_id.to_string()));
+            }
+        }
+
+        let host = Host {
+            claimed: RefCell::new(Vec::new()),
+        };
+        let uri = WireUri {
+            uri: "nostr:profile".to_string(),
+            kind: "npub".to_string(),
+            primary_id: "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
+                .to_string(),
+            relays: Vec::new(),
+            author: None,
+            event_kind: None,
+        };
+
+        let label = NostrMentionChip::new(&uri)
+            .profile_host(Some(&host))
+            .consumer_id(Some("content-mention-chip"))
+            .label();
+
+        assert_eq!(label, "@pablof7z");
+        assert_eq!(
+            host.claimed.borrow().as_slice(),
+            [(
+                "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52".to_string(),
+                "content-mention-chip".to_string()
+            )]
+        );
     }
 }

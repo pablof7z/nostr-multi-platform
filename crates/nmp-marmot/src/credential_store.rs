@@ -1,6 +1,7 @@
 //! Platform credential-store setup for Marmot SQLite encryption.
 
 use keyring_core::set_default_store;
+use std::sync::{Arc, OnceLock};
 
 #[cfg(any(
     target_os = "macos",
@@ -42,7 +43,12 @@ pub(crate) fn initialize() -> Option<bool> {
 
 #[must_use]
 pub(crate) fn install_mock_store() -> Option<bool> {
-    let store = keyring_core::mock::Store::new().ok()?;
+    static MOCK_STORE: OnceLock<Arc<keyring_core::CredentialStore>> = OnceLock::new();
+    let store = Arc::clone(MOCK_STORE.get_or_init(|| {
+        let store: Arc<keyring_core::CredentialStore> =
+            keyring_core::mock::Store::new().expect("mock keyring store");
+        store
+    }));
     set_default_store(store);
     Some(true)
 }

@@ -9,7 +9,7 @@ use ratatui::{
 use super::{
     content_render_data::ContentRenderData,
     content_tree_wire::{ContentTreeWire, WireNode},
-    nostr_mention_chip::NostrMentionChip,
+    nostr_mention_chip::{NostrMentionChip, NostrMentionProfileHost},
     ratatui_text_wrap::wrap_spans,
 };
 
@@ -17,6 +17,8 @@ use super::{
 pub struct NostrMinimalContent<'a> {
     tree: &'a ContentTreeWire,
     render_data: Option<&'a ContentRenderData>,
+    profile_host: Option<&'a dyn NostrMentionProfileHost>,
+    consumer_id: Option<&'a str>,
 }
 
 impl<'a> NostrMinimalContent<'a> {
@@ -24,11 +26,23 @@ impl<'a> NostrMinimalContent<'a> {
         Self {
             tree,
             render_data: None,
+            profile_host: None,
+            consumer_id: None,
         }
     }
 
     pub fn render_data(mut self, render_data: Option<&'a ContentRenderData>) -> Self {
         self.render_data = render_data;
+        self
+    }
+
+    pub fn profile_host(mut self, host: Option<&'a dyn NostrMentionProfileHost>) -> Self {
+        self.profile_host = host;
+        self
+    }
+
+    pub fn consumer_id(mut self, id: Option<&'a str>) -> Self {
+        self.consumer_id = id;
         self
     }
 
@@ -39,7 +53,14 @@ impl<'a> NostrMinimalContent<'a> {
     fn spans(&self) -> Vec<Span<'static>> {
         let mut spans = Vec::new();
         for root in &self.tree.roots {
-            append_inline(self.tree, self.render_data, *root, &mut spans);
+            append_inline(
+                self.tree,
+                self.render_data,
+                self.profile_host,
+                self.consumer_id,
+                *root,
+                &mut spans,
+            );
         }
         spans
     }
@@ -56,6 +77,8 @@ impl Widget for NostrMinimalContent<'_> {
 fn append_inline(
     tree: &ContentTreeWire,
     render_data: Option<&ContentRenderData>,
+    profile_host: Option<&dyn NostrMentionProfileHost>,
+    consumer_id: Option<&str>,
     index: usize,
     spans: &mut Vec<Span<'static>>,
 ) {
@@ -67,6 +90,8 @@ fn append_inline(
         WireNode::Mention(uri) => spans.push(
             NostrMentionChip::new(uri)
                 .profile(render_data.and_then(|data| data.profile_for(uri)))
+                .profile_host(profile_host)
+                .consumer_id(consumer_id)
                 .span(),
         ),
         WireNode::Hashtag(tag) => spans.push(Span::styled(
@@ -110,7 +135,7 @@ fn append_inline(
         | WireNode::Strong { children }
         | WireNode::Link { children, .. } => {
             for child in children {
-                append_inline(tree, render_data, *child, spans);
+                append_inline(tree, render_data, profile_host, consumer_id, *child, spans);
             }
         }
         WireNode::Image { alt, src, .. } => {
