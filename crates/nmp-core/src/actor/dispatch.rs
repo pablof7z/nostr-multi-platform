@@ -280,6 +280,14 @@ pub(super) struct ActorContext<'a> {
     /// the rebuilt kernel's fresh handles so the production
     /// `nmp_router::Nip65OutboxResolver` survives a state wipe.
     pub(super) publish_resolver_slot: &'a crate::slots::PublishResolverSlot,
+    /// V-82 — the FFI-shared active-account hex-pubkey slot. The kernel writes
+    /// its active account into this `Arc` on every identity mutation and the
+    /// host (`nmp-ffi::NmpApp::active_account_handle`) holds the same `Arc`.
+    /// Read by the `Reset` arm to rebuild the kernel through
+    /// [`crate::kernel::Kernel::with_storage_path_and_account_slot`] with the
+    /// same slot, so the shared handle survives a state wipe — same contract
+    /// as the routing-trace projection re-publish above.
+    pub(super) active_account_slot: &'a crate::slots::ActiveAccountSlot,
     /// Raw-event forwarding observer ids. Policies receive kernel handles,
     /// so `Reset` unregisters observers pinned to the discarded kernel and
     /// re-registers them against fresh handles.
@@ -1132,7 +1140,17 @@ pub(super) fn dispatch_command(
             // set. `Reset` is a "wipe all state" command and is rare in
             // production; persisting across it is a deliberate non-goal of
             // the FFI-path wiring.
-            *ctx.kernel = Kernel::new(ctx.kernel.visible_limit());
+            // V-82 — rebuild over the SAME FFI-shared active-account slot so
+            // `NmpApp::active_account_handle()` keeps reading the slot the
+            // rebuilt kernel writes (a bare `Kernel::new` would mint a fresh
+            // slot and silently orphan the host's handle on every Reset).
+            // Mirrors the routing-trace re-publish contract below: the shared
+            // `Arc` outlives the discarded kernel.
+            *ctx.kernel = Kernel::with_storage_path_and_account_slot(
+                ctx.kernel.visible_limit(),
+                None,
+                Arc::clone(ctx.active_account_slot),
+            );
             if let Some(handle) = drops_handle {
                 ctx.kernel.set_dispatch_drops_handle(handle);
             }
