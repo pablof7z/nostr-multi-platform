@@ -45,6 +45,7 @@ members = [
     "crates/nmp-threading",
     "crates/nmp-wot",
     "crates/nmp-desktop",
+    "apps/chirp/chirp-desktop",
     "crates/nmp-wasm",
 ]
 resolver = "2"
