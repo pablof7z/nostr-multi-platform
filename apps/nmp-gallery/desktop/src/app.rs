@@ -9,7 +9,11 @@ use std::sync::Arc;
 use eframe::App;
 use egui::{CentralPanel, Color32, ScrollArea, SidePanel, TopBottomPanel};
 use nmp_gallery_tui::gallery::REGISTRY_SECTIONS;
-use nmp_gallery_tui::{data::GalleryData, embed_host::EmbedHostState};
+use nmp_gallery_tui::{
+    data::{GalleryData, LiveProfileMap},
+    embed_host::EmbedHostState,
+    live::PRIMARY_PUBKEY,
+};
 
 use crate::bridge::GalleryBridge;
 use crate::render::{render_component, EmbedFrameContext};
@@ -20,6 +24,11 @@ pub struct GalleryApp {
     bridge: Arc<GalleryBridge>,
     data: GalleryData,
     host: EmbedHostState,
+    /// Reactive profile store. Every snapshot tick feeds this; the user-*
+    /// components resolve `data.primary_pubkey` through it at render time.
+    /// `GalleryData` carries the *identity* (a pubkey), never a profile
+    /// snapshot — there is no app-side field-by-field copying.
+    profiles: LiveProfileMap,
     selected_index: usize,
     last_rev: u64,
 }
@@ -27,13 +36,15 @@ pub struct GalleryApp {
 impl GalleryApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let bridge = Arc::new(GalleryBridge::start(cc.egui_ctx.clone()));
-        let data = GalleryData::render_test_data();
+        let data = GalleryData::live_initial(PRIMARY_PUBKEY);
         let host = EmbedHostState::new();
+        let profiles = LiveProfileMap::new();
 
         Self {
             bridge,
             data,
             host,
+            profiles,
             selected_index: 0,
             last_rev: 0,
         }
@@ -42,9 +53,12 @@ impl GalleryApp {
 
 impl App for GalleryApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Drain any new snapshots and update the embed host.
+        // Drain any new snapshots and update the embed host + profile store.
         if let Some(value) = self.bridge.snapshot_value() {
             let authors = self.host.update_from_snapshot(&value);
+            // Ingest resolved kind:0 profiles so the user-* components can
+            // resolve `data.primary_pubkey` reactively at render time.
+            self.profiles.update_from_snapshot(&value);
             // Trigger profile claims for authors without resolved kind:0.
             for pubkey in authors {
                 self.bridge.claim_profile(&pubkey, CONSUMER_ID);
@@ -135,6 +149,7 @@ impl GalleryApp {
                     envelopes: self.host.current_envelopes(),
                     sink: Some(&*self.bridge),
                     consumer_id: CONSUMER_ID,
+                    profiles: &self.profiles,
                 };
 
                 ScrollArea::vertical().show(ui, |ui| {

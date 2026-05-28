@@ -5,7 +5,7 @@ use nmp_content::{embed_projection::EmbeddedEventEnvelope, EventClaimSink};
 
 use nmp_gallery_tui::{
     content_tree_wire::WireNode,
-    data::{ContentExample, GalleryData},
+    data::{ContentExample, GalleryData, LiveProfileMap},
 };
 
 use crate::components::{
@@ -24,12 +24,16 @@ use crate::components::{
 /// Mirrors `EmbedFrameContext` from the TUI registry. `envelopes` holds
 /// the latest `claimed_events` decoded by `EmbedHostState`; `sink` forwards
 /// new claims to the in-process kernel; `consumer_id` is the per-consumer
-/// refcount key.
+/// refcount key; `profiles` is the reactive profile store the user-*
+/// components resolve their `ProfileWire` from via
+/// `profiles.resolve(&data.primary_pubkey)` at render time — profile data
+/// is never stored on `GalleryData`.
 #[derive(Clone, Copy)]
 pub struct EmbedFrameContext<'a> {
     pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
     pub sink: Option<&'a dyn EventClaimSink>,
     pub consumer_id: &'a str,
+    pub profiles: &'a LiveProfileMap,
 }
 
 /// Render the body of the named component into the given [`Ui`].
@@ -68,23 +72,28 @@ pub fn render_component(
             render_embed_showcase(id, ui, data, embed_ctx);
         }
         "user-avatar" => {
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
             ui.vertical_centered(|ui| {
-                UserAvatar::new(&data.primary_profile).size(64.0).show(ui);
+                UserAvatar::new(&primary).size(64.0).show(ui);
             });
         }
         "user-name" => {
-            UserName::new(&data.primary_profile).show(ui);
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            UserName::new(&primary).show(ui);
         }
         "user-nip05" => {
-            if let Some(badge) = Nip05Badge::from_profile(&data.primary_profile) {
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            if let Some(badge) = Nip05Badge::from_profile(&primary) {
                 badge.show(ui);
             }
         }
         "user-npub" => {
-            NpubChip::new(&data.primary_profile).show(ui);
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            NpubChip::new(&primary).show(ui);
         }
         "user-card" => {
-            UserCard::new(&data.primary_profile).show(ui);
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            UserCard::new(&primary).show(ui);
         }
         _ => {
             ui.label("Unknown component");
