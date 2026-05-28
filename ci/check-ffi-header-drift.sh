@@ -75,7 +75,6 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 HEADER="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
 UPDATE_CALLBACK_HEADERS=(
     "${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
-    "${REPO_ROOT}/apps/notes/ios/Notes/Bridge/NmpCore.h"
     "${REPO_ROOT}/apps/nmp-gallery/ios/NmpGallery/Bridge/NmpGallery.h"
 )
 
