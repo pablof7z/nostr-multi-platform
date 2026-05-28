@@ -1151,6 +1151,18 @@ pub(super) fn dispatch_command(
                 None,
                 Arc::clone(ctx.active_account_slot),
             );
+            // V-82 — clear the shared active-account slot to match the fresh
+            // kernel's empty `active_account` projection. The rebuilt kernel
+            // only writes the slot on the next identity mutation (`set_accounts`),
+            // so without this the slot would retain the pre-Reset pubkey and
+            // `NmpApp::active_account_handle()` would report a stale account
+            // while every other projection says "no account". Pre-V-82 the
+            // host-observable post-Reset value was `None` (the discarded kernel
+            // minted a fresh empty slot); clearing here preserves that. D6:
+            // poisoned lock → silent no-op, matching the other slots' policy.
+            if let Ok(mut guard) = ctx.active_account_slot.lock() {
+                *guard = None;
+            }
             if let Some(handle) = drops_handle {
                 ctx.kernel.set_dispatch_drops_handle(handle);
             }

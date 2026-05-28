@@ -72,11 +72,17 @@ fn hex_pubkey(nsec: &str) -> String {
 /// mutation, so a sign-in / switch / logout produces at least one update frame;
 /// we re-check the slot on each tick. A generous timeout guards against a hung
 /// actor without polling-sleep loops in the steady state.
+///
+/// Returns `Ok(value)` when `pred` is satisfied (the matching slot value), or
+/// `Err(())` on timeout (the actor never produced a state the predicate
+/// accepts). The `Result` is DELIBERATE: a plain `Option` would make a timeout
+/// indistinguishable from a legitimate `None` match (e.g. logout), turning a
+/// hung actor into a silent false-positive in `…_is_none()` assertions.
 fn wait_for_slot<F>(
     rx: &std::sync::mpsc::Receiver<()>,
     slot: &nmp_core::slots::ActiveAccountSlot,
     pred: F,
-) -> Option<String>
+) -> Result<Option<String>, ()>
 where
     F: Fn(&Option<String>) -> bool,
 {
@@ -84,7 +90,7 @@ where
     {
         let guard = slot.lock().expect("slot lock");
         if pred(&guard) {
-            return guard.clone();
+            return Ok(guard.clone());
         }
     }
     loop {
@@ -92,10 +98,10 @@ where
             Ok(()) => {
                 let guard = slot.lock().expect("slot lock");
                 if pred(&guard) {
-                    return guard.clone();
+                    return Ok(guard.clone());
                 }
             }
-            Err(_) => return None,
+            Err(_) => return Err(()),
         }
     }
 }
@@ -132,7 +138,7 @@ fn active_account_handle_reflects_real_sign_in() {
     let observed = wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(expected.as_str()));
     assert_eq!(
         observed,
-        Some(expected.clone()),
+        Ok(Some(expected.clone())),
         "the slot the host reads must reflect the real kernel sign-in"
     );
 
@@ -169,7 +175,7 @@ fn active_account_handle_reflects_account_switch() {
     let pk_a = hex_pubkey(TEST_NSEC);
     assert_eq!(
         wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk_a.as_str())),
-        Some(pk_a.clone())
+        Ok(Some(pk_a.clone()))
     );
 
     // Sign in account B — the active slot must now reflect B (account switch:
@@ -181,7 +187,7 @@ fn active_account_handle_reflects_account_switch() {
     assert_ne!(pk_a, pk_b, "the two test keys must differ");
     assert_eq!(
         wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk_b.as_str())),
-        Some(pk_b),
+        Ok(Some(pk_b)),
         "the slot must reflect the new active account after a switch"
     );
 
@@ -204,30 +210,38 @@ fn active_account_handle_survives_reset() {
 
     nmp_app_start(app, 0, 256, 4);
 
-    // Sign in, then Reset (wipes all kernel state, including the active
-    // account → slot returns to `None`).
-    let nsec = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::nmp_app_signin_nsec(app, nsec.as_ptr());
-    let pk = hex_pubkey(TEST_NSEC);
+    // Sign in account A, then Reset (wipes all kernel state, including the
+    // active account → slot returns to `None`).
+    let nsec_a = std::ffi::CString::new(TEST_NSEC).unwrap();
+    super::nmp_app_signin_nsec(app, nsec_a.as_ptr());
+    let pk_a = hex_pubkey(TEST_NSEC);
     assert_eq!(
-        wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk.as_str())),
-        Some(pk.clone())
+        wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk_a.as_str())),
+        Ok(Some(pk_a.clone()))
     );
 
     super::nmp_app_reset(app);
-    // After Reset the kernel is rebuilt and no account is active.
+    // After Reset the kernel is rebuilt and no account is active. The `Result`
+    // distinguishes a genuine `None` transition from a hung-actor timeout — a
+    // plain `Option` return would make this assertion pass on timeout too.
     assert_eq!(
         wait_for_slot(&rx, &handle, |v| v.is_none()),
-        None,
+        Ok(None),
         "Reset clears the active account in the shared slot"
     );
 
-    // Sign in AGAIN after Reset — the SAME handle must reflect it, proving the
-    // rebuilt kernel writes to the host's slot, not a fresh orphan.
-    super::nmp_app_signin_nsec(app, nsec.as_ptr());
+    // Sign in a DIFFERENT account (B) after Reset — the SAME handle must
+    // reflect B, proving the rebuilt kernel writes to the host's slot, not a
+    // fresh orphan. A different key means a stale pre-Reset value (A) would
+    // fail this assertion, so it cannot pass trivially on a retained value.
+    let nsec_b_str = second_nsec();
+    let nsec_b = std::ffi::CString::new(nsec_b_str.clone()).unwrap();
+    super::nmp_app_signin_nsec(app, nsec_b.as_ptr());
+    let pk_b = hex_pubkey(&nsec_b_str);
+    assert_ne!(pk_a, pk_b, "the two test keys must differ");
     assert_eq!(
-        wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk.as_str())),
-        Some(pk),
+        wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk_b.as_str())),
+        Ok(Some(pk_b)),
         "post-Reset sign-in must land in the SAME host-held slot"
     );
     assert_eq!(
