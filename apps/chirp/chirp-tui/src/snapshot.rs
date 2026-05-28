@@ -57,18 +57,21 @@ pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<Va
 }
 
 /// Decode a FlatBuffers snapshot frame into the generic `Value` tree, preferring
-/// the typed `nmp.feed.home` sidecar (ADR-0037) when present.
+/// the typed OP-feed `nmp.feed.home` sidecar (ADR-0038, descriptor `NOFS`) when
+/// present.
 ///
 /// During the compatibility window the host still renders from the generic
-/// `Value`-based code path. When the typed NFTS sidecar decodes successfully we
-/// re-serialize the [`nmp_nip01::ModularTimelineSnapshot`] back into the generic
+/// `Value`-based code path. When the typed `NOFS` sidecar decodes successfully we
+/// re-serialize the decoded [`nmp_nip01::OpFeedSnapshot`] back into the generic
 /// projection slot. Because the generic `nmp.feed.home` projection is itself
-/// produced by `serde_json::to_value(ModularTimelineSnapshot)`, this round-trip
-/// is parity-by-construction: same type, same serde derives, identical `Value`
-/// shape. It proves the typed decode is lossless without a render refactor.
+/// produced by `serde_json::to_value(RootFeedSnapshot)`, this round-trip is
+/// parity-by-construction: same type, same serde derives, identical `Value`
+/// shape — so the render path produces identical `TimelineRow`s from either
+/// source. It proves the typed decode is lossless without a render refactor.
 ///
-/// When no typed payload is present (a pre-sidecar frame), the generic `Value`
-/// projection is used verbatim, preserving the compatibility fallback.
+/// When no typed payload is present (a pre-sidecar frame, or an unrecognized
+/// descriptor such as the retired NFTS schema — ADR-0037 Commitment 4), the
+/// generic `Value` projection is used verbatim, preserving the fallback.
 fn decode_flatbuffer_snapshot_value(bytes: &[u8]) -> Option<Value> {
     let (mut value, typed_projections) = nmp_core::decode_snapshot_with_typed(bytes).ok()?;
     if let Some(typed_home_feed) = typed_home_feed_from_projections(&typed_projections) {
@@ -79,18 +82,21 @@ fn decode_flatbuffer_snapshot_value(bytes: &[u8]) -> Option<Value> {
     Some(value)
 }
 
-/// Locate the typed `nmp.feed.home` sidecar entry and decode it into an owned
-/// [`nmp_nip01::ModularTimelineSnapshot`].
+/// Locate the typed OP-feed `nmp.feed.home` sidecar entry and decode it into an
+/// owned [`nmp_nip01::OpFeedSnapshot`].
 ///
 /// Returns `None` when the projection is absent or the schema id does not match
-/// the NIP-01 timeline schema — either case falls back to the generic `Value`.
+/// the NIP-01 OP-feed schema (`nmp.nip01.opfeed`) — either case falls back to
+/// the generic `Value` (ADR-0037 Commitment 4). The prior NFTS descriptor
+/// (`nmp.nip01.timeline`) is no longer preferred here; an `NFTS`-tagged entry is
+/// treated as unrecognized and falls through to the generic projection.
 fn typed_home_feed_from_projections(
     projections: &[nmp_core::TypedProjectionData],
-) -> Option<nmp_nip01::ModularTimelineSnapshot> {
+) -> Option<nmp_nip01::OpFeedSnapshot> {
     let proj = projections
         .iter()
-        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::typed_wire::SCHEMA_ID)?;
-    nmp_nip01::typed_wire::decode_modular_timeline_snapshot(&proj.payload).ok()
+        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
+    nmp_nip01::decode_op_feed_snapshot(&proj.payload).ok()
 }
 
 /// Overwrite `value["projections"]["nmp.feed.home"]` with the typed-derived

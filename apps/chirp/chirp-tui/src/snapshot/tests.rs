@@ -1,4 +1,5 @@
 use super::*;
+use crate::timeline::TimelineRow;
 
 #[test]
 fn parses_direct_shared_diagnostics_and_action_projections() {
@@ -149,17 +150,74 @@ fn unwraps_snapshot_envelope_when_present() {
     assert_eq!(snapshot.relays[0].short_url, "relay.example");
 }
 
-/// Builds a distinctive typed home-feed snapshot whose `metrics` carry a
-/// sentinel `make_window_us` the generic projection never contains, so a
-/// test can prove the typed sidecar was the source of truth.
-fn typed_home_feed_snapshot() -> nmp_nip01::ModularTimelineSnapshot {
-    nmp_nip01::ModularTimelineSnapshot {
-        blocks: Vec::new(),
-        cards: Vec::new(),
-        page: None,
-        metrics: Some(nmp_nip01::TimelineWindowMetrics {
-            make_window_us: 4242,
-        }),
+/// A `RootFeedSnapshot`-shaped JSON value (ADR-0038): one thread-root card
+/// carrying a NIP-10 reply attribution, plus a populated paging/metrics window.
+///
+/// This is the SINGLE source of truth for the typed/generic parity tests: it
+/// deserializes into [`nmp_nip01::OpFeedSnapshot`] (the typed payload the `NOFS`
+/// encoder consumes) AND serves verbatim as the generic `Value` fallback. Using
+/// one source value guarantees the two encodings are two views of the same
+/// `RootFeedSnapshot`, exactly as the producer emits them during the rollout.
+fn op_feed_snapshot_value() -> Value {
+    serde_json::json!({
+        "cards": [{
+            "card": {
+                "id": "aa".repeat(32),
+                "author_pubkey": "bb".repeat(32),
+                "author_display": {
+                    "name": "Alice",
+                    "npub": "npub1alice",
+                    "picture_url": "https://example.com/a.png"
+                },
+                "kind": 1,
+                "created_at": 1_700_000_000u64,
+                "content": "a thread root",
+                "content_tree": { "nodes": [], "roots": [], "mode": "Plain" },
+                "content_render": { "profiles": {}, "events": {} },
+                "relation_counts": {
+                    "replies": { "state": "known", "count": 2 },
+                    "reactions": { "state": "known", "count": 0 },
+                    "reposts": { "state": "known", "count": 0 },
+                    "zaps": { "state": "known", "count": 0 }
+                },
+                "author_display_name": "Alice",
+                "author_picture_url": "https://example.com/a.png",
+                "content_preview": "a thread root"
+            },
+            "attribution": [{
+                "author_pubkey": "cc".repeat(32),
+                "author_display": {
+                    "name": "Bob",
+                    "npub": "npub1bob",
+                    "picture_url": null
+                },
+                "author_display_name": "Bob",
+                "author_picture_url": null,
+                "reply_event_id": "dd".repeat(32),
+                "reply_created_at": 1_700_000_500u64
+            }]
+        }],
+        // `next_cursor` is `skip_serializing_if = Option::is_none`, so it is
+        // omitted here to match the typed decode's re-serialized shape exactly.
+        "page": { "limit": 20, "has_more": false, "total_blocks": 1 },
+        "metrics": { "make_window_us": 4242 }
+    })
+}
+
+/// The `NOFS` typed sidecar entry for the given `RootFeedSnapshot` value.
+///
+/// Deserializes the value into the typed [`nmp_nip01::OpFeedSnapshot`] and
+/// encodes it with the OP-feed encoder — exactly the path the producer's
+/// `register_typed_snapshot_projection` closure takes (ADR-0038 Commitment 5).
+fn nofs_projection(snapshot: &Value) -> nmp_core::TypedProjectionData {
+    let typed: nmp_nip01::OpFeedSnapshot =
+        serde_json::from_value(snapshot.clone()).expect("value decodes as OpFeedSnapshot");
+    nmp_core::TypedProjectionData {
+        key: "nmp.feed.home".to_string(),
+        schema_id: nmp_nip01::OP_FEED_SCHEMA_ID.to_string(),
+        schema_version: nmp_nip01::OP_FEED_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(nmp_nip01::OP_FEED_FILE_IDENTIFIER).into_owned(),
+        payload: nmp_nip01::encode_op_feed_snapshot(&typed),
     }
 }
 
@@ -167,21 +225,16 @@ fn flatbuffer_payload(snapshot: Value, typed: &[nmp_core::TypedProjectionData]) 
     UpdatePayload::FlatBuffers(nmp_core::encode_snapshot_with_typed(snapshot, typed))
 }
 
-/// ADR-0035: when a typed `nmp.feed.home` sidecar is present, the host must
-/// render from the typed-decoded snapshot. The decode-then-re-serialize
-/// round-trip is parity-by-construction (the generic projection is itself
-/// `serde_json::to_value(ModularTimelineSnapshot)`), so `home_feed` must
-/// equal the typed snapshot re-serialized — not the generic sentinel.
+/// ADR-0038 Commitment 4: when a typed `NOFS` sidecar is present for
+/// `nmp.feed.home`, the host MUST prefer the typed-decoded snapshot and MUST
+/// ignore the generic `Value` subtree. The decode-then-re-serialize round-trip
+/// is parity-by-construction (the generic projection is itself
+/// `serde_json::to_value(RootFeedSnapshot)`), so `home_feed` must equal the
+/// typed snapshot re-serialized — not the generic sentinel.
 #[test]
 fn prefers_typed_home_feed_sidecar_over_generic_projection() {
-    let typed_snapshot = typed_home_feed_snapshot();
-    let typed = vec![nmp_core::TypedProjectionData {
-        key: "nmp.feed.home".to_string(),
-        schema_id: nmp_nip01::typed_wire::SCHEMA_ID.to_string(),
-        schema_version: 1,
-        file_identifier: "NFTS".to_string(),
-        payload: nmp_nip01::typed_wire::encode_modular_timeline_snapshot(&typed_snapshot),
-    }];
+    let source = op_feed_snapshot_value();
+    let typed = vec![nofs_projection(&source)];
     // The generic projection carries an unmistakable sentinel so we can
     // prove it was overridden by the typed path.
     let generic = serde_json::json!({
@@ -193,7 +246,13 @@ fn prefers_typed_home_feed_sidecar_over_generic_projection() {
 
     let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &typed));
 
-    let expected = serde_json::to_value(&typed_snapshot).expect("serialize typed snapshot");
+    // The home feed must equal the typed source re-serialized (the typed decode
+    // round-trips losslessly through `OpFeedSnapshot` serde), not the generic
+    // sentinel. Canonicalize the source the same way the decode path does so the
+    // comparison is independent of serde field-ordering / skip details.
+    let expected: nmp_nip01::OpFeedSnapshot =
+        serde_json::from_value(source).expect("source decodes as OpFeedSnapshot");
+    let expected = serde_json::to_value(&expected).expect("re-serialize expected");
     assert_eq!(snapshot.home_feed, Some(expected));
     assert_eq!(
         snapshot
@@ -207,6 +266,48 @@ fn prefers_typed_home_feed_sidecar_over_generic_projection() {
     );
 }
 
+/// Typed/generic render parity: a `NOFS` sidecar and the equivalent generic
+/// `Value` `RootFeedSnapshot` MUST produce byte-identical `TimelineRow`s. This
+/// is the load-bearing contract of Stage T2 — the typed decode is only the
+/// render *source*; the render output may not diverge by encoding.
+#[test]
+fn typed_and_generic_home_feed_produce_identical_rows() {
+    let source = op_feed_snapshot_value();
+
+    // Typed path: NOFS sidecar present, generic subtree is a sentinel that must
+    // be ignored.
+    let typed_only = serde_json::json!({
+        "metrics": { "events_rx": 1 },
+        "projections": {
+            "nmp.feed.home": { "sentinel": "generic-must-not-win" }
+        }
+    });
+    let typed_snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(
+        typed_only,
+        &[nofs_projection(&source)],
+    ));
+
+    // Generic path: no typed sidecar, the source value rides the generic slot.
+    let generic = serde_json::json!({
+        "metrics": { "events_rx": 1 },
+        "projections": { "nmp.feed.home": source }
+    });
+    let generic_snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &[]));
+
+    let typed_rows = TimelineRow::from_snapshot(
+        typed_snapshot.home_feed.as_ref().expect("typed home feed"),
+    );
+    let generic_rows = TimelineRow::from_snapshot(
+        generic_snapshot.home_feed.as_ref().expect("generic home feed"),
+    );
+
+    assert!(!typed_rows.is_empty(), "fixture must yield at least one row");
+    assert_eq!(
+        typed_rows, generic_rows,
+        "typed NOFS decode must render identical rows to the generic Value path"
+    );
+}
+
 /// Compatibility window: a pre-sidecar frame (no typed projections) must
 /// fall back to the generic `nmp.feed.home` Value verbatim.
 #[test]
@@ -214,7 +315,7 @@ fn falls_back_to_generic_home_feed_when_no_typed_sidecar() {
     let generic = serde_json::json!({
         "metrics": { "events_rx": 1 },
         "projections": {
-            "nmp.feed.home": { "blocks": [], "cards": [], "legacy": true }
+            "nmp.feed.home": { "cards": [], "legacy": true }
         }
     });
 
@@ -222,20 +323,21 @@ fn falls_back_to_generic_home_feed_when_no_typed_sidecar() {
 
     assert_eq!(
         snapshot.home_feed,
-        Some(serde_json::json!({ "blocks": [], "cards": [], "legacy": true })),
+        Some(serde_json::json!({ "cards": [], "legacy": true })),
         "absent typed sidecar must preserve the generic projection unchanged"
     );
 }
 
-/// A typed projection with a mismatched `schema_id` must not be consumed —
-/// the host falls back to the generic Value rather than mis-decoding.
+/// A typed projection with a mismatched `schema_id` (e.g. the retired NFTS
+/// descriptor, or any non-`NOFS` schema) must not be consumed — the host falls
+/// back to the generic Value rather than mis-decoding (ADR-0037 Commitment 4).
 #[test]
 fn ignores_typed_projection_with_wrong_schema_id() {
     let typed = vec![nmp_core::TypedProjectionData {
         key: "nmp.feed.home".to_string(),
-        schema_id: "nmp.some.other.schema".to_string(),
+        schema_id: "nmp.nip01.timeline".to_string(),
         schema_version: 1,
-        file_identifier: String::new(),
+        file_identifier: "NFTS".to_string(),
         payload: vec![0x00, 0x01, 0x02],
     }];
     let generic = serde_json::json!({
