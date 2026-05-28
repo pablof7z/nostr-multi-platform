@@ -779,19 +779,32 @@ pub(crate) fn follow(
     }
 }
 
-pub(crate) fn open_timeline(
+/// (Re)open the contact-list-authors subscription for the active account.
+///
+/// `kinds` is the host-declared event-kind set the follow-set REQ should
+/// carry. D0: `nmp-core` does not know which kinds belong to the host's app
+/// concept (Chirp's social timeline declares {1, 6}; another app might declare
+/// {30023}); the host supplies the set so the substrate carries no
+/// app-specific social knowledge. `Kernel::set_follow_feed_kinds` stores the
+/// set and re-registers the active account's M2 follow-feed interests under it,
+/// so `drain_lifecycle_tick` emits REQ frames for the follow set on the next
+/// idle tick. This complements `ingest_contacts` (which registers on kind:3
+/// arrival, reading the same stored kinds); this command covers re-opens
+/// (screen re-entry) before a new kind:3 arrives, and is also where the host
+/// first activates the subscription by declaring its kinds.
+pub(crate) fn open_contact_list_sub(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     relays_ready: bool,
+    kinds: std::collections::BTreeSet<u32>,
 ) -> Vec<OutboundMessage> {
     match identity.active_pubkey() {
         Some(pk) => {
-            // T140 Step A: register M2 follow-feed interests so drain_lifecycle_tick
-            // emits REQ frames for the follow set on the next idle tick.
-            // This complements ingest_contacts (which registers on kind:3 arrival);
-            // open_timeline covers re-opens (screen re-entry) before a new kind:3
-            // arrives.
-            kernel.register_follow_feed_for_active_account();
+            // Store the host-declared kinds and re-register M2 follow-feed
+            // interests so drain_lifecycle_tick emits REQ frames for the follow
+            // set on the next idle tick. `set_follow_feed_kinds` already calls
+            // `register_follow_feed_for_active_account` internally.
+            kernel.set_follow_feed_kinds(kinds);
 
             // M1 path: keep profile open (open_author) during the T140 transition
             // window. Step C will evaluate whether open_author is still needed

@@ -614,6 +614,18 @@ pub struct Kernel {
     /// stale entries before re-registering on kind:3 change. Derived from the
     /// active account's kind:3 follow set; empty until first kind:3 arrives.
     follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
+    /// Host-declared event kinds the contact-list-authors subscription should
+    /// REQ for the active account's follow set. Empty = the subscription is not
+    /// active (no follow-feed interests are registered). The host (e.g. Chirp)
+    /// declares its app-specific kinds via
+    /// `ActorCommand::OpenContactListSubscription { kinds }`; `nmp-core` no
+    /// longer hardcodes any kind set here (D0 — the substrate carries no
+    /// app-specific social knowledge such as {1, 6}).
+    ///
+    /// `pub(crate)` so in-crate tests can seed it directly as fixture setup
+    /// without triggering the `register_follow_feed_for_active_account`
+    /// side-effect that `set_follow_feed_kinds` fires.
+    pub(crate) follow_feed_kinds: BTreeSet<u32>,
     profile_claims: HashMap<String, BTreeSet<String>>,
     /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
     /// keyed by the same `primary_id` the snapshot's `claimed_events`
@@ -1490,6 +1502,7 @@ impl Kernel {
             test_dm_inbox_cache: None,
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
+            follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),

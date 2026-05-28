@@ -525,8 +525,18 @@ pub enum ActorCommand {
     RemoveRelay {
         url: String,
     },
-    /// T66a — (re)open the following-timeline for the active account.
-    OpenTimeline,
+    /// (Re)open the contact-list-authors subscription for the active account.
+    ///
+    /// `kinds` is the host-declared event-kind set the follow-set REQ should
+    /// carry. D0: `nmp-core` does not know which kinds belong to the host's
+    /// app concept (Chirp's social timeline declares {1, 6}; another app might
+    /// declare {30023}); the host supplies the set so the substrate carries no
+    /// app-specific social knowledge. The actor folds it into the kernel via
+    /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
+    /// follow-feed M2 interests under the new kind set.
+    OpenContactListSubscription {
+        kinds: std::collections::BTreeSet<u32>,
+    },
     ClaimProfile {
         pubkey: String,
         consumer_id: String,

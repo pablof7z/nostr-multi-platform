@@ -160,10 +160,17 @@ pub extern "C" fn nmp_app_remove_relay(app: *mut NmpApp, url: *const c_char) {
     app.send_cmd(ActorCommand::RemoveRelay { url });
 }
 
+/// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it now
+/// opens the contact-list-authors subscription, declaring Chirp's social
+/// timeline kinds {1, 6} — the host-declared kind set that `nmp-core` no longer
+/// hardcodes (D0). A future typed FFI surface can let the host pass its own
+/// kinds; today this is the Chirp-specific declaration site.
 #[no_mangle]
 pub extern "C" fn nmp_app_open_timeline(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::OpenTimeline);
+    app.send_cmd(ActorCommand::OpenContactListSubscription {
+        kinds: std::collections::BTreeSet::from([1u32, 6u32]),
+    });
 }

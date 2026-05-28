@@ -2216,8 +2216,15 @@ fn t140_open_timeline_registers_m2_interests_drain_emits_req() {
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
 
-    // Call the actor command under test. Before T140 this calls open_author.
-    let _outbound = open_timeline(&id, &mut kernel, true);
+    // Call the actor command under test. `open_contact_list_sub` declares the
+    // host kinds {1, 6} (Chirp's social timeline) via `set_follow_feed_kinds`,
+    // which re-registers the active account's M2 follow-feed interests.
+    let _outbound = open_contact_list_sub(
+        &id,
+        &mut kernel,
+        true,
+        std::collections::BTreeSet::from([1u32, 6u32]),
+    );
 
     // Drain the M2 planner — must emit follow-feed REQs after T140.
     let frames = kernel.drain_lifecycle_tick();

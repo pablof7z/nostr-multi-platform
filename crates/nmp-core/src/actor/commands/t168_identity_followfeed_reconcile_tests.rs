@@ -20,10 +20,13 @@ const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9l
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (
-        IdentityRuntime::new(new_bunker_handshake_slot()),
-        Kernel::new(DEFAULT_VISIBLE_LIMIT),
-    )
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Declare the host kinds {1, 6} the contact-list-authors subscription
+    // REQs for, as the FFI `nmp_app_open_timeline` does in production. Without
+    // this the kernel's `follow_feed_kinds` is empty and follow-feed
+    // registration is a no-op (D0: the substrate no longer hardcodes a kind set).
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    (IdentityRuntime::new(new_bunker_handshake_slot()), kernel)
 }
 
 /// Sign in account A, register A's kind:3 follow set (follows ALICE), and

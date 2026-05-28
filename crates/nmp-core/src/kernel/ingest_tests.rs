@@ -444,6 +444,9 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
 #[test]
 fn ingest_contacts_for_active_account_syncs_follow_feed_projection() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
+    // for (D0: the substrate no longer hardcodes a kind set).
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(AUTHOR.to_string());
 
     let event = make_event(
