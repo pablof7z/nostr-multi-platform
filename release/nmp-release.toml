@@ -201,15 +201,6 @@ name = "fixture-todo-core"
 path = "apps/fixture/fixture-todo-core"
 reason = "fixture app domain crate"
 
-[[private_packages]]
-name = "nmp-app-longform"
-path = "apps/longform/nmp-app-longform"
-reason = "example app composition crate"
-
-[[private_packages]]
-name = "nmp-app-notes"
-path = "apps/notes/nmp-app-notes"
-reason = "example app composition crate"
 
 [[private_packages]]
 name = "nmp-app-gallery"
