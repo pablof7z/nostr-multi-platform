@@ -208,6 +208,11 @@ This is the binding contract: each function in `crates/nmp-core/src/kernel/reque
 | `should_store_event` (ingest.rs:268-279) | Unchanged. Per-sub-id string filtering goes away when sub-ids become `c{plan}-r{relay}-s{shape}`, but the predicate switches to "is this event id covered by an active interest?" — a `compiler.is_covered(event)` call. |
 | `maybe_open_timeline` (ingest.rs:329-365) | The "seed-contacts arrive → open union timeline" logic moves to `nmp-nip02` (follows/contacts module), not to an `nmp-core` helper. D0: `nmp-core` must not know the social graph. The contacts module watches the kind:3 projection and registers a `Timeline { authors: union }` interest on behalf of whichever view asked for it. |
 
+The `{1, 6}` examples above are module-owned social/NIP-01 policy, not compiler
+defaults. `nmp-core` and the generic planner may pass caller-supplied `kinds`
+through as filter data, but they must not select a default follow-feed or thread
+kind set.
+
 What this migration does **not** do (deferred per parent index open questions 3, 6, 7):
 
 - It does not move the action ledger into M2 — `SendNote` lands in M6.

@@ -623,12 +623,12 @@ pub struct Kernel {
     #[cfg(any(test, feature = "test-support"))]
     test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
     timeline_authors: BTreeSet<String>,
-    /// V-59 rung 1 (Q7) — pre-kind:3 ingest buffer. Holds kind:1 / kind:6
-    /// events that arrived BEFORE the active account's follow set named their
-    /// author — i.e. `should_store_event` returned `false` solely because
-    /// `!timeline_authors.contains(author)`. Instead of dropping such an event
-    /// (which is the historical behavior), `ingest_timeline_event` parks it
-    /// here keyed by event id.
+    /// V-59 rung 1 (Q7) — pre-kind:3 ingest buffer. Holds host-declared
+    /// follow-feed events that arrived BEFORE the active account's follow set
+    /// named their author — i.e. `should_store_event` returned `false` solely
+    /// because `!timeline_authors.contains(author)`. Instead of dropping such
+    /// an event (which is the historical behavior), `ingest_timeline_event`
+    /// parks it here keyed by event id.
     ///
     /// `sync_follow_feed_interests` walks the buffer after rebuilding
     /// `timeline_authors`: any entry whose author is now followed is re-fed

@@ -165,7 +165,7 @@ impl Kernel {
         self.timeline_authors = authors;
 
         // V-59 rung 1 (Q7) — the follow set just grew (or was rebuilt). Replay
-        // any parked kind:1 / kind:6 events whose author is now in
+        // any parked host-declared follow-feed events whose author is now in
         // `timeline_authors`; drop the rest. Must run AFTER `timeline_authors`
         // is rebuilt above so the re-ingest's `should_store_event` gate passes.
         self.flush_pre_kind3_buffer();

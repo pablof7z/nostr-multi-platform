@@ -146,6 +146,9 @@ Concrete examples for the existing seed-timeline path:
 - `MetaTimelineViewModule` highlights-of-article registers the same coordinate:
   `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, lifecycle: OneShot }`.
 
+These `{1, 6}` examples are social/NIP-01 module policy. They are not substrate
+defaults: the compiler and `nmp-core` carry kind sets supplied by modules or apps.
+
 **Worked example — address-pointer dedup across ThreadView and MetaTimeline:**
 
 ```

@@ -114,6 +114,34 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
 
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation]
+
+**Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
+subscription defaults that belong in NIP/app modules:
+
+- `crates/nmp-core/src/kernel/requests/profile.rs:532-550` hardcodes selected-author
+  note/repost requests as `{"kinds":[1,6], ...}`.
+- `crates/nmp-core/src/kernel/requests/thread.rs:217-223` hardcodes recursive thread
+  reply requests as `{"kinds":[1,6], ...}`.
+- `crates/nmp-core/src/kernel/ingest/mod.rs:623-650` fires mailbox-change routing
+  traces with `&[1, 6]` as the canonical content kind set.
+- `crates/nmp-planner/src/interest.rs:183-189` exposes
+  `InterestShape::timeline_for` as a generic-looking constructor while internally
+  selecting `[1, 6]`.
+
+**Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
+substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`
+as filter data, but they must not choose app defaults. Defaults like "follow-list
+timeline means kind:1 + kind:6" belong in `nmp-nip01`, `nmp-nip02`,
+`nmp-app-template`, or an app crate such as Chirp.
+
+**Required fix:** move the remaining social subscription constructors and trace
+inputs out of `nmp-core`/generic planner APIs. Keep the existing
+`ActorCommand::OpenContactListSubscription { kinds }` direction: hosts or NIP
+modules declare the kind set, and the substrate registers/executes those kinds as
+data. Tests covering follow-feed behavior must use arbitrary host-declared kinds,
+not `{1, 6}`, unless the test is explicitly scoped to a NIP-01/NIP-18 module.
+
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
 **Verified:** `crates/nmp-core/src/actor/commands/identity.rs:700` —
