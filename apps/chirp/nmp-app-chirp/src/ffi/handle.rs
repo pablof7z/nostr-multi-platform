@@ -51,3 +51,9 @@ pub struct ChirpHandle {
 // thread is separate and is not joined by `nmp_app_free`.
 unsafe impl Send for ChirpHandle {}
 unsafe impl Sync for ChirpHandle {}
+
+impl ChirpHandle {
+    pub fn snapshot(&self) -> nmp_nip01::ModularTimelineSnapshot {
+        self.projection.snapshot()
+    }
+}
