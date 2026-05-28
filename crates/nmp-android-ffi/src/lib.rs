@@ -18,18 +18,15 @@
 //! `nmp_ffi::nmp_app_new()` (enabled by the `android-ffi` feature) is the
 //! portable fix that makes rustc include the bodies.
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_void, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use jni::objects::{JClass, JString};
-use jni::sys::{jbyteArray, jint, jlong, jstring};
+use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
 
-use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_unregister, ChirpHandle,
-};
+use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_free,
     nmp_app_new, nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback,
@@ -203,33 +200,6 @@ fn next_update_byte_array<'l>(mut env: JNIEnv<'l>, handle: jlong) -> jbyteArray 
             );
             null
         }
-    }
-}
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeChirpSnapshot<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    handle: jlong,
-) -> jstring {
-    let null = std::ptr::null_mut();
-    let Some(s) = session_ref(handle) else {
-        return null;
-    };
-    if s.chirp.is_null() {
-        return null;
-    }
-    let ptr = nmp_app_chirp_snapshot(s.chirp);
-    if ptr.is_null() {
-        return null;
-    }
-    let json = unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_app_chirp_snapshot_free(ptr);
-    match env.new_string(json) {
-        Ok(js) => js.into_raw(),
-        Err(_) => null,
     }
 }
 

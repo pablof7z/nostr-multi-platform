@@ -10,11 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.nmp.android.model.ChirpTimelineSnapshot
 import org.nmp.android.model.KernelUpdate
 
@@ -22,25 +17,21 @@ private const val TAG = "NmpCore"
 
 /**
  * Observable mirror of the kernel snapshot — the Android peer of iOS
- * `KernelModel`. The Rust actor pushes JSON; a reader coroutine decodes it and
- * republishes via [StateFlow]. Pure mirror: the only guard is `rev` monotonicity
- * (identical to the Swift `guard update.rev > rev` in `apply`). No Kotlin-side
- * business logic or derived state (D5/D8); decode fails closed (D1).
+ * `KernelModel`. The Rust actor pushes FlatBuffers `UpdateFrame` bytes
+ * (file_identifier "NMPU"); a reader coroutine decodes them via
+ * [KernelUpdateFrameDecoder] and republishes via [StateFlow].
  *
- * T103 / T107 — wire format: every frame is a tagged envelope
- *   `{"t":"snapshot","v":{…}}` or `{"t":"panic","v":{"msg":…}}`.
- * This model only processes `t=snapshot` frames; the panic arm (D7) is the
- * actor-death terminal signal and is handled separately. Anything else is a
- * wire-format regression and is logged at ERROR.
+ * Pure mirror: the only guard is `rev` monotonicity (identical to the Swift
+ * `guard update.rev > rev` in `apply`). No Kotlin-side business logic or
+ * derived state (D5/D8); decode fails closed (D1).
+ *
+ * Each [ByteArray] from `nextUpdate()` carries both the generic [KernelUpdate]
+ * (decoded from the `SnapshotFrame.payload` `Value` tree) AND the typed
+ * `nmp.feed.home` FlatBuffers projection (file_identifier "NFTS") embedded in
+ * `SnapshotFrame.typed_projections`. Both are extracted in a single pass
+ * through [KernelUpdateFrameDecoder.decode] — no second FFI call needed.
  */
 class KernelModel : ViewModel() {
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        coerceInputValues = true
-        @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-        namingStrategy = kotlinx.serialization.json.JsonNamingStrategy.SnakeCase
-    }
 
     private val bridge = KernelBridge()
 
@@ -61,7 +52,7 @@ class KernelModel : ViewModel() {
         bridge.start(visibleLimit = 80, emitHz = 4)
         viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
-                val payload = try {
+                val bytes = try {
                     bridge.nextUpdate()
                 } catch (e: IllegalStateException) {
                     // Mirrors PR #644 / V-57 P5 for nmp-gallery: the Rust JNI
@@ -70,14 +61,14 @@ class KernelModel : ViewModel() {
                     // (idle tick — keep polling). A disconnect surfaces as
                     // this exception. Break out of the loop instead of
                     // spinning on a dead channel.
-                    Log.i(TAG, "snapshot channel closed: ${e.message}")
+                    Log.i(TAG, "update channel closed: ${e.message}")
                     break
                 } ?: continue
-                val update = decodeSnapshot(payload) ?: continue
-                val applied = update.copy(modularTimeline = decodeChirpSnapshot())
-                if (applied.rev <= _state.value.rev) continue   // mirror only
+
+                val decoded = decodeUpdate(bytes) ?: continue
+                if (decoded.rev <= _state.value.rev) continue  // mirror only
                 withContext(Dispatchers.Main) {
-                    _state.value = applied
+                    _state.value = decoded
                     _snapshotCount.value += 1
                     _lastSnapshotAtMs.value = System.currentTimeMillis()
                 }
@@ -109,53 +100,31 @@ class KernelModel : ViewModel() {
     }
 
     /**
-     * Decode one frame from the `update_tx` channel.
+     * Decode one FlatBuffers update frame.
      *
-     * The kernel emits `{"t":"snapshot","v":{…}}` (T103 envelope). Attempt to
-     * unwrap the envelope and decode the inner object as [KernelUpdate]. Return
-     * null (drop the frame) on any parse error; log enough context to diagnose
-     * the failure without flooding logcat (PD-025 finding 4 — no silent swallow).
+     * Extracts both the generic [KernelUpdate] (from `SnapshotFrame.payload`)
+     * and the typed `nmp.feed.home` timeline projection (from
+     * `SnapshotFrame.typed_projections`) in a single pass.  Returns `null`
+     * (drop the frame) on any parse error; logs enough context to diagnose
+     * the failure without flooding logcat (PD-025 finding 4 — no silent
+     * swallow).
      *
-     * Non-snapshot frames are logged at ERROR and dropped — `t=panic` is the
-     * actor-death terminal signal handled separately; anything else is a
-     * wire-format regression.
+     * Panic frames are logged at ASSERT level — they indicate actor death (D7)
+     * and must not be silently ignored, but Android has no way to propagate
+     * them to a UI toast from a background coroutine without additional
+     * infrastructure. Future work: surface via a dedicated `panicState` flow.
      */
-    private fun decodeSnapshot(payload: String): KernelUpdate? {
-        // Step 1: parse the outer envelope.
-        val outer = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrElse { e ->
-            Log.e(TAG, "envelope parse failed: ${e.message}; payload prefix: ${payload.take(200)}")
-            return null
-        }
-
-        // Step 2: check the discriminator tag.
-        val tag = outer["t"]?.jsonPrimitive?.content
-        if (tag != "snapshot") {
-            Log.e(TAG, "unknown envelope tag=$tag; payload prefix: ${payload.take(200)}")
-            return null
-        }
-
-        // Step 3: extract the inner snapshot object.
-        val inner = outer["v"]?.jsonObject ?: run {
-            Log.e(TAG, "snapshot envelope missing 'v' field; payload prefix: ${payload.take(200)}")
-            return null
-        }
-
-        // Step 4: decode the inner snapshot as KernelUpdate.
-        return runCatching {
-            json.decodeFromJsonElement<KernelUpdate>(inner)
-        }.getOrElse { e ->
-            Log.e(TAG, "KernelUpdate decode failed: ${e.message}; inner prefix: ${inner.toString().take(200)}")
-            null
-        }
-    }
-
-    private fun decodeChirpSnapshot(): ChirpTimelineSnapshot {
-        val payload = bridge.chirpSnapshot() ?: return ChirpTimelineSnapshot()
-        return runCatching {
-            json.decodeFromString<ChirpTimelineSnapshot>(payload)
-        }.getOrElse { e ->
-            Log.e(TAG, "ChirpTimelineSnapshot decode failed: ${e.message}; payload prefix: ${payload.take(200)}")
-            ChirpTimelineSnapshot()
+    private fun decodeUpdate(bytes: ByteArray): KernelUpdate? {
+        return when (val frame = KernelUpdateFrameDecoder.decode(bytes)) {
+            null -> null
+            is KernelDecodedUpdateFrame.Panic -> {
+                Log.wtf(TAG, "NMP_ACTOR_PANIC: ${frame.message}")
+                null
+            }
+            is KernelDecodedUpdateFrame.Snapshot -> {
+                val typedTimeline = TypedHomeFeedDecoder.decode(frame.typedProjections)
+                frame.update.copy(modularTimeline = typedTimeline)
+            }
         }
     }
 
