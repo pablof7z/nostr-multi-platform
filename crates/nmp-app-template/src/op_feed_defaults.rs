@@ -162,9 +162,12 @@ pub struct OpFeedDefaults {
 /// Constructs the [`nmp_nip02::ActiveFollowSet`] over `active_account_slot`,
 /// builds the engine via [`nmp_nip01::op_feed::register_op_feed`], and
 /// registers the engine as both a [`KernelEventObserver`] (ingest) and a
-/// [`FeedController`] under `"nmp.feed.home"` (output). Also registers the
-/// `ActiveFollowSet` as its own `KernelEventObserver` and an `on_change`
-/// callback that resets the engine on an account switch.
+/// [`FeedController`] under `"nmp.feed.home"` (output). Also registers a typed
+/// `NOFS` sidecar projection under the same key (ADR-0038 T1) ALONGSIDE the
+/// generic `Value` `FeedController` — a host with a `NOFS` decoder prefers the
+/// typed payload, others fall back to the generic `Value` subtree. Finally
+/// registers the `ActiveFollowSet` as its own `KernelEventObserver` and an
+/// `on_change` callback that resets the engine on an account switch.
 ///
 /// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` (so callers
 /// and tests can drive the engine directly or interrogate it) and the
@@ -237,6 +240,40 @@ pub fn register_op_feed_defaults(
     let _engine_observer_id = app.register_event_observer(engine_observer);
     let engine_feed: Arc<dyn FeedController> = engine.clone();
     app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, engine_feed);
+
+    // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
+    //
+    // Emit the typed FlatBuffers `OpFeedSnapshot` (`schema_id
+    // "nmp.nip01.opfeed"`, `file_identifier "NOFS"`) ALONGSIDE the generic
+    // `Value` `FeedController` registration above. A host with a `NOFS` decoder
+    // prefers this typed payload; an un-updated host sees an unrecognized
+    // descriptor and falls back to the generic `Value` subtree (the permanent
+    // fallback from PR #747). Additive — un-updated hosts are unaffected.
+    //
+    // Known waste, deferred (ADR-0038 Commitment 5): this closure snapshots the
+    // engine again on the same tick the `FeedController` path snapshots it (two
+    // window materializations per 4 Hz tick). Not load-bearing for correctness;
+    // a shared per-tick snapshot cache is a tracked follow-up.
+    let engine_for_typed = Arc::clone(&engine);
+    app.register_typed_snapshot_projection(
+        nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY,
+        move || {
+            // ADR-0038 open-Q1 default: the typed sidecar mirrors the default
+            // window (matches the diagnostics-handle path); viewport-aware
+            // typed emit is a follow-up tied to the staged-removal close.
+            let snapshot = engine_for_typed.snapshot(&nmp_feed::FeedRequest::default());
+            Some(nmp_core::TypedProjectionData {
+                key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
+                schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+                schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(
+                    nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
+                )
+                .into_owned(),
+                payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
+            })
+        },
+    );
 
     // ── 6. Account-switch reset (NOT on kind:3 updates) ──────────────────
     //
