@@ -968,6 +968,24 @@ protocol/profile tokens in `crates/nmp-feed/src/`. V-81 resolved via option
 (a) — the engine treats `event_claim_released` as non-terminal (see V-81).
 Engine ships **unwired** with 17 synthetic tests; Chirp unchanged, master
 green. Rungs 4–7 remain.
+**Rung 4 (Stage 3a — `ActiveFollowSet` follow-set producer in `nmp-nip02`)
+landed 2026-05-28** — `struct ActiveFollowSet` (`crates/nmp-nip02/src/active_follow_set.rs`)
+with `Arc<RwLock<BTreeSet<String>>>` internal state, an internal
+`KernelEventObserver` that rebuilds the set from the active account's kind:3
+(author-gated, self-inclusion mirroring `contacts.rs::sync_follow_feed_interests`
+lines 162-164), and the explicit account-change seam
+`notify_account_changed()` (rebuilds on switch, clears on logout). Public API
+is closures-only — **no `FollowSetLookup` trait** (B1/§3-D override):
+`follows() -> Vec<String>`, `predicate() -> Arc<dyn Fn(&str) -> bool + Send +
+Sync>` (captures a clone of the internal `Arc<RwLock<…>>`, so a handed-out
+predicate reflects later set changes live), `on_change(Box<dyn Fn() + …>)`.
+Constructor takes the kernel's `ActiveAccountSlot` (re-exported via
+`nmp_core::slots`), **not** `&NmpApp` — that keeps `nmp-nip02` on `nmp-core`
+only (no new `nmp-feed` edge, no production `nmp-ffi` edge; `cargo tree -p
+nmp-nip02` unchanged). ADR-0036 records the composition-root expansion
+decision (no planner `SocialTimeline` seam). Producer ships **unwired** with
+12 synthetic tests; rungs 5 (`nmp-nip01` instance) + 6 (`nmp-app-template`
+composition) consume it. Chirp unchanged, master green. Rungs 5–7 remain.
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
