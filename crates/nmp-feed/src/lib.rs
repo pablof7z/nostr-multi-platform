@@ -5,10 +5,15 @@
 //! and generic feed-controller registration.
 
 mod registry;
+mod root_indexed;
 mod types;
 mod window;
 
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
+pub use root_indexed::{
+    AttributionPayload, CardBuilder, ClaimRequest, ClaimSink, EventLookup, FollowPredicate,
+    ProfileDetector, RootCard, RootFeedSnapshot, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
+};
 pub use types::{
     FeedBlock, FeedCard, FeedCardStore, FeedCursor, FeedPage, FeedRequest, FeedWindowMetrics,
     FeedWindowState, DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT,
