@@ -1,0 +1,226 @@
+// Typed FlatBuffers wire for `nmp_nip01::ModularTimelineSnapshot`.
+//
+// Relates to ADR-0035 (typed FlatBuffers runtime projections) and ADR-0032
+// (raw-data projection doctrine). ADR-0035's authorized pilot is the
+// `nmp.feed.home` projection whose card shape lives in
+// `crates/nmp-feed/schema/feed_home.fbs`. This schema is the nmp-nip01-owned
+// *full* `ModularTimelineSnapshot` view — it carries every field of the
+// projection's serde types (blocks, cards, page, metrics) for hosts that want
+// the complete assembled snapshot in one typed buffer. It co-exists with the
+// `nmp.feed.home` typed wire pending ADR-0035 reconciliation of the two
+// card-shape owners.
+//
+// ## Identity encoding: strings, not raw bytes
+//
+// Unlike `feed_home.fbs` (which uses raw 32-byte `[ubyte]` ids), this schema
+// uses `string` for every event id / pubkey / coord. The source serde types
+// (`TimelineEventCard.id`, `author_pubkey`; `TimelineBlock` event ids;
+// `ThreadPointer::Event.id` / `Address.coord` / `External.uri`) are all hex
+// `String`s, so `string` is byte-for-byte parity with no hex bridge on either
+// side. This is a deliberate per-schema choice for parity, not a deviation
+// from the raw-data doctrine — the strings ARE the raw protocol identifiers.
+//
+// ## Display fields
+//
+// Per ADR-0035 Commitment 3, display names and picture URLs travel verbatim
+// from kind:0 (absent when unseen). `AuthorDisplay` carries `name`, `npub`,
+// `picture_url`; cards carry both the structured table and flat mirrors. This
+// is the documented content contract for `ModularTimelineSnapshot`.
+//
+// ## Opaque sub-payloads
+//
+// `content_tree` (ContentTreeWire) is embedded as the typed nmp-content
+// FlatBuffers buffer (`schema_id = "nmp.content.tree"`, `file_identifier =
+// "NFCT"`) via `nmp_content::wire::typed_fb::encode_content_tree`. The bytes
+// are opaque to *this* schema — a host decodes them with the nmp-content
+// decoder. `content_render` (ContentRenderData, owned by nmp-nip01) is
+// embedded as opaque serde_json bytes for now; both keep this schema stable
+// against their churn. TODO: swap content_render to a typed encoder once one
+// exists.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip01/src/wire/generated \
+//         crates/nmp-nip01/schema/timeline_snapshot.fbs
+
+namespace nmp.nip01;
+
+// ---------------------------------------------------------------------------
+// Thread pointer (nmp_threading::ThreadPointer — 3 variants)
+// ---------------------------------------------------------------------------
+
+enum ThreadPointerKind:ubyte {
+  Event = 0,    // { id, relay?, kind? }
+  Address = 1,  // { coord, relay?, kind? }
+  External = 2, // { uri }
+}
+
+table ThreadPointer {
+  kind:ThreadPointerKind;
+  // Event variant: hex event id. Address variant: leave null.
+  id:string;
+  // Address variant: "kind:pubkey:d-tag" coordinate. Event variant: leave null.
+  coord:string;
+  // External variant: opaque URI. Event/Address: leave null.
+  uri:string;
+  // Event + Address: optional relay hint.
+  relay:string;
+  // Event + Address: optional kind discriminator. `has_kind_num` distinguishes
+  // "kind absent" (None) from "kind = 0".
+  has_kind_num:bool;
+  kind_num:uint32;
+}
+
+// ---------------------------------------------------------------------------
+// Timeline blocks (nmp_threading::TimelineBlock — Standalone | Module)
+// ---------------------------------------------------------------------------
+
+enum TimelineBlockKind:ubyte {
+  Standalone = 0,
+  Module = 1,
+}
+
+// Wrapper so the Module variant's `events` can be a vector of strings without
+// needing a vector-of-vectors. Each entry is one hex event id.
+table BlockEventId {
+  id:string;
+}
+
+table TimelineBlockEntry {
+  kind:TimelineBlockKind;
+  // Standalone: the single event id (hex). Module: leave null.
+  standalone_id:string;
+  // Standalone: optional terminal root pointer.
+  standalone_root:ThreadPointer;
+  // Module: event ids in display order (root-first, leaf-last).
+  module_event_ids:[BlockEventId];
+  // Module: true when an ancestor is missing / lookback gap / root mismatch.
+  module_has_gap:bool;
+  // Module: optional terminal root pointer.
+  module_root:ThreadPointer;
+}
+
+// ---------------------------------------------------------------------------
+// Relation counts (nmp_nip01::NoteRelationCounts — each field is Known|Loading)
+// ---------------------------------------------------------------------------
+
+enum RelationCountState:ubyte {
+  Known = 0,   // count is valid
+  Loading = 1, // interest is valid
+}
+
+table RelationCountInterest {
+  namespace:string;
+  target_event_id:string;
+  tag:string;
+}
+
+table RelationCount {
+  state:RelationCountState;
+  // Valid when state == Known.
+  count:uint64;
+  // Valid when state == Loading.
+  interest:RelationCountInterest;
+}
+
+table NoteRelationCounts {
+  replies:RelationCount;
+  reactions:RelationCount;
+  reposts:RelationCount;
+  zaps:RelationCount;
+}
+
+// ---------------------------------------------------------------------------
+// Author display (nmp_nip01::AuthorDisplay)
+// ---------------------------------------------------------------------------
+
+// All three are optional in the source (Option<String>). Absence is
+// meaningful (no kind:0 seen yet), so each has a `has_*` companion bool to
+// distinguish "absent" from "present empty string".
+table AuthorDisplay {
+  has_name:bool;
+  name:string;
+  has_npub:bool;
+  npub:string;
+  has_picture_url:bool;
+  picture_url:string;
+}
+
+// ---------------------------------------------------------------------------
+// Repost attribution (nmp_nip01::RepostAttribution)
+// ---------------------------------------------------------------------------
+
+table RepostAttribution {
+  author_pubkey:string;
+  author_display:AuthorDisplay;
+  has_author_display_name:bool;
+  author_display_name:string;
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  note_created_at:uint64;
+}
+
+// ---------------------------------------------------------------------------
+// Timeline event card (nmp_nip01::TimelineEventCard)
+// ---------------------------------------------------------------------------
+
+table TimelineEventCard {
+  id:string;               // hex event id
+  author_pubkey:string;    // hex pubkey
+  author_display:AuthorDisplay;
+  kind:uint32;
+  created_at:uint64;
+  content:string;
+  // Opaque embedded sub-payloads. content_tree_bytes is the typed nmp-content
+  // FlatBuffers buffer (NFCT); content_render_bytes is serde_json for now.
+  content_tree_bytes:[ubyte];
+  content_render_bytes:[ubyte];
+  relation_counts:NoteRelationCounts;
+  // Flat mirrors of author_display.{name,picture_url}. `has_*` distinguishes
+  // absent (no kind:0 yet) from present.
+  has_author_display_name:bool;
+  author_display_name:string;
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  content_preview:string;
+  // Null unless this card was surfaced by a NIP-18 repost.
+  reposted_by:RepostAttribution;
+}
+
+// ---------------------------------------------------------------------------
+// Feed page / cursor / metrics (nmp_feed types, re-exported as
+// TimelineWindowPage / TimelineWindowCursor / TimelineWindowMetrics)
+// ---------------------------------------------------------------------------
+
+table FeedCursor {
+  created_at:uint64;
+  id:string;
+}
+
+table FeedPage {
+  limit:uint64;
+  // Optional next-page cursor (null when no more pages).
+  next_cursor:FeedCursor;
+  has_more:bool;
+  total_blocks:uint64;
+}
+
+table FeedWindowMetrics {
+  make_window_us:uint64;
+}
+
+// ---------------------------------------------------------------------------
+// Root: the full ModularTimelineSnapshot
+// ---------------------------------------------------------------------------
+
+table ModularTimelineSnapshot {
+  schema_version:uint32 = 1;
+  blocks:[TimelineBlockEntry];
+  cards:[TimelineEventCard];
+  // Optional (None in the unpaged `snapshot()` path).
+  page:FeedPage;
+  metrics:FeedWindowMetrics;
+}
+
+root_type ModularTimelineSnapshot;
+file_identifier "NFTS";

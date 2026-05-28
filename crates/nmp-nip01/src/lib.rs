@@ -26,6 +26,7 @@ pub mod meta_timeline;
 mod note_relations;
 mod profile_display;
 pub mod timeline_projection;
+pub mod typed_wire;
 pub mod view;
 pub mod visible_relations;
 
@@ -42,6 +43,11 @@ pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,
     TimelineWindowMetrics, TimelineWindowPage, TimelineWindowRequest,
     DEFAULT_TIMELINE_WINDOW_LIMIT, MAX_TIMELINE_WINDOW_LIMIT,
+};
+pub use typed_wire::{
+    decode_modular_timeline_snapshot, encode_modular_timeline_snapshot,
+    FILE_IDENTIFIER as TIMELINE_SNAPSHOT_FILE_IDENTIFIER, SCHEMA_ID as TIMELINE_SNAPSHOT_SCHEMA_ID,
+    SCHEMA_VERSION as TIMELINE_SNAPSHOT_SCHEMA_VERSION,
 };
 pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,
