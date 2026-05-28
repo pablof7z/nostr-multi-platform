@@ -954,7 +954,105 @@ root-dropping bug. Every Rust + Swift consumer of the serialized shape was
 patched atomically. Behavior delta: chirp-tui's ↳ "reply in thread"
 indicator now fires for `Standalone` reply rows (it previously only lit for
 `Module` blocks). Home feed still rides `ModularTimelineProjection` (the
-projection swap is rung 7). Rungs 3–7 remain.
+projection swap is rung 7).
+**Rung 3 (Stage 2 — generic `RootIndexedFeed` engine in `nmp-feed`) landed
+2026-05-28** — `trait AttributionPayload` (associated `type Profile`, the B1
+dep-cycle fix), `struct RootIndexedFeed<R, A, C>` state machine
+(`KernelEventObserver` + `FeedController`), `RootCard<C, A>` /
+`RootFeedSnapshot<C, A>` (raw `Vec<A>` attribution, no `attribution_total` —
+Q1), `ClaimRequest{Claim,Release}` carrying a `ThreadPointer` (codex M2).
+Capabilities are closures, not traits (D7): follow predicate, event lookup,
+claim sink. ADR-0035. CI grep gate
+(`crates/nmp-testing/tests/op_feed_doctrine_lint.rs`) enforces zero
+protocol/profile tokens in `crates/nmp-feed/src/`. V-81 resolved via option
+(a) — the engine treats `event_claim_released` as non-terminal (see V-81).
+Engine ships **unwired** with 17 synthetic tests; Chirp unchanged, master
+green. Rungs 4–7 remain.
+**Rung 4 (Stage 3a — `ActiveFollowSet` follow-set producer in `nmp-nip02`)
+landed 2026-05-28** — `struct ActiveFollowSet` (`crates/nmp-nip02/src/active_follow_set.rs`)
+with `Arc<RwLock<BTreeSet<String>>>` internal state, an internal
+`KernelEventObserver` that rebuilds the set from the active account's kind:3
+(author-gated, self-inclusion mirroring `contacts.rs::sync_follow_feed_interests`
+lines 162-164), and the explicit account-change seam
+`notify_account_changed()` (rebuilds on switch, clears on logout). Public API
+is closures-only — **no `FollowSetLookup` trait** (B1/§3-D override):
+`follows() -> Vec<String>`, `predicate() -> Arc<dyn Fn(&str) -> bool + Send +
+Sync>` (captures a clone of the internal `Arc<RwLock<…>>`, so a handed-out
+predicate reflects later set changes live), `on_change(Box<dyn Fn() + …>)`.
+Constructor takes the kernel's `ActiveAccountSlot` (re-exported via
+`nmp_core::slots`), **not** `&NmpApp` — that keeps `nmp-nip02` on `nmp-core`
+only (no new `nmp-feed` edge, no production `nmp-ffi` edge; `cargo tree -p
+nmp-nip02` unchanged). ADR-0036 records the composition-root expansion
+decision (no planner `SocialTimeline` seam). Producer ships **unwired** with
+12 synthetic tests; rungs 5 (`nmp-nip01` instance) + 6 (`nmp-app-template`
+composition) consume it. Chirp unchanged, master green. Rungs 5–7 remain.
+**Rung 5 (Stage 3b — `nmp-nip01` OP-feed instance) landed 2026-05-28** —
+`crates/nmp-nip01/src/op_feed/` binds the generic engine to NIP-10:
+`Nip10ReplyAttribution` implements `nmp_feed::AttributionPayload` with
+`type Profile = ProfileDisplay` (raw pubkey + reply id + raw `created_at` +
+`Option<String>` display-name/picture mirrors per the 2026-05-25 display-
+separation doctrine; `refresh_for_profile` mirrors
+`ModularTimelineProjection::refresh_author_cards`). `register_op_feed(viewer,
+follow_predicate, event_lookup, claim_sink) -> Arc<OpFeedEngine>` constructs
+`RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, TimelineEventCard>`;
+`build_actor_claim_sink(dispatch)` encodes the `ThreadPointer` as a `nostr:`
+URI (`nevent` for `Event`, `naddr` for `Address`; `External` terminal) and
+dispatches the existing `ActorCommand::ClaimEvent` / `ReleaseEvent` (the
+Rust seam behind `nmp_app_claim_event`, never the `extern "C"` symbol). A
+new public `TimelineEventCard::from_event_for_op_feed(root, target)` is the
+stateless card-builder reuse seam (the private `from_event` needs kernel-
+internal caches). **Spec-vs-code drift surfaced & followed:** (1) the
+engine is `RootIndexedFeed<R, A, C>` with a 7-arg constructor, not the
+doc's `<R, A>`; (2) `register_op_feed` takes `nmp-core` primitives, **not**
+`&NmpApp` (same `nmp-ffi`-edge inversion rung 4 rejected — composition root
+rung 6 does the `NmpApp` registration); (3) `event_lookup` is
+`Fn(&EventId)`, not the doc's `Fn(&str)`; (4) `from_event` is private with a
+5-arg signature, so a new public stateless helper was added. Instance ships
+**unwired in production** (only tests register `"nmp.feed.home"`; Chirp keeps
+`ModularTimelineProjection` until rung 7) with 13 tests covering repost
+L-1…L-5, claim-URI shape, profile refresh, snapshot shape, and the V-81
+non-terminal release signal. `cargo test -p nmp-nip01` 108 pass;
+`cargo build -p nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Rungs
+6–7 remain.
+**Rung 6 (Stage 5 — `nmp-app-template` composition root) landed 2026-05-28** —
+`crates/nmp-app-template/src/op_feed_defaults.rs` adds
+`register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, active_account_slot:
+ActiveAccountSlot) -> Arc<OpFeedEngine>`. It constructs
+`nmp_nip02::ActiveFollowSet` over the slot, registers it as a
+`KernelEventObserver`, builds the engine via `nmp_nip01::register_op_feed`
+(follow predicate = `ActiveFollowSet::predicate()`, claim sink =
+`build_actor_claim_sink` over `app.actor_sender()`, no-op `event_lookup`),
+registers the engine as both a `KernelEventObserver` (ingest) and a
+`FeedController` under `"nmp.feed.home"` (output), and wires a self-detecting
+`on_change` callback that resets the engine ONLY on an account switch (the
+pubkey actually changed), never on a kind:3 update (the predicate is live).
+**CRITICAL DECISION — no `expand_follow_timeline_interests`:** the design doc
+§5 Stage 5 / ADR-0036 sketch per-follow `LogicalInterest` registration at the
+composition root "mirroring `sync_follow_feed_interests`," but the kernel
+**still owns** `sync_follow_feed_interests`
+(`crates/nmp-core/src/kernel/ingest/contacts.rs:119`), which already registers
+those interests on the active account's kind:3 and on identity change.
+Re-registering at the composition root would be **duplicate REQ
+subscriptions** — so this rung registers the engine + follow-set observer
+ONLY, no interest expansion. The doc predates the kernel keeping
+`sync_follow_feed_interests`. **Spec-vs-code drift followed:** (1) the
+function takes an explicit `active_account_slot` param — `NmpApp` exposes no
+synchronous `ActiveAccountSlot` accessor (kernel makes its own at
+`mod.rs:1406`, never threaded back); a thin accessor is filed as **V-82**;
+(2) `event_lookup` is a no-op `|_| None` — no synchronous event-by-id read API
+on `NmpApp`; the engine's L-2 re-key fallback keeps it correctness-preserving;
+the optimization is filed as **V-83**; (3) `send_cmd` is crate-private, so the
+claim sink dispatches through `actor_sender()`. **`register_op_feed_defaults`
+is NOT called by `register_defaults` and NOT wired into Chirp this rung** —
+defined + tested only (4 integration tests:
+`crates/nmp-app-template/tests/op_feed_defaults_test.rs`); rung 7 makes Chirp
+call it and removes the `ModularTimelineProjection` registration. `cargo test
+-p nmp-app-template` 7 pass (4 new + 3 existing); `cargo build -p
+nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Master green; Chirp
+unchanged. **Rung-7 note:** the engine's repost cards key the root slot by
+`target_id` (`card.id == target_id`, `ingest.rs:101`), differing from
+`ModularTimelineProjection`'s wrapper-id keying — rung 7's chirp-tui /
+codegen swap must account for this. Rung 7 remains.
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
@@ -1049,6 +1147,65 @@ release observer to attribution eviction. See
 [`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
 §3-K for the buffering model this protects.
 
+**Resolution (rung 3, 2026-05-28): option (a) implemented.**
+`RootIndexedFeed::on_event_claim_released` is a no-op beyond a diagnostic
+`AtomicU64` counter — it does NOT drop `pending_attributions`. (This
+supersedes the design doc §3-D, which predates V-81 and said to drop on the
+signal.) A pending attribution survives a release signal and is dropped only
+when the root actually arrives (drain) or the bounded map evicts it under D5
+pressure. Proven by
+`v81_release_signal_does_not_drop_pending_attribution`. Recorded in ADR-0035.
+**Option (b) — moving the `nmp-core` ring push from Phase-1 EOSE to
+`terminate_claim` — remains a possible rung-1 follow-up.** It is no longer
+load-bearing for OP-feed correctness (the engine is robust to the current
+Phase-1-EOSE behavior), so this item is downgraded to a cleanup. If pursued,
+it would let the engine treat the signal as terminal and proactively emit
+`Release` + drop pending, instead of relying on arrival/eviction.
+
+---
+
+### V-82 · `NmpApp::active_account_handle()` accessor for the OP-feed composition root [LOW · sub-item of V-80, rung-7 prerequisite]
+
+**Origin:** rung 6 (Stage 5) needs the kernel's `ActiveAccountSlot` to
+construct `nmp_nip02::ActiveFollowSet`. `NmpApp` exposes **no** synchronous
+accessor for it: the kernel constructs its `active_account_handle` internally
+(`crates/nmp-core/src/kernel/mod.rs:1406`) and never threads a clone back to
+`NmpApp` (unlike `relay_edit_rows`, which `NmpApp` owns and injects via
+`run_actor_with_observers`). So `register_op_feed_defaults` takes the slot as
+an explicit parameter this rung.
+
+**Fix:** add `NmpApp::active_account_handle(&self) -> ActiveAccountSlot`
+mirroring the `relay_edit_rows_handle` pattern — `NmpApp` owns the slot
+(created in `nmp_app_new`), passes a clone into `run_actor_with_observers`,
+and the actor binds it onto the kernel (a new `Kernel::set_active_account_handle`
+setter replacing the kernel's internal `new_active_account_slot()`). That is a
+small `nmp-core`/actor change, deliberately out of rung-6 scope. Once landed,
+`register_op_feed_defaults` can drop its explicit slot parameter and read the
+slot off `app`. **Rung 7 (Chirp cut-over) needs this** to obtain the slot at
+its `register_op_feed_defaults` call site, so this should land with or before
+rung 7.
+
+---
+
+### V-83 · OP-feed `event_lookup` reads the kernel event store (replace no-op closure) [LOW · sub-item of V-80, optimization only]
+
+**Origin:** rung 6 wires the engine's
+`event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` as a no-op
+`|_| None`. There is **no synchronous event-by-id read API on `NmpApp`** — the
+kernel's `EventStore::get_by_id` (`crates/nmp-store/src/events.rs:149`) lives
+on the actor thread and is never published back to `NmpApp`. The no-op is
+**correctness-preserving** for the OP feed: the engine's L-2 fallback holds an
+attribution against the (unresolved) wrapper id and re-keys it when the wrapper
+later arrives via the observer fan-out (§3-L step 2); L-5 shows the placeholder
+card until the target arrives.
+
+**Fix (optimization, not correctness):** expose a kernel-owned, thread-safe
+event-by-id read handle on `NmpApp` (an `Arc<dyn EventStore>` clone, or a
+typed `Kernel::event_by_id` accessor surfaced like `relay_edit_rows_handle`),
+and wire it into the `event_lookup` closure so the engine can resolve a
+locally-cached parent/target immediately instead of waiting for the observer
+re-key. Only matters for repost L-2/L-5 cold-start latency. Post-rung-7.
+
 ---
 
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
@@ -1061,7 +1218,7 @@ before picking up Section 4 work to avoid duplicating an in-progress task.
 Items that cannot be resolved autonomously. An agent that encounters one of these must log
 its finding in the decision thread below and move on to the next item, not block.
 
-### PD-033-A · Framework thesis — second non-social app — NEEDS REVALIDATION
+### PD-033-A · Framework thesis — second non-social app — CLOSED BY DELETION (2026-05-28)
 
 **Original closure (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
 client, 299 LOC Swift, 25 LOC Rust, zero new C-ABI protocol symbols. Closed as "confirmed."
@@ -1081,15 +1238,14 @@ artifact found it does NOT use the framework's defining properties:
 - `NotesBridge.swift:36–37` sets `isSignedIn = true` synchronously with no handshake-
   success gate.
 
-**The 299 LOC count is accurate; the proof is not.** Notes proves the substrate *can be
-bypassed* cheaply — not that the framework guidance produces correct apps.
-
-**Required to re-close:** rewrite `apps/notes/` so it (a) registers a `LogicalInterest` for
-kind:1 from the active user's follow set (outbox-routed through the planner, D3), (b)
-consumes a kernel-owned timeline projection (no JSON in Swift, no list ordering in Swift),
-and (c) gates `isSignedIn` on a real handshake-success callback. If that requires new
-framework affordances, those affordances are the real v1-A gap. Milestone: 30-day call from
-Opus direction review #13.
+**Resolution (user decision 2026-05-28):** `apps/notes/` deleted, along with the
+superseded read-only spike `apps/longform/`. The framework thesis remains **unproven**
+for stateful non-social apps — the substrate does not yet expose the three affordances
+required (`NmpSnapshotProjector` context pointer, generic `nmp_app_get_snapshot` pull
+path, `LogicalInterest::FollowSetKind1` or equivalent). PD-033-A is closed with the
+explicit acknowledgement that the framework is not yet expressive enough to host an
+honest second app. The thesis may be revisited when V-37 (snapshot output seam for
+non-Chirp apps) and V-45 (`LogicalInterest` follow-set variant) land.
 
 ### PD-039 · Bespoke FFI deprecation calendar (D11 expansion) — DECISION MADE 2026-05-23
 
@@ -1227,6 +1383,13 @@ Promoted from the post-v1 bucket by user direction on 2026-05-25. This is the
 M16 developer-experience track for reusable source components that apps can
 install, own, customize, and update later.
 
+Core product promise: registry components are reference-driven and reactive per
+[`product-spec/overview-and-dx.md` §5.4](product-spec/overview-and-dx.md#54-registry-components-reference-first-reactive-ui).
+App screens pass Nostr references plus styling/callbacks; installed components
+own the platform lifecycle that claims, observes, hydrates, redraws, and releases
+Rust-owned projections. Screens must not reimplement per-row profile/embed
+hydration just because they render a component.
+
 **Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
 
 **Status:** First implementation slice in progress: a built-in offline
@@ -1248,7 +1411,10 @@ fixture kit.
 
 **Acceptance:** a clean app can install a content kit, render the shared content
 fixtures, customize one renderer in app-owned source, update the upstream kit,
-and preserve the local customization.
+and preserve the local customization. For reactive components, the same app can
+pass only a Nostr reference plus styling/callbacks and does not call
+`claim_profile`, `release_profile`, `claim_event`, or `release_event` from the
+feature screen.
 
 **Progress (2026-05-25):** M16-C1 step "freeze the content fixtures / wire
 contract" landed — `crates/nmp-content-fixtures/fixtures/wire/<id>.json`
@@ -1268,6 +1434,31 @@ Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
 open item not already in Section 2. PR #588 closes F-CR-01 and F-CR-06; the next
 highest-value open item is F-CR-02, because Android must join `ContentTreeWire`
 before the Compose registry can replace the old embed card.
+
+#### F-CR-00 · Reference-driven reactive component contract [HIGH · all platforms]
+
+Before expanding more user/content/embed components, make the registry contract
+match the product promise in `docs/plan/m16-component-registry.md`: app screens
+pass references; components own platform lifecycle; Rust owns truth and policy.
+
+- Define the host adapter each platform exposes to copied source components:
+  profile claim/release, embedded-event claim/release, projection observation,
+  and redraw/update delivery.
+- Update user-profile components so the primary API is reference-first
+  (`pubkey` / `npub` / `nprofile`) with hydrated projection inputs retained only
+  for previews, tests, and already-resolved composition.
+- Update embedded-event/content components so lifecycle lives in the component
+  or shared registry host, not in each feed/thread screen.
+- Update recipes and web registry copy that currently teach per-screen maps or
+  manual hydration as the normal path.
+
+**Acceptance:** a clean SwiftUI, Compose, or TUI screen can render an avatar or
+embedded event by passing a reference and local styling/callbacks only. No
+feature screen directly calls claim/release for that reference; those lifecycle
+calls are owned by the installed component or the one-time registry host adapter.
+
+**Dependencies:** source-of-truth update in product spec and M16 plan. **Scope:**
+medium-large.
 
 #### F-CR-01 · Rust `EmbedKindProjection` + `EmbeddedEventEnvelope` [DONE · PR #588]
 

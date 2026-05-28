@@ -93,6 +93,8 @@ impl NostrKindRegistry {
 }
 
 /// Default renderer for `ShortNoteProjection` (kind:1 quoted notes).
+/// Renders in a rounded box matching `DefaultArticleRenderer`, with author
+/// byline and relative timestamp.
 pub struct DefaultShortNoteRenderer;
 
 impl KindRenderer for DefaultShortNoteRenderer {
@@ -107,25 +109,65 @@ impl KindRenderer for DefaultShortNoteRenderer {
         let EmbedKindProjection::ShortNote(note) = projection else {
             return;
         };
+        if area.height < 4 || area.width < 6 {
+            return;
+        }
+
         let author = note
             .author_display_name
             .clone()
             .unwrap_or_else(|| short_id(&note.author_pubkey));
-        render_two_line(
-            &format!("note · {author}"),
-            &tree_text(&note.content_tree),
-            area,
-            buf,
-        );
+        let body = tree_text(&note.content_tree);
+        let rel_time = format_relative_time(note.created_at);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(71, 85, 105)));
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        let content = Rect {
+            x: inner.x + 1,
+            y: inner.y,
+            width: inner.width.saturating_sub(1),
+            height: inner.height,
+        };
+        if content.width == 0 || content.height == 0 {
+            return;
+        }
+
+        let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(content);
+
+        // Byline: ● author · relative_time
+        Paragraph::new(Line::from(vec![
+            Span::styled("\u{25CF} ", Style::default().fg(Color::Rgb(220, 38, 38))),
+            Span::styled(author, Style::default().fg(Color::Rgb(203, 213, 225))),
+            Span::styled(
+                format!(" \u{00B7} {}", rel_time),
+                Style::default().fg(Color::Rgb(100, 116, 139)),
+            ),
+        ]))
+        .render(rows[0], buf);
+
+        // Body
+        Paragraph::new(Line::from(Span::styled(
+            body,
+            Style::default().fg(Color::Rgb(148, 163, 184)),
+        )))
+        .wrap(Wrap { trim: true })
+        .render(rows[1], buf);
     }
 
     fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
         let EmbedKindProjection::ShortNote(note) = projection else {
-            return 2;
+            return 4;
         };
-        text_height(&tree_text(&note.content_tree), width)
-            .saturating_add(1)
-            .max(2)
+        let wrap_width = width.saturating_sub(3).max(1);
+        text_height(&tree_text(&note.content_tree), wrap_width)
+            .saturating_add(1) // byline
+            .saturating_add(2) // top + bottom borders
+            .max(4)
     }
 }
 
@@ -340,6 +382,26 @@ fn truncate_chars(s: &str, max: usize) -> String {
     let mut out: String = chars.iter().take(max.saturating_sub(1)).collect();
     out.push('\u{2026}');
     out
+}
+
+fn format_relative_time(unix_secs: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let delta = now.saturating_sub(unix_secs);
+
+    if delta < 60 {
+        "just now".to_string()
+    } else if delta < 3600 {
+        format!("{}m ago", delta / 60)
+    } else if delta < 86400 {
+        format!("{}h ago", delta / 3600)
+    } else if delta < 30 * 86400 {
+        format!("{}d ago", delta / 86400)
+    } else {
+        format_short_date(unix_secs)
+    }
 }
 
 fn format_short_date(unix_secs: u64) -> String {

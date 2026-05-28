@@ -2,9 +2,8 @@
 //!
 //! The program flow:
 //! 1. Spin up `LiveKernel` (the persistent `nmp_app_*` actor handle).
-//! 2. Cold-start: fetch demo profile + thread/author/media items via
-//!    `LiveGallerySource::bootstrap` so user-* component pages render
-//!    real kind:0 / kind:1 data on the first frame.
+//! 2. Boot `LiveKernel` without blocking prefetch. The initial frame uses
+//!    synthetic placeholder data from `GalleryData::render_test_data()`.
 //! 3. Take the snapshot receiver off the kernel; spawn two threads:
 //!    - input thread (crossterm `event::read` blocking)
 //!    - snapshot thread (snapshot push receiver blocking)
@@ -33,16 +32,15 @@ use crossterm::{
 };
 use nmp_content::EventClaimSink;
 use nmp_gallery_tui::{
-    data::GalleryData,
+    data::{GalleryData, LiveProfileMap},
     embed_host::EmbedHostState,
     gallery,
-    live::{parse_snapshot, LiveGallerySource, LiveKernelSink},
+    live::{parse_snapshot, LiveGallerySource, LiveKernel, LiveKernelSink, PRIMARY_PUBKEY},
     render::{self, EmbedFrameContext},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use serde_json::Value;
 
-const COLD_START_TIMEOUT: Duration = Duration::from_secs(45);
 const EMBED_CONSUMER_ID: &str = "nmp-gallery-tui.embed";
 
 struct Args {
@@ -109,23 +107,17 @@ fn main() -> io::Result<()> {
         std::process::exit(2);
     }
 
-    // Cold-start the kernel + bootstrap initial data.
-    let source = LiveGallerySource::new(COLD_START_TIMEOUT);
-    let (facts, mut kernel) = match source.bootstrap() {
-        Ok(pair) => pair,
+    // Boot the kernel only — no blocking prefetch. Initial frame uses
+    // synthetic placeholder data; reactive snapshots update embeds.
+    let mut kernel = match LiveKernel::new() {
+        Ok(k) => k,
         Err(error) => {
-            eprintln!("failed to bootstrap NmpGallery kernel: {error}");
+            eprintln!("failed to boot kernel: {error}");
             std::process::exit(1);
         }
     };
 
-    let data = match GalleryData::from_live(&facts, !args.dump_lines) {
-        Ok(data) => data,
-        Err(error) => {
-            eprintln!("failed to build initial NmpGallery data: {error}");
-            std::process::exit(1);
-        }
-    };
+    let data = GalleryData::live_initial(PRIMARY_PUBKEY);
 
     // Build the renderer's embed sink (forwards claim/release to the
     // persistent kernel via the new claim_event FFI). `Arc` so the sink
@@ -133,17 +125,34 @@ fn main() -> io::Result<()> {
     let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: kernel.app });
     let mut host = EmbedHostState::new();
 
+    // Reactive profile store. Every snapshot tick feeds this; the user-*
+    // components resolve `data.primary_pubkey` through it at render time.
+    // No app-side field-by-field copying from the snapshot.
+    let mut live_profiles = LiveProfileMap::new();
+
     if args.dump_lines {
         // Non-TTY mode: just render once to stdout. Embeds will be unresolved
         // because no snapshot has flushed yet — the dump path is for
-        // structural inspection, not full reactive verification.
-        for line in render::plain_lines(&args.component, &data, 96) {
+        // structural inspection, not full reactive verification. An empty
+        // `LiveProfileMap` is fine: user-* components fall back to npub_short.
+        let profiles = LiveProfileMap::new();
+        for line in render::plain_lines(&args.component, &data, &profiles, 96) {
             println!("{line}");
         }
         // Drop kernel cleanly.
         drop(kernel);
         return Ok(());
     }
+
+    // Open the primary author's view so the kernel fetches the kind:0 and
+    // surfaces the full `ProfileCard` in `projections.author_view.profile`
+    // (and the author's items in `mention_profiles`) — the exact projections
+    // `LiveProfileMap::update_from_snapshot` ingests. A bare `claim_profile`
+    // alone would NOT surface here: `mention_profiles` is derived only from
+    // open-view item sets (see `nmp-core` `kernel/update.rs`), so without an
+    // open view the user-* components would sit on the npub_short fallback
+    // forever. The resolved profile arrives on a later snapshot tick.
+    sink.open_author(PRIMARY_PUBKEY);
 
     // Take the snapshot stream off the kernel so the snapshot thread can
     // own it. The kernel's internal `wait_for_*` paths are no longer used
@@ -152,9 +161,7 @@ fn main() -> io::Result<()> {
         .take_receiver()
         .expect("snapshot receiver must still be present after bootstrap");
 
-    let _ = &facts; // smoke handled above
-
-    run_terminal(&args, &data, &sink, &mut host, snapshot_rx)?;
+    run_terminal(&args, &data, &sink, &mut host, &mut live_profiles, snapshot_rx)?;
 
     // Kernel drops here at end of scope — clears the update callback and
     // frees the app.
@@ -488,6 +495,7 @@ fn run_terminal(
     data: &GalleryData,
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
+    live_profiles: &mut LiveProfileMap,
     snapshot_rx: std::sync::mpsc::Receiver<String>,
 ) -> io::Result<()> {
     enable_raw_mode()?;
@@ -497,7 +505,7 @@ fn run_terminal(
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let result = drive(&mut terminal, args, data, sink, host, snapshot_rx);
+    let result = drive(&mut terminal, args, data, sink, host, live_profiles, snapshot_rx);
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -511,6 +519,7 @@ fn drive(
     data: &GalleryData,
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
+    live_profiles: &mut LiveProfileMap,
     snapshot_rx: std::sync::mpsc::Receiver<String>,
 ) -> io::Result<()> {
     let mut selected_index = gallery::component_index(&args.component);
@@ -522,7 +531,7 @@ fn drive(
     spawn_input_thread(tx.clone());
     spawn_snapshot_thread(tx.clone(), snapshot_rx);
 
-    draw(terminal, selected_index, data, sink, host)?;
+    draw(terminal, selected_index, data, sink, host, live_profiles)?;
 
     loop {
         match rx.recv() {
@@ -544,16 +553,17 @@ fn drive(
                     }
                     _ => continue, // unknown key — no redraw
                 }
-                draw(terminal, selected_index, data, sink, host)?;
+                draw(terminal, selected_index, data, sink, host, live_profiles)?;
             }
             Ok(GalleryEvent::Input(Event::Resize(_, _))) => {
-                draw(terminal, selected_index, data, sink, host)?;
+                draw(terminal, selected_index, data, sink, host, live_profiles)?;
             }
             Ok(GalleryEvent::Input(_)) => {
                 // Other input events (mouse, etc.) — ignore.
             }
             Ok(GalleryEvent::Snapshot(snapshot)) => {
                 let new_authors = host.update_from_snapshot(&snapshot);
+                live_profiles.update_from_snapshot(&snapshot);
                 claim_profiles_for(sink, &new_authors);
                 // Coalesce any additional snapshots that have already piled
                 // up so we don't redraw N times for N quick ticks. Latest
@@ -562,6 +572,7 @@ fn drive(
                     match extra {
                         GalleryEvent::Snapshot(next) => {
                             let more = host.update_from_snapshot(&next);
+                            live_profiles.update_from_snapshot(&next);
                             claim_profiles_for(sink, &more);
                         }
                         other => {
@@ -583,6 +594,7 @@ fn drive(
                                     data,
                                     sink,
                                     host,
+                                    live_profiles,
                                 ),
                                 GalleryEvent::Snapshot(_) => unreachable!(),
                             }
@@ -590,7 +602,7 @@ fn drive(
                         }
                     }
                 }
-                draw(terminal, selected_index, data, sink, host)?;
+                draw(terminal, selected_index, data, sink, host, live_profiles)?;
             }
             Err(RecvError) => return Ok(()),
         }
@@ -643,8 +655,9 @@ fn draw_then_quit(
     data: &GalleryData,
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
+    live_profiles: &LiveProfileMap,
 ) -> io::Result<()> {
-    draw(terminal, selected_index, data, sink, host)?;
+    draw(terminal, selected_index, data, sink, host, live_profiles)?;
     Ok(())
 }
 
@@ -686,12 +699,14 @@ fn draw(
     data: &GalleryData,
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
+    live_profiles: &LiveProfileMap,
 ) -> io::Result<()> {
     let sink_ref: &dyn nmp_content::EventClaimSink = sink.as_ref();
     let embed_ctx = EmbedFrameContext {
         envelopes: host.current_envelopes(),
         sink: Some(sink_ref),
         consumer_id: EMBED_CONSUMER_ID,
+        profiles: live_profiles,
     };
     terminal.draw(|frame| {
         frame.render_widget(

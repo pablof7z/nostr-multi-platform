@@ -97,6 +97,105 @@ pub struct RepostAttribution {
 }
 
 impl TimelineEventCard {
+    /// Build a render card for the OP-centric feed engine (V-80 rung 5).
+    ///
+    /// The generic `RootIndexedFeed` engine's `card_builder` closure receives a
+    /// root event (and, for a repost wrapper, the superseded target event) and
+    /// must produce a `TimelineEventCard` without access to the
+    /// `ModularTimelineProjection`'s internal profile / card / relation caches.
+    /// This is the stateless reuse seam: it invokes the private
+    /// [`Self::from_event`] with empty caches and zero relation counts. Author
+    /// display and relation counts then hydrate later via the engine's
+    /// profile-refresh fan-out (`Nip10ReplyAttribution::refresh_for_profile`
+    /// keeps the *attribution* rows current; root-card profile refresh is a
+    /// rung-7 wiring concern — flagged as drift, not solved here).
+    ///
+    /// For a repost wrapper the `target` arg carries the superseded note so the
+    /// NIP-18 `reposted_by` attribution is preserved (L-1 / L-5). For a plain
+    /// root, pass `None`; the card is built from `event` directly.
+    ///
+    /// The `target` argument is accepted for symmetry with the engine's
+    /// `CardBuilder<C>` signature `(root, Option<target>)`.
+    ///
+    /// # Card identity for reposts
+    ///
+    /// The engine keys a reposted root's slot by the **target id** (the
+    /// superseded note), not the kind:6 wrapper id. So when `event` is a kind:6
+    /// repost the returned card's `id` is forced to the target id, and the body
+    /// is sourced (in priority order) from: the explicit `target` event (L-5,
+    /// after backward hydration), the wrapper's *embedded* inner note (L-1),
+    /// or an empty placeholder (L-3, e-tag-only with no target yet). In every
+    /// repost case `reposted_by` names the wrapper author and `created_at` is
+    /// the wrapper's (repost) timestamp so the feed cursor bumps the card.
+    #[must_use]
+    pub fn from_event_for_op_feed(event: &KernelEvent, target: Option<&KernelEvent>) -> Self {
+        let profiles: BoundedMessageMap<String, ProfileDisplay> =
+            BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
+        let cards: BoundedMessageMap<String, TimelineEventCard> =
+            BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
+
+        let Some(repost) = try_from_repost_event(event) else {
+            // Plain root: build directly from the event.
+            let counts = NoteRelationCounts::for_note(
+                &event.id,
+                crate::note_relations::TargetRelationCounts::default(),
+            );
+            return Self::from_event(event, None, &profiles, &cards, counts);
+        };
+
+        // Reposted root: the card identity is the superseded target id.
+        let target_id = repost
+            .target_event_id
+            .clone()
+            .unwrap_or_else(|| event.id.clone());
+
+        // Body source priority: explicit target → embedded inner note → empty.
+        let (mut card, note_created_at) = if let Some(target_event) = target {
+            // L-5 backward hydration: the target arrived after the wrapper.
+            let counts = NoteRelationCounts::for_note(
+                &target_event.id,
+                crate::note_relations::TargetRelationCounts::default(),
+            );
+            (
+                Self::from_event(target_event, None, &profiles, &cards, counts),
+                target_event.created_at,
+            )
+        } else if let Some(inner) = repost.embedded_event.as_ref() {
+            // L-1: the wrapper embeds the inner note. `from_event` decodes it.
+            let counts = NoteRelationCounts::for_note(
+                &target_id,
+                crate::note_relations::TargetRelationCounts::default(),
+            );
+            (
+                Self::from_event(event, None, &profiles, &cards, counts),
+                inner.created_at,
+            )
+        } else {
+            // L-3: e-tag-only repost, target not yet local → placeholder body.
+            let counts = NoteRelationCounts::for_note(
+                &target_id,
+                crate::note_relations::TargetRelationCounts::default(),
+            );
+            (
+                Self::from_event(event, None, &profiles, &cards, counts),
+                event.created_at,
+            )
+        };
+
+        // Force the card identity to the target id; the engine keys by it.
+        card.id = target_id;
+        // Stamp repost provenance (the wrapper author) and the repost timestamp.
+        card.reposted_by = Some(RepostAttribution {
+            author_pubkey: event.author.clone(),
+            author_display: AuthorDisplay::fallback(&event.author),
+            author_display_name: None,
+            author_picture_url: None,
+            note_created_at,
+        });
+        card.created_at = event.created_at;
+        card
+    }
+
     fn from_event(
         event: &KernelEvent,
         profile: Option<&ProfileDisplay>,

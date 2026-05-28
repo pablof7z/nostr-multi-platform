@@ -18,6 +18,15 @@
 //! gives every Nostr app on top of NMP a single `register_actions(app)` call
 //! to wire the social graph.
 //!
+//! Alongside the action modules and the [`FollowListProjection`] read model,
+//! this crate hosts [`ActiveFollowSet`] — the OP-centric home feed's (V-80)
+//! follow-set *producer*. It exposes the active account's follows as a live
+//! closure predicate (`Arc<dyn Fn(&str) -> bool>`) the generic `RootIndexedFeed`
+//! engine in `nmp-feed` consumes, with follow → planner-interest expansion done
+//! at the composition root (`nmp-app-template`) — no `FollowSetLookup` trait, no
+//! planner `SocialTimeline` seam. See
+//! [`active_follow_set`] and ADR-0036.
+//!
 //! # Why this exists
 //!
 //! Before this crate, the `Follow` / `Unfollow` / `React` `ActionModule`s
@@ -55,8 +64,10 @@ use nmp_core::substrate::{ActionModule, ActionRegistrar};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
+pub mod active_follow_set;
 pub mod projection;
 
+pub use active_follow_set::ActiveFollowSet;
 pub use projection::{FollowEntry, FollowListProjection};
 
 // ---------------------------------------------------------------------------

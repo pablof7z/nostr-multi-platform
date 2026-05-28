@@ -201,15 +201,6 @@ name = "fixture-todo-core"
 path = "apps/fixture/fixture-todo-core"
 reason = "fixture app domain crate"
 
-[[private_packages]]
-name = "nmp-app-longform"
-path = "apps/longform/nmp-app-longform"
-reason = "example app composition crate"
-
-[[private_packages]]
-name = "nmp-app-notes"
-path = "apps/notes/nmp-app-notes"
-reason = "example app composition crate"
 
 [[private_packages]]
 name = "nmp-app-gallery"
@@ -222,6 +213,7 @@ path = "apps/nmp-gallery/tui"
 reason = "gallery reference TUI application"
 
 [[private_packages]]
-name = "zap-smoke"
-path = "tools/zap-smoke"
-reason = "repository-local smoke test tool"
+name = "nmp-gallery-desktop"
+path = "apps/nmp-gallery/desktop"
+reason = "gallery reference desktop (egui) application"
+

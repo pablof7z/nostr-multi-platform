@@ -103,7 +103,10 @@ use nmp_router::{
     GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy, Nip65OutboxResolver,
 };
 
+pub mod op_feed_defaults;
 pub mod runtimes;
+
+pub use op_feed_defaults::register_op_feed_defaults;
 
 /// Wire the canonical NMP composition into `app`.
 ///

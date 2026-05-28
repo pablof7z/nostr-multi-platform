@@ -6,10 +6,15 @@
 
 mod registry;
 pub mod typed_wire;
+mod root_indexed;
 mod types;
 mod window;
 
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
+pub use root_indexed::{
+    AttributionPayload, CardBuilder, ClaimRequest, ClaimSink, EventLookup, FollowPredicate,
+    ProfileDetector, RootCard, RootFeedSnapshot, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
+};
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,
     FEED_WINDOW_SCHEMA_ID, FEED_WINDOW_SCHEMA_VERSION,
