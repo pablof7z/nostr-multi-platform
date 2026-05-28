@@ -64,7 +64,7 @@ pub use action::{
 };
 pub use app_host::AppHost;
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
-pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
+pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 #[cfg(any(test, feature = "test-support"))]
 pub use dm_inbox_relays::TestDmInboxRelayCache;

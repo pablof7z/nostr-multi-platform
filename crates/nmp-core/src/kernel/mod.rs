@@ -62,6 +62,12 @@ mod discovery_tests;
 mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
 mod event_claim_tests;
+// V-59 rung 1 (#4) — `event_claim_released` ring projection + the
+// in-process `EventClaimReleasedObserver` registration. `pub(crate)` so the
+// trait is reachable for the struct field type in this module.
+pub(crate) mod event_claim_released;
+#[cfg(test)]
+mod event_claim_released_tests;
 mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
@@ -671,6 +677,23 @@ pub struct Kernel {
     /// consumer drops the claim — that lets a re-claim re-fetch (the
     /// `OneshotApi` row may have been released on EOSE long ago).
     event_claim_requested: BTreeSet<String>,
+    /// V-59 rung 1 (#4) — bounded ring of `primary_id`s whose claim resolved
+    /// to EOSE-without-match. When `complete_unknown_oneshot` observes the
+    /// EOSE for a claim sub whose event never arrived, it clears the
+    /// `event_claims` / `event_claim_requested` state for that id and pushes
+    /// the id here. Later rungs (the OP-centric feed engine) register an
+    /// `EventClaimReleasedObserver` to learn "this claimed root could not be
+    /// hydrated" and drop the pending attribution. No consumer in this PR.
+    ///
+    /// Bounded by [`MAX_PROJECTION_MESSAGES`] (D5). Append-only signal log,
+    /// not a keyed projection — see [`crate::substrate::BoundedRing`].
+    event_claim_released: crate::substrate::BoundedRing<String>,
+    /// V-59 rung 1 (#4) — in-process observers notified on each
+    /// `event_claim_released` push. Rust-only for now (no FFI consumer yet);
+    /// the C-ABI channel can be added later mirroring
+    /// `actor/commands/raw_event_observer.rs` when an FFI consumer appears.
+    event_claim_released_observers:
+        Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
     /// Cold-start parking queue for `claim_event` calls that arrived
     /// before any relay socket reached the warm `can_send` state.
     ///
@@ -1528,6 +1551,8 @@ impl Kernel {
             profile_claims: HashMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
+            event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),
+            event_claim_released_observers: Vec::new(),
             pending_event_claims: Vec::new(),
             event_claim_drops_total: 0,
             profile_requests: ProfileRequestState::default(),
