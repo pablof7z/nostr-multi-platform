@@ -12,7 +12,7 @@ use ratatui_image::protocol::Protocol;
 use crate::{
     content_kind_registry::NostrKindRegistry,
     content_tree_wire::WireNode,
-    data::{ContentExample, GalleryData},
+    data::{ContentExample, GalleryData, LiveProfileMap},
     nostr_avatar::NostrAvatar,
     nostr_content_view::NostrContentView,
     nostr_media_grid::NostrMediaGrid,
@@ -35,10 +35,20 @@ pub struct EmbedFrameContext<'a> {
     pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
     pub sink: Option<&'a dyn EventClaimSink>,
     pub consumer_id: &'a str,
+    /// Reactive profile store. The user-* components resolve their
+    /// `ProfileWire` from here via `profiles.resolve(&data.primary_pubkey)`
+    /// at render time — profile data is never stored on `GalleryData`.
+    pub profiles: &'a LiveProfileMap,
 }
 
 
-pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
+pub fn plain_lines(
+    id: &str,
+    data: &GalleryData,
+    profiles: &LiveProfileMap,
+    width: usize,
+) -> Vec<String> {
+    let primary = profiles.resolve(&data.primary_pubkey);
     match id {
         "content-core" => content_core_lines(&data.content_core, width),
         "content-minimal" => content_minimal_lines(&data.content_minimal, width),
@@ -46,13 +56,13 @@ pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
         "content-mention-chip" => content_view_lines(&data.content_mention_chip, width),
         "content-media-grid" => content_view_lines(&data.content_media_grid, width),
         "content-quote-card" => quote_card_lines(&data.content_quote_card, width),
-        "user-avatar" => vec![format!("avatar {}", data.primary_profile.initials())],
-        "user-name" => vec![data.primary_profile.display().to_string()],
-        "user-nip05" => vec![data.primary_profile.nip05().unwrap_or("").to_string()],
-        "user-npub" => vec![data.primary_profile.npub_short.clone()],
+        "user-avatar" => vec![format!("avatar {}", primary.initials())],
+        "user-name" => vec![primary.display().to_string()],
+        "user-nip05" => vec![primary.nip05().unwrap_or("").to_string()],
+        "user-npub" => vec![primary.npub_short.clone()],
         "user-card" => vec![
-            data.primary_profile.display().to_string(),
-            data.primary_profile.nip05().unwrap_or("").to_string(),
+            primary.display().to_string(),
+            primary.nip05().unwrap_or("").to_string(),
         ],
         _ => vec![format!("unknown component: {id}")],
     }
@@ -89,17 +99,27 @@ pub fn render_body(
         "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
             render_embed_showcase(id, area, buf, data, &media_images, embed_ctx)
         }
-        "user-avatar" => render_avatar(area, buf, data),
-        "user-name" => NostrProfileName::new(&data.primary_profile).render(area, buf),
+        "user-avatar" => render_avatar(area, buf, data, embed_ctx),
+        "user-name" => {
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            NostrProfileName::new(&primary).render(area, buf)
+        }
         "user-nip05" => {
-            if let Some(badge) = NostrNip05Badge::from_profile(&data.primary_profile) {
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            if let Some(badge) = NostrNip05Badge::from_profile(&primary) {
                 badge.render(area, buf);
             }
         }
-        "user-npub" => NostrNpubChip::new(&data.primary_profile).render(chip(area), buf),
-        "user-card" => NostrUserCard::new(&data.primary_profile)
-            .avatar_image(data.avatar_image_compact.as_ref())
-            .render(card(area), buf),
+        "user-npub" => {
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            NostrNpubChip::new(&primary).render(chip(area), buf)
+        }
+        "user-card" => {
+            let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+            NostrUserCard::new(&primary)
+                .avatar_image(data.avatar_image_compact.as_ref())
+                .render(card(area), buf)
+        }
         _ => paragraph(vec![Line::from("Unknown component")]).render(area, buf),
     }
 }
@@ -146,14 +166,15 @@ fn render_quote_card(
         .render(area, buf);
 }
 
-fn render_avatar(area: Rect, buf: &mut Buffer, data: &GalleryData) {
+fn render_avatar(area: Rect, buf: &mut Buffer, data: &GalleryData, embed_ctx: EmbedFrameContext<'_>) {
     let centered = Rect {
         x: area.x + area.width.saturating_sub(20) / 2,
         y: area.y,
         width: area.width.min(20),
         height: area.height.min(10),
     };
-    NostrAvatar::new(&data.primary_profile)
+    let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
+    NostrAvatar::new(&primary)
         .image(data.avatar_image.as_ref())
         .render(centered, buf);
 }
@@ -308,7 +329,8 @@ mod tests {
     #[test]
     fn mention_chip_uses_resolved_profile_name() {
         let data = GalleryData::render_test_data();
-        let lines = plain_lines("content-mention-chip", &data, 80).join(" ");
+        let profiles = LiveProfileMap::new();
+        let lines = plain_lines("content-mention-chip", &data, &profiles, 80).join(" ");
         assert!(lines.contains("@Resolved Profile"), "{lines}");
         assert!(!lines.contains("npub1"), "{lines}");
     }
@@ -316,7 +338,8 @@ mod tests {
     #[test]
     fn quote_card_uses_event_render_data_instead_of_nevent_text() {
         let data = GalleryData::render_test_data();
-        let lines = plain_lines("content-quote-card", &data, 80).join(" ");
+        let profiles = LiveProfileMap::new();
+        let lines = plain_lines("content-quote-card", &data, &profiles, 80).join(" ");
         assert!(lines.contains("quote Quoted Author"), "{lines}");
         assert!(
             lines.contains("Quoted event body from render data"),
