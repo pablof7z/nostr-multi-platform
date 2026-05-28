@@ -11,23 +11,16 @@
 
 mod app;
 mod bridge;
+mod message;
 mod render;
 mod snapshot;
 
-use app::DesktopApp;
+use app::{update, view, DesktopApp};
+use bridge::subscription;
 
-fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([900.0, 720.0])
-            .with_min_inner_size([520.0, 400.0])
-            .with_title("NMP — Nostr Multi-Platform (in-process kernel)"),
-        ..Default::default()
-    };
-
-    eframe::run_native(
-        "nmp-desktop",
-        options,
-        Box::new(|cc| Ok(Box::new(DesktopApp::new(cc)))),
-    )
+fn main() -> iced::Result {
+    iced::application(DesktopApp::new, update, view)
+        .title("NMP — Nostr Multi-Platform (in-process kernel)")
+        .subscription(|_state| subscription())
+        .run()
 }

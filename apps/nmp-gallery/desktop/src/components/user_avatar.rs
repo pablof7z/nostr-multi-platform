@@ -1,4 +1,5 @@
-use egui::{Color32, Response, Ui, Vec2};
+use iced::widget::{container, text};
+use iced::{Element, Length};
 
 /// Circular avatar widget with deterministic pubkey-derived tint.
 ///
@@ -11,7 +12,7 @@ use egui::{Color32, Response, Ui, Vec2};
 /// UserAvatar::new(&profile.pubkey)
 ///     .display_name(profile.display_name.as_deref())
 ///     .size(48.0)
-///     .show(ui);
+///     .into_element();
 /// ```
 pub struct UserAvatar {
     pubkey_hex: String,
@@ -44,13 +45,8 @@ impl UserAvatar {
         self
     }
 
-    /// Render the avatar into the given [`Ui`] and return the [`Response`].
-    pub fn show(self, ui: &mut Ui) -> Response {
-        let (rect, response) = ui.allocate_exact_size(Vec2::splat(self.size), egui::Sense::hover());
-        if !ui.is_rect_visible(rect) {
-            return response;
-        }
-
+    /// Render the avatar as an iced [`Element`].
+    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {
         let color = hex_color(&nmp_core::display::avatar_color_hex(&self.pubkey_hex));
         let initials = if let Some(ref name) = self.display_name {
             nmp_core::display::display_name_initials(name)
@@ -59,25 +55,29 @@ impl UserAvatar {
             nmp_core::display::avatar_initials(&npub)
         };
 
-        let painter = ui.painter();
-        let radius = self.size / 2.0;
-        painter.circle_filled(rect.center(), radius, color);
-
-        let font_size = self.size * 0.4;
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            &initials,
-            egui::FontId::proportional(font_size),
-            Color32::WHITE,
-        );
-
-        response
+        let size = self.size;
+        container(
+            text(initials)
+                .size(size * 0.4)
+                .align_x(iced::alignment::Horizontal::Center)
+                .align_y(iced::alignment::Vertical::Center),
+        )
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .style(move |_theme: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(color)),
+            border: iced::Border {
+                radius: (size / 2.0).into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
     }
 }
 
-/// Parse a 6-char uppercase hex colour string into an egui [`Color32`].
-fn hex_color(hex: &str) -> Color32 {
+/// Parse a `#rrggbb` string into an iced [`Color`].
+fn hex_color(hex: &str) -> iced::Color {
     let h = hex.trim_start_matches('#');
     if h.len() == 6 {
         if let (Ok(r), Ok(g), Ok(b)) = (
@@ -85,10 +85,10 @@ fn hex_color(hex: &str) -> Color32 {
             u8::from_str_radix(&h[2..4], 16),
             u8::from_str_radix(&h[4..6], 16),
         ) {
-            return Color32::from_rgb(r, g, b);
+            return iced::Color::from_rgb8(r, g, b);
         }
     }
-    Color32::from_gray(120)
+    iced::Color::from_rgb8(120, 120, 120)
 }
 
 #[cfg(test)]
@@ -102,6 +102,8 @@ mod tests {
             .size(48.0);
         assert_eq!(avatar.display_name, Some("Alice Smith".to_string()));
         assert_eq!(avatar.size, 48.0);
+        // Smoke: element generation must not panic.
+        let _ = avatar.into_element::<()>();
     }
 
     #[test]
@@ -109,5 +111,6 @@ mod tests {
         let avatar = UserAvatar::new("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
         assert!(avatar.display_name.is_none());
         assert_eq!(avatar.size, 36.0);
+        let _ = avatar.into_element::<()>();
     }
 }

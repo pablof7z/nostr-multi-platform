@@ -2,8 +2,8 @@
 //!
 //! Static sample profiles — no kernel, no network. Every frame is deterministic.
 
-use eframe::App;
-use egui::{CentralPanel, Color32, ScrollArea, Ui};
+use iced::widget::{column, row, rule, scrollable, text};
+use iced::{Element, Length};
 
 use crate::components::user_avatar::UserAvatar;
 
@@ -34,62 +34,74 @@ impl Default for GalleryApp {
     }
 }
 
-impl App for GalleryApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        CentralPanel::default().show(ctx, |ui| {
-            ui.heading("NMP Desktop Component Gallery");
-            ui.separator();
+/// Gallery has no interactive messages — it is a static showcase.
+#[derive(Debug, Clone)]
+pub enum Message {}
 
-            ui.label(
-                egui::RichText::new("UserAvatar — deterministic pubkey tint + initials")
-                    .color(Color32::from_rgb(148, 163, 184))
-                    .size(14.0),
-            );
-            ui.add_space(12.0);
+pub fn update(_app: &mut GalleryApp, _message: Message) {}
 
-            ScrollArea::vertical().show(ui, |ui| {
-                avatar_grid(ui, &self.profiles);
-            });
-        });
-    }
+pub fn view(app: &GalleryApp) -> Element<'_, Message> {
+    let content = column![
+        text("NMP Desktop Component Gallery").size(24),
+        rule::horizontal(1),
+        text("UserAvatar — deterministic pubkey tint + initials")
+            .size(14)
+            .style(|_theme: &iced::Theme| text::Style {
+                color: Some(iced::Color::from_rgb8(148, 163, 184)),
+            }),
+        scrollable(avatar_grid(&app.profiles
+        ))
+        .height(Length::Fill),
+    ]
+    .spacing(12)
+    .padding(16);
+
+    content.into()
 }
 
-fn avatar_grid(ui: &mut Ui, profiles: &[SampleProfile]) {
+fn avatar_grid(profiles: &[SampleProfile]) -> Element<'_, Message> {
     let sizes = [24.0, 36.0, 48.0, 64.0];
 
-    for size in sizes {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("{size:.0}px")).strong().monospace());
-            ui.add_space(8.0);
+    let mut grid = column![].spacing(16);
 
-            for profile in profiles {
-                ui.add_space(4.0);
+    for size in sizes {
+        let size_label = text(format!("{size:.0}px"))
+            .font(iced::Font::MONOSPACE)
+            .size(12);
+
+        let mut avatars = row![size_label].spacing(8);
+        for profile in profiles {
+            avatars = avatars.push(
                 UserAvatar::new(&profile.pubkey)
                     .display_name(profile.display_name.as_deref())
                     .size(size)
-                    .show(ui);
-            }
-        });
-        ui.add_space(16.0);
+                    .into_element::<Message>(),
+            );
+        }
+        grid = grid.push(avatars);
     }
 
-    ui.separator();
-    ui.label(
-        egui::RichText::new("Fallback — no display name, npub initials")
-            .color(Color32::from_rgb(148, 163, 184))
-            .size(14.0),
+    grid = grid.push(rule::horizontal(1));
+    grid = grid.push(
+        text("Fallback — no display name, npub initials")
+            .size(14)
+            .style(|_theme: &iced::Theme| text::Style {
+                color: Some(iced::Color::from_rgb8(148, 163, 184)),
+            }),
     );
-    ui.add_space(8.0);
 
-    ui.horizontal(|ui| {
-        for profile in profiles.iter().take(3) {
+    let mut fallback_row = row![].spacing(8);
+    for profile in profiles.iter().take(3) {
+        fallback_row = fallback_row.push(
             UserAvatar::new(&profile.pubkey)
                 .display_name(None)
                 .size(48.0)
-                .show(ui);
-            ui.add_space(8.0);
-        }
-    });
+                .into_element::<Message>(),
+        );
+    }
+    grid = grid.push(fallback_row);
+
+    grid.into()
 }
 
 fn sample_profiles() -> Vec<SampleProfile> {

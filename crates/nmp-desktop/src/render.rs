@@ -6,9 +6,12 @@
 //! is best-effort (D1) — unresolved mentions/emoji degrade to a readable label
 //! rather than failing.
 
-use egui::{Color32, RichText, Ui};
+use iced::widget::{button, row, text};
+use iced::{Color, Element};
 use nmp_content::{tokenize_with_kind, RenderMode, Segment};
 use std::borrow::Cow;
+
+use crate::message::Message;
 
 /// Extract a human-readable content string from a raw timeline content field.
 ///
@@ -29,9 +32,8 @@ pub fn effective_content(raw: &str) -> (Cow<'_, str>, bool) {
     (Cow::Borrowed(raw), false)
 }
 
-/// Parse a `#rrggbb` string (the kernel's deterministic per-author colour)
-/// into an egui colour, falling back to a neutral grey.
-pub fn hex_color(hex: &str) -> Color32 {
+/// Parse a `#rrggbb` string into an iced [`Color`], falling back to neutral grey.
+pub fn hex_color(hex: &str) -> Color {
     let h = hex.trim_start_matches('#');
     if h.len() == 6 {
         if let (Ok(r), Ok(g), Ok(b)) = (
@@ -39,61 +41,83 @@ pub fn hex_color(hex: &str) -> Color32 {
             u8::from_str_radix(&h[2..4], 16),
             u8::from_str_radix(&h[4..6], 16),
         ) {
-            return Color32::from_rgb(r, g, b);
+            return Color::from_rgb8(r, g, b);
         }
     }
-    Color32::from_gray(120)
+    Color::from_rgb8(120, 120, 120)
 }
 
 /// Render a kind:1 note body. Tokenizes through `nmp-content` and lays the
 /// segments out as wrapped inline widgets (text, tappable links, hashtags).
-pub fn note_body(ui: &mut Ui, content: &str) {
-    // kind:1 → Plain mode (sniffed); empty tags: in-process timeline rows do
-    // not carry the event's tag vector, so emoji/mention resolution is
-    // best-effort by design (D1).
-    let tree = tokenize_with_kind(content, &[], RenderMode::Auto, 1);
+pub fn note_body(content: String) -> Element<'static, Message> {
+    let tree = tokenize_with_kind(&content, &[], RenderMode::Auto, 1);
 
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        for seg in &tree.segments {
-            match seg {
-                Segment::Text(t) => {
-                    ui.label(t);
-                }
-                Segment::Hashtag(tag) => {
-                    ui.label(
-                        RichText::new(format!("#{tag}")).color(Color32::from_rgb(96, 165, 250)),
-                    );
-                }
-                Segment::Url(u) => {
-                    ui.hyperlink(u.as_str());
-                }
-                Segment::Media { urls, .. } => {
-                    for u in urls {
-                        ui.hyperlink_to("🖼 media", u.as_str());
-                    }
-                }
-                Segment::Mention(_) => {
-                    ui.label(
-                        RichText::new("@mention").color(Color32::from_rgb(167, 139, 250)),
-                    );
-                }
-                Segment::EventRef(_) => {
-                    ui.label(
-                        RichText::new("↗ note").color(Color32::from_rgb(110, 231, 183)),
-                    );
-                }
-                Segment::Emoji { shortcode, .. } => {
-                    ui.label(format!(":{shortcode}:"));
-                }
-                Segment::Invoice(_) => {
-                    ui.label(RichText::new("⚡ invoice").color(Color32::from_rgb(251, 191, 36)));
-                }
-                // kind:1 resolves to Plain, so block markdown never appears
-                // here; if a future kind routes through, skip rather than
-                // panic (D1/D6).
-                Segment::MarkdownBlock(_) => {}
+    let mut segments = row![].spacing(2);
+    for seg in &tree.segments {
+        match seg {
+            Segment::Text(t) => {
+                segments = segments.push(text(t.clone()));
             }
+            Segment::Hashtag(tag) => {
+                segments = segments.push(
+                    text(format!("#{tag}"))
+                        .style(|_theme: &iced::Theme| text::Style {
+                            color: Some(Color::from_rgb8(96, 165, 250)),
+                        }),
+                );
+            }
+            Segment::Url(u) => {
+                let url = u.as_str().to_string();
+                segments = segments.push(
+                    button(text(url.clone()).size(12))
+                        .style(|_theme: &iced::Theme, _status| button::Style {
+                            ..button::primary(_theme, _status)
+                        })
+                        .on_press(Message::OpenUrl(url)),
+                );
+            }
+            Segment::Media { urls, .. } => {
+                for u in urls {
+                    let url = u.as_str().to_string();
+                    segments = segments.push(
+                        button(text("🖼 media").size(12))
+                            .style(|_theme: &iced::Theme, _status| button::Style {
+                                ..button::primary(_theme, _status)
+                            })
+                            .on_press(Message::OpenUrl(url)),
+                    );
+                }
+            }
+            Segment::Mention(_) => {
+                segments = segments.push(
+                    text("@mention")
+                        .style(|_theme: &iced::Theme| text::Style {
+                            color: Some(Color::from_rgb8(167, 139, 250)),
+                        }),
+                );
+            }
+            Segment::EventRef(_) => {
+                segments = segments.push(
+                    text("↗ note")
+                        .style(|_theme: &iced::Theme| text::Style {
+                            color: Some(Color::from_rgb8(110, 231, 183)),
+                        }),
+                );
+            }
+            Segment::Emoji { shortcode, .. } => {
+                segments = segments.push(text(format!(":{shortcode}:")));
+            }
+            Segment::Invoice(_) => {
+                segments = segments.push(
+                    text("⚡ invoice")
+                        .style(|_theme: &iced::Theme| text::Style {
+                            color: Some(Color::from_rgb8(251, 191, 36)),
+                        }),
+                );
+            }
+            Segment::MarkdownBlock(_) => {}
         }
-    });
+    }
+
+    segments.wrap().into()
 }

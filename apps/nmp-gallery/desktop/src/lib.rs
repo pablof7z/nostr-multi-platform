@@ -1,4 +1,4 @@
-//! Desktop component gallery — reusable egui widgets for Nostr UI surfaces.
+//! Desktop component gallery — reusable iced widgets for Nostr UI surfaces.
 //!
 //! This crate is the egui analogue of `nmp-gallery-tui`: it renders sample
 //! profiles and content with the actual components a production desktop app
