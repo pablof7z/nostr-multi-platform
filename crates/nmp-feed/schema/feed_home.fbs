@@ -1,0 +1,54 @@
+namespace nmp.feed.home;
+
+// Runtime pins mirror the workspace FlatBuffers version. Regenerate the
+// checked-in Rust bindings only with the matching runtime guard:
+//   flatc --rust -o crates/nmp-feed/src/typed_wire/generated \
+//         crates/nmp-feed/schema/feed_home.fbs
+// ci/check-flatbuffers-version-pins.sh enforces the current set.
+
+// Relation counts for a note (replies, reactions, reposts, zap total).
+table RelationCounts {
+  replies:uint32;
+  reactions:uint32;
+  reposts:uint32;
+  zap_msats:uint64;
+}
+
+// Repost attribution: raw original-author pubkey + original event id.
+// Raw bytes only — no display helpers, no npub, no profile names.
+table RepostAttribution {
+  original_author_pubkey:[ubyte];
+  original_event_id:[ubyte];
+}
+
+// A timeline event card: the fundamental unit in the home feed.
+table TimelineEventCard {
+  event_id:[ubyte];           // 32-byte event id
+  pubkey:[ubyte];             // 32-byte author pubkey
+  created_at:int64;
+  kind:uint32;
+  content_json:string;        // raw content string (not parsed)
+  relation_counts:RelationCounts;
+  repost_attribution:RepostAttribution;  // null if not a repost
+  root_event_id:[ubyte];      // null if top-level
+}
+
+// A page of timeline cards at a specific cursor position.
+table FeedPage {
+  cards:[TimelineEventCard];
+  cursor_oldest_created_at:int64;
+  cursor_oldest_event_id:[ubyte];
+  is_complete:bool;
+}
+
+// The full home feed snapshot.
+table HomeFeedSnapshot {
+  schema_version:uint32 = 1;
+  pages:[FeedPage];
+  window_limit:uint32;
+  window_offset:uint32;
+  total_items:uint32;
+}
+
+root_type HomeFeedSnapshot;
+file_identifier "NFHF";
