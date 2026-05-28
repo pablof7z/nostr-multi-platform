@@ -680,6 +680,7 @@ fn draw(
     let sink_ref: &dyn nmp_content::EventClaimSink = sink.as_ref();
     let embed_ctx = EmbedFrameContext {
         envelopes: host.current_envelopes(),
+        profiles: host.profiles(),
         sink: Some(sink_ref),
         consumer_id: EMBED_CONSUMER_ID,
     };

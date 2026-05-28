@@ -518,6 +518,46 @@ impl Kernel {
             serde_json::to_value(&claimed_events)
                 .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
         );
+        // `claimed_profiles` projection — keyed by hex pubkey. Built by
+        // walking the current `profile_claims` set (one entry per author a
+        // renderer asked to resolve via `claim_profile`, e.g. an inline
+        // `Mention` token) and looking each pubkey up against the kind:0
+        // cache via `profile_for_pubkey`. The payload carries `pubkey` +
+        // `display_name` + `picture_url`; `display_name` / `picture_url`
+        // stay `None` until kind:0 arrives, at which point the next
+        // snapshot tick surfaces the resolved name and the renderer's
+        // mention chip swaps the truncated-npub placeholder for the real
+        // display name (D1 best-effort; D8 push semantics).
+        //
+        // BTreeMap for deterministic key ordering (snapshot diff stability);
+        // reuses the `MentionProfilePayload` shape already emitted by the
+        // `mention_profiles` projection so host-side decoders share one
+        // contract. Serialisation degrades to `{}` on failure.
+        let mut claimed_profiles: std::collections::BTreeMap<String, MentionProfilePayload> =
+            std::collections::BTreeMap::new();
+        for pubkey in self.profile_claims.keys() {
+            let profile = self.profile_for_pubkey(pubkey);
+            let display_name = profile
+                .map(|p| p.display.clone())
+                .filter(|d| !d.trim().is_empty());
+            let picture_url = profile
+                .and_then(|p| p.picture_url.as_deref())
+                .filter(|url| !url.is_empty())
+                .map(str::to_owned);
+            claimed_profiles.insert(
+                pubkey.clone(),
+                MentionProfilePayload {
+                    pubkey: pubkey.clone(),
+                    display_name,
+                    picture_url,
+                },
+            );
+        }
+        projections.insert(
+            "claimed_profiles".to_string(),
+            serde_json::to_value(&claimed_profiles)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
+        );
         projections
     }
 

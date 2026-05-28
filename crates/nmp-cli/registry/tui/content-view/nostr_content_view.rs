@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 
-use nmp_content::EventClaimSink;
 use nmp_content::embed_projection::EmbeddedEventEnvelope;
+use nmp_content::EventClaimSink;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -13,8 +13,9 @@ mod nostr_content_widget;
 
 use super::{
     content_kind_registry::NostrKindRegistry,
+    content_render_data::ContentProfileRenderData,
     content_render_data::ContentRenderData,
-    content_tree_wire::{ContentTreeWire, WireNode},
+    content_tree_wire::{ContentTreeWire, WireNode, WireUri},
     nostr_media_grid::NostrMediaGrid,
     nostr_mention_chip::NostrMentionChip,
     nostr_quote_card::NostrQuoteCard,
@@ -27,12 +28,21 @@ pub struct NostrContentView<'a> {
     media_images: &'a [(&'a str, &'a Protocol)],
     kind_registry: Option<&'a NostrKindRegistry>,
     embedded_events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
+    // Host-side resolved-profile map (keyed by hex pubkey) mirroring the
+    // kernel's `claimed_profiles` snapshot projection. A `Mention(uri)` token
+    // falls back to this after `render_data.profile_for(uri)`, so an inline
+    // mention shows the real display name once the kernel has fetched the
+    // author's kind:0. `None` preserves fixture-only behaviour.
+    live_profiles: Option<&'a BTreeMap<String, ContentProfileRenderData>>,
     claim_sink: Option<&'a dyn EventClaimSink>,
     consumer_id: Option<&'a str>,
     // Per-render-pass seen-set. `Widget::render` consumes `self`, so the widget
     // is built fresh by the builder each frame — this set is naturally scoped
-    // to a single render pass and dedups multiple references to the same URI
-    // within one frame (D8: edge-triggered by render, no polling).
+    // to a single render pass and dedups repeated references within one frame
+    // (D8: edge-triggered by render, no polling). Shared between the event-URI
+    // claim path (keyed by `uri.uri`) and the profile-mention claim path
+    // (keyed by `uri.primary_id`); the two key spaces never collide (a
+    // `nostr:` URI vs. a raw 64-hex pubkey).
     claimed_this_frame: RefCell<HashSet<String>>,
 }
 
@@ -44,6 +54,7 @@ impl<'a> NostrContentView<'a> {
             media_images: &[],
             kind_registry: None,
             embedded_events: None,
+            live_profiles: None,
             claim_sink: None,
             consumer_id: None,
             claimed_this_frame: RefCell::new(HashSet::new()),
@@ -70,6 +81,21 @@ impl<'a> NostrContentView<'a> {
         events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
     ) -> Self {
         self.embedded_events = events;
+        self
+    }
+
+    /// Optional host-side resolved-profile map for inline `Mention` tokens
+    /// (the gallery's `EmbedHostState::profiles()`, mirroring the kernel's
+    /// `claimed_profiles` projection). When set, a mention that the static
+    /// `render_data` cannot resolve falls back to this map — so the mention
+    /// chip swaps its truncated-npub placeholder for the real display name on
+    /// the snapshot tick after the kernel ingests the author's kind:0.
+    /// Defaults to `None`, preserving fixture-only behaviour.
+    pub fn live_profiles(
+        mut self,
+        profiles: Option<&'a BTreeMap<String, ContentProfileRenderData>>,
+    ) -> Self {
+        self.live_profiles = profiles;
         self
     }
 
@@ -265,17 +291,47 @@ impl<'a> NostrContentView<'a> {
         spans
     }
 
+    /// Resolve the profile for an inline `Mention`, triggering a kernel
+    /// `claim_profile` as a side effect (ADR-0034 / M16 — the same
+    /// frontend-driven pattern `render_embedded_event` uses for events).
+    ///
+    /// Edge-triggered: when both `claim_sink` and `consumer_id` are set, the
+    /// mention's `primary_id` (a raw hex pubkey) is claimed once per render
+    /// pass (deduped via `claimed_this_frame`); a cold cache compiles the
+    /// kind:0 fetch and the resolved profile surfaces in a later snapshot's
+    /// `claimed_profiles` projection. Lookup prefers the static `render_data`
+    /// (fixture path), then falls back to the live `live_profiles` map (the
+    /// host's mirror of `claimed_profiles`). `None` until the kernel resolves
+    /// the author — the mention chip then renders a truncated-npub
+    /// placeholder.
+    fn resolve_mention_profile(&self, uri: &WireUri) -> Option<&ContentProfileRenderData> {
+        if let (Some(sink), Some(consumer)) = (self.claim_sink, self.consumer_id) {
+            let mut seen = self.claimed_this_frame.borrow_mut();
+            if seen.insert(uri.primary_id.clone()) {
+                sink.claim_profile(&uri.primary_id, consumer);
+            }
+        }
+        self.render_data
+            .and_then(|data| data.profile_for(uri))
+            .or_else(|| {
+                self.live_profiles
+                    .and_then(|profiles| profiles.get(&uri.primary_id))
+            })
+    }
+
     fn append_inline_node(&self, index: usize, spans: &mut Vec<Span<'static>>) {
         let Some(node) = self.tree.node(index) else {
             return;
         };
         match node {
             WireNode::Text(text) => spans.push(Span::raw(text.clone())),
-            WireNode::Mention(uri) => spans.push(
-                NostrMentionChip::new(uri)
-                    .profile(self.render_data.and_then(|data| data.profile_for(uri)))
-                    .span(),
-            ),
+            WireNode::Mention(uri) => {
+                spans.push(
+                    NostrMentionChip::new(uri)
+                        .profile(self.resolve_mention_profile(uri))
+                        .span(),
+                );
+            }
             WireNode::EventRef(uri) => {
                 let label = self
                     .render_data
