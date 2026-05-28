@@ -10,7 +10,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -29,9 +28,8 @@ import org.nmp.gallery.registry.ProfileWire
  * Render the user-* family of registry components against real kind:0
  * profile data fetched by the NMP kernel.
  *
- * The model lifecycle owns the kernel claim; this composable re-asserts
- * the claim for its own consumer id so multiple screens can independently
- * track the same pubkey without stomping on each other.
+ * The avatar page passes only a pubkey; `NostrAvatar` claims/releases its own
+ * profile projection through `LocalNostrProfileHost`.
  */
 @Composable
 fun UserComponentPage(
@@ -40,15 +38,9 @@ fun UserComponentPage(
 ) {
     val profiles by model.profileMap.collectAsStateWithLifecycle()
     val pubkey = remember { GalleryModel.DEMO_PUBKEY }
-    val consumerId = remember(componentId) { "gallery-page:$componentId" }
-
-    DisposableEffect(pubkey, consumerId) {
-        model.claimProfile(pubkey, consumerId)
-        onDispose { model.releaseProfile(pubkey, consumerId) }
-    }
 
     val profile = profiles[pubkey]
-    if (profile == null) {
+    if (componentId != "user-avatar" && profile == null) {
         ProfileLoading()
         return
     }
@@ -64,18 +56,18 @@ fun UserComponentPage(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        UserComponentBody(componentId = componentId, profile = profile)
+        UserComponentBody(componentId = componentId, pubkey = pubkey, profile = profile)
     }
 }
 
 @Composable
-private fun UserComponentBody(componentId: String, profile: ProfileWire) {
+private fun UserComponentBody(componentId: String, pubkey: String, profile: ProfileWire?) {
     when (componentId) {
-        "user-avatar" -> NostrAvatar(profile = profile, size = 80.dp)
-        "user-name" -> NostrProfileName(profile = profile)
-        "user-nip05" -> NostrNip05Badge(profile = profile)
-        "user-npub" -> NostrNpubChip(profile = profile)
-        "user-card" -> NostrUserCard(profile = profile)
+        "user-avatar" -> NostrAvatar(pubkey = pubkey, size = 80.dp)
+        "user-name" -> profile?.let { NostrProfileName(profile = it) }
+        "user-nip05" -> profile?.let { NostrNip05Badge(profile = it) }
+        "user-npub" -> profile?.let { NostrNpubChip(profile = it) }
+        "user-card" -> profile?.let { NostrUserCard(profile = it) }
         else -> Text("Unknown user component: $componentId")
     }
 }
@@ -103,7 +95,7 @@ private fun ProfileLoading() {
 }
 
 private fun labelFor(componentId: String): String = when (componentId) {
-    "user-avatar" -> "NostrAvatar (live profile)"
+    "user-avatar" -> "NostrAvatar(pubkey)"
     "user-name" -> "NostrProfileName (live profile)"
     "user-nip05" -> "NostrNip05Badge (live profile)"
     "user-npub" -> "NostrNpubChip (live profile)"

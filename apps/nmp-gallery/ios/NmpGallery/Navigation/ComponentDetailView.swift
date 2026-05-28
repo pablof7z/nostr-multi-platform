@@ -42,12 +42,11 @@ struct ComponentDetailView: View {
             RelayListPage()
         // User pages — never block on relay data. `bestEffortProfile`
         // returns a placeholder `ProfileWire` (identicon + truncated npub)
-        // before kind:0 arrives; the registry components degrade gracefully
-        // on missing optional fields. SwiftUI re-renders automatically
-        // when the real profile lands because `GalleryModel` is
-        // `@Observable`.
+        // before kind:0 arrives. The avatar page is reference-first: it gets
+        // only the pubkey, then the registry component claims/releases and
+        // observes through `NostrProfileHost`.
         case "user-avatar":
-            UserAvatarPage(profile: model.bestEffortProfile)
+            UserAvatarPage(pubkey: DEMO_PUBKEY_HEX)
         case "user-name":
             UserProfileNamePage(profile: model.bestEffortProfile)
         case "user-nip05":

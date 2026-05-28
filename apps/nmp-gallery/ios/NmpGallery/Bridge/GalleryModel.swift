@@ -251,7 +251,7 @@ struct AccountWire: Decodable, Equatable {
 /// decodes them and republishes for SwiftUI consumption.
 @MainActor
 @Observable
-final class GalleryModel {
+final class GalleryModel: NostrProfileHost {
     private(set) var snapshot: GallerySnapshot = .empty
     private(set) var lastDecodeError: String?
     private let kernel: GalleryKernelHandle
@@ -300,13 +300,9 @@ final class GalleryModel {
         // above and surfaces the resolved `ProfileCard` under
         // `projections.author_view.profile` in the push-callback snapshot.
         //
-        // We deliberately do NOT use `claim_profile` here even though it
-        // is semantically the right primitive for "I want this profile":
-        // the kernel populates its internal `self.profiles` cache on
-        // kind:0 arrival, but no projection on the snapshot wire surface
-        // exposes that map for a claim-only pubkey (only the active
-        // account lands in `projections.profile`). `open_author` is the
-        // shortest path to the same data with a decoder-visible projection.
+        // The component-level NostrProfileHost still owns claim/release.
+        // `open_author` remains the gallery bootstrap source until the
+        // kernel exposes claim-only profile results on the snapshot wire.
         kernel.openAuthor(pubkey: DEMO_PUBKEY_HEX)
     }
 
@@ -385,6 +381,16 @@ final class GalleryModel {
     /// Lookup any profile that arrived through the gallery's profiles map.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         snapshot.profiles[pubkey]
+    }
+
+    /// NostrProfileHost: demand a profile projection for a mounted component.
+    func claimProfile(pubkey: String, consumerID: String) {
+        kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
+    }
+
+    /// NostrProfileHost: release a component's profile interest on unmount.
+    func releaseProfile(pubkey: String, consumerID: String) {
+        kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
 
     /// Demo write surface (phase 2). Dispatches a sign-in action without

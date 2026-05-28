@@ -110,10 +110,14 @@ role = "example"
 id = "swiftui/user-avatar"
 version = "0.1.0"
 target = "swiftui"
-description = "Circular Nostr profile avatar with remote image loading and deterministic identicon fallback."
+description = "Reference-first Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
 [[components.files]]
 source = "swiftui/user-avatar/ProfileWire.swift"
 target = "Components/NostrUser/ProfileWire.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/user-avatar/NostrProfileHost.swift"
+target = "Components/NostrUser/NostrProfileHost.swift"
 role = "source"
 [[components.files]]
 source = "swiftui/user-avatar/NostrAvatar.swift"
@@ -346,10 +350,14 @@ role = "source"
 id = "compose/user-avatar"
 version = "0.1.0"
 target = "compose"
-description = "Circular Compose Nostr profile avatar with Coil image loading and deterministic identicon fallback."
+description = "Reference-first Compose Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
 [[components.files]]
 source = "compose/user-avatar/ProfileWire.kt"
 target = "Components/NostrUser/ProfileWire.kt"
+role = "source"
+[[components.files]]
+source = "compose/user-avatar/NostrProfileHost.kt"
+target = "Components/NostrUser/NostrProfileHost.kt"
 role = "source"
 [[components.files]]
 source = "compose/user-avatar/NostrAvatar.kt"
