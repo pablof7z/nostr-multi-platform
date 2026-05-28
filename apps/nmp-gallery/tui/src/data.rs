@@ -218,7 +218,11 @@ impl GalleryData {
     /// exercised by `embed_host::tests`, not by `render::tests`).
     #[cfg(test)]
     pub(crate) fn render_test_data() -> Self {
-        let referenced_pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
+        // pablof7z's real pubkey (PRIMARY_PUBKEY in live.rs) so the kernel
+        // could actually resolve this mention via `claim_profile` in a live
+        // run; the render-only test below leaves `display_name: None` so the
+        // mention chip exercises the truncated-npub placeholder path.
+        let referenced_pubkey = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
         let author_pubkey = "2222222222222222222222222222222222222222222222222222222222222222";
         let quote_id = "3333333333333333333333333333333333333333333333333333333333333333";
         let mention_uri = format!("nostr:{}", to_npub(referenced_pubkey));
@@ -228,9 +232,13 @@ impl GalleryData {
                 .expect("note id formats")
         );
 
+        // `display_name: None` — no kind:0 has been resolved for this
+        // mention yet, so the chip must fall back to a shortened npub
+        // placeholder. A live run resolves the real name via the
+        // `claimed_profiles` snapshot path (exercised in `embed_host::tests`).
         let resolved_profile = LiveProfile {
             pubkey: referenced_pubkey.to_string(),
-            display_name: Some("Resolved Profile".to_string()),
+            display_name: None,
             picture_url: Some("https://example.invalid/profile.png".to_string()),
             nip05: Some("resolved.example".to_string()),
             about: Some("Test-only resolved profile".to_string()),
@@ -474,9 +482,14 @@ fn render_data_for(
 }
 
 fn profile_value(profile: &LiveProfile) -> Value {
+    // Emit the raw `display_name` Option, NOT `display_label()`: the label
+    // helper falls back to the pubkey hex when no kind:0 name exists, which
+    // would mask the "unresolved" state. A `None` here serialises to JSON
+    // `null`, the chip reads it as absent, and falls back to the shortened
+    // `npub` placeholder — the correct unresolved-mention rendering.
     json!({
         "pubkey": profile.pubkey,
-        "display_name": profile.display_label(),
+        "display_name": profile.display_name,
         "npub": to_npub(&profile.pubkey),
         "picture_url": profile.picture_url,
     })

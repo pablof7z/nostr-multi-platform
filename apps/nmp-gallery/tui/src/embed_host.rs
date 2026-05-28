@@ -35,11 +35,20 @@ use nmp_content::{
 use nmp_core::substrate::KernelEvent;
 use serde_json::Value;
 
+use crate::content_render_data::ContentProfileRenderData;
+
 /// Gallery-side cache of resolved embed envelopes. Reset on every snapshot
 /// (latest wins — the kernel's projection is the source of truth).
 #[derive(Default)]
 pub struct EmbedHostState {
     envelopes: BTreeMap<String, EmbeddedEventEnvelope>,
+    /// Gallery-side mirror of the kernel's `claimed_profiles` projection,
+    /// keyed by hex pubkey. Feeds `NostrContentView::live_profiles` so an
+    /// inline `Mention` token resolves to the real display name once kind:0
+    /// arrives (until then the mention chip shows a truncated-npub
+    /// placeholder). Reset on every snapshot — latest wins, same contract
+    /// as `envelopes`.
+    profiles: BTreeMap<String, ContentProfileRenderData>,
 }
 
 impl EmbedHostState {
@@ -62,6 +71,23 @@ impl EmbedHostState {
     /// renderer falls back to a loading placeholder until a well-formed
     /// snapshot lands).
     pub fn update_from_snapshot(&mut self, snapshot: &Value) -> Vec<String> {
+        // Profiles update independently of events: a snapshot may carry a
+        // refreshed `claimed_profiles` map (a mention's kind:0 just landed)
+        // without any `claimed_events` change, and vice versa. A missing
+        // `claimed_profiles` key leaves the existing profile cache intact —
+        // same "missing projection must not wipe state" semantics applied
+        // to envelopes below.
+        if let Some(profiles) = snapshot
+            .get("projections")
+            .and_then(|p| p.get("claimed_profiles"))
+            .and_then(Value::as_object)
+        {
+            self.profiles = profiles
+                .iter()
+                .map(|(pubkey, dto)| (pubkey.clone(), profile_render_data(pubkey, dto)))
+                .collect();
+        }
+
         let Some(claimed) = snapshot
             .get("projections")
             .and_then(|p| p.get("claimed_events"))
@@ -129,6 +155,15 @@ impl EmbedHostState {
         &self.envelopes
     }
 
+    /// Borrow the current resolved-profile map (keyed by hex pubkey) for the
+    /// renderer's `NostrContentView::live_profiles(Some(host.profiles()))`
+    /// builder. Empty when no mention has resolved a kind:0 yet — the
+    /// renderer's mention chip falls back to a truncated-npub placeholder.
+    #[must_use]
+    pub fn profiles(&self) -> &BTreeMap<String, ContentProfileRenderData> {
+        &self.profiles
+    }
+
     /// Number of resolved envelopes — diagnostics only.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -141,9 +176,35 @@ impl EmbedHostState {
     }
 }
 
+/// Decode one `claimed_profiles[pubkey] -> MentionProfilePayload` entry into
+/// the renderer's `ContentProfileRenderData`. The npub is always derived from
+/// the hex pubkey key (so the mention chip can show a stable truncated-npub
+/// placeholder before kind:0 arrives); `display_name` / `picture_url` stay
+/// `None` until the kernel has ingested the profile. Mirrors the
+/// `ClaimedEventDto` author-profile decode in `update_from_snapshot`.
+fn profile_render_data(pubkey: &str, dto: &Value) -> ContentProfileRenderData {
+    ContentProfileRenderData {
+        pubkey: pubkey.to_string(),
+        display_name: dto
+            .get("display_name")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string),
+        npub: Some(nmp_core::display::to_npub(pubkey)),
+        picture_url: dto
+            .get("picture_url")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string),
+    }
+}
+
 fn kernel_event_from_dto(primary_id: &str, dto: &Value) -> Option<KernelEvent> {
     let id = dto.get("id").and_then(Value::as_str)?.to_string();
-    let author = dto.get("author_pubkey").and_then(Value::as_str)?.to_string();
+    let author = dto
+        .get("author_pubkey")
+        .and_then(Value::as_str)?
+        .to_string();
     let kind = dto.get("kind").and_then(Value::as_u64)? as u32;
     let created_at = dto.get("created_at").and_then(Value::as_u64).unwrap_or(0);
     let content = dto
@@ -276,7 +337,8 @@ mod tests {
 
     #[test]
     fn article_dto_resolves_to_article_projection() {
-        let primary = "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:kind-dispatch";
+        let primary =
+            "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:kind-dispatch";
         let snap = snapshot_with(vec![(primary, article_dto())]);
 
         let mut host = EmbedHostState::new();
@@ -308,10 +370,7 @@ mod tests {
             .current_envelopes()
             .get(primary)
             .expect("short note envelope should be present");
-        assert!(matches!(
-            env.projection,
-            EmbedKindProjection::ShortNote(_)
-        ));
+        assert!(matches!(env.projection, EmbedKindProjection::ShortNote(_)));
     }
 
     #[test]
@@ -326,21 +385,24 @@ mod tests {
             .current_envelopes()
             .get(primary)
             .expect("highlight envelope should be present");
-        assert!(matches!(
-            env.projection,
-            EmbedKindProjection::Highlight(_)
-        ));
+        assert!(matches!(env.projection, EmbedKindProjection::Highlight(_)));
     }
 
     #[test]
     fn malformed_dto_skipped_without_panic() {
         let primary = "deadbeef";
-        let snap = snapshot_with(vec![(primary, json!({"id": "x", "author_pubkey": null, "kind": 1, "created_at": 0, "tags": [], "content": ""}))]);
+        let snap = snapshot_with(vec![(
+            primary,
+            json!({"id": "x", "author_pubkey": null, "kind": 1, "created_at": 0, "tags": [], "content": ""}),
+        )]);
 
         let mut host = EmbedHostState::new();
         host.update_from_snapshot(&snap);
 
-        assert!(host.is_empty(), "malformed dto must be silently skipped (D6)");
+        assert!(
+            host.is_empty(),
+            "malformed dto must be silently skipped (D6)"
+        );
     }
 
     #[test]
@@ -361,7 +423,8 @@ mod tests {
     fn replacement_snapshot_replaces_state() {
         let mut host = EmbedHostState::new();
         let primary_a = "bbbb000000000000000000000000000000000000000000000000000000000001";
-        let primary_b = "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:kind-dispatch";
+        let primary_b =
+            "30023:fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52:kind-dispatch";
 
         host.update_from_snapshot(&snapshot_with(vec![(primary_a, short_note_dto())]));
         assert!(host.current_envelopes().contains_key(primary_a));

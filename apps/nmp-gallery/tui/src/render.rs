@@ -11,6 +11,7 @@ use ratatui_image::protocol::Protocol;
 
 use crate::{
     content_kind_registry::NostrKindRegistry,
+    content_render_data::ContentProfileRenderData,
     content_tree_wire::WireNode,
     data::{ContentExample, GalleryData},
     nostr_avatar::NostrAvatar,
@@ -27,16 +28,18 @@ use crate::{
 
 /// Per-frame embed-rendering context — the renderer's pulled-in deps so
 /// it can drive the renderer-triggered claim path (ADR-0034). `envelopes`
-/// is the host's current `claimed_events` map (built from the latest
-/// snapshot push); `sink` forwards new claims to the kernel; `consumer_id`
-/// is the per-consumer key the kernel refcounts under.
+/// is the host's current `claimed_events` map; `profiles` is the host's
+/// current `claimed_profiles` map (both built from the latest snapshot
+/// push); `sink` forwards new claims to the kernel (both `claim` for events
+/// and `claim_profile` for inline mentions); `consumer_id` is the
+/// per-consumer key the kernel refcounts under.
 #[derive(Clone, Copy)]
 pub struct EmbedFrameContext<'a> {
     pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
+    pub profiles: &'a BTreeMap<String, ContentProfileRenderData>,
     pub sink: Option<&'a dyn EventClaimSink>,
     pub consumer_id: &'a str,
 }
-
 
 pub fn plain_lines(id: &str, data: &GalleryData, width: usize) -> Vec<String> {
     match id {
@@ -296,6 +299,7 @@ fn render_embed_showcase(
         .media_images(media_images)
         .kind_registry(Some(&registry))
         .embedded_events(Some(embed_ctx.envelopes))
+        .live_profiles(Some(embed_ctx.profiles))
         .claim_sink(embed_ctx.sink)
         .consumer_id(Some(embed_ctx.consumer_id))
         .render(area, buf);
@@ -307,10 +311,16 @@ mod tests {
 
     #[test]
     fn mention_chip_uses_resolved_profile_name() {
+        // The test profile carries `display_name: None`, so the mention chip
+        // falls back to a truncated npub placeholder until the kernel
+        // resolves the author's kind:0 (which `render_test_data` does NOT
+        // synthesize — the live `claimed_profiles` path is exercised by
+        // `embed_host::tests`). The placeholder must be a shortened npub,
+        // never the old hardcoded "Resolved Profile" display name.
         let data = GalleryData::render_test_data();
         let lines = plain_lines("content-mention-chip", &data, 80).join(" ");
-        assert!(lines.contains("@Resolved Profile"), "{lines}");
-        assert!(!lines.contains("npub1"), "{lines}");
+        assert!(lines.contains("@npub1"), "{lines}");
+        assert!(!lines.contains("@Resolved Profile"), "{lines}");
     }
 
     #[test]

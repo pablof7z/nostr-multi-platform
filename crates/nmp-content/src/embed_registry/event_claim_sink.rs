@@ -34,6 +34,19 @@ pub trait EventClaimSink: Send + Sync {
     /// Release a previously-claimed `(uri, consumer_id)` pair. A
     /// double-release or unknown pair is a no-op.
     fn release(&self, uri: &str, consumer_id: &str);
+
+    /// Initiate (or refcount-increment) an upstream kind:0 fetch for the
+    /// author behind a profile mention. `pubkey` is the raw 64-char hex
+    /// pubkey (a `Mention` `WireUri`'s `primary_id`), NOT a `nostr:` URI —
+    /// the kernel's `claim_event` path refuses profile URIs, so profile
+    /// mentions take this distinct seam to `nmp_app_claim_profile`.
+    ///
+    /// The trait name (`EventClaimSink`) predates the profile path; this
+    /// method rides the same host bridge so renderers can resolve inline
+    /// mentions reactively the same way they resolve embedded events.
+    /// Defaults to a no-op so fixture/test sinks and any pre-existing impl
+    /// stay valid without being forced to issue a profile fetch.
+    fn claim_profile(&self, _pubkey: &str, _consumer_id: &str) {}
 }
 
 /// No-op sink — fixture/test surfaces use this so renderers can run

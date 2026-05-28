@@ -110,6 +110,11 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // steady state) so a host that pre-allocates the map slot
             // never sees an absent key.
             "claimed_events",
+            // generic claimed-profile projection (reactive mentions):
+            // pubkey -> MentionProfilePayload for every author a renderer
+            // has called `claim_profile` on. Always present (empty `{}` is
+            // the no-claim steady state), same contract as `claimed_events`.
+            "claimed_profiles",
             "inserted",
             // derived view: per-author mention payloads scoped to the
             // open author-view items (aim.md §4.2).
