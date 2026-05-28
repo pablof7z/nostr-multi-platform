@@ -19,90 +19,13 @@
 
 ---
 
-## Migration progress (2026-05-25 EOD)
+## Status boundary
 
-| Step | Description | State |
-|---|---|---|
-| 1 | substrate seams in `nmp-core` (`IngestParser`, `ProtocolCommand`, `OutboxRouter`, `MailboxCache`) | ✅ merged (PRs #447, #448, #449) |
-| 2 | create `nmp-router` crate (`InMemoryMailboxCache`, `Kind10002Parser`, `GenericOutboxRouter`) | ✅ merged (PR #450) |
-| 3 | kernel cut-over to `Arc<dyn OutboxRouter>` + absorb `nmp-nip65` | ✅ merged (PR #454) + spec §271 follow-up: `Nip65OutboxResolver` (publish-side, 279 LOC) moved out of `crates/nmp-core/src/publish/nip65/` into `crates/nmp-router/src/nip65_resolver.rs`. Production composition (`nmp-app-template::register_defaults`) installs it via `NmpApp::set_publish_resolver_factory` → `Kernel::set_publish_resolver`; kernel default is `NoopOutboxResolver` (fail-closed). |
-| 4 | V-41 LNURL fetcher → `nmp-nip57` | ✅ merged (PR #456 + PR #474 follow-up that closed the `inject_recipient_relays` TODO via router-based `RecipientRelayLookup`) |
-| 5 | V-39 NIP-17 DM send → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-40); follow-up cleanup renamed the residual `Nip17LocalKeysSlot` → substrate-generic `ActiveLocalKeysSlot` (no NIP nouns in `nmp-core::{actor, slots}`). |
-| 6 | V-40 kind:10050 ingest + `DmRelayCache` → `nmp-nip17` | ✅ merged (PR #458, combined w/ V-39) |
-| 7 | V-38 NWC → `nmp-nip47` | ⚠ PR #460 sitting, deprioritized — `crates/nmp-core/src/wallet/` (311 LOC) + the `wallet` Cargo feature still live in nmp-core |
-| 8 phase A | `nmp-network` crate (`relay_worker` + `relay_protocol` + `keepalive` + `RelayRole`) | ✅ merged (PR #459) |
-| 8 phase B | push-model `Pool` API + generational `RelayHandle` + `PoolEvent` channel | ✅ merged (PR #470) |
-| 8 phase C | `BrowserRelayDriver` moved from `nmp-wasm` into `nmp-network` | ✅ merged (PR #475) |
-| 8 phase D | `nmp-signer-broker` rides `Pool` (V-13 Stage 2 dedupe; −378 LOC duplicate readiness loop) | 🟡 PR #477 in CI |
-| 8 phase E | NIP-42 wire/FSM split — `RelayFrame::Auth` variant in `nmp-network`; kind:22242 builder in `nmp-nip42`; pause/replay FSM in `nmp-core::subs::AuthGate` | ✅ merged (PR #478) |
-| 8 phase F | actor cut-over to `Pool` (47 callsites; legacy `RelayEvent`/`RelayCommand` now `pub(crate)`) | ✅ merged (PR #479) |
-| 9 | `nmp-store` + `nmp-planner` extraction | ✅ merged (PR #463) |
-| 10 | `nmp-app-template` (V-48 DX) | ✅ merged (PR #467; Chirp register surface −547 LOC) |
-| 11 partial | move chirp-* + `nmp-chirp-config` to `apps/chirp/` | ✅ merged (PR #451) |
-| 11 final | extract `nmp-ffi` from `nmp-core::ffi` (5,654 LOC moved) | ✅ merged (PR #472). Follow-up: codegen path-template hardcode lifted and `fixture-todo-core` relocated to `apps/fixture/fixture-todo-core/`; per-module `path = "…"` strings are now computed from the workspace's `[workspace] members` (`nmp-codegen/src/workspace.rs`), with the legacy `../../../crates/<name>` template as a temp-dir fallback for the codegen's own pure-string unit tests. |
-| 12 | return `nmp-marmot` from `apps/` to `crates/` | ✅ merged (step 12, 2026-05-25). The bespoke `nmp_marmot_dispatch` write-side C-ABI symbol was deleted in ADR-0025 PR 3 (2026-05-23); mutating ops now flow through `nmp_app_dispatch_action("nmp.marmot", …)`. The surviving `nmp_marmot_*` C-ABI cluster (`register{,_active}`, `_snapshot`, `_group_messages`, `_string_free`, `_unregister`, `_fetch_key_packages`, `_app_chirp_identity_*`) is kernel-shaped per-app FFI — observer / projection / opaque-handle lifecycle — explicitly NOT a `dispatch_action` violation (see ADR-0025 update 2026-05-23) and structurally the same pattern Chirp's `nmp_app_chirp_*` cluster uses. Path B from the step-12 brief: per-app FFI is sanctioned for Layer-4 NIP crates whose runtime is a stateful handle. |
-
-**Adjacent observability work (V-51)**:
-- Phase 1 (substrate `RoutingTraceObserver` + bounded ring-buffer projection) ✅ merged (PR #457)
-- Phase 2 (FFI/wasm snapshot surface — `nmp_app_recent_routing_decisions`) ✅ merged (PR #476)
-- Phase 4 (validation harness + `chirp-repl routing-trace` subcommand + real-pubkey integration test) ✅ merged (PR #461)
-- Phase 5 (kernel-router observability cut-over) ✅ merged (PR #462)
-- Phase 3 (Chirp iOS inspector UI) ❌ not started
-
-**Substrate-honest debts** (raised by 2026-05-24 adversarial review):
-- A — router becomes decision authority: ✅ merged (PR #468) with kind:10002 self-seal fix via router lane 6 Indexer
-- B — delete `default_routing.rs` algorithm duplicate (484 LOC): ✅ merged (PR #473); kernel defaults switched to `EmptyOutboxRouter` + `(test) TestInMemoryMailboxCache`
-- C — `ProtocolCommandContext` capability-trait bundling: ✅ merged (PR #471) — 12 positional closure args → 5 capability traits + `send` + `command_sender_clone`. Follow-up collapse pass folded the surviving 8-arg `new()` (+`#[allow(clippy::too_many_arguments)]`) onto a single named-field `ProtocolCommandContextParts` struct literal; the allow is gone and `protocol.rs` is back under the 500-LOC ceiling.
-- D — fix 14 `expect("RwLock poisoned")` panic-on-host-input sites: ✅ merged (PR #465)
-- V-08 — bunker (NIP-46) DM signing restored: ✅ merged (PR #466). **Caveat**: the un-`#[ignore]`d regression test asserts against a `StubRemoteSigner` in-process; live bunker DM round-trip is not e2e-validated. V-08 inbox decryption (post-v1) remains.
-
-**Live validation**: `cargo test -p nmp-testing --test routing_trace_real_nostr -- --ignored --nocapture` resolves pablof7z's real NIP-65 from `wss://relay.damus.io` to his 3 declared read relays (`r.f7z.io`, `relay.damus.io`, `relay.primal.net`), all attributed to `Nip65 { direction: Read }` lane; zero `AppRelay/Fallback` leak. Chirp's composition root (`apps/chirp/nmp-app-chirp/src/ffi/register.rs`) installs `nmp_router::GenericOutboxRouter` via `Kernel::set_routing` so the kernel actually consumes the router's output for live REQ-relay selection (no longer observe-only).
-
-**Known partial-state items remaining (not promises, just facts):**
-
-- Substrate D0 noun leaks in `nmp-core` flagged by the 2026-05-25 review and
-  closed in PR (this commit):
-  - `Kernel::nip42_drivers` field + `Nip42DriverState` type renamed to
-    `auth_drivers` / `AuthDriverState` (NIP-42 was leaking; the substrate
-    vocabulary is "auth").
-  - `RelayStatus::nip77_negentropy` + `RelayHealth::nip77_probe_state` +
-    `Kernel::set_nip77_probe_state` renamed to `negentropy_probe` /
-    `negentropy_probe_state` / `set_negentropy_probe_state` (negentropy is
-    a generic relay-side reconciliation primitive; the NIP-77 binding lives
-    in a downstream protocol crate).
-  - `kernel/nip17_dm_inbox_routing_tests.rs` renamed to
-    `kernel/dm_inbox_routing_tests.rs` (the asserted invariant is the
-    kernel's generic preference of `DmInboxRelayLookup` over the NIP-65
-    read-relay list — NIP-17 is just the concrete production binding).
-  - `#[allow(unused_imports)]` cluster in `actor/mod.rs` (lines 116, 124,
-    133, 138, 143, 148) replaced with structural `#[cfg(...)]` gates that
-    mirror the downstream consumer's gate (`__ffi_internal` uses `native`;
-    the test-support surface uses `any(test, feature = "test-support")`).
-
-**Step 3 caveat resolution (2026-05-25, kind:10002 ingest leak)**: PR #484
-absorbed `nmp-nip65` into `nmp-router` (action module + `Kind10002Parser` +
-`InMemoryMailboxCache` + `Nip65OutboxResolver`), but did NOT wire the
-`Kind10002Parser` into `nmp-app-template::register_defaults`. Production
-kind:10002 ingest continued to run through a kernel-side `match
-event.kind { 10002 => self.ingest_relay_list(event); }` arm + a
-`crates/nmp-core/src/kernel/ingest/relay_list.rs` impl that named
-NIP-65, parsed `r` tags, and wrote the kernel-held `mailbox_cache` — a
-direct D0 violation (kernel must not name NIP nouns) and a structural
-contradiction (the substrate parser was dead code). The follow-up PR
-deletes both the arm and the file, registers `Kind10002Parser` in
-`register_defaults` against the same `Arc<InMemoryMailboxCache>` the
-routing factory hands to the kernel, and replaces the kernel-side
-recompile + trace-observer fan with a kind-agnostic `Kernel::on_mailbox_changed`
-hook on the wildcard ingest arm — fires when the substrate
-`MailboxCache::snapshot(&author)` transitions before-vs-after dispatch,
-without naming kind:10002 anywhere in `nmp-core/src/kernel/`.
-
-**Ghost crates this spec still names that do not yet exist on master:**
-`nmp-nip22`, `nmp-nip47`, `nmp-nip77`, `nmp-proto`. (`nmp-marmot` is no
-longer a ghost: step 12 returned it from `apps/marmot/nmp-app-marmot/`
-to `crates/nmp-marmot/` on 2026-05-25.) The per-crate table below describes
-the target shape of the remaining ghosts; the migration progress table above
-is the source of truth for what's currently real.
+This document owns the durable crate-boundary rules. It does not own migration
+status, completed-step history, active PR state, or "what is currently real"
+claims. Those are temporal coordination facts and belong in `docs/plan.md`,
+`docs/BACKLOG.md`, and `WIP.md` while they are live. When a migration step
+finishes, this document should retain only the resulting durable boundary rule.
 
 ---
 

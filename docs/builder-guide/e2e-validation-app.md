@@ -168,7 +168,7 @@ Repeat steps 2, 3, 5 on the physical iPhone after Xcode `Run on Device`. The oth
 ## 9. Out of scope (deferred — do NOT build)
 
 - **Audio playback / podcast features** — deferred until Chirp is complete; not relevant for kernel validation.
-- **DMs (NIP-17 / NIP-44 / NIP-59)** — deferred to post-v1 per `docs/plan/scope-adjustments-2026-05-18.md`.
+- **DMs (NIP-17 / NIP-44 / NIP-59)** — deferred to post-v1; see `docs/plan/post-v1.md` for the current temporal tracker and `docs/product-spec/subsystems.md` for durable scope.
 - **Wallet (NIP-47 / NIP-57 / NIP-60 / NIP-61)** — deferred to post-v1.
 - **WoT scoring (M13)** — not started.
 - **Blossom uploads (M10)** — separate milestone.

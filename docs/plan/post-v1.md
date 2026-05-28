@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md).
 
-These milestones were deferred from the v1 ladder per [scope adjustments 2026-05-18](scope-adjustments-2026-05-18.md). They are not dropped — they are sequenced after [M17](m17-release.md).
+These milestones are deferred out of the current v1 ladder. They are not dropped — they are sequenced after [M17](m17-release.md). This file is a temporal post-v1 tracker, not durable product documentation; durable subsystem behavior belongs in `docs/product-spec/` and `docs/design/`.
 
 ## Post-v1 M9 — NIP-17 DMs + NSE
 

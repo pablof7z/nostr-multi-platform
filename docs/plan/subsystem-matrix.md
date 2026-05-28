@@ -10,7 +10,7 @@
 | NDK-style subscription aggregation | [M2](m2-subscription-compilation.md) | Logical interests compile into per-relay plans and wire REQs. |
 | Reactivity contract | [M0](m0-fixture.md)–[M7](m7-interaction-loop.md) | Validate through Chirp and test harnesses. |
 | Non-Nostr data bridge | [M0](m0-fixture.md), [M10](m10-blossom.md) | Proved first by `fixture-todo-core`; production proof deferred until Chirp is stable. |
-| FFI hardening + empirical app proof | [M10.5](m10.5-ffi-hardening.md) | Stress harness, simulator/device evidence, and Chirp runtime validation. |
+| FFI hardening + empirical app proof | `docs/perf/m10.5/` evidence | Stress harness, simulator/device evidence, and Chirp runtime validation. |
 | NIP-42 auth | [M5](m5-nip42.md) | Per-relay auth state machine integrated with signers. |
 | Blossom | [M10](m10-blossom.md) | Upload/download with resumable progress and capability lifecycle. |
 | Multi-session clients | [M8](m8-multi-account.md) | Per-account view scoping and account-switch isolation. |
