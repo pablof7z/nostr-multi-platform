@@ -43,6 +43,18 @@ fn nevent_uri(event_id: &str, kind: Option<u32>, author: Option<&str>) -> String
     format!("nostr:{bech}")
 }
 
+/// Helper: build an `nostr:nevent…` URI carrying NIP-19 relay TLVs.
+fn nevent_uri_with_relays(event_id: &str, relays: &[&str]) -> String {
+    let bech = encode_nevent(&NeventData {
+        event_id: event_id.to_string(),
+        relays: relays.iter().map(|r| (*r).to_string()).collect(),
+        author: None,
+        kind: Some(1),
+    })
+    .expect("encode_nevent");
+    format!("nostr:{bech}")
+}
+
 /// Helper: build an `nostr:naddr…` URI for a kind:30023 article.
 fn naddr_uri(kind: u32, author: &str, d_tag: &str) -> String {
     let bech = encode_naddr(&NaddrData {
@@ -379,5 +391,64 @@ fn release_event_cancels_claim_expansion_on_empty_set() {
     assert!(
         kernel.test_claim_phase(&id).is_none(),
         "the claim-expansion tracker must be gone after the last release"
+    );
+}
+
+/// 8. (V-59 rung 1, #3) A claim whose URI carries NIP-19 relay TLVs seeds the
+/// INITIAL OneshotApi interest's `hints` with those relays — so the first REQ
+/// fans out to publisher-provided content relays ∪ bootstrap lanes, instead of
+/// bootstrap-only. The hints are `UserConfigured` (matching `advance_to_phase2`).
+#[test]
+fn claim_event_seeds_initial_interest_hints_from_uri_relays() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let id = hex64("e2");
+    let uri = nevent_uri_with_relays(&id, &["wss://relay.a.example", "wss://relay.b.example"]);
+
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+
+    // Exactly one oneshot interest registered; its hints must mirror the URI
+    // relay TLVs verbatim (the W5 §7.3 improvement).
+    let active = kernel.lifecycle.registry_mut().iter_active();
+    let hint_urls: std::collections::BTreeSet<String> = active
+        .iter()
+        .flat_map(|i| i.hints.iter().map(|h| h.url.clone()))
+        .collect();
+    assert_eq!(
+        hint_urls,
+        ["wss://relay.a.example", "wss://relay.b.example"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect::<std::collections::BTreeSet<_>>(),
+        "the claim's first REQ must carry the URI relay TLVs as interest hints"
+    );
+    assert!(
+        active
+            .iter()
+            .flat_map(|i| i.hints.iter())
+            .all(|h| h.source == crate::planner::HintSource::UserConfigured),
+        "URI-sourced relay hints must use the UserConfigured source variant"
+    );
+}
+
+/// 9. (V-59 rung 1, #3) A claim whose URI carries NO relay TLVs registers an
+/// interest with EMPTY hints — byte-identical to the pre-#3 behavior. This is
+/// the regression guard at the kernel layer (the OneshotApi-layer guard lives
+/// in `subs::oneshot::tests::empty_hints_registers_interest_with_no_hints`).
+#[test]
+fn claim_event_without_uri_relays_registers_empty_hints() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let id = hex64("e3");
+    let uri = nevent_uri(&id, Some(1), None); // no relays in TLV
+
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+
+    let active = kernel.lifecycle.registry_mut().iter_active();
+    assert_eq!(active.len(), 1, "exactly one oneshot interest registered");
+    assert!(
+        active[0].hints.is_empty(),
+        "a hint-less claim URI must register an interest with no hints — \
+         byte-identical to pre-#3 behavior"
     );
 }

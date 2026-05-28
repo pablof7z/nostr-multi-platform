@@ -149,7 +149,8 @@ impl Kernel {
             };
             let (token, interest_id) = {
                 let registry = self.lifecycle.registry_mut();
-                self.oneshot.request(registry, InterestScope::Global, shape)
+                self.oneshot
+                    .request(registry, InterestScope::Global, shape, Vec::new())
             };
             // PD-033-C Stage 1 bridge: stash the token by interest_id. The
             // planner's next `drain_tick` emits a `WireFrame::Req` carrying
@@ -189,7 +190,8 @@ impl Kernel {
             };
             let (token, interest_id) = {
                 let registry = self.lifecycle.registry_mut();
-                self.oneshot.request(registry, InterestScope::Global, shape)
+                self.oneshot
+                    .request(registry, InterestScope::Global, shape, Vec::new())
             };
             // PD-033-C Stage 1 bridge (see twin comment in events arm).
             self.pending_discovery_oneshots.insert(interest_id, token);

@@ -38,7 +38,7 @@
 
 use super::super::{truncate, Kernel, OutboundMessage};
 use crate::nip21::{parse_nostr_uri, NostrUri};
-use crate::planner::{InterestScope, InterestShape, NaddrCoord};
+use crate::planner::{HintSource, InterestScope, InterestShape, NaddrCoord, RelayHint};
 use crate::subs::CompileTrigger;
 
 impl Kernel {
@@ -213,12 +213,30 @@ impl Kernel {
             return Vec::new();
         }
 
+        // W5/§7.3 — seed the INITIAL OneshotApi REQ with the URI's NIP-19
+        // relay TLVs so the first request fans out to publisher-provided
+        // content relays ∪ the planner's bootstrap lanes, instead of
+        // bootstrap-only. Previously these hints only fed the Phase-2
+        // retarget queue via `register_claim_expansion`; the cold REQ went
+        // bootstrap-only and the publisher's own relays were not consulted
+        // until Phase 2. The same hints still flow to the tracker below for
+        // Phase-2 candidate scoring. `UserConfigured` mirrors the variant
+        // `advance_to_phase2` already uses for URI-sourced hints.
+        let initial_hints: Vec<RelayHint> = uri_relay_hints
+            .iter()
+            .map(|url| RelayHint {
+                url: url.clone(),
+                source: HintSource::UserConfigured,
+            })
+            .collect();
+
         // D4 — single registration path. The wire frame is emitted by
         // the planner's `drain_tick` (triggered by the `ViewOpened`
         // enqueue below), NOT by this function.
         let (token, interest_id) = {
             let registry = self.lifecycle.registry_mut();
-            self.oneshot.request(registry, InterestScope::Global, shape)
+            self.oneshot
+                .request(registry, InterestScope::Global, shape, initial_hints)
         };
         self.pending_discovery_oneshots
             .insert(interest_id.clone(), token);
