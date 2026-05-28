@@ -947,6 +947,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chirp-desktop"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "nmp-app-chirp",
+ "nmp-content",
+ "nmp-core",
+ "nmp-ffi",
+ "serde",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "chirp-repl"
 version = "0.1.0"
 dependencies = [
@@ -4029,19 +4044,6 @@ dependencies = [
 [[package]]
 name = "nmp-coverage-gate"
 version = "0.1.0"
-
-[[package]]
-name = "nmp-desktop"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "nmp-content",
- "nmp-core",
- "serde",
- "serde_json",
- "zeroize",
-]
 
 [[package]]
 name = "nmp-feed"
