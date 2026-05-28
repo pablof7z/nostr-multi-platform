@@ -23,9 +23,8 @@ import org.nmp.gallery.registry.ProfileWire
  * republishes the decoded profile slice as a [StateFlow] for Compose.
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
- * the push callback only. Wire format mirrors the iOS gallery: the demo
- * author is loaded via `open_author`; its data arrives in
- * `projections.author_view.profile` (a `ProfileCard` struct).
+ * the push callback only. Registry components claim pubkeys while visible and
+ * resolved profile cards arrive in `projections.claimed_profiles`.
  */
 class GalleryModel : ViewModel() {
 
@@ -45,10 +44,6 @@ class GalleryModel : ViewModel() {
         bridge.galleryRegister()
         bridge.start(eventsPerSec = 0, visibleLimit = 80, emitHz = 4)
         startPolling()
-        // Open the author view for the demo pubkey (jack). Mirrors the iOS
-        // gallery which uses open_author rather than claim_profile so the
-        // profile data flows through projections.author_view.profile.
-        bridge.openAuthor(DEMO_PUBKEY)
     }
 
     /**
@@ -86,10 +81,9 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Decode one FlatBuffers snapshot frame.
-     * Profile is assembled from `projections.author_view.profile` (primary)
-     * and `projections.mention_profiles` (secondary), mirroring the iOS
-     * GallerySnapshot decoder.
+     * Decode one FlatBuffers snapshot frame. Profiles are assembled from
+     * component-owned `projections.claimed_profiles`, plus the author/mention
+     * projections used by other gallery demos.
      */
     private fun applyFrame(raw: ByteArray) {
         val v = try {
@@ -102,7 +96,17 @@ class GalleryModel : ViewModel() {
 
         val assembled = mutableMapOf<String, ProfileWire>()
 
-        // Primary: projections.author_view.profile (ProfileCard shape)
+        // Component-owned path: projections.claimed_profiles[pubkey].
+        (projections["claimed_profiles"] as? JsonObject)?.let { claimed ->
+            for ((pubkey, el) in claimed) {
+                val card = runCatching {
+                    json.decodeFromJsonElement<ProfileCard>(el)
+                }.getOrNull() ?: continue
+                assembled[pubkey] = card.toProfileWire(pubkey)
+            }
+        }
+
+        // Author-view fallback: projections.author_view.profile (ProfileCard shape)
         (projections["author_view"] as? JsonObject)?.let { av ->
             val pubkey = av["pubkey"]?.jsonPrimitive?.content ?: return@let
             val profileEl = av["profile"] as? JsonObject ?: return@let

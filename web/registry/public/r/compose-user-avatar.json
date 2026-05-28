@@ -16,7 +16,7 @@
       "path": "registry/compose/user-avatar/NostrProfileHost.kt",
       "type": "registry:ui",
       "target": "Components/NostrUser/NostrProfileHost.kt",
-      "content": "package org.nmp.registry\n\nimport androidx.compose.runtime.staticCompositionLocalOf\n\n/**\n * Host bridge for profile projections owned by the NMP kernel.\n *\n * Registry components call this bridge with stable Nostr references. The app\n * supplies the platform adapter; the component owns when to claim, release,\n * and re-read the current projection.\n */\ninterface NostrProfileHost {\n    fun profileForPubkey(pubkey: String): ProfileWire?\n    fun claimProfile(pubkey: String, consumerId: String)\n    fun releaseProfile(pubkey: String, consumerId: String)\n}\n\nval LocalNostrProfileHost = staticCompositionLocalOf<NostrProfileHost?> { null }\n"
+      "content": "package org.nmp.registry\n\nimport androidx.compose.runtime.Composable\nimport androidx.compose.runtime.staticCompositionLocalOf\n\n/**\n * Host bridge for profile projections owned by the NMP kernel.\n *\n * Registry components call this bridge with stable Nostr references. The app\n * supplies the platform adapter; the component owns when to claim, release,\n * and re-read the current projection.\n */\ninterface NostrProfileHost {\n    @Composable\n    fun profileForPubkey(pubkey: String): ProfileWire?\n    fun claimProfile(pubkey: String, consumerId: String)\n    fun releaseProfile(pubkey: String, consumerId: String)\n}\n\nval LocalNostrProfileHost = staticCompositionLocalOf<NostrProfileHost?> { null }\n"
     },
     {
       "path": "registry/compose/user-avatar/NostrAvatar.kt",

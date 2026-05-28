@@ -33,23 +33,15 @@ void nmp_app_stop(void *app);
 
 // Claim a profile for `pubkey`. The kernel keeps a refcounted interest open
 // across all consumers (`consumer_id` is the bookkeeping key for matched
-// release calls). The gallery uses one consumer id — `"gallery"`. NOTE:
-// `claim_profile` populates the kernel's internal `self.profiles` cache but
-// the snapshot does NOT surface that map for claim-only pubkeys (only the
-// active account's `projections.profile`, and `projections.mention_profiles`
-// derived from visible timeline items, are exposed). The gallery uses
-// `nmp_app_open_author` (below) instead so the claimed pubkey lands in
-// `projections.author_view.profile` where it is decodable.
+// release calls). Claimed profiles are projected under
+// `projections.claimed_profiles[pubkey]` in the regular update snapshot.
 void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 
 // Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
 // from discovery relays and surfaces the resolved `ProfileCard` under
-// `projections.author_view.profile` in the push-callback snapshot. The
-// gallery uses this seam to read pablof7z's profile because the alternative
-// `nmp_app_claim_profile` path does not project the resolved profile data
-// (claim-only pubkeys land in `self.profiles` but no projection exposes
-// that map). Refcounted — paired with `nmp_app_close_author`.
+// `projections.author_view.profile` in the push-callback snapshot. Refcounted
+// — paired with `nmp_app_close_author`.
 void nmp_app_open_author(void *app, const char *pubkey);
 void nmp_app_close_author(void *app, const char *pubkey);
 

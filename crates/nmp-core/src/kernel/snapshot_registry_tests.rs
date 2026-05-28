@@ -124,6 +124,9 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // steady state) so a host that pre-allocates the map slot
             // never sees an absent key.
             "claimed_events",
+            // generic claimed-profile projection: pubkey -> ProfileCard for
+            // profile references a component has called `claim_profile` on.
+            "claimed_profiles",
             "inserted",
             // derived view: per-author mention payloads scoped to the
             // open author-view items (aim.md §4.2).

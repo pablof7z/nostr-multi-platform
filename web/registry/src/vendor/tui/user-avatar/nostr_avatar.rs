@@ -9,6 +9,17 @@ use ratatui_image::{protocol::Protocol, Image};
 
 use super::profile_wire::ProfileWire;
 
+/// Host bridge for profile projections owned by the NMP kernel.
+///
+/// Immediate-mode TUI widgets call this while rendering visible profile
+/// references. The host supplies the platform adapter; the widget owns the
+/// claim intent and reads the current projection each frame.
+pub trait NostrProfileHost {
+    fn profile_for_pubkey(&self, pubkey: &str) -> ProfileWire;
+    fn claim_profile(&self, pubkey: &str, consumer_id: &str);
+    fn release_profile(&self, pubkey: &str, consumer_id: &str);
+}
+
 const PALETTE: [Color; 8] = [
     Color::Rgb(244, 114, 182),
     Color::Rgb(56, 189, 248),
@@ -25,17 +36,34 @@ const PALETTE: [Color; 8] = [
 /// Terminals render cells, not real circles, so this widget uses a compact
 /// bordered tile with profile initials and a stable pubkey-derived accent.
 pub struct NostrAvatar<'a> {
-    profile: &'a ProfileWire,
+    profile: AvatarProfile<'a>,
     image: Option<&'a Protocol>,
     border_style: Style,
+}
+
+enum AvatarProfile<'a> {
+    Borrowed(&'a ProfileWire),
+    Owned(ProfileWire),
 }
 
 impl<'a> NostrAvatar<'a> {
     pub fn new(profile: &'a ProfileWire) -> Self {
         Self {
-            profile,
+            profile: AvatarProfile::Borrowed(profile),
             image: None,
             border_style: Style::default().fg(accent_for(&profile.pubkey)),
+        }
+    }
+
+    pub fn for_pubkey(pubkey: &str, host: &dyn NostrProfileHost) -> Self {
+        const CONSUMER_ID: &str = "tui/user-avatar";
+        host.claim_profile(pubkey, CONSUMER_ID);
+        let profile = host.profile_for_pubkey(pubkey);
+        let border_style = Style::default().fg(accent_for(&profile.pubkey));
+        Self {
+            profile: AvatarProfile::Owned(profile),
+            image: None,
+            border_style,
         }
     }
 
@@ -48,12 +76,20 @@ impl<'a> NostrAvatar<'a> {
         self.border_style = style;
         self
     }
+
+    fn profile(&self) -> &ProfileWire {
+        match &self.profile {
+            AvatarProfile::Borrowed(profile) => profile,
+            AvatarProfile::Owned(profile) => profile,
+        }
+    }
 }
 
 impl Widget for NostrAvatar<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let accent = accent_for(&self.profile.pubkey);
-        let initials = self.profile.initials();
+        let profile = self.profile();
+        let accent = accent_for(&profile.pubkey);
+        let initials = profile.initials();
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.border_style)

@@ -210,6 +210,27 @@ impl Kernel {
             serde_json::to_value(&mention_profiles)
                 .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
         );
+        // `claimed_profiles` projection — keyed by pubkey for every currently
+        // claimed UI profile. This is the reference-first component path:
+        // native registry components call `claim_profile(pubkey, consumer)`,
+        // the kernel owns relay/cache policy, and the next snapshot exposes the
+        // resolved profile card here. Missing kind:0 data still emits a
+        // placeholder card so components can render an honest fallback
+        // immediately and refine in place when the profile arrives.
+        let mut claimed_profiles: std::collections::BTreeMap<String, _> =
+            std::collections::BTreeMap::new();
+        for pubkey in self.profile_claims.keys() {
+            let npub = crate::display::to_npub(pubkey);
+            claimed_profiles.insert(
+                pubkey.clone(),
+                self.profile_card_for(pubkey, Some(&npub), ""),
+            );
+        }
+        projections.insert(
+            "claimed_profiles".to_string(),
+            serde_json::to_value(&claimed_profiles)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
+        );
         // `claimed_events` projection — keyed by `primary_id` (hex64 event
         // id for nevent/note URIs; `kind:pubkey:d_tag` coordinate for
         // naddr URIs). Built by walking the current `event_claims` set

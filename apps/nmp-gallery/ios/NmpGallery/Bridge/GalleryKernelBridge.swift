@@ -10,10 +10,9 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 /// Data-flow architecture (CRITICAL):
 ///   • Profile data arrives via the PUSH callback registered with
 ///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
-///     `UpdateFrame`; the gallery reads `projections.author_view.profile` (and
-///     falls back to `projections.mention_profiles[pubkey]`) from the decoded
-///     snapshot payload to find a specific pubkey's resolved kind:0 — this is
-///     the projection surface the `open_author` seam populates.
+///     `UpdateFrame`; the gallery reads `projections.claimed_profiles[pubkey]`
+///     for component-owned profile claims, with `author_view` /
+///     `mention_profiles` as secondary projections for other demos.
 ///   • `nmp_app_gallery_snapshot` is a status envelope only
 ///     (`{schema, alive, projections:{}}`); it is NOT a profile source. The
 ///     gallery does not rely on it for component data.
@@ -24,12 +23,9 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   3. `start()`        — turns on the actor.
 ///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
 ///      routing target when no logged-in user is present).
-///   5. `openAuthor`     — focused profile interest. The kernel fetches kind:10002
-///      + kind:0 and surfaces the resolved ProfileCard under
-///      `projections.author_view.profile`. The parallel
-///      `claimProfile/releaseProfile` pair stays available for the
-///      refcounted-interest case (a future kernel projection will expose those
-///      results in the snapshot — see the PR description).
+///   5. `claimProfile`   — component-owned profile interest. The kernel fetches
+///      kind:0 and surfaces the resolved ProfileCard under
+///      `projections.claimed_profiles[pubkey]`.
 ///   6. `dispatchAction` — generic action dispatch (phase 2).
 ///   7. `deinit`         — clears callback, frees app.
 final class GalleryKernelHandle {
@@ -148,10 +144,7 @@ final class GalleryKernelHandle {
 
     /// Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
     /// from discovery relays and exposes the resolved ProfileCard under
-    /// `projections.author_view.profile` in the push-callback snapshot. This
-    /// is the seam the gallery uses to read pablof7z's data — the parallel
-    /// `claim_profile` call populates the kernel's internal store but no
-    /// projection surfaces it for claim-only (no-active-account) pubkeys.
+    /// `projections.author_view.profile` in the push-callback snapshot.
     func openAuthor(pubkey: String) {
         pubkey.withCString { nmp_app_open_author(raw, $0) }
     }

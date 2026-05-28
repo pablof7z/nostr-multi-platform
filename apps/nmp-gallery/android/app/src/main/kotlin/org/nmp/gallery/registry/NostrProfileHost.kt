@@ -1,5 +1,6 @@
 package org.nmp.gallery.registry
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
@@ -10,6 +11,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * and re-read the current projection.
  */
 interface NostrProfileHost {
+    @Composable
     fun profileForPubkey(pubkey: String): ProfileWire?
     fun claimProfile(pubkey: String, consumerId: String)
     fun releaseProfile(pubkey: String, consumerId: String)

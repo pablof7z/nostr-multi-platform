@@ -98,7 +98,7 @@ export const userComponents: Component[] = [
         version: "0.1.1",
         dependencies: ["user-core"],
         longDescription:
-          "`ProfileWire` mirrors the Rust-owned profile projection. `NostrAvatar` accepts an optional `ratatui-image` protocol supplied by the host app and falls back to initials with a deterministic pubkey-derived accent.",
+          "`NostrAvatar::for_pubkey(pubkey, host)` claims its own profile interest through `NostrProfileHost`, reads the current Rust-owned profile projection each frame, accepts an optional `ratatui-image` protocol supplied by the host app, and falls back to deterministic initials until the image is available.",
         files: [
           { source: "tui/user-core/profile_wire.rs", target: "src/components/nostr_user/profile_wire.rs", role: "source", content: profileWireRust },
           { source: "tui/user-avatar/nostr_avatar.rs", target: "src/components/nostr_user/nostr_avatar.rs", role: "source", content: nostrAvatarRust },

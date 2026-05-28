@@ -476,8 +476,9 @@ source = "compose/user-card/NostrUserCard.kt"
 target = "Components/NostrUser/NostrUserCard.kt"
 role = "source"
 # -----------------------------------------------------------------------------
-# Ratatui user profile widgets. These are pure render widgets: host apps own
-# keyboard actions, clipboard writes, image fetching, and navigation.
+# Ratatui user profile widgets. `tui/user-avatar` accepts pubkeys through a
+# `NostrProfileHost` adapter and owns the visible profile claim; host apps own
+# keyboard actions, clipboard writes, terminal image protocols, and navigation.
 # `tui/user-core` owns the shared `ProfileWire` mirror.
 # -----------------------------------------------------------------------------
 [[components]]
@@ -493,7 +494,7 @@ role = "source"
 id = "tui/user-avatar"
 version = "0.1.1"
 target = "tui"
-description = "Ratatui terminal avatar image via ratatui-image, with deterministic identicon fallback."
+description = "Reference-first Ratatui terminal avatar that claims its profile projection and falls back to deterministic initials."
 dependencies = ["tui/user-core"]
 [[components.files]]
 source = "tui/user-avatar/nostr_avatar.rs"

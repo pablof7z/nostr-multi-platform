@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -31,11 +32,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val profiles by model.profileMap.collectAsStateWithLifecycle()
             val latestProfiles = rememberUpdatedState(profiles)
-            val profileHost = remember(model) {
-                object : NostrProfileHost {
-                    override fun profileForPubkey(pubkey: String) = latestProfiles.value[pubkey]
-                    override fun claimProfile(pubkey: String, consumerId: String) {
-                        model.claimProfile(pubkey, consumerId)
+                val profileHost = remember(model) {
+                    object : NostrProfileHost {
+                        @Composable
+                        override fun profileForPubkey(pubkey: String) = latestProfiles.value[pubkey]
+                        override fun claimProfile(pubkey: String, consumerId: String) {
+                            model.claimProfile(pubkey, consumerId)
                     }
                     override fun releaseProfile(pubkey: String, consumerId: String) {
                         model.releaseProfile(pubkey, consumerId)

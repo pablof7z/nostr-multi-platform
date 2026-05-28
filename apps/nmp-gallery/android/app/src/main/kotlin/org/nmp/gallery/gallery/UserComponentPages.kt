@@ -1,18 +1,14 @@
 package org.nmp.gallery.gallery
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,11 +35,11 @@ fun UserComponentPage(
     val profiles by model.profileMap.collectAsStateWithLifecycle()
     val pubkey = remember { GalleryModel.DEMO_PUBKEY }
 
-    val profile = profiles[pubkey]
-    if (componentId != "user-avatar" && profile == null) {
-        ProfileLoading()
-        return
-    }
+    val profile = profiles[pubkey] ?: ProfileWire(
+        pubkey = pubkey,
+        npub = "",
+        npubShort = pubkey.take(8) + "…" + pubkey.takeLast(8),
+    )
 
     Column(
         modifier = Modifier
@@ -61,36 +57,14 @@ fun UserComponentPage(
 }
 
 @Composable
-private fun UserComponentBody(componentId: String, pubkey: String, profile: ProfileWire?) {
+private fun UserComponentBody(componentId: String, pubkey: String, profile: ProfileWire) {
     when (componentId) {
         "user-avatar" -> NostrAvatar(pubkey = pubkey, size = 80.dp)
-        "user-name" -> profile?.let { NostrProfileName(profile = it) }
-        "user-nip05" -> profile?.let { NostrNip05Badge(profile = it) }
-        "user-npub" -> profile?.let { NostrNpubChip(profile = it) }
-        "user-card" -> profile?.let { NostrUserCard(profile = it) }
+        "user-name" -> NostrProfileName(profile = profile)
+        "user-nip05" -> NostrNip05Badge(profile = profile)
+        "user-npub" -> NostrNpubChip(profile = profile)
+        "user-card" -> NostrUserCard(profile = profile)
         else -> Text("Unknown user component: $componentId")
-    }
-}
-
-@Composable
-private fun ProfileLoading() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(32.dp))
-            Text(
-                text = "Loading profile…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 

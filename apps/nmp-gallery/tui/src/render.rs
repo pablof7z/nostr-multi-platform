@@ -1,6 +1,9 @@
-use std::collections::BTreeMap;
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+};
 
-use nmp_content::{embed_projection::EmbeddedEventEnvelope, EventClaimSink};
+use nmp_content::embed_projection::EmbeddedEventEnvelope;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
@@ -13,7 +16,8 @@ use crate::{
     content_kind_registry::NostrKindRegistry,
     content_tree_wire::WireNode,
     data::{ContentExample, GalleryData, LiveProfileMap},
-    nostr_avatar::NostrAvatar,
+    live::LiveKernelSink,
+    nostr_avatar::{NostrAvatar, NostrProfileHost},
     nostr_content_view::NostrContentView,
     nostr_media_grid::NostrMediaGrid,
     nostr_mention_chip::NostrMentionChip,
@@ -33,14 +37,14 @@ use crate::{
 #[derive(Clone, Copy)]
 pub struct EmbedFrameContext<'a> {
     pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
-    pub sink: Option<&'a dyn EventClaimSink>,
+    pub sink: Option<&'a LiveKernelSink>,
+    pub profile_claims: Option<&'a RefCell<BTreeSet<(String, String)>>>,
     pub consumer_id: &'a str,
     /// Reactive profile store. The user-* components resolve their
     /// `ProfileWire` from here via `profiles.resolve(&data.primary_pubkey)`
     /// at render time — profile data is never stored on `GalleryData`.
     pub profiles: &'a LiveProfileMap,
 }
-
 
 pub fn plain_lines(
     id: &str,
@@ -166,17 +170,55 @@ fn render_quote_card(
         .render(area, buf);
 }
 
-fn render_avatar(area: Rect, buf: &mut Buffer, data: &GalleryData, embed_ctx: EmbedFrameContext<'_>) {
+fn render_avatar(
+    area: Rect,
+    buf: &mut Buffer,
+    data: &GalleryData,
+    embed_ctx: EmbedFrameContext<'_>,
+) {
     let centered = Rect {
         x: area.x + area.width.saturating_sub(20) / 2,
         y: area.y,
         width: area.width.min(20),
         height: area.height.min(10),
     };
-    let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
-    NostrAvatar::new(&primary)
+    let profile_host = GalleryProfileHost {
+        sink: embed_ctx.sink,
+        profiles: embed_ctx.profiles,
+        claims: embed_ctx.profile_claims,
+    };
+    NostrAvatar::for_pubkey(&data.primary_pubkey, &profile_host)
         .image(data.avatar_image.as_ref())
         .render(centered, buf);
+}
+
+struct GalleryProfileHost<'a> {
+    sink: Option<&'a LiveKernelSink>,
+    profiles: &'a LiveProfileMap,
+    claims: Option<&'a RefCell<BTreeSet<(String, String)>>>,
+}
+
+impl NostrProfileHost for GalleryProfileHost<'_> {
+    fn profile_for_pubkey(&self, pubkey: &str) -> crate::profile_wire::ProfileWire {
+        self.profiles.resolve(pubkey)
+    }
+
+    fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+        if let Some(claims) = self.claims {
+            claims
+                .borrow_mut()
+                .insert((pubkey.to_string(), consumer_id.to_string()));
+        }
+        if let Some(sink) = self.sink {
+            sink.claim_profile(pubkey, consumer_id);
+        }
+    }
+
+    fn release_profile(&self, pubkey: &str, consumer_id: &str) {
+        if let Some(sink) = self.sink {
+            sink.release_profile(pubkey, consumer_id);
+        }
+    }
 }
 
 fn content_core_lines(example: &ContentExample, _width: usize) -> Vec<String> {
@@ -317,7 +359,11 @@ fn render_embed_showcase(
         .media_images(media_images)
         .kind_registry(Some(&registry))
         .embedded_events(Some(embed_ctx.envelopes))
-        .claim_sink(embed_ctx.sink)
+        .claim_sink(
+            embed_ctx
+                .sink
+                .map(|sink| sink as &dyn nmp_content::EventClaimSink),
+        )
         .consumer_id(Some(embed_ctx.consumer_id))
         .render(area, buf);
 }
