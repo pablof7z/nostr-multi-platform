@@ -185,9 +185,10 @@ fn render_embed_showcase(
         }
     }
 
-    // Show the content tree first.
+    // ContentView renders EventRef nodes inline when a resolved envelope exists.
     ContentView::new(&example.tree)
         .render_data(Some(&example.render_data))
+        .embedded_events(Some(embed_ctx.envelopes))
         .show(ui);
 
     // Show resolved embed envelopes below.

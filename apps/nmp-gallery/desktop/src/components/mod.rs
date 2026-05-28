@@ -8,6 +8,7 @@
 pub mod content_core;
 pub mod content_minimal;
 pub mod content_view;
+pub mod embed_article;
 pub mod user_avatar;
 pub mod user_card;
 pub mod user_name;

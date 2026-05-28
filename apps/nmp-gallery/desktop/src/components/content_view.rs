@@ -1,18 +1,25 @@
+use std::collections::BTreeMap;
+
 use egui::{Color32, Ui};
 
+use nmp_content::embed_projection::{EmbeddedEventEnvelope, EmbedKindProjection};
 use nmp_gallery_tui::{
     content_render_data::ContentRenderData,
     content_tree_wire::{ContentTreeWire, WireNode},
 };
 
-/// Full rich content renderer.
+use crate::components::embed_article::{tree_text, ArticleCard};
+
+/// Full rich content renderer with inline embed support.
 ///
 /// Mirrors `NostrContentView` from the TUI registry. Walks the content tree
 /// and renders paragraphs, headings, blockquotes, lists, code blocks, and
-/// inline elements with egui styling.
+/// inline elements with egui styling. When `embedded_events` is supplied,
+/// `EventRef` nodes render the resolved embed card inline (not a link).
 pub struct ContentView<'a> {
     tree: &'a ContentTreeWire,
     render_data: Option<&'a ContentRenderData>,
+    embedded_events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
 }
 
 impl<'a> ContentView<'a> {
@@ -21,6 +28,7 @@ impl<'a> ContentView<'a> {
         Self {
             tree,
             render_data: None,
+            embedded_events: None,
         }
     }
 
@@ -30,9 +38,18 @@ impl<'a> ContentView<'a> {
         self
     }
 
+    #[must_use]
+    pub fn embedded_events(
+        mut self,
+        events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
+    ) -> Self {
+        self.embedded_events = events;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) {
         for root in &self.tree.roots {
-            render_node(self.tree, self.render_data, *root, ui);
+            render_node(self.tree, self.render_data, self.embedded_events, *root, ui);
         }
     }
 }
@@ -40,6 +57,7 @@ impl<'a> ContentView<'a> {
 fn render_node(
     tree: &ContentTreeWire,
     render_data: Option<&ContentRenderData>,
+    embedded: Option<&BTreeMap<String, EmbeddedEventEnvelope>>,
     index: usize,
     ui: &mut Ui,
 ) {
@@ -49,7 +67,7 @@ fn render_node(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 for child in children {
-                    render_inline(tree, render_data, *child, ui);
+                    render_inline(tree, render_data, embedded, *child, ui);
                 }
             });
         }
@@ -62,8 +80,8 @@ fn render_node(
             };
             ui.horizontal_wrapped(|ui| {
                 for child in children {
-                    if let Some(WireNode::Text(t)) = tree.nodes.get(*child) {
-                        ui.label(egui::RichText::new(t.as_str()).strong().size(size));
+                    if let Some(WireNode::Text(text)) = tree.nodes.get(*child) {
+                        ui.label(egui::RichText::new(text.as_str()).strong().size(size));
                     }
                 }
             });
@@ -74,7 +92,7 @@ fn render_node(
                 ui.label(egui::RichText::new("|").color(color).size(14.0));
                 ui.vertical(|ui| {
                     for child in children {
-                        render_node(tree, render_data, *child, ui);
+                        render_node(tree, render_data, embedded, *child, ui);
                     }
                 });
             });
@@ -90,7 +108,7 @@ fn render_node(
                     ui.label(bullet);
                     ui.vertical(|ui| {
                         for child in item {
-                            render_inline(tree, render_data, *child, ui);
+                            render_inline(tree, render_data, embedded, *child, ui);
                         }
                     });
                 });
@@ -121,6 +139,18 @@ fn render_node(
                     .color(Color32::from_rgb(96, 165, 250)),
             );
         }
+        WireNode::EventRef(uri) => {
+            // Inline embed: if the envelope is resolved, render the card.
+            if let Some(embedded) = embedded {
+                if try_render_embed_inline(ui, &uri.primary_id, embedded) {
+                    return;
+                }
+            }
+            ui.label(
+                egui::RichText::new(format!("nostr:{}", short_id(&uri.primary_id)))
+                    .color(Color32::from_rgb(110, 231, 183)),
+            );
+        }
         WireNode::Hashtag(tag) => {
             ui.label(
                 egui::RichText::new(format!("#{tag}"))
@@ -147,7 +177,7 @@ fn render_node(
         WireNode::SoftBreak | WireNode::HardBreak => {}
         WireNode::Placeholder { reason } => {
             ui.label(
-                egui::RichText::new(format!("[placeholder: {reason}]"))
+                egui::RichText::new(format!("[placeholder: {reason:?}]"))
                     .weak()
                     .italics(),
             );
@@ -162,6 +192,7 @@ fn render_node(
 fn render_inline(
     tree: &ContentTreeWire,
     render_data: Option<&ContentRenderData>,
+    embedded: Option<&BTreeMap<String, EmbeddedEventEnvelope>>,
     index: usize,
     ui: &mut Ui,
 ) {
@@ -206,15 +237,15 @@ fn render_inline(
         }
         WireNode::Emphasis { children } => {
             for child in children {
-                if let Some(WireNode::Text(t)) = tree.nodes.get(*child) {
-                    ui.label(egui::RichText::new(t.as_str()).italics());
+                if let Some(WireNode::Text(text)) = tree.nodes.get(*child) {
+                    ui.label(egui::RichText::new(text.as_str()).italics());
                 }
             }
         }
         WireNode::Strong { children } => {
             for child in children {
-                if let Some(WireNode::Text(t)) = tree.nodes.get(*child) {
-                    ui.label(egui::RichText::new(t.as_str()).strong());
+                if let Some(WireNode::Text(text)) = tree.nodes.get(*child) {
+                    ui.label(egui::RichText::new(text.as_str()).strong());
                 }
             }
         }
@@ -226,7 +257,7 @@ fn render_inline(
                 ui.hyperlink(href.as_str());
             } else {
                 for child in children {
-                    render_inline(tree, render_data, *child, ui);
+                    render_inline(tree, render_data, embedded, *child, ui);
                 }
             }
         }
@@ -237,7 +268,80 @@ fn render_inline(
                 ui.label(format!("[img: {alt}]"));
             }
         }
+        WireNode::EventRef(uri) => {
+            if let Some(embedded) = embedded {
+                if try_render_embed_inline(ui, &uri.primary_id, embedded) {
+                    return;
+                }
+            }
+            ui.label(
+                egui::RichText::new(format!("nostr:{}", short_id(&uri.primary_id)))
+                    .color(Color32::from_rgb(110, 231, 183)),
+            );
+        }
         _ => {}
+    }
+}
+
+fn try_render_embed_inline(
+    ui: &mut Ui,
+    primary_id: &str,
+    envelopes: &BTreeMap<String, EmbeddedEventEnvelope>,
+) -> bool {
+    let Some(envelope) = envelopes.get(primary_id) else {
+        return false;
+    };
+    match &envelope.projection {
+        EmbedKindProjection::Article(ref article) => {
+            ArticleCard::new(article).show(ui);
+            true
+        }
+        EmbedKindProjection::ShortNote(ref note) => {
+            ui.vertical(|ui| {
+                let author = note
+                    .author_display_name
+                    .as_deref()
+                    .unwrap_or(&note.author_pubkey[..8.min(note.author_pubkey.len())]);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(author)
+                            .strong()
+                            .size(12.0)
+                            .color(Color32::from_rgb(203, 213, 225)),
+                    );
+                });
+                let preview = tree_text(&note.content_tree);
+                ui.label(
+                    egui::RichText::new(truncate_chars(&preview, 200))
+                        .size(12.0)
+                        .color(Color32::from_rgb(148, 163, 184)),
+                );
+            });
+            true
+        }
+        EmbedKindProjection::Highlight(ref h) => {
+            ui.vertical(|ui| {
+                let color = Color32::from_rgb(251, 191, 36);
+                ui.label(egui::RichText::new(&h.highlighted_text).color(color).size(12.0));
+                if let Some(url) = &h.source_url {
+                    ui.hyperlink_to("source", url.as_str());
+                }
+            });
+            true
+        }
+        EmbedKindProjection::Profile(ref p) => {
+            let name = p
+                .display_name
+                .as_deref()
+                .unwrap_or(&p.pubkey[..8.min(p.pubkey.len())]);
+            ui.label(
+                egui::RichText::new(format!("@{name}"))
+                    .color(Color32::from_rgb(96, 165, 250))
+                    .size(13.0),
+            );
+            true
+        }
+        EmbedKindProjection::Unknown(_) => false,
     }
 }
 
@@ -257,4 +361,25 @@ fn resolved_name(render_data: Option<&ContentRenderData>, uri: &nmp_gallery_tui:
         .chars()
         .take(16)
         .collect()
+}
+
+fn short_id(id: &str) -> String {
+    if id.len() > 16 {
+        format!("{}\u{2026}{}", &id[..8], &id[id.len() - 8..])
+    } else {
+        id.to_string()
+    }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max {
+        return s.to_string();
+    }
+    let mut out: String = chars.iter().take(max.saturating_sub(1)).collect();
+    out.push('\u{2026}');
+    out
 }
