@@ -269,6 +269,12 @@ pub(super) struct ActorContext<'a> {
     /// state wipe.
     pub(super) routing_trace_slot:
         &'a Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
+    /// V-83 — event-store publish-back slot. Read by the `Reset` arm to
+    /// re-publish the rebuilt kernel's `event_store_handle()` clone (the rebuild
+    /// constructs a fresh `EventStore`) so `NmpApp::event_by_id` keeps reading
+    /// the live store across a state wipe — same publish-back-on-`Reset`
+    /// contract as `routing_trace_slot`.
+    pub(super) event_store_slot: &'a crate::slots::EventStoreSlot,
     /// V-51 phase 5 — per-app substrate-routing factory slot. Re-invoked by
     /// the `Reset` arm against the rebuilt kernel's fresh projection clone
     /// so a production router (e.g. `nmp_router::GenericOutboxRouter`)
@@ -1239,6 +1245,15 @@ pub(super) fn dispatch_command(
             // routing decisions of the live kernel".
             if let Ok(mut guard) = ctx.routing_trace_slot.lock() {
                 *guard = Some(ctx.kernel.routing_trace());
+            }
+            // V-83 — re-publish the rebuilt kernel's `EventStore` handle clone.
+            // `Reset` constructed a fresh kernel (and hence a fresh store) above;
+            // without this the slot would retain a handle to the discarded
+            // kernel's store and `NmpApp::event_by_id` would read stale (empty
+            // post-wipe) data. Same publish-back-on-`Reset` contract as the
+            // routing-trace projection above.
+            if let Ok(mut guard) = ctx.event_store_slot.lock() {
+                *guard = Some(ctx.kernel.event_store_handle());
             }
             // V-51 phase 5 — re-apply the per-app substrate-routing factory
             // against the rebuilt kernel. Same contract as the routing-trace

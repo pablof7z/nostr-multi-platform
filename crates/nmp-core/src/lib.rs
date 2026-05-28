@@ -394,6 +394,9 @@ pub mod testing {
                 // V-82 — throwaway active-account slot (no FFI surface reads it
                 // on this test/spawn-actor entry point).
                 crate::slots::new_active_account_slot(),
+                // V-83 — throwaway event-store slot (no FFI surface reads it on
+                // this test/spawn-actor entry point).
+                crate::slots::new_event_store_slot(),
             );
         });
         (command_tx, update_rx)

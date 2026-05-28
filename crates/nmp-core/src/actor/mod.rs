@@ -909,6 +909,10 @@ pub fn run_actor(
         // still writes its active account into it on every identity mutation;
         // nothing outside the actor reads it on this path.
         crate::slots::new_active_account_slot(),
+        // V-83 — no `NmpApp` here, so the event-store slot is a private
+        // throwaway. The actor still publishes its kernel's store into it;
+        // nothing outside the actor reads it on this path.
+        crate::slots::new_event_store_slot(),
     );
 }
 
@@ -982,6 +986,8 @@ pub fn run_actor_with_lifecycle_observer(
         // V-82 — same private-throwaway pattern for the active-account slot
         // (no FFI surface reads it on this backwards-compatible entry point).
         crate::slots::new_active_account_slot(),
+        // V-83 — same private-throwaway pattern for the event-store slot.
+        crate::slots::new_event_store_slot(),
     );
 }
 
@@ -1133,6 +1139,14 @@ pub fn run_actor_with_observers(
     // identity mutation IS the slot the host reads — single source of truth,
     // no divergent mirror. Substrate-generic (raw pubkey `String`, D0).
     active_account_slot: crate::slots::ActiveAccountSlot,
+    // V-83 — the event-store publish-back slot. The `NmpApp` owns the read side
+    // (`NmpApp::event_by_id` / `event_store_handle`); this actor thread is the
+    // sole writer, publishing `kernel.event_store_handle()` (the kernel-owned
+    // `Arc<dyn EventStore>`) into the slot right after kernel construction (and
+    // re-publishing on `Reset`, since `Reset` rebuilds the kernel with a fresh
+    // store). Mirrors `routing_trace_slot`'s publish-back — NOT V-82's
+    // hand-down — because the store is kernel-built, not host-built.
+    event_store_slot: crate::slots::EventStoreSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1195,6 +1209,15 @@ pub fn run_actor_with_observers(
     // — readers will see `None`, which is the cold-start state.
     if let Ok(mut guard) = routing_trace_slot.lock() {
         *guard = Some(kernel.routing_trace());
+    }
+    // V-83 — publish the kernel's `EventStore` handle clone into the shared
+    // slot so `NmpApp::event_by_id` can read events synchronously off the host
+    // thread (the OP-feed engine's repost L-2/L-5 backward-hydration paths).
+    // `EventStore::get_by_id` is a `&self` read; this actor reducer is the sole
+    // writer (D4), so a host read never observes a torn write. D6: a poisoned
+    // slot drops the publication (readers see `None`, the cold-start state).
+    if let Ok(mut guard) = event_store_slot.lock() {
+        *guard = Some(kernel.event_store_handle());
     }
     // V-51 phase 5 — apply the per-app routing-substrate factory (if any)
     // BEFORE any kind:10002 is ingested. The factory receives the kernel's
@@ -1482,6 +1505,7 @@ pub fn run_actor_with_observers(
                         blocked_relays_slot: &blocked_relays_slot,
                         bootstrap_self_kinds_slot: &bootstrap_self_kinds_slot,
                         routing_trace_slot: &routing_trace_slot,
+                        event_store_slot: &event_store_slot,
                         routing_substrate_slot: &routing_substrate_slot,
                         publish_resolver_slot: &publish_resolver_slot,
                         active_account_slot: &active_account_slot,
