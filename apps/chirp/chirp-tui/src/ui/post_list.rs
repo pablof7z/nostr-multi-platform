@@ -135,22 +135,36 @@ fn append_card(
         lines.push(line0);
     }
 
-    // Row 0b (partial chain heads only): "↳ reply in thread" — surfaces
-    // the fact that the displayed event is itself a reply to a missing
-    // ancestor (the true thread root is not in the local store), so it
-    // doesn't masquerade as a root post. Independent of repost row; in
-    // practice they never co-occur (reposts arrive as Standalone blocks).
-    if row.is_partial_chain_head {
-        let text = "\u{21B3} reply in thread";
-        let text_len = text.chars().count();
-        let pad = pad_for(content_width, text_len);
-        let indicator = Span::styled(
-            text.to_string(),
+    // Row 0b (V-80 OP-centric feed): "↳ <name> replied in thread" — surfaces
+    // the most-recent follow whose reply caused this root to appear (or who
+    // replied to it). The feed is thread-roots-only: replies never get their
+    // own row, they attribute back here. Q1 display decision: the TUI shows
+    // ONLY the most-recent 1 replier even though the projection carries them
+    // all raw. Co-occurs with the repost banner above (L-4): banner first,
+    // then attribution, then the author line.
+    if let Some(attribution) = row.thread_attribution.last() {
+        let prefix = "\u{21B3} ";
+        let prefix_len = prefix.chars().count();
+        let suffix = " replied in thread";
+        let suffix_len = suffix.chars().count();
+        let name_budget = content_width
+            .saturating_sub(prefix_len)
+            .saturating_sub(suffix_len);
+        let (name_span, name_len) = profile_name_span(
+            &attribution.author_profile,
             Style::default().fg(REPLY_COLOR).bg(row_bg),
+            name_budget,
         );
+        let used = prefix_len + name_len + suffix_len;
+        let pad = pad_for(content_width, used);
         lines.push(Line::from(vec![
             gutter_span.clone(),
-            indicator,
+            Span::styled(prefix.to_string(), Style::default().fg(REPLY_COLOR).bg(row_bg)),
+            name_span,
+            Span::styled(
+                suffix.to_string(),
+                Style::default().fg(DIM_TEXT).bg(row_bg),
+            ),
             Span::styled(pad, Style::default().bg(row_bg)),
         ]));
     }

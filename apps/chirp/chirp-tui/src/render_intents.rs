@@ -77,7 +77,7 @@ mod tests {
             created_at: 1,
             depth: 0,
             has_gap: false,
-            is_partial_chain_head: false,
+            thread_attribution: Vec::new(),
             relation_counts: Default::default(),
             content_tree: None,
             content_render: Default::default(),
