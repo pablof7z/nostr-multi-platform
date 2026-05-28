@@ -56,8 +56,57 @@ pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<Va
     }
 }
 
+/// Decode a FlatBuffers snapshot frame into the generic `Value` tree, preferring
+/// the typed `nmp.feed.home` sidecar (ADR-0035) when present.
+///
+/// During the compatibility window the host still renders from the generic
+/// `Value`-based code path. When the typed NFTS sidecar decodes successfully we
+/// re-serialize the [`nmp_nip01::ModularTimelineSnapshot`] back into the generic
+/// projection slot. Because the generic `nmp.feed.home` projection is itself
+/// produced by `serde_json::to_value(ModularTimelineSnapshot)`, this round-trip
+/// is parity-by-construction: same type, same serde derives, identical `Value`
+/// shape. It proves the typed decode is lossless without a render refactor.
+///
+/// When no typed payload is present (a pre-sidecar frame), the generic `Value`
+/// projection is used verbatim, preserving the compatibility fallback.
 fn decode_flatbuffer_snapshot_value(bytes: &[u8]) -> Option<Value> {
-    nmp_core::decode_snapshot_payload(bytes).ok()
+    let (mut value, typed_projections) = nmp_core::decode_snapshot_with_typed(bytes).ok()?;
+    if let Some(typed_home_feed) = typed_home_feed_from_projections(&typed_projections) {
+        if let Ok(typed_value) = serde_json::to_value(&typed_home_feed) {
+            merge_home_feed_projection(&mut value, typed_value);
+        }
+    }
+    Some(value)
+}
+
+/// Locate the typed `nmp.feed.home` sidecar entry and decode it into an owned
+/// [`nmp_nip01::ModularTimelineSnapshot`].
+///
+/// Returns `None` when the projection is absent or the schema id does not match
+/// the NIP-01 timeline schema — either case falls back to the generic `Value`.
+fn typed_home_feed_from_projections(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Option<nmp_nip01::ModularTimelineSnapshot> {
+    let proj = projections.iter().find(|p| {
+        p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::typed_wire::SCHEMA_ID
+    })?;
+    nmp_nip01::typed_wire::decode_modular_timeline_snapshot(&proj.payload).ok()
+}
+
+/// Overwrite `value["projections"]["nmp.feed.home"]` with the typed-derived
+/// snapshot value. No-op if the snapshot has no `projections` object.
+///
+/// Mirrors [`SharedSnapshot::from_value`], which reaches through an optional
+/// `"v"` envelope before reading `projections`, so the typed value lands in the
+/// same slot the render path reads from.
+fn merge_home_feed_projection(value: &mut Value, typed_home_feed: Value) {
+    let snapshot = match value.get_mut("v") {
+        Some(inner) => inner,
+        None => value,
+    };
+    if let Some(Value::Object(projections)) = snapshot.get_mut("projections") {
+        projections.insert("nmp.feed.home".to_string(), typed_home_feed);
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -429,5 +478,115 @@ mod tests {
         assert_eq!(snapshot.metrics.events_rx, 7);
         assert_eq!(snapshot.relays.len(), 1);
         assert_eq!(snapshot.relays[0].short_url, "relay.example");
+    }
+
+    /// Builds a distinctive typed home-feed snapshot whose `metrics` carry a
+    /// sentinel `make_window_us` the generic projection never contains, so a
+    /// test can prove the typed sidecar was the source of truth.
+    fn typed_home_feed_snapshot() -> nmp_nip01::ModularTimelineSnapshot {
+        nmp_nip01::ModularTimelineSnapshot {
+            blocks: Vec::new(),
+            cards: Vec::new(),
+            page: None,
+            metrics: Some(nmp_nip01::TimelineWindowMetrics {
+                make_window_us: 4242,
+            }),
+        }
+    }
+
+    fn flatbuffer_payload(
+        snapshot: Value,
+        typed: &[nmp_core::TypedProjectionData],
+    ) -> UpdatePayload {
+        UpdatePayload::FlatBuffers(nmp_core::encode_snapshot_with_typed(snapshot, typed))
+    }
+
+    /// ADR-0035: when a typed `nmp.feed.home` sidecar is present, the host must
+    /// render from the typed-decoded snapshot. The decode-then-re-serialize
+    /// round-trip is parity-by-construction (the generic projection is itself
+    /// `serde_json::to_value(ModularTimelineSnapshot)`), so `home_feed` must
+    /// equal the typed snapshot re-serialized — not the generic sentinel.
+    #[test]
+    fn prefers_typed_home_feed_sidecar_over_generic_projection() {
+        let typed_snapshot = typed_home_feed_snapshot();
+        let typed = vec![nmp_core::TypedProjectionData {
+            key: "nmp.feed.home".to_string(),
+            schema_id: nmp_nip01::typed_wire::SCHEMA_ID.to_string(),
+            schema_version: 1,
+            file_identifier: "NFTS".to_string(),
+            payload: nmp_nip01::typed_wire::encode_modular_timeline_snapshot(&typed_snapshot),
+        }];
+        // The generic projection carries an unmistakable sentinel so we can
+        // prove it was overridden by the typed path.
+        let generic = serde_json::json!({
+            "metrics": { "events_rx": 1 },
+            "projections": {
+                "nmp.feed.home": { "sentinel": "generic-must-not-win" }
+            }
+        });
+
+        let snapshot =
+            SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &typed));
+
+        let expected = serde_json::to_value(&typed_snapshot).expect("serialize typed snapshot");
+        assert_eq!(snapshot.home_feed, Some(expected));
+        assert_eq!(
+            snapshot
+                .home_feed
+                .as_ref()
+                .and_then(|f| f.get("metrics"))
+                .and_then(|m| m.get("make_window_us"))
+                .and_then(Value::as_u64),
+            Some(4242),
+            "typed metrics sentinel must survive the decode/re-serialize round-trip"
+        );
+    }
+
+    /// Compatibility window: a pre-sidecar frame (no typed projections) must
+    /// fall back to the generic `nmp.feed.home` Value verbatim.
+    #[test]
+    fn falls_back_to_generic_home_feed_when_no_typed_sidecar() {
+        let generic = serde_json::json!({
+            "metrics": { "events_rx": 1 },
+            "projections": {
+                "nmp.feed.home": { "blocks": [], "cards": [], "legacy": true }
+            }
+        });
+
+        let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &[]));
+
+        assert_eq!(
+            snapshot.home_feed,
+            Some(serde_json::json!({ "blocks": [], "cards": [], "legacy": true })),
+            "absent typed sidecar must preserve the generic projection unchanged"
+        );
+    }
+
+    /// A typed projection with a mismatched `schema_id` must not be consumed —
+    /// the host falls back to the generic Value rather than mis-decoding.
+    #[test]
+    fn ignores_typed_projection_with_wrong_schema_id() {
+        let typed = vec![nmp_core::TypedProjectionData {
+            key: "nmp.feed.home".to_string(),
+            schema_id: "nmp.some.other.schema".to_string(),
+            schema_version: 1,
+            file_identifier: String::new(),
+            payload: vec![0x00, 0x01, 0x02],
+        }];
+        let generic = serde_json::json!({
+            "metrics": { "events_rx": 1 },
+            "projections": {
+                "nmp.feed.home": { "kept": "generic" }
+            }
+        });
+
+        let snapshot =
+            SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &typed));
+
+        assert_eq!(
+            snapshot.home_feed,
+            Some(serde_json::json!({ "kept": "generic" })),
+            "schema-id mismatch must not override the generic projection"
+        );
     }
 }
