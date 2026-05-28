@@ -2,9 +2,8 @@
 //!
 //! The program flow:
 //! 1. Spin up `LiveKernel` (the persistent `nmp_app_*` actor handle).
-//! 2. Cold-start: fetch demo profile + thread/author/media items via
-//!    `LiveGallerySource::bootstrap` so user-* component pages render
-//!    real kind:0 / kind:1 data on the first frame.
+//! 2. Boot `LiveKernel` without blocking prefetch. The initial frame uses
+//!    synthetic placeholder data from `GalleryData::render_test_data()`.
 //! 3. Take the snapshot receiver off the kernel; spawn two threads:
 //!    - input thread (crossterm `event::read` blocking)
 //!    - snapshot thread (snapshot push receiver blocking)
@@ -36,13 +35,12 @@ use nmp_gallery_tui::{
     data::GalleryData,
     embed_host::EmbedHostState,
     gallery,
-    live::{parse_snapshot, LiveGallerySource, LiveKernelSink},
+    live::{parse_snapshot, LiveGallerySource, LiveKernel, LiveKernelSink},
     render::{self, EmbedFrameContext},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use serde_json::Value;
 
-const COLD_START_TIMEOUT: Duration = Duration::from_secs(45);
 const EMBED_CONSUMER_ID: &str = "nmp-gallery-tui.embed";
 
 struct Args {
@@ -109,23 +107,17 @@ fn main() -> io::Result<()> {
         std::process::exit(2);
     }
 
-    // Cold-start the kernel + bootstrap initial data.
-    let source = LiveGallerySource::new(COLD_START_TIMEOUT);
-    let (facts, mut kernel) = match source.bootstrap() {
-        Ok(pair) => pair,
+    // Boot the kernel only — no blocking prefetch. Initial frame uses
+    // synthetic placeholder data; reactive snapshots update embeds.
+    let mut kernel = match LiveKernel::new() {
+        Ok(k) => k,
         Err(error) => {
-            eprintln!("failed to bootstrap NmpGallery kernel: {error}");
+            eprintln!("failed to boot kernel: {error}");
             std::process::exit(1);
         }
     };
 
-    let data = match GalleryData::from_live(&facts, !args.dump_lines) {
-        Ok(data) => data,
-        Err(error) => {
-            eprintln!("failed to build initial NmpGallery data: {error}");
-            std::process::exit(1);
-        }
-    };
+    let data = GalleryData::render_test_data();
 
     // Build the renderer's embed sink (forwards claim/release to the
     // persistent kernel via the new claim_event FFI). `Arc` so the sink
@@ -151,8 +143,6 @@ fn main() -> io::Result<()> {
     let snapshot_rx = kernel
         .take_receiver()
         .expect("snapshot receiver must still be present after bootstrap");
-
-    let _ = &facts; // smoke handled above
 
     run_terminal(&args, &data, &sink, &mut host, snapshot_rx)?;
 

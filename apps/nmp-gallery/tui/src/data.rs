@@ -2,10 +2,9 @@
 //!
 //! Live-only (ADR-0034 / M16): there is no fixture mode, no hardcoded
 //! embed envelopes, no `load_images: bool` knob that toggles fakery. The
-//! gallery boots, the kernel runs through cold-start, and this module
-//! turns the resulting `LiveFacts` (profiles + thread/author items
-//! resolved from kind:0 / kind:1 / etc.) into the content trees and
-//! `ContentRenderData` the renderer needs to draw the first frame.
+//! gallery boots, the kernel runs, and this module provides the
+//! synthetic content trees and `ContentRenderData` the renderer needs
+//! to draw the first frame without blocking on network fetches.
 //!
 //! Embedded events do NOT live here. The renderer is frontend-driven:
 //! when `NostrContentView` hits an `EventRef(uri)` it calls
@@ -14,21 +13,14 @@
 //! Renderers consume the host's envelope map at render time, not a
 //! static field on `ContentExample`.
 
-use std::{
-    io::{IsTerminal, Read},
-    time::Duration,
-};
-
 use nmp_content::{tokenize_with_kind, RenderMode};
 use nmp_core::display::{short_hex, short_npub, to_npub};
-use ratatui::layout::Size;
-use ratatui_image::{picker::Picker, picker::ProtocolType, protocol::Protocol, Resize};
+use ratatui_image::protocol::Protocol;
 use serde_json::{json, Map, Value};
 
 use crate::{
     content_render_data::ContentRenderData,
     content_tree_wire::ContentTreeWire,
-    live::{LiveFacts, LiveItem, LiveProfile},
     profile_wire::ProfileWire,
 };
 
@@ -87,137 +79,51 @@ pub struct MediaProtocol {
     pub protocol: Protocol,
 }
 
-impl GalleryData {
-    /// Build the initial gallery view state from the kernel's cold-start
-    /// fetch. The renderer (driven by snapshot pushes) later updates the
-    /// embed host with resolved kind:30023 / kind:9802 / kind:1 envelopes
-    /// — those do NOT live on this struct.
-    ///
-    /// `load_images` controls the synchronous avatar/media HTTP fetches.
-    /// Set `false` for non-TTY environments (CI dump-lines, tests).
-    pub fn from_live(facts: &LiveFacts, load_images: bool) -> Result<Self, String> {
-        let primary = &facts.primary_profile;
-        let secondary = &facts.mention_profile;
+#[derive(Clone)]
+pub struct LiveProfile {
+    pub pubkey: String,
+    pub display_name: Option<String>,
+    pub picture_url: Option<String>,
+    pub nip05: Option<String>,
+    pub about: Option<String>,
+}
 
-        let avatar_images = if load_images {
-            avatar_protocols(primary)
-        } else {
-            AvatarProtocols::default()
-        };
-        let media_images = if load_images {
-            media_protocols(&[&facts.media_item, &facts.quote_target_item])
-        } else {
-            Vec::new()
-        };
+#[derive(Clone)]
+pub struct LiveItem {
+    pub id: String,
+    pub author_pubkey: String,
+    pub kind: u32,
+    pub content: String,
+    pub content_preview: String,
+    pub created_at: u64,
+}
 
-        let mention_profiles = [(secondary, Some(facts.mention_profile_uri.as_str()))];
-        let quote_events = [(
-            &facts.quote_target_item,
-            &facts.quote_target_profile,
-            Some(facts.quote_event_uri.as_str()),
-        )];
-
-        // Embed-showcase content strings. The renderer turns the embedded
-        // bech32 URIs into `EventRef` tokens, claims via the sink, and the
-        // resolved envelopes arrive through `EmbedHostState`. We do NOT
-        // synthesize envelopes here.
-        let article_item = synth_item(
-            &primary.pubkey,
-            1,
-            &format!("hey, check out my article {ARTICLE_NADDR} I hope you enjoy it!"),
-        );
-        let mention_uri_for_embed = facts.mention_profile_uri.clone();
-        let profile_embed_item = synth_item(
-            &primary.pubkey,
-            1,
-            &format!(
-                "met {mention_uri_for_embed} at a nostr conference last week, brilliant mind"
-            ),
-        );
-        let note_embed_item = synth_item(
-            &primary.pubkey,
-            1,
-            &format!(
-                "this is a great point {NOTE_NEVENT} what do you think?"
-            ),
-        );
-        let highlight_embed_item = synth_item(
-            &primary.pubkey,
-            1,
-            &format!("found this interesting {HIGHLIGHT_NEVENT}"),
-        );
-
-        Ok(Self {
-            primary_profile: profile_wire(primary),
-            secondary_profile: profile_wire(secondary),
-            avatar_image: avatar_images.large,
-            avatar_image_compact: avatar_images.compact,
-            media_images,
-            content_core: content_example(
-                &facts.mention_item,
-                "live mention tree",
-                &mention_profiles,
-                &[],
-            )?,
-            content_minimal: content_example(
-                &facts.mention_item,
-                "live minimal mention",
-                &mention_profiles,
-                &[],
-            )?,
-            content_view: content_example(&facts.media_item, "live image content", &[], &[])?,
-            content_mention_chip: content_example(
-                &facts.mention_item,
-                "live mention chip",
-                &mention_profiles,
-                &[],
-            )?,
-            content_media_grid: content_example(
-                &facts.media_item,
-                "live media grid",
-                &[],
-                &[],
-            )?,
-            content_quote_card: content_example(
-                &facts.quote_source_item,
-                "live quote card",
-                &[],
-                &quote_events,
-            )?,
-            embed_article: content_example(
-                &article_item,
-                "Embedded Article (kind:30023)",
-                &[],
-                &[],
-            )?,
-            embed_profile: content_example(
-                &profile_embed_item,
-                "Inline Profile Mention (via mention chip)",
-                &mention_profiles,
-                &[],
-            )?,
-            embed_note: content_example(
-                &note_embed_item,
-                "Embedded Note (kind:1)",
-                &[],
-                &[],
-            )?,
-            embed_highlight: content_example(
-                &highlight_embed_item,
-                "Embedded Highlight (kind:9802)",
-                &[],
-                &[],
-            )?,
-        })
+impl LiveProfile {
+    pub fn display_label(&self) -> String {
+        self.display_name
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| self.pubkey.clone())
     }
+}
 
-    /// Synthetic `LiveFacts`-equivalent for unit tests that need a
-    /// `GalleryData` without spinning up the kernel. The profiles and
-    /// items use deterministic test-only pubkeys/event-ids; no embed
-    /// envelopes are synthesized (the renderer-triggered path is
-    /// exercised by `embed_host::tests`, not by `render::tests`).
-    #[cfg(test)]
-    pub(crate) fn render_test_data() -> Self {
+impl LiveItem {
+    pub fn preview(&self) -> String {
+        if self.content_preview.trim().is_empty() {
+            self.content.replace('\n', " ").chars().take(180).collect()
+        } else {
+            self.content_preview.clone()
+        }
+    }
+}
+
+impl GalleryData {
+    /// Synthetic gallery data for the initial frame and for tests. No
+    /// network fetches — all profiles and items are deterministic
+    /// placeholders. Embeds are triggered reactively by the renderer
+    /// via `EventClaimSink` as usual.
+    pub fn render_test_data() -> Self {
         let referenced_pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
         let author_pubkey = "2222222222222222222222222222222222222222222222222222222222222222";
         let quote_id = "3333333333333333333333333333333333333333333333333333333333333333";
@@ -242,6 +148,14 @@ impl GalleryData {
             nip05: None,
             about: None,
         };
+        let primary_profile = LiveProfile {
+            pubkey: author_pubkey.to_string(),
+            display_name: Some("Primary Author".to_string()),
+            picture_url: Some("https://example.invalid/avatar.png".to_string()),
+            nip05: Some("primary.example".to_string()),
+            about: Some("Primary author for gallery showcase".to_string()),
+        };
+
         let mention_item = LiveItem {
             id: "4444444444444444444444444444444444444444444444444444444444444444".to_string(),
             author_pubkey: author_pubkey.to_string(),
@@ -250,13 +164,21 @@ impl GalleryData {
             content_preview: String::new(),
             created_at: 1,
         };
+        let media_item = LiveItem {
+            id: "6666666666666666666666666666666666666666666666666666666666666666".to_string(),
+            author_pubkey: author_pubkey.to_string(),
+            kind: 1,
+            content: "Check out this image https://example.invalid/image1.png and this one https://example.invalid/image2.png".to_string(),
+            content_preview: String::new(),
+            created_at: 2,
+        };
         let quote_source = LiveItem {
             id: "5555555555555555555555555555555555555555555555555555555555555555".to_string(),
             author_pubkey: author_pubkey.to_string(),
             kind: 1,
             content: format!("look {quote_uri}"),
             content_preview: String::new(),
-            created_at: 2,
+            created_at: 3,
         };
         let quote_target = LiveItem {
             id: quote_id.to_string(),
@@ -264,111 +186,73 @@ impl GalleryData {
             kind: 1,
             content: "Quoted event body from render data".to_string(),
             content_preview: String::new(),
-            created_at: 3,
+            created_at: 4,
         };
 
-        let facts = LiveFacts {
-            primary_profile: quote_author.clone(),
-            mention_profile: resolved_profile,
-            quote_target_profile: quote_author,
-            mention_item,
-            media_item: quote_source.clone(),
-            quote_source_item: quote_source,
-            quote_target_item: quote_target,
-            mention_profile_uri: mention_uri,
-            quote_event_uri: quote_uri,
-        };
-        Self::from_live(&facts, false).expect("test data is valid")
-    }
-}
+        let mention_profiles = [(&resolved_profile, Some(mention_uri.as_str()))];
+        let quote_events = [(&quote_target, &quote_author, Some(quote_uri.as_str()))];
 
-#[derive(Default)]
-struct AvatarProtocols {
-    large: Option<Protocol>,
-    compact: Option<Protocol>,
-}
+        let article_item = synth_item(
+            &primary_profile.pubkey,
+            1,
+            &format!("hey, check out my article {ARTICLE_NADDR} I hope you enjoy it!"),
+        );
+        let profile_embed_item = synth_item(
+            &primary_profile.pubkey,
+            1,
+            &format!("met {mention_uri} at a nostr conference last week, brilliant mind"),
+        );
+        let note_embed_item = synth_item(
+            &primary_profile.pubkey,
+            1,
+            &format!("this is a great point {NOTE_NEVENT} what do you think?"),
+        );
+        let highlight_embed_item = synth_item(
+            &primary_profile.pubkey,
+            1,
+            &format!("found this interesting {HIGHLIGHT_NEVENT}"),
+        );
 
-fn avatar_protocols(profile: &LiveProfile) -> AvatarProtocols {
-    let Some(url) = profile.picture_url.as_deref() else {
-        return AvatarProtocols::default();
-    };
-    if !std::io::stdout().is_terminal() {
-        return AvatarProtocols::default();
-    }
-    let Some(image) = fetch_image(url) else {
-        return AvatarProtocols::default();
-    };
-    let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
-    if std::env::var("ITERM_SESSION_ID").is_ok() {
-        picker.set_protocol_type(ProtocolType::Iterm2);
-    }
-    AvatarProtocols {
-        large: picker
-            .new_protocol(image.clone(), Size::new(18, 9), Resize::Fit(None))
-            .ok(),
-        compact: picker
-            .new_protocol(image, Size::new(12, 4), Resize::Fit(None))
-            .ok(),
-    }
-}
-
-fn fetch_image(url: &str) -> Option<image::DynamicImage> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(12))
-        .build();
-    let response = agent.get(url).call().ok()?;
-    let mut bytes = Vec::new();
-    response
-        .into_reader()
-        .take(4 * 1024 * 1024)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    image::load_from_memory(&bytes).ok()
-}
-
-fn media_protocols(items: &[&LiveItem]) -> Vec<MediaProtocol> {
-    if !std::io::stdout().is_terminal() {
-        return Vec::new();
-    }
-    let mut urls = Vec::new();
-    for item in items {
-        for url in media_urls_for_item(item) {
-            if !urls.contains(&url) {
-                urls.push(url);
-            }
+        Self {
+            primary_profile: profile_wire(&primary_profile),
+            secondary_profile: profile_wire(&resolved_profile),
+            avatar_image: None,
+            avatar_image_compact: None,
+            media_images: Vec::new(),
+            content_core: content_example(
+                &mention_item, "live mention tree", &mention_profiles, &[]
+            )
+                .expect("test data valid"),
+            content_minimal: content_example(
+                &mention_item, "live minimal mention", &mention_profiles, &[]
+            )
+                .expect("test data valid"),
+            content_view: content_example(&media_item, "live image content", &[], &[])
+                .expect("test data valid"),
+            content_mention_chip: content_example(
+                &mention_item, "live mention chip", &mention_profiles, &[]
+            )
+                .expect("test data valid"),
+            content_media_grid: content_example(&media_item, "live media grid", &[], &[])
+                .expect("test data valid"),
+            content_quote_card: content_example(&quote_source, "live quote card", &[], &quote_events)
+                .expect("test data valid"),
+            embed_article: content_example(
+                &article_item, "Embedded Article (kind:30023)", &[], &[]
+            )
+                .expect("test data valid"),
+            embed_profile: content_example(
+                &profile_embed_item, "Inline Profile Mention (via mention chip)", &mention_profiles, &[]
+            )
+                .expect("test data valid"),
+            embed_note: content_example(&note_embed_item, "Embedded Note (kind:1)", &[], &[])
+                .expect("test data valid"),
+            embed_highlight: content_example(
+                &highlight_embed_item, "Embedded Highlight (kind:9802)", &[], &[]
+            )
+                .expect("test data valid"),
         }
     }
-    let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
-    if std::env::var("ITERM_SESSION_ID").is_ok() {
-        picker.set_protocol_type(ProtocolType::Iterm2);
-    }
-    urls.into_iter()
-        .filter_map(|url| {
-            let image = fetch_image(&url)?;
-            let protocol = picker
-                .new_protocol(image, Size::new(30, 8), Resize::Fit(None))
-                .ok()?;
-            Some(MediaProtocol { url, protocol })
-        })
-        .collect()
-}
-
-fn media_urls_for_item(item: &LiveItem) -> Vec<String> {
-    tree_for_item(item)
-        .map(|tree| {
-            let mut out = Vec::new();
-            for node in tree.nodes {
-                match node {
-                    crate::content_tree_wire::WireNode::Media { urls, .. } => out.extend(urls),
-                    crate::content_tree_wire::WireNode::Image { src: Some(src), .. } => {
-                        out.push(src)
-                    }
-                    _ => {}
-                }
-            }
-            out
-        })
-        .unwrap_or_default()
 }
 
 fn profile_wire(profile: &LiveProfile) -> ProfileWire {
