@@ -19,6 +19,44 @@
 //! - [`meta_timeline`] — `Nip10ModularTimelineView` (Twitter-style
 //!   stacked-modules timeline; wraps `nmp_threading::Grouper`).
 
+// FlatBuffers-generated bindings, mounted at the crate root. The OP-feed schema
+// (`op_feed.fbs`) `include`s the timeline schema and references its
+// `TimelineEventCard` / `AuthorDisplay` tables; `flatc` (no `--gen-all`) emits a
+// crate-root `use crate::timeline_snapshot_generated::*;` into
+// `op_feed_generated.rs`. That glob only sees items at the *top* of
+// `timeline_snapshot_generated`, but the generated leaf types are nested under
+// `nmp::nip_01`. So the timeline module is wrapped to flat-re-export its leaf
+// types at the module root: the sibling generated file's glob then resolves
+// `TimelineEventCard` / `AuthorDisplay` by short name. The wrapper hides the
+// generated `pub mod nmp` inside `inner` so it does not collide with
+// `op_feed_generated.rs`'s own `pub mod nmp` declaration.
+mod timeline_snapshot_generated {
+    mod inner {
+        #![allow(
+            clippy::all,
+            dead_code,
+            deprecated,
+            missing_docs,
+            non_camel_case_types,
+            non_snake_case,
+            unused_imports
+        )]
+        include!("wire/generated/timeline_snapshot_generated.rs");
+    }
+    pub use inner::nmp::nip_01::*;
+}
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unused_imports
+)]
+#[path = "wire/generated/op_feed_generated.rs"]
+mod op_feed_generated;
+
 pub mod build;
 pub mod decode;
 pub mod kinds;
@@ -39,7 +77,11 @@ pub use meta_timeline::{
     Nip10ModularTimelineView, Nip10Resolver,
 };
 pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-pub use op_feed::{register_op_feed, Nip10ReplyAttribution, OpFeedEngine};
+pub use op_feed::{
+    decode_op_feed_snapshot, encode_op_feed_snapshot, register_op_feed, Nip10ReplyAttribution,
+    OpFeedEngine, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID,
+    OP_FEED_SCHEMA_VERSION,
+};
 pub use profile_display::{AuthorDisplay, ProfileDisplay};
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,

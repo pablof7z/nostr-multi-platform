@@ -36,23 +36,20 @@
 //!       crates/nmp-nip01/schema/timeline_snapshot.fbs
 //! ```
 
-#[allow(
-    clippy::all,
-    dead_code,
-    deprecated,
-    missing_docs,
-    non_camel_case_types,
-    non_snake_case,
-    unused_imports
-)]
-#[path = "wire/generated/timeline_snapshot_generated.rs"]
-mod timeline_snapshot_generated;
-
-mod decode;
-mod encode;
+// `pub(crate)` so the sibling `op_feed::typed_wire` can reuse the per-card
+// encoder (`encode::encode_card`) / decoder (`decode::decode_card`) — the single
+// biggest reuse win (ADR-0038 Commitment 2): the embedded NFCT / content_render
+// bytes are produced by exactly the code NFTS uses today.
+pub(crate) mod decode;
+pub(crate) mod encode;
 
 use crate::timeline_projection::ModularTimelineSnapshot;
-pub(super) use timeline_snapshot_generated::nmp::nip_01 as fb;
+// The generated bindings module is mounted (and flat-re-exported) at the crate
+// root (see `lib.rs`) so that the OP-feed schema's `include`-driven crate-root
+// `use` resolves; this `fb` alias is the NFTS view into the shared generated
+// tables. The wrapper flat-exports the leaf types, so `fb::TimelineEventCard`
+// etc. resolve directly off the module root (no `::nmp::nip_01` suffix).
+pub(super) use crate::timeline_snapshot_generated as fb;
 
 /// Stable projection identifier this wire shape projects into.
 pub const SCHEMA_ID: &str = "nmp.nip01.timeline";
