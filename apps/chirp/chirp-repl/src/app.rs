@@ -2,12 +2,19 @@ use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+// ADR-0035 / #733: `nmp_app_chirp_snapshot` + `nmp_app_chirp_snapshot_free`
+// are `#[deprecated]` (diagnostics-only). The REPL is command-driven and does
+// not yet receive `UpdateFrameBytes` from the actor update channel, so it has
+// no live frame to decode via `nmp_core::decode_snapshot_payload`. Until the
+// REPL grows an update-stream consumer (see the `chirp_snapshot` method below),
+// the deprecated import is intentional — scoped `#[allow(deprecated)]` keeps the
+// warning live for every OTHER caller in this module.
+#[allow(deprecated)]
+use nmp_app_chirp::{nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free};
 use nmp_app_chirp::{
-    nmp_app_chirp_identity_sign_in_nsec,
-    nmp_marmot_group_messages, nmp_marmot_register_active,
-    nmp_marmot_snapshot, nmp_marmot_string_free,
-    nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
-    nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, ChirpHandle, MarmotHandle,
+    nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_marmot_group_messages, nmp_marmot_register_active, nmp_marmot_snapshot,
+    nmp_marmot_string_free, nmp_marmot_unregister, ChirpHandle, MarmotHandle,
 };
 use std::sync::Arc;
 
@@ -229,6 +236,16 @@ impl AppRuntime {
         unsafe { (*self.app).routing_trace() }
     }
 
+    // TODO(#733 step 6): migrate to the update stream. `nmp_app_chirp_snapshot`
+    // is `#[deprecated]` (ADR-0035, diagnostics-only) — the runtime-correct path
+    // is to consume the typed `nmp.feed.home` projection from the actor's
+    // `UpdateFrameBytes` channel and decode it (`nmp_core::decode_snapshot_payload`
+    // for the generic subtree, or the FlatBuffers typed sidecar). The REPL is
+    // command-driven and does not yet register an update callback, so it has no
+    // live frame to read on demand. Until that consumer exists this stays on the
+    // deprecated diagnostics export, scoped behind `#[allow(deprecated)]` so the
+    // warning keeps firing everywhere else.
+    #[allow(deprecated)]
     #[must_use]
     pub fn chirp_snapshot(&self) -> Option<Value> {
         if self.chirp.is_null() {

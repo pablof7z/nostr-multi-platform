@@ -150,6 +150,13 @@ impl Kernel {
                 claim_drops_total: self.claim_drops_total(),
                 make_update_us: self.last_make_update_us,
                 serialize_us: self.last_serialize_us,
+                // ADR-0035: previous-tick typed-projection cost / size
+                // (one-tick lag, same pattern as `payload_bytes` /
+                // `serialize_us`). `typed_encode_us` is a sub-measurement of
+                // `serialize_us`; `typed_payload_bytes` is a slice of
+                // `payload_bytes`.
+                typed_encode_us: self.last_typed_encode_us,
+                typed_payload_bytes: self.last_typed_payload_bytes,
                 update_frame_degradations_total: self.update_frame_degradations_total,
             },
             relay_status: self.relay_status(),
@@ -237,7 +244,15 @@ impl Kernel {
         // bytes byte-identical to the legacy `encode_snapshot_value`.
         // D8: these closures run on this actor thread inside the tick;
         // `run_typed_projections` documents the non-blocking contract.
+        // Time the typed-projection run on its own. `t_typed_start` is taken
+        // inside the `before_serialize` window above, so `this_typed_encode_us`
+        // is a sub-interval of `this_serialize_us` (computed below) — the
+        // `typed_encode_us <= serialize_us` invariant holds by construction.
+        let t_typed_start = Instant::now();
         let typed = self.run_typed_projections();
+        let this_typed_encode_us = t_typed_start.elapsed().as_micros();
+        // Total byte size of every typed-projection sidecar payload this tick.
+        let this_typed_payload_bytes: usize = typed.iter().map(|p| p.payload.len()).sum();
         let encoded = encode_snapshot_with_typed(snapshot, &typed);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
@@ -268,6 +283,8 @@ impl Kernel {
         self.last_serialize_us = this_serialize_us;
         self.last_make_update_us = this_make_update_us;
         self.last_payload_bytes = encoded.len();
+        self.last_typed_encode_us = this_typed_encode_us;
+        self.last_typed_payload_bytes = this_typed_payload_bytes;
         encoded
     }
 

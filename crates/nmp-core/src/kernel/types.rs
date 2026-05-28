@@ -728,6 +728,19 @@ pub(crate) struct Metrics {
     /// tick (one-tick lag). Combined with `make_update_us` this lets callers
     /// separate "building the snapshot tree" from "encoding it for transport".
     pub(super) serialize_us: u128,
+    /// ADR-0035: microseconds spent running the host-registered typed
+    /// projection closures on the PREVIOUS tick (one-tick lag). This is a
+    /// sub-measurement of `serialize_us` (the typed run happens inside the same
+    /// encode window), so `typed_encode_us <= serialize_us` always holds. Lets
+    /// diagnostics isolate the typed-sidecar build cost. Zero on the first tick
+    /// or when no typed projection is registered.
+    pub(super) typed_encode_us: u128,
+    /// ADR-0035: total byte size of all typed-projection payloads carried in the
+    /// frame's `typed_projections` sidecar on the PREVIOUS tick (one-tick lag).
+    /// Lets diagnostics watch the typed sidecar's contribution to total frame
+    /// size independently of `payload_bytes` (the full encoded frame). Zero on
+    /// the first tick or when no typed projection is registered.
+    pub(super) typed_payload_bytes: usize,
     /// Count of update-frame encoding/decoding degradations observed by the
     /// Rust transport boundary. This is intentionally monotonic for the kernel
     /// lifetime so malformed or impossible value-shape drift becomes visible in
