@@ -1,21 +1,28 @@
 //! Gallery application state and live-kernel layout.
 
+use std::io::Read as _;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::widget::{button, column, container, row, rule, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Subscription};
 
-use nmp_gallery_tui::content_tree_wire::WireNode;
+use nmp_content::embed_projection::EmbedKindProjection;
+use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
 use nmp_gallery_tui::data::{GalleryData, LiveProfileMap};
+use nmp_gallery_tui::embed_host::EmbedHostState;
 use nmp_gallery_tui::gallery::{component_at, ComponentSpec, REGISTRY_SECTIONS};
 use nmp_gallery_tui::live::PRIMARY_PUBKEY;
 
 use crate::bridge::GalleryBridge;
+use crate::components::embed_article::ArticleCard;
 use crate::components::user_avatar::UserAvatar;
 use crate::components::user_card::UserCard;
 use crate::components::user_name::UserName;
 use crate::components::user_nip05::Nip05Badge;
 use crate::components::user_npub::NpubChip;
+
+const CONSUMER_ID: &str = "nmp-gallery-desktop.preview";
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -31,8 +38,13 @@ pub struct GalleryApp {
     bridge: GalleryBridge,
     data: GalleryData,
     profiles: LiveProfileMap,
-    pub selected: usize,
-    pub last_rev: u64,
+    embed_host: EmbedHostState,
+    selected: usize,
+    last_rev: u64,
+    // Avatar image: URL we started fetching, pending slot, resolved bytes.
+    avatar_url_fetching: Option<String>,
+    avatar_pending: Arc<Mutex<Option<Vec<u8>>>>,
+    avatar_bytes: Option<Vec<u8>>,
 }
 
 impl GalleryApp {
@@ -42,8 +54,12 @@ impl GalleryApp {
             bridge: GalleryBridge::start(),
             data: GalleryData::live_initial(PRIMARY_PUBKEY),
             profiles: LiveProfileMap::new(),
+            embed_host: EmbedHostState::new(),
             selected: 0,
             last_rev: 0,
+            avatar_url_fetching: None,
+            avatar_pending: Arc::new(Mutex::new(None)),
+            avatar_bytes: None,
         }
     }
 }
@@ -67,17 +83,81 @@ pub fn subscription(_app: &GalleryApp) -> Subscription<Message> {
 pub fn update(app: &mut GalleryApp, message: Message) {
     match message {
         Message::Poll => {
+            // 1. Drain any new kernel snapshot.
             if let Some(snap) = app.bridge.take_snapshot() {
                 app.profiles.update_from_snapshot(&snap);
+                let embed_authors = app.embed_host.update_from_snapshot(&snap);
+                for pk in &embed_authors {
+                    app.bridge.claim_profile(pk, CONSUMER_ID);
+                }
                 app.last_rev += 1;
             }
-            app.bridge
-                .claim_profile(PRIMARY_PUBKEY, "nmp-gallery-desktop.preview");
+
+            // 2. Re-claim primary pubkey on every tick so the kind:0 fetch
+            //    sticks once a relay connects (kernel deduplicates per pair).
+            app.bridge.claim_profile(PRIMARY_PUBKEY, CONSUMER_ID);
+
+            // 3. Claim embed event refs from the four showcase content trees.
+            claim_tree_refs(&app.bridge, &app.data.embed_article.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.embed_profile.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.embed_note.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.embed_highlight.tree.nodes);
+
+            // 4. Check if a background avatar fetch completed.
+            if let Some(bytes) = app.avatar_pending.lock().ok().and_then(|mut s| s.take()) {
+                app.avatar_bytes = Some(bytes);
+            }
+
+            // 5. Start fetching the primary pubkey's picture_url if it changed.
+            let primary = app.profiles.resolve(PRIMARY_PUBKEY);
+            if let Some(url) = primary.picture_url {
+                if app.avatar_url_fetching.as_deref() != Some(&url) {
+                    app.avatar_url_fetching = Some(url.clone());
+                    let pending = Arc::clone(&app.avatar_pending);
+                    std::thread::spawn(move || {
+                        if let Some(bytes) = fetch_image_sync(&url) {
+                            if let Ok(mut slot) = pending.lock() {
+                                *slot = Some(bytes);
+                            }
+                        }
+                    });
+                }
+            }
         }
         Message::Select(i) => {
             app.selected = i;
         }
     }
+}
+
+/// Claim all EventRef + Mention URIs in a content tree. Idempotent — the
+/// kernel deduplicates per (uri, consumer_id); re-claiming every tick is
+/// deliberate so claims stick once a relay connects (W1 open-Q #3).
+fn claim_tree_refs(bridge: &GalleryBridge, nodes: &[WireNode]) {
+    for node in nodes {
+        let uri: Option<&WireUri> = match node {
+            WireNode::EventRef(u) => Some(u),
+            WireNode::Mention(u) => Some(u),
+            _ => None,
+        };
+        if let Some(u) = uri {
+            bridge.claim_event(&u.uri, CONSUMER_ID);
+        }
+    }
+}
+
+/// Synchronous image fetch via ureq. Runs inside a background thread so it
+/// never blocks the iced event loop.
+fn fetch_image_sync(url: &str) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    ureq::get(url)
+        .call()
+        .ok()?
+        .into_reader()
+        .take(8 * 1024 * 1024)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    Some(bytes)
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
@@ -90,7 +170,7 @@ pub fn view(app: &GalleryApp) -> Element<'_, Message> {
     )
     .width(Length::Fill)
     .padding([8, 16])
-    .style(|_theme: &iced::Theme| container::Style {
+    .style(|_| container::Style {
         background: Some(Background::Color(DARK_BG)),
         ..Default::default()
     });
@@ -98,16 +178,9 @@ pub fn view(app: &GalleryApp) -> Element<'_, Message> {
     let sidebar = build_sidebar(app.selected);
     let detail = build_detail(app);
 
-    let body = row![
-        sidebar,
-        rule::vertical(1),
-        detail,
-    ]
-    .height(Length::Fill);
+    let body = row![sidebar, rule::vertical(1), detail].height(Length::Fill);
 
-    column![header, body]
-        .height(Length::Fill)
-        .into()
+    column![header, body].height(Length::Fill).into()
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -118,9 +191,7 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
         text("Components")
             .size(13)
             .font(Font::MONOSPACE)
-            .style(|_theme: &iced::Theme| text::Style {
-                color: Some(MUTED_TEXT),
-            }),
+            .style(|_| text::Style { color: Some(MUTED_TEXT) }),
         Space::new().height(Length::Fixed(6.0)),
     ]
     .spacing(2)
@@ -131,9 +202,7 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
             text(section.label)
                 .size(12)
                 .font(Font::MONOSPACE)
-                .style(|_theme: &iced::Theme| text::Style {
-                    color: Some(SECTION_BLUE),
-                }),
+                .style(|_| text::Style { color: Some(SECTION_BLUE) }),
         );
 
         for comp in section.components {
@@ -142,47 +211,29 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
             flat_index += 1;
 
             let label = comp.label;
-            let btn = if is_active {
-                button(
-                    text(label)
-                        .size(13)
-                        .style(|_theme: &iced::Theme| text::Style {
-                            color: Some(Color::WHITE),
-                        }),
-                )
-                .on_press(Message::Select(idx))
-                .width(Length::Fill)
-                .padding([4, 8])
-                .style(|_theme: &iced::Theme, _status| button::Style {
-                    background: Some(Background::Color(ACTIVE_BG)),
-                    border: Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
-                    text_color: Color::WHITE,
+            let btn = button(
+                text(label)
+                    .size(13)
+                    .style(move |_| text::Style {
+                        color: Some(if is_active { Color::WHITE } else { INACTIVE_TEXT }),
+                    }),
+            )
+            .on_press(Message::Select(idx))
+            .width(Length::Fill)
+            .padding([4, 8])
+            .style(move |_, _| button::Style {
+                background: if is_active {
+                    Some(Background::Color(ACTIVE_BG))
+                } else {
+                    None
+                },
+                border: Border {
+                    radius: 4.0.into(),
                     ..Default::default()
-                })
-            } else {
-                button(
-                    text(label)
-                        .size(13)
-                        .style(|_theme: &iced::Theme| text::Style {
-                            color: Some(INACTIVE_TEXT),
-                        }),
-                )
-                .on_press(Message::Select(idx))
-                .width(Length::Fill)
-                .padding([4, 8])
-                .style(|_theme: &iced::Theme, _status| button::Style {
-                    background: None,
-                    border: Border {
-                        radius: 4.0.into(),
-                        ..Default::default()
-                    },
-                    text_color: INACTIVE_TEXT,
-                    ..Default::default()
-                })
-            };
+                },
+                text_color: if is_active { Color::WHITE } else { INACTIVE_TEXT },
+                ..Default::default()
+            });
 
             col = col.push(btn);
         }
@@ -200,15 +251,12 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
 
 fn build_detail(app: &GalleryApp) -> Element<'_, Message> {
     let spec = component_at(app.selected);
-    let primary = app.profiles.resolve(PRIMARY_PUBKEY);
 
     let heading = column![
         text(spec.label).size(20),
         text(spec.description)
             .size(13)
-            .style(|_theme: &iced::Theme| text::Style {
-                color: Some(MUTED_TEXT),
-            }),
+            .style(|_| text::Style { color: Some(MUTED_TEXT) }),
         rule::horizontal(1),
     ]
     .spacing(4);
@@ -220,7 +268,6 @@ fn build_detail(app: &GalleryApp) -> Element<'_, Message> {
         .padding(16)
         .width(Length::Fill);
 
-    // Wrap in scrollable so tall content doesn't overflow.
     container(scrollable(body))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -234,24 +281,25 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
 
     match spec.id {
         "user-avatar" => {
-            let avatar = UserAvatar::new(&primary.pubkey)
+            let mut av = UserAvatar::new(&primary.pubkey)
                 .display_name(primary.display_name.as_deref())
-                .size(64.0)
-                .into_element::<Message>();
-
-            let npub_label = text(format!("Pubkey: {}", primary.npub_short))
-                .size(12)
-                .style(|_theme: &iced::Theme| text::Style {
-                    color: Some(MUTED_TEXT),
-                });
+                .size(96.0);
+            if let Some(ref bytes) = app.avatar_bytes {
+                av = av.picture_bytes(bytes);
+            }
+            let avatar = av.into_element::<Message>();
 
             column![
                 container(avatar)
                     .align_x(Alignment::Center)
                     .width(Length::Fill),
-                container(npub_label)
-                    .align_x(Alignment::Center)
-                    .width(Length::Fill),
+                container(
+                    text(format!("Pubkey: {}", primary.npub_short))
+                        .size(12)
+                        .style(|_| text::Style { color: Some(MUTED_TEXT) })
+                )
+                .align_x(Alignment::Center)
+                .width(Length::Fill),
             ]
             .spacing(8)
             .into()
@@ -260,12 +308,10 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
         "user-name" => UserName::from_profile(&primary).into_element::<Message>(),
 
         "user-nip05" => match Nip05Badge::from_profile(&primary) {
-            Some(badge) => badge.into_element::<Message>(),
+            Some(b) => b.into_element::<Message>(),
             None => text("no nip05 yet")
                 .size(13)
-                .style(|_theme: &iced::Theme| text::Style {
-                    color: Some(MUTED_TEXT),
-                })
+                .style(|_| text::Style { color: Some(MUTED_TEXT) })
                 .into(),
         },
 
@@ -275,57 +321,139 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
 
         "content-core" => {
             let ex = &app.data.content_core;
-            content_tree_info(ex.scenario_id.as_str(), ex.title.as_str(), &ex.tree.nodes)
+            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
-
         "content-view" => {
             let ex = &app.data.content_view;
-            content_tree_info(ex.scenario_id.as_str(), ex.title.as_str(), &ex.tree.nodes)
+            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
-
         "content-mention-chip" => {
             let ex = &app.data.content_mention_chip;
-            content_tree_info(ex.scenario_id.as_str(), ex.title.as_str(), &ex.tree.nodes)
+            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
-
         "content-minimal" => {
             let ex = &app.data.content_minimal;
-            content_tree_info(ex.scenario_id.as_str(), ex.title.as_str(), &ex.tree.nodes)
+            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
-
         "content-media-grid" => {
             let ex = &app.data.content_media_grid;
-            content_tree_info(ex.scenario_id.as_str(), ex.title.as_str(), &ex.tree.nodes)
+            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
-
         "content-quote-card" => {
             let ex = &app.data.content_quote_card;
-            content_tree_info(ex.scenario_id.as_str(), ex.title.as_str(), &ex.tree.nodes)
+            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
         }
 
-        "embed-article" => embed_placeholder("embed-article", "Embedded Article"),
-        "embed-profile" => embed_placeholder("embed-profile", "Embedded Profile"),
-        "embed-note" => embed_placeholder("embed-note", "Embedded Note"),
-        "embed-highlight" => embed_placeholder("embed-highlight", "Embedded Highlight"),
+        "embed-article" => {
+            render_embed(&app.data.embed_article.tree.nodes, &app.embed_host, |proj| {
+                if let EmbedKindProjection::Article(a) = proj {
+                    Some(ArticleCard::new(a).into_element())
+                } else {
+                    None
+                }
+            })
+        }
+        "embed-profile" => {
+            render_embed(&app.data.embed_profile.tree.nodes, &app.embed_host, |proj| {
+                if let EmbedKindProjection::Profile(p) = proj {
+                    Some(
+                        text(format!(
+                            "Profile: {}",
+                            p.display_name.as_deref().unwrap_or(&p.pubkey[..8])
+                        ))
+                        .size(14)
+                        .into(),
+                    )
+                } else {
+                    None
+                }
+            })
+        }
+        "embed-note" => {
+            render_embed(&app.data.embed_note.tree.nodes, &app.embed_host, |proj| {
+                if let EmbedKindProjection::ShortNote(n) = proj {
+                    Some(
+                        column![
+                            text(n.author_display_name.as_deref().unwrap_or("Unknown"))
+                                .size(13)
+                                .font(iced::Font {
+                                    weight: iced::font::Weight::Bold,
+                                    ..iced::Font::default()
+                                }),
+                            text(format!("kind:1 · {}", &n.author_pubkey[..12]))
+                                .size(12)
+                                .style(|_| text::Style { color: Some(INACTIVE_TEXT) }),
+                        ]
+                        .spacing(4)
+                        .into(),
+                    )
+                } else {
+                    None
+                }
+            })
+        }
+        "embed-highlight" => {
+            render_embed(
+                &app.data.embed_highlight.tree.nodes,
+                &app.embed_host,
+                |proj| {
+                    if let EmbedKindProjection::Highlight(h) = proj {
+                        Some(
+                            text(format!("\u{201c}{}\u{201d}", h.highlighted_text))
+                                .size(13)
+                                .style(|_| text::Style { color: Some(INACTIVE_TEXT) })
+                                .into(),
+                        )
+                    } else {
+                        None
+                    }
+                },
+            )
+        }
 
         _ => text("Unknown component").into(),
     }
 }
 
+/// Render an embed showcase: find the first EventRef in `nodes`, look it up
+/// in the embed host, call `render` on the resolved projection. Shows a
+/// "fetching…" placeholder until the event arrives.
+fn render_embed<'a, F>(
+    nodes: &'a [WireNode],
+    host: &'a EmbedHostState,
+    render: F,
+) -> Element<'a, Message>
+where
+    F: Fn(&'a EmbedKindProjection) -> Option<Element<'a, Message>>,
+{
+    let envelope = nodes.iter().find_map(|n| {
+        let uri = match n {
+            WireNode::EventRef(u) => Some(u),
+            WireNode::Mention(u) => Some(u),
+            _ => None,
+        }?;
+        host.current_envelopes().get(&uri.primary_id)
+    });
+
+    if let Some(env) = envelope {
+        if let Some(el) = render(&env.projection) {
+            return el;
+        }
+        text("Unexpected projection kind").size(13).into()
+    } else {
+        text("Fetching from relay…")
+            .size(13)
+            .style(|_| text::Style { color: Some(MUTED_TEXT) })
+            .into()
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn content_tree_info<'a>(
-    scenario_id: &str,
-    title: &str,
-    nodes: &[WireNode],
-) -> Element<'a, Message> {
-    let node_count = nodes.len();
+fn content_tree_info<'a>(scenario_id: &str, title: &str, nodes: &[WireNode]) -> Element<'a, Message> {
     let snippet: String = nodes
         .iter()
-        .filter_map(|n| match n {
-            WireNode::Text(t) => Some(t.as_str()),
-            _ => None,
-        })
+        .filter_map(|n| if let WireNode::Text(t) = n { Some(t.as_str()) } else { None })
         .collect::<Vec<_>>()
         .join(" ")
         .chars()
@@ -336,41 +464,14 @@ fn content_tree_info<'a>(
         text(format!("scenario: {scenario_id}"))
             .size(12)
             .font(Font::MONOSPACE)
-            .style(|_theme: &iced::Theme| text::Style {
-                color: Some(MUTED_TEXT),
-            }),
+            .style(|_| text::Style { color: Some(MUTED_TEXT) }),
         text(format!("title: {title}")).size(13),
-        text(format!("nodes: {node_count}")).size(13),
+        text(format!("nodes: {}", nodes.len())).size(13),
         rule::horizontal(1),
-        text(if snippet.is_empty() {
-            "(no plain-text nodes)".to_string()
-        } else {
-            snippet
-        })
-        .size(13)
-        .style(|_theme: &iced::Theme| text::Style {
-            color: Some(INACTIVE_TEXT),
-        }),
+        text(if snippet.is_empty() { "(no plain-text nodes)".to_string() } else { snippet })
+            .size(13)
+            .style(|_| text::Style { color: Some(INACTIVE_TEXT) }),
     ]
     .spacing(6)
-    .into()
-}
-
-fn embed_placeholder<'a>(id: &str, label: &str) -> Element<'a, Message> {
-    column![
-        text(format!("Embed showcase — {label}")).size(14),
-        text("Claims wired via EventClaimSink; resolve via live kernel when claimed.")
-            .size(12)
-            .style(|_theme: &iced::Theme| text::Style {
-                color: Some(MUTED_TEXT),
-            }),
-        text(format!("id: {id}"))
-            .size(11)
-            .font(Font::MONOSPACE)
-            .style(|_theme: &iced::Theme| text::Style {
-                color: Some(MUTED_TEXT),
-            }),
-    ]
-    .spacing(8)
     .into()
 }

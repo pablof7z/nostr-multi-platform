@@ -10,7 +10,10 @@ name = "nmp-gallery-desktop"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio"] }
+iced = { version = "0.14", features = ["tokio", "image"] }
+nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-gallery-tui = { path = "../tui" }
 serde_json = { workspace = true }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }

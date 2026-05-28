@@ -1,82 +1,108 @@
-use iced::widget::{container, text};
-use iced::{Element, Length};
+use iced::widget::container;
+use iced::widget::image::Handle;
+use iced::ContentFit;
+use iced::{Border, Color, Element, Length};
 
 /// Circular avatar widget with deterministic pubkey-derived tint.
 ///
-/// Renders a colored circle containing the author's initials. If a display
-/// name is provided, initials are computed from the name; otherwise they
-/// fall back to the first two characters of the bech32 npub body.
-///
-/// # Example
-/// ```ignore
-/// UserAvatar::new(&profile.pubkey)
-///     .display_name(profile.display_name.as_deref())
-///     .size(48.0)
-///     .into_element();
-/// ```
+/// When `picture_bytes` are supplied the image is rendered as a circle (via
+/// container clip + border-radius). Otherwise renders a tinted circle with
+/// initials, identical to the TUI surface.
 pub struct UserAvatar {
     pubkey_hex: String,
     display_name: Option<String>,
+    picture_bytes: Option<Vec<u8>>,
     size: f32,
 }
 
 impl UserAvatar {
-    /// Create a new avatar for the given hex pubkey.
     #[must_use]
     pub fn new(pubkey_hex: &str) -> Self {
         Self {
             pubkey_hex: pubkey_hex.to_string(),
             display_name: None,
+            picture_bytes: None,
             size: 36.0,
         }
     }
 
-    /// Set the display name used for initial generation.
     #[must_use]
     pub fn display_name(mut self, name: Option<&str>) -> Self {
         self.display_name = name.map(String::from);
         self
     }
 
-    /// Set the diameter of the avatar circle in points. Default is `36.0`.
+    /// Supply decoded image bytes. When present, renders the actual profile
+    /// picture (clipped to a circle) instead of the initials fallback.
+    #[must_use]
+    pub fn picture_bytes(mut self, bytes: &[u8]) -> Self {
+        self.picture_bytes = Some(bytes.to_vec());
+        self
+    }
+
     #[must_use]
     pub fn size(mut self, size: f32) -> Self {
         self.size = size;
         self
     }
 
-    /// Render the avatar as an iced [`Element`].
     pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {
-        let color = hex_color(&nmp_core::display::avatar_color_hex(&self.pubkey_hex));
-        let initials = if let Some(ref name) = self.display_name {
-            nmp_core::display::display_name_initials(name)
-        } else {
-            let npub = nmp_core::display::to_npub(&self.pubkey_hex);
-            nmp_core::display::avatar_initials(&npub)
-        };
-
         let size = self.size;
-        container(
-            text(initials)
-                .size(size * 0.4)
-                .align_x(iced::alignment::Horizontal::Center)
-                .align_y(iced::alignment::Vertical::Center),
-        )
-        .width(Length::Fixed(size))
-        .height(Length::Fixed(size))
-        .style(move |_theme: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(color)),
-            border: iced::Border {
-                radius: (size / 2.0).into(),
+
+        if let Some(bytes) = self.picture_bytes {
+            // Render actual profile picture clipped to a circle.
+            let handle = Handle::from_bytes(bytes);
+            container(
+                iced::widget::image(handle)
+                    .width(Length::Fixed(size))
+                    .height(Length::Fixed(size))
+                    .content_fit(ContentFit::Cover),
+            )
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .clip(true)
+            .style(move |_| container::Style {
+                border: Border {
+                    radius: (size / 2.0).into(),
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        })
-        .into()
+            })
+            .into()
+        } else {
+            // Deterministic tinted circle with initials.
+            let color = hex_color(&nmp_core::display::avatar_color_hex(&self.pubkey_hex));
+            let initials = if let Some(ref name) = self.display_name {
+                nmp_core::display::display_name_initials(name)
+            } else {
+                let npub = nmp_core::display::to_npub(&self.pubkey_hex);
+                nmp_core::display::avatar_initials(&npub)
+            };
+
+            container(
+                iced::widget::text(initials)
+                    .size(size * 0.4)
+                    .align_x(iced::alignment::Horizontal::Center)
+                    .align_y(iced::alignment::Vertical::Center),
+            )
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Center)
+            .style(move |_| container::Style {
+                background: Some(iced::Background::Color(color)),
+                border: Border {
+                    radius: (size / 2.0).into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .into()
+        }
     }
 }
 
-/// Parse a `#rrggbb` string into an iced [`Color`].
 fn hex_color(hex: &str) -> iced::Color {
     let h = hex.trim_start_matches('#');
     if h.len() == 6 {
@@ -102,7 +128,6 @@ mod tests {
             .size(48.0);
         assert_eq!(avatar.display_name, Some("Alice Smith".to_string()));
         assert_eq!(avatar.size, 48.0);
-        // Smoke: element generation must not panic.
         let _ = avatar.into_element::<()>();
     }
 

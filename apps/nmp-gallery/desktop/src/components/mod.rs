@@ -4,6 +4,7 @@
 //! iced [`Element`]. Components are pure data + draw calls — they hold no interior
 //! mutability and do not depend on the NMP kernel.
 
+pub mod embed_article;
 pub mod user_avatar;
 pub mod user_card;
 pub mod user_name;

@@ -65,6 +65,12 @@ impl GalleryBridge {
         self.latest.lock().ok().and_then(|mut s| s.take())
     }
 
+    /// Forward an event claim (nevent / note / naddr URI) for embed resolution.
+    pub fn claim_event(&self, uri: &str, consumer_id: &str) {
+        use nmp_content::EventClaimSink;
+        self.sink.claim(uri, consumer_id);
+    }
+
     /// Forward a kind:0 profile claim into the kernel's `OneshotApi` interest
     /// registry. Idempotent per `(pubkey, consumer_id)` pair. Call on every
     /// poll tick so the claim sticks once a relay connects (the kernel
