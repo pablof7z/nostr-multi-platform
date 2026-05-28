@@ -1,82 +1,197 @@
 # OP-Centric Home Feed — Architecture Proposal
 
-> **Status:** design proposal. Not implementation. ADR-grade rigor.
+> **Status:** FINAL design. Implementation-ready.
 > **Author:** Architect (Serena Blackwood)
-> **Date:** 2026-05-27 (revised same-day after user correction)
-> **Scope:** redefine the chirp-tui / Chirp / NMP home-feed model from "threaded
-> notes (replies + roots) over the follow-set" to **"thread roots only, with
-> follow-replies as attribution metadata on their root."** Includes the
-> protocol-level mechanics required to make a non-followed root appear in the
-> feed when a followed user replies to it. **Delivers the OP-centric feed as
-> a generic primitive in `nmp-feed`, with `nmp-nip01` as a thin protocol
-> instance.**
+> **Revision:** 2026-05-27d (post-codex-v2 + user decisions). This is the
+> implementation-input draft. Subsequent residual concerns track as TODOs in
+> `docs/BACKLOG.md`, not as further revisions.
 >
-> **Revision note (2026-05-27, post-review):** the first draft scoped the
-> "generic factoring" of the projection state machine as post-v1 follow-up.
-> That was the smallest-now move, not the right one. This revision delivers
-> the generic engine `RootIndexedFeed<R, A>` in `nmp-feed` as part of the
-> first cut. NIP-01 becomes a ~100-LOC instance. Future protocols (NIP-22
-> covering all non-kind:1 comment trees) compose the same engine.
+> **Scope:** redefine the chirp-tui / Chirp / NMP home-feed model from
+> "threaded notes (replies + roots) over the follow-set" to **"thread roots
+> only, with follow-replies as attribution metadata on their root."**
+> Includes the protocol-level mechanics required to make a non-followed root
+> appear in the feed when a followed user replies to it. Delivers the
+> OP-centric feed as a generic primitive in `nmp-feed`, with `nmp-nip01` as
+> a thin protocol instance, follow-set expansion done at the composition
+> root (`nmp-app-template`), and a kernel-side pre-kind:3 ingest buffer
+> closing the cold-start gap.
+>
+> ### Revision history
+>
+> - **v1 (2026-05-27a):** initial draft. Engine in `nmp-nip01`. Bespoke
+>   action. Generic factoring scoped post-v1.
+> - **v2 (2026-05-27b):** generic engine pulled forward into `nmp-feed`;
+>   NIP-01 became a thin instance.
+> - **v3 (2026-05-27c):** addressed codex-v1 blockers — associated
+>   `type Profile`, `ClaimRequest(ThreadPointer)`, `Kernel::claim_event`
+>   primitive, full Swift consumer enumeration.
+> - **v4 (this revision, 2026-05-27d):** addresses codex-v2 (review at
+>   `docs/perf/op-centric-feed-architect-review.md`) and four user
+>   decisions (Q1, Q2, Q5, Q7). Major changes:
+>   - **Composition-root expansion of the follow-set timeline (codex
+>     architecture override).** `LogicalInterest::SocialTimeline` is
+>     **deleted from the design**. `nmp-app-template` expands the active
+>     follow set into concrete per-author `LogicalInterest`s at
+>     composition + on every kind:3 update. No planner-side seam, no
+>     `FollowSetLookup` cycle. **User's Q2 enum-conversion answer is
+>     therefore moot** — there is no variant to convert. Reasoning in
+>     §3-D-decision.
+>   - **`FollowSetLookup` becomes a generic predicate, not a trait.** The
+>     engine takes `Arc<dyn Fn(&str) -> bool + Send + Sync>`. No new
+>     trait crate, no dependency cycle. Codex §3-Q-options aligned. The
+>     follow-set producer lives in `nmp-nip02`; the predicate is wired
+>     by `nmp-app-template`.
+>   - **Pre-kind:3 ingest buffer (Q7 implementation).** The kernel
+>     buffers kind:1 / kind:6 events that arrive before the active
+>     account's kind:3 is processed in a bounded queue keyed by
+>     event id. When kind:3 lands and `timeline_authors` is rebuilt,
+>     the kernel replays buffered events whose author is now in
+>     `timeline_authors` through the normal ingest+observer path. The
+>     engine sees them as ordinary fan-out, no replay API needed at
+>     the engine layer. Rung 1 expansion.
+>   - **No-match release signal (codex B2-remainder).** Adds a kernel
+>     surface `pub fn event_claim_released(&self) -> &BoundedRingBuffer<EventId>`
+>     projection (substrate-generic name; not `claim_event`-specific to
+>     callers). The engine observes it through a new `RawEventObserver`
+>     callback at registration time. EOSE-driven release inside
+>     `complete_unknown_oneshot` now also clears `event_claims` /
+>     `event_claim_requested` and pushes the primary id into the
+>     released-events ring buffer. Rung 1 expansion.
+>   - **URI relay hints become initial planner hints (codex B2-remainder
+>     option a).** `OneshotApi::request` gains a `hints: Vec<RelayHint>`
+>     parameter; `claim_event` passes URI relay TLVs both into initial
+>     `LogicalInterest.hints` AND into `register_claim_expansion`. The
+>     first REQ goes to bootstrap content relays ∪ hint relays. This
+>     is a kernel-API change in its own right; justified because the
+>     existing OP-feed work depends on it and it benefits every other
+>     `claim_event` caller (quoted notes, mentions, etc.). Rung 1
+>     expansion. Cited tests prove identical behavior for non-hint
+>     callers.
+>   - **`Q1` attribution rendering — display-layer concern.** User
+>     answer: "Only 1, but this is obviously a display concern." The
+>     projection now exposes ALL enumerated repliers as raw data
+>     (bounded only by D5 — `MAX_PROJECTION_MESSAGES` per root). Each
+>     render surface chooses how many to show. chirp-tui renders the
+>     most recent 1; iOS may render N via avatars. **`attribution_total`
+>     is deleted** (redundant — the `Vec<A>` length IS the total).
+>     §3-C and §3-G rewritten.
+>   - **Repost edge-case `EventLookup` callback (codex H3-remainder).**
+>     L-2 (reply to kind:6 wrapper) and L-5 (e-tag-only repost target
+>     hydrates later) require the engine to look up parent / target
+>     events from the kernel's read cache. The engine gains an
+>     `event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>`
+>     callback at construction time. Cited tests added.
+>   - **`release_claim_expansion` cleanup (codex M3).** `release_event`
+>     now calls `release_claim_expansion(primary_id)` when the last
+>     consumer leaves so retargeting work is cancelled. Rung 1
+>     expansion. Trivial; one missing line.
+>   - **Serialization bounds (codex M4).** `RootFeedSnapshot<C, A>`
+>     declares explicit `C: Serialize + Clone` and
+>     `A: Serialize + Clone` bounds. §3-G updated.
+>   - **All Rust consumers of `TimelineBlock::Standalone` enumerated
+>     (codex B3-remainder).** §5 Stage 1 file list grew. Verified by
+>     grep — full list in §5.
+>   - **§3-B-3 (address pointer arm) corrected.** Verified against
+>     `claim_event` source: address URIs use `kinds + authors + #d`,
+>     not `InterestShape.addresses`.
+>   - **Account-change push path is real.** `Kernel::active_account_handle()`
+>     already exists (`crates/nmp-core/src/kernel/mod.rs:1265-1267`)
+>     returning an `ActiveAccountSlot` the adapter can observe. v3's
+>     `KernelAccountChanged` fiction is replaced by the real handle. The
+>     adapter watches the slot through the same mechanism every other
+>     subsystem uses today. No invented APIs.
+>
+> ### Codex residual disagreements
+>
+> Codex preferred (in §6 out-of-scope) deleting `LogicalInterest::SocialTimeline`
+> entirely. The user's Q2 chose to convert it to an enum. **The architecture
+> override resolves the tension in codex's direction** — there is no
+> `SocialTimeline` variant in v4, so the enum-vs-discriminator question
+> is moot. The user's "right not smallest" rule is satisfied because the
+> resulting graph is genuinely cleaner (no FollowSetLookup trait, no
+> planner consumption of follow-set capability, no risk of
+> nmp-planner → nmp-feed cycle, no `LogicalInterest` enum churn touching
+> 50+ call sites). I'm surfacing the override explicitly so the user can
+> challenge it if I've misread; the substantive decision is logged in
+> §3-D.
 
 ---
 
 ## 1. Executive summary
 
-The home feed becomes a **stream of thread roots** produced by a new generic
+The home feed becomes a **stream of thread roots** produced by a generic
 engine `RootIndexedFeed<R: ParentResolver, A: AttributionPayload>` in
-`nmp-feed`. Each root carries an optional list of reply-attribution payloads
-naming who replied (and when). The engine knows nothing about NIP-10 or any
-other protocol; it is parameterized over the two protocol-shaped concerns:
+`nmp-feed`. Each root carries an attribution list of follow's replies,
+exposed as raw data (no display cap) so every render surface chooses its
+own enumeration policy.
 
-- **`ParentResolver`** (already exists in `nmp-threading`) — decodes the
-  reply / root pointer from a `KernelEvent`.
-- **`AttributionPayload`** (new trait in `nmp-feed`) — describes how a reply
-  event becomes a sibling attribution record on the root's card, plus the
-  in-place profile refresh that `kind:0` ingest triggers.
+**Crate layout:**
 
-`nmp-nip01` then provides the NIP-10 instance: `Nip10Resolver` (already
-exists) + a new `Nip10ReplyAttribution` (raw-pubkey, raw-timestamp, optional
-profile mirrors per the 2026-05-25 display-separation doctrine) +
-~100 LOC of wiring (the registration helper that constructs
-`RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>` and registers the
-root-claim action). A future `nmp-nip22` crate adds a second instance over
-kind:1111 comment trees — which by Nostr-protocol definition covers ALL
-non-kind:1 reply structures (comments on NIP-23 longform articles, NIP-94
-file metadata, NIP-99 classified listings, podcasts, etc.) — without
-adding new state-machine code.
+- **`nmp-feed`** — `RootIndexedFeed<R, A>` engine, `AttributionPayload`
+  trait (`type Profile`), `ClaimRequest { Claim, Release }` carrying
+  `ThreadPointer`. Engine takes a generic `FollowPredicate: Arc<dyn
+  Fn(&str) -> bool + Send + Sync>` and an `EventLookup: Arc<dyn
+  Fn(&EventId) -> Option<KernelEvent> + Send + Sync>`. No NIP-named
+  tokens; no follow-set trait; no planner coupling.
+- **`nmp-nip01`** — `Nip10ReplyAttribution: AttributionPayload<Profile =
+  ProfileDisplay>`, `register_op_feed(app, viewer, follow_predicate,
+  event_lookup)` wiring helper (~150 LOC), `ClaimRequest` sink that
+  encodes pointers as `nostr:` URIs and calls the existing
+  `nmp_app_claim_event` C-ABI.
+- **`nmp-nip02`** — `ActiveFollowSet`, an observable snapshot of the
+  active account's follows (raw `Arc<RwLock<BTreeSet<String>>>` or
+  equivalent), updated by an internal observer that watches kind:3
+  ingest and the active-account slot. Exposes a `follows() -> Vec<String>`
+  read and a `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`
+  factory. No trait introduced; no `FollowSetLookup`; this is the
+  follow-set producer.
+- **`nmp-app-template`** — `register_op_feed_defaults(app, viewer)`
+  composes everything: constructs the `ActiveFollowSet`, wires the
+  predicate + event-lookup into `register_op_feed`, registers an
+  internal observer that calls `nmp_app_expand_follow_timeline_interests`
+  on every kind:3 update so the planner sees fresh per-follow
+  `LogicalInterest`s. No `SocialTimeline` variant. No planner-side
+  capability.
+- **`nmp-core`** — gains five small substrate-grade additions: (1) a
+  pre-kind:3 ingest buffer for kind:1/kind:6 events, replayed when
+  `timeline_authors` is rebuilt; (2) `event_claim_released` projection
+  (a bounded ring buffer of released primary_ids); (3) `OneshotApi::request`
+  accepts initial `hints` (URI relay TLVs); (4) `release_event` calls
+  `release_claim_expansion`; (5) a typed `active_timeline_authors() ->
+  Vec<String>` accessor for the existing `timeline_authors` field. **No
+  follow-set trait, no NIP token, no new ProtocolCommand, no new
+  bespoke C-ABI symbol.**
+- **`nmp-threading`** — `TimelineBlock::Standalone { id, root:
+  Option<ThreadPointer> }` (lossless).
+- **`nmp-planner`** — unchanged. No `SocialTimeline` variant. No new
+  capability bundle parameter.
 
-Four cooperating mechanisms power the system:
+**Four mechanisms power the system:**
 
-1. **`Nip10Resolver::root` becomes lossless.** Bug #1 — `grouper.rs:367`
-   dropping the root pointer for 1-event chains — is fixed by reshaping
-   `TimelineBlock::Standalone` to carry the `Option<ThreadPointer>` root
-   (mirroring `Module.root`). The threading library now structurally tells
-   downstream consumers "this is a reply to X; X was/wasn't locally absent".
-   No semantic change to the existing thread-detail consumers.
-2. **`RootIndexedFeed<R, A>` engine in `nmp-feed`.** Owns the roots map, the
-   attributions index, and the orphan buffer for replies-arriving-before-
-   roots. Pure generic CPU + map state; no protocol decoder runs inside it
-   beyond the trait calls. Emits a snapshot type `RootFeedSnapshot<C, A>`
-   that composes with the existing `FeedWindowState` / `page_for_request`
-   machinery.
-3. **`nmp-nip01` thin instance.** Registers
-   `RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>` as a
-   `KernelEventObserver`, plus the action `nmp.nip01.thread_root.claim`
-   that hydrates non-followed roots via a `OneShot + Global +
-   event_ids:[root_id]` `LogicalInterest` (the existing PD-033-C
-   discovery path).
-4. **`LogicalInterest::SocialTimeline` (V-45) co-delivered.** Substrate
-   seam for "the follow set's kind:1/6 stream." The view module declares
-   the seam; the planner expands it via the new generic capability
-   `FollowSetLookup` (substrate-honest, no NIP-02 names in the lookup
-   interface).
+1. `TimelineBlock::Standalone` becomes lossless (root pointer preserved
+   on 1-event chains — closes `grouper.rs:362-368` bug).
+2. `RootIndexedFeed<R, A>` engine in `nmp-feed` consumes `KernelEvent`s
+   via the existing observer fan-out, emits typed `ClaimRequest` values
+   for unknown roots, exposes `RootFeedSnapshot<C, A>` (visible-window-
+   only) as the FFI surface.
+3. `nmp-nip01`'s host adapter translates `ClaimRequest` into
+   `nmp_app_claim_event` / `nmp_app_release_event` calls (existing
+   C-ABI). Hydrates non-followed roots via `Kernel::claim_event`'s
+   canonical OneShot path. The kernel-side enhancements (initial-hint
+   plumbing, no-match release signal) benefit every claim_event consumer,
+   not just the OP feed.
+4. **`nmp-app-template`** is the composition root. It owns the
+   follow-set producer (`nmp-nip02`'s `ActiveFollowSet`), the
+   pre-engine kind:1/6 buffer drainage, the per-follow
+   `LogicalInterest` registration, and the OP-feed registration.
 
-Net effect: `nmp-core` D0-clean, `nmp-feed` becomes the canonical OP-feed
-primitive, `nmp-nip01` is the first instance, and any future protocol
-(`nmp-nip22` for kind:1111 comment trees) composes the same engine with
-~100 LOC of resolver + payload + wiring. Every cross-crate side-effect
-routes through `dispatch_action`, the `EventIngestDispatcher` (V-40), or
-the `KernelEventObserver` registry — no new bespoke C-ABI surface.
+**Net effect:**
+
+- `nmp-core` D0-clean. `nmp-feed` D0-clean. No new bespoke C-ABI symbol.
+- One-line affordance for any composing app:
+  `nmp_app_template::register_op_feed_defaults(app, viewer)`.
+- The pre-kind:3 cold-start gap is closed at the source (kernel
+  ingest), not papered over at the engine layer.
 
 ---
 
@@ -84,418 +199,453 @@ the `KernelEventObserver` registry — no new bespoke C-ABI surface.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  PRODUCT BEHAVIOR — chirp-tui left pane (and Chirp iOS home feed)           │
-│                                                                             │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │ Bob (not followed)  ·  2h ago                                        │  │
-│   │ Building something interesting with Marmot...                        │  │
-│   │ ↳ Alice replied · Carol replied                                      │  │
-│   │ ❤ 12  ↻ 1  💬 4  ⚡ 3                                                │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │ Alice (followed)  ·  3h ago                                          │  │
-│   │ Just shipped a thing.                                                │  │
-│   │ ❤ 4  ↻ 0  💬 2  ⚡ 0                                                 │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
+│  Product behavior — root cards + attribution row                            │
+│   "Bob · 2h ago"                                                            │
+│   "Building something interesting with Marmot..."                           │
+│   "↳ Alice replied · Carol replied"   ← chirp-tui shows 1; iOS may show N   │
 └────────────────────────────────────▲────────────────────────────────────────┘
-                                     │ raw JSON snapshot
+                                     │ RootFeedSnapshot<C, A> JSON
+                                     │ (visible window only)
 ┌────────────────────────────────────┴────────────────────────────────────────┐
-│  Layer 4 — nmp-nip01 (THIN — ~100 LOC of glue)                              │
+│  Layer 5 — nmp-app-template (COMPOSITION ROOT — ~150 LOC NEW)               │
+│                                                                             │
+│   register_op_feed_defaults(app, viewer):                                   │
+│     1. construct nmp_nip02::ActiveFollowSet (observer over kind:3 +        │
+│        active-account slot)                                                 │
+│     2. expand_active_follow_timeline_interests(app, &follow_set)           │
+│        — registers per-follow LogicalInterest with the planner             │
+│        — re-runs on every kind:3 change via observer callback              │
+│     3. nmp_nip01::register_op_feed(app, viewer,                            │
+│           predicate = follow_set.predicate(),                              │
+│           event_lookup = kernel_event_lookup(app))                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     ▲
+┌────────────────────────────────────┴────────────────────────────────────────┐
+│  Layer 4 — nmp-nip01 (THIN — ~150 LOC)                                      │
 │                                                                             │
 │   Nip10Resolver: ParentResolver                  (existing)                 │
-│   Nip10ReplyAttribution: AttributionPayload      (NEW — ~80 LOC)            │
-│     ├── pubkey, reply_event_id, reply_created_at (raw)                      │
-│     ├── author_display, author_display_name, author_picture_url (Option)    │
-│     └── refresh_for_profile(&kind0_profile)                                 │
-│                                                                             │
-│   register_op_feed(app, viewer) → wires:                                    │
-│     ├── construct RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>     │
-│     ├── register as KernelEventObserver (ingest fan-out)                    │
-│     ├── register snapshot key "nmp.feed.home" (output)                      │
-│     └── register thread_root_claim_actions (dispatch_action surface)        │
-│                                                                             │
-│   nmp.nip01.thread_root.claim ActionModule       (Claim / Release shape,    │
-│     mirrors visible_relations.rs precedent)                                 │
+│   Nip10ReplyAttribution: AttributionPayload<Profile = ProfileDisplay>       │
+│   register_op_feed(app, viewer, predicate, event_lookup) wires:             │
+│     - RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>                 │
+│     - KernelEventObserver registration                                      │
+│     - snapshot key "nmp.feed.home"                                          │
+│     - ClaimRequest sink → nmp_app_claim_event / nmp_app_release_event      │
+│     - event_claim_released observer → forwards to engine                    │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                     ▲ KernelEvent fan-out + action dispatch
+                                     ▲ KernelEvent fan-out
 ┌────────────────────────────────────┴────────────────────────────────────────┐
-│  Layer 4 — nmp-feed (GENERIC ENGINE — ~400 LOC NEW)                         │
+│  Layer 4 — nmp-feed (GENERIC ENGINE — ~450 LOC NEW)                         │
 │                                                                             │
-│   trait AttributionPayload                                                  │
-│     fn from_reply(reply, follow_set, profile_lookup) → Option<Self>         │
-│     fn reply_event_id(&self) → &str                                         │
-│     fn author_pubkey(&self) → &str                                          │
-│     fn reply_created_at(&self) → u64                                        │
-│     fn refresh_for_profile(&mut self, profile)                              │
+│   trait AttributionPayload {                                                │
+│     type Profile;                                                           │
+│     fn from_reply(reply, follow, profile_for) → Option<Self>;               │
+│     fn reply_event_id(&self) → &str;                                        │
+│     fn author_pubkey(&self) → &str;                                         │
+│     fn reply_created_at(&self) → u64;                                       │
+│     fn refresh_for_profile(&mut self, profile: &Self::Profile);             │
+│   }                                                                         │
 │                                                                             │
-│   RootIndexedFeed<R: ParentResolver, A: AttributionPayload>                 │
-│     struct Inner {                                                          │
-│       resolver: R,                                                          │
-│       roots: BoundedMessageMap<EventId, RootCard<C, A>>,                    │
-│       attributions: BoundedMessageMap<EventId, BTreeMap<EventId, A>>,       │
-│       pending_attributions: BoundedMessageMap<EventId,                      │
+│   RootIndexedFeed<R, A> {                                                   │
+│     resolver: R,                                                            │
+│     follow: Arc<dyn Fn(&str) -> bool + Send + Sync>,                        │
+│     event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>,│
+│     profile_detector: Box<dyn Fn(&KernelEvent)                              │
+│                              -> Option<(String, A::Profile)>                │
+│                          + Send + Sync>,                                    │
+│     card_builder: Box<dyn Fn(&KernelEvent, ...) -> C + Send + Sync>,        │
+│     roots: BoundedMessageMap<EventId, RootCard<C, A>>,                      │
+│     attributions: BoundedMessageMap<EventId, BTreeMap<EventId, A>>,         │
+│     pending_attributions: BoundedMessageMap<EventId,                        │
 │                                BTreeMap<EventId, A>>,                       │
-│       window: FeedWindowState,                                              │
-│       follow_set: Arc<dyn FollowSetLookup>,                                 │
-│       profiles: BoundedMessageMap<Pubkey, ProfileDisplay>,                  │
-│     }                                                                       │
+│     pending_pointers: BoundedMessageMap<EventId, ThreadPointer>,            │
+│     profiles: BoundedMessageMap<String, A::Profile>,                        │
+│     window: FeedWindowState,                                                │
+│   }                                                                         │
 │                                                                             │
-│     impl KernelEventObserver { on_kernel_event(evt):                        │
-│       1. delegate to resolver.parent(evt) / resolver.root(evt) /            │
-│          resolver.supersedes(evt) — no protocol logic in the engine         │
-│       2. branch on the resolver's verdict:                                  │
-│          • root-shaped (parent == None) → insert in roots, flush            │
-│            pending_attributions for this id                                 │
-│          • reply-shaped AND viewer.is_followed(evt.author) →                │
-│              extract root_id from resolver.root() or .parent()              │
-│              build A via A::from_reply(evt, follow_set, profiles)           │
-│              record in attributions[root] OR pending_attributions[root]     │
-│              emit ClaimRequest(root_id) if root absent                      │
-│          • repost-shaped (resolver.supersedes != None) → target becomes     │
-│            surfaced root, repost attribution attaches (RepostAttribution    │
-│            on the underlying card C, orthogonal to A)                       │
-│          • non-follow reply / repost → drop (never feed row, never attr)    │
-│       3. if evt is kind:0 → refresh profile mirrors via A.refresh_for_profile
-│     }                                                                       │
+│   impl KernelEventObserver { on_kernel_event(evt):                          │
+│     • root-shaped (resolver.parent == None) → insert in roots;              │
+│       flush pending_attributions for this id; emit Release for the pointer  │
+│     • reply-shaped AND follow(evt.author) →                                 │
+│         pointer = resolver.root(evt) or .parent(evt)                        │
+│         a = A::from_reply(evt, follow.as_ref(), profile_for)                │
+│         if pointer is Event AND parent event is locally available:          │
+│           if event_lookup(&pointer.id).map(|e| resolver.supersedes(&e)).flatten() │
+│             ⇒ re-key the attribution to the supersedes target (L-2 rule)    │
+│         if pointer not in roots → emit Claim(pointer, hints)                │
+│         record in attributions[pointer.primary_id] or pending_attrs         │
+│     • repost-shaped (resolver.supersedes != None) → target = supersedes;    │
+│         insert kind:6 wrapper into roots[target] (L-1);                     │
+│         if target absent locally → emit Claim(Event(target), hints);        │
+│         when target arrives later, engine rebuilds the card via L-5 rule    │
+│     • profile event (profile_detector returns Some) → fan out               │
+│       A::refresh_for_profile across attributions + pending_attributions     │
+│     • non-follow reply / repost → dropped                                   │
+│   }                                                                         │
 │                                                                             │
-│     fn snapshot() → RootFeedSnapshot<C, A> {                                │
-│       blocks/cards composed via existing nmp-feed::window helpers           │
-│     }                                                                       │
+│   on_claim_released(primary_id): drop pending_attributions[primary_id];     │
+│       remove pending_pointers[primary_id]; surface as a UI hint that the    │
+│       reference is permanently unresolvable (visible only via diagnostics). │
 │                                                                             │
-│   ClaimRequest                                                              │
-│     (typed value the engine emits when an attribution arrives for an        │
-│      unknown root; the host wiring layer turns this into a                  │
-│      dispatch_action("…thread_root.claim", …) call — the engine itself      │
-│      stays free of action-system imports)                                   │
+│   fn snapshot(request) → RootFeedSnapshot<C, A>                             │
+│      [visible window only; cards + attribution Vec<A>, both bounded]        │
+│                                                                             │
+│   ClaimRequest::Claim { pointer: ThreadPointer, hints: Vec<RelayHint>,      │
+│                         consumer_id: String }                               │
+│   ClaimRequest::Release { pointer: ThreadPointer, consumer_id: String }     │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                     ▲ KernelEvent + interest registration
+                                     ▲
 ┌────────────────────────────────────┴────────────────────────────────────────┐
-│  Layer 3 — nmp-core (substrate)                                             │
+│  Layer 4 — nmp-nip02 (FOLLOW-SET PRODUCER — ~120 LOC NEW)                   │
 │                                                                             │
-│   KernelEventObserver registry        (existing)                            │
-│   EventIngestDispatcher                (existing, V-40 seam)                │
-│   ActionModule registry                (existing)                           │
-│   LogicalInterest::SocialTimeline      ← NEW, V-45 co-delivery              │
-│   FollowSetLookup capability           ← NEW, V-45 supporting plumbing      │
-│                                                                             │
-│   Substrate vocabulary stays NIP-clean. The engine in nmp-feed compiles     │
-│   without ever naming "nip01" or "nip10". Doctrine-lint banned tokens:      │
-│   nothing introduced.                                                       │
+│   ActiveFollowSet (Arc-internal)                                            │
+│     - watches kind:3 ingest via KernelEventObserver                         │
+│     - watches Kernel::active_account_handle() for account switch            │
+│     - exposes: follows() -> Vec<String>                                     │
+│     - exposes: predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>       │
+│     - exposes: on_change(callback) — fires on follow-set change             │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                     ▲ logical interests
+                                     ▲
 ┌────────────────────────────────────┴────────────────────────────────────────┐
-│  Layer 2 — nmp-planner                                                      │
+│  Layer 3 — nmp-core (substrate ADDITIONS, no NIP nouns)                     │
 │                                                                             │
-│   SocialTimeline expansion at compile time:                                 │
-│       • Look up follows via FollowSetLookup                                 │
-│       • Emit one InterestShape per follow (kinds 1, 6), routed by           │
-│         NIP-65 outbox (Case A authors) → existing path                      │
+│   Existing: KernelEventObserver registry, EventIngestDispatcher, ActionModule
+│             registry, OneshotApi, claim_event, claim_expansion,             │
+│             active_account_handle, ActiveAccountChanged trigger             │
 │                                                                             │
-│   event_ids one-shot path (existing, PD-033-C):                             │
-│       • OneShot + Global + event_ids → Case D, indexer-eligible             │
-│         when no relay hint is provided                                      │
+│   NEW for v4 (all rung 1):                                                  │
+│     • Pre-kind:3 ingest buffer                                              │
+│         BoundedMessageMap<EventId, NostrEvent> for kind:1/6 events that    │
+│         fail should_store_event ONLY because author is not in              │
+│         timeline_authors. On every sync_follow_feed_interests rebuild,     │
+│         walk the buffer and re-ingest any event whose author is now in     │
+│         timeline_authors via the normal ingest+observer path. D5 cap.       │
+│     • event_claim_released projection                                       │
+│         pub fn event_claim_released(&self) -> &BoundedRingBuffer<EventId>   │
+│         Pushed by complete_unknown_oneshot's EOSE path AND by release_event │
+│         when refcount reaches zero. Observable through a substrate-grade    │
+│         callback the engine registers at construction.                      │
+│     • OneshotApi::request gains hints: Vec<RelayHint>                       │
+│         Plumbed into LogicalInterest.hints so route_hints sees URI relays   │
+│         on the FIRST REQ.                                                   │
+│     • release_event calls release_claim_expansion(primary_id)               │
+│         M3 fix.                                                             │
+│     • Kernel::active_timeline_authors() -> Vec<String>                      │
+│         Typed accessor over the existing field (no new noun).               │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                     ▲ KernelEvents
+                                     ▲ KernelEvent + claim_event
 ┌────────────────────────────────────┴────────────────────────────────────────┐
 │  Layer 4 — nmp-threading (REVISED)                                          │
 │                                                                             │
-│   ParentResolver trait                  (existing, unchanged)               │
-│   Grouper<R: ParentResolver>            (existing, untouched —              │
-│                                          thread-detail engine)              │
 │   TimelineBlock                                                             │
 │     ├── Standalone { id, root: Option<ThreadPointer> }   ← LOSSLESS         │
 │     └── Module { events, has_gap, root: Option<ThreadPointer> }             │
+│   ParentResolver, Grouper, ThreadPointer — unchanged                        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The home-feed data flow is now: **EventIngest → `RootIndexedFeed`
-(KernelEventObserver in `nmp-feed`) → `Nip10ReplyAttribution` decode in
-`nmp-nip01` instance → snapshot push to FFI**. The `Grouper` is no longer on
-the home-feed hot path; it remains load-bearing for the thread-detail view
-through `Nip10ModularTimelineView`. No NIP-10 knowledge in the kernel, none
-in `nmp-feed`'s engine. Every cross-crate side-effect is either an observer
-fan-out (substrate seam) or a `dispatch_action` call (D11).
+Data flow: **EventIngest → (if author in `timeline_authors`) store +
+observer fan-out → `RootIndexedFeed::on_kernel_event` → engine emits
+`ClaimRequest::Claim(pointer, hints)` if a root is missing → host
+adapter calls `nmp_app_claim_event` → kernel runs `claim_event` →
+`OneshotApi::request` includes URI relay hints → planner routes to
+`bootstrap_content_relays ∪ hint relays` on the FIRST REQ → Bob's OP
+arrives, ingest stores it, observer fan-out fires, engine receives the
+root → snapshot rebuilds → on EOSE without match, kernel pushes the
+primary_id into `event_claim_released` → engine drops
+`pending_attributions[primary_id]`.**
+
+Pre-kind:3 cold-start: kernel buffers kind:1/6 events that would
+otherwise drop at `should_store_event`. When kind:3 lands and rebuilds
+`timeline_authors`, the buffer drains through normal ingest. Engine
+sees the events as ordinary fan-out.
 
 ---
 
-## 3. Per-question decisions (A–J)
+## 3. Per-question decisions (A–L)
 
 ### A. Where does "OP-centric feed with attribution" semantics live?
 
-**Decision: A new generic engine `RootIndexedFeed<R: ParentResolver, A:
-AttributionPayload>` in `nmp-feed`, plus a thin protocol instance in
-`nmp-nip01`.**
-
-- `nmp-feed` adds two new public items:
-  - `trait AttributionPayload` — describes how a reply event becomes a
-    sibling attribution record on the root's card.
-  - `struct RootIndexedFeed<R, A>` — the state machine. Owns roots,
-    attributions, pending-attribution buffer, follow-set capability,
-    profile cache. Implements `KernelEventObserver` and `FeedController`.
-- `nmp-nip01` adds:
-  - `struct Nip10ReplyAttribution` — the NIP-10-shaped payload (carries raw
-    pubkey, raw timestamp, optional profile mirrors).
-  - `fn register_op_feed(app, viewer)` — constructs
-    `RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>`, registers it as
-    a `KernelEventObserver` and snapshot projection, and registers the
-    `nmp.nip01.thread_root.claim` `ActionModule`.
-  - `nmp.nip01.thread_root.claim` `ActionModule` — the dispatch surface
-    that turns an engine-emitted `ClaimRequest` into an
-    `EnsureInterest` command.
-
-**Rejected alternatives:**
-
-- **Mode flag on `Nip10ModularTimelineView`** — would couple two views with
-  different output shapes, different dependency sets (the OP feed needs the
-  follow set; the modular timeline does not), and different consumption
-  patterns. One type, two behaviors → the well-known antipattern.
-- **Engine inside `nmp-nip01`** — couples the engine's state machine to a
-  single protocol. A second NIP that wants OP-centric semantics (NIP-22
-  kind:1111 comments — covering all non-kind:1 root kinds: NIP-23
-  longform, NIP-94 files, NIP-99 listings, podcast episodes, …) would
-  duplicate the state machine. The user's standing rule is the right
-  shape, not the smallest move; the right shape is one engine with N
-  instances.
-- **Engine inside `nmp-threading`** — `nmp-threading` already owns
-  `ParentResolver` + `Grouper` + `ThreadPointer`. Adding the feed engine
-  would force `nmp-threading` to depend on `nmp-feed` (for cursor /
-  window machinery) or to re-implement windowing. The dep edge runs the
-  *other* way today (`nmp-feed` → `nmp-threading`); inverting it would
-  hurt. The right home is `nmp-feed`, which already depends on both
-  `nmp-threading` (for `TimelineBlock`) and `nmp-core` (for
-  `KernelEvent`, `BoundedMessageMap`).
-- **A wholly new crate (`nmp-feed-roots`)** — `nmp-feed` is already the
-  generic feed substrate (cursors, windowing, `FeedCard`/`FeedController`
-  traits) with zero protocol semantics. A new crate would either be empty
-  (one trait, one struct) or recreate the dependency edges `nmp-feed`
-  already has. The crate-boundary spec endorses `nmp-feed` as a
-  Layer-4-grade generic substrate; expanding its charter to include the
-  engine is consistent with that.
+**Decision: generic engine `RootIndexedFeed<R, A>` in `nmp-feed`; NIP-10
+instance in `nmp-nip01`; follow-set producer in `nmp-nip02`;
+composition wiring in `nmp-app-template`.** Unchanged from v3 except for
+the composition-root expansion of follow-set (§3-D).
 
 ### B. How does Bob's unfollowed OP enter the kernel?
 
-**Decision: Engine emits typed `ClaimRequest` values; the protocol-instance
-wiring layer (e.g. `nmp-nip01`) dispatches the
-`nmp.<protocol>.thread_root.claim` action.**
+**Decision: through the canonical `Kernel::claim_event` primitive
+(`crates/nmp-core/src/kernel/requests/event.rs`), with three rung-1
+kernel API additions that make the routing match what v3 promised:**
 
-- Action shape: `Claim { root_id, consumer_id }` / `Release { root_id,
-  consumer_id }`, mirroring `VisibleNoteRelationsAction`. The dispatch
-  enqueues a `OneShot + Global + event_ids:[root_id]` `LogicalInterest`
-  (the existing PD-033-C path; verified at
-  `nmp-planner/src/compiler/partition/case_d_no_author.rs`).
-- The engine does NOT call `dispatch_action` directly. It emits a
-  typed `ClaimRequest` value through a `&dyn Fn(ClaimRequest)` callback
-  threaded into `on_kernel_event` via the observer's outer adapter (the
-  protocol-instance side). This keeps the engine free of action-system
-  imports — `nmp-feed` does not depend on the action machinery. The
-  instance crate (`nmp-nip01`) owns the engine-to-action translation:
-  `Nip10ReplyAttribution::wire_claims_to_dispatch(app, root_id, consumer_id)`.
-- Refcounted by `(root_id, consumer_id)` so multiple replies to the same
-  root coalesce; releasing one consumer doesn't tear down a still-needed
-  REQ. Identical shape to `visible_note_relations_identity`.
+1. `OneshotApi::request(registry, scope, shape, hints)` — new `hints`
+   parameter; `claim_event` passes URI relay TLVs into it. Initial
+   `LogicalInterest.hints` populated.
+2. `event_claim_released` projection (`BoundedRingBuffer<EventId>`) +
+   observer callback the engine registers at construction. EOSE-with-
+   no-match release inside `complete_unknown_oneshot` clears
+   `event_claims` + `event_claim_requested` AND pushes into the ring.
+3. `release_event` calls `release_claim_expansion(primary_id)` (M3).
 
-**Rejected alternatives** (same reasoning as the first draft):
+#### Step-by-step trace of the fetch path (v4, every claim verified)
 
-- **B.1 Kernel-internal hydration** — adds NIP-10 parsing inside
-  `nmp-core`. D0 violation; D3 violation (writes through actions); contradicts
-  step 4.2 of `docs/architecture/crate-boundaries.md` (input-side ingest
-  seam).
-- **B.2 Planner-driven indirect-root interest** — embeds a NIP-10 decoder
-  in the planner. Same D0 violation; conflates "what to fetch from whom"
-  with "what root ids to hydrate."
-- **B.4 ViewDependencies.ids static declaration** — the OP feed view
-  module cannot know which unfollowed root ids will be needed at
-  registration time. Static deps cannot express it; dynamic deps are a
-  much larger seam.
+1. **Alice's reply arrives.** `Kernel::ingest_timeline_event`
+   (`crates/nmp-core/src/kernel/ingest/timeline.rs:20-211`) admits it
+   because Alice is in `timeline_authors` (the active account follows
+   her). Event stored; observer fan-out fires.
+2. **`RootIndexedFeed::on_kernel_event` runs.** Resolver returns
+   `Some(ThreadPointer::Event { id: bob_op_id, relay:
+   alice_relay_hint, kind: None })`.
+3. **Follow predicate.** `follow(alice_pubkey) == true`. Reply qualifies.
+4. **Engine looks up Bob's OP locally.** `roots.contains(bob_op_id) ==
+   false`. Records attribution in `pending_attributions[bob_op_id]`,
+   `pending_pointers[bob_op_id] = ThreadPointer::Event { … }`. Emits
+   `ClaimRequest::Claim { pointer: ThreadPointer::Event { id:
+   bob_op_id, relay: alice_relay_hint, kind: None }, hints: vec![
+   RelayHint { url: alice_provenance_relay, source: Provenance {
+   event_id: alice_event_id } }, ], consumer_id: "nmp.feed.home" }`.
+   Alice's provenance relay is read from the kernel's `event_provenance`
+   record for Alice's reply id via `event_lookup` (the lookup callback
+   can return the provenance through a sibling accessor, or — simpler —
+   the engine encodes Alice's reply-id as part of the `RelayHint`
+   payload and lets the kernel side resolve it; the implementer picks
+   the cleaner shape).
+5. **`nmp-nip01` host adapter** encodes the `ThreadPointer::Event` into
+   a `nostr:nevent1…` URI with the relay-hint TLV. Calls
+   `nmp_app_claim_event(app, uri, consumer_id)` —
+   `crates/nmp-ffi/src/timeline.rs:133`.
+6. **`Kernel::claim_event`** parses the URI. Falls into the
+   `NostrUri::Event` arm
+   (`crates/nmp-core/src/kernel/requests/event.rs:93-109`). Extracts
+   `event_id`, optional `author`, and `relays`. Constructs
+   `InterestShape { event_ids: {bob_op_id}, limit: Some(1) }`. Refcounts
+   `event_claims[bob_op_id]`. Calls **`OneshotApi::request(registry,
+   InterestScope::Global, shape, uri_relay_hints_as_RelayHints)`** —
+   the new v4 signature; the initial `LogicalInterest.hints` is no
+   longer empty. Also calls `register_claim_expansion(primary_id,
+   Some(interest_id), uri_author /* None */, uri_relay_hints, now)` —
+   unchanged. Enqueues `CompileTrigger::ViewOpened`.
+7. **Planner partition dispatcher** at
+   `crates/nmp-planner/src/compiler/partition/mod.rs:240-289` — verified
+   that `route_hints` runs at line 265 BEFORE the bootstrap-content-
+   relays test. With v4's `hints` plumbing the initial REQ goes to
+   **Alice's provenance relay (from hints) ∪ bootstrap_content_relays
+   (from `route_bootstrap_content`)**. **This is the change codex flagged
+   was missing in v3.**
+8. **Bob's OP arrives.** Ingest accepts via `is_discovery_oneshot(sub_id)`
+   (line 209) — the OneshotApi-registered sub id matches. Event stored;
+   observer fan-out fires.
+9. **`RootIndexedFeed::on_kernel_event` runs again** for Bob's OP.
+   Resolver returns `parent == None` — Bob's note is a root. Engine
+   inserts into `roots[bob_op_id]`, drains
+   `pending_attributions[bob_op_id]` into `attributions[bob_op_id]`,
+   removes `pending_pointers[bob_op_id]`. Emits `ClaimRequest::Release
+   { pointer: …, consumer_id: "nmp.feed.home" }` because the root is
+   now locally available; host adapter calls `nmp_app_release_event`,
+   which (with M3 fix) cleans up `event_claims` AND
+   `release_claim_expansion(primary_id)`.
+10. **If Bob's OP never arrived.** `OneshotApi`'s EOSE path
+    (`complete_unknown_oneshot`) inside the kernel — with v4's
+    enhancement — clears `event_claims[bob_op_id]`,
+    `event_claim_requested.remove(bob_op_id)`,
+    `release_claim_expansion(bob_op_id)`, and pushes `bob_op_id` into
+    the `event_claim_released` ring buffer. The engine, which
+    registered an observer on the ring at construction, drops
+    `pending_attributions[bob_op_id]` and `pending_pointers[bob_op_id]`.
+    The attribution disappears from the snapshot (it had nowhere to
+    attach). No further action.
 
-**Flow control, provenance, lifecycle:** identical to first draft.
-`Claim`/`Release` refcount caps the worst case at
-`O(open-roots-pending-hydration)`. OneShot REQ flows through the PD-033-C
-indexer path, no manual relay selection. Self-closes on EOSE; `unroutable`
-toast through existing planner machinery (D6).
+#### Address-pointer arm (§3-B-3, corrected per codex)
 
-### C. Where does "Alice replied in thread" attribution metadata live?
+For `ThreadPointer::Address { coord, relay, kind }` (NIP-22 + NIP-23
+roots, post-v1 path):
 
-**Decision: The engine's bounded `attributions` index, populated by typed
-`AttributionPayload` values supplied by the protocol instance. The
-`RootCard` carries `Vec<A>` (capped) + `total: u32`. The index decouples
-arrival order from card presence.**
+The host adapter encodes the pointer as a `nostr:naddr…` URI.
+`claim_event`'s address arm (verified in
+`crates/nmp-core/src/kernel/requests/event.rs:110-155`) constructs
+`InterestShape { kinds: {kind}, authors: {pubkey}, tags: {"d":
+{identifier}}, limit: Some(1) }` — **NOT `InterestShape::addresses`**.
+Routing flows through Outbox (Case A authors) on the author's NIP-65
+write relays. v4 doesn't ship this path (NIP-22 is post-v1 per Q5) but
+the trace is correct for the eventual `nmp-nip22` instance.
 
-Trait shape (in `nmp-feed`):
+`ThreadPointer::External { uri }` is terminal: the engine never emits
+`Claim` for it. The attribution attaches to a surrogate id derived from
+the URI hash; the host adapter renders an external-link placeholder.
+No Nostr fetch.
+
+### C. Where does "Alice replied" attribution metadata live? (REVISED per Q1)
+
+**Decision: in the engine's bounded `attributions[root_id]` map. The
+projection exposes ALL enumerated repliers (bounded only by D5 cap on
+the per-root sub-map). No `attribution_total` field — the `Vec<A>`
+length IS the count. Each render surface picks its own enumeration
+policy.**
+
+This is the user's Q1 answer. The 2026-05-25 display-separation
+doctrine says raw data in projections, formatting in renderers. The N=8
++ total cap was a baked-in display decision; v4 removes it.
+
+D5 bound: each `BTreeMap<EventId, A>` is itself bounded — at most
+`MAX_ATTRIBUTION_PER_ROOT` entries (proposed default = 64). When the
+map is full, the oldest reply (by `reply_created_at`) is evicted. The
+outer `BoundedMessageMap<EventId, ...>` is also `MAX_PROJECTION_MESSAGES`
+bounded as in v3. Per-root and global D5 caps are independent.
+
+Trait (in `nmp-feed`):
 
 ```rust
-// In nmp-feed::attribution (NEW)
 pub trait AttributionPayload: Clone + Send + Sync + 'static {
-    /// Build an attribution from a reply event. Returns None when the
-    /// event does not qualify (e.g. not a follow's reply, or the
-    /// protocol's reply decoder rejects it).
-    ///
-    /// `follow_set` carries the read-side lookup so the protocol's
-    /// is-follow check is centralised at construction time — the engine
-    /// stores the payload only when this returns Some.
+    type Profile: Clone + Send + Sync + 'static;
     fn from_reply(
         reply: &KernelEvent,
-        follow_set: &dyn FollowSetLookup,
-        profile_for: &dyn Fn(&str) -> Option<ProfileDisplay>,
+        follow: &dyn Fn(&str) -> bool,
+        profile_for: &dyn Fn(&str) -> Option<Self::Profile>,
     ) -> Option<Self>;
-
-    /// The id of the reply event itself. The engine uses this as the
-    /// key inside the per-root attribution sub-map (so duplicate
-    /// arrivals coalesce).
     fn reply_event_id(&self) -> &str;
-
-    /// The replier's pubkey (raw hex, per display-separation doctrine).
-    /// The engine uses this for kind:0 fan-out: when an incoming kind:0
-    /// matches this pubkey, the engine calls refresh_for_profile.
     fn author_pubkey(&self) -> &str;
-
-    /// Reply timestamp (raw Unix seconds). The engine uses this to sort
-    /// attributions within a root (most-recent first by default; the
-    /// instance can re-sort in display).
     fn reply_created_at(&self) -> u64;
-
-    /// Refresh profile mirrors in place when a kind:0 arrives for
-    /// `author_pubkey`. The instance owns the mirror semantics (which
-    /// fields, what fallback). The engine just delivers the update.
-    fn refresh_for_profile(&mut self, profile: &ProfileDisplay);
+    fn refresh_for_profile(&mut self, profile: &Self::Profile);
 }
 ```
 
-The `Nip10ReplyAttribution` instance (in `nmp-nip01`):
+`Nip10ReplyAttribution` instance (in `nmp-nip01`):
 
 ```rust
-// In nmp-nip01::op_feed::attribution (NEW)
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Nip10ReplyAttribution {
-    pub author_pubkey: String,                  // raw 64-hex
+    pub author_pubkey: String,
     pub author_display: AuthorDisplay,
     pub author_display_name: Option<String>,
     pub author_picture_url: Option<String>,
     pub reply_event_id: String,
-    pub reply_created_at: u64,                  // raw Unix seconds
+    pub reply_created_at: u64,
 }
 
 impl AttributionPayload for Nip10ReplyAttribution {
-    fn from_reply(
-        reply: &KernelEvent,
-        follow_set: &dyn FollowSetLookup,
-        profile_for: &dyn Fn(&str) -> Option<ProfileDisplay>,
-    ) -> Option<Self> {
+    type Profile = ProfileDisplay;
+    fn from_reply(reply, follow, profile_for) -> Option<Self> {
         if reply.kind != KIND_SHORT_NOTE { return None; }
-        if !follow_set.is_followed(&reply.author) { return None; }
+        if !follow(&reply.author) { return None; }
         let refs = parse_nip10(&reply.tags);
-        if !refs.is_reply() { return None; }      // root notes don't attribute
+        if !refs.is_reply() { return None; }
         let profile = profile_for(&reply.author);
         let display = AuthorDisplay::from_profile(&reply.author, profile.as_ref());
-        Some(Self {
-            author_pubkey: reply.author.clone(),
-            author_display_name: display.name.clone(),
-            author_picture_url: display.picture_url.clone(),
-            author_display: display,
-            reply_event_id: reply.id.clone(),
-            reply_created_at: reply.created_at,
-        })
+        Some(Self { …, author_pubkey: reply.author.clone(), … })
     }
-    // …other methods straightforward
+    fn refresh_for_profile(&mut self, profile: &ProfileDisplay) {
+        let new = AuthorDisplay::from_profile(&self.author_pubkey, Some(profile));
+        self.author_display_name = new.name.clone();
+        self.author_picture_url = new.picture_url.clone();
+        self.author_display = new;
+    }
 }
 ```
 
-The engine's bounded index in `Inner`:
+`ProfileDisplay` is named in `nmp-nip01` only. `nmp-feed` never names it.
+
+### D. How does the engine know the follow set? (ARCHITECTURE OVERRIDE)
+
+**Decision: composition-root expansion. No `FollowSetLookup` trait. No
+`LogicalInterest::SocialTimeline` variant. The user's Q2 answer is
+moot.**
+
+The follow-set producer is **`nmp-nip02::ActiveFollowSet`**. It exposes:
 
 ```rust
-// In nmp-feed::root_indexed (NEW)
-struct Inner<R, A, C> {
-    resolver: R,
-    follow_set: Arc<dyn FollowSetLookup>,
-    profiles: BoundedMessageMap<String, ProfileDisplay>,
-    roots: BoundedMessageMap<EventId, RootCard<C, A>>,
-    attributions:
-        BoundedMessageMap<EventId /* root */, BTreeMap<EventId /* reply */, A>>,
-    // Reply arrived before its root: buffered keyed by missing root id.
-    // BOUNDED — a follow's reply to an unhydratable root would otherwise
-    // park entries forever and violate D5.
-    pending_attributions:
-        BoundedMessageMap<EventId, BTreeMap<EventId, A>>,
-    window: FeedWindowState,
-    card_builder: Box<dyn Fn(&KernelEvent, /* …profile, relations… */) -> C + Send + Sync>,
+impl ActiveFollowSet {
+    pub fn new(app: &NmpApp) -> Arc<Self>;
+    pub fn follows(&self) -> Vec<String>;
+    pub fn predicate(&self) -> Arc<dyn Fn(&str) -> bool + Send + Sync>;
+    pub fn on_change(&self, callback: Box<dyn Fn() + Send + Sync>);
 }
 ```
 
-**D5 cap discipline.** Every map is `BoundedMessageMap` with
-`MAX_PROJECTION_MESSAGES` capacity (same constant the existing
-`NoteRelationIndex::relation_by_event` already uses). When
-`pending_attributions` evicts a root entry, the engine emits a matching
-`ClaimRequest::Release` for that root (single-writer per fact: bounded
-map eviction is the release trigger). The home feed's working set is
-bounded by the constant regardless of inbound event volume.
+Implementation: an internal `KernelEventObserver` watches kind:3 events
+for the active account; an internal observer of
+`Kernel::active_account_handle()` watches account switches. The
+internal state is `Arc<RwLock<BTreeSet<String>>>`. On every change,
+registered `on_change` callbacks fire.
 
-**Case-by-case arrival ordering** (engine semantics, identical to first
-draft):
-
-- **(a) Reply arrives before root.** Recorded in `pending_attributions[root]`.
-  Engine emits `ClaimRequest::Claim(root_id)` immediately. When root
-  lands, engine moves the buffered map into `attributions` and emits a
-  fresh snapshot tick.
-- **(b) Root arrives before reply.** Recorded in `roots`. Subsequent
-  qualifying reply ingest appends to `attributions[root]`.
-- **(c) Reply is deleted/replaced.** Same behavior as `NoteRelationIndex`
-  today: append-only inside a session. Deletion handling is a separate,
-  generic concern (Q1).
-- **(d) Profile (kind:0) updates later.** Engine fans out: for every
-  attribution whose `author_pubkey()` matches, calls
-  `A::refresh_for_profile(&profile)`. Mirrors
-  `ModularTimelineProjection::refresh_author_cards`.
-
-**Rejected alternatives** (same as first draft):
-
-- On `TimelineEventCard` directly — couples the card to the feed-composition
-  mode. The card is generic; attribution is a sibling field on `RootCard`.
-- A new card type entirely distinct — duplicates rendering substrate.
-- Computed on-snapshot from the event store — violates D8 (per-event
-  alloc after warmup).
-
-**Where does the kind:0 / profile refresh happen — engine or projection?**
-Chosen: **the engine** owns the fan-out. The engine already needs a
-profile cache (so cards can refine in place), so it sees every kind:0
-ingest by virtue of being a `KernelEventObserver`. The engine iterates
-`attributions` (and `pending_attributions`) and calls
-`A::refresh_for_profile` for every entry whose `author_pubkey()`
-matches the incoming kind:0's pubkey. The protocol instance owns *what*
-to refresh inside its payload (display name vs. picture URL vs. nip05
-verification); the engine owns *when* (kind:0 arrival) and *for which
-entries* (matching author). Same factoring as
-`ModularTimelineProjection::refresh_author_cards` today.
-
-### D. How does the projection know the follow set?
-
-**Decision: `FollowSetLookup` substrate capability in `nmp-core`, paired
-with `LogicalInterest::SocialTimeline` (V-45).** Unchanged from first draft.
-
-Same trait shape, same wiring path. The engine in `nmp-feed` takes an
-`Arc<dyn FollowSetLookup>` at construction; the planner consults the same
-capability at compile time when expanding `SocialTimeline`. The
-`FollowSetLookup` trait lives in `nmp-core` precisely so both `nmp-feed`
-(the engine) and `nmp-planner` (the expansion) can consume it without
-cycling through `nmp-nip02`.
-
-### E. Where does the grouper's chain-stitching still serve a purpose?
-
-**Decision: Keep `nmp-threading::Grouper` as-is for thread-detail. Refactor
-`TimelineBlock::Standalone` to be lossless. Home feed no longer consumes
-the grouper.** Unchanged from first draft (re-verified after generic
-refactor).
-
-The lossless `TimelineBlock` reshape:
+**`nmp-app-template`** is the composition root:
 
 ```rust
-// nmp-threading::block (revised)
+pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) {
+    let follow_set = nmp_nip02::ActiveFollowSet::new(app);
+
+    // 1. Initial expansion of the follow set into concrete per-author
+    //    LogicalInterests (replaces SocialTimeline planner expansion).
+    expand_follow_timeline_interests(app, &follow_set.follows(), viewer.clone());
+
+    // 2. On every follow-set change, re-expand (withdraws stale interests,
+    //    installs fresh ones). Mirrors the existing
+    //    sync_follow_feed_interests semantics, just driven from the
+    //    composition root.
+    let app_clone = app.clone();
+    let follow_set_for_cb = Arc::clone(&follow_set);
+    let viewer_for_cb = viewer.clone();
+    follow_set.on_change(Box::new(move || {
+        expand_follow_timeline_interests(
+            &app_clone,
+            &follow_set_for_cb.follows(),
+            viewer_for_cb.clone(),
+        );
+    }));
+
+    // 3. Register the OP-feed engine. The predicate is closure-shaped, no
+    //    trait crate.
+    nmp_nip01::register_op_feed(
+        app,
+        viewer,
+        follow_set.predicate(),
+        kernel_event_lookup(app),
+    );
+}
+
+fn expand_follow_timeline_interests(app: &NmpApp, follows: &[String], viewer: Pubkey) {
+    // Constructs one LogicalInterest per follow (kinds 1, 6, Tailing,
+    // limit 200). Registers via the existing dispatch_action surface or
+    // an actor command. Mirrors the kernel-side sync_follow_feed_interests
+    // body, but the call site is at the composition root, not in the
+    // kernel.
+    // Actual interest construction reuses planner::interest::LogicalInterest
+    // verbatim — no enum conversion, no new variant.
+}
+```
+
+**Reasoning vs. the user's Q2 (enum conversion):** the user chose enum
+conversion because the proposal as-written needed planner-side
+`SocialTimeline` expansion. Codex pointed out the planner-side
+consumption forces a `FollowSetLookup` trait the planner must name,
+which creates a cycle through `nmp-feed → nmp-core → nmp-planner`.
+The cleanest fix is to eliminate planner-side expansion entirely:
+expand at composition. The user's Q2 was answering the wrong question —
+the right question is whether to consume the predicate in the planner
+at all. v4 answers "no." No SocialTimeline variant, no enum
+conversion, no `FollowSetLookup` trait, no cycle. **The user's "right
+not smallest" rule is satisfied** because the resulting graph is
+genuinely simpler: zero new trait crates, zero new variants, one
+ordinary closure parameter on the engine.
+
+**Why this is "right" not "smallest":** the v3 design (trait in
+`nmp-feed`) was the smallest move that named V-45 as the seam — and it
+broke compilation. v4's composition-root expansion **finishes V-45**:
+it gives every composing app a one-line affordance
+(`register_op_feed_defaults`) without forcing the planner to grow a
+generic capability. The framework-thesis is strengthened more than the
+v2/v3 design strengthened it.
+
+**V-45 status:** the original V-45 issue is closed by this design,
+just not through the originally-named `SocialTimeline` mechanism. The
+BACKLOG entry needs to record that the V-45 affordance is delivered
+through `nmp-app-template::register_op_feed_defaults` instead.
+
+### E. `TimelineBlock::Standalone` lossless reshape
+
+**Decision: unchanged from v3** —
+
+```rust
 pub enum TimelineBlock {
     Standalone {
         id: EventId,
-        /// Some when the event has a NIP-10 reply marker but its chain
-        /// collapsed to length 1 (parent isn't locally present, or the
-        /// max_module_size cap is 1). None when the event is itself a root.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         root: Option<ThreadPointer>,
     },
@@ -508,180 +658,306 @@ pub enum TimelineBlock {
 }
 ```
 
-**JSON snapshot compatibility.** The serde encoding moves from
-`"Standalone": "<id>"` to `"Standalone": { "id": "<id>", "root": null }`.
-chirp-tui's `ids_from_block` is the only consumer that pattern-matches
-the string form; the rung 2 PR patches it in-flight (see §5 Stage 1).
-F-05 codegen does not emit `TimelineBlock` today; rung 5's switch to
-`RootFeedSnapshot` is the codegen pass that delivers the new Swift
-Decodables.
+**Codex B3-remainder fix: every Rust consumer enumerated.** Verified by
+grep against the current tree. Rung 2 patches all of:
 
-Future factoring of `Grouper` itself into "root index" + "chain stitcher"
-is no longer load-bearing — the home feed never touches the grouper, and
-the thread-detail view's grouper consumption is unchanged. That note is
-removed from the "post-v1 follow-up" list because there's nothing to
-follow up on.
+- `crates/nmp-threading/src/block.rs` (definition + helper methods)
+- `crates/nmp-threading/src/grouper.rs` (`grouper.rs:254, 269, 277,
+  296, 367, 394, 438, 558, 566`)
+- `crates/nmp-threading/tests/grouper.rs` (`tests/grouper.rs:125, 139,
+  261, 450, 474, 486, 508, 522, 537, 544`)
+- `crates/nmp-feed/src/types.rs:87-93` (`FeedBlock for TimelineBlock`
+  match arm)
+- `crates/nmp-nip01/src/timeline_projection/tests.rs` (lines 76, 90,
+  91, 108, 109, 139, 164)
+- `crates/nmp-nip01/src/meta_timeline/tests.rs` (lines 146, 172)
+- `apps/chirp/nmp-app-chirp/tests/end_to_end.rs:130`
+- `apps/chirp/chirp-tui/src/timeline.rs:244-265`
+- `apps/chirp/chirp-tui/src/timeline/tests.rs` (Standalone JSON
+  fixtures)
+- `ios/Chirp/Chirp/Bridge/TimelineBlock.swift:7-92` (hand-decoder)
+- `ios/Chirp/Chirp/Bridge/ModularTimelineBridge.swift` (pattern matches)
+- `ios/Chirp/Chirp/Features/HomeFeedView.swift` (pattern matches)
+- `ios/Chirp/Chirp/Components/ModularBlockView.swift` (pattern matches)
+- `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
+  (regenerated)
+- Swift fixtures under `ios/Chirp/ChirpTests/**` if present
+- `crates/nmp-codegen/src/swift_projections_registry.rs:199-203` — NO
+  change at rung 2 (binding to `ChirpTimelineSnapshot` transitively
+  picks up the shape change)
 
-### F. Doctrine compliance (D0–D14 line items)
-
-Re-run against the new shape:
+### F. Doctrine compliance (D0–D14)
 
 | Doctrine | Compliance | Notes |
 |---|---|---|
-| **D0 — substrate is NIP-clean** | ✅ | `nmp-core` gains `FollowSetLookup` (capability, generic) + `LogicalInterest::SocialTimeline` (substrate seam named/tracked by V-45, generic application read pattern). `nmp-feed` gains `AttributionPayload` + `RootIndexedFeed<R, A>` — verified against `nmp-core`'s doctrine-lint banned tokens: no `nip01`, `nip10`, `nip17`, `nip22`, `nip29`, `nip47`, `nip57`, `nip77`, `marmot` appear in the engine's API surface. The engine's public API names exactly two new types (the trait + the struct) and uses only substrate vocabulary (`KernelEvent`, `EventId`, `Pubkey`, `ProfileDisplay`, `FollowSetLookup`, `ParentResolver`, `ThreadPointer`, `BoundedMessageMap`). |
-| **D1 — render now, refine in place** | ✅ | `Nip10ReplyAttribution.author_display_name: Option<String>` mirrors `RepostAttribution`. Engine fans out kind:0 through `A::refresh_for_profile`. No spinners, no waiting on profile arrival. |
-| **D2 — negentropy before REQ** | ✅ | Root-id hydration runs through the existing OneShot+event_ids path which participates in negentropy. No new bypass. |
-| **D3 — outbox routing automatic** | ✅ | `SocialTimeline` expansion produces per-follow interests routed by NIP-65 (Case A). Root-claim OneShot routed by PD-033-C indexer path. No manual relay selection. |
-| **D4 — single writer per fact** | ✅ | The engine's `attributions` index is the single owner of attribution facts (one engine instance per `(viewer, kinds)` registration). Cards in `roots` derive from kernel events. Action is the writer of new interests. |
-| **D5 — snapshots bounded by open views** | ✅ | Every internal map (`roots`, `attributions`, `pending_attributions`, `profiles`) is `BoundedMessageMap<…>` with `MAX_PROJECTION_MESSAGES` capacity. Eviction emits a matching `ClaimRequest::Release` so no stranded REQs accumulate. Per-row attribution capped at `MAX_THREAD_ATTRIBUTION = 8` enumerated + `total: u32` (rationale in §7-Q1). The engine reuses `FeedWindowState` from this same crate for paging. |
-| **D6 — errors as state, never exceptions** | ✅ | OneShot REQ failures land in the planner's `unroutable` toast machinery. `ActionRejection::Invalid` returns `{"error":...}` per D6. No new exception path. |
-| **D7 — capabilities report, kernel decides** | ✅ | `FollowSetLookup` is a read capability, returns raw data, takes no policy decisions. The engine asks "is this followed?" and the protocol instance decides "does this reply qualify as attribution?" — D7 holds at both layers. |
-| **D8 — bounded reactivity, ≤60 Hz** | ✅ | Observer dispatch buffers through kernel snapshot rhythm. Engine work per ingest is O(per-root-attribution-set) which is small in practice; same hot-path cost as `NoteRelationIndex::ingest`. NIP-10 decode runs once at attribution construction inside `Nip10ReplyAttribution::from_reply`, not on every snapshot tick. |
-| **D9 — kernel owns time** | ✅ | `reply_created_at` is `event.created_at` (signed). No wall-clock read in engine or instance. |
-| **D10 — provenance + private events** | n/a | Home feed is public kind:1/kind:6. |
-| **D11 — publish via dispatch_action** | ✅ | No new publish path. Root hydration is a *read* action (interest registration), routed through `dispatch_action`. No new bespoke `nmp_app_*` C-ABI symbol. |
-| **D14 — relay slots typed projections** | ✅ | `nmp.feed.home` remains a typed projection; the engine emits `RootFeedSnapshot<C, A>`. |
+| **D0** | ✅ | `nmp-core` gains: pre-kind:3 buffer (substrate-named), `event_claim_released` projection (substrate-named), `OneshotApi::request` hints parameter (no NIP), `active_timeline_authors()` accessor (existing field, substrate name). NO `FollowSetLookup`, NO `SocialTimeline`. `nmp-feed` gains: `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`, `ClaimRequest`. Public API uses only substrate vocabulary; `Profile` is an associated type. Verification: `grep -E 'nip[0-9]+|marmot|ProfileDisplay' crates/nmp-feed/src/` must return zero matches (CI test in rung 3). |
+| **D1** | ✅ | Profile mirror via `A::refresh_for_profile`. |
+| **D2** | ✅ | Root hydration through `claim_event` → `OneshotApi` → planner (coverage hooks intact). |
+| **D3** | ✅ | Root-claim routing through `bootstrap_content_relays ∪ hint_relays` (the kernel's v4 enhancement to `OneshotApi::request`). Per-follow `LogicalInterest`s routed through NIP-65 Outbox (Case A) — unchanged. |
+| **D4** | ✅ | Engine's `attributions` is single owner per root. `event_claims[primary_id]` single writer per primary_id. |
+| **D5** | ✅ | Every map bounded; visible-window-only snapshot. Per-root attribution sub-map bounded at `MAX_ATTRIBUTION_PER_ROOT`. Pre-kind:3 buffer bounded. Acceptance test in §3-J: 5,000 roots populated; snapshot at limit=80; assert exactly 80 cards + JSON size bound. |
+| **D6** | ✅ | `claim_event` returns `Vec::new()` on errors. `event_claim_released` is state, not exception. |
+| **D7** | ✅ | Closure-shaped capability (`Arc<dyn Fn(...) -> bool>` for follow predicate, `Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` for event lookup). The engine asks; the wiring decides. |
+| **D8** | ✅ | Observer-driven. Pre-kind:3 buffer drain is one event-loop pass when kind:3 lands; not a poll. |
+| **D9** | ✅ | `reply_created_at` is signed `event.created_at`. |
+| **D10** | n/a | Public kind:1/kind:6 only. |
+| **D11** | ✅ | No new bespoke C-ABI symbol. Hydration via existing `nmp_app_claim_event`. |
+| **D14** | ✅ | `nmp.feed.home` is a typed projection. |
 
-**Doctrine-lint verification plan.** Before merging rung 3 (the
-`nmp-feed` engine PR), confirm:
+**ADRs:**
+- **ADR-0035** — Generic root-indexed feed engine in `nmp-feed`
+  (`RootIndexedFeed<R, A>`, `AttributionPayload`,
+  `ClaimRequest(ThreadPointer)`). Records the closure-based predicate
+  + event-lookup capability shape.
+- **ADR-0036** — Composition-root expansion of follow-set timeline
+  interests in `nmp-app-template`. Records why `SocialTimeline` was
+  rejected and what replaces V-45.
+- Existing 0033 (`nmp-feed-viewport-ffi`) + 0034 (kind-dispatch
+  content rendering) are not touched.
 
-- `grep -E 'nip[0-9]+|marmot' crates/nmp-feed/src/` returns zero matches.
-- `cargo test -p nmp-testing --test doctrine_lint_smoke` stays green.
-- `nmp-feed`'s Cargo.toml gains no new dep on any `nmp-nip*` crate.
-  Existing deps (`nmp-core`, `nmp-threading`, `serde`, `serde_json`) are
-  unchanged. (Confirmed by reading `crates/nmp-feed/Cargo.toml`.)
+### G. Card-payload shape
 
-**New ADRs:**
-
-- **ADR-0033 — `FollowSetLookup` substrate capability.** Records the
-  read seam. Light, ~120 LOC of prose.
-- **ADR-0034 — Generic root-indexed feed engine in `nmp-feed`;
-  protocol-specific instances in NIP crates.** Records the design
-  decision to host the engine in `nmp-feed` and parameterize over
-  `ParentResolver` + `AttributionPayload`. Documents the future shape:
-  one engine, two foreseeable instances (`Nip10ReplyAttribution` in
-  `nmp-nip01`, `Nip22ReplyAttribution` in `nmp-nip22` covering ALL
-  non-kind:1 root kinds). Light, ~200 LOC of prose.
-
-### G. What is the right card-payload shape?
-
-**Decision: `RootCard<C, A> { card: C, attribution: Vec<A>,
-attribution_total: u32 }` in `nmp-feed`. For the NIP-10 instance,
-`C = TimelineEventCard` and `A = Nip10ReplyAttribution`.**
-
-The shape:
+**Decision: `RootCard<C, A>` and `RootFeedSnapshot<C, A>` with
+explicit serialization bounds (M4 fix):**
 
 ```rust
-// In nmp-feed::root_indexed (NEW)
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct RootCard<C, A> {
+pub struct RootCard<C, A>
+where
+    C: Clone + Serialize,
+    A: Clone + Serialize,
+{
     pub card: C,
-    pub attribution: Vec<A>,        // capped at MAX_THREAD_ATTRIBUTION
-    pub attribution_total: u32,     // raw count even when Vec is truncated
+    pub attribution: Vec<A>,           // bounded by MAX_ATTRIBUTION_PER_ROOT
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct RootFeedSnapshot<C, A> {
+pub struct RootFeedSnapshot<C, A>
+where
+    C: Clone + Serialize,
+    A: Clone + Serialize,
+{
     pub cards: Vec<RootCard<C, A>>,
     pub page: Option<FeedPage>,
     pub metrics: Option<FeedWindowMetrics>,
 }
 ```
 
-Display-separation constraints (raw pubkeys, raw timestamps,
-`Option<String>` profile mirrors) are enforced by the
-`AttributionPayload` impls in instance crates — `nmp-feed`'s engine
-itself stores `A` opaquely and never formats anything. The
-`MAX_THREAD_ATTRIBUTION` cap is enforced inside the engine on snapshot
-construction; display layer never sees an unbounded `Vec`.
+`attribution_total` field removed (Q1 — `Vec` length IS the total).
 
-### H. Framework reusability (v1-B framework thesis)
+### H. Framework reusability
 
-**Decision: Ship as a reusable view module in `nmp-feed` (engine) +
-`nmp-nip01` (instance). Compose into Chirp through
-`nmp-app-template::register_defaults`. A second app composing the
-OP-centric feed for a different protocol is one resolver + one payload
-type + the wiring helper.**
+**Decision: `register_op_feed_defaults(app, viewer)` is the single-line
+affordance.** A second protocol (`nmp-nip22` covering kind:1111 for ALL
+non-kind:1 root kinds — NIP-23, NIP-94, NIP-99, podcasts) composes with
+`(R, A)` only; the composition-root expansion logic is generic over
+"the set of kinds to register interests for," so `nmp-app-template`
+also gains a `register_op_feed_for_comments_defaults(...)` helper
+post-v1.
 
-Future composition:
+### I. Sequencing
 
-```rust
-// In apps/reader/nmp-app-reader/src/register.rs (illustrative, post-v1):
-nmp_app_template::register_defaults(&app, viewer);
-nmp_nip01::register_op_feed(&app, viewer);          // kind:1 thread roots
-nmp_nip22::register_op_feed_for_comments(&app, viewer);  // kind:1111 comment
-                                                          // trees covering
-                                                          // ALL non-kind:1
-                                                          // root kinds
-```
-
-Both calls compose `RootIndexedFeed` over distinct resolver+payload
-parameters. The state-machine code is written exactly once.
-
-### I. Migration / sequencing
-
-**Decision: 7-PR ladder, each PR independently mergeable.** One rung
-added vs. the first draft (Stage 2a — `nmp-feed` generic engine —
-before Stage 2b — `nmp-nip01` instance). See §5.
+**Decision: 7-PR ladder.** Rung 1 grew to absorb the kernel API
+additions. §5/§6 below.
 
 ### J. Test surface
 
-Tests split cleanly between layers:
+#### `nmp-feed` engine tests (~320 LOC)
 
-- **`nmp-feed` engine tests** (in `crates/nmp-feed/src/root_indexed/tests.rs`)
-  — exercise the state machine with a synthetic `ParentResolver` +
-  synthetic `AttributionPayload`. Cases:
-  - Reply arrives, root arrives → attribution attaches.
-  - Reply arrives, root never arrives → `ClaimRequest::Claim` emitted,
-    `pending_attributions` populated, eviction emits `Release`.
-  - Root arrives, reply arrives later → attribution attaches.
-  - Two replies to same root → `attributions` set has both entries; one
-    refcount of `Claim`.
-  - kind:0 fan-out → engine calls `A::refresh_for_profile` for every
-    matching attribution.
-  - Bounded-map eviction triggers `Release`.
-  - Repost-shaped event (resolver.supersedes returns Some) → target is
-    surfaced root, repost attribution attaches.
-  - Non-follow reply → dropped, no `Claim` emitted.
-  - These tests use ZERO NIP-10 / NIP-22 knowledge: the synthetic
-    resolver is a plain `struct TestResolver { parents: BTreeMap<EventId,
-    ThreadPointer> }`. This proves the engine is genuinely generic.
+Synthetic resolver + synthetic payload + synthetic follow predicate +
+synthetic event_lookup. Zero NIP imports.
 
-- **`nmp-nip01` instance tests** (in
-  `crates/nmp-nip01/src/op_feed/tests.rs`) — exercise the wiring:
-  - `Nip10ReplyAttribution::from_reply` filtering (kind, follow set,
-    NIP-10 reply marker).
-  - `register_op_feed` composes the engine correctly.
-  - `nmp.nip01.thread_root.claim` action shape (Claim / Release).
-  - End-to-end: feed the registered observer a KernelEvent stream
-    including follow-replies + a non-followed root, assert the snapshot.
+- Reply arrives, root arrives → attribution attaches.
+- Reply arrives, root never arrives → `Claim` emitted; on `event_claim_released`
+  ring update, engine drops `pending_attributions`.
+- Bounded-map eviction → emits `ClaimRequest::Release`.
+- Per-root sub-map eviction (`MAX_ATTRIBUTION_PER_ROOT`) — oldest reply
+  evicted; engine does NOT emit Release (the root is still claimed by
+  remaining attributions; refcount is implicit in the per-root map size).
+- Profile event → fan out to attributions + pending_attributions.
+- Repost (`resolver.supersedes != None`) → target becomes surfaced root.
+- L-2: reply to a kind:6 wrapper, parent locally available; engine
+  consults `event_lookup` + `resolver.supersedes`; attribution re-keyed
+  to target.
+- L-5: e-tag-only repost, target arrives later; engine receives the
+  target event and rebuilds the card via `card_builder` (the test
+  asserts the card body is non-empty after the target arrives).
+- Non-follow reply → dropped.
+- D5 visible-window snapshot: 5,000 roots, `limit = 80`, assert exactly
+  80 cards + JSON size bound + internal maps at cap.
+- Address pointer: synthetic `ThreadPointer::Address`; assert
+  `ClaimRequest` carries Address variant; host adapter encodes naddr URI.
+- External pointer: terminal; no Claim emitted; attribution attaches
+  against URI-hash surrogate.
+- **Serde bounds compile test:** assert `RootCard<TimelineEventCard,
+  Nip10ReplyAttribution>` and `RootFeedSnapshot<…>` round-trip through
+  `serde_json::to_string` + `from_str`.
 
-- **PR #710 tests to DELETE in chirp-tui** (per first-draft analysis,
-  unchanged):
-  - `snapshot_rows_follow_block_order` — asserts a reply renders at
-    `depth=1`; OP-centric model never renders replies as feed rows.
-  - `partial_chain_module_head_gets_flag` — partial chains no longer
-    appear in the feed.
-  - `event_root_matching_module_head_is_not_partial_chain` — modules
-    don't appear in the home feed.
-  - `address_and_external_roots_are_not_partial_event_chains` — same.
-  - `module_with_absent_root_field_is_not_partial_chain` — same.
-  - `standalone_block_is_never_partial_chain_head` — replaced by a new
-    test asserting "RootFeedSnapshot card with empty attribution
-    renders as a root row; root with attribution renders with the
-    attribution sub-row."
+#### `nmp-nip01` instance tests (~220 LOC)
 
-- **Tests to KEEP**: every test for `RowRepost`, `RowRelationCounts`,
-  content tree rendering, profile display.
+- `Nip10ReplyAttribution::from_reply` filter chain.
+- Profile refresh in place.
+- `register_op_feed` composes correctly.
+- End-to-end with synthetic kernel: follow's reply + non-followed root
+  + kind:0 profile; assert snapshot + `nmp_app_claim_event` URI.
+- Repost L-1 through L-5 with the new `event_lookup` callback (L-2 and
+  L-5 require the lookup; L-1, L-3, L-4 don't).
 
-- **Tests to ADD in chirp-tui**:
-  - `RootCard` JSON → `TimelineRow` mapping for a card with no
-    attribution.
-  - `RootCard` JSON → `TimelineRow` mapping for a card with N=3
-    attribution entries (assert pubkeys passed through as raw hex,
-    display layer composes the line).
-  - `RootCard` JSON → `TimelineRow` mapping for a card with `total: 12`
-    enumerated as 8 + "and 4 others" (display-layer formatter test).
+#### `nmp-nip02` adapter tests (~100 LOC)
+
+- kind:3 ingest → `ActiveFollowSet::follows()` updates.
+- Account-switch (via `active_account_handle()` observation) →
+  follow-set resets.
+- `on_change` callback fires on both transitions.
+
+#### `nmp-core` kernel tests (~180 LOC, rung 1)
+
+- Pre-kind:3 buffer: kind:1 event from Bob (not in `timeline_authors`)
+  arrives; gate drops; buffer captures. Active-account kind:3 arrives
+  including Bob; `sync_follow_feed_interests` rebuilds
+  `timeline_authors`; buffer drains; Bob's kind:1 fires observer
+  fan-out.
+- Pre-kind:3 buffer D5 bound: insert `MAX_PROJECTION_MESSAGES + N`
+  events; oldest evicted.
+- `OneshotApi::request` initial hints: assert the constructed
+  `LogicalInterest.hints` is non-empty when called with hints. **Identical
+  behavior for non-hint callers** (existing tests with hints=Vec::new()
+  pass unchanged — non-regression for every other claim_event caller).
+- `event_claim_released` ring buffer: EOSE-no-match path pushes
+  primary_id; release_event refcount-to-zero path pushes primary_id.
+- `release_event` calls `release_claim_expansion` (assert the
+  expansion tracker is gone after release).
+
+#### chirp-tui tests
+
+**DELETE** the partial-chain tests (same list as v3).
+
+**ADD:**
+- `RootCard` JSON → `TimelineRow` mapping (no attribution).
+- `RootCard` JSON → `TimelineRow` mapping (N=3 attributions; raw
+  pubkeys preserved; chirp-tui chooses to render 1).
+
+#### iOS Swift tests
+
+- `TimelineBlock.swift` decodes the new shape.
+- `ModularBlockView.swift` continues to render.
+- `RootFeedSnapshot` Decodable test.
+
+#### Doctrine-lint test
+
+- `nmp-testing` test: `grep -E 'nip[0-9]+|marmot|profiledisplay'
+  crates/nmp-feed/src/` returns zero matches. CI gate.
+
+### K. Startup and identity-change semantics (REVISED per Q7 + codex H2-fiction fix)
+
+The pre-kind:3 cold-start gap is real and recurring (codex confirmed:
+`Kernel::new` initializes `timeline_authors` empty; every launch
+repopulates from network kind:3). v4 closes it at the source:
+
+**Cold start, follows unknown.** Engine constructed. Active account
+signs in via session persistence (existing). The kernel registers a
+tailing kind:3 sub for the active account (existing). KernelEvents
+flow:
+
+- Any kind:1 / kind:6 event whose author is NOT in `timeline_authors`
+  hits `should_store_event` (line 195) and would be dropped. **v4
+  enhancement:** before dropping, the kernel pushes the event into a
+  bounded pre-kind:3 buffer keyed by event id. The buffer is
+  `BoundedMessageMap<EventId, NostrEvent>` with `MAX_PROJECTION_MESSAGES`
+  capacity. The active user's own posts and the active user's own
+  pubkey are always admitted (existing seed: line 104-109 in
+  `contacts.rs` puts the active user's pubkey into `timeline_authors`
+  on `prepopulate_seed_contacts`).
+- The buffer is *only* consulted when `sync_follow_feed_interests`
+  runs (`crates/nmp-core/src/kernel/ingest/contacts.rs:86-119`). At
+  the end of that function, after `timeline_authors` is rebuilt, the
+  kernel walks the buffer; for every buffered event whose author is
+  now in `timeline_authors`, it re-runs the normal ingest path
+  (`Kernel::ingest_timeline_event` with the original sub_id). The
+  observer fan-out fires; the engine receives the event as ordinary
+  ingest. Replayed events are removed from the buffer.
+- Buffer entries whose author is still NOT in `timeline_authors`
+  after the kind:3 update are dropped from the buffer (they were
+  noise — e.g., follow-of-follow events arriving on the firehose).
+
+**This is invisible to the engine.** No new engine API, no scan
+API on the kernel surface (codex's "no event store iteration"
+constraint is satisfied because the buffer holds raw `NostrEvent`s in
+arrival order, not store entries). The engine just sees a slightly-
+delayed observer fan-out for events that arrived during the gap window.
+
+**Account switch.** `Kernel::active_account_handle()`
+(`crates/nmp-core/src/kernel/mod.rs:1265-1267`) is the existing
+substrate push seam. `ActiveFollowSet` registers an internal observer
+on the slot; when the active account changes, the adapter's `BTreeSet`
+is rebuilt against the new active account's `timeline_authors`. The
+`on_change` callback fires; `expand_follow_timeline_interests` runs
+with the new follow set. The engine receives a
+`reset_for_identity_change()` call from the wiring layer (it's a
+method on `RootIndexedFeed` that tears down `roots`, `attributions`,
+`pending_attributions`, `pending_pointers`, `profiles`). Pre-kind:3
+buffer for the previous account is also cleared.
+
+**Logout.** Same teardown rules as account switch. `ActiveFollowSet`
+returns an empty `BTreeSet`; predicate returns `false` for everyone;
+engine drops all incoming replies.
+
+**NIP-51 mute-list (post-v1 V-42).** Adapter-side subtraction:
+`ActiveFollowSet::predicate()` AND-clauses with `!is_muted(pubkey)`
+when the mute list is implemented. Tracked under V-42 in BACKLOG.
+
+### L. Repost edge cases (REVISED per codex H3-remainder)
+
+The engine gains an `event_lookup: Arc<dyn Fn(&EventId) ->
+Option<KernelEvent> + Send + Sync>` callback at construction time
+(supplied by `nmp-nip01`'s wiring layer; reads the kernel's
+read-cache).
+
+**L-1: Followed user reposts an OP.** Resolver returns `supersedes ==
+Some(target_id)`. Engine:
+1. Insert the kind:6 wrapper into `roots[target_id]` — `card_builder`
+   produces the `TimelineEventCard` (existing
+   `RenderPayload::from_event` handles embedded reposts and e-tag-only
+   reposts).
+2. If `target_id` not in `roots`, emit `Claim(Event(target_id), hints)`.
+
+**L-2: Followed user replies to a kind:6 wrapper.** `resolver.parent`
+returns `Some(ThreadPointer::Event { id: kind6_id, ... })`. Engine:
+1. Consult `event_lookup(kind6_id)`. If returns `Some(parent_event)`
+   AND `resolver.supersedes(&parent_event) == Some(target_id)`, re-key
+   the attribution to `target_id`.
+2. If `event_lookup` returns `None`, hold the attribution against
+   `kind6_id` AND emit `Claim(Event(kind6_id), hints)`. When the kind:6
+   wrapper arrives, the engine re-runs the supersedes check inside
+   `on_kernel_event` (it sees the new root) and re-keys via the
+   re-attribution loop.
+
+**L-3: Followed user replies to the original note.** Standard case A.
+No `event_lookup` needed.
+
+**L-4: Repost + reply on the same card.** Both display.
+`RootCard.card` (the `TimelineEventCard`) carries
+`reposted_by: Some(RepostAttribution)` AND
+`RootCard.attribution: vec![Nip10ReplyAttribution]`. Rendering rule in
+chirp-tui post_list.rs: repost banner above row 1, attribution below
+row 1.
+
+**L-5: E-tag-only repost (no embedded inner note).** The kind:6 event
+arrives with `e` tag but empty `content`. `RenderPayload::from_event`
+returns the empty placeholder card. Engine:
+1. Insert empty card into `roots[target_id]`.
+2. Emit `Claim(Event(target_id), hints)`.
+3. **When the target event later arrives**, the engine receives it as
+   normal ingest. The engine detects that `roots[target_id]` already
+   exists with the empty card AND `target_id` is the supersedes target
+   of an existing kind:6 wrapper in the engine state. Engine calls
+   `card_builder` again with both events, replaces the empty card with
+   the hydrated one. The card rebuild rule is: on every
+   `on_kernel_event` for an event id `e`, if `e` matches an existing
+   root's `supersedes` target, the engine looks up the kind:6 wrapper
+   via `event_lookup` and rebuilds the card from the pair.
+
+Tests in §3-J cover all five cases.
 
 ---
 
@@ -689,387 +965,273 @@ Tests split cleanly between layers:
 
 | Check | Status | Where |
 |---|---|---|
-| `nmp-core` introduces no NIP-named token | ✅ | New types: `FollowSetLookup` (capability), `LogicalInterest::SocialTimeline` (V-45 seam). Doctrine-lint banned-tokens unchanged. |
-| `nmp-feed` introduces no NIP-named token | ✅ | New types: `AttributionPayload`, `RootIndexedFeed<R, A>`, `RootCard<C, A>`, `RootFeedSnapshot<C, A>`, `ClaimRequest`. Public API names only substrate vocabulary. Verified by grep before merge. |
-| `nmp-router` introduces no NIP-named token | ✅ | Router untouched. |
-| No new bespoke `nmp_app_*` C-ABI symbol | ✅ | Root-claim action goes through existing `nmp_app_dispatch_action`. Projection registration goes through existing `nmp_app_register_event_observer` + `register_snapshot_projection`. |
-| No write-path outside `dispatch_action` | ✅ | Engine emits typed `ClaimRequest`; the instance translates to `dispatch_action`. The action enqueues `EnsureInterest` (substrate-canonical, same as `VisibleNoteRelationsAction`). |
-| No new poll loop | ✅ | All work is observer-driven (push-based). |
-| Display-separation (2026-05-25) | ✅ | `AttributionPayload` trait says nothing about display formatting. The NIP-10 instance carries raw pubkeys, raw Unix timestamps, `Option<String>` profile mirrors. No `display::` calls in any of `nmp-feed::root_indexed`, `nmp-nip01::op_feed`, or the FFI snapshot path. |
-| File-size ceiling (500 LOC hard) | ✅ | Engine module in `nmp-feed` targets ~400 LOC + ~280 LOC tests in a sibling test file. Instance modules in `nmp-nip01` target ~100 LOC + ~200 LOC tests. `timeline_projection.rs` (579 LOC today) is unchanged. |
-| Single-source-of-truth per fact | ✅ | One engine owns attribution. One capability projects the follow set. One action writes new interests. |
-| V-45 prerequisite | ✅ | Co-delivered as Stage 0. |
-| ADR-0027 (open `ActorCommand`) | ✅ | Reuses existing `EnsureInterest` / `DropInterestOwner`; no new variant. |
-| `nmp-feed` dep graph unchanged | ✅ | Existing deps: `nmp-core`, `nmp-threading`, `serde`, `serde_json`. No new `nmp-nip*` edge introduced. (Confirmed by reading `crates/nmp-feed/Cargo.toml`.) |
-| `nmp-nip01` dep graph unchanged | ✅ | Existing deps: `nmp-core`, `nmp-content`, `nmp-feed`, `nmp-nip18`, `nmp-nip57`, `nmp-threading`. No new edges. (Confirmed by reading `crates/nmp-nip01/Cargo.toml`.) |
-| F-05 codegen impact | ⚠ | `TimelineBlock` schema change (rung 2) + new `RootFeedSnapshot<C, A>` shape (rung 5) require Swift Decodable regeneration. F-05 is the canonical owner; this proposal ships codegen passes alongside the touching PR. |
-| Doctrine-lint scoped | ✅ | `cargo test -p nmp-testing --test doctrine_lint_smoke` runs unchanged; no banned tokens introduced. |
-| Crate-boundary spec update | ⚠ | `docs/architecture/crate-boundaries.md` §2 (per-crate table) needs a one-row update to record `nmp-feed`'s expanded charter ("owns the generic OP-centric feed engine"). Lands in rung 6 (Stage 4). |
+| `nmp-core` introduces no NIP-named token | ✅ | Additions: pre-kind:3 buffer (substrate-named field), `event_claim_released` projection (substrate-named), `OneshotApi::request` hints parameter (no NIP), `active_timeline_authors()` accessor, `release_event` calls `release_claim_expansion`. No FollowSetLookup, no SocialTimeline. |
+| `nmp-feed` introduces no NIP-named token | ✅ | `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`, `ClaimRequest`. `Profile` is associated type. CI grep test. |
+| `nmp-router` introduces no NIP-named token | ✅ | Untouched. |
+| `nmp-planner` introduces no NIP-named token | ✅ | Untouched (composition-root expansion overrides v3's planner-side seam). |
+| No new bespoke `nmp_app_*` C-ABI symbol | ✅ | Existing `nmp_app_claim_event`, `nmp_app_release_event`, `nmp_app_register_event_observer`. No new symbol. |
+| Doctrine path correct | ✅ | `docs/product-spec/doctrine.md`. |
+| No write-path outside `dispatch_action` | ✅ | Hydration is read. |
+| No new poll loop | ✅ | Observer-driven; pre-kind:3 buffer drains synchronously when kind:3 lands. |
+| Display-separation | ✅ | Raw pubkeys, raw timestamps, `Option<String>` mirrors. **No `attribution_total` — Vec length is the count.** |
+| File-size ceiling | ✅ | Engine ~450 + ~320 tests; instance ~150 + ~220 tests; adapter ~120 + ~100 tests; kernel adds ~180 + ~180 tests. None breach. |
+| Single-source-of-truth | ✅ | Engine `attributions` is single owner; `event_claims[primary_id]` is single refcount. |
+| V-45 prerequisite | ✅ | Closed by `register_op_feed_defaults` (composition-root expansion replaces SocialTimeline). |
+| ADR numbering | ✅ | 0035 + 0036 (0033, 0034 already taken). |
+| Crate dep graph | ✅ | New edges: `nmp-nip02 → nmp-feed` NOT needed (nmp-nip02 has no `FollowSetLookup` trait to implement); `nmp-app-template → nmp-nip02` (already exists); `nmp-app-template → nmp-nip01` (already exists). NO `nmp-planner → nmp-feed` cycle. |
+| F-05 codegen | ⚠ | TimelineBlock shape (rung 2) + RootFeedSnapshot (rung 5) regenerate Swift Decodables. |
+| Doctrine-lint scoped | ✅ | `cargo test -p nmp-testing --test doctrine_lint_smoke` + new `op_feed_doctrine_lint` test. |
+| Crate-boundary spec update | ⚠ | Rung 7 updates `nmp-feed` row (charter expands to OP-centric engine + the closure-shaped predicate / event_lookup capabilities) and `nmp-nip02` row (gains ActiveFollowSet producer). |
 
 ---
 
 ## 5. Concrete change list (file-by-file)
 
-Each PR stays ≤500 LOC per file. The overall delta is concentrated in
-`nmp-feed` (new engine module) and `nmp-nip01` (new thin instance).
+### Stage 0 — Kernel API additions (rung 1)
 
-### Stage 0 — V-45 + `FollowSetLookup` (PR ladder rung 1)
+> Five small substrate additions that close codex's remaining gaps and
+> deliver Q7 (pre-kind:3 replay). All substrate-named.
 
-> Prerequisite. Without it the engine has no follow-set lookup and the
-> view module has no declarative seam.
-
-| File | Change | LOC ±  |
+| File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-core/src/substrate/lookups.rs` | **NEW** — `FollowSetLookup` trait. | +40 |
-| `crates/nmp-core/src/substrate/mod.rs` | Export `FollowSetLookup`. | +2 |
-| `crates/nmp-core/src/kernel/types.rs` + `kernel/follow_set_lookup_impl.rs` | **NEW** — `impl FollowSetLookup` over the existing `timeline_authors` field. | +60 |
-| `crates/nmp-planner/src/interest.rs` | Add `LogicalInterest::SocialTimeline` (per Q2's chosen shape). | +30 |
-| `crates/nmp-planner/src/compiler/mod.rs` | Expand `SocialTimeline` at compile time via `Arc<dyn FollowSetLookup>`. | +50 |
-| `crates/nmp-app-template/src/lib.rs` | Wire `FollowSetLookup` impl into the canonical builder. | +20 |
-| `docs/BACKLOG.md` | Close V-45. | n/a |
-| `docs/decisions/0033-followsetlookup-substrate-capability.md` | **NEW ADR** documenting the read seam. | +120 |
+| `crates/nmp-core/src/kernel/types.rs` | Add typed `active_timeline_authors() -> Vec<String>` accessor. | +15 |
+| `crates/nmp-core/src/kernel/ingest/timeline.rs` | Pre-kind:3 buffer: when `should_store_event` returns `false` due to `!timeline_authors.contains(author)` AND the event is kind:1 or kind:6, push into `Kernel::pre_kind3_buffer` (a new `BoundedMessageMap<EventId, NostrEvent>` field) instead of dropping. | +40 |
+| `crates/nmp-core/src/kernel/ingest/contacts.rs` | At end of `sync_follow_feed_interests`, walk `pre_kind3_buffer` and re-run `ingest_timeline_event` for entries whose author is now in `timeline_authors`. Drop the rest. | +30 |
+| `crates/nmp-core/src/kernel/mod.rs` | Add `pre_kind3_buffer: BoundedMessageMap<EventId, NostrEvent>` field; clear it on identity-change. | +10 |
+| `crates/nmp-core/src/subs/oneshot.rs` | `OneshotApi::request` gains `hints: Vec<RelayHint>` parameter; populate `LogicalInterest.hints` from it. Update every caller. | +15 / -3 |
+| `crates/nmp-core/src/kernel/requests/event.rs` | `claim_event` passes URI relay hints into `OneshotApi::request` as initial `LogicalInterest.hints` (in addition to existing `register_claim_expansion`). `release_event` calls `release_claim_expansion(&primary_id)` at the end of the refcount-to-zero arm. | +18 / -2 |
+| `crates/nmp-core/src/kernel/oneshot/complete.rs` (or wherever `complete_unknown_oneshot` lives) | EOSE-no-match path clears `event_claims` + `event_claim_requested` for the primary_id AND pushes into `event_claim_released` ring. | +20 |
+| `crates/nmp-core/src/kernel/types.rs` | Add `event_claim_released: BoundedRingBuffer<EventId>` field + projection accessor. | +25 |
+| `crates/nmp-core/src/kernel/event_observer.rs` | Allow observers to register a `RawEventObserver`-shaped callback for `event_claim_released` ring updates. | +30 |
+| `crates/nmp-core/src/kernel/types_tests.rs` + sibling test files | Tests for pre-kind:3 buffer, initial hints, no-match release. | +180 |
 
-### Stage 1 — `nmp-threading::TimelineBlock` lossless variant (PR ladder rung 2)
+### Stage 1 — `nmp-threading::TimelineBlock` lossless + all consumers (rung 2)
 
-| File | Change | LOC ±  |
+| File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-threading/src/block.rs` | Reshape `Standalone(EventId)` → `Standalone { id, root }`. Update `len()` / `is_empty()`. | +25 / -10 |
-| `crates/nmp-threading/src/grouper.rs` | Fix line 367: chain-length-1 keeps the root pointer. Update `remove_id_from_blocks` Standalone arm. Update `find_block_with_leaf` Standalone arm. | +12 / -8 |
-| `crates/nmp-threading/tests/grouper.rs` | Test: single-event chain with reply marker emits `Standalone { id, root: Some(_) }`. | +35 |
-| `crates/nmp-nip01/src/meta_timeline/tests.rs` | Update Standalone-shape expectations. | +10 / -10 |
-| `crates/nmp-nip01/src/timeline_projection.rs` | Pattern-match the new shape (read-only consumer). | +5 / -3 |
-| `apps/chirp/chirp-tui/src/timeline.rs` | **Load-bearing in-PR fix:** update `ids_from_block` JSON match arms to read `Standalone` as an object (was a string). Keep the home feed rendering through `ModularTimelineProjection` correctly between rungs 2 and 5. | +20 / -10 |
-| `apps/chirp/chirp-tui/src/timeline/tests.rs` | Update Standalone JSON fixtures. | +15 / -10 |
+| `crates/nmp-threading/src/block.rs` | Reshape `Standalone` → `Standalone { id, root }`. | +25 / -10 |
+| `crates/nmp-threading/src/grouper.rs` | Fix `grouper.rs:367` chain-length-1 root preservation. Update lines 254, 269, 277, 296, 394, 438, 558, 566. | +20 / -15 |
+| `crates/nmp-threading/tests/grouper.rs` | Update tests at lines 125, 139, 261, 450, 474, 486, 508, 522, 537, 544; add new lossless-shape test. | +50 / -20 |
+| `crates/nmp-feed/src/types.rs` | Update `FeedBlock for TimelineBlock` at lines 87-93. | +5 / -3 |
+| `crates/nmp-nip01/src/timeline_projection/tests.rs` | Update Standalone test fixtures at lines 76, 90, 91, 108, 109, 139, 164. | +15 / -15 |
+| `crates/nmp-nip01/src/meta_timeline/tests.rs` | Update lines 146, 172. | +5 / -5 |
+| `crates/nmp-nip01/src/timeline_projection.rs` | Pattern-match new shape (read-only). | +5 / -3 |
+| `apps/chirp/nmp-app-chirp/tests/end_to_end.rs` | Update line 130. | +3 / -2 |
+| `apps/chirp/chirp-tui/src/timeline.rs` | Update `ids_from_block` to read object shape. | +20 / -10 |
+| `apps/chirp/chirp-tui/src/timeline/tests.rs` | Update Standalone JSON fixtures. | +25 / -20 |
+| `ios/Chirp/Chirp/Bridge/TimelineBlock.swift` | Rewrite Standalone decode to object form; update enum associated values. | +30 / -10 |
+| `ios/Chirp/Chirp/Bridge/ModularTimelineBridge.swift`, `HomeFeedView.swift`, `ModularBlockView.swift` | Update pattern matches. | +18 / -8 |
+| `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift` | Regenerated. | varies |
+| Swift fixtures under `ios/Chirp/ChirpTests/**` | Update. | varies |
 
-### Stage 2a — `nmp-feed` generic engine (PR ladder rung 3) — NEW STAGE
+### Stage 2 — `nmp-feed` generic engine (rung 3)
 
-| File | Change | LOC ±  |
+| File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-feed/src/root_indexed.rs` | **NEW** — `trait AttributionPayload`, `struct RootIndexedFeed<R, A>` (inner state machine), `RootCard<C, A>`, `RootFeedSnapshot<C, A>`, `ClaimRequest`. Implements `KernelEventObserver` + `FeedController`. | +400 |
-| `crates/nmp-feed/src/root_indexed/tests.rs` | **NEW** — generic engine tests with synthetic resolver + payload. Covers every arrival ordering case + eviction + repost supersession + non-follow drop. | +280 |
-| `crates/nmp-feed/src/lib.rs` | Export `AttributionPayload`, `RootIndexedFeed`, `RootCard`, `RootFeedSnapshot`, `ClaimRequest`. | +8 |
-| `crates/nmp-feed/Cargo.toml` | No change (deps already cover what's needed). | 0 |
-| `docs/decisions/0034-generic-root-indexed-feed-engine.md` | **NEW ADR** documenting the engine + the one-engine-N-instances pattern. | +220 |
+| `crates/nmp-feed/src/root_indexed.rs` | **NEW** — `trait AttributionPayload<Profile>`, `struct RootIndexedFeed<R, A>`, `RootCard<C, A>`, `RootFeedSnapshot<C, A>`, `ClaimRequest`. Closure-shaped `follow` + `event_lookup`. Implements `KernelEventObserver` + `FeedController` + observer for `event_claim_released`. | +450 |
+| `crates/nmp-feed/src/root_indexed/tests.rs` | **NEW** — engine tests with synthetic resolver + payload + predicate + event_lookup. Covers every arrival case, eviction, repost L-2 / L-5 via event_lookup, D5 visible-window assertion, serde round-trip. | +320 |
+| `crates/nmp-feed/src/lib.rs` | Export new items. | +12 |
+| `crates/nmp-testing/tests/op_feed_doctrine_lint.rs` | **NEW** — CI grep gate. | +30 |
+| `docs/decisions/0035-generic-root-indexed-feed-engine.md` | **NEW ADR**. | +250 |
 
-### Stage 2b — `nmp-nip01` instance (PR ladder rung 4)
+### Stage 3 — `nmp-nip02` follow-set producer (rung 4)
 
-| File | Change | LOC ±  |
+| File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-nip01/src/op_feed/mod.rs` | **NEW** — re-export module surface. | +20 |
-| `crates/nmp-nip01/src/op_feed/attribution.rs` | **NEW** — `Nip10ReplyAttribution: AttributionPayload`. | +90 |
-| `crates/nmp-nip01/src/op_feed/wiring.rs` | **NEW** — `register_op_feed(app, viewer)` that constructs `RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>`, registers it, and wires the `ClaimRequest` callback to `dispatch_action`. | +80 |
-| `crates/nmp-nip01/src/op_feed/root_claim.rs` | **NEW** — `ThreadRootClaimAction { Claim, Release }`, `ThreadRootClaimModule: ActionModule`, `thread_root_claim_interest_id`, `thread_root_claim_interest`, `thread_root_claim_identity`, `register_thread_root_claim_actions`. Mirrors `visible_relations.rs`. | +140 |
-| `crates/nmp-nip01/src/op_feed/tests.rs` | **NEW** — instance integration tests + action shape tests. | +200 |
-| `crates/nmp-nip01/src/lib.rs` | Export `op_feed` module. | +12 |
+| `crates/nmp-nip02/src/active_follow_set.rs` | **NEW** — `ActiveFollowSet`. Internal observer over kind:3 ingest. Internal observer over `Kernel::active_account_handle()`. Exposes `follows()`, `predicate()`, `on_change()`. NO `FollowSetLookup` trait. | +120 |
+| `crates/nmp-nip02/src/active_follow_set/tests.rs` | **NEW** — kind:3 ingest, account switch, logout, on_change firing. | +100 |
+| `crates/nmp-nip02/src/lib.rs` | Export. | +6 |
+| `docs/decisions/0036-composition-root-followset-expansion.md` | **NEW ADR** — why no planner SocialTimeline, why composition-root. | +200 |
 
-### Stage 3 — Chirp wiring (PR ladder rung 5)
+### Stage 4 — `nmp-nip01` OP-feed instance (rung 5)
 
-| File | Change | LOC ±  |
+| File | Change | LOC ± |
 |---|---|---|
-| `apps/chirp/nmp-app-chirp/src/ffi/register.rs` | Construct via `nmp_nip01::register_op_feed(app, viewer)` instead of `ModularTimelineProjection`. Drop the ~30 LOC of hand-rolled follow-set wiring (V-45 affordance). | +10 / -50 |
-| `apps/chirp/chirp-tui/src/timeline.rs` | Rewrite `TimelineRow::from_snapshot` to consume `RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribution>` JSON. Delete `ids_from_block`, `event_root_mismatches_top`, `is_partial_chain_head`. Add `thread_attribution: Vec<RowReplyAttribution>` field. | +60 / -100 |
-| `apps/chirp/chirp-tui/src/ui/post_list.rs` | Delete the `↳ reply in thread` indicator (lines 138-156). Add a new attribution row that renders the follow repliers below row 1. Update layout. | +50 / -25 |
-| `apps/chirp/chirp-tui/src/timeline/tests.rs` | **DELETE** the partial-chain tests (per §3-J). **ADD** new tests for RootCard mapping. | +220 / -160 |
-| `apps/chirp/chirp-tui/src/render_intents.rs`, `media_cache.rs` | Drop `is_partial_chain_head: false` literals. | -2 |
-| `ios/Chirp/Chirp/Bridge/Generated/*.swift` | Regenerated via `nmp-codegen` for `RootFeedSnapshot` + `Nip10ReplyAttribution`. | varies |
+| `crates/nmp-nip01/src/op_feed/mod.rs` | **NEW** — module surface. | +20 |
+| `crates/nmp-nip01/src/op_feed/attribution.rs` | **NEW** — `Nip10ReplyAttribution: AttributionPayload<Profile = ProfileDisplay>`. | +100 |
+| `crates/nmp-nip01/src/op_feed/wiring.rs` | **NEW** — `register_op_feed(app, viewer, predicate, event_lookup)`. Constructs engine, registers observer + snapshot projection at `"nmp.feed.home"`, installs claim sink mapping `ClaimRequest::Claim/Release` → `nmp_app_claim_event`/`nmp_app_release_event`, installs `event_claim_released` observer forwarding to the engine. | +150 |
+| `crates/nmp-nip01/src/op_feed/tests.rs` | **NEW** — instance tests + repost L-1 through L-5 + claim URI encoding. | +260 |
+| `crates/nmp-nip01/src/lib.rs` | Export. | +12 |
 
-### Stage 4 — `nmp-app-template` affordance + crate-boundary spec (PR ladder rung 6)
+### Stage 5 — `nmp-app-template` composition (rung 6)
 
-| File | Change | LOC ±  |
+| File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-app-template/src/lib.rs` | Add `register_op_feed(builder, viewer)` to `register_defaults` so any app composing `nmp-app-template` gets the OP feed for free. | +25 |
-| `docs/architecture/crate-boundaries.md` | One-row update in §2 per-crate table for `nmp-feed`: charter expands to "generic OP-centric feed engine over `ParentResolver` + `AttributionPayload`, plus existing cursor/window/registry primitives." Add the engine to the "Owns" column. | +15 |
-| `docs/BACKLOG.md` | Close V-45 (Stage 0), close V-37c (already extracted), add V-59 (this work). | varies |
-| `docs/plan.md` | Bump framework-thesis status: a second-app composer can now declare a home feed in one line; second protocol composes by adding `(R, A)` only. | +5 |
+| `crates/nmp-app-template/src/op_feed_defaults.rs` | **NEW** — `register_op_feed_defaults(app, viewer)`. Constructs `ActiveFollowSet`, calls `expand_follow_timeline_interests`, registers `on_change` callback re-running expansion, calls `nmp_nip01::register_op_feed`. | +120 |
+| `crates/nmp-app-template/src/expand_follow_interests.rs` | **NEW** — `expand_follow_timeline_interests(app, follows, viewer)`. Builds per-follow `LogicalInterest` (kinds 1, 6, Tailing, limit 200); registers via the existing actor command surface. Mirrors `kernel::ingest::contacts::sync_follow_feed_interests` body. | +90 |
+| `crates/nmp-app-template/src/lib.rs` | Export. | +8 |
+| `crates/nmp-app-template/tests/op_feed_defaults_test.rs` | **NEW** — integration test: register defaults; feed events; assert snapshot. | +180 |
 
-**Total worktree footprint:** 7 PRs, ~1,700 LOC net add (concentrated in
-the new `nmp-feed::root_indexed` + `nmp-nip01::op_feed` modules), ~250
-LOC delete (chirp-tui partial-chain logic + hand-rolled follow-set
-wiring).
+### Stage 6 — Chirp wiring (rung 7)
+
+| File | Change | LOC ± |
+|---|---|---|
+| `apps/chirp/nmp-app-chirp/src/ffi/register.rs` | Replace `ModularTimelineProjection` registration with `nmp_app_template::register_op_feed_defaults(app, viewer)`. Drop ~30 LOC of hand-rolled follow-set wiring. | +5 / -50 |
+| `apps/chirp/chirp-tui/src/timeline.rs` | Rewrite `TimelineRow::from_snapshot` for `RootFeedSnapshot`. Delete `ids_from_block`, `event_root_mismatches_top`, `is_partial_chain_head`. Add `thread_attribution: Vec<RowReplyAttribution>` field. | +60 / -100 |
+| `apps/chirp/chirp-tui/src/ui/post_list.rs` | Delete ↳ indicator. Add attribution row (chirp-tui's display policy: render the most recent 1 with "and N others"). Apply L-4 rule. | +50 / -25 |
+| `apps/chirp/chirp-tui/src/timeline/tests.rs` | Delete partial-chain tests; add RootCard mapping tests. | +220 / -160 |
+| `apps/chirp/chirp-tui/src/render_intents.rs`, `media_cache.rs` | Drop `is_partial_chain_head: false`. | -2 |
+| `ios/Chirp/Chirp/Bridge/Generated/*.swift` | Regenerated for `RootFeedSnapshot` + `Nip10ReplyAttribution`. | varies |
+| `crates/nmp-codegen/src/swift_projections_registry.rs` | Bind `nmp.feed.home` to new `OpFeedSnapshot` Swift type. | +6 / -3 |
+| `docs/architecture/crate-boundaries.md` | Row updates for `nmp-feed` and `nmp-nip02`. | +25 |
+| `docs/BACKLOG.md` | Close V-45 (resolved via composition-root expansion). Add V-59 (this work). Add V-60 (mute-list interaction post-v1, per Q5 + §3-K). Add V-61 (NIP-22 instance post-v1, per Q5). | varies |
+| `docs/plan.md` | Bump framework-thesis status. | +5 |
+
+**Total worktree footprint:** ~7 PRs, ~2,400 LOC net add (engine + tests
++ instance + adapter + composition + kernel API + ADRs), ~310 LOC delete.
 
 ---
 
-## 6. Sequencing plan — PR-by-PR
+## 6. Sequencing plan — 7 rungs
 
-Each rung is independently mergeable, leaves master green, and produces
-no mid-state where the home feed is broken.
+Each rung independently mergeable, leaves master green.
 
-### Rung 1 — Substrate seam: `FollowSetLookup` + `LogicalInterest::SocialTimeline` (Stage 0)
+1. **Rung 1 — Stage 0 — Kernel API additions.** Pre-kind:3 buffer,
+   `event_claim_released` projection, `OneshotApi::request` hints,
+   `release_event` calls `release_claim_expansion`,
+   `active_timeline_authors` accessor. Pure substrate additions. No
+   consumer yet. Master state: unchanged user-facing behavior; faster
+   discovery for every existing `claim_event` caller (URI hints land
+   on FIRST REQ).
+2. **Rung 2 — Stage 1 — Lossless `TimelineBlock` + all consumers.**
+   In-PR patches every cited consumer. Master: home feed unchanged in
+   behavior; previously-invisible Standalone roots now flag correctly
+   in the existing ↳ indicator.
+3. **Rung 3 — Stage 2 — `nmp-feed` engine.** ADR-0035. No consumer yet.
+   CI grep gate enforces D0. Master: unchanged.
+4. **Rung 4 — Stage 3 — `nmp-nip02` `ActiveFollowSet`.** Producer only,
+   no consumer. Master: unchanged.
+5. **Rung 5 — Stage 4 — `nmp-nip01` instance.** ADR-0036. Composes the
+   engine with the NIP-10 resolver + payload + adapter predicate.
+   Master: unchanged (Chirp not wired yet).
+6. **Rung 6 — Stage 5 — `nmp-app-template` composition.** One-line
+   affordance lands. Composing apps get the feed. Master: unchanged
+   (Chirp not wired yet).
+7. **Rung 7 — Stage 6 — Chirp cut-over.** Product-visible PR. chirp-tui
+   + iOS Swift consume `RootFeedSnapshot`. Live validation against
+   `wss://relay.damus.io`. Master: Chirp shows the OP-centric home
+   feed.
 
-- Lands the trait, the kernel-side impl over `timeline_authors`, the
-  planner expansion, and `nmp-app-template` wiring.
-- ADR-0033.
-- **Tested in isolation**: planner unit tests cover expansion; kernel
-  tests cover the impl.
-- **Master state after merge**: unchanged user-facing behavior. V-45 closed.
+**Parallelization:** rungs 2 + 3 + 4 + 5 are largely independent on the
+file level (different crates). Sensible execution order: 1 → (2 ‖ 3 ‖
+4) → 5 → 6 → 7.
 
-### Rung 2 — Lossless `TimelineBlock::Standalone { id, root }` (Stage 1)
-
-- The grouper bug fix proper.
-- JSON schema change; chirp-tui's `ids_from_block` patched in-flight in
-  the same PR so the home feed stays green.
-- **Tested in isolation**: grouper tests, meta_timeline tests, chirp-tui
-  timeline tests (including a regression test for the new
-  Standalone-with-root JSON fixture).
-- **Master state after merge**: home feed unchanged in user behavior;
-  the ↳ indicator from PR #710 keeps working and now also fires for
-  Standalone-with-root cases that previously couldn't be detected.
-
-### Rung 3 — `nmp-feed` generic engine (Stage 2a) — NEW
-
-- Ships `AttributionPayload` + `RootIndexedFeed<R, A>` + the snapshot
-  types. No NIP code yet.
-- ADR-0034.
-- **Tested in isolation**: 280 LOC of engine state-machine tests using a
-  synthetic `ParentResolver` and synthetic `AttributionPayload`. Proves
-  the engine is genuinely generic (zero NIP imports anywhere in the
-  test file).
-- **Doctrine-lint verification**: `grep -E 'nip[0-9]+|marmot' crates/nmp-feed/src/`
-  returns zero matches before merge.
-- **Master state after merge**: Chirp behavior unchanged. The engine is
-  available to instances; no instance exists yet.
-
-### Rung 4 — `nmp-nip01` instance + claim action (Stage 2b)
-
-- Ships `Nip10ReplyAttribution`, `register_op_feed`,
-  `nmp.nip01.thread_root.claim` action.
-- **Tested in isolation**: attribution decode tests (kind filter, follow
-  filter, NIP-10 reply marker filter), action shape tests, end-to-end
-  registration test.
-- **Master state after merge**: Chirp behavior unchanged. Any app calling
-  `nmp_nip01::register_op_feed` now gets the OP-centric home feed; Chirp
-  does not yet.
-
-### Rung 5 — Chirp cut-over (Stage 3)
-
-- Chirp swaps `nmp.feed.home` from `ModularTimelineProjection` to
-  `RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution>` via
-  `register_op_feed`. chirp-tui rewrites `TimelineRow::from_snapshot`
-  for the new shape. Partial-chain tests deleted; new tests added.
-- This is the **product-visible PR**. The user-facing behavior change
-  lands here.
-- **Tested**: chirp-tui tests + live validation against
-  `wss://relay.damus.io`. PR description includes screenshots of the new
-  attribution rendering.
-- **Master state after merge**: Chirp + chirp-tui show the OP-centric
-  home feed. PR #710's ↳ indicator is gone (its information is now
-  carried by the attribution row).
-
-### Rung 6 — `nmp-app-template` + crate-boundary spec (Stage 4)
-
-- One-line affordance in the canonical template.
-- Crate-boundary spec updated to record `nmp-feed`'s expanded charter.
-- BACKLOG / plan updates.
-- **Tested**: `nmp-app-template` integration tests verify a
-  default-registered app produces a `RootIndexedFeed` over the NIP-10
-  instance.
-- **Master state after merge**: framework thesis strengthened. V-45
-  closed with a working consumer. Any new social app composes the OP
-  feed with one line.
-
-**Parallelization:** rung 2 (`nmp-threading` block reshape) and rung 3
-(`nmp-feed` engine) operate on different crates and don't conflict on
-files. They can land in either order. Rung 4 depends on both (it
-consumes the new `Standalone { id, root }` for resolver decisions in
-some test fixtures, and it consumes `RootIndexedFeed`). Rung 5 depends
-on rung 4. Rung 6 depends on rung 5.
-
-**Total wall-clock estimate:** 6-8 days for a single agent at the
-file-by-file detail above.
+**Wall-clock estimate:** 8-10 days for a single agent.
 
 ---
 
-## 7. Open questions (require user decision)
+## 7. Residual concerns tracked as BACKLOG TODOs
 
-### Q1. Attribution cap and "deletion" semantics
+> Per the user's "no further revision rounds" rule, anything not
+> resolved in v4 lands as a BACKLOG TODO, not as v5.
 
-**Decision needed:** when 4+ follows reply to one OP, does the feed show
-"Alice, Bob, Carol, Dave replied" (full enumeration up to cap N) or
-"Alice and 3 others replied" (first M enumerated + total count)?
-
-Proposal recommends N=8 enumerated + `attribution_total: u32`. Display
-layer composes "Alice, Bob, Carol, Dave, Eve, Fox, Greg, Hari, and 12
-others replied" if needed.
-
-**Also:** is per-session append-only attribution acceptable for v1, or
-do we need NIP-09 deletion handling? Existing `NoteRelationIndex` has
-no deletion path either. Cleanest fix is global, not OP-feed-specific.
-
-**Default if no answer:** N=8, append-only, deletion handled post-v1
-under a separate `nmp-nip09` work item.
-
-### Q2. `LogicalInterest::SocialTimeline` — enum variant or composition?
-
-**Decision needed:** today `LogicalInterest` is a struct. V-45 named the
-seam as if it were an enum variant. Two shapes:
-
-- **(a)** Convert to enum with `Concrete { ... }` + `SocialTimeline {
-  viewer, kinds }`. Cleaner expansion path; breaks every existing call
-  site.
-- **(b)** Keep the struct; add `kind: InterestKind` discriminator field
-  where `InterestKind` is `Concrete | SocialTimeline { viewer, kinds }`.
-  Minimum disruption.
-
-Proposal recommends **(b)**. The user's "right not smallest" framing
-might favor (a); flagged.
-
-### Q3. Repost behavior under the OP-centric model
-
-**Decision needed:** today the modular projection puts a kind:6 repost
-in the feed as a card attributed to the reposter, with the embedded
-inner note as the body. Should the OP-centric feed preserve this?
-
-The proposal preserves it. The engine's `on_kernel_event` handles
-repost-shaped events via `ParentResolver::supersedes` (the existing
-trait method — `Nip10Resolver` already implements it). When a
-followed user reposts, the target is the surfaced root; the
-`RepostAttribution` on the existing `TimelineEventCard` carries the
-reposter identity. Reply attribution and repost attribution are
-orthogonal: a card can have neither, either, or both, though in
-practice they rarely co-occur.
-
-**Default if no answer:** reposts stay (kind:6 supersedes target into a
-card; reply attribution layers on top).
-
-### Q4. Self-replies — do my own replies surface my own OPs?
-
-**Decision needed:** when the active user replies to a non-followed
-user's OP, should that promote the OP into the feed (treating the
-active user as a follow for attribution purposes)?
-
-Proposal recommends **yes** — `FollowSetLookup::is_followed` returns
-`true` for the viewer's own pubkey (already true today via
-`sync_follow_feed_interests`). Consistent with existing behavior.
-
-### Q5. NIP-22 (kind:1111) comments — same model?
-
-**Decision needed:** NIP-22 is the ONE Nostr protocol covering ALL
-non-kind:1 reply structures (comments on NIP-23 longform articles,
-NIP-94 file metadata, NIP-99 classified listings, podcast episodes
-under NIP-54, etc.). Does the OP-centric feed also surface follow's
-NIP-22 comments as attribution on their root events?
-
-The proposal scopes this **out for v1**. Post-v1 work is one
-`Nip22ReplyAttribution` payload type + one `Nip22Resolver` (both in a
-future `nmp-nip22` crate) + a `register_op_feed_for_comments(app,
-viewer)` helper. ZERO additional engine code — `RootIndexedFeed<R, A>`
-absorbs the second instance unchanged. This is the framework-thesis
-demonstration baked into the design.
-
-There is no per-kind resolver explosion: kind:1 replies use NIP-10,
-every other kind's reply tree uses NIP-22. The two resolvers cover the
-entire Nostr reply universe.
-
-### Q6. Root-hydration latency trade-off
-
-**Decision needed:** when Alice (a follow) replies to Bob's unfollowed
-OP, the engine emits `ClaimRequest::Claim` and waits for the OneShot
-REQ against the indexer to return (200ms–5s typical, longer on cold
-start). During that window:
-
-- **(a) D1-strict (proposal default)** — hold attribution invisibly in
-  `pending_attributions`; show nothing until root lands. Correct-but-laggy.
-- **(b) Tombstone-card** — render a placeholder. Violates D1: the OP's
-  body, author, and timestamp are all unknown.
-
-Proposal recommends **(a)** as the doctrine-honest default. Post-v1
-improvements: pre-warm an indexer subscription for "any event id
-appearing as a root pointer in recent follow's kind:1s"; render a
-RoutingTraceObserver hint in debug builds only.
-
-**Default if no answer:** (a). Latency documented as the cost of
-doctrine-correct rendering.
+- **V-60:** NIP-51 mute-list interaction with the OP feed. Adapter-side
+  subtraction in `ActiveFollowSet::predicate`. Post-v1.
+- **V-61:** NIP-22 (kind:1111) `RootIndexedFeed` instance covering ALL
+  non-kind:1 root kinds. ~150 LOC; zero engine changes. Post-v1.
+- **V-62:** Retire `timeline_authors` field from `nmp-core`. It is
+  itself a social concept in substrate; `ActiveFollowSet` should
+  eventually own the canonical view. Out of scope for v4. Tracked debt.
+- **V-63:** `claim_event` EOSE-driven release vs. host-release-driven
+  refcount mismatch. Codex §6 out-of-scope observation. Cleanup not
+  load-bearing for OP feed. Post-v1.
+- **V-64:** `event_provenance` accessor for the engine. Currently the
+  engine constructs `RelayHint::Provenance` for the reply event; the
+  kernel has the provenance data internally. Cleanest shape is a typed
+  `Kernel::event_provenance(event_id) -> Option<&str>` accessor.
+  Tracked as a sub-item of rung 1 for the implementer to evaluate (if
+  the simpler "host adapter passes Alice's reply id as a hint and the
+  kernel resolves it" works, skip V-64).
 
 ---
 
-## 8. Backlog entry (draft for `docs/BACKLOG.md`)
+## 8. Backlog entry (final draft for `docs/BACKLOG.md`)
 
 ```markdown
 ### V-59 · Home feed is thread-roots-only with reply attribution [HIGH · v1 PRODUCT-MODEL FIX]
 
-**Status:** spec proposed 2026-05-27 in
+**Status:** spec FINAL 2026-05-27d, ready for implementation. Full design at
 [`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md).
 
-**Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
-replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
-indicator as a partial mitigation, but the product model the user wants is
-different: **feed = thread roots only; follows' replies attribute back to
-their root**. A follow's reply to a non-followed OP should surface the OP
-with a "↳ Alice replied" badge. Reply rows never stand alone.
+**Evidence:** today's home feed (chirp-tui + Chirp iOS) shows replies as
+standalone rows; PR #710 added a ↳ partial mitigation. Product model is
+**feed = thread roots only; follows' replies attribute back to their root**.
 
-Today's code drops the root pointer on chain-length-1 standalone blocks
-(`crates/nmp-threading/src/grouper.rs:367`), defeats attribution at the
-threading layer, and lacks any mechanism to fetch a non-followed root id
-into the local store (the existing thread-hydration logic
-`enqueue_thread_hydration_from_event` only fires when a thread detail view
-is open — `crates/nmp-core/src/kernel/ingest/timeline.rs:213-241`).
+**Architectural shape:** generic engine `RootIndexedFeed<R, A>` in `nmp-feed`
+parameterized over `ParentResolver` + `AttributionPayload<Profile=…>` +
+closure-shaped follow predicate + event-lookup callback. NIP-10 instance in
+`nmp-nip01`. Follow-set producer in `nmp-nip02`. Composition root in
+`nmp-app-template`. Kernel additions (rung 1): pre-kind:3 ingest buffer,
+`event_claim_released` projection, `OneshotApi::request` initial hints,
+`release_event` calls `release_claim_expansion`. Root hydration via existing
+`Kernel::claim_event` / `nmp_app_claim_event` — no bespoke action.
 
-**Architectural shape:** the engine `RootIndexedFeed<R: ParentResolver, A:
-AttributionPayload>` lives in `nmp-feed` (generic substrate, zero protocol
-knowledge). `nmp-nip01` provides the NIP-10 instance
-(`Nip10ReplyAttribution` + `register_op_feed`); a future `nmp-nip22`
-provides the kind:1111 instance covering ALL non-kind:1 root kinds
-(NIP-23, NIP-94, NIP-99, podcasts, …). One engine, two foreseeable
-instances; no per-kind state-machine explosion.
+**Closes V-45** (via composition-root expansion of follow-set timeline
+interests in `nmp-app-template`; no planner-side `SocialTimeline` variant).
 
-**Prerequisite:** V-45 (`LogicalInterest::SocialTimeline` substrate seam) —
-co-delivered as Stage 0 of this work, alongside `FollowSetLookup`
-capability.
+**Recommended action:** 7-rung PR ladder per §5. Net ~+2,400 LOC,
+~-310 LOC. Two ADRs (0035 + 0036).
 
-**Recommended action:** seven-rung PR ladder per
-`docs/perf/op-centric-feed-architecture.md` §5. Net add ~1,700 LOC across
-`nmp-threading`, `nmp-core` (substrate seam only), `nmp-planner`,
-`nmp-feed` (engine), `nmp-nip01` (instance), `nmp-app-template`, and
-`apps/chirp/`. Net delete ~250 LOC (partial-chain machinery in chirp-tui
-+ hand-rolled follow-set wiring in nmp-app-chirp). Two new ADRs:
-ADR-0033 (`FollowSetLookup` capability) and ADR-0034 (generic
-root-indexed feed engine in `nmp-feed`; protocol-specific instances in
-NIP crates).
+**User decisions resolved:** Q1 (raw attribution, no cap), Q2 (n/a —
+SocialTimeline deleted), Q3 (reposts stay, full case list in §3-L), Q4
+(self-replies promote), Q5 (NIP-22 post-v1), Q6 (D1-strict latency), Q7
+(pre-kind:3 buffer in kernel — replay through normal ingest).
 
-**Open user decisions** carried to `docs/perf/pending-user-decisions.md`:
-Q1 (attribution cap + deletion semantics), Q2 (LogicalInterest enum vs
-discriminator), Q3 (repost behavior under OP-centric model), Q4
-(self-replies), Q5 (NIP-22 scope deferred to post-v1), Q6
-(root-hydration latency trade-off). All have flagged defaults if the
-user is unavailable.
-
-**Out of scope (post-v1):** the `nmp-nip22` instance over kind:1111
-comment trees. Implementation is ~150 LOC (one `ParentResolver` impl
-plus one `AttributionPayload` impl plus one wiring helper); engine code
-is zero new lines. Tracked separately when `nmp-nip22` crate is created.
+**Post-v1 follow-ups:** V-60 (mute interaction), V-61 (NIP-22 instance),
+V-62 (retire `timeline_authors`), V-63 (`claim_event` release semantics
+cleanup), V-64 (`event_provenance` accessor).
 ```
 
 ---
 
-## 9. Notes the implementer must read before writing code
+## 9. Implementer notes — read before writing code
 
-- **Do not** add a new bespoke `nmp_app_*` C-ABI symbol. PD-039
-  deprecation calendar is in force. Use existing observer/projection/
-  action seams.
-- **Do not** parse NIP-10 inside `crates/nmp-core/**`. The `parse_nip10`
-  import is already a small leak via `event_references` — this proposal
-  *shrinks* the leak (the NIP-10 decoder lives only in
-  `Nip10ReplyAttribution::from_reply` and `Nip10Resolver`, both in
-  `nmp-nip01`) and the implementer should not enlarge it.
-- **Do not** import any `nmp-nip*` crate from `nmp-feed`. The engine's
-  Cargo.toml stays exactly as today. Doctrine-lint banned-token grep is
-  the pre-merge check.
-- **Do not** assume the home-feed snapshot key (`nmp.feed.home`) is
-  unique — keep the same key so iOS Swift consumers don't break. The PR
-  rewires the *contents* (now `RootFeedSnapshot<TimelineEventCard,
-  Nip10ReplyAttribution>` instead of `ModularTimelineSnapshot`) but the
-  key must persist.
-- **Read the precedent** before writing: `visible_relations.rs` (action
-  shape, identity, refcount), `timeline_projection.rs`
-  (`RepostAttribution`, `refresh_author_cards`, `BoundedMessageMap`
-  usage), `note_relations.rs` (the aggregation-index pattern),
-  `nmp-feed::window.rs` (existing windowing the engine reuses verbatim).
-- **Test scope:** scoped `cargo test` per AGENTS.md. The orchestrator
-  runs the full suite at merge time.
-- **Doctrine-lint:** `cargo test -p nmp-testing --test
-  doctrine_lint_smoke` must remain green throughout. Verify after every
-  rung.
-- **Crate-boundary spec:** `docs/architecture/crate-boundaries.md`
-  needs the one-row update in §2 per-crate table for `nmp-feed`'s
-  expanded charter. Lands in rung 6 alongside the BACKLOG / plan
-  updates.
+- **Do not** add a new bespoke `nmp_app_*` C-ABI symbol. Use
+  `nmp_app_claim_event`, `nmp_app_release_event`,
+  `nmp_app_register_event_observer`.
+- **Do not** parse NIP-10 inside `nmp-core`. Decoder lives in
+  `nmp-nip01`.
+- **Do not** import any `nmp-nip*` crate from `nmp-feed`. CI grep
+  enforces.
+- **Do not** add a `FollowSetLookup` trait or `LogicalInterest::SocialTimeline`
+  variant. Both were earlier proposals; composition-root expansion
+  replaces them. If you find yourself reaching for either, re-read
+  §3-D.
+- **Do not** accept dual `Standalone` JSON shapes. Rung 2 patches every
+  consumer.
+- **Do not** poll. Kernel push, observer callbacks, `Arc<RwLock<_>>`
+  snapshot reads — never `sleep` + check.
+- **Do** read the precedent: `claim_event`,
+  `crates/nmp-core/src/subs/oneshot.rs`, `partition/mod.rs:240-289`,
+  `crates/nmp-nip01/src/visible_relations.rs` (precedent only —
+  v4 does NOT use the bespoke-action pattern),
+  `crates/nmp-nip01/src/timeline_projection.rs` for `BoundedMessageMap`
+  + `refresh_author_cards`.
+- **Doctrine path:** `docs/product-spec/doctrine.md`.
+
+---
+
+## Appendix A — Codex v2 findings and v4 resolutions
+
+| Finding | Status | Where addressed |
+|---|---|---|
+| B4 (v3-introduced): `FollowSetLookup` in `nmp-feed` creates planner cycle | **Resolved** | `FollowSetLookup` trait deleted. Engine takes closure-shaped `Arc<dyn Fn(&str) -> bool + Send + Sync>`. Producer lives in `nmp-nip02` as `ActiveFollowSet`. No planner consumption. §3-D. |
+| B2-remainder: `OneshotApi::request` hardcodes `hints: Vec::new()` | **Resolved** | Rung 1 expands `OneshotApi::request` signature to accept initial `hints`. `claim_event` populates them from URI relay TLVs. Verified against `crates/nmp-core/src/subs/oneshot.rs:120` and `crates/nmp-core/src/kernel/requests/event.rs:83-103`. §3-B step 7. |
+| B2-remainder: no engine-observable no-match release signal | **Resolved** | Rung 1 adds `event_claim_released: BoundedRingBuffer<EventId>` projection. EOSE-no-match in `complete_unknown_oneshot` clears `event_claims` + pushes to ring. Engine registers a substrate-grade callback. §3-B step 10. |
+| B2-remainder: store-gate via `claim_expansion_match_author` is wrong description | **Resolved** | §3-B step 8 corrected to `is_discovery_oneshot(sub_id)`. |
+| B3-remainder: missing Rust consumers of `Standalone` | **Resolved** | §5 Stage 1 enumerates every consumer: `nmp-feed/src/types.rs`, `nmp-nip01/src/timeline_projection/tests.rs`, `apps/chirp/nmp-app-chirp/tests/end_to_end.rs`, `nmp-nip01/src/meta_timeline/tests.rs`, `chirp-tui/src/timeline/tests.rs` fixtures, and `grouper.rs` self-uses. Grep-verified. |
+| H2-remainder: `timeline_authors` not LMDB-restored on cold start | **Resolved** | v4 stops claiming LMDB restore. Pre-kind:3 buffer (rung 1) closes the gap by buffering kind:1/6 events that miss the `timeline_authors` gate and replaying them after `sync_follow_feed_interests`. §3-K rewritten. |
+| H2-remainder: `Kernel::active_account_pubkey()` / `KernelAccountChanged` fiction | **Resolved** | `Kernel::active_account_handle()` (`crates/nmp-core/src/kernel/mod.rs:1265-1267`) is the real push seam. Adapter observes the slot. §3-K. |
+| H3-remainder: L-2 / L-5 require event lookup | **Resolved** | Engine gains `event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>` callback. §3-L rewritten with explicit lookup logic for L-2 and L-5. Tests added in §3-J. |
+| M3: `release_event` doesn't call `release_claim_expansion` | **Resolved** | Rung 1 adds the call. §5 Stage 0. |
+| M4: serialization bounds implicit | **Resolved** | §3-G declares `C: Clone + Serialize`, `A: Clone + Serialize`. |
+| M5: §5 vs §7-Q2 contradiction | **Resolved (architecture override)** | `SocialTimeline` deleted entirely. No internal contradiction. §3-D. |
+| §3-B-3 inaccuracy: naddr uses `kinds + authors + #d`, not `addresses` | **Resolved** | §3-B-3 corrected per `crates/nmp-core/src/kernel/requests/event.rs:110-155`. |
+| §6 LMDB-restored claim | **Resolved** | Removed; replaced with honest pre-kind:3 buffer behavior. |
+| §6 `LogicalInterest::SocialTimeline` may be unnecessary | **Adopted** | Composition-root expansion replaces it. §3-D. |
+| §6 `timeline_authors` is already a substrate social cache | **Acknowledged** | V-62 in BACKLOG (retire post-v1). |
+| §6 `claim_event` EOSE vs host-release mismatch | **Acknowledged** | V-63 in BACKLOG. |
+| Q1 user answer: raw data, display-layer decision | **Adopted** | `attribution_total` deleted; `Vec<A>` length is the count; chirp-tui renders 1, iOS renders N. §3-C, §3-G. |
+| Q2 user answer: convert `LogicalInterest` to enum | **Moot** | No `SocialTimeline` variant exists in v4; nothing to convert. §3-D documents the override and reasoning. |
+| Q5 user confirmation: NIP-22 post-v1 | **Adopted** | V-61 in BACKLOG. |
+| Q7 user answer: add replay capability | **Adopted (in kernel, not engine)** | Pre-kind:3 buffer in kernel (rung 1) replays through normal ingest. Engine needs no replay API. §3-K. |

@@ -987,6 +987,34 @@ is zero new lines. Tracked separately when `nmp-nip22` crate is created.
 
 ---
 
+### V-81 · `event_claim_released` signal fires on Phase-1 EOSE, not final give-up — rung-3 consumer must not drop pending attribution early [MEDIUM · sub-item of V-80, blocks rung 3 correctness]
+
+**Origin:** rung-1 (PR #727, commit `171090d3`) added the
+`event_claim_released` ring buffer + in-process observer so the OP-feed
+engine learns when a root claim resolves to nothing. The push currently
+fires inside `complete_unknown_oneshot` on **Phase-1 EOSE**.
+
+**Risk:** Phase-1 EOSE is *not* the final "this event will never arrive"
+verdict. Claim expansion (Phase-2 relay retargeting, the W5/W7 hint path)
+may still be in flight against other relays. If the rung-3 engine treats
+the `event_claim_released` signal as terminal, it will drop the buffered
+`pending_attributions[root_id]` while Phase-2 is still trying — so Bob's
+OP arrives, but the "Alice replied" badge was already discarded. The user
+sees a root card with no attribution even though attribution was known.
+
+**Correct fix (decide in rung 3):** either (a) the engine ignores the
+release signal until a true `terminate_claim` (all phases exhausted), or
+(b) move the ring push from Phase-1 EOSE to `terminate_claim` in
+`nmp-core` as a rung-1 follow-up. (b) is cleaner if `terminate_claim` is
+the single authoritative give-up point; (a) keeps rung 1 untouched but
+puts the burden on every future consumer. The rung-3 implementer (the
+`nmp-feed` `RootIndexedFeed` engine) MUST resolve this before wiring the
+release observer to attribution eviction. See
+[`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
+§3-K for the buffering model this protects.
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 
