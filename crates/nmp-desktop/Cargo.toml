@@ -1,0 +1,28 @@
+[package]
+name = "nmp-desktop"
+description = "Native desktop shell that runs the NMP kernel in-process (Rust→Rust, no FFI)."
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "nmp-desktop"
+path = "src/main.rs"
+
+[dependencies]
+# In-process kernel: the desktop shell spawns the actor and drives it with
+# `ActorCommand`, reading JSON `KernelUpdate` snapshots. `test-support` is the
+# only stable Rust-side seam onto the actor (lib.rs::testing) — there is no
+# app-noun API to add (D0), so we consume the generic actor/snapshot surface.
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# Content IR consumed directly in-process (ADR-0018 / docs/design/content-rendering.md):
+# Rust→Rust needs no wire projection — we walk `ContentTree` segments natively.
+nmp-content = { path = "../nmp-content" }
+
+eframe = "0.29"
+egui = "0.29"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# `ActorCommand::SignInNsec` carries its secret as `Zeroizing<String>`; the
+# bridge wraps the plaintext nsec before handing it to the actor channel.
+zeroize = { workspace = true }

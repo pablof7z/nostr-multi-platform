@@ -4046,6 +4046,19 @@ name = "nmp-coverage-gate"
 version = "0.1.0"
 
 [[package]]
+name = "nmp-desktop"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "nmp-content",
+ "nmp-core",
+ "serde",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "nmp-feed"
 version = "0.1.0"
 dependencies = [

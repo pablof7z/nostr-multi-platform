@@ -201,7 +201,6 @@ name = "fixture-todo-core"
 path = "apps/fixture/fixture-todo-core"
 reason = "fixture app domain crate"
 
-
 [[private_packages]]
 name = "nmp-app-gallery"
 path = "apps/nmp-gallery/nmp-app-gallery"
@@ -217,3 +216,8 @@ name = "nmp-gallery-desktop"
 path = "apps/nmp-gallery/desktop"
 reason = "gallery reference desktop (egui) application"
 
+
+[[private_packages]]
+name = "chirp-desktop"
+path = "apps/chirp/chirp-desktop"
+reason = "Chirp reference desktop (egui) application"
