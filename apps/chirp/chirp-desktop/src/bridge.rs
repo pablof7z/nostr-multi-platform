@@ -80,6 +80,10 @@ pub struct AppRuntime {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
     marmot: Cell<*mut MarmotHandle>,
+    /// Keep the update bridge alive — the FFI callback stores a raw pointer
+    /// to this box, so dropping it would cause a use-after-free / SIGSEGV
+    /// when the actor thread fires `on_update`.
+    update_bridge: Option<Box<NmpUpdateBridge>>,
 }
 
 impl AppRuntime {
@@ -122,6 +126,7 @@ impl AppRuntime {
                 app,
                 chirp,
                 marmot: Cell::new(initial_marmot),
+                update_bridge: Some(bridge),
             },
             rx,
         ))
@@ -287,6 +292,9 @@ impl AppRuntime {
 impl Drop for AppRuntime {
     fn drop(&mut self) {
         unregister_callback(self.app);
+        // Explicitly drop the bridge before freeing the app so the FFI callback
+        // never fires after the NmpApp is gone.
+        self.update_bridge.take();
         if !self.chirp.is_null() {
             unsafe { nmp_app_chirp_unregister(self.chirp) };
             self.chirp = ptr::null_mut();
