@@ -11,8 +11,9 @@ mod window;
 
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use typed_wire::{
-    decode_home_feed, encode_home_feed, EventCardWire, FeedPageWire, HomeFeedWire, FILE_IDENTIFIER,
-    SCHEMA_ID, SCHEMA_VERSION,
+    decode_feed_page, decode_feed_window_metrics, encode_feed_page, encode_feed_window_metrics,
+    FeedCursorWire, FeedPageWire, FeedWindowMetricsWire, FEED_WINDOW_FILE_IDENTIFIER,
+    FEED_WINDOW_SCHEMA_ID, FEED_WINDOW_SCHEMA_VERSION,
 };
 pub use types::{
     FeedBlock, FeedCard, FeedCardStore, FeedCursor, FeedPage, FeedRequest, FeedWindowMetrics,

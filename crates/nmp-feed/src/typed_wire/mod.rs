@@ -1,28 +1,36 @@
-//! Typed FlatBuffers wire encoding for the `nmp.feed.home` projection.
+//! Typed FlatBuffers wire encoding for the feed-window envelope.
 //!
-//! The home feed snapshot is a binary `nmp.feed.home.HomeFeedSnapshot` value
-//! tree with file identifier `NFHF`. Unlike the generic JSON-shaped
-//! `nmp.transport.UpdateFrame` (see `nmp_core::update_envelope`), this is a
-//! *typed* projection: every field is a concrete FlatBuffers slot, so hosts
-//! decode fields by name instead of walking an untyped value tree.
+//! This layer encodes ONLY the *structural* feed window — the page, the
+//! cursor boundaries, and the aggregate window metrics. It deliberately
+//! carries **no event cards**: those belong to the protocol layer
+//! (`nmp-nip01`), whose typed wire references these tables structurally.
+//! `nmp-feed` owns the outer envelope shape; the protocol layer owns the
+//! cards inside it.
+//!
+//! Unlike the generic JSON-shaped `nmp.transport.UpdateFrame` (see
+//! `nmp_core::update_envelope`), this is a *typed* projection: every field
+//! is a concrete FlatBuffers slot, so hosts decode fields by name instead
+//! of walking an untyped value tree.
 //!
 //! ## Doctrine: raw bytes only on the wire
 //!
-//! All pubkeys and event ids are raw 32-byte vectors (`[ubyte]` in the
-//! schema). No `display::` helpers, no npub/bech32 encoding, no profile names.
-//! Display formatting is a host concern; the wire carries raw identity bytes.
+//! Event ids are raw 32-byte vectors (`[ubyte]` in the schema). No
+//! `display::` helpers, no npub/bech32 encoding, no profile names. Display
+//! formatting is a host concern; the wire carries raw identity bytes.
 //!
-//! The checked-in bindings in `generated/feed_home_generated.rs` are produced
-//! by `flatc` from `schema/feed_home.fbs`. Regenerate only with the workspace
-//! FlatBuffers pin (`25.12.19`):
+//! The checked-in bindings in `generated/feed_home_generated.rs` are
+//! produced by `flatc` from `schema/feed_home.fbs`. Regenerate only with
+//! the workspace FlatBuffers pin (`25.12.19`):
 //!
 //! ```sh
-//! flatc --rust -o crates/nmp-feed/src/typed_wire/generated \
+//! flatc --rust --gen-all -o /tmp/nf_gen/ \
 //!       crates/nmp-feed/schema/feed_home.fbs
+//! # then move /tmp/nf_gen/feed_home_generated.rs into generated/
 //! ```
 
 #[allow(
     clippy::all,
+    clippy::pedantic,
     dead_code,
     deprecated,
     missing_docs,
@@ -33,251 +41,212 @@
 #[path = "generated/feed_home_generated.rs"]
 mod feed_home_generated;
 
-use feed_home_generated::nmp::feed::home as fb;
-use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use feed_home_generated::nmp::feed as fb;
+use flatbuffers::FlatBufferBuilder;
 
 /// Stable projection identifier this wire shape projects into.
-pub const SCHEMA_ID: &str = "nmp.feed.home";
+pub const FEED_WINDOW_SCHEMA_ID: &str = "nmp.feed.window";
 
-/// FlatBuffers file identifier for a `HomeFeedSnapshot` root buffer.
-pub const FILE_IDENTIFIER: &[u8; 4] = b"NFHF";
+/// FlatBuffers file identifier for a `FeedWindowMetrics` root buffer.
+pub const FEED_WINDOW_FILE_IDENTIFIER: &[u8; 4] = b"NFWM";
 
-/// Schema version of the typed home-feed payload. Bump on any breaking
-/// field change. Mirrors `HomeFeedSnapshot.schema_version` in the `.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+/// Schema version of the typed feed-window payload. Bump on any breaking
+/// field change.
+pub const FEED_WINDOW_SCHEMA_VERSION: u32 = 1;
 
-/// A raw-pubkey-only snapshot of the home feed, suitable for typed
-/// FlatBuffers wire encoding. All display helpers are forbidden here
-/// (doctrine: raw data only on the wire).
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct HomeFeedWire {
-    pub pages: Vec<FeedPageWire>,
-    pub window_limit: u32,
-    pub window_offset: u32,
-    pub total_items: u32,
+/// Wire-serializable form of a feed cursor: the oldest visible item's
+/// timestamp plus its raw 32-byte event id (`None` when unanchored).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FeedCursorWire {
+    pub oldest_created_at: i64,
+    pub oldest_event_id: Option<[u8; 32]>,
 }
 
-/// A page of timeline cards at a specific cursor position.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Wire-serializable form of the feed page boundaries. Carries no cards —
+/// only the structural window shape (start/end cursors + terminal flag).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FeedPageWire {
-    pub cards: Vec<EventCardWire>,
-    pub cursor_oldest_created_at: i64,
-    pub cursor_oldest_event_id: Option<[u8; 32]>,
+    pub start_cursor: FeedCursorWire,
+    pub end_cursor: FeedCursorWire,
     pub is_complete: bool,
 }
 
-/// A single timeline event card: the fundamental unit of the home feed.
-///
-/// Relation counts and repost attribution are flattened here for an
-/// ergonomic Rust API; the encoder reconstructs the nested
-/// `RelationCounts` / `RepostAttribution` FlatBuffers tables on the wire.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct EventCardWire {
-    pub event_id: [u8; 32],
-    pub pubkey: [u8; 32],
-    pub created_at: i64,
-    pub kind: u32,
-    pub content_json: String,
-    pub reply_count: u32,
-    pub reaction_count: u32,
-    pub repost_count: u32,
-    pub zap_msats: u64,
-    pub root_event_id: Option<[u8; 32]>,
-    pub repost_original_pubkey: Option<[u8; 32]>,
-    pub repost_original_event_id: Option<[u8; 32]>,
+/// Wire-serializable form of the aggregate feed-window metrics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeedWindowMetricsWire {
+    pub total_items: u32,
+    pub window_limit: u32,
+    pub window_offset: u32,
+    pub requested_limit: u32,
 }
 
-/// Encode a home-feed snapshot as one typed FlatBuffers `HomeFeedSnapshot`
-/// buffer with the `NFHF` file identifier.
+impl Default for FeedWindowMetricsWire {
+    fn default() -> Self {
+        // Mirror the FlatBuffers schema defaults so a round-tripped empty
+        // buffer equals `Default::default()`.
+        Self {
+            total_items: 0,
+            window_limit: 50,
+            window_offset: 0,
+            requested_limit: 50,
+        }
+    }
+}
+
+impl From<&crate::FeedCursor> for FeedCursorWire {
+    /// Convert the in-memory [`crate::FeedCursor`] into its wire form.
+    ///
+    /// The in-memory cursor stores the event id as a hex `String`; the wire
+    /// carries raw bytes. A malformed or non-32-byte hex id decodes to
+    /// `None` (unanchored) rather than failing — display/identity formatting
+    /// is a host concern and the wire stays forgiving.
+    fn from(cursor: &crate::FeedCursor) -> Self {
+        Self {
+            // `FeedCursor.created_at` is a `u64`; clamp into the wire's `i64`
+            // (timestamps are far below `i64::MAX`, so this is lossless in
+            // practice and saturates rather than wrapping on overflow).
+            oldest_created_at: i64::try_from(cursor.created_at).unwrap_or(i64::MAX),
+            oldest_event_id: decode_event_id_hex(&cursor.id),
+        }
+    }
+}
+
+// NOTE: There is intentionally no `From<&crate::FeedWindowMetrics>` impl.
+// The in-memory `FeedWindowMetrics` carries only `{ make_window_us }` — a
+// timing instrument with ZERO field overlap with the wire's
+// `{ total_items, window_limit, window_offset, requested_limit }`. A `From`
+// impl would be vacuous (it could only emit defaults), which violates the
+// repo's zero-tolerance-on-hacks rule. The projection layer constructs
+// `FeedWindowMetricsWire` directly from the live window state instead.
+
+/// Decode a lowercase/uppercase hex string into a fixed 32-byte event id.
+/// Returns `None` for any input that is not exactly 64 hex digits.
+fn decode_event_id_hex(hex: &str) -> Option<[u8; 32]> {
+    let bytes = hex.as_bytes();
+    if bytes.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, chunk) in bytes.chunks_exact(2).enumerate() {
+        let hi = hex_nibble(chunk[0])?;
+        let lo = hex_nibble(chunk[1])?;
+        out[i] = (hi << 4) | lo;
+    }
+    Some(out)
+}
+
+const fn hex_nibble(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Encode a feed cursor as a child FlatBuffers `FeedCursor` table.
+fn encode_cursor<'bldr>(
+    builder: &mut FlatBufferBuilder<'bldr>,
+    cursor: &FeedCursorWire,
+) -> flatbuffers::WIPOffset<fb::FeedCursor<'bldr>> {
+    let oldest_event_id = cursor
+        .oldest_event_id
+        .as_ref()
+        .map(|id| builder.create_vector(id));
+    fb::FeedCursor::create(
+        builder,
+        &fb::FeedCursorArgs {
+            oldest_created_at: cursor.oldest_created_at,
+            oldest_event_id,
+        },
+    )
+}
+
+/// Encode a feed-window-metrics value as one typed FlatBuffers
+/// `FeedWindowMetrics` root buffer with the `NFWM` file identifier.
 #[must_use]
-pub fn encode_home_feed(snapshot: &HomeFeedWire) -> Vec<u8> {
+pub fn encode_feed_window_metrics(metrics: &FeedWindowMetricsWire) -> Vec<u8> {
     let mut builder = FlatBufferBuilder::new();
-
-    let pages: Vec<WIPOffset<fb::FeedPage<'_>>> = snapshot
-        .pages
-        .iter()
-        .map(|page| encode_page(&mut builder, page))
-        .collect();
-    let pages = builder.create_vector(&pages);
-
-    let root = fb::HomeFeedSnapshot::create(
+    let root = fb::FeedWindowMetrics::create(
         &mut builder,
-        &fb::HomeFeedSnapshotArgs {
-            schema_version: SCHEMA_VERSION,
-            pages: Some(pages),
-            window_limit: snapshot.window_limit,
-            window_offset: snapshot.window_offset,
-            total_items: snapshot.total_items,
+        &fb::FeedWindowMetricsArgs {
+            total_items: metrics.total_items,
+            window_limit: metrics.window_limit,
+            window_offset: metrics.window_offset,
+            requested_limit: metrics.requested_limit,
         },
     );
-    fb::finish_home_feed_snapshot_buffer(&mut builder, root);
+    fb::finish_feed_window_metrics_buffer(&mut builder, root);
     builder.finished_data().to_vec()
 }
 
-fn encode_page<'bldr>(
-    builder: &mut FlatBufferBuilder<'bldr>,
-    page: &FeedPageWire,
-) -> WIPOffset<fb::FeedPage<'bldr>> {
-    let cards: Vec<WIPOffset<fb::TimelineEventCard<'_>>> = page
-        .cards
-        .iter()
-        .map(|card| encode_card(builder, card))
-        .collect();
-    let cards = builder.create_vector(&cards);
-    let cursor_oldest_event_id = page
-        .cursor_oldest_event_id
-        .as_ref()
-        .map(|id| builder.create_vector(id));
-
-    fb::FeedPage::create(
-        builder,
-        &fb::FeedPageArgs {
-            cards: Some(cards),
-            cursor_oldest_created_at: page.cursor_oldest_created_at,
-            cursor_oldest_event_id,
-            is_complete: page.is_complete,
-        },
-    )
-}
-
-fn encode_card<'bldr>(
-    builder: &mut FlatBufferBuilder<'bldr>,
-    card: &EventCardWire,
-) -> WIPOffset<fb::TimelineEventCard<'bldr>> {
-    // Strings/vectors must be created before the parent table.
-    let content_json = builder.create_string(&card.content_json);
-    let event_id = builder.create_vector(&card.event_id);
-    let pubkey = builder.create_vector(&card.pubkey);
-    let root_event_id = card
-        .root_event_id
-        .as_ref()
-        .map(|id| builder.create_vector(id));
-
-    let relation_counts = fb::RelationCounts::create(
-        builder,
-        &fb::RelationCountsArgs {
-            replies: card.reply_count,
-            reactions: card.reaction_count,
-            reposts: card.repost_count,
-            zap_msats: card.zap_msats,
-        },
-    );
-
-    // A card is a repost only if an original-author pubkey is present.
-    let repost_attribution = card.repost_original_pubkey.as_ref().map(|original_pubkey| {
-        let original_author_pubkey = builder.create_vector(original_pubkey);
-        let original_event_id = card
-            .repost_original_event_id
-            .as_ref()
-            .map(|id| builder.create_vector(id));
-        fb::RepostAttribution::create(
-            builder,
-            &fb::RepostAttributionArgs {
-                original_author_pubkey: Some(original_author_pubkey),
-                original_event_id,
-            },
-        )
-    });
-
-    fb::TimelineEventCard::create(
-        builder,
-        &fb::TimelineEventCardArgs {
-            event_id: Some(event_id),
-            pubkey: Some(pubkey),
-            created_at: card.created_at,
-            kind: card.kind,
-            content_json: Some(content_json),
-            relation_counts: Some(relation_counts),
-            repost_attribution,
-            root_event_id,
-        },
-    )
-}
-
-/// Decode a typed FlatBuffers `HomeFeedSnapshot` buffer back into the owned
-/// [`HomeFeedWire`] view. Returns a human-readable error string on any
-/// malformed-buffer or missing-required-field condition.
-pub fn decode_home_feed(bytes: &[u8]) -> Result<HomeFeedWire, String> {
-    if !fb::home_feed_snapshot_buffer_has_identifier(bytes) {
-        return Err("missing NFHF file identifier".to_string());
+/// Decode a typed FlatBuffers `FeedWindowMetrics` root buffer back into the
+/// owned [`FeedWindowMetricsWire`]. Returns a human-readable error string on
+/// a missing identifier or malformed buffer.
+pub fn decode_feed_window_metrics(bytes: &[u8]) -> Result<FeedWindowMetricsWire, String> {
+    if !fb::feed_window_metrics_buffer_has_identifier(bytes) {
+        return Err("missing NFWM file identifier".to_string());
     }
-    let snapshot = fb::root_as_home_feed_snapshot(bytes).map_err(|err| format!("{err:?}"))?;
-
-    let mut pages = Vec::new();
-    if let Some(fb_pages) = snapshot.pages() {
-        pages.reserve(fb_pages.len());
-        for index in 0..fb_pages.len() {
-            pages.push(decode_page(fb_pages.get(index))?);
-        }
-    }
-
-    Ok(HomeFeedWire {
-        pages,
-        window_limit: snapshot.window_limit(),
-        window_offset: snapshot.window_offset(),
-        total_items: snapshot.total_items(),
+    let metrics = fb::root_as_feed_window_metrics(bytes).map_err(|err| format!("{err:?}"))?;
+    Ok(FeedWindowMetricsWire {
+        total_items: metrics.total_items(),
+        window_limit: metrics.window_limit(),
+        window_offset: metrics.window_offset(),
+        requested_limit: metrics.requested_limit(),
     })
 }
 
-fn decode_page(page: fb::FeedPage<'_>) -> Result<FeedPageWire, String> {
-    let mut cards = Vec::new();
-    if let Some(fb_cards) = page.cards() {
-        cards.reserve(fb_cards.len());
-        for index in 0..fb_cards.len() {
-            cards.push(decode_card(fb_cards.get(index))?);
-        }
-    }
+/// Encode a feed page as one typed FlatBuffers `FeedPage` root buffer.
+///
+/// `FeedPage` is not the schema's `root_type` (that's `FeedWindowMetrics`,
+/// which owns the `NFWM` identifier), so the page buffer carries no file
+/// identifier; decode it with [`decode_feed_page`].
+#[must_use]
+pub fn encode_feed_page(page: &FeedPageWire) -> Vec<u8> {
+    let mut builder = FlatBufferBuilder::new();
+    let start_cursor = encode_cursor(&mut builder, &page.start_cursor);
+    let end_cursor = encode_cursor(&mut builder, &page.end_cursor);
+    let root = fb::FeedPage::create(
+        &mut builder,
+        &fb::FeedPageArgs {
+            start_cursor: Some(start_cursor),
+            end_cursor: Some(end_cursor),
+            is_complete: page.is_complete,
+        },
+    );
+    builder.finish_minimal(root);
+    builder.finished_data().to_vec()
+}
+
+/// Decode a typed FlatBuffers `FeedPage` root buffer back into the owned
+/// [`FeedPageWire`]. Returns a human-readable error on a malformed buffer.
+pub fn decode_feed_page(bytes: &[u8]) -> Result<FeedPageWire, String> {
+    let page =
+        flatbuffers::root::<fb::FeedPage<'_>>(bytes).map_err(|err| format!("{err:?}"))?;
     Ok(FeedPageWire {
-        cards,
-        cursor_oldest_created_at: page.cursor_oldest_created_at(),
-        cursor_oldest_event_id: page
-            .cursor_oldest_event_id()
-            .map(|v| array_32(v.bytes(), "cursor_oldest_event_id"))
-            .transpose()?,
+        start_cursor: decode_cursor(page.start_cursor())?,
+        end_cursor: decode_cursor(page.end_cursor())?,
         is_complete: page.is_complete(),
     })
 }
 
-fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<EventCardWire, String> {
-    let event_id = array_32(
-        card.event_id().ok_or("card missing event_id")?.bytes(),
-        "event_id",
-    )?;
-    let pubkey = array_32(
-        card.pubkey().ok_or("card missing pubkey")?.bytes(),
-        "pubkey",
-    )?;
-
-    let counts = card.relation_counts();
-    let attribution = card.repost_attribution();
-
-    Ok(EventCardWire {
-        event_id,
-        pubkey,
-        created_at: card.created_at(),
-        kind: card.kind(),
-        content_json: card.content_json().unwrap_or_default().to_string(),
-        reply_count: counts.map(|c| c.replies()).unwrap_or_default(),
-        reaction_count: counts.map(|c| c.reactions()).unwrap_or_default(),
-        repost_count: counts.map(|c| c.reposts()).unwrap_or_default(),
-        zap_msats: counts.map(|c| c.zap_msats()).unwrap_or_default(),
-        root_event_id: card
-            .root_event_id()
-            .map(|v| array_32(v.bytes(), "root_event_id"))
-            .transpose()?,
-        repost_original_pubkey: attribution
-            .and_then(|a| a.original_author_pubkey())
-            .map(|v| array_32(v.bytes(), "original_author_pubkey"))
-            .transpose()?,
-        repost_original_event_id: attribution
-            .and_then(|a| a.original_event_id())
-            .map(|v| array_32(v.bytes(), "original_event_id"))
+/// Decode an optional child `FeedCursor` table. A missing cursor table
+/// decodes to the default (unanchored) cursor.
+fn decode_cursor(cursor: Option<fb::FeedCursor<'_>>) -> Result<FeedCursorWire, String> {
+    let Some(cursor) = cursor else {
+        return Ok(FeedCursorWire::default());
+    };
+    Ok(FeedCursorWire {
+        oldest_created_at: cursor.oldest_created_at(),
+        oldest_event_id: cursor
+            .oldest_event_id()
+            .map(|v| array_32(v.bytes(), "oldest_event_id"))
             .transpose()?,
     })
 }
 
-/// Convert a wire byte slice into a fixed 32-byte identity array, rejecting
-/// any slice whose length is not exactly 32 (raw pubkeys / event ids).
+/// Convert a wire byte slice into a fixed 32-byte event id, rejecting any
+/// slice whose length is not exactly 32.
 fn array_32(bytes: &[u8], field: &str) -> Result<[u8; 32], String> {
     bytes
         .try_into()
@@ -288,115 +257,112 @@ fn array_32(bytes: &[u8], field: &str) -> Result<[u8; 32], String> {
 mod tests {
     use super::*;
 
-    fn sample_wire() -> HomeFeedWire {
-        HomeFeedWire {
-            pages: vec![FeedPageWire {
-                cards: vec![EventCardWire {
-                    event_id: [1u8; 32],
-                    pubkey: [2u8; 32],
-                    created_at: 1_700_000_000,
-                    kind: 1,
-                    content_json: "hello world".into(),
-                    reply_count: 3,
-                    reaction_count: 5,
-                    repost_count: 1,
-                    zap_msats: 21_000,
-                    root_event_id: None,
-                    repost_original_pubkey: None,
-                    repost_original_event_id: None,
-                }],
-                cursor_oldest_created_at: 1_700_000_000,
-                cursor_oldest_event_id: Some([1u8; 32]),
-                is_complete: false,
-            }],
-            window_limit: 50,
-            window_offset: 0,
-            total_items: 1,
-        }
-    }
-
-    #[test]
-    fn home_feed_wire_round_trips() {
-        let wire = sample_wire();
-        let encoded = encode_home_feed(&wire);
-        assert!(!encoded.is_empty(), "encoded must not be empty");
-        let decoded = decode_home_feed(&encoded).expect("must decode");
-        assert_eq!(decoded.pages.len(), 1);
-        assert_eq!(decoded.pages[0].cards.len(), 1);
-        assert_eq!(decoded.pages[0].cards[0].event_id, [1u8; 32]);
-        assert_eq!(decoded.pages[0].cards[0].content_json, "hello world");
-    }
-
-    #[test]
-    fn full_snapshot_round_trips_byte_for_byte() {
-        let wire = sample_wire();
-        let decoded = decode_home_feed(&encode_home_feed(&wire)).expect("decode");
-        assert_eq!(decoded, wire, "typed wire must round-trip losslessly");
-    }
-
-    #[test]
-    fn encoded_buffer_carries_file_identifier() {
-        let encoded = encode_home_feed(&sample_wire());
-        assert!(
-            fb::home_feed_snapshot_buffer_has_identifier(&encoded),
-            "buffer must carry the NFHF identifier"
-        );
-        // The identifier lives at bytes 4..8 of a finished FlatBuffer.
-        assert_eq!(&encoded[4..8], FILE_IDENTIFIER);
-    }
-
-    #[test]
-    fn decode_rejects_buffer_without_identifier() {
-        let err = decode_home_feed(&[0u8; 16]).expect_err("must reject");
-        assert!(err.contains("NFHF"), "error names the missing id: {err}");
-    }
-
-    #[test]
-    fn repost_card_round_trips_attribution() {
-        let wire = HomeFeedWire {
-            pages: vec![FeedPageWire {
-                cards: vec![EventCardWire {
-                    event_id: [9u8; 32],
-                    pubkey: [8u8; 32],
-                    created_at: 42,
-                    kind: 6,
-                    content_json: String::new(),
-                    reply_count: 0,
-                    reaction_count: 0,
-                    repost_count: 0,
-                    zap_msats: 0,
-                    root_event_id: Some([7u8; 32]),
-                    repost_original_pubkey: Some([6u8; 32]),
-                    repost_original_event_id: Some([5u8; 32]),
-                }],
-                cursor_oldest_created_at: 42,
-                cursor_oldest_event_id: None,
-                is_complete: true,
-            }],
-            window_limit: 80,
-            window_offset: 10,
-            total_items: 1,
-        };
-        let decoded = decode_home_feed(&encode_home_feed(&wire)).expect("decode");
-        let card = &decoded.pages[0].cards[0];
-        assert_eq!(card.root_event_id, Some([7u8; 32]));
-        assert_eq!(card.repost_original_pubkey, Some([6u8; 32]));
-        assert_eq!(card.repost_original_event_id, Some([5u8; 32]));
-        assert!(decoded.pages[0].is_complete);
-        assert_eq!(decoded.window_offset, 10);
-    }
-
     #[test]
     fn schema_constants_are_stable() {
-        assert_eq!(SCHEMA_ID, "nmp.feed.home");
-        assert_eq!(FILE_IDENTIFIER, b"NFHF");
-        assert_eq!(SCHEMA_VERSION, 1);
+        assert_eq!(FEED_WINDOW_SCHEMA_ID, "nmp.feed.window");
+        assert_eq!(FEED_WINDOW_FILE_IDENTIFIER, b"NFWM");
+        assert_eq!(FEED_WINDOW_SCHEMA_VERSION, 1);
     }
 
     #[test]
-    fn empty_snapshot_round_trips() {
+    fn metrics_round_trips() {
+        let metrics = FeedWindowMetricsWire {
+            total_items: 137,
+            window_limit: 80,
+            window_offset: 40,
+            requested_limit: 100,
+        };
+        let encoded = encode_feed_window_metrics(&metrics);
+        assert!(!encoded.is_empty(), "encoded must not be empty");
+        let decoded = decode_feed_window_metrics(&encoded).expect("must decode");
+        assert_eq!(decoded, metrics, "metrics must round-trip losslessly");
+    }
+
+    #[test]
+    fn metrics_default_round_trips() {
+        let decoded = decode_feed_window_metrics(&encode_feed_window_metrics(
+            &FeedWindowMetricsWire::default(),
+        ))
+        .expect("decode");
+        assert_eq!(decoded, FeedWindowMetricsWire::default());
+    }
+
+    #[test]
+    fn metrics_buffer_carries_nfwm_identifier() {
+        let encoded = encode_feed_window_metrics(&FeedWindowMetricsWire::default());
+        assert!(
+            fb::feed_window_metrics_buffer_has_identifier(&encoded),
+            "buffer must carry the NFWM identifier"
+        );
+        // The identifier lives at bytes 4..8 of a finished FlatBuffer.
+        assert_eq!(&encoded[4..8], FEED_WINDOW_FILE_IDENTIFIER);
+    }
+
+    #[test]
+    fn decode_metrics_rejects_buffer_without_identifier() {
+        let err = decode_feed_window_metrics(&[0u8; 16]).expect_err("must reject");
+        assert!(err.contains("NFWM"), "error names the missing id: {err}");
+    }
+
+    #[test]
+    fn page_round_trips() {
+        let page = FeedPageWire {
+            start_cursor: FeedCursorWire {
+                oldest_created_at: 1_700_000_500,
+                oldest_event_id: Some([7u8; 32]),
+            },
+            end_cursor: FeedCursorWire {
+                oldest_created_at: 1_700_000_000,
+                oldest_event_id: Some([9u8; 32]),
+            },
+            is_complete: true,
+        };
+        let decoded = decode_feed_page(&encode_feed_page(&page)).expect("decode");
+        assert_eq!(decoded, page, "page must round-trip losslessly");
+    }
+
+    #[test]
+    fn page_default_round_trips() {
         let decoded =
-            decode_home_feed(&encode_home_feed(&HomeFeedWire::default())).expect("decode");
-        assert_eq!(decoded, HomeFeedWire::default());
+            decode_feed_page(&encode_feed_page(&FeedPageWire::default())).expect("decode");
+        assert_eq!(decoded, FeedPageWire::default());
+    }
+
+    #[test]
+    fn cursor_without_event_id_round_trips() {
+        let page = FeedPageWire {
+            start_cursor: FeedCursorWire {
+                oldest_created_at: 42,
+                oldest_event_id: None,
+            },
+            end_cursor: FeedCursorWire::default(),
+            is_complete: false,
+        };
+        let decoded = decode_feed_page(&encode_feed_page(&page)).expect("decode");
+        assert_eq!(decoded, page);
+        assert_eq!(decoded.start_cursor.oldest_event_id, None);
+    }
+
+    #[test]
+    fn feed_cursor_from_in_memory_decodes_hex_id() {
+        let id_hex = "ab".repeat(32); // 64 hex chars -> 32 bytes of 0xab
+        let in_memory = crate::FeedCursor {
+            created_at: 1_700_000_000,
+            id: id_hex,
+        };
+        let wire = FeedCursorWire::from(&in_memory);
+        assert_eq!(wire.oldest_created_at, 1_700_000_000);
+        assert_eq!(wire.oldest_event_id, Some([0xabu8; 32]));
+    }
+
+    #[test]
+    fn feed_cursor_from_in_memory_bad_hex_is_unanchored() {
+        let in_memory = crate::FeedCursor {
+            created_at: 5,
+            id: "not-hex".to_string(),
+        };
+        let wire = FeedCursorWire::from(&in_memory);
+        assert_eq!(wire.oldest_created_at, 5);
+        assert_eq!(wire.oldest_event_id, None, "bad hex decodes to unanchored");
     }
 }

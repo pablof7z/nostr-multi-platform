@@ -1,54 +1,46 @@
-namespace nmp.feed.home;
+namespace nmp.feed;
 
-// Runtime pins mirror the workspace FlatBuffers version. Regenerate the
-// checked-in Rust bindings only with the matching runtime guard:
-//   flatc --rust -o crates/nmp-feed/src/typed_wire/generated \
+// Typed FlatBuffers wire shape for the OUTER feed-window envelope.
+//
+// This schema encodes ONLY the structural window/page/cursor/metrics
+// types. It deliberately carries no event cards — those live in the
+// nmp-nip01 typed wire and reference these tables structurally. The
+// nmp-feed layer owns the window envelope; the protocol layer owns the
+// cards inside it.
+//
+// Raw bytes only on the wire: event ids are raw 32-byte vectors. No
+// display helpers, no npub/bech32 encoding, no profile names.
+//
+// Regenerate the checked-in Rust bindings only with the matching
+// workspace flatc pin (25.12.19):
+//   flatc --rust --gen-all -o /tmp/nf_gen/ \
 //         crates/nmp-feed/schema/feed_home.fbs
-// ci/check-flatbuffers-version-pins.sh enforces the current set.
+// then move the file to crates/nmp-feed/src/typed_wire/generated/.
+// ci/check-flatbuffers-version-pins.sh enforces the runtime guard.
 
-// Relation counts for a note (replies, reactions, reposts, zap total).
-table RelationCounts {
-  replies:uint32;
-  reactions:uint32;
-  reposts:uint32;
-  zap_msats:uint64;
+// A position in the feed: the oldest visible item's timestamp plus its
+// raw 32-byte event id (empty when the cursor is unanchored).
+table FeedCursor {
+  oldest_created_at:int64 = 0;
+  oldest_event_id:[ubyte];    // 32 bytes or empty
 }
 
-// Repost attribution: raw original-author pubkey + original event id.
-// Raw bytes only — no display helpers, no npub, no profile names.
-table RepostAttribution {
-  original_author_pubkey:[ubyte];
-  original_event_id:[ubyte];
-}
-
-// A timeline event card: the fundamental unit in the home feed.
-table TimelineEventCard {
-  event_id:[ubyte];           // 32-byte event id
-  pubkey:[ubyte];             // 32-byte author pubkey
-  created_at:int64;
-  kind:uint32;
-  content_json:string;        // raw content string (not parsed)
-  relation_counts:RelationCounts;
-  repost_attribution:RepostAttribution;  // null if not a repost
-  root_event_id:[ubyte];      // null if top-level
-}
-
-// A page of timeline cards at a specific cursor position.
+// One page of the feed expressed purely as its cursor boundaries plus a
+// terminal flag. Contains no cards — only the structural window shape.
 table FeedPage {
-  cards:[TimelineEventCard];
-  cursor_oldest_created_at:int64;
-  cursor_oldest_event_id:[ubyte];
-  is_complete:bool;
+  start_cursor:FeedCursor;
+  end_cursor:FeedCursor;
+  is_complete:bool = false;
 }
 
-// The full home feed snapshot.
-table HomeFeedSnapshot {
-  schema_version:uint32 = 1;
-  pages:[FeedPage];
-  window_limit:uint32;
-  window_offset:uint32;
-  total_items:uint32;
+// Aggregate window statistics: how many items are visible and the
+// requested vs. effective window bounds.
+table FeedWindowMetrics {
+  total_items:uint32 = 0;
+  window_limit:uint32 = 50;
+  window_offset:uint32 = 0;
+  requested_limit:uint32 = 50;
 }
 
-root_type HomeFeedSnapshot;
-file_identifier "NFHF";
+root_type FeedWindowMetrics;
+file_identifier "NFWM";
