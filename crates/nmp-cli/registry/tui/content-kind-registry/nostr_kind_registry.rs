@@ -8,9 +8,10 @@ use std::sync::Arc;
 use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_content::wire::{ContentTreeWire, WireNode};
 
-use ratatui::style::{Color, Style};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Widget, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Widget, Wrap};
 
 use super::kind_renderer::{KindRenderer, KindRendererRef};
 
@@ -129,7 +130,7 @@ impl KindRenderer for DefaultShortNoteRenderer {
 }
 
 /// Default renderer for `ArticleProjection` (kind:30023).
-/// Shows title + summary. Replace via `registry.set_article(...)` for a richer card (F-CR-09).
+/// Continuous-byline card: rounded box, bold title, `● author · date · N min read`, summary.
 pub struct DefaultArticleRenderer;
 
 impl KindRenderer for DefaultArticleRenderer {
@@ -138,33 +139,81 @@ impl KindRenderer for DefaultArticleRenderer {
         projection: &EmbedKindProjection,
         _ctx: &nmp_content::context::RenderContext,
         _registry: &NostrKindRegistry,
-        area: ratatui::layout::Rect,
+        area: Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
         let EmbedKindProjection::Article(article) = projection else {
             return;
         };
+        if area.height < 5 || area.width < 6 {
+            return;
+        }
+
         let author = article
             .author_display_name
-            .clone()
-            .unwrap_or_else(|| short_id(&article.author_pubkey));
+            .as_deref()
+            .unwrap_or_else(|| &article.author_pubkey[..8.min(article.author_pubkey.len())]);
         let title = article.title.as_deref().unwrap_or("article");
         let summary = article
             .summary
-            .clone()
+            .as_deref()
+            .map(|s| s.to_string())
             .unwrap_or_else(|| tree_text(&article.content_tree));
-        render_two_line(&format!("{title} · {author}"), &summary, area, buf);
+        let short_date = format_short_date(article.created_at);
+        let reading_min = estimate_reading_time(title, &summary);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::Rgb(71, 85, 105)));
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        let content = Rect {
+            x: inner.x + 1,
+            y: inner.y,
+            width: inner.width.saturating_sub(1),
+            height: inner.height,
+        };
+        if content.width == 0 || content.height == 0 {
+            return;
+        }
+
+        let rows = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .split(content);
+
+        // Title
+        let title_str = truncate_chars(title, content.width as usize);
+        Paragraph::new(Line::from(Span::styled(
+            title_str,
+            Style::default().fg(Color::Rgb(241, 245, 249)).add_modifier(Modifier::BOLD),
+        )))
+        .render(rows[0], buf);
+
+        // Byline: ● Author · Date · N min read
+        let meta = format!(" \u{00B7} {} \u{00B7} {} min read", short_date, reading_min);
+        Paragraph::new(Line::from(vec![
+            Span::styled("\u{25CF} ", Style::default().fg(Color::Rgb(220, 38, 38))),
+            Span::styled(author.to_string(), Style::default().fg(Color::Rgb(203, 213, 225))),
+            Span::styled(meta, Style::default().fg(Color::Rgb(100, 116, 139))),
+        ]))
+        .render(rows[1], buf);
+
+        // Summary
+        let summary_str = truncate_chars(&summary, content.width as usize);
+        Paragraph::new(Line::from(Span::styled(
+            summary_str,
+            Style::default().fg(Color::Rgb(148, 163, 184)),
+        )))
+        .render(rows[2], buf);
     }
 
-    fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
-        let EmbedKindProjection::Article(article) = projection else {
-            return 2;
-        };
-        let summary = article
-            .summary
-            .clone()
-            .unwrap_or_else(|| tree_text(&article.content_tree));
-        text_height(&summary, width).saturating_add(1).max(2)
+    fn preferred_height(&self, _projection: &EmbedKindProjection, _width: u16) -> u16 {
+        5
     }
 }
 
@@ -278,6 +327,48 @@ impl KindRenderer for DefaultUnknownRenderer {
         };
         text_height(&body, width).saturating_add(1).max(2)
     }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max {
+        return s.to_string();
+    }
+    let mut out: String = chars.iter().take(max.saturating_sub(1)).collect();
+    out.push('\u{2026}');
+    out
+}
+
+fn format_short_date(unix_secs: u64) -> String {
+    // Days since Unix epoch → calendar date (Gregorian, no external crate).
+    let days = unix_secs / 86400;
+    let mut y = 1970u32;
+    let mut d = days as u32;
+    loop {
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+        if d < days_in_year { break; }
+        d -= days_in_year;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let month_days = [31u32, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    let mut month = 0usize;
+    while month < 12 && d >= month_days[month] {
+        d -= month_days[month];
+        month += 1;
+    }
+    format!("{} {}", month_names[month.min(11)], d + 1)
+}
+
+fn estimate_reading_time(title: &str, summary: &str) -> u32 {
+    let words = title.split_whitespace().count() + summary.split_whitespace().count();
+    // Assume full article is ~10× the summary word count; 200 wpm average.
+    let estimated_words = (words * 10).max(200);
+    ((estimated_words as f32 / 200.0).ceil() as u32).max(1)
 }
 
 fn render_two_line(header: &str, body: &str, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
