@@ -3,16 +3,20 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────
 // HomeFeedView — Home timeline root for Chirp.
 //
-// Renders `model.modularTimeline.blocks` (T146) using `ModularBlockView`:
-// `Standalone` blocks delegate to the existing `NoteRowView`; `Module`
-// blocks stack two-or-three events vertically with a connecting line in
-// the avatar column. The flat `model.items` list is still around and is
-// consumed by `ProfileView` / `ThreadScreen` (M2 follow-up migrates them).
+// V-80 rung 7 — the home feed is thread-ROOTS-only. It renders
+// `model.modularTimeline.cards` (`[ChirpRootCard]`): one row per thread root.
+// Each root delegates to the existing `ModularBlockView` standalone path (so
+// the tweet surface — font, padding, action buttons — is unchanged) and, when
+// follows replied in the thread, shows a "↳ <name> replied in thread"
+// attribution line above the row. A followed user's reply to a non-followed
+// author's note surfaces THAT note here; replies never get their own row.
 //
-// Empty state and pull-to-refresh stay unchanged. The blocks/cards lookup
-// table is rebuilt every body pass — `[TimelineBlock]` and
-// `[ChirpEventCard]` are small (≤ visible_limit; ≤80 by default), so the
-// renderer doesn't need to memoize it.
+// chirp-tui shows the most-recent 1 replier; iOS likewise shows the most
+// recent here (the projection carries all repliers raw — Q1 display decision).
+//
+// Empty state and pull-to-refresh stay unchanged. The per-row card lookup is a
+// single-entry dictionary built per row — cards are small (≤ visible_limit;
+// ≤80 by default), so the renderer doesn't need to memoize.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct HomeFeedView: View {
@@ -48,12 +52,12 @@ struct HomeFeedView: View {
         }
     }
 
-    // T146 — empty when neither blocks nor the legacy flat list has
-    // anything to render. The legacy fallback is the safety net for any
-    // surface where the projection hasn't caught up yet (e.g. cold boot
-    // before the first observer fan-out reaches Swift).
+    // V-80 — empty when the OP feed has produced no root cards. The legacy
+    // flat-list cold-boot fallback is gone: the engine surfaces every
+    // root-shaped event as a card directly (no `timeline_authors` gate on
+    // roots), so the empty state shows only until the first root lands.
     private var isEmpty: Bool {
-        model.modularTimeline.blocks.isEmpty && model.items.isEmpty
+        model.modularTimeline.cards.isEmpty
     }
 
     private var currentAccount: AccountSummary? {
@@ -65,8 +69,7 @@ struct HomeFeedView: View {
 
     private var timeline: some View {
         TimelineListView(
-            blocks: effectiveBlocks,
-            cards: model.modularTimeline.cards,
+            roots: model.modularTimeline.cards,
             nextCursor: model.modularTimeline.page?.nextCursor,
             items: model.items,
             // V-31 — kernel-owned `mention_profiles` projection covers every
@@ -89,18 +92,6 @@ struct HomeFeedView: View {
             }
         )
         .equatable()
-    }
-
-    // T146 — render modular blocks if any have been projected; otherwise
-    // synthesize one Standalone block per `TimelineItem` so the cold-boot
-    // window (before the projection has accepted its first event) still
-    // shows the kernel's flat list. This is the only Swift-side fallback
-    // in the modular-vs-flat split.
-    private var effectiveBlocks: [TimelineBlock] {
-        if !model.modularTimeline.blocks.isEmpty {
-            return model.modularTimeline.blocks
-        }
-        return model.items.map { .standalone(eventID: $0.id, root: nil) }
     }
 
     // ── Empty / loading state ─────────────────────────────────────────────
@@ -176,8 +167,9 @@ struct HomeFeedView: View {
 }
 
 private struct TimelineListView: View, Equatable {
-    let blocks: [TimelineBlock]
-    let cards: [ChirpEventCard]
+    /// V-80 — one entry per thread root (`RootFeedSnapshot.cards`). Each root
+    /// renders as a single standalone row plus an optional attribution line.
+    let roots: [ChirpRootCard]
     let nextCursor: TimelineWindowCursor?
     let items: [TimelineItem]
     /// V-31 — kernel-owned mention-profile map (replaces the Swift
@@ -196,32 +188,41 @@ private struct TimelineListView: View, Equatable {
     let onLoadMore: (TimelineWindowCursor) -> Void
 
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
-        lhs.blocks == rhs.blocks
-            && lhs.cards == rhs.cards
+        lhs.roots == rhs.roots
             && lhs.nextCursor == rhs.nextCursor
             && lhs.items == rhs.items
             && lhs.mentionProfiles == rhs.mentionProfiles
     }
 
     var body: some View {
-        let cardLookup = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
         let itemLookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
 
         return List {
-            ForEach(Array(blocks.enumerated()), id: \.element.stableID) { index, block in
-                ModularBlockView(
-                    block: block,
-                    cards: cardLookup,
-                    items: itemLookup,
-                    mentionProfiles: mentionProfiles,
-                    onLike: onLike,
-                    onZap: onZap
-                )
+            ForEach(Array(roots.enumerated()), id: \.element.id) { index, root in
+                VStack(alignment: .leading, spacing: 0) {
+                    // Q1 — show the most-recent replier (the engine orders the
+                    // attribution Vec oldest-first, so `.last` is newest).
+                    if let attribution = root.attribution.last {
+                        attributionLine(attribution)
+                    }
+                    ModularBlockView(
+                        // Reuse the standalone render path: the root card id is
+                        // the row id (for reposts the engine forced it to the
+                        // superseded target id). A single-entry card lookup
+                        // feeds the existing renderer.
+                        block: .standalone(eventID: root.card.id, root: nil),
+                        cards: [root.card.id: root.card],
+                        items: itemLookup,
+                        mentionProfiles: mentionProfiles,
+                        onLike: onLike,
+                        onZap: onZap
+                    )
+                }
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(ChirpColor.bg)
                     .onAppear {
-                        if index == blocks.count - 1, let cursor = nextCursor {
+                        if index == roots.count - 1, let cursor = nextCursor {
                             onLoadMore(cursor)
                         }
                     }
@@ -234,5 +235,27 @@ private struct TimelineListView: View, Equatable {
         .refreshable {
             onRefresh()
         }
+    }
+
+    /// "↳ <name> replied in thread" — surfaces the follow whose reply caused
+    /// this root to appear (or who replied to it). `authorDisplayName` falls
+    /// back to the abbreviated raw pubkey when no kind:0 has arrived yet
+    /// (ADR-0032 display separation).
+    private func attributionLine(_ attribution: ChirpReplyAttribution) -> some View {
+        let name = attribution.authorDisplayName?.isEmpty == false
+            ? attribution.authorDisplayName!
+            : attribution.authorPubkey.shortHex
+        return HStack(spacing: 4) {
+            Image(systemName: "arrow.turn.down.right")
+                .font(.caption2)
+                .foregroundStyle(ChirpColor.link)
+            Text("\(name) replied in thread")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .accessibilityIdentifier("thread-attribution-\(attribution.replyEventId.prefix(8))")
     }
 }

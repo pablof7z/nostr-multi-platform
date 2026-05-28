@@ -123,7 +123,7 @@ fn registers_op_feed_engine_under_home_key() {
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
-    let _engine = nmp_app_template::register_op_feed_defaults(
+    let _defaults = nmp_app_template::register_op_feed_defaults(
         unsafe { &*app },
         ALICE.to_string(),
         slot(Some(ALICE)),
@@ -169,7 +169,8 @@ fn followed_reply_surfaces_root_with_attribution() {
         unsafe { &*app },
         ALICE.to_string(),
         slot(Some(ALICE)),
-    );
+    )
+    .engine;
 
     // ALICE (a follow, via self-inclusion) replies to BOB's not-yet-seen OP.
     let reply = reply_event(REPLY_ID, ALICE, 200, OP_ID);
@@ -315,7 +316,8 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
         unsafe { &*app },
         ALICE.to_string(),
         slot(Some(ALICE)),
-    );
+    )
+    .engine;
 
     let snapshot = engine.snapshot(&nmp_feed::FeedRequest::default());
     assert!(

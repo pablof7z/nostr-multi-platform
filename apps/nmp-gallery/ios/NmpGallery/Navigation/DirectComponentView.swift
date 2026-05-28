@@ -43,7 +43,7 @@ struct DirectComponentView: View {
     private var pageBody: some View {
         switch component.id {
         case "user-avatar":
-            UserAvatarPage(profile: model.bestEffortProfile)
+            UserAvatarPage(pubkey: DEMO_PUBKEY_HEX)
         case "user-name":
             UserProfileNamePage(profile: model.bestEffortProfile)
         case "user-nip05":
