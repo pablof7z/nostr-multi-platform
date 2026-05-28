@@ -649,6 +649,364 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum TypedPayloadOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct TypedPayload<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TypedPayload<'a> {
+            type Inner = TypedPayload<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TypedPayload<'a> {
+            pub const VT_SCHEMA_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FILE_IDENTIFIER: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PAYLOAD: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TypedPayload { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TypedPayloadArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TypedPayload<'bldr>> {
+                let mut builder = TypedPayloadBuilder::new(_fbb);
+                if let Some(x) = args.payload {
+                    builder.add_payload(x);
+                }
+                if let Some(x) = args.file_identifier {
+                    builder.add_file_identifier(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                if let Some(x) = args.schema_id {
+                    builder.add_schema_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn schema_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TypedPayload::VT_SCHEMA_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(TypedPayload::VT_SCHEMA_VERSION, Some(1))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn file_identifier(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        TypedPayload::VT_FILE_IDENTIFIER,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn payload(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            TypedPayload::VT_PAYLOAD,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TypedPayload<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "schema_id",
+                        Self::VT_SCHEMA_ID,
+                        false,
+                    )?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "file_identifier",
+                        Self::VT_FILE_IDENTIFIER,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "payload",
+                        Self::VT_PAYLOAD,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct TypedPayloadArgs<'a> {
+            pub schema_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub schema_version: u32,
+            pub file_identifier: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub payload: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for TypedPayloadArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TypedPayloadArgs {
+                    schema_id: None,
+                    schema_version: 1,
+                    file_identifier: None,
+                    payload: None,
+                }
+            }
+        }
+
+        pub struct TypedPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TypedPayloadBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_id(&mut self, schema_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TypedPayload::VT_SCHEMA_ID,
+                    schema_id,
+                );
+            }
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_
+                    .push_slot::<u32>(TypedPayload::VT_SCHEMA_VERSION, schema_version, 1);
+            }
+            #[inline]
+            pub fn add_file_identifier(
+                &mut self,
+                file_identifier: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TypedPayload::VT_FILE_IDENTIFIER,
+                    file_identifier,
+                );
+            }
+            #[inline]
+            pub fn add_payload(
+                &mut self,
+                payload: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    TypedPayload::VT_PAYLOAD,
+                    payload,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> TypedPayloadBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TypedPayloadBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TypedPayload<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TypedPayload<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TypedPayload");
+                ds.field("schema_id", &self.schema_id());
+                ds.field("schema_version", &self.schema_version());
+                ds.field("file_identifier", &self.file_identifier());
+                ds.field("payload", &self.payload());
+                ds.finish()
+            }
+        }
+        pub enum TypedProjectionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct TypedProjection<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TypedProjection<'a> {
+            type Inner = TypedProjection<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TypedProjection<'a> {
+            pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PAYLOAD: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TypedProjection { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TypedProjectionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TypedProjection<'bldr>> {
+                let mut builder = TypedProjectionBuilder::new(_fbb);
+                if let Some(x) = args.payload {
+                    builder.add_payload(x);
+                }
+                if let Some(x) = args.key {
+                    builder.add_key(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn key(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(TypedProjection::VT_KEY, None)
+                }
+            }
+            #[inline]
+            pub fn payload(&self) -> Option<TypedPayload<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<TypedPayload>>(
+                            TypedProjection::VT_PAYLOAD,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TypedProjection<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "key",
+                        Self::VT_KEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<TypedPayload>>(
+                        "payload",
+                        Self::VT_PAYLOAD,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct TypedProjectionArgs<'a> {
+            pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub payload: Option<::flatbuffers::WIPOffset<TypedPayload<'a>>>,
+        }
+        impl<'a> Default for TypedProjectionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TypedProjectionArgs {
+                    key: None,
+                    payload: None,
+                }
+            }
+        }
+
+        pub struct TypedProjectionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TypedProjectionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_key(&mut self, key: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TypedProjection::VT_KEY, key);
+            }
+            #[inline]
+            pub fn add_payload(&mut self, payload: ::flatbuffers::WIPOffset<TypedPayload<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<TypedPayload>>(
+                        TypedProjection::VT_PAYLOAD,
+                        payload,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> TypedProjectionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TypedProjectionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TypedProjection<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TypedProjection<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TypedProjection");
+                ds.field("key", &self.key());
+                ds.field("payload", &self.payload());
+                ds.finish()
+            }
+        }
         pub enum SnapshotFrameOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -669,6 +1027,7 @@ pub mod nmp {
         impl<'a> SnapshotFrame<'a> {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
             pub const VT_PAYLOAD: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TYPED_PROJECTIONS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -685,6 +1044,9 @@ pub mod nmp {
                 args: &'args SnapshotFrameArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SnapshotFrame<'bldr>> {
                 let mut builder = SnapshotFrameBuilder::new(_fbb);
+                if let Some(x) = args.typed_projections {
+                    builder.add_typed_projections(x);
+                }
                 if let Some(x) = args.payload {
                     builder.add_payload(x);
                 }
@@ -715,6 +1077,21 @@ pub mod nmp {
                     )
                 }
             }
+            #[inline]
+            pub fn typed_projections(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TypedProjection<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TypedProjection>>,
+                    >>(SnapshotFrame::VT_TYPED_PROJECTIONS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SnapshotFrame<'_> {
@@ -730,6 +1107,9 @@ pub mod nmp {
                         Self::VT_PAYLOAD,
                         false,
                     )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TypedProjection>>,
+                    >>("typed_projections", Self::VT_TYPED_PROJECTIONS, false)?
                     .finish();
                 Ok(())
             }
@@ -737,6 +1117,11 @@ pub mod nmp {
         pub struct SnapshotFrameArgs<'a> {
             pub schema_version: u32,
             pub payload: Option<::flatbuffers::WIPOffset<Value<'a>>>,
+            pub typed_projections: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TypedProjection<'a>>>,
+                >,
+            >,
         }
         impl<'a> Default for SnapshotFrameArgs<'a> {
             #[inline]
@@ -744,6 +1129,7 @@ pub mod nmp {
                 SnapshotFrameArgs {
                     schema_version: 1,
                     payload: None,
+                    typed_projections: None,
                 }
             }
         }
@@ -767,6 +1153,18 @@ pub mod nmp {
                     );
             }
             #[inline]
+            pub fn add_typed_projections(
+                &mut self,
+                typed_projections: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<TypedProjection<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_TYPED_PROJECTIONS,
+                    typed_projections,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> SnapshotFrameBuilder<'a, 'b, A> {
@@ -788,6 +1186,7 @@ pub mod nmp {
                 let mut ds = f.debug_struct("SnapshotFrame");
                 ds.field("schema_version", &self.schema_version());
                 ds.field("payload", &self.payload());
+                ds.field("typed_projections", &self.typed_projections());
                 ds.finish()
             }
         }
