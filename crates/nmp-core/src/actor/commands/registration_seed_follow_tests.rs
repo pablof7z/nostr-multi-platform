@@ -19,10 +19,13 @@ const SEED_NPUB_HEX: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0
 const FIATJAF_HEX: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (
-        IdentityRuntime::new(new_bunker_handshake_slot()),
-        Kernel::new(DEFAULT_VISIBLE_LIMIT),
-    )
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Declare the host kinds {1, 6} the contact-list-authors subscription
+    // REQs for, as the FFI `nmp_app_open_timeline` does in production. Without
+    // this the kernel's `follow_feed_kinds` is empty and `sync_follow_feed_interests`
+    // registers nothing (D0: the substrate no longer hardcodes a kind set).
+    kernel.follow_feed_kinds = BTreeSet::from([1u32, 6u32]);
+    (IdentityRuntime::new(new_bunker_handshake_slot()), kernel)
 }
 
 fn onboarding_relays() -> Vec<(String, String)> {

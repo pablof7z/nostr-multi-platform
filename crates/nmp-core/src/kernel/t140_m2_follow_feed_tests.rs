@@ -72,6 +72,9 @@ fn req_relay_urls(frames: &[WireFrame]) -> Vec<String> {
 #[test]
 fn t140_ingest_contacts_registers_interests_drain_emits_req() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
+    // for (D0: the substrate no longer hardcodes a kind set).
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
     // Active account: ALICE.
     kernel.active_account = Some(ALICE.to_string());
@@ -123,6 +126,9 @@ fn t140_ingest_contacts_registers_interests_drain_emits_req() {
 #[test]
 fn t140_follow_list_change_rereg_interests_new_relay_appears() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
+    // for (D0: the substrate no longer hardcodes a kind set).
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
 
     install_relay_list(&kernel, ALICE, &["wss://alice-t140.relay/"]);

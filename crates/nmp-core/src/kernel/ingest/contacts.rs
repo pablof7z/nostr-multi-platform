@@ -10,35 +10,56 @@ use crate::subs::{AccountId, CompileTrigger};
 use crate::substrate::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 use std::collections::BTreeSet as BTreeSetInner;
 
-/// Deterministic `InterestId` for a follow-feed interest keyed by pubkey.
+/// Deterministic `InterestId` for a contact-list-authors interest keyed by
+/// pubkey and the host-declared `kinds` set.
 ///
-/// Hashes `("t140-follow-feed", pubkey)` so the same pubkey always produces the
-/// same id across restarts, enabling stable `withdraw` / `push` round-trips.
-fn follow_feed_interest_id(pubkey: &str) -> InterestId {
-    InterestId(stable_hash64(("t140-follow-feed", pubkey)))
+/// Hashes `("contact-list-authors", pubkey, kinds_sorted_string)` so the same
+/// `(pubkey, kinds)` pair always produces the same id across restarts, enabling
+/// stable `withdraw` / `push` round-trips. The `kinds` component means two
+/// registrations of the same pubkey under different kind sets do NOT collide —
+/// switching kinds withdraws the old interest id and pushes a fresh one.
+///
+/// `kinds_sorted_string` is the kinds rendered in ascending order, joined by
+/// commas (e.g. `"1,6"`). A `BTreeSet` already iterates in sorted order, so the
+/// rendering is deterministic.
+fn contact_list_authors_interest_id(pubkey: &str, kinds: &BTreeSetInner<u32>) -> InterestId {
+    let kinds_sorted_string = kinds
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    InterestId(stable_hash64((
+        "contact-list-authors",
+        pubkey,
+        kinds_sorted_string.as_str(),
+    )))
 }
 
-/// Per-author cap on the follow-feed REQ. Without this an `InterestShape` with
-/// no bounds risks an unbounded backfill on the wire (codex finding #6).
+/// Per-author cap on the contact-list-authors REQ. Without this an
+/// `InterestShape` with no bounds risks an unbounded backfill on the wire
+/// (codex finding #6).
 const FOLLOW_FEED_LIMIT: u32 = 1000;
 
-/// Build a `LogicalInterest` for a single follow-feed pubkey (kinds 1 and 6,
-/// `InterestLifecycle::Tailing`, `InterestScope::Global`).
+/// Build a `LogicalInterest` for a single contact-list-author pubkey using the
+/// host-declared `kinds` set (`InterestLifecycle::Tailing`,
+/// `InterestScope::Global`).
 ///
-/// T140: carries `limit: Some(1000)`. The relay returns the newest 1000 events
-/// and then tails — `Tailing` lifecycle keeps the sub live past EOSE for new events.
-fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
+/// `nmp-core` does not know which kinds belong to the host's app concept — the
+/// `kinds` argument is supplied by the host through
+/// `ActorCommand::OpenContactListSubscription { kinds }` (D0: the substrate
+/// carries no app-specific social knowledge).
+///
+/// Carries `limit: Some(1000)`. The relay returns the newest 1000 events and
+/// then tails — `Tailing` lifecycle keeps the sub live past EOSE for new events.
+fn follow_feed_interest(pubkey: &str, kinds: &BTreeSetInner<u32>) -> LogicalInterest {
     let mut authors = BTreeSetInner::new();
     authors.insert(pubkey.to_string());
-    let mut kinds = BTreeSetInner::new();
-    kinds.insert(1u32);
-    kinds.insert(6u32);
     LogicalInterest {
-        id: follow_feed_interest_id(pubkey),
+        id: contact_list_authors_interest_id(pubkey, kinds),
         scope: InterestScope::Global,
         shape: InterestShape {
             authors,
-            kinds,
+            kinds: kinds.clone(),
             limit: Some(FOLLOW_FEED_LIMIT),
             ..Default::default()
         },
@@ -55,16 +76,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn follow_feed_interest_id_is_restart_stable() {
+    fn contact_list_authors_interest_id_is_restart_stable() {
+        let kinds = BTreeSetInner::from([1u32, 6u32]);
+        // Restart-stable: the same (pubkey, kinds) pair hashes identically
+        // across calls.
         assert_eq!(
-            follow_feed_interest_id(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            contact_list_authors_interest_id(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                &kinds,
             ),
-            InterestId(0x7d88_17f3_d513_31d9)
+            contact_list_authors_interest_id(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                &kinds,
+            ),
         );
+        // Distinct pubkeys never collide.
         assert_ne!(
-            follow_feed_interest_id("alice"),
-            follow_feed_interest_id("bob")
+            contact_list_authors_interest_id("alice", &kinds),
+            contact_list_authors_interest_id("bob", &kinds),
+        );
+        // Distinct kinds sets for the same pubkey never collide, so switching
+        // the host-declared kinds withdraws the old id and pushes a fresh one.
+        assert_ne!(
+            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32, 6u32])),
+            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32])),
         );
     }
 }
@@ -89,9 +124,22 @@ impl Kernel {
         }
         self.follow_feed_interest_ids.clear();
 
+        // D0: the host declares which kinds the contact-list-authors
+        // subscription should REQ via `ActorCommand::OpenContactListSubscription
+        // { kinds }`. An empty `follow_feed_kinds` means the subscription is
+        // NOT active — withdraw any existing interests (done above) and return
+        // without registering. `nmp-core` never hardcodes a kind set here.
+        let kinds = self.follow_feed_kinds.clone();
+        if kinds.is_empty() {
+            // `timeline_authors` is still cleared so a no-active-subscription
+            // kernel does not gate-store events against a stale author set.
+            self.timeline_authors = BTreeSet::new();
+            return;
+        }
+
         // Register one LogicalInterest per followed pubkey.
         for pubkey in follows {
-            let interest = follow_feed_interest(pubkey);
+            let interest = follow_feed_interest(pubkey, &kinds);
             let id = interest.id.clone();
             self.lifecycle.registry_mut().push(interest);
             self.follow_feed_interest_ids.insert(id);
@@ -100,7 +148,7 @@ impl Kernel {
         // Also register an interest for the active user themselves so their own
         // notes appear in the timeline.
         if let Some(ref me) = self.active_account {
-            let interest = follow_feed_interest(me);
+            let interest = follow_feed_interest(me, &kinds);
             let id = interest.id.clone();
             self.lifecycle.registry_mut().push(interest);
             self.follow_feed_interest_ids.insert(id);
@@ -219,8 +267,10 @@ impl Kernel {
     /// T140 — Re-register M2 follow-feed interests from the current
     /// `seed_contacts` of the active account.
     ///
-    /// Called by `open_timeline()` (actor command) so that switching screens
-    /// back to the timeline re-confirms the M2 interest set is populated.
+    /// Called by `open_contact_list_sub()` (the
+    /// `ActorCommand::OpenContactListSubscription` handler) so that switching
+    /// screens back to the timeline re-confirms the M2 interest set is populated
+    /// under the host-declared `follow_feed_kinds`.
     ///
     /// T140 (codex finding #4): empty / no-cached-follows must NOT no-op —
     /// that left the *previous* account's `follow_feed_interest_ids` and
@@ -230,6 +280,24 @@ impl Kernel {
     /// the trigger drives `drain_tick` to emit the CLOSE diff for the
     /// now-withdrawn subs. Calling it unconditionally is the correct CLEAR
     /// semantics.
+    /// Host-declared kinds setter for the contact-list-authors subscription.
+    ///
+    /// The host (e.g. Chirp) calls this via
+    /// `ActorCommand::OpenContactListSubscription { kinds }` to declare which
+    /// event kinds the active account's follow-set REQ should carry. D0:
+    /// `nmp-core` does not know which kinds belong to the host's app concept
+    /// (Chirp's social timeline is {1, 6}; another app might want {30023}); the
+    /// substrate just stores and threads the set the host supplies.
+    ///
+    /// Setting the kinds and then calling
+    /// `register_follow_feed_for_active_account` re-registers the active
+    /// account's follow-feed interests under the new kind set. An empty `kinds`
+    /// set deactivates the subscription (withdraws every follow-feed interest).
+    pub(crate) fn set_follow_feed_kinds(&mut self, kinds: BTreeSet<u32>) {
+        self.follow_feed_kinds = kinds;
+        self.register_follow_feed_for_active_account();
+    }
+
     pub(crate) fn register_follow_feed_for_active_account(&mut self) {
         let Some(active_pk) = self.active_account.clone() else {
             return;

@@ -107,8 +107,12 @@ impl KernelBridge {
         });
     }
 
-    /// (Re)open the following-timeline for the active account.
+    /// (Re)open the following-timeline for the active account. Declares the
+    /// desktop shell's social-timeline kinds {1, 6} — the host-declared kind
+    /// set `nmp-core` no longer hardcodes (D0).
     pub fn open_timeline(&self) {
-        let _ = self.tx.send(ActorCommand::OpenTimeline);
+        let _ = self.tx.send(ActorCommand::OpenContactListSubscription {
+            kinds: std::collections::BTreeSet::from([1u32, 6u32]),
+        });
     }
 }

@@ -922,8 +922,9 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::OpenTimeline => {
-            let outbound = commands::open_timeline(ctx.identity, ctx.kernel, ctx.relays_ready);
+        ActorCommand::OpenContactListSubscription { kinds } => {
+            let outbound =
+                commands::open_contact_list_sub(ctx.identity, ctx.kernel, ctx.relays_ready, kinds);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
