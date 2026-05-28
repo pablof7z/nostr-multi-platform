@@ -16,7 +16,7 @@
 
 The framework treats common Nostr-correctness failures — stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns — as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
 
-NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a codegen tool (`nmp gen modules`) that produces per-app concrete FFI enums/wrappers, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells.
+NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a codegen tool (`nmp gen modules`) that produces per-app concrete FFI enums/wrappers, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, a registry of app-owned reactive native UI components, and reference platform shells.
 
 The kernel composes the `rust-nostr` crate family plus OS capability crates into a substrate. It owns actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform shadow/codegen machinery, diagnostics, and test harnesses.
 
@@ -330,6 +330,60 @@ Concrete list, exhaustive:
 - Implement zap receipt verification.
 - Implement NWC request/response correlation.
 - Implement Blossom upload chunking.
-- Hop to main thread on platform — the framework's reconciler emits hints; the platform shim handles it.
+- Wire profile, embedded-event, or relay hydration per screen. Registry components
+  own that lifecycle behind reference-first APIs.
+- Hop to main thread on platform — the framework's reconciler emits hints; the
+  platform shim handles it.
+
+### 5.4 Registry components: reference-first reactive UI
+
+The component registry is a product surface, not just a code-distribution
+mechanism. Its promise is that app authors compose Nostr UI by passing Nostr
+references, while the installed component source handles the platform-specific
+reactivity needed to keep itself correct.
+
+Example product shape:
+
+```swift
+NostrAvatar(pubkey: authorPubkey)
+```
+
+The app should not also remember to claim the profile, watch kind:0 updates,
+maintain a side map of hydrated profiles, and release the claim when the row
+disappears. That is registry-component work.
+
+Registry components promise:
+
+- **Reference-first APIs.** Components accept stable Nostr references: pubkeys,
+  `npub`/`nprofile`, `note`/`nevent`, `naddr`, relay URLs, and typed component
+  inputs. Hydrated projection objects may exist for previews, tests, and
+  composition, but they are not the happy path for app screens.
+- **Self-managed reactivity.** A mounted component claims the Rust-owned facts it
+  needs, observes projection changes, redraws through the native UI mechanism,
+  and releases the claim when no longer visible.
+- **One shell adapter.** Apps wire the registry host once at the platform shell
+  boundary. Feature screens do not call `claim_profile`, `release_profile`,
+  `claim_event`, `release_event`, or equivalent lifecycle APIs for each rendered
+  row.
+- **Rust-owned truth.** Relay choice, fetch policy, cache mutation, replaceable
+  supersession, profile/embed resolution, and formatted display strings stay in
+  Rust. Native components may emit lifecycle intent and render snapshots; they
+  do not implement Nostr policy.
+- **Platform-native mechanisms.** SwiftUI may use environment adapters,
+  `.task(id:)`, and `onDisappear`; Compose may use `LaunchedEffect`,
+  `DisposableEffect`, and collected state; TUI components may use visible-intent
+  sets and redraw events. The developer-facing promise is identical across
+  targets even when the implementation differs.
+- **Honest progressive rendering.** Components render immediately with a
+  placeholder, fallback, missing, deleted, unauthorized, or stale state, then
+  refine in place as Rust projections update. Blank UI while data is fetchable is
+  a framework defect.
+- **App-owned source.** Components are copied into the app tree so teams can edit
+  styling, layout, accessibility, and callbacks. `nmp update component` preserves
+  local edits against an upstream baseline.
+
+This is binding on every registry family: `user-*`, `content-*`, embedded-event
+kind handlers, relay/provenance widgets, and future app blocks. A registry API
+that requires every feature screen to hand-roll hydration is not complete.
 
 ---

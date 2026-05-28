@@ -4,6 +4,8 @@
 > This is the implementation plan for installable, updateable, app-owned
 > native UI source components. The first shipped kit is Nostr content rendering
 > for iOS SwiftUI and Android Compose.
+> Product promise source of truth:
+> [`product-spec/overview-and-dx.md` §5.4](../product-spec/overview-and-dx.md#54-registry-components-reference-first-reactive-ui).
 
 ## Product Goal
 
@@ -20,6 +22,39 @@ The installed files live in the app tree, are normal app source, and can be
 edited freely. Later updates are interactive source updates against a recorded
 upstream baseline; no command silently overwrites local edits.
 
+## Product Promises
+
+Registry components are Nostr-aware native source, not passive DTO renderers.
+The app should say "render the avatar for this pubkey" or "render this embedded
+event reference"; the component owns the platform-appropriate lifecycle needed
+to become correct over time.
+
+- **Reference-first API:** app screens pass stable Nostr references such as
+  `pubkey`, `npub`/`nprofile`, `note`/`nevent`, `naddr`, relay URL, or a typed
+  registry input. They do not pre-hydrate every row with ad hoc profile maps.
+- **Component-owned reactivity:** installed components claim the facts they need
+  while visible, release them when gone, observe Rust-produced projection
+  updates, and redraw through the native mechanism for their platform.
+- **One app integration:** the app wires a registry host/projection adapter once
+  at the shell boundary. Individual screens do not manually call
+  `claim_profile`, `release_profile`, `claim_event`, or equivalent lifecycle
+  APIs just because they placed a component on screen.
+- **Rust-owned truth:** NMP owns relay choice, fetch policy, cache mutation,
+  dedupe, tombstones, profile/embed resolution, and derived display strings.
+  Native components may emit lifecycle intents and render projection snapshots;
+  they do not implement Nostr policy.
+- **Platform-native behavior:** SwiftUI components can use environment adapters,
+  `.task(id:)`, and `onDisappear`; Compose components can use
+  `LaunchedEffect`, `DisposableEffect`, and collected state; TUI components can
+  integrate with visible-intent sets and redraw events. The public promise is
+  the same even when the mechanism differs.
+- **Progressive correctness:** cold components render an honest placeholder or
+  fallback immediately, then hydrate as the Rust projection catches up. Blank
+  content and silent stale state are product failures.
+- **Editable ownership:** because components are copied source, apps can tune
+  layout, styling, accessibility, and callbacks locally; `nmp update component`
+  preserves those edits against the recorded upstream baseline.
+
 ## Boundary
 
 NMP owns the reusable protocol and projection contract:
@@ -30,6 +65,8 @@ NMP owns the reusable protocol and projection contract:
   resolution facts.
 - `ContentTreeWire` and related generated binding types as the stable renderer
   input.
+- Reference lifecycle sinks and projection-observation contracts used by
+  components to claim/release Rust-owned facts.
 
 Apps own the native rendering source:
 
@@ -37,10 +74,14 @@ Apps own the native rendering source:
 - Visual styling, density, gesture affordances, preview presentation, and route
   callbacks.
 - App-specific renderer branches, such as podcast cards or venue cards.
+- One shell-level registry host adapter that connects copied components to the
+  app's Rust runtime and projection store.
 
-Native components may branch on render node type and UI variant. They must not
-decide relay policy, fetch policy, business state, cache ownership, retry
-behavior, or derived display strings that belong in Rust projections.
+Native components may branch on render node type and UI variant. They may own
+their visibility lifecycle and issue claim/release intents through injected
+Rust-backed sinks. They must not decide relay policy, fetch policy, business
+state, cache ownership, retry behavior, or derived display strings that belong
+in Rust projections.
 
 ## End State
 
@@ -58,6 +99,9 @@ M16 is complete when NMP has:
 7. Fixture-driven visual and decoder tests for both platforms.
 8. At least one real app, preferably Chirp, consuming copied components rather
    than private one-off renderers.
+9. Reference-driven user/content/embed components whose screens pass references
+   and styling callbacks, while the components own claim/release and projection
+   observation.
 
 ## Component Model
 
@@ -72,6 +116,14 @@ Each registry item has:
   `example`, `test`, `fixture`.
 - `dependencies`: other registry items that must be installed first.
 - `default_path`: app-local install path, overridable by the app.
+- `reference_inputs`: the Nostr references the component accepts directly, such
+  as `pubkey`, `nevent`, `naddr`, or relay URL.
+- `projection_contracts`: the Rust-owned snapshots or wire types the component
+  observes while hydrating.
+- `lifecycle_sink`: the host adapter capability the component uses for
+  claim/release or subscription intent.
+- `fallback_states`: the placeholder, missing, deleted, unauthorized, or loading
+  states that keep the UI honest before projection data arrives.
 
 The registry supports items and bundles. Items are narrow building blocks.
 Bundles install a coherent renderer set.
@@ -297,16 +349,22 @@ Exit gate:
   land.
 - iOS gallery render test over content fixtures.
 - Android gallery render test over the same fixtures.
+- Reference-driven lifecycle test: a clean app installs a user or embedded-event
+  component, passes only a Nostr reference plus styling/callbacks, and observes
+  hydration without screen-level claim/release calls.
 - Manual update drill: local edit plus upstream update produces a visible
   conflict report, not an overwrite.
 
 ## Non-Goals
 
 - No published `nmp-content-swiftui` or `nmp-content-compose` framework package.
-- No native fetchers, relay subscriptions, cache writers, or policy engines in
-  copied components.
+- No native fetchers, relay-policy decisions, cache writers, retry engines, or
+  protocol parsers in copied components. Component-owned lifecycle is allowed
+  only as typed claim/release or subscription intent against Rust-owned sinks.
+- No screen-by-screen hydration burden for app authors. Passing a pubkey or
+  event reference to a registry component must not require the surrounding
+  feature screen to manually claim, release, or watch that reference.
 - No generated DTOs copied from the registry. Generated bindings are produced by
   `nmp-codegen` or the platform binding build.
 - No requirement that app developers install Node or jsrepo for the default
   `nmp init` path.
-

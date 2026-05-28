@@ -1300,6 +1300,13 @@ Promoted from the post-v1 bucket by user direction on 2026-05-25. This is the
 M16 developer-experience track for reusable source components that apps can
 install, own, customize, and update later.
 
+Core product promise: registry components are reference-driven and reactive per
+[`product-spec/overview-and-dx.md` §5.4](product-spec/overview-and-dx.md#54-registry-components-reference-first-reactive-ui).
+App screens pass Nostr references plus styling/callbacks; installed components
+own the platform lifecycle that claims, observes, hydrates, redraws, and releases
+Rust-owned projections. Screens must not reimplement per-row profile/embed
+hydration just because they render a component.
+
 **Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
 
 **Status:** First implementation slice in progress: a built-in offline
@@ -1321,7 +1328,10 @@ fixture kit.
 
 **Acceptance:** a clean app can install a content kit, render the shared content
 fixtures, customize one renderer in app-owned source, update the upstream kit,
-and preserve the local customization.
+and preserve the local customization. For reactive components, the same app can
+pass only a Nostr reference plus styling/callbacks and does not call
+`claim_profile`, `release_profile`, `claim_event`, or `release_event` from the
+feature screen.
 
 **Progress (2026-05-25):** M16-C1 step "freeze the content fixtures / wire
 contract" landed — `crates/nmp-content-fixtures/fixtures/wire/<id>.json`
@@ -1341,6 +1351,31 @@ Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
 open item not already in Section 2. PR #588 closes F-CR-01 and F-CR-06; the next
 highest-value open item is F-CR-02, because Android must join `ContentTreeWire`
 before the Compose registry can replace the old embed card.
+
+#### F-CR-00 · Reference-driven reactive component contract [HIGH · all platforms]
+
+Before expanding more user/content/embed components, make the registry contract
+match the product promise in `docs/plan/m16-component-registry.md`: app screens
+pass references; components own platform lifecycle; Rust owns truth and policy.
+
+- Define the host adapter each platform exposes to copied source components:
+  profile claim/release, embedded-event claim/release, projection observation,
+  and redraw/update delivery.
+- Update user-profile components so the primary API is reference-first
+  (`pubkey` / `npub` / `nprofile`) with hydrated projection inputs retained only
+  for previews, tests, and already-resolved composition.
+- Update embedded-event/content components so lifecycle lives in the component
+  or shared registry host, not in each feed/thread screen.
+- Update recipes and web registry copy that currently teach per-screen maps or
+  manual hydration as the normal path.
+
+**Acceptance:** a clean SwiftUI, Compose, or TUI screen can render an avatar or
+embedded event by passing a reference and local styling/callbacks only. No
+feature screen directly calls claim/release for that reference; those lifecycle
+calls are owned by the installed component or the one-time registry host adapter.
+
+**Dependencies:** source-of-truth update in product spec and M16 plan. **Scope:**
+medium-large.
 
 #### F-CR-01 · Rust `EmbedKindProjection` + `EmbeddedEventEnvelope` [DONE · PR #588]
 
