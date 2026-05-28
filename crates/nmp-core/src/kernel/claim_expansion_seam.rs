@@ -87,6 +87,21 @@ impl Kernel {
         self.claim_sub_index.len()
     }
 
+    /// Returns the `InterestId` of the pending claim for `primary_id`, if any.
+    /// Test seam: lets a test build the `WireFrame::Req { interest_id, … }`
+    /// that the planner-frame bridge keys on, so `claim_sub_index` /
+    /// `oneshot_subs` get wired exactly as in production.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_claim_interest_id(
+        &self,
+        primary_id: &str,
+    ) -> Option<crate::planner::InterestId> {
+        self.pending_claims
+            .values()
+            .find(|c: &&PendingClaim| c.primary_id == primary_id)
+            .map(|c| c.interest_id.clone())
+    }
+
     /// Returns the attempted relay set for a claim. Test seam.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn test_claim_attempted(&self, primary_id: &str) -> BTreeSet<String> {

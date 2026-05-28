@@ -42,7 +42,7 @@
 use std::collections::BTreeMap;
 
 use crate::planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
 use crate::stable_hash::stable_hash64;
 use crate::subs::registry::InterestRegistry;
@@ -94,11 +94,20 @@ impl OneshotApi {
     /// Stage 1). Identical `(scope, shape)` inputs return the same
     /// `InterestId` across calls — the dedup invariant the registry
     /// guarantees on the underlying `SubKey`.
+    ///
+    /// `hints` seeds the constructed [`LogicalInterest::hints`] so the first
+    /// REQ for a hint-bearing read (e.g. a `nostr:nevent…` claim carrying
+    /// NIP-19 relay TLVs) can fan out to publisher-provided relays in
+    /// addition to the planner's bootstrap lanes. **The dedup key is
+    /// `(scope, shape)` only** — `shape_key` does NOT hash `hints` — so
+    /// callers passing `Vec::new()` observe byte-identical registry,
+    /// `InterestId`, and dedup behavior to before this parameter existed.
     pub fn request(
         &mut self,
         registry: &mut InterestRegistry,
         scope: InterestScope,
         shape: InterestShape,
+        hints: Vec<RelayHint>,
     ) -> (OneshotToken, InterestId) {
         let token = OneshotToken(self.next_token);
         self.next_token = self.next_token.saturating_add(1);
@@ -117,7 +126,7 @@ impl OneshotApi {
             id: interest_id.clone(),
             scope,
             shape,
-            hints: Vec::new(),
+            hints,
             lifecycle: InterestLifecycle::OneShot,
             // `OneshotApi::request` is the legacy discovery-direction
             // fan-out (`kernel/discovery.rs::drain_unknown_oneshots`); opt
@@ -233,7 +242,7 @@ mod tests {
     fn request_registers_a_oneshot_interest() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
+        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
         assert_eq!(api.in_flight(), 1);
         assert_eq!(reg.iter_active().len(), 1);
         assert!(matches!(
@@ -247,8 +256,8 @@ mod tests {
     fn identical_oneshots_dedup_to_one_registry_slot() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (a, a_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
-        let (b, b_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
+        let (a, a_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        let (b, b_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
         assert_ne!(a, b, "distinct tokens");
         assert_eq!(
             a_id, b_id,
@@ -273,7 +282,7 @@ mod tests {
     fn complete_then_drain_is_idempotent() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("bob"));
+        let (t, _id) = api.request(&mut reg, InterestScope::Global, profile_shape("bob"), Vec::new());
         api.complete(t);
         assert!(api.is_complete(t));
 
@@ -303,12 +312,82 @@ mod tests {
     fn distinct_shapes_get_distinct_slots() {
         let mut reg = InterestRegistry::new();
         let mut api = OneshotApi::new();
-        let (_, alice_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"));
-        let (_, carol_id) = api.request(&mut reg, InterestScope::Global, profile_shape("carol"));
+        let (_, alice_id) = api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        let (_, carol_id) = api.request(&mut reg, InterestScope::Global, profile_shape("carol"), Vec::new());
         assert_eq!(reg.iter_active().len(), 2);
         assert_ne!(
             alice_id, carol_id,
             "distinct shapes produce distinct interest_ids"
+        );
+    }
+
+    /// Regression guard for the `hints` parameter (V-59 rung 1, #3): a caller
+    /// passing `Vec::new()` must see BYTE-IDENTICAL behavior to before the
+    /// parameter existed — empty `hints` on the registered interest, the same
+    /// `InterestId`, and the same single deduped registry slot. This is the
+    /// "no behavior change for non-hint callers" invariant the discovery
+    /// oneshots rely on.
+    #[test]
+    fn empty_hints_registers_interest_with_no_hints() {
+        let mut reg = InterestRegistry::new();
+        let mut api = OneshotApi::new();
+        let (_, id) =
+            api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+
+        let active = reg.iter_active();
+        assert_eq!(active.len(), 1, "exactly one slot");
+        let interest = &active[0];
+        assert_eq!(interest.id, id, "returned id matches the registered interest");
+        assert!(
+            interest.hints.is_empty(),
+            "an empty-hints request must register an interest with no hints — \
+             byte-identical to the pre-parameter behavior"
+        );
+    }
+
+    /// Hints DO flow onto the constructed `LogicalInterest`, but they do NOT
+    /// participate in dedup: a hint-bearing request and an otherwise-identical
+    /// empty-hints request for the same `(scope, shape)` share one slot and one
+    /// `InterestId`. `shape_key` hashes `(scope, shape)` only — proving hints
+    /// cannot fork the registry slot (so a claim's hints never accidentally
+    /// split a deduped read into two wire REQs).
+    #[test]
+    fn hints_populate_interest_but_do_not_affect_dedup() {
+        let mut reg = InterestRegistry::new();
+        let mut api = OneshotApi::new();
+
+        let hint = RelayHint {
+            url: "wss://relay.example.com".to_string(),
+            source: crate::planner::HintSource::UserConfigured,
+        };
+        let (_, hinted_id) = api.request(
+            &mut reg,
+            InterestScope::Global,
+            profile_shape("alice"),
+            vec![hint.clone()],
+        );
+        // The registered interest carries the hint verbatim.
+        let active = reg.iter_active();
+        assert_eq!(active.len(), 1);
+        assert_eq!(
+            active[0].hints,
+            vec![hint],
+            "the constructed LogicalInterest must carry the supplied hints"
+        );
+
+        // A second request for the same (scope, shape) with EMPTY hints dedups
+        // to the same slot and returns the same InterestId — hints are not part
+        // of the dedup key.
+        let (_, empty_id) =
+            api.request(&mut reg, InterestScope::Global, profile_shape("alice"), Vec::new());
+        assert_eq!(
+            hinted_id, empty_id,
+            "hints must not fork the dedup key — same (scope, shape) → same InterestId"
+        );
+        assert_eq!(
+            reg.iter_active().len(),
+            1,
+            "hints must not create a second registry slot"
         );
     }
 }

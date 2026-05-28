@@ -27,6 +27,12 @@ mod action_lifecycle_tests;
 pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_stages_tests;
+// V-59 rung 1 — public typed accessor over the active account's
+// `timeline_authors` projection (raw pubkeys). The OP-centric feed's
+// `FollowSetLookup` capability (later rung) reads through this seam.
+mod active_timeline_authors;
+#[cfg(test)]
+mod active_timeline_authors_tests;
 mod auth;
 mod clock;
 #[cfg(test)]
@@ -56,6 +62,12 @@ mod discovery_tests;
 mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
 mod event_claim_tests;
+// V-59 rung 1 (#4) — `event_claim_released` ring projection + the
+// in-process `EventClaimReleasedObserver` registration. `pub(crate)` so the
+// trait is reachable for the struct field type in this module.
+pub(crate) mod event_claim_released;
+#[cfg(test)]
+mod event_claim_released_tests;
 mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
@@ -72,6 +84,8 @@ mod mailboxes;
 mod nostr;
 #[cfg(test)]
 mod outbox_tests;
+#[cfg(test)]
+mod pre_kind3_buffer_tests;
 #[cfg(test)]
 mod profile_claim_tests;
 mod provenance;
@@ -372,8 +386,8 @@ use crate::substrate::EmptyMailboxCache;
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
     empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
-    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
-    ParsedRelayList,
+    BoundedMessageMap, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache,
+    OutboxRouter, ParsedRelayList, MAX_PROJECTION_MESSAGES,
 };
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
@@ -609,6 +623,32 @@ pub struct Kernel {
     #[cfg(any(test, feature = "test-support"))]
     test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
     timeline_authors: BTreeSet<String>,
+    /// V-59 rung 1 (Q7) — pre-kind:3 ingest buffer. Holds kind:1 / kind:6
+    /// events that arrived BEFORE the active account's follow set named their
+    /// author — i.e. `should_store_event` returned `false` solely because
+    /// `!timeline_authors.contains(author)`. Instead of dropping such an event
+    /// (which is the historical behavior), `ingest_timeline_event` parks it
+    /// here keyed by event id.
+    ///
+    /// `sync_follow_feed_interests` walks the buffer after rebuilding
+    /// `timeline_authors`: any entry whose author is now followed is re-fed
+    /// through `ingest_timeline_event` (and thus stored); the rest are dropped.
+    /// Cleared on identity change so a switched-out account's parked events
+    /// never leak into the new account's stream.
+    ///
+    /// Bounded by [`MAX_PROJECTION_MESSAGES`] (D5): a burst of events for
+    /// authors that never become followed evicts oldest-first rather than
+    /// growing without bound. No consumer reads this buffer outside the kernel
+    /// ingest path — it is purely an internal staging area.
+    ///
+    /// The value pairs the parked `NostrEvent` with the delivering relay URL
+    /// (its provenance) so the replay through `ingest_timeline_event`
+    /// re-records the SAME first-source provenance the event would have had if
+    /// the follow set had named its author on first arrival. (The V-59 §5
+    /// sketch typed this `BoundedMessageMap<EventId, NostrEvent>`; the tuple
+    /// preserves provenance for the replay — the buffer has no external
+    /// consumer, so the value shape is an internal detail.)
+    pre_kind3_buffer: BoundedMessageMap<String, (NostrEvent, String)>,
     /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
     /// stale entries before re-registering on kind:3 change. Derived from the
@@ -637,6 +677,23 @@ pub struct Kernel {
     /// consumer drops the claim — that lets a re-claim re-fetch (the
     /// `OneshotApi` row may have been released on EOSE long ago).
     event_claim_requested: BTreeSet<String>,
+    /// V-59 rung 1 (#4) — bounded ring of `primary_id`s whose claim resolved
+    /// to EOSE-without-match. When `complete_unknown_oneshot` observes the
+    /// EOSE for a claim sub whose event never arrived, it clears the
+    /// `event_claims` / `event_claim_requested` state for that id and pushes
+    /// the id here. Later rungs (the OP-centric feed engine) register an
+    /// `EventClaimReleasedObserver` to learn "this claimed root could not be
+    /// hydrated" and drop the pending attribution. No consumer in this PR.
+    ///
+    /// Bounded by [`MAX_PROJECTION_MESSAGES`] (D5). Append-only signal log,
+    /// not a keyed projection — see [`crate::substrate::BoundedRing`].
+    event_claim_released: crate::substrate::BoundedRing<String>,
+    /// V-59 rung 1 (#4) — in-process observers notified on each
+    /// `event_claim_released` push. Rust-only for now (no FFI consumer yet);
+    /// the C-ABI channel can be added later mirroring
+    /// `actor/commands/raw_event_observer.rs` when an FFI consumer appears.
+    event_claim_released_observers:
+        Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
     /// Cold-start parking queue for `claim_event` calls that arrived
     /// before any relay socket reached the warm `can_send` state.
     ///
@@ -1489,10 +1546,13 @@ impl Kernel {
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,
             timeline_authors: BTreeSet::new(),
+            pre_kind3_buffer: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
+            event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),
+            event_claim_released_observers: Vec::new(),
             pending_event_claims: Vec::new(),
             event_claim_drops_total: 0,
             profile_requests: ProfileRequestState::default(),

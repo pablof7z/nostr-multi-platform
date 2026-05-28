@@ -330,7 +330,12 @@ mod production_ingest_tests {
             let registry = kernel.lifecycle.registry_mut();
             kernel
                 .oneshot
-                .request(registry, crate::planner::InterestScope::Global, shape)
+                .request(
+                    registry,
+                    crate::planner::InterestScope::Global,
+                    shape,
+                    Vec::new(),
+                )
         };
 
         let oneshot_before = kernel.test_oneshot_in_flight();

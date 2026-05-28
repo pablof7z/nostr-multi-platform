@@ -149,7 +149,8 @@ impl Kernel {
             };
             let (token, interest_id) = {
                 let registry = self.lifecycle.registry_mut();
-                self.oneshot.request(registry, InterestScope::Global, shape)
+                self.oneshot
+                    .request(registry, InterestScope::Global, shape, Vec::new())
             };
             // PD-033-C Stage 1 bridge: stash the token by interest_id. The
             // planner's next `drain_tick` emits a `WireFrame::Req` carrying
@@ -189,7 +190,8 @@ impl Kernel {
             };
             let (token, interest_id) = {
                 let registry = self.lifecycle.registry_mut();
-                self.oneshot.request(registry, InterestScope::Global, shape)
+                self.oneshot
+                    .request(registry, InterestScope::Global, shape, Vec::new())
             };
             // PD-033-C Stage 1 bridge (see twin comment in events arm).
             self.pending_discovery_oneshots.insert(interest_id, token);
@@ -228,6 +230,20 @@ impl Kernel {
         let Some((token, _kind)) = self.oneshot_subs.remove(sub_id) else {
             return;
         };
+
+        // V-59 rung 1 (#4) — EOSE-no-match release for an event claim. If this
+        // oneshot sub belongs to a still-pending claim (a matching EVENT would
+        // have terminated the claim via `on_claim_outcome_hit`, removing it
+        // from `pending_claims`) AND the event is not already in the store,
+        // the relay set has confirmed it has nothing. Clear the claim state so
+        // a re-claim can re-fetch, push the id into the released ring, and
+        // notify observers.
+        if let Some(primary_id) = self.claim_primary_id_for_unmatched_sub(sub_id) {
+            self.event_claims.remove(&primary_id);
+            self.event_claim_requested.remove(&primary_id);
+            self.record_event_claim_released(&primary_id);
+        }
+
         self.oneshot.complete(token);
         // `drain_completed` keeps the idempotent-drain contract; we release
         // immediately because the kernel reads results from the store/cache,

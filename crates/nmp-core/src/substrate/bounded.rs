@@ -279,6 +279,70 @@ where
     }
 }
 
+/// A bounded FIFO ring of values: `push` appends to the back and, when the
+/// ring is at capacity, evicts the oldest (front) value first. Iteration
+/// yields values in arrival order (oldest first).
+///
+/// Unlike [`BoundedMessageMap`] this is keyless and append-only — the right
+/// shape for an ordered *signal stream* (e.g. "these event ids were released
+/// without a match") that an observer drains in arrival order, rather than a
+/// keyed projection store. Duplicates are allowed; the ring is a log, not a
+/// set.
+///
+/// Doctrine: same as [`BoundedMessageMap`] — D0/D8 (no app nouns, no I/O,
+/// O(1) push/evict), D5 (capacity-bounded; resident set never exceeds
+/// `capacity`).
+#[derive(Debug, Clone)]
+pub struct BoundedRing<T> {
+    ring: std::collections::VecDeque<T>,
+    capacity: usize,
+}
+
+impl<T> BoundedRing<T> {
+    /// Construct an empty ring bounded by `capacity`. A `capacity` of `0`
+    /// silently behaves as `1` (mirrors [`BoundedMessageMap::new`]).
+    #[must_use]
+    pub fn new(capacity: usize) -> Self {
+        let capacity = capacity.max(1);
+        Self {
+            ring: std::collections::VecDeque::with_capacity(capacity),
+            capacity,
+        }
+    }
+
+    /// Append `value` to the back. If the ring is at capacity, the oldest
+    /// (front) value is evicted first so `len()` never exceeds `capacity`.
+    pub fn push(&mut self, value: T) {
+        if self.ring.len() >= self.capacity {
+            self.ring.pop_front();
+        }
+        self.ring.push_back(value);
+    }
+
+    /// Number of values currently in the ring.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.ring.len()
+    }
+
+    /// Whether the ring holds no values.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.ring.is_empty()
+    }
+
+    /// The capacity bound this ring was constructed with.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Iterate values in arrival order (oldest first).
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.ring.iter()
+    }
+}
+
 #[cfg(test)]
 #[path = "bounded/tests.rs"]
 mod tests;

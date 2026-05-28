@@ -905,6 +905,88 @@ part of the deleted scratch plan.
 
 ---
 
+### V-80 · Home feed is thread-roots-only with reply attribution [HIGH · v1 PRODUCT-MODEL FIX]
+
+> **Numbering note (2026-05-28):** the design doc
+> [`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
+> §8 drafted this entry as "V-59". V-59 (and every number through V-79) was
+> already assigned by the time rung 1 landed, so this entry takes the next
+> free number, **V-80**. The design doc's internal "V-59" references all
+> point to *this* item.
+
+**Status:** spec proposed 2026-05-27 in
+[`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md).
+**Rung 1 (Stage 0 kernel substrate additions) landed 2026-05-28** — five pure
+kernel additions with no consumer yet (see WIP.md / the rung-1 PR). Rungs 2–7
+remain.
+
+**Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
+replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
+indicator as a partial mitigation, but the product model the user wants is
+different: **feed = thread roots only; follows' replies attribute back to
+their root**. A follow's reply to a non-followed OP should surface the OP
+with a "↳ Alice replied" badge. Reply rows never stand alone.
+
+Today's code drops the root pointer on chain-length-1 standalone blocks
+(`crates/nmp-threading/src/grouper.rs:367`), defeats attribution at the
+threading layer, and lacks any mechanism to fetch a non-followed root id
+into the local store (the existing thread-hydration logic
+`enqueue_thread_hydration_from_event` only fires when a thread detail view
+is open — `crates/nmp-core/src/kernel/ingest/timeline.rs`).
+
+**Architectural shape:** the engine `RootIndexedFeed<R: ParentResolver, A:
+AttributionPayload>` lives in `nmp-feed` (generic substrate, zero protocol
+knowledge). `nmp-nip01` provides the NIP-10 instance
+(`Nip10ReplyAttribution` + `register_op_feed`); a future `nmp-nip22`
+provides the kind:1111 instance covering ALL non-kind:1 root kinds
+(NIP-23, NIP-94, NIP-99, podcasts, …). One engine, two foreseeable
+instances; no per-kind state-machine explosion.
+
+**Rung 1 (DONE 2026-05-28) — kernel substrate additions in `nmp-core`:**
+1. `Kernel::active_timeline_authors()` — public typed read accessor over
+   the `timeline_authors` projection (raw pubkeys).
+2. `pre_kind3_buffer` — bounded staging map that parks kind:1/kind:6 events
+   whose author is not yet followed, replayed by
+   `sync_follow_feed_interests` once the author is followed.
+3. `OneshotApi::request` gains a `hints: Vec<RelayHint>` parameter;
+   `claim_event` seeds the initial REQ with the URI's NIP-19 relay TLVs.
+4. `event_claim_released` — bounded ring projection + in-process
+   `EventClaimReleasedObserver`; `complete_unknown_oneshot` clears claim
+   state and pushes the id on EOSE-no-match.
+5. `release_event` calls `release_claim_expansion` on refcount-zero (codex
+   M3).
+All five are pure additions with no consumer yet; master behavior is
+unchanged.
+
+**Prerequisite:** V-45 (`LogicalInterest::SocialTimeline` substrate seam) +
+`FollowSetLookup` capability — delivered in a later rung per the doc's §5
+Stage 0 (note: the doc's §5 "Stage 0" is the V-45/FollowSetLookup work; the
+rung-1 PR that landed is a DIFFERENT five-addition decomposition than the
+doc's §5 text — see the PR's spec-drift report).
+
+**Recommended action:** seven-rung PR ladder per
+[`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
+§5–§6. Net add ~1,700 LOC across `nmp-threading`, `nmp-core` (substrate
+seam only), `nmp-planner`, `nmp-feed` (engine), `nmp-nip01` (instance),
+`nmp-app-template`, and `apps/chirp/`. Net delete ~250 LOC (partial-chain
+machinery in chirp-tui + hand-rolled follow-set wiring in nmp-app-chirp).
+Two new ADRs: ADR-0033 (`FollowSetLookup` capability) and ADR-0034
+(generic root-indexed feed engine in `nmp-feed`; protocol-specific
+instances in NIP crates).
+
+**Open user decisions** carried to `docs/perf/op-centric-feed-architecture.md`
+§7: Q1 (attribution cap + deletion semantics), Q2 (LogicalInterest enum vs
+discriminator), Q3 (repost behavior under OP-centric model), Q4
+(self-replies), Q5 (NIP-22 scope deferred to post-v1), Q6 (root-hydration
+latency trade-off). All have flagged defaults if the user is unavailable.
+
+**Out of scope (post-v1):** the `nmp-nip22` instance over kind:1111
+comment trees. Implementation is ~150 LOC (one `ParentResolver` impl
+plus one `AttributionPayload` impl plus one wiring helper); engine code
+is zero new lines. Tracked separately when `nmp-nip22` crate is created.
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 
