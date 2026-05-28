@@ -4,8 +4,13 @@ import Foundation
 // T146 — Swift mirror of `nmp_threading::TimelineBlock` + the per-event
 // metadata `nmp_app_chirp` ships alongside the blocks.
 //
-// Wire shape produced by `projections["nmp.feed.home"]`:
-//   { "blocks": [TimelineBlock], "cards": [ChirpEventCard], "page": ..., "metrics": ... }
+// V-80 rung 7 NOTE: the HOME feed (`projections["nmp.feed.home"]`) no longer
+// uses the `{ blocks, cards }` modular shape — it is now the OP-centric
+// `ChirpTimelineSnapshot` (`{ cards: [ChirpRootCard], page }`) defined lower
+// in this file. The `TimelineBlock` enum + `ChirpEventCard` below are STILL
+// used by the author-view / thread-view modular renderers
+// (`ModularBlockView`), which keep the `{ blocks, cards }` shape — so they are
+// retained unchanged.
 //
 // `TimelineBlock` is a tagged enum on the Rust side (serde default
 // representation). The two variants are:
@@ -265,13 +270,83 @@ struct TimelineWindowPage: Decodable, Equatable, Sendable {
     }
 }
 
-/// Decoded `nmp-feed` home projection payload.
+// ─────────────────────────────────────────────────────────────────────────
+// V-80 rung 7 — OP-centric home feed.
+//
+// `projections["nmp.feed.home"]` is now the Rust `RootFeedSnapshot<
+// TimelineEventCard, Nip10ReplyAttribution>` (`apps/chirp/nmp-app-chirp`
+// re-exports it as `ChirpTimelineSnapshot`). Wire shape (after
+// `.convertFromSnakeCase`):
+//
+//   { "cards": [{ "card": ChirpEventCard, "attribution": [ChirpReplyAttribution] }],
+//     "page": TimelineWindowPage?, "metrics": null }
+//
+// The feed is thread-ROOTS-only: every entry is one root. A followed user's
+// reply to a non-followed author's note surfaces THAT note here, tagged with
+// the replier in `attribution`. Replies never get their own row.
+//
+// The Swift type name `ChirpTimelineSnapshot` is unchanged so the generated
+// `SnapshotProjections.homeFeed` binding and the `nmp-codegen` registry need
+// no edit — only the SHAPE behind the name changes (mirrors the Rust
+// `pub type ChirpTimelineSnapshot = RootFeedSnapshot<…>` repoint).
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Raw attribution for one follow's reply to a feed root (mirror of Rust
+/// `nmp_nip01::op_feed::Nip10ReplyAttribution`). Display fields fall back the
+/// same way `ChirpEventCard` does: `authorDisplayName` is `nil` until the
+/// author's kind:0 arrives — the view formats the raw pubkey meanwhile.
+struct ChirpReplyAttribution: Decodable, Equatable, Identifiable, Sendable {
+    let authorPubkey: String
+    /// Flat mirror of `author_display.name`. `nil` until a kind:0 arrives.
+    let authorDisplayName: String?
+    /// Author's kind:0 picture URL. `nil` until a kind:0 arrives / omits it.
+    let authorPictureUrl: String?
+    let replyEventId: String
+    let replyCreatedAt: UInt64
+
+    /// Stable identity for `ForEach` — the reply event id is unique per root.
+    var id: String { replyEventId }
+
+    private enum CodingKeys: String, CodingKey {
+        case authorPubkey
+        case authorDisplayName
+        case authorPictureUrl
+        case replyEventId
+        case replyCreatedAt
+    }
+}
+
+/// One feed row: a root render card plus its raw attribution list (mirror of
+/// Rust `nmp_feed::RootCard<C, A>`). The `attribution` array carries ALL
+/// repliers raw; the renderer chooses how many to show (Q1).
+struct ChirpRootCard: Decodable, Equatable, Identifiable, Sendable {
+    let card: ChirpEventCard
+    let attribution: [ChirpReplyAttribution]
+
+    /// Identity is the inner card's id (for reposts the engine forced this to
+    /// the superseded target id, so it is stable across the wrapper/target
+    /// pair).
+    var id: String { card.id }
+
+    private enum CodingKeys: String, CodingKey {
+        case card
+        case attribution
+    }
+}
+
+/// Decoded OP-centric home projection payload (`RootFeedSnapshot`).
 struct ChirpTimelineSnapshot: Decodable, Equatable {
-    let blocks: [TimelineBlock]
-    let cards: [ChirpEventCard]
+    let cards: [ChirpRootCard]
     let page: TimelineWindowPage?
 
-    static let empty = ChirpTimelineSnapshot(blocks: [], cards: [], page: nil)
+    static let empty = ChirpTimelineSnapshot(cards: [], page: nil)
+
+    private enum CodingKeys: String, CodingKey {
+        case cards
+        case page
+        // `metrics` is present in the Rust shape but the engine always emits
+        // `null`; we do not decode it (D1 forward-compat tolerates extra keys).
+    }
 }
 
 // ─── nmp-content ContentTreeWire mirror ─────────────────────────────────

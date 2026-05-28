@@ -15,7 +15,10 @@ struct ThreadScreen: View {
 
     private var thread: ThreadView? { model.threadView }
     private var cardLookup: [String: ChirpEventCard] {
-        Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) })
+        // V-80 — the home feed is now roots-only (`cards: [ChirpRootCard]`);
+        // reach into each root's inner `.card`. This is a best-effort side
+        // lookup — the thread view's primary card source is `thread?.items`.
+        Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) })
     }
     private var itemLookup: [String: TimelineItem] {
         Dictionary(uniqueKeysWithValues: (thread?.items ?? model.items).map { ($0.id, $0) })

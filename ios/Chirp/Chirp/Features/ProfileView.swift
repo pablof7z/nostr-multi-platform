@@ -30,8 +30,11 @@ struct ProfileView: View {
     private var noteRenderContext: NoteRenderContext {
         NoteRenderContext(
             mentionProfiles: model.mentionProfiles,
+            // V-80 — the home feed is roots-only (`cards: [ChirpRootCard]`);
+            // reach into each root's inner `.card` for this best-effort side
+            // lookup (the profile view's primary source is `author_view`).
             eventCards: Dictionary(
-                uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) }),
+                uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) }),
             timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         )
     }
