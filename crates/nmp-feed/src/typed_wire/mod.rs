@@ -1,7 +1,7 @@
 //! Typed FlatBuffers wire encoding for the feed-window envelope.
 //!
 //! This layer owns only feed structure: page bounds, cursors, and window
-//! metrics. Protocol projections such as `nmp.nip01.timeline` embed this
+//! metrics. Downstream timeline projections embed this
 //! typed buffer instead of defining their own cursor/page tables.
 //!
 //! The checked-in bindings in `generated/feed_home_generated.rs` are produced

@@ -755,6 +755,57 @@ fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
     );
 }
 
+/// `claim_profile` is the registry-component lifecycle path. A component that
+/// only knows a pubkey must see a stable projection slot immediately, then the
+/// real profile fields after kind:0 arrives, without opening an author view or
+/// building a screen-local profile map.
+#[test]
+fn claimed_profiles_projection_refines_claimed_pubkey() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let _ = kernel.claim_profile(ACCOUNT.to_string(), "avatar".to_string(), false);
+
+    let before = snapshot(&mut kernel);
+    let entry = &before["projections"]["claimed_profiles"][ACCOUNT];
+    assert!(
+        !entry.is_null(),
+        "claimed_profiles must carry a placeholder for every claimed pubkey"
+    );
+    assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
+    let expected_npub = crate::display::to_npub(ACCOUNT);
+    assert_eq!(entry["npub"].as_str(), Some(expected_npub.as_str()));
+    assert_eq!(entry["has_profile"].as_bool(), Some(false));
+    assert!(entry["display_name"].is_null());
+    assert!(entry["picture_url"].is_null());
+
+    let event = nostr::NostrEvent {
+        id: "0000000000000000000000000000000000000000000000000000000000000021".to_string(),
+        pubkey: ACCOUNT.to_string(),
+        created_at: 1_700_000_100,
+        kind: 0,
+        tags: vec![],
+        content: r#"{"display_name":"Claimed Profile","picture":"https://example.com/claimed.png","nip05":"claimed@example.com","about":"profile from claim"}"#.to_string(),
+        sig: String::new(),
+    };
+    kernel.ingest_profile(event);
+
+    let after = snapshot(&mut kernel);
+    let entry = &after["projections"]["claimed_profiles"][ACCOUNT];
+    assert_eq!(entry["has_profile"].as_bool(), Some(true));
+    assert_eq!(entry["display_name"].as_str(), Some("Claimed Profile"));
+    assert_eq!(
+        entry["picture_url"].as_str(),
+        Some("https://example.com/claimed.png")
+    );
+    assert_eq!(entry["nip05"].as_str(), Some("claimed@example.com"));
+
+    let _ = kernel.release_profile(ACCOUNT, "avatar");
+    let released = snapshot(&mut kernel);
+    assert!(
+        released["projections"]["claimed_profiles"][ACCOUNT].is_null(),
+        "released profile claims must leave the claimed_profiles projection"
+    );
+}
+
 /// V-31 — `mention_profiles` MUST carry an entry for every author in the
 /// home `timeline` even when no author-view / thread-view is open, so
 /// HomeFeedView resolves authors via `model.mentionProfiles` rather than

@@ -158,10 +158,14 @@ role = "example"
 id = "swiftui/user-avatar"
 version = "0.1.0"
 target = "swiftui"
-description = "Circular Nostr profile avatar with remote image loading and deterministic identicon fallback."
+description = "Reference-first Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
 [[components.files]]
 source = "swiftui/user-avatar/ProfileWire.swift"
 target = "Components/NostrUser/ProfileWire.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/user-avatar/NostrProfileHost.swift"
+target = "Components/NostrUser/NostrProfileHost.swift"
 role = "source"
 [[components.files]]
 source = "swiftui/user-avatar/NostrAvatar.swift"
@@ -414,10 +418,14 @@ role = "source"
 id = "compose/user-avatar"
 version = "0.1.0"
 target = "compose"
-description = "Circular Compose Nostr profile avatar with Coil image loading and deterministic identicon fallback."
+description = "Reference-first Compose Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
 [[components.files]]
 source = "compose/user-avatar/ProfileWire.kt"
 target = "Components/NostrUser/ProfileWire.kt"
+role = "source"
+[[components.files]]
+source = "compose/user-avatar/NostrProfileHost.kt"
+target = "Components/NostrUser/NostrProfileHost.kt"
 role = "source"
 [[components.files]]
 source = "compose/user-avatar/NostrAvatar.kt"
@@ -468,8 +476,9 @@ source = "compose/user-card/NostrUserCard.kt"
 target = "Components/NostrUser/NostrUserCard.kt"
 role = "source"
 # -----------------------------------------------------------------------------
-# Ratatui user profile widgets. These are pure render widgets: host apps own
-# keyboard actions, clipboard writes, image fetching, and navigation.
+# Ratatui user profile widgets. `tui/user-avatar` accepts pubkeys through a
+# `NostrProfileHost` adapter and owns the visible profile claim; host apps own
+# keyboard actions, clipboard writes, terminal image protocols, and navigation.
 # `tui/user-core` owns the shared `ProfileWire` mirror.
 # -----------------------------------------------------------------------------
 [[components]]
@@ -485,7 +494,7 @@ role = "source"
 id = "tui/user-avatar"
 version = "0.1.1"
 target = "tui"
-description = "Ratatui terminal avatar image via ratatui-image, with deterministic identicon fallback."
+description = "Reference-first Ratatui terminal avatar that claims its profile projection and falls back to deterministic initials."
 dependencies = ["tui/user-core"]
 [[components.files]]
 source = "tui/user-avatar/nostr_avatar.rs"

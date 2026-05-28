@@ -21,8 +21,7 @@ use ratatui_image::protocol::Protocol;
 use serde_json::{json, Map, Value};
 
 use crate::{
-    content_render_data::ContentRenderData,
-    content_tree_wire::ContentTreeWire,
+    content_render_data::ContentRenderData, content_tree_wire::ContentTreeWire,
     profile_wire::ProfileWire,
 };
 
@@ -107,7 +106,9 @@ impl LiveProfileMap {
 
     /// Ingest a kernel snapshot, updating the resolved-profile map.
     ///
-    /// Two projections feed this:
+    /// Three projections feed this:
+    /// - `projections.claimed_profiles` — `{ pubkey: ProfileCard }`, emitted
+    ///   for component-owned profile claims. This is the user-avatar happy path.
     /// - `projections.mention_profiles` — `{ pubkey: { pubkey, display_name,
     ///   picture_url } }`. The lightweight per-mention payload (no nip05 /
     ///   about). Establishes a profile entry for every author the kernel has
@@ -121,6 +122,15 @@ impl LiveProfileMap {
         let Some(projections) = snapshot.get("projections") else {
             return;
         };
+
+        if let Some(claimed_profiles) = projections
+            .get("claimed_profiles")
+            .and_then(Value::as_object)
+        {
+            for (pubkey, profile) in claimed_profiles {
+                self.apply_profile_card(pubkey, profile);
+            }
+        }
 
         if let Some(mention_profiles) = projections
             .get("mention_profiles")
@@ -141,23 +151,7 @@ impl LiveProfileMap {
             .get("author_view")
             .and_then(|av| av.get("profile"))
         {
-            let is_real = profile
-                .get("has_profile")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            if is_real {
-                if let Some(pubkey) = string_field(profile, "pubkey") {
-                    let display_name = string_field(profile, "display_name");
-                    let picture_url = string_field(profile, "picture_url");
-                    let nip05 = string_field(profile, "nip05");
-                    let about = string_field(profile, "about");
-                    let wire = self.entry_for(&pubkey);
-                    wire.display_name = display_name;
-                    wire.picture_url = picture_url;
-                    wire.nip05 = nip05;
-                    wire.about = about;
-                }
-            }
+            self.apply_profile_card("", profile);
         }
     }
 
@@ -179,6 +173,29 @@ impl LiveProfileMap {
         self.profiles
             .entry(pubkey.to_string())
             .or_insert_with(|| profile_wire_for_pubkey(pubkey))
+    }
+
+    fn apply_profile_card(&mut self, fallback_pubkey: &str, profile: &Value) {
+        let is_real = profile
+            .get("has_profile")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !is_real {
+            return;
+        }
+        let pubkey = string_field(profile, "pubkey").unwrap_or_else(|| fallback_pubkey.to_string());
+        if pubkey.is_empty() {
+            return;
+        }
+        let display_name = string_field(profile, "display_name");
+        let picture_url = string_field(profile, "picture_url");
+        let nip05 = string_field(profile, "nip05");
+        let about = string_field(profile, "about");
+        let wire = self.entry_for(&pubkey);
+        wire.display_name = display_name;
+        wire.picture_url = picture_url;
+        wire.nip05 = nip05;
+        wire.about = about;
     }
 }
 
@@ -369,37 +386,60 @@ impl GalleryData {
             avatar_image_compact: None,
             media_images: Vec::new(),
             content_core: content_example(
-                &mention_item, "live mention tree", &mention_profiles, &[]
+                &mention_item,
+                "live mention tree",
+                &mention_profiles,
+                &[],
             )
-                .expect("test data valid"),
+            .expect("test data valid"),
             content_minimal: content_example(
-                &mention_item, "live minimal mention", &mention_profiles, &[]
+                &mention_item,
+                "live minimal mention",
+                &mention_profiles,
+                &[],
             )
-                .expect("test data valid"),
+            .expect("test data valid"),
             content_view: content_example(&media_item, "live image content", &[], &[])
                 .expect("test data valid"),
             content_mention_chip: content_example(
-                &mention_item, "live mention chip", &mention_profiles, &[]
+                &mention_item,
+                "live mention chip",
+                &mention_profiles,
+                &[],
             )
-                .expect("test data valid"),
+            .expect("test data valid"),
             content_media_grid: content_example(&media_item, "live media grid", &[], &[])
                 .expect("test data valid"),
-            content_quote_card: content_example(&quote_source, "live quote card", &[], &quote_events)
-                .expect("test data valid"),
+            content_quote_card: content_example(
+                &quote_source,
+                "live quote card",
+                &[],
+                &quote_events,
+            )
+            .expect("test data valid"),
             embed_article: content_example(
-                &article_item, "Embedded Article (kind:30023)", &[], &[]
+                &article_item,
+                "Embedded Article (kind:30023)",
+                &[],
+                &[],
             )
-                .expect("test data valid"),
+            .expect("test data valid"),
             embed_profile: content_example(
-                &profile_embed_item, "Inline Profile Mention (via mention chip)", &mention_profiles, &[]
+                &profile_embed_item,
+                "Inline Profile Mention (via mention chip)",
+                &mention_profiles,
+                &[],
             )
-                .expect("test data valid"),
+            .expect("test data valid"),
             embed_note: content_example(&note_embed_item, "Embedded Note (kind:1)", &[], &[])
                 .expect("test data valid"),
             embed_highlight: content_example(
-                &highlight_embed_item, "Embedded Highlight (kind:9802)", &[], &[]
+                &highlight_embed_item,
+                "Embedded Highlight (kind:9802)",
+                &[],
+                &[],
             )
-                .expect("test data valid"),
+            .expect("test data valid"),
         }
     }
 }

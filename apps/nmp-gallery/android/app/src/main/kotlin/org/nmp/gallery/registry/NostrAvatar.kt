@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -16,15 +18,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
+import java.util.UUID
 
 /**
- * Circular avatar for a Nostr profile. Shows the remote picture when
- * available; falls back to a deterministic identicon derived from `pubkey`.
+ * Circular avatar for a Nostr pubkey. Shows the profile picture when the
+ * host projection has it; falls back to a deterministic identicon derived
+ * from `pubkey`.
  *
  * Replace [SubcomposeAsyncImage] with Glide/Picasso/custom if you already
  * have an image loader — the identicon fallback is self-contained.
  *
- * Depends on `compose/user-avatar` for [ProfileWire].
+ * Depends on `compose/user-avatar` for [ProfileWire] and [NostrProfileHost].
  */
 @Composable
 fun NostrAvatar(
@@ -32,15 +36,29 @@ fun NostrAvatar(
     avatarUrl: String? = null,
     size: Dp = 40.dp,
     modifier: Modifier = Modifier,
+    consumerId: String? = null,
 ) {
+    val profileHost = LocalNostrProfileHost.current
+    val resolvedConsumerId = remember(pubkey, consumerId) {
+        consumerId ?: "nostr-avatar.${UUID.randomUUID()}"
+    }
+    val resolvedAvatarUrl = avatarUrl ?: profileHost?.profileForPubkey(pubkey)?.avatarUrl
+
+    DisposableEffect(pubkey, profileHost, resolvedConsumerId) {
+        profileHost?.claimProfile(pubkey, resolvedConsumerId)
+        onDispose {
+            profileHost?.releaseProfile(pubkey, resolvedConsumerId)
+        }
+    }
+
     val baseModifier = modifier
         .size(size)
         .clip(CircleShape)
         .clearAndSetSemantics {}
 
-    if (!avatarUrl.isNullOrEmpty()) {
+    if (!resolvedAvatarUrl.isNullOrEmpty()) {
         SubcomposeAsyncImage(
-            model = avatarUrl,
+            model = resolvedAvatarUrl,
             contentDescription = null,
             modifier = baseModifier,
             error = { NostrIdenticonBox(pubkey = pubkey, size = size) },
