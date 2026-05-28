@@ -18,9 +18,10 @@ nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features 
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
-# ADR-0037: typed FlatBuffers sidecar decode for the `nmp.feed.home`
-# projection (`nmp.nip01.timeline` schema). The host prefers the typed NFTS
-# payload when present and falls back to the generic `Value` tree otherwise.
+# ADR-0038: typed FlatBuffers sidecar decode for the `nmp.feed.home`
+# OP-centric feed projection (`nmp.nip01.opfeed` schema, descriptor `NOFS`).
+# The host prefers the typed `NOFS` payload when present and falls back to the
+# generic `Value` tree otherwise (ADR-0037 Commitment 4).
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 # C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
 # `nmp-core::ffi` in step 11-final.
