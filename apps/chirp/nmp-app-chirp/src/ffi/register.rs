@@ -8,10 +8,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::{wire_group_chat, wire_group_discovery};
-use nmp_threading::ModulePolicy;
 
 use nmp_nip02::FollowListProjection;
 
@@ -112,48 +110,56 @@ pub extern "C" fn nmp_app_chirp_register(
     }
 
     let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
-    let spec = ModularTimelineSpec {
-        viewer,
-        kinds: vec![nmp_nip01::KIND_SHORT_NOTE, nmp_nip18::KIND_REPOST],
-        authors: None,
-        policy: ModulePolicy::default(),
-    };
 
-    let projection = Arc::new(ModularTimelineProjection::new(&spec));
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
-    if observer_id.0 == 0 {
-        // Registration failed (poisoned mutex). Don't leak the projection;
-        // caller gets a null handle and treats it as a soft-fail.
-        return std::ptr::null_mut();
-    }
-    app_ref.register_feed(
-        "nmp.feed.home",
-        Arc::clone(&projection) as Arc<dyn nmp_feed::FeedController>,
-    );
+    // V-80 rung 7 — the product-visible cut-over. The home feed
+    // (`"nmp.feed.home"`) is now produced by the OP-centric engine instead of
+    // the modular timeline projection: a stream of thread ROOTS, each carrying
+    // the raw attributions of follows who replied in its thread. Replies no
+    // longer surface as their own feed rows; a followed user's reply to a
+    // non-followed author's note surfaces THAT note tagged "↳ <follow> replied
+    // in thread".
+    //
+    // `register_op_feed_defaults` is the one-line composition affordance from
+    // `nmp-app-template`: it constructs the `ActiveFollowSet` over the kernel's
+    // active-account slot (`active_account_handle()`, V-82), wires the
+    // follow-predicate + (no-op) event-lookup + actor claim sink + card
+    // builder into the `nmp-nip01` OP-feed engine, and registers the engine as
+    // BOTH a `KernelEventObserver` (ingest) AND a `FeedController` under
+    // `"nmp.feed.home"` (output). It also registers the `ActiveFollowSet` as
+    // its own observer so the active account's kind:3 keeps the follow set
+    // current, and an `on_change` callback that resets the engine on an
+    // account switch. The hand-rolled follow-set wiring this used to carry is
+    // gone — `nmp-app-template` owns it now.
+    let defaults =
+        nmp_app_template::register_op_feed_defaults(app_ref, viewer, app_ref.active_account_handle());
 
-    // ADR-0037: typed sidecar for nmp.feed.home — emitted alongside the generic
-    // Value projection during the staged compatibility window. It must encode
-    // the same bounded current window as the generic FeedController projection,
-    // so hosts see one authoritative page/cursor state.
-    let typed_proj_ref = Arc::clone(&projection);
-    app_ref.register_typed_snapshot_projection("nmp.feed.home", move || {
-        let snapshot = typed_proj_ref.snapshot_current_window();
-        let bytes = nmp_nip01::typed_wire::encode_modular_timeline_snapshot(&snapshot);
-        Some(nmp_core::TypedProjectionData {
-            key: "nmp.feed.home".to_string(),
-            schema_id: nmp_nip01::typed_wire::SCHEMA_ID.to_string(),
-            schema_version: nmp_nip01::typed_wire::SCHEMA_VERSION,
-            file_identifier: std::str::from_utf8(nmp_nip01::typed_wire::FILE_IDENTIFIER)
-                .unwrap_or("NFTS")
-                .to_string(),
-            payload: bytes,
-        })
-    });
-
+    // ACCOUNT-SWITCH WIRING — partially deferred (documented in the PR).
+    //
+    // The kind:3-driven path is fully covered: on account switch the kernel
+    // re-fetches the new account's kind:3, `ActiveFollowSet::on_kernel_event`
+    // rebuilds the set and fires `on_change`, and the rung-6 callback resets
+    // the engine (it self-detects the changed active pubkey). Logout and the
+    // brief switch-before-kind:3 window are NOT reset proactively — they leave
+    // stale roots in the engine until the next kind:3 lands (graceful: stale
+    // data, never a crash). The minimal correct proactive hook would call
+    // `defaults.follow_set.notify_account_changed()` from the identity-change
+    // path, but Chirp mutates the active-account slot through TWO divergent
+    // seams — `nmp_app_chirp_identity_*` (this crate) AND `nmp_app_signin_nsec`
+    // / `nmp_app_remove_account` called directly from `KernelBridge.swift`. A
+    // hook in only the former would be fragmentary (a no-duplication / D8
+    // violation); the correct seam is an `nmp-ffi` identity-change callback
+    // registry that does not exist today. Filed as a follow-up. The
+    // `follow_set` handle is retained on the `ChirpHandle` so that follow-up is
+    // a one-line addition.
+    //
+    // ADR-0037 typed sidecar for nmp.feed.home is intentionally NOT re-wired
+    // here. The old sidecar was bound to `ModularTimelineSnapshot`; the new
+    // producer emits `RootFeedSnapshot` and has no typed-FB encoder yet. iOS
+    // `TypedHomeFeedDecoder` falls back gracefully to JSON when no sidecar
+    // arrives. A follow-up PR will add the `RootFeedSnapshot` typed-FB schema.
     Box::into_raw(Box::new(ChirpHandle {
-        projection,
-        observer_id,
+        engine: defaults.engine,
+        follow_set: defaults.follow_set,
         app,
     }))
 }
