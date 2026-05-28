@@ -3,7 +3,7 @@ name = "nmp-gallery-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "egui component gallery for NMP desktop widgets. Showcases UserAvatar and future components with static sample data."
+description = "egui component gallery for NMP desktop widgets. Mirrors nmp-gallery-tui with in-process kernel, reactive embeds, and the same component registry."
 
 [[bin]]
 name = "nmp-gallery-desktop"
@@ -12,4 +12,11 @@ path = "src/main.rs"
 [dependencies]
 eframe = "0.29"
 egui = "0.29"
-nmp-core = { path = "../../../crates/nmp-core" }
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-content = { path = "../../../crates/nmp-content" }
+nmp-gallery-tui = { path = "../tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
