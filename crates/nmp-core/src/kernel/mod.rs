@@ -1136,6 +1136,32 @@ impl Kernel {
         Self::with_optional_publish_store_and_path(visible_limit, None, storage_path)
     }
 
+    /// V-82 — like [`Self::with_storage_path`], but threads in an
+    /// externally-owned [`ActiveAccountSlot`] instead of minting one.
+    ///
+    /// The actor thread (`run_actor_with_observers`) is the sole caller: it
+    /// hands the kernel the SAME `Arc` the FFI shell (`nmp-ffi::NmpApp`) holds,
+    /// so `NmpApp::active_account_handle()` reads the very slot the kernel
+    /// actor writes on every identity mutation (`set_accounts`). The `Reset`
+    /// dispatch arm rebuilds the kernel through this constructor with the
+    /// actor-held slot so the shared handle survives a state wipe — mirroring
+    /// how the routing-trace projection is re-published across `Reset`.
+    ///
+    /// Substrate-clean: the slot holds a raw pubkey `String` (D0).
+    #[must_use]
+    pub fn with_storage_path_and_account_slot(
+        visible_limit: usize,
+        storage_path: Option<&str>,
+        active_account_handle: ActiveAccountSlot,
+    ) -> Self {
+        Self::with_optional_publish_store_path_and_account_slot(
+            visible_limit,
+            None,
+            storage_path,
+            Some(active_account_handle),
+        )
+    }
+
     /// Inject a production routing pair (substrate
     /// [`OutboxRouter`] + [`MailboxCache`] impls).
     ///
@@ -1393,6 +1419,37 @@ impl Kernel {
         publish_store: Option<Arc<dyn crate::publish::PublishStore>>,
         storage_path: Option<&str>,
     ) -> Self {
+        Self::with_optional_publish_store_path_and_account_slot(
+            visible_limit,
+            publish_store,
+            storage_path,
+            None,
+        )
+    }
+
+    /// V-82 — innermost constructor. Adds an optional externally-supplied
+    /// [`ActiveAccountSlot`] on top of [`Self::with_optional_publish_store_and_path`].
+    ///
+    /// `active_account_handle = None` (every existing caller — `Kernel::new`,
+    /// `with_storage_path`, `with_publish_store`, `with_publish_store_and_path`)
+    /// keeps the historical behaviour: the kernel mints its own slot. The actor
+    /// thread is the ONLY caller passing `Some(slot)` (via
+    /// [`Self::with_storage_path_and_account_slot`]); it threads in the same
+    /// `Arc` the FFI shell (`nmp-ffi::NmpApp`) holds, so
+    /// `NmpApp::active_account_handle()` reads the very slot the kernel actor
+    /// writes on sign-in / account-switch / logout — a single source of truth,
+    /// no divergent mirror. The local `active_account_handle` below (and its
+    /// `Arc::clone` into the test-support outbox resolver) reference the
+    /// supplied slot, so no internal consumer diverges either.
+    ///
+    /// Substrate-clean: the slot holds a raw pubkey `String` — no NIP noun, no
+    /// protocol coupling (D0 stays clean; this is generic identity plumbing).
+    fn with_optional_publish_store_path_and_account_slot(
+        visible_limit: usize,
+        publish_store: Option<Arc<dyn crate::publish::PublishStore>>,
+        storage_path: Option<&str>,
+        active_account_handle: Option<ActiveAccountSlot>,
+    ) -> Self {
         let store_bundle = build_event_store(storage_path);
         let store = store_bundle.store;
         let publish_store =
@@ -1403,7 +1460,13 @@ impl Kernel {
         // the call site and D14 does not fire on the field declaration.
         let indexer_relays_handle: IndexerRelaysSlot = new_indexer_relays_slot();
         let local_write_relays_handle: LocalWriteRelaysSlot = new_local_write_relays_slot();
-        let active_account_handle: ActiveAccountSlot = new_active_account_slot();
+        // V-82 — use the externally-supplied active-account slot when the actor
+        // threads one in (so the FFI shell shares it); otherwise mint a fresh
+        // one (every existing test / codegen caller). The local binding is the
+        // single slot every downstream `Arc::clone` (the kernel field below, the
+        // test-support outbox resolver) references — no divergent mirror.
+        let active_account_handle: ActiveAccountSlot =
+            active_account_handle.unwrap_or_else(new_active_account_slot);
         // Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in
         // `nmp-router`, not `nmp-core`. The engine is built with the
         // in-crate `NoopOutboxResolver` default; production composition

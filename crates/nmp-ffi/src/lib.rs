@@ -6,6 +6,11 @@
 //! open/close + profile claim/release wrappers; `testing` carries the
 //! cfg-gated injectors (split to keep each file under the 300-LOC soft cap).
 
+// V-82 — `NmpApp::active_account_handle()` single-source-of-truth tests
+// (real sign-in / switch / Reset driven through the actor thread).
+#[cfg(test)]
+#[path = "active_account_handle_tests.rs"]
+mod active_account_handle_tests;
 mod action;
 mod capability;
 mod event_observer;
@@ -154,12 +159,12 @@ use nmp_core::__ffi_internal::{
 // host (per-app crate) constructs the slot and registers it via
 // `register_snapshot_projection("wallet", …)` itself.
 use nmp_core::slots::{
-    new_active_local_keys_slot, new_dm_inbox_observer_id_slot, new_mls_local_nsec_slot,
-    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
-    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
-    ActiveLocalKeysSlot, DmInboxObserverIdSlot, MlsLocalNsecSlot, PublishResolverSlot,
-    RawEventForwardPolicySlot, RoutingSubstrateSlot, RoutingTraceSlot,
-    SingletonEventObserverIdSlot, StoragePathSlot,
+    new_active_account_slot, new_active_local_keys_slot, new_dm_inbox_observer_id_slot,
+    new_mls_local_nsec_slot, new_publish_resolver_slot, new_raw_event_forward_policy_slot,
+    new_routing_substrate_slot, new_routing_trace_slot, new_singleton_event_observer_id_slot,
+    new_storage_path_slot, ActiveAccountSlot, ActiveLocalKeysSlot, DmInboxObserverIdSlot,
+    MlsLocalNsecSlot, PublishResolverSlot, RawEventForwardPolicySlot, RoutingSubstrateSlot,
+    RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::{
@@ -302,6 +307,20 @@ pub struct NmpApp {
     /// `nostr::Keys` is `Clone` and zeroizes its own secret on drop, so no
     /// `Zeroizing` wrapper is needed here.
     active_local_keys: ActiveLocalKeysSlot,
+    /// V-82 — the active account's raw hex pubkey, or `None` when no account
+    /// is signed in. This is the SAME `Arc` the kernel actor writes on every
+    /// identity mutation (`Kernel::set_accounts` → `active_account_handle`):
+    /// `nmp_app_new` constructs it once, hands an `Arc::clone` to the actor
+    /// (which threads it into the kernel at construction and re-hands it on
+    /// `Reset`), and keeps this clone for the read side. So a value read
+    /// through [`NmpApp::active_account_handle`] reflects real account state —
+    /// no divergent mirror.
+    ///
+    /// Substrate-generic: the actor names no NIP when writing this slot (raw
+    /// pubkey `String`, D0). The accessor backs the V-80 OP-feed composition
+    /// root (rung 7) and Chirp: host code reads the live active account and
+    /// drives `ActiveFollowSet::notify_account_changed` on a switch.
+    active_account_handle: ActiveAccountSlot,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
@@ -637,6 +656,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `nmp-nip57` zap-receipt runtime for the active pubkey).
     let active_local_keys: ActiveLocalKeysSlot = new_active_local_keys_slot();
     let actor_active_local_keys = Arc::clone(&active_local_keys);
+    // V-82 — active-account hex-pubkey slot. The `NmpApp` keeps one `Arc`
+    // clone (read via `NmpApp::active_account_handle`); the actor carries the
+    // matching clone and threads it INTO the kernel at construction (and
+    // re-hands it on `Reset`) so the slot the kernel writes on every identity
+    // mutation IS the slot the host reads — single source of truth.
+    let active_account_handle: ActiveAccountSlot = new_active_account_slot();
+    let actor_active_account = Arc::clone(&active_account_handle);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
     // requests during start/sign-in/create/switch/remove.
@@ -837,6 +863,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // kernel's `NoopOutboxResolver` default in place.
                 actor_publish_resolver,
                 actor_raw_event_forward_policy,
+                // V-82 — the actor's clone of the active-account slot. Threaded
+                // into the kernel at construction (and re-handed on `Reset`) so
+                // `NmpApp::active_account_handle` reads the slot the kernel
+                // actually writes on sign-in / switch / logout.
+                actor_active_account,
             );
         }));
         if let Err(e) = result {
@@ -880,6 +911,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         relay_edit_rows,
         mls_local_nsec,
         active_local_keys,
+        active_account_handle,
         storage_path,
         routing_trace,
         routing_substrate,
@@ -1666,6 +1698,28 @@ impl NmpApp {
     #[must_use]
     pub fn active_local_keys(&self) -> ActiveLocalKeysSlot {
         Arc::clone(&self.active_local_keys)
+    }
+
+    /// V-82 — clone of the kernel's active-account hex-pubkey slot (`Arc`).
+    ///
+    /// Returns the SAME `Arc<Mutex<Option<String>>>` the kernel actor writes
+    /// on every identity mutation (sign-in, account-switch, logout). The
+    /// `NmpApp` constructs the slot at `nmp_app_new` and hands the kernel an
+    /// `Arc::clone` at actor startup (re-handed across `Reset`), so a value
+    /// read through the returned handle reflects the live active account —
+    /// not a copy, not a mirror. `None` means no account is signed in.
+    ///
+    /// This is the V-80 OP-feed seam: the composition root (rung 7,
+    /// `nmp-app-template`) supplies this handle to
+    /// `nmp_nip02::ActiveFollowSet::new` and re-reads it to drive
+    /// `notify_account_changed` on a switch; Chirp consumes the same accessor.
+    ///
+    /// Substrate-generic — the slot holds a raw pubkey `String`; what callers
+    /// do with it is their concern (D0). Parallel in shape to
+    /// [`Self::active_local_keys`].
+    #[must_use]
+    pub fn active_account_handle(&self) -> ActiveAccountSlot {
+        Arc::clone(&self.active_account_handle)
     }
 
     /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]

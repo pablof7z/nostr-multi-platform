@@ -904,6 +904,11 @@ pub fn run_actor(
         // No app composition is wired through this compatibility entry, so
         // no raw-event forwarding policies are installed.
         crate::slots::new_raw_event_forward_policy_slot(),
+        // V-82 — no `NmpApp` is wired through this backwards-compatible entry
+        // point, so the active-account slot is a private throwaway. The kernel
+        // still writes its active account into it on every identity mutation;
+        // nothing outside the actor reads it on this path.
+        crate::slots::new_active_account_slot(),
     );
 }
 
@@ -974,6 +979,9 @@ pub fn run_actor_with_lifecycle_observer(
         Arc::new(Mutex::new(None)),
         // Same private-throwaway pattern for raw-event forwarding policies.
         crate::slots::new_raw_event_forward_policy_slot(),
+        // V-82 — same private-throwaway pattern for the active-account slot
+        // (no FFI surface reads it on this backwards-compatible entry point).
+        crate::slots::new_active_account_slot(),
     );
 }
 
@@ -1118,6 +1126,13 @@ pub fn run_actor_with_observers(
     // Raw signed-event forwarding policy factory. The actor owns the native
     // pool dispatch; reusable crates provide target-selection policies.
     raw_event_forward_policy_slot: crate::slots::RawEventForwardPolicySlot,
+    // V-82 — the active-account hex-pubkey slot. The `NmpApp` constructs this
+    // and keeps its own `Arc` clone (read via `NmpApp::active_account_handle`);
+    // this actor thread hands the SAME `Arc` to the kernel at construction
+    // (and re-hands it on `Reset`) so the slot the kernel writes on every
+    // identity mutation IS the slot the host reads — single source of truth,
+    // no divergent mirror. Substrate-generic (raw pubkey `String`, D0).
+    active_account_slot: crate::slots::ActiveAccountSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1156,8 +1171,15 @@ pub fn run_actor_with_observers(
     // is plumbed unconditionally.
     let initial_storage_path: Option<String> =
         storage_path.lock().ok().and_then(|guard| guard.clone());
-    let mut kernel =
-        Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, initial_storage_path.as_deref());
+    // V-82 — construct the kernel over the FFI-shared active-account slot so
+    // `NmpApp::active_account_handle()` reads the exact `Arc` the kernel writes
+    // on sign-in / account-switch / logout. `Arc::clone` (not move) because the
+    // `Reset` arm needs to re-hand the same slot to the rebuilt kernel.
+    let mut kernel = Kernel::with_storage_path_and_account_slot(
+        DEFAULT_VISIBLE_LIMIT,
+        initial_storage_path.as_deref(),
+        Arc::clone(&active_account_slot),
+    );
     // T114b — bind the FFI-channel drop counter so it surfaces on the
     // diagnostic snapshot (`Metrics::dispatch_drops_total`). A `Reset`
     // command replaces the kernel; we re-bind there so the counter stays
@@ -1462,6 +1484,7 @@ pub fn run_actor_with_observers(
                         routing_trace_slot: &routing_trace_slot,
                         routing_substrate_slot: &routing_substrate_slot,
                         publish_resolver_slot: &publish_resolver_slot,
+                        active_account_slot: &active_account_slot,
                         raw_event_forward_observer_ids: &raw_event_forward_observer_ids,
                         raw_event_forward_policy_slot: &raw_event_forward_policy_slot,
                         raw_event_observers_handle: &raw_event_observers,

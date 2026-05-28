@@ -391,6 +391,9 @@ pub mod testing {
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),
                 crate::slots::new_raw_event_forward_policy_slot(),
+                // V-82 — throwaway active-account slot (no FFI surface reads it
+                // on this test/spawn-actor entry point).
+                crate::slots::new_active_account_slot(),
             );
         });
         (command_tx, update_rx)

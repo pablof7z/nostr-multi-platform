@@ -603,6 +603,9 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(std::sync::Mutex::new(None)),
             // Test wiring; no raw-event forwarding policy installed.
             crate::slots::new_raw_event_forward_policy_slot(),
+            // V-82 — test wiring; nothing outside the actor reads the
+            // active-account slot here (private throwaway).
+            crate::slots::new_active_account_slot(),
         );
     });
 
