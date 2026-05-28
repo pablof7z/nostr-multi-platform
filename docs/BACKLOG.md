@@ -986,6 +986,34 @@ nmp-nip02` unchanged). ADR-0036 records the composition-root expansion
 decision (no planner `SocialTimeline` seam). Producer ships **unwired** with
 12 synthetic tests; rungs 5 (`nmp-nip01` instance) + 6 (`nmp-app-template`
 composition) consume it. Chirp unchanged, master green. Rungs 5–7 remain.
+**Rung 5 (Stage 3b — `nmp-nip01` OP-feed instance) landed 2026-05-28** —
+`crates/nmp-nip01/src/op_feed/` binds the generic engine to NIP-10:
+`Nip10ReplyAttribution` implements `nmp_feed::AttributionPayload` with
+`type Profile = ProfileDisplay` (raw pubkey + reply id + raw `created_at` +
+`Option<String>` display-name/picture mirrors per the 2026-05-25 display-
+separation doctrine; `refresh_for_profile` mirrors
+`ModularTimelineProjection::refresh_author_cards`). `register_op_feed(viewer,
+follow_predicate, event_lookup, claim_sink) -> Arc<OpFeedEngine>` constructs
+`RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, TimelineEventCard>`;
+`build_actor_claim_sink(dispatch)` encodes the `ThreadPointer` as a `nostr:`
+URI (`nevent` for `Event`, `naddr` for `Address`; `External` terminal) and
+dispatches the existing `ActorCommand::ClaimEvent` / `ReleaseEvent` (the
+Rust seam behind `nmp_app_claim_event`, never the `extern "C"` symbol). A
+new public `TimelineEventCard::from_event_for_op_feed(root, target)` is the
+stateless card-builder reuse seam (the private `from_event` needs kernel-
+internal caches). **Spec-vs-code drift surfaced & followed:** (1) the
+engine is `RootIndexedFeed<R, A, C>` with a 7-arg constructor, not the
+doc's `<R, A>`; (2) `register_op_feed` takes `nmp-core` primitives, **not**
+`&NmpApp` (same `nmp-ffi`-edge inversion rung 4 rejected — composition root
+rung 6 does the `NmpApp` registration); (3) `event_lookup` is
+`Fn(&EventId)`, not the doc's `Fn(&str)`; (4) `from_event` is private with a
+5-arg signature, so a new public stateless helper was added. Instance ships
+**unwired in production** (only tests register `"nmp.feed.home"`; Chirp keeps
+`ModularTimelineProjection` until rung 7) with 13 tests covering repost
+L-1…L-5, claim-URI shape, profile refresh, snapshot shape, and the V-81
+non-terminal release signal. `cargo test -p nmp-nip01` 108 pass;
+`cargo build -p nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Rungs
+6–7 remain.
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
