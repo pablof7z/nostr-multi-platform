@@ -3,6 +3,8 @@ name = "nmp-codegen"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "NMP code generator for per-app Rust FFI crates and platform projection mirrors."
 
 [lib]
 name = "nmp_codegen"

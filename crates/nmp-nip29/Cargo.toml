@@ -3,6 +3,7 @@ name = "nmp-nip29"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "NIP-29 relay-based groups as an NMP protocol crate. Owns every h-tagged event regardless of kind; declares host-relay-pinned routing via the third lane (Rule 9)."
 
 [dependencies]

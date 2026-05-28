@@ -1,7 +1,7 @@
 //! Tests for the V-59 rung 1 (Q7) pre-kind:3 ingest buffer.
 //!
-//! The buffer parks kind:1 / kind:6 events whose author is not (yet) in the
-//! active account's follow set, instead of dropping them. A later
+//! The buffer parks host-declared follow-feed events whose author is not (yet)
+//! in the active account's follow set, instead of dropping them. A later
 //! `sync_follow_feed_interests` that adds the author replays the parked event;
 //! authors that never become followed are dropped on the next sync. The buffer
 //! is cleared on identity change so a switched-out account's parked events
@@ -10,10 +10,13 @@
 use super::nostr::NostrEvent;
 use super::Kernel;
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use std::collections::BTreeSet;
 
-fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
-    use ::nostr::{EventBuilder, Timestamp};
-    let nostr_event = EventBuilder::text_note(content)
+const HOST_DECLARED_FOLLOW_FEED_KIND: u32 = 4242;
+
+fn signed_follow_feed_event(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
+    use ::nostr::{EventBuilder, Kind, Timestamp};
+    let nostr_event = EventBuilder::new(Kind::from(HOST_DECLARED_FOLLOW_FEED_KIND as u16), content)
         .custom_created_at(Timestamp::from(ts))
         .sign_with_keys(keys)
         .expect("sign_with_keys cannot fail with a generated keypair");
@@ -32,15 +35,20 @@ fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
     }
 }
 
-/// A kind:1 from an author NOT in `timeline_authors` is PARKED in the
-/// pre-kind:3 buffer rather than dropped: the store projections stay empty but
-/// the buffer holds the event keyed by its id.
+fn activate_follow_feed(kernel: &mut Kernel) {
+    kernel.follow_feed_kinds = BTreeSet::from([HOST_DECLARED_FOLLOW_FEED_KIND]);
+}
+
+/// A host-declared follow-feed event from an author NOT in `timeline_authors`
+/// is PARKED in the pre-kind:3 buffer rather than dropped: the store
+/// projections stay empty but the buffer holds the event keyed by its id.
 #[test]
-fn unfollowed_author_note_is_parked_not_dropped() {
+fn unfollowed_author_follow_feed_event_is_parked_not_dropped() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    activate_follow_feed(&mut kernel);
 
     let keys = ::nostr::Keys::generate();
-    let event = signed_note(&keys, "note from a stranger", 1_700_000_000);
+    let event = signed_follow_feed_event(&keys, "note from a stranger", 1_700_000_000);
     let event_id = event.id.clone();
 
     let stored = kernel.ingest_timeline_event(
@@ -50,7 +58,10 @@ fn unfollowed_author_note_is_parked_not_dropped() {
         event,
     );
 
-    assert!(!stored, "the gate must reject (return false) — author not followed");
+    assert!(
+        !stored,
+        "the gate must reject (return false) — author not followed"
+    );
     assert!(
         kernel.events.is_empty() && kernel.timeline.is_empty(),
         "a parked event must NOT be stored or enter the timeline"
@@ -71,9 +82,10 @@ fn unfollowed_author_note_is_parked_not_dropped() {
 #[test]
 fn sync_follow_feed_replays_parked_event_for_newly_followed_author() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    activate_follow_feed(&mut kernel);
 
     let keys = ::nostr::Keys::generate();
-    let event = signed_note(&keys, "from a soon-to-be-followed author", 1_700_000_010);
+    let event = signed_follow_feed_event(&keys, "from a soon-to-be-followed author", 1_700_000_010);
     let event_id = event.id.clone();
     let author = event.pubkey.clone();
 
@@ -86,8 +98,8 @@ fn sync_follow_feed_replays_parked_event_for_newly_followed_author() {
     );
     assert_eq!(kernel.pre_kind3_buffer_len_for_test(), 1);
 
-    // A kind:3 names the author → sync_follow_feed_interests rebuilds
-    // timeline_authors and flushes the buffer.
+    // The contact-list sync names the author, so `sync_follow_feed_interests`
+    // rebuilds timeline_authors and flushes the buffer.
     kernel.sync_follow_feed_interests(&[author.clone()]);
 
     assert!(
@@ -110,9 +122,10 @@ fn sync_follow_feed_replays_parked_event_for_newly_followed_author() {
 #[test]
 fn sync_follow_feed_drops_parked_event_for_still_unfollowed_author() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    activate_follow_feed(&mut kernel);
 
     let parked_keys = ::nostr::Keys::generate();
-    let parked = signed_note(&parked_keys, "never followed", 1_700_000_020);
+    let parked = signed_follow_feed_event(&parked_keys, "never followed", 1_700_000_020);
     let parked_id = parked.id.clone();
 
     let _ = kernel.ingest_timeline_event(
@@ -144,9 +157,10 @@ fn sync_follow_feed_drops_parked_event_for_still_unfollowed_author() {
 #[test]
 fn identity_change_clears_parked_events() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    activate_follow_feed(&mut kernel);
 
     let keys = ::nostr::Keys::generate();
-    let event = signed_note(&keys, "parked under the old identity", 1_700_000_030);
+    let event = signed_follow_feed_event(&keys, "parked under the old identity", 1_700_000_030);
     let event_id = event.id.clone();
     let author = event.pubkey.clone();
 
@@ -162,7 +176,9 @@ fn identity_change_clears_parked_events() {
     // clear the parked event first — it belongs to the prior identity's
     // context and must not leak forward.
     kernel.active_account = Some(author.clone());
-    kernel.seed_contacts.insert(author.clone(), vec![author.clone()]);
+    kernel
+        .seed_contacts
+        .insert(author.clone(), vec![author.clone()]);
     kernel.reconcile_follow_feed_after_identity_change();
 
     assert_eq!(

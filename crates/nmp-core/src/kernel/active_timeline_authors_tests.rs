@@ -3,6 +3,9 @@
 
 use super::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use std::collections::BTreeSet;
+
+const HOST_DECLARED_FOLLOW_FEED_KIND: u32 = 4242;
 
 fn hex_pk(prefix: &str) -> String {
     let mut s = prefix.to_string();
@@ -10,6 +13,10 @@ fn hex_pk(prefix: &str) -> String {
         s.push('0');
     }
     s.chars().take(64).collect()
+}
+
+fn activate_follow_feed(kernel: &mut Kernel) {
+    kernel.follow_feed_kinds = BTreeSet::from([HOST_DECLARED_FOLLOW_FEED_KIND]);
 }
 
 /// An empty timeline-author set yields an empty `Vec`.
@@ -33,6 +40,7 @@ fn active_timeline_authors_reflects_synced_follow_set() {
     let alice = hex_pk("b");
     let bob = hex_pk("c");
     kernel.active_account = Some(me.clone());
+    activate_follow_feed(&mut kernel);
 
     kernel.sync_follow_feed_interests(&[bob.clone(), alice.clone()]);
 
@@ -54,6 +62,7 @@ fn active_timeline_authors_returns_owned_snapshot() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let me = hex_pk("a");
     kernel.active_account = Some(me.clone());
+    activate_follow_feed(&mut kernel);
     kernel.sync_follow_feed_interests(&[hex_pk("b")]);
 
     let snapshot = kernel.active_timeline_authors();

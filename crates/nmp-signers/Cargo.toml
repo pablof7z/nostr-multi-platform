@@ -3,6 +3,7 @@ name = "nmp-signers"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Signer trait + Local nsec / NIP-46 bunker / NIP-07 implementations + multi-account AccountManager for nmp-core."
 
 [lib]

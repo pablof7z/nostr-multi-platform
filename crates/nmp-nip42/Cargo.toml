@@ -3,6 +3,7 @@ name = "nmp-nip42"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "NIP-42 relay AUTH as an NMP protocol crate. Owns the kind:22242 builder and the per-relay handshake driver; the shared wire/type vocabulary (RelayAuthState, AUTH/OK frame shapes + parsers) lives in nmp-nip42-types; the wire-frame pause/flush is owned by nmp-core::subs::AuthGate."
 
 [dependencies]

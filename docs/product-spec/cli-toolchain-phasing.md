@@ -19,6 +19,19 @@ nmp doctor                         Diagnose toolchain / build environment.
 nmp upgrade                        Bump nmp-* dependency versions and run migrations.
 ```
 
+NMP has two dependency modes:
+
+- **Release-consumer mode:** apps pin a coordinated NMP release with
+  `dependency_mode = "version"` in `nmp.toml`. Generated app crates use the
+  same version for `nmp-core`, `nmp-ffi`, and every `nmp-*` module crate.
+- **Framework-development mode:** apps pin a local checkout with
+  `dependency_mode = "path"`. Generated app crates resolve dependencies from
+  that checkout's workspace layout.
+
+`nmp upgrade --to <version>` is the only supported app-facing release bump. It
+updates the manifest baseline; then `nmp gen modules` regenerates the FFI crate
+and `nmp doctor` reports the pinned baseline.
+
 ### 8.2 What `nmp init` generates
 
 The scaffold produces a ready-to-build Rust workspace, adapted for Nostr:
@@ -139,7 +152,7 @@ Three-arc plan: **kernel infrastructure first, product modules second, then scaf
 | 15. CLI + starter app + docs | `nmp init`, `nmp doctor`, `nmp gen *`, minimal starter app polish, recipe book, NIP support matrix, generated examples metadata | §3 success criteria reproducible from published docs alone |
 | 16. Proof app | Build `nmp-proof` (§4.5) on all four platforms; performance overlay; scripted scenarios for cross-platform consistency tests | Proof app launches and exercises every subsystem on every platform; consistency tests pass |
 | 17. Performance pass | Run proof app on real devices; collect counters; address budget regressions; tune planner, ViewBatch deltas, marshaling | All §7.16 budgets met on reference devices; performance report published |
-| 18. Product release | Tagged release on crates.io and npm; bindings published; example apps deployed | Public availability |
+| 18. Product release | Tagged release on crates.io and npm; bindings published; example apps deployed; app upgrade fixture green | Public availability plus reproducible `nmp upgrade` path |
 
 **Naming** (`aim.md` §7.7) must be resolved before any public crate/npm publishing.
 
@@ -154,7 +167,7 @@ These are not resolved in this spec and require further design before implementa
 1. **Web persistence implementation.** OPFS vs IndexedDB tradeoffs, COOP/COEP requirements for SQLite-style WASM deployments, Safari fallback behavior, and how the CLI exposes those choices.
 2. **Wallet UI contract for NIP-60.** Cashu mint trust / proof state visibility in `WalletState`.
 3. **Signer policy for sub-actions.** When an action composes multiple sub-actions each requiring signing (e.g., publishing a note and a relay-list update in one user step), how is the bunker prompted — one prompt or N?
-4. **Migration story between minor versions.** AppState shape evolution: schema-versioned snapshots, or schemaless / additive only?
+4. **Migration story between minor versions.** AppState shape evolution: schema-versioned snapshots, or schemaless / additive only? The release train and `nmp upgrade` command are fixed; the unresolved part is per-schema compatibility policy.
 5. **Telemetry.** Do we ship optional, off-by-default telemetry into the framework for debugging? (Default proposal: no; consumer adds it.)
 6. **Pluggable view kinds.** Are project-specific `ViewSpec` variants first-class (enum extension is awkward in Rust), or are they added by string-keyed payloads with consumer-side decoding?
 7. **Final name.** `aim.md` §7.7 remains open.

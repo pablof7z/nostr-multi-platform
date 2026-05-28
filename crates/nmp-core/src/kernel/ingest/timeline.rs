@@ -1,4 +1,4 @@
-//! Kind:1 / kind:6 (note / repost) timeline ingest.
+//! Host-declared follow-feed timeline ingest.
 //!
 //! Covers event storage, deduplication, timeline ordering, thread hydration
 //! queue management, and the seed-timeline open gate.
@@ -10,7 +10,7 @@ use super::super::{
 use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {
-    /// Ingest a kind:1 or kind:6 event into the local read-cache and timeline.
+    /// Ingest a host-declared follow-feed event into the local read-cache and timeline.
     ///
     /// Routes through `EventStore::insert` (D4 single-writer).  On `Inserted |
     /// Replaced`, populates the lightweight `events` read-cache and appends to
@@ -25,19 +25,22 @@ impl Kernel {
         event: NostrEvent,
     ) -> bool {
         if !self.should_store_event(sub_id, &event) {
-            // V-59 rung 1 (Q7) — pre-kind:3 buffer. A kind:1 / kind:6 event
-            // whose author is not (yet) in the active account's follow set
-            // would otherwise be dropped here. Park it instead: a later kind:3
-            // (`sync_follow_feed_interests`) that adds the author replays it.
+            // V-59 rung 1 (Q7) — pre-kind:3 buffer. A host-declared
+            // follow-feed event whose author is not (yet) in the active
+            // account's follow set would otherwise be dropped here. Park it
+            // instead: a later contact-list sync (`sync_follow_feed_interests`)
+            // that adds the author replays it.
             //
             // `should_store_event`'s FIRST clause is
             // `timeline_authors.contains(author)`, so reaching this branch
             // already implies `!timeline_authors.contains(author)`; the
             // explicit re-check below is kept for self-documenting intent and
             // to stay correct if that clause is ever reordered. We only buffer
-            // note/repost kinds — other kinds dropped here have their own
-            // ingest arms and never depend on the follow set.
-            if matches!(event.kind, 1 | 6) && !self.timeline_authors.contains(&event.pubkey) {
+            // only buffer host-declared follow-feed kinds; other kinds dropped
+            // here have their own ingest arms and never depend on the follow set.
+            if self.follow_feed_kinds.contains(&event.kind)
+                && !self.timeline_authors.contains(&event.pubkey)
+            {
                 self.pre_kind3_buffer
                     .insert(event.id.clone(), (event, relay_url.to_string()));
             }

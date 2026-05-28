@@ -3,6 +3,7 @@ name = "nmp-content-fixtures"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Offline signed-event + pre-tokenized DTO bundle generator (pre-T93 staging format; NmpGallery showcase deleted in T111 closure). Retained as test-fixture generator for nmp-content scenarios."
 
 [lib]

@@ -3,6 +3,7 @@ name = "nmp-wot"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+repository.workspace = true
 description = "Client-side web-of-trust primitives for NMP: follow/mute graph scoring plus automatic replaceable-kind bootstrap interests."
 
 [dependencies]

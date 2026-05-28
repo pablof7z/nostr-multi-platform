@@ -14,10 +14,9 @@
 //! ```
 //!
 //! The `<name>-core` crate compiles standalone (`cargo check`) because its
-//! `nmp-core` path dependency is resolved to the absolute location of this
-//! checkout at init time. `nmp gen modules` then emits the per-app FFI crate
-//! under `apps/<name>/` (see `docs/cli.md` for why that crate expects a
-//! monorepo layout).
+//! `nmp-core` dependency defaults to the absolute location of this checkout
+//! at init time. `--nmp-version` switches the scaffold to versioned NMP
+//! dependencies for release-consumer apps.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,6 +31,7 @@ const README_TMPL: &str = include_str!("../templates/README.md.tmpl");
 pub fn run(args: &[String]) -> Result<(), String> {
     let mut name: Option<String> = None;
     let mut path: Option<PathBuf> = None;
+    let mut nmp_dependency = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -42,6 +42,29 @@ pub fn run(args: &[String]) -> Result<(), String> {
                         .map(PathBuf::from)
                         .ok_or_else(|| "--path requires a directory".to_string())?,
                 );
+            }
+            "--nmp-version" => {
+                index += 1;
+                let version = args
+                    .get(index)
+                    .cloned()
+                    .ok_or_else(|| "--nmp-version requires a semver version".to_string())?;
+                if nmp_dependency
+                    .replace(NmpDependency::Version(version))
+                    .is_some()
+                {
+                    return Err("pass only one of --nmp-version or --nmp-path".to_string());
+                }
+            }
+            "--nmp-path" => {
+                index += 1;
+                let path = args
+                    .get(index)
+                    .map(PathBuf::from)
+                    .ok_or_else(|| "--nmp-path requires a directory".to_string())?;
+                if nmp_dependency.replace(NmpDependency::Path(path)).is_some() {
+                    return Err("pass only one of --nmp-version or --nmp-path".to_string());
+                }
             }
             flag if flag.starts_with('-') => {
                 return Err(format!("unknown argument {flag}"));
@@ -71,14 +94,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let pkg = format!("{name}-core");
     let crate_ident = pkg.replace('-', "_");
     let display = title_case(&name);
-    let nmp_core = nmp_core_path()?;
+    let nmp_dependency = nmp_dependency.unwrap_or(NmpDependency::Path(nmp_checkout_path()?));
+    let nmp_core_dep = nmp_core_dependency(&nmp_dependency);
+    let nmp_manifest = nmp_manifest_block(&nmp_dependency);
 
     let render = |tmpl: &str| -> String {
         tmpl.replace("{{name}}", &name)
             .replace("{{pkg}}", &pkg)
             .replace("{{crate_ident}}", &crate_ident)
             .replace("{{display}}", &display)
-            .replace("{{nmp_core}}", &nmp_core)
+            .replace("{{nmp_core_dep}}", &nmp_core_dep)
+            .replace("{{nmp_manifest}}", &nmp_manifest)
     };
 
     let crate_dir = root.join("crates").join(&pkg);
@@ -98,6 +124,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
     println!("  cargo check                 # the {pkg} skeleton compiles as-is");
     println!("  nmp gen modules             # emit apps/{name}/nmp-app-{name}");
     Ok(())
+}
+
+enum NmpDependency {
+    Path(PathBuf),
+    Version(String),
 }
 
 fn validate_name(name: &str) -> Result<(), String> {
@@ -131,17 +162,42 @@ fn title_case(name: &str) -> String {
         .join(" ")
 }
 
-/// Absolute path to this checkout's `crates/nmp-core`, derived from the
-/// nmp-cli crate location so scaffolded apps build from any directory.
-fn nmp_core_path() -> Result<String, String> {
+/// Absolute path to this checkout, derived from the nmp-cli crate location.
+fn nmp_checkout_path() -> Result<PathBuf, String> {
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
     let candidate = here
         .parent()
         .ok_or_else(|| "cannot locate crates/ directory".to_string())?
-        .join("nmp-core");
-    let resolved = fs::canonicalize(&candidate)
-        .map_err(|e| format!("cannot resolve nmp-core at {}: {e}", candidate.display()))?;
-    Ok(resolved.to_string_lossy().into_owned())
+        .parent()
+        .ok_or_else(|| "cannot locate nmp checkout".to_string())?;
+    fs::canonicalize(candidate).map_err(|e| {
+        format!(
+            "cannot resolve nmp checkout at {}: {e}",
+            candidate.display()
+        )
+    })
+}
+
+fn nmp_core_dependency(dependency: &NmpDependency) -> String {
+    match dependency {
+        NmpDependency::Version(version) => format!("\"{version}\""),
+        NmpDependency::Path(path) => format!(
+            "{{ path = \"{}\" }}",
+            path.join("crates/nmp-core").to_string_lossy()
+        ),
+    }
+}
+
+fn nmp_manifest_block(dependency: &NmpDependency) -> String {
+    match dependency {
+        NmpDependency::Version(version) => {
+            format!("[nmp]\ndependency_mode = \"version\"\nversion = \"{version}\"\n")
+        }
+        NmpDependency::Path(path) => format!(
+            "[nmp]\ndependency_mode = \"path\"\npath = \"{}\"\n",
+            path.to_string_lossy()
+        ),
+    }
 }
 
 fn write(path: &Path, content: &str) -> Result<(), String> {

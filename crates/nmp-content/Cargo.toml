@@ -3,6 +3,7 @@ name = "nmp-content"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Layer A content-rendering substrate — tokenizer, embed claim registry, recursion guard."
 
 [lib]

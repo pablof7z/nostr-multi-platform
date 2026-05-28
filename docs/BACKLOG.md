@@ -114,6 +114,34 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
 
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation]
+
+**Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
+subscription defaults that belong in NIP/app modules:
+
+- `crates/nmp-core/src/kernel/requests/profile.rs:532-550` hardcodes selected-author
+  note/repost requests as `{"kinds":[1,6], ...}`.
+- `crates/nmp-core/src/kernel/requests/thread.rs:217-223` hardcodes recursive thread
+  reply requests as `{"kinds":[1,6], ...}`.
+- `crates/nmp-core/src/kernel/ingest/mod.rs:623-650` fires mailbox-change routing
+  traces with `&[1, 6]` as the canonical content kind set.
+- `crates/nmp-planner/src/interest.rs:183-189` exposes
+  `InterestShape::timeline_for` as a generic-looking constructor while internally
+  selecting `[1, 6]`.
+
+**Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
+substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`
+as filter data, but they must not choose app defaults. Defaults like "follow-list
+timeline means kind:1 + kind:6" belong in `nmp-nip01`, `nmp-nip02`,
+`nmp-app-template`, or an app crate such as Chirp.
+
+**Required fix:** move the remaining social subscription constructors and trace
+inputs out of `nmp-core`/generic planner APIs. Keep the existing
+`ActorCommand::OpenContactListSubscription { kinds }` direction: hosts or NIP
+modules declare the kind set, and the substrate registers/executes those kinds as
+data. Tests covering follow-feed behavior must use arbitrary host-declared kinds,
+not `{1, 6}`, unless the test is explicitly scoped to a NIP-01/NIP-18 module.
+
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
 **Verified:** `crates/nmp-core/src/actor/commands/identity.rs:700` —
@@ -1413,6 +1441,39 @@ typed snapshot tables are the next F-10 performance step if foreground logs show
 5. **chirp-web** — tooltip or expandable row section.
 
 **Note:** `relay_count: u32` is already on `TimelineItem` and rendered in iOS (`NoteRowView`). Step 1 is the only Rust change; steps 2–5 are pure presentation work per platform.
+
+### F-11 · Versioned releases + automated app upgrades [V1 RELEASE]
+
+NMP must be consumed as a coordinated framework release, not a set of random
+path dependencies. User direction on 2026-05-28 made this a product/operational
+requirement: apps should pin an NMP release, upgrade through `nmp upgrade`, and
+regenerate deterministic bindings/components.
+
+**Source of truth:** [`docs/plan/m17-release.md`](plan/m17-release.md) owns the
+release doctrine and exit gate. [`docs/cli.md`](cli.md) owns command behavior.
+The machine-readable release manifest lives in `release/nmp-release.toml`.
+
+**Required work:**
+
+1. Classify every workspace package as public or private in the release manifest.
+2. Make `nmp init` support both release-consumer (`--nmp-version`) and local
+   framework-development (`--nmp-path`) dependency modes.
+3. Make `nmp gen modules` honor `[nmp]` so generated FFI crates use versioned
+   `nmp-*` dependencies for release consumers and local paths for development.
+4. Add `nmp upgrade --to <version>` and `nmp doctor` as the app-facing upgrade
+   and verification path, including direct `nmp-*` dependency rewrites in
+   app-module crates.
+5. Add release-readiness automation: manifest coverage check, package dry-run
+   for public crates, and a release-tag/manual workflow.
+6. Later release hardening: npm package publishing for `@nmp/cli`,
+   semver/API compatibility checks, schema golden compatibility fixtures, and
+   previous-release fixture app upgrade tests.
+
+**Acceptance:** a temp app initialized with `--nmp-version 0.x.y` generates an
+FFI crate with versioned `nmp-core` / `nmp-ffi` deps; `nmp upgrade --to 0.x.z`
+updates the manifest and deterministic regeneration keeps the app on the new
+release baseline; release-readiness CI can prove every workspace crate is
+classified before a tag is cut.
 
 ---
 

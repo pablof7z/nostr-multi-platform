@@ -16,9 +16,12 @@
 //! is deterministic. See `docs/cli.md`.
 
 mod component;
+mod doctor;
 mod export;
 mod gen;
 mod init;
+mod manifest_edit;
+mod upgrade;
 
 use std::env;
 
@@ -37,15 +40,15 @@ fn run() -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("init") => init::run(&args[1..]),
         Some("gen") => gen::run(&args[1..]),
+        Some("doctor") => doctor::run(&args[1..]),
+        Some("upgrade") => upgrade::run(&args[1..]),
         Some("add") => component::run_add(&args[1..]),
         Some("update") => component::run_update(&args[1..]),
-        Some("export") => {
-            match args.get(1).map(String::as_str) {
-                Some("jsrepo") => export::run(&args[2..]),
-                Some(other) => Err(format!("unknown export target `{other}`; try `jsrepo`")),
-                None => Err("usage: nmp export <target>  (e.g. jsrepo)".to_string()),
-            }
-        }
+        Some("export") => match args.get(1).map(String::as_str) {
+            Some("jsrepo") => export::run(&args[2..]),
+            Some(other) => Err(format!("unknown export target `{other}`; try `jsrepo`")),
+            None => Err("usage: nmp export <target>  (e.g. jsrepo)".to_string()),
+        },
         Some("--help") | Some("-h") | Some("help") | None => {
             println!("{}", help());
             Ok(())
@@ -57,11 +60,14 @@ fn run() -> Result<(), String> {
 fn help() -> String {
     [
         "usage:",
-        "  nmp init <app-name> [--path DIR]",
+        "  nmp init <app-name> [--path DIR] [--nmp-version VERSION | --nmp-path DIR]",
         "      Scaffold a new NMP app. Creates a workspace at DIR (default",
         "      ./<app-name>) with an nmp.toml manifest and an <app-name>-core",
         "      crate skeleton (a reactive view, an ActionModule, plus a",
         "      headless shell stub). It compiles as-is.",
+        "      --nmp-version writes versioned nmp-* dependencies for release",
+        "      consumers; --nmp-path writes local checkout dependencies for",
+        "      framework development.",
         "",
         "  nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]",
         "      Generate the per-app nmp-app-<name> FFI crate from a manifest",
@@ -77,6 +83,15 @@ fn help() -> String {
         "      Files that match their lock baseline are overwritten and the lock",
         "      hash + version are refreshed. Files with local edits are reported",
         "      as conflicts and left untouched.",
+        "",
+        "  nmp upgrade --to VERSION [--manifest nmp.toml]",
+        "      Move the app manifest to a pinned NMP release. Re-run",
+        "      `nmp gen modules` after this command to refresh generated",
+        "      crate dependencies.",
+        "",
+        "  nmp doctor [--manifest nmp.toml]",
+        "      Validate the app's NMP dependency policy and report the release",
+        "      or local checkout baseline used by codegen.",
         "",
         "  nmp export jsrepo [--output DIR] [--registry DIR]",
         "      Emit a jsrepo/shadcn-compatible registry.json (full index) plus",

@@ -3,6 +3,7 @@ name = "nmp-network"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Layer-1 network transport: native WebSocket relay worker (tungstenite/mio/rustls) + wasm32 browser relay driver (web_sys::WebSocket), wire-transport-agnostic relay protocol primitives (backoff, keepalive, jitter, HTTP-denial classifier). Step 8 of docs/architecture/crate-boundaries.md — phases 8a (extraction), 8b (push-model `Pool`), 8c (`BrowserRelayDriver` move) shipped. `nmp-signer-broker` migration is deferred to phase 8d."
 
 [lib]

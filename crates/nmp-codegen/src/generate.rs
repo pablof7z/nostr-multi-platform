@@ -1,5 +1,5 @@
 use crate::workspace::WorkspaceLayout;
-use crate::{app_crate_name, rust_crate_name, variant_name, AppManifest};
+use crate::{app_crate_name, rust_crate_name, variant_name, AppManifest, NmpDependency};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -75,18 +75,39 @@ fn cargo_toml(manifest: &AppManifest, layout: Option<&WorkspaceLayout>, out_dir:
             .and_then(|l| l.relative_from(out_dir, package))
             .unwrap_or_else(|| format!("../../../crates/{package}"))
     };
+    let dependency = |package: &str| -> String {
+        match &manifest.nmp {
+            NmpDependency::Version { version } => format!("\"{version}\""),
+            NmpDependency::Path { path } if package.starts_with("nmp-") && path != "." => {
+                format!("{{ path = \"{path}/crates/{package}\" }}")
+            }
+            NmpDependency::Path { .. } => format!("{{ path = \"{}\" }}", resolve(package)),
+        }
+    };
     let mut out = format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"{}\" }}\nnmp-ffi = {{ path = \"{}\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {}\nnmp-ffi = {}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
         app_crate_name(&manifest.name),
-        resolve("nmp-core"),
-        resolve("nmp-ffi"),
+        dependency("nmp-core"),
+        dependency("nmp-ffi"),
     );
     for module in manifest.ordered_modules() {
         out.push_str(&format!(
-            "{} = {{ package = \"{}\", path = \"{}\" }}\n",
+            "{} = {}\n",
             rust_crate_name(&module),
-            module,
-            resolve(&module),
+            match &manifest.nmp {
+                NmpDependency::Version { version } if module.starts_with("nmp-") => {
+                    format!("{{ package = \"{module}\", version = \"{version}\" }}")
+                }
+                NmpDependency::Path { path } if module.starts_with("nmp-") && path != "." => {
+                    format!("{{ package = \"{module}\", path = \"{path}/crates/{module}\" }}")
+                }
+                NmpDependency::Version { .. } | NmpDependency::Path { .. } => {
+                    format!(
+                        "{{ package = \"{module}\", path = \"{}\" }}",
+                        resolve(&module)
+                    )
+                }
+            },
         ));
     }
     out
@@ -237,6 +258,9 @@ mod tests {
         AppManifest {
             name: "fixture".to_string(),
             display_name: "Fixture".to_string(),
+            nmp: NmpDependency::Path {
+                path: ".".to_string(),
+            },
             modules: ModuleSet {
                 kernel: "nmp-core".to_string(),
                 protocol: protocol.iter().map(ToString::to_string).collect(),
@@ -354,6 +378,23 @@ mod tests {
         // the generated crate compiles.
         let out = const_list("DOMAIN_MODULE_CRATES", &manifest(&[], &[]));
         assert_eq!(out, "pub const DOMAIN_MODULE_CRATES: &[&str] = &[];\n");
+    }
+
+    #[test]
+    fn cargo_toml_version_mode_versions_nmp_crates_and_keeps_app_modules_local() {
+        let mut manifest = manifest(&["nmp-nip01"], &["fixture-todo-core"]);
+        manifest.nmp = NmpDependency::Version {
+            version: "0.2.0".to_string(),
+        };
+
+        let out = cargo_toml(&manifest, None, Path::new("apps/fixture/nmp-app-fixture"));
+
+        assert!(out.contains("nmp-core = \"0.2.0\""));
+        assert!(out.contains("nmp-ffi = \"0.2.0\""));
+        assert!(out.contains("nmp_nip01 = { package = \"nmp-nip01\", version = \"0.2.0\" }"));
+        assert!(out.contains(
+            "fixture_todo_core = { package = \"fixture-todo-core\", path = \"../../../crates/fixture-todo-core\" }"
+        ));
     }
 
     #[test]

@@ -3,6 +3,8 @@ name = "nmp-testing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "NMP testing harnesses, doctrine lint gates, mock relays, stress tests, and release validation utilities."
 
 [features]
 # Enable LMDB-backed store tests. Passes through to nmp-core's lmdb-backend feature.

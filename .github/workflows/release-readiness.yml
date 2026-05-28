@@ -1,0 +1,42 @@
+name: release-readiness
+
+on:
+  push:
+    tags:
+      - "nmp-v*"
+  pull_request:
+    branches: [master]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "release/**"
+      - "ci/check-release-manifest.sh"
+      - "ci/release-package-dry-run.sh"
+      - ".github/workflows/release-readiness.yml"
+      - "crates/**/Cargo.toml"
+  workflow_dispatch:
+
+jobs:
+  release-readiness:
+    name: release manifest + package dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-release-readiness-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-release-readiness-
+
+      - name: Check release manifest
+        run: bash ci/check-release-manifest.sh
+
+      - name: Cargo package dry-run for public crates
+        run: bash ci/release-package-dry-run.sh

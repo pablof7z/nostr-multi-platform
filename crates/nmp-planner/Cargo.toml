@@ -3,6 +3,7 @@ name = "nmp-planner"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Subscription compiler: LogicalInterest, mailbox cache, lattice merge rules, per-relay plan projection. Extracted from nmp-core in step 9 of the crate-boundary migration."
 
 [lib]

@@ -3,6 +3,8 @@ name = "nmp-nip77"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "NIP-77 negentropy reconciliation primitives and runtime adapter for NMP."
 
 [lib]
 name = "nmp_nip77"

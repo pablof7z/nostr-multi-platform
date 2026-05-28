@@ -3,6 +3,7 @@ name = "nmp-nostr-lmdb"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "NMP-local fork of nostr-lmdb v0.44.1 with env-injection seam (PD-026 Option B)"
 
 [lib]
