@@ -112,12 +112,12 @@ pub struct RepliesView;
 impl RepliesView {
     pub const NAMESPACE: &'static str = "nmp.nip01.replies";
 
-    #[must_use] 
+    #[must_use]
     pub fn key(spec: &RepliesSpec) -> EventId {
         spec.target.clone()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn dependencies(spec: &RepliesSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_SHORT_NOTE],
@@ -126,7 +126,7 @@ impl RepliesView {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn open(_ctx: &ViewContext, spec: RepliesSpec) -> (RepliesState, RepliesPayload) {
         let state = RepliesState {
             target: spec.target.clone(),
@@ -167,7 +167,7 @@ impl RepliesView {
         s.replace(old, e)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_c: &ViewContext, state: &RepliesState) -> RepliesPayload {
         // Sort-on-read: the chronological order is materialised here, once
         // per snapshot, rather than re-sorted on every insert/replace.
@@ -230,7 +230,10 @@ impl ThreadState {
     fn link_into_tree(&mut self, event_id: &EventId, parent_id: Option<EventId>) {
         self.parent_of.insert(event_id.clone(), parent_id.clone());
         if let Some(p) = parent_id {
-            self.children_of.entry(p).or_default().insert(event_id.clone());
+            self.children_of
+                .entry(p)
+                .or_default()
+                .insert(event_id.clone());
         }
     }
 
@@ -292,7 +295,10 @@ impl ThreadState {
             // `parent_id.is_some()`; if that invariant is ever violated we
             // degrade gracefully — skip the insert rather than panic.
             let parent = parent_id?;
-            self.orphans.entry(parent).or_default().insert(event.id.clone());
+            self.orphans
+                .entry(parent)
+                .or_default()
+                .insert(event.id.clone());
             // Still added in `by_id` so a later parent insert can stitch it
             // in via promote_orphans without us needing the original event
             // again — but we emit no delta yet (no node is visible yet).
@@ -336,7 +342,9 @@ impl ThreadState {
             parent: Option<EventId>,
             out: &mut Vec<ThreadNode>,
         ) {
-            let Some(event) = state.by_id.get(id) else { return };
+            let Some(event) = state.by_id.get(id) else {
+                return;
+            };
             let child_count = state
                 .children_of
                 .get(id)
@@ -402,12 +410,12 @@ pub struct ThreadView;
 impl ThreadView {
     pub const NAMESPACE: &'static str = "nmp.nip01.thread";
 
-    #[must_use] 
+    #[must_use]
     pub fn key(spec: &ThreadSpec) -> EventId {
         spec.root_event.clone()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn dependencies(spec: &ThreadSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_SHORT_NOTE],
@@ -416,7 +424,7 @@ impl ThreadView {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn open(_ctx: &ViewContext, spec: ThreadSpec) -> (ThreadState, ThreadPayload) {
         let state = ThreadState {
             root: spec.root_event.clone(),
@@ -461,7 +469,7 @@ impl ThreadView {
         s.insert(e)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_c: &ViewContext, state: &ThreadState) -> ThreadPayload {
         ThreadPayload {
             root_event: state.root.clone(),

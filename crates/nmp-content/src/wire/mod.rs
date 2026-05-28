@@ -16,9 +16,14 @@
 //! `unwrap`/`expect`/indexing that can panic on non-test paths).
 
 mod projection;
+pub mod typed_fb;
 
 #[cfg(test)]
 mod tests;
+
+pub use typed_fb::{
+    decode_content_tree, encode_content_tree, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,
+};
 
 use serde::{Deserialize, Serialize};
 

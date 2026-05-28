@@ -3,11 +3,9 @@ use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use nmp_app_chirp::{
-    nmp_app_chirp_identity_sign_in_nsec,
-    nmp_marmot_group_messages, nmp_marmot_register_active,
-    nmp_marmot_snapshot, nmp_marmot_string_free,
-    nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
-    nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, ChirpHandle, MarmotHandle,
+    nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_marmot_group_messages, nmp_marmot_register_active, nmp_marmot_snapshot,
+    nmp_marmot_string_free, nmp_marmot_unregister, ChirpHandle, MarmotHandle,
 };
 use std::sync::Arc;
 
@@ -234,15 +232,10 @@ impl AppRuntime {
         if self.chirp.is_null() {
             return None;
         }
-        let ptr = nmp_app_chirp_snapshot(self.chirp);
-        if ptr.is_null() {
-            return None;
-        }
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_app_chirp_snapshot_free(ptr);
-        serde_json::from_str(&text).ok()
+        // SAFETY: non-null, valid for the AppRuntime lifetime (same contract
+        // as other callers of self.chirp in this impl).
+        let snapshot = unsafe { (*self.chirp).snapshot() };
+        serde_json::to_value(&snapshot).ok()
     }
 
     fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<()> {

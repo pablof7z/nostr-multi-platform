@@ -45,6 +45,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.24")
+    // FlatBuffers Java/Kotlin runtime. Pin matches nmp_update.fbs header comment
+    // ("Android/Kotlin runtime: 25.2.10") and the Rust+Swift pin asymmetry table.
+    implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")
 }
 
 // ── cargo-ndk: cross-compile the JNI shim that links the SAME nmp-core kernel

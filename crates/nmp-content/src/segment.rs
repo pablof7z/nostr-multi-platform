@@ -111,7 +111,7 @@ pub struct ContentTree {
 impl ContentTree {
     /// Construct an empty tree (used when content is empty or every token
     /// was a parse-error fallback).
-    #[must_use] 
+    #[must_use]
     pub fn empty(mode: RenderMode) -> Self {
         Self {
             segments: Vec::new(),
@@ -121,7 +121,7 @@ impl ContentTree {
 
     /// Convenience: count tokens of each variant. Used by tests/diagnostics
     /// rather than rendering — keep this stable.
-    #[must_use] 
+    #[must_use]
     pub fn segment_count(&self) -> usize {
         self.segments.len()
     }

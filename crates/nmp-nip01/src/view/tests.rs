@@ -1,6 +1,12 @@
 use super::*;
 
-fn ke(id: &str, author: &str, created_at: u64, tags: Vec<Vec<String>>, content: &str) -> KernelEvent {
+fn ke(
+    id: &str,
+    author: &str,
+    created_at: u64,
+    tags: Vec<Vec<String>>,
+    content: &str,
+) -> KernelEvent {
     KernelEvent {
         id: id.into(),
         author: author.into(),
@@ -19,7 +25,9 @@ fn ctx() -> ViewContext {
 
 #[test]
 fn replies_view_filters_by_reply_target() {
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
 
     // Reply to ROOT — accepted.
@@ -53,10 +61,24 @@ fn replies_view_filters_by_reply_target() {
 
 #[test]
 fn replies_view_dedupes_and_sorts() {
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
-    let r_later = ke("LATER", "a", 20, vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]], "");
-    let r_earlier = ke("EARLY", "a", 10, vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]], "");
+    let r_later = ke(
+        "LATER",
+        "a",
+        20,
+        vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]],
+        "",
+    );
+    let r_earlier = ke(
+        "EARLY",
+        "a",
+        10,
+        vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]],
+        "",
+    );
 
     let _ = RepliesView::on_event_inserted(&ctx(), &mut state, &r_later);
     let _ = RepliesView::on_event_inserted(&ctx(), &mut state, &r_earlier);
@@ -70,9 +92,17 @@ fn replies_view_dedupes_and_sorts() {
 
 #[test]
 fn replies_view_remove_clears_entry() {
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
-    let r = ke("R1", "a", 1, vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]], "");
+    let r = ke(
+        "R1",
+        "a",
+        1,
+        vec![vec!["e".into(), "ROOT".into(), "".into(), "reply".into()]],
+        "",
+    );
     RepliesView::on_event_inserted(&ctx(), &mut state, &r);
     let delta = RepliesView::on_event_removed(&ctx(), &mut state, &"R1".to_string());
     assert!(matches!(delta, Some(RepliesDelta::Removed(_))));
@@ -81,7 +111,9 @@ fn replies_view_remove_clears_entry() {
 
 #[test]
 fn replies_view_remove_unknown_id_is_a_noop() {
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
     assert!(
         RepliesView::on_event_removed(&ctx(), &mut state, &"ghost".to_string()).is_none(),
@@ -93,7 +125,9 @@ fn replies_view_remove_unknown_id_is_a_noop() {
 fn replies_view_rejects_a_thread_root_with_no_reply_marker() {
     // A kind-1 with no NIP-10 reply pointer is a thread root, not a reply
     // to `target` — it must be rejected even though it is kind 1.
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
     let root = ke("ROOT", "a", 1, vec![], "i am the root");
     assert!(RepliesView::on_event_inserted(&ctx(), &mut state, &root).is_none());
@@ -102,7 +136,9 @@ fn replies_view_rejects_a_thread_root_with_no_reply_marker() {
 
 #[test]
 fn replies_view_replace_with_matching_event_swaps_in_place() {
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
     let original = ke(
         "OLD",
@@ -136,7 +172,9 @@ fn replies_view_replace_with_matching_event_swaps_in_place() {
 fn replies_view_replace_with_non_matching_event_degrades_to_removal() {
     // If the replacement no longer points at `target`, the view drops the
     // old entry entirely rather than retaining a stale one.
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
     let original = ke(
         "OLD",
@@ -151,11 +189,15 @@ fn replies_view_replace_with_non_matching_event_degrades_to_removal() {
         "NEW",
         "a",
         5,
-        vec![vec!["e".into(), "ELSEWHERE".into(), "".into(), "reply".into()]],
+        vec![vec![
+            "e".into(),
+            "ELSEWHERE".into(),
+            "".into(),
+            "reply".into(),
+        ]],
         "v2",
     );
-    let delta =
-        RepliesView::on_event_replaced(&ctx(), &mut state, &"OLD".to_string(), &moved_away);
+    let delta = RepliesView::on_event_replaced(&ctx(), &mut state, &"OLD".to_string(), &moved_away);
     assert!(
         matches!(delta, Some(RepliesDelta::Removed(id)) if id == "OLD"),
         "a replacement that no longer matches the target removes the old entry"
@@ -167,7 +209,9 @@ fn replies_view_replace_with_non_matching_event_degrades_to_removal() {
 fn replies_view_replace_of_unknown_id_with_matching_event_is_a_noop() {
     // The replacement matches the target, but the `old_id` was never in the
     // view → `position` returns None → no delta, nothing inserted.
-    let spec = RepliesSpec { target: "ROOT".into() };
+    let spec = RepliesSpec {
+        target: "ROOT".into(),
+    };
     let (mut state, _) = RepliesView::open(&ctx(), spec);
     let revised = ke(
         "NEW",
@@ -200,7 +244,9 @@ fn reply_marked(id: &str, author: &str, ts: u64, root: &str, parent: &str) -> Ke
 
 #[test]
 fn thread_view_builds_tree_in_order() {
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let root = ke("R", "alice", 1, vec![], "root");
     let child1 = reply_marked("C1", "bob", 2, "R", "R");
@@ -225,7 +271,9 @@ fn thread_view_builds_tree_in_order() {
 
 #[test]
 fn thread_view_handles_out_of_order_arrival() {
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
 
     // Grandchild arrives before child.
@@ -249,7 +297,9 @@ fn thread_view_handles_out_of_order_arrival() {
 
 #[test]
 fn thread_view_dependencies_advertises_e_tag_ref() {
-    let spec = ThreadSpec { root_event: "RID".into() };
+    let spec = ThreadSpec {
+        root_event: "RID".into(),
+    };
     let deps = ThreadView::dependencies(&spec);
     assert_eq!(deps.kinds, vec![KIND_SHORT_NOTE]);
     assert_eq!(deps.tag_refs, vec![("e".into(), "RID".into())]);
@@ -257,7 +307,9 @@ fn thread_view_dependencies_advertises_e_tag_ref() {
 
 #[test]
 fn thread_view_rejects_non_kind_1_events() {
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let mut not_a_note = ke("R", "alice", 1, vec![], "root");
     not_a_note.kind = 30023;
@@ -271,7 +323,9 @@ fn thread_view_ignores_a_reply_to_an_unrelated_thread() {
     // and which references no part of this thread, must not be buffered as
     // an orphan forever — but `insert` *does* buffer anything with a parent
     // pointer (it might join later). Assert it produces no visible node.
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let stray = reply_marked("S", "eve", 9, "OTHER_ROOT", "OTHER_PARENT");
     assert!(
@@ -283,7 +337,9 @@ fn thread_view_ignores_a_reply_to_an_unrelated_thread() {
 
 #[test]
 fn thread_view_duplicate_insert_is_a_noop() {
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let root = ke("R", "alice", 1, vec![], "root");
     assert!(matches!(
@@ -301,7 +357,9 @@ fn thread_view_duplicate_insert_is_a_noop() {
 fn thread_view_remove_root_drops_its_children_subtree() {
     // Removing a node cascades: its children lose their knowable parent and
     // are dropped from `by_id` too.
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let root = ke("R", "alice", 1, vec![], "root");
     let child = reply_marked("C1", "bob", 2, "R", "R");
@@ -319,7 +377,9 @@ fn thread_view_remove_root_drops_its_children_subtree() {
 
 #[test]
 fn thread_view_remove_unknown_id_is_a_noop() {
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     assert!(ThreadView::on_event_removed(&ctx(), &mut state, &"ghost".to_string()).is_none());
 }
@@ -329,7 +389,9 @@ fn thread_view_replace_with_a_fresh_id_root_is_dropped() {
     // Replace is remove(old) + insert(new). The new event carries a fresh
     // id that is neither the spec root nor a reply to anything known, so
     // insert() finds no parent and drops it — no delta, empty tree.
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let root = ke("R", "alice", 1, vec![], "original root");
     ThreadView::on_event_inserted(&ctx(), &mut state, &root);
@@ -349,7 +411,9 @@ fn thread_view_replace_with_a_fresh_id_root_is_dropped() {
 fn thread_view_replace_same_id_root_keeps_it_visible() {
     // A genuine replaceable-event style replace that reuses the root id
     // must keep the root in the tree with the new content.
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     let root = ke("R", "alice", 1, vec![], "v1");
     ThreadView::on_event_inserted(&ctx(), &mut state, &root);
@@ -367,7 +431,9 @@ fn thread_view_replace_same_id_root_keeps_it_visible() {
 fn thread_view_forest_mode_when_root_absent() {
     // The root has not arrived, but a direct child of the root has. The
     // flatten() forest branch emits that subtree rooted at depth 0.
-    let spec = ThreadSpec { root_event: "R".into() };
+    let spec = ThreadSpec {
+        root_event: "R".into(),
+    };
     let (mut state, _) = ThreadView::open(&ctx(), spec);
     // C1 replies directly to root id R; R itself never arrives.
     let child = reply_marked("C1", "bob", 2, "R", "R");
@@ -379,6 +445,9 @@ fn thread_view_forest_mode_when_root_absent() {
     let snap = ThreadView::snapshot(&ctx(), &state);
     assert_eq!(snap.nodes.len(), 1);
     assert_eq!(snap.nodes[0].id, "C1");
-    assert_eq!(snap.nodes[0].depth, 0, "forest subtree root sits at depth 0");
+    assert_eq!(
+        snap.nodes[0].depth, 0,
+        "forest subtree root sits at depth 0"
+    );
     assert_eq!(snap.nodes[0].parent_id, None);
 }

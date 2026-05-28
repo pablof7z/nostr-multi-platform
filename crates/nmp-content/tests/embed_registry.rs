@@ -1,9 +1,7 @@
 //! Integration tests for [`EmbedClaimRegistry`]: dedupe, refcounting, and
 //! resolution updates through the registry's event-ingest methods.
 
-use nmp_content::{
-    ClaimHandle, EmbedClaimRegistry, EmbedClaimSpec, EmbedTarget,
-};
+use nmp_content::{ClaimHandle, EmbedClaimRegistry, EmbedClaimSpec, EmbedTarget};
 use nmp_core::substrate::{KernelEvent, ViewContext};
 
 fn ev(id: &str, kind: u32, content: &str) -> KernelEvent {
@@ -76,11 +74,7 @@ fn view_module_snapshot_reflects_claims_and_resolution() {
     assert!(snapshot.entries[0].2.is_none());
 
     // Resolution arrives via on_event_inserted.
-    let delta = EmbedClaimRegistry::on_event_inserted(
-        &ctx,
-        &mut state,
-        &ev("evt-1", 1, "hello"),
-    );
+    let delta = EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev("evt-1", 1, "hello"));
     assert!(delta.is_some());
 
     let snapshot = EmbedClaimRegistry::snapshot(&ctx, &state);
@@ -94,11 +88,8 @@ fn view_module_snapshot_reflects_claims_and_resolution() {
 fn unclaimed_event_does_not_produce_delta() {
     let ctx = ViewContext::default();
     let (mut state, _) = EmbedClaimRegistry::open(&ctx, EmbedClaimSpec);
-    let delta = EmbedClaimRegistry::on_event_inserted(
-        &ctx,
-        &mut state,
-        &ev("uninterested", 1, "x"),
-    );
+    let delta =
+        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev("uninterested", 1, "x"));
     assert!(delta.is_none());
     let snapshot = EmbedClaimRegistry::snapshot(&ctx, &state);
     assert!(snapshot.entries.is_empty());
@@ -114,11 +105,7 @@ fn on_event_removed_clears_resolution_for_claimed_target() {
     let _ = EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev("e1", 1, "hi"));
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 
-    let delta = EmbedClaimRegistry::on_event_removed(
-        &ctx,
-        &mut state,
-        &"e1".to_string(),
-    );
+    let delta = EmbedClaimRegistry::on_event_removed(&ctx, &mut state, &"e1".to_string());
     assert!(delta.is_some());
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_none());
 }

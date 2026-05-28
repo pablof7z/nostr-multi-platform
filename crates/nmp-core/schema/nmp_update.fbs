@@ -40,9 +40,22 @@ table Value {
   map:[Pair];
 }
 
+table TypedPayload {
+  schema_id:string;
+  schema_version:uint = 1;
+  file_identifier:string;
+  payload:[ubyte];
+}
+
+table TypedProjection {
+  key:string;
+  payload:TypedPayload;
+}
+
 table SnapshotFrame {
   schema_version:uint = 1;
-  payload:Value;
+  payload:Value;                          // compatibility during migration
+  typed_projections:[TypedProjection];    // new: typed sidecar
 }
 
 table PanicFrame {

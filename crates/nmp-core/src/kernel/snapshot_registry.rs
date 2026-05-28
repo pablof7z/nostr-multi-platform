@@ -46,6 +46,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
 use super::Kernel;
+use crate::update_envelope::TypedProjectionData;
 
 /// A host-registered projection closure.
 ///
@@ -54,6 +55,24 @@ use super::Kernel;
 /// because the box lives behind an `Arc<Mutex<…>>` shared with the actor
 /// thread (D8: the closure itself must also be non-blocking).
 pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'static>;
+
+/// A host-registered **typed** projection closure — the FlatBuffers-sidecar
+/// counterpart to [`ProjectionFn`].
+///
+/// Where a [`ProjectionFn`] returns a generic `serde_json::Value` appended to
+/// `KernelSnapshot::projections`, a `TypedProjectionFn` returns opaque
+/// FlatBuffers bytes ([`TypedProjectionData`]) carried in the snapshot frame's
+/// `typed_projections` sidecar (ADR-0037). `nmp-core` never interprets those
+/// bytes — the closure (owned by an app/protocol crate) encodes its own typed
+/// schema and tags it with `schema_id` / `schema_version` / `file_identifier`.
+///
+/// Returns `None` when the projection has nothing to emit this tick, so the
+/// sidecar omits the entry entirely rather than carrying an empty payload.
+///
+/// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with
+/// the actor thread (D8: the closure itself must also be non-blocking — it runs
+/// inside the snapshot tick, exactly like a generic projection).
+pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
 /// Registry of host-supplied snapshot projections.
 ///
@@ -64,6 +83,7 @@ pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'stati
 #[derive(Default)]
 pub struct SnapshotRegistry {
     projections: HashMap<String, ProjectionFn>,
+    typed_projections: HashMap<String, TypedProjectionFn>,
 }
 
 impl SnapshotRegistry {
@@ -117,6 +137,53 @@ impl SnapshotRegistry {
                 // as if the host had never registered it. The default panic
                 // hook still prints the payload, so the bug stays visible.
                 Err(_) => continue,
+            }
+        }
+        out
+    }
+
+    /// Register a **typed** projection closure under `key` — the
+    /// FlatBuffers-sidecar counterpart to [`Self::register`].
+    ///
+    /// `key` is the same host-chosen snapshot namespace used by [`Self::register`]
+    /// (e.g. `"nmp.feed.home"`); the typed and generic registries share the key
+    /// space so a host can choose, per key, whether to read the typed sidecar or
+    /// fall back to the generic `Value` subtree (ADR-0037 Commitment 4).
+    /// Registering the same key twice replaces the first — last-writer-wins, with
+    /// no duplicate-closure CPU cost on subsequent ticks.
+    pub fn register_typed(
+        &mut self,
+        key: impl Into<String>,
+        f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
+    ) {
+        self.typed_projections.insert(key.into(), Box::new(f));
+    }
+
+    /// Run every registered typed projection and collect the results into the
+    /// vector that becomes the snapshot frame's `typed_projections` sidecar.
+    ///
+    /// Mirrors [`Self::run`]: each closure runs on the actor thread inside
+    /// `make_update`, so it must be non-blocking (D8). A closure that returns
+    /// `None` contributes no sidecar entry (nothing to emit this tick); a
+    /// closure that panics is swallowed inside [`catch_unwind`] (D6) and its key
+    /// is omitted, exactly as if it had never been registered — every sibling
+    /// projection in the same tick still produces its value, and a panicking
+    /// host projection can never unwind the actor thread into a terminal
+    /// `Panic` frame.
+    pub fn run_typed(&self) -> Vec<TypedProjectionData> {
+        let mut out = Vec::with_capacity(self.typed_projections.len());
+        for projection in self.typed_projections.values() {
+            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but
+            // a panic here is fully contained — nothing the closure touched is
+            // observed again after it unwinds, so there is no broken-invariant
+            // hazard. The default panic hook still prints the payload, so the
+            // bug stays visible.
+            match catch_unwind(AssertUnwindSafe(projection)) {
+                Ok(Some(data)) => out.push(data),
+                // `Ok(None)`: nothing to emit this tick. `Err(_)`: the closure
+                // panicked — swallow it (the namespace is omitted, the same
+                // shape as an unregistered projection).
+                Ok(None) | Err(_) => continue,
             }
         }
         out
@@ -177,6 +244,23 @@ impl Kernel {
                 .map(|registry| registry.run())
                 .unwrap_or_default(),
             None => HashMap::new(),
+        }
+    }
+
+    /// Run every registered **typed** snapshot projection and return the vector
+    /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0037).
+    ///
+    /// Empty when no slot is bound, the mutex is poisoned, or nothing is
+    /// registered — D6: a projection failure is data, never a panic at the
+    /// boundary. Shares the slot (and therefore the registry) with
+    /// [`Self::run_snapshot_projections`]; called from `make_update`.
+    pub(in crate::kernel) fn run_typed_projections(&self) -> Vec<TypedProjectionData> {
+        match &self.snapshot_projections {
+            Some(slot) => slot
+                .lock()
+                .map(|registry| registry.run_typed())
+                .unwrap_or_default(),
+            None => Vec::new(),
         }
     }
 }

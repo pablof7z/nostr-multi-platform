@@ -6,8 +6,8 @@
 //!   wallet   → ui::wallet
 //!   settings → ui::settings
 
-use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::features::FeatureTab;

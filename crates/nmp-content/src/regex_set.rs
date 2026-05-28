@@ -51,7 +51,8 @@ fn nostr_uri() -> &'static Regex {
 
 fn emoji_shortcode() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r":([a-zA-Z0-9_+-]+):").expect("emoji shortcode regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+    R.get_or_init(|| Regex::new(r":([a-zA-Z0-9_+-]+):").expect("emoji shortcode regex compiles"))
+    // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn hashtag() -> &'static Regex {
@@ -61,7 +62,8 @@ fn hashtag() -> &'static Regex {
         // is emulated by anchoring on `\b` after capturing whitespace.
         // We keep the leading whitespace out of the match span by using
         // (?:^|\s) and trimming in the classifier.
-        Regex::new(r"(?:^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_-]*)").expect("hashtag regex compiles") // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+        Regex::new(r"(?:^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_-]*)").expect("hashtag regex compiles")
+        // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
     })
 }
 
@@ -71,7 +73,8 @@ fn url() -> &'static Regex {
         // Conservative URL set — must start with http(s)://, run until
         // whitespace or common terminators. Trailing punctuation is stripped
         // in the classifier.
-        Regex::new(r#"https?://[^\s<>"'`{}|\\^\[\]]+"#).expect("url regex compiles") // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+        Regex::new(r#"https?://[^\s<>"'`{}|\\^\[\]]+"#).expect("url regex compiles")
+        // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
     })
 }
 
@@ -79,17 +82,21 @@ fn bolt11() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     // Requires the bech32 "1" separator (mandatory in all valid bolt11 invoices) so
     // plain strings like "lnbcaaaa…" (no separator) don't false-positive as invoices.
-    R.get_or_init(|| Regex::new(r"(?i)\blnbc[0-9a-z]*1[0-9a-z]{50,}").expect("bolt11 regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+    R.get_or_init(|| {
+        Regex::new(r"(?i)\blnbc[0-9a-z]*1[0-9a-z]{50,}").expect("bolt11 regex compiles")
+    }) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn bolt12() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"(?i)\blno1[0-9a-z]{50,}").expect("bolt12 regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+    R.get_or_init(|| Regex::new(r"(?i)\blno1[0-9a-z]{50,}").expect("bolt12 regex compiles"))
+    // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn cashu() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"\bcashu[AB][A-Za-z0-9_-]{40,}").expect("cashu regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+    R.get_or_init(|| Regex::new(r"\bcashu[AB][A-Za-z0-9_-]{40,}").expect("cashu regex compiles"))
+    // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 /// The full ordered pattern set. Order is not load-bearing — `collect_matches`
@@ -97,13 +104,34 @@ fn cashu() -> &'static Regex {
 /// preferring the longer / earlier match.
 pub(crate) fn patterns() -> [TokenPattern; 7] {
     [
-        TokenPattern { re: nostr_uri(), kind: PatternKind::NostrUri },
-        TokenPattern { re: bolt11(), kind: PatternKind::Bolt11 },
-        TokenPattern { re: bolt12(), kind: PatternKind::Bolt12 },
-        TokenPattern { re: cashu(), kind: PatternKind::Cashu },
-        TokenPattern { re: url(), kind: PatternKind::Url },
-        TokenPattern { re: emoji_shortcode(), kind: PatternKind::EmojiShortcode },
-        TokenPattern { re: hashtag(), kind: PatternKind::Hashtag },
+        TokenPattern {
+            re: nostr_uri(),
+            kind: PatternKind::NostrUri,
+        },
+        TokenPattern {
+            re: bolt11(),
+            kind: PatternKind::Bolt11,
+        },
+        TokenPattern {
+            re: bolt12(),
+            kind: PatternKind::Bolt12,
+        },
+        TokenPattern {
+            re: cashu(),
+            kind: PatternKind::Cashu,
+        },
+        TokenPattern {
+            re: url(),
+            kind: PatternKind::Url,
+        },
+        TokenPattern {
+            re: emoji_shortcode(),
+            kind: PatternKind::EmojiShortcode,
+        },
+        TokenPattern {
+            re: hashtag(),
+            kind: PatternKind::Hashtag,
+        },
     ]
 }
 
@@ -129,7 +157,9 @@ mod tests {
 
     #[test]
     fn url_pattern_matches_https() {
-        let m = url().find("see https://example.com/a path").expect("matches");
+        let m = url()
+            .find("see https://example.com/a path")
+            .expect("matches");
         assert_eq!(m.as_str(), "https://example.com/a");
     }
 

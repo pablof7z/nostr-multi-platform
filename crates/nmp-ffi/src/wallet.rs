@@ -128,8 +128,8 @@ pub extern "C" fn nmp_app_wallet_pay_invoice(
     let Some(bolt11) = c_string_argument(bolt11) else {
         return;
     };
-    let amount_msats = c_optional_string_argument(amount_msats_json)
-        .and_then(|s| s.parse::<u64>().ok());
+    let amount_msats =
+        c_optional_string_argument(amount_msats_json).and_then(|s| s.parse::<u64>().ok());
 
     // Double-tap guard: sweep expired entries first, then try to claim the
     // bolt11. A poisoned mutex (D6) collapses to "let the send through".

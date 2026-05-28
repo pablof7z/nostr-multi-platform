@@ -118,7 +118,9 @@ mod tests {
         let ptr = nmp_app_recent_routing_decisions(std::ptr::null_mut());
         assert!(!ptr.is_null());
         // SAFETY: ptr is from CString::into_raw above.
-        let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        let s = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["schema_version"], 1);
         assert_eq!(v["capacity"], 0);
@@ -134,7 +136,9 @@ mod tests {
         let ptr = nmp_app_recent_routing_decisions(app);
         assert!(!ptr.is_null());
         // SAFETY: ptr is from CString::into_raw above.
-        let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        let s = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         // Pre-start: the actor has not yet published the projection clone
         // into the slot — we return the empty-rings payload (D6).
@@ -150,7 +154,9 @@ mod tests {
         let app = nmp_app_new();
         let ptr = nmp_app_recent_routing_decisions(app);
         // SAFETY: ptr is from CString::into_raw above.
-        let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        let s = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
         // Decoding must succeed and the schema_version key must be present —
         // the host's strict Swift Decodable would fail otherwise.
         let v: serde_json::Value = serde_json::from_str(&s).expect("payload is valid JSON");

@@ -124,15 +124,27 @@ impl NoteBuilder {
     ///
     /// Returns [`NoteBuildError::EmptyContent`] if `content` is blank.
     #[must_use]
-    pub fn build(self, author: impl Into<String>, created_at: u64) -> Result<UnsignedEvent, NoteBuildError> {
+    pub fn build(
+        self,
+        author: impl Into<String>,
+        created_at: u64,
+    ) -> Result<UnsignedEvent, NoteBuildError> {
         if self.content.trim().is_empty() {
             return Err(NoteBuildError::EmptyContent);
         }
 
         let mut tags: Vec<Vec<String>> = Vec::new();
         if let Some(reply) = self.reply {
-            tags.push(e_tag(&reply.root_id, reply.root_relay.as_deref(), Some("root")));
-            tags.push(e_tag(&reply.reply_id, reply.reply_relay.as_deref(), Some("reply")));
+            tags.push(e_tag(
+                &reply.root_id,
+                reply.root_relay.as_deref(),
+                Some("root"),
+            ));
+            tags.push(e_tag(
+                &reply.reply_id,
+                reply.reply_relay.as_deref(),
+                Some("reply"),
+            ));
             for pk in reply.pubkeys {
                 tags.push(p_tag(&pk, self.relay_hint.as_deref()));
             }
@@ -165,12 +177,7 @@ mod tests {
         }
     }
 
-    fn parent_mid_thread(
-        id: &str,
-        author: &str,
-        root_id: &str,
-        mentioned: &[&str],
-    ) -> NoteRecord {
+    fn parent_mid_thread(id: &str, author: &str, root_id: &str, mentioned: &[&str]) -> NoteRecord {
         NoteRecord {
             event_id: id.to_string(),
             author: author.to_string(),
@@ -190,7 +197,12 @@ mod tests {
     }
 
     fn tag_keys(unsigned: &UnsignedEvent) -> Vec<&str> {
-        unsigned.tags.iter().filter_map(|t| t.first()).map(String::as_str).collect()
+        unsigned
+            .tags
+            .iter()
+            .filter_map(|t| t.first())
+            .map(String::as_str)
+            .collect()
     }
 
     #[test]
@@ -351,7 +363,10 @@ mod tests {
         // No relay hint → marked-form `e` tags still emit, with an empty relay
         // column (NIP-10 keeps the slot positional even when blank).
         let parent = parent_root("ROOT_ID", "alice");
-        let unsigned = Note::new("reply").reply_to(&parent).build(AUTHOR, 0).unwrap();
+        let unsigned = Note::new("reply")
+            .reply_to(&parent)
+            .build(AUTHOR, 0)
+            .unwrap();
         assert_eq!(unsigned.tags[0][2], "", "root e-tag relay slot empty");
         assert_eq!(unsigned.tags[1][2], "", "reply e-tag relay slot empty");
     }
@@ -376,7 +391,10 @@ mod tests {
                 mentioned_pubkeys: vec![],
             },
         };
-        let unsigned = Note::new("nested").reply_to(&parent).build(AUTHOR, 0).unwrap();
+        let unsigned = Note::new("nested")
+            .reply_to(&parent)
+            .build(AUTHOR, 0)
+            .unwrap();
         assert_eq!(unsigned.tags[0][1], "ROOT");
         assert_eq!(
             unsigned.tags[0][2], "wss://from-parent",

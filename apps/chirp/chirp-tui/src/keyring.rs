@@ -89,25 +89,21 @@ fn execute(req: KeyringRequest) -> KeyringResult {
                 Err(_) => KeyringResult::error(-1),
             }
         }
-        KeyringRequest::Retrieve { account_id } => {
-            match Entry::new(KEYRING_SERVICE, &account_id) {
-                Ok(entry) => match entry.get_password() {
-                    Ok(secret) => KeyringResult::ok(Some(secret)),
-                    Err(keyring::Error::NoEntry) => KeyringResult::not_found(),
-                    Err(_) => KeyringResult::error(-1),
-                },
+        KeyringRequest::Retrieve { account_id } => match Entry::new(KEYRING_SERVICE, &account_id) {
+            Ok(entry) => match entry.get_password() {
+                Ok(secret) => KeyringResult::ok(Some(secret)),
+                Err(keyring::Error::NoEntry) => KeyringResult::not_found(),
                 Err(_) => KeyringResult::error(-1),
-            }
-        }
-        KeyringRequest::Delete { account_id } => {
-            match Entry::new(KEYRING_SERVICE, &account_id) {
-                Ok(entry) => match entry.delete_credential() {
-                    Ok(()) | Err(keyring::Error::NoEntry) => KeyringResult::ok(None),
-                    Err(_) => KeyringResult::error(-1),
-                },
+            },
+            Err(_) => KeyringResult::error(-1),
+        },
+        KeyringRequest::Delete { account_id } => match Entry::new(KEYRING_SERVICE, &account_id) {
+            Ok(entry) => match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => KeyringResult::ok(None),
                 Err(_) => KeyringResult::error(-1),
-            }
-        }
+            },
+            Err(_) => KeyringResult::error(-1),
+        },
     }
 }
 

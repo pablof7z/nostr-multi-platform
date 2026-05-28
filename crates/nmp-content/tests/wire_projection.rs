@@ -81,9 +81,9 @@ fn nested_markdown_flattens_to_index_arena_and_round_trips() {
     // BlockQuote > Paragraph > [Strong > [Text]]
     let tree = ContentTree {
         segments: vec![Segment::MarkdownBlock(MarkdownNode::BlockQuote(vec![
-            MarkdownNode::Paragraph(vec![MarkdownInline::Strong(vec![
-                MarkdownInline::Inline(Segment::Text("bold".into())),
-            ])]),
+            MarkdownNode::Paragraph(vec![MarkdownInline::Strong(vec![MarkdownInline::Inline(
+                Segment::Text("bold".into()),
+            )])]),
         ]))],
         mode: RenderMode::Markdown,
     };
@@ -102,9 +102,8 @@ fn deeply_nested_blockquote_collapses_to_finite_placeholder() {
     // collapsed structure nested far past WIRE_MAX_DEPTH must still project
     // to a FINITE wire form carrying a typed DepthLimit placeholder
     // (D1: never dropped, D6: never panics).
-    let mut node = MarkdownNode::Paragraph(vec![MarkdownInline::Inline(
-        Segment::Text("deep".into()),
-    )]);
+    let mut node =
+        MarkdownNode::Paragraph(vec![MarkdownInline::Inline(Segment::Text("deep".into()))]);
     for _ in 0..(WIRE_MAX_DEPTH + 50) {
         node = MarkdownNode::BlockQuote(vec![node]);
     }
@@ -154,9 +153,9 @@ fn all_inline_and_block_kinds_round_trip() {
         segments: vec![
             Segment::MarkdownBlock(MarkdownNode::Heading {
                 level: 2,
-                inlines: vec![MarkdownInline::Emphasis(vec![
-                    MarkdownInline::Inline(Segment::Text("h".into())),
-                ])],
+                inlines: vec![MarkdownInline::Emphasis(vec![MarkdownInline::Inline(
+                    Segment::Text("h".into()),
+                )])],
             }),
             Segment::MarkdownBlock(MarkdownNode::CodeBlock {
                 info: Some("rust".into()),
@@ -164,12 +163,10 @@ fn all_inline_and_block_kinds_round_trip() {
             }),
             Segment::MarkdownBlock(MarkdownNode::List {
                 ordered_start: Some(3),
-                items: vec![vec![MarkdownNode::Paragraph(vec![
-                    MarkdownInline::Link {
-                        label: vec![MarkdownInline::Inline(Segment::Text("l".into()))],
-                        href: Url::parse("https://x.test/").ok(),
-                    },
-                ])]],
+                items: vec![vec![MarkdownNode::Paragraph(vec![MarkdownInline::Link {
+                    label: vec![MarkdownInline::Inline(Segment::Text("l".into()))],
+                    href: Url::parse("https://x.test/").ok(),
+                }])]],
             }),
             Segment::MarkdownBlock(MarkdownNode::Rule),
         ],
@@ -198,10 +195,7 @@ fn media_segment_projects_urls_and_kind_and_round_trips() {
     let wire = tree.to_wire();
     match &wire.nodes[0] {
         WireNode::Media { urls, media_kind } => {
-            assert_eq!(
-                urls,
-                &["https://x.test/a.png", "https://x.test/b.png"]
-            );
+            assert_eq!(urls, &["https://x.test/a.png", "https://x.test/b.png"]);
             assert_eq!(*media_kind, MediaKind::Image);
         }
         other => panic!("expected media, got {other:?}"),
@@ -287,7 +281,10 @@ fn address_uri_projects_with_address_discriminator_and_round_trips() {
             // construction; the prior shape (bare pubkey) caused the
             // renderer to miss addressable embeds and fall back to
             // NostrQuoteCard.
-            assert_eq!(uri.primary_id, format!("30023:{}:my-article", "d".repeat(64)));
+            assert_eq!(
+                uri.primary_id,
+                format!("30023:{}:my-article", "d".repeat(64))
+            );
             assert_eq!(uri.author.as_deref(), Some(&*"d".repeat(64)));
             assert_eq!(uri.event_kind, Some(30023));
             assert_eq!(uri.relays, vec!["wss://r.test".to_string()]);

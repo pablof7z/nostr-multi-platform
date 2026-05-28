@@ -10,6 +10,20 @@
 use super::snapshot_registry::new_snapshot_projection_slot;
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::update_envelope::TypedProjectionData;
+
+/// Build a minimal opaque [`TypedProjectionData`] entry for the typed-sidecar
+/// tests (ADR-0037). The payload bytes are arbitrary — `nmp-core` never
+/// interprets them.
+fn typed_entry(key: &str, payload: &[u8]) -> TypedProjectionData {
+    TypedProjectionData {
+        key: key.to_string(),
+        schema_id: key.to_string(),
+        schema_version: 1,
+        file_identifier: "TEST".to_string(),
+        payload: payload.to_vec(),
+    }
+}
 
 /// A projection registered before `make_update` must surface under
 /// `projections["<key>"]` in the emitted snapshot JSON.
@@ -237,6 +251,92 @@ fn panicking_projection_is_contained_and_others_survive() {
         Some(&serde_json::json!({ "ok": true })),
         "the good projection must keep firing on every subsequent tick",
     );
+}
+
+/// ADR-0037 — a registered typed projection's opaque bytes are collected by
+/// `run_typed`, keyed by the projection key, carried verbatim. The typed
+/// registry shares the slot with the generic one but is a separate map, so a
+/// typed-only registration contributes nothing to `run` (the generic path).
+#[test]
+fn registered_typed_projection_surfaces_through_run_typed() {
+    let slot = new_snapshot_projection_slot();
+    slot.lock().unwrap().register_typed("nmp.feed.home", || {
+        Some(typed_entry("nmp.feed.home", &[0xde, 0xad, 0xbe, 0xef]))
+    });
+
+    let registry = slot.lock().unwrap();
+    let typed = registry.run_typed();
+    assert_eq!(typed.len(), 1, "one typed projection was registered");
+    assert_eq!(typed[0].key, "nmp.feed.home");
+    assert_eq!(typed[0].payload, vec![0xde, 0xad, 0xbe, 0xef]);
+    assert!(
+        registry.run().is_empty(),
+        "a typed-only registration must not appear in the generic projection map"
+    );
+}
+
+/// A typed projection that returns `None` contributes no sidecar entry this
+/// tick — the sidecar carries only the projections that have something to emit.
+#[test]
+fn typed_projection_returning_none_is_skipped() {
+    let slot = new_snapshot_projection_slot();
+    {
+        let mut registry = slot.lock().unwrap();
+        registry.register_typed("present", || Some(typed_entry("present", &[1, 2, 3])));
+        registry.register_typed("absent", || None);
+    }
+    let typed = slot.lock().unwrap().run_typed();
+    assert_eq!(typed.len(), 1, "the `None`-returning projection is skipped");
+    assert_eq!(typed[0].key, "present");
+}
+
+/// D6 — a typed projection closure that panics is contained: its entry is
+/// omitted and every sibling typed projection in the same tick still produces
+/// its bytes. The actor thread is never unwound (same guarantee as the generic
+/// `run` path).
+#[test]
+fn panicking_typed_projection_is_contained_and_others_survive() {
+    let slot = new_snapshot_projection_slot();
+    {
+        let mut registry = slot.lock().unwrap();
+        registry.register_typed("good", || Some(typed_entry("good", &[0x42])));
+        registry.register_typed("bad", || -> Option<TypedProjectionData> {
+            panic!("buggy typed host projection");
+        });
+    }
+    let typed = slot.lock().unwrap().run_typed();
+    assert_eq!(
+        typed.len(),
+        1,
+        "the panicking typed projection is dropped, the good one survives"
+    );
+    assert_eq!(typed[0].key, "good");
+}
+
+/// `run_typed_projections` with no slot bound yields an empty vector — D6: a
+/// kernel constructed outside the actor never panics on the typed path.
+#[test]
+fn unbound_slot_yields_empty_typed_projections() {
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    assert!(kernel.run_typed_projections().is_empty());
+}
+
+/// A typed projection bound onto the kernel surfaces through
+/// `Kernel::run_typed_projections` — the path `make_update` drives to build the
+/// snapshot frame's `typed_projections` sidecar.
+#[test]
+fn typed_projection_surfaces_through_kernel_run_typed_projections() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let slot = new_snapshot_projection_slot();
+    slot.lock().unwrap().register_typed("nmp.feed.home", || {
+        Some(typed_entry("nmp.feed.home", &[0xab, 0xcd]))
+    });
+    kernel.set_snapshot_projection_handle(slot);
+
+    let typed = kernel.run_typed_projections();
+    assert_eq!(typed.len(), 1);
+    assert_eq!(typed[0].key, "nmp.feed.home");
+    assert_eq!(typed[0].payload, vec![0xab, 0xcd]);
 }
 
 /// V-38: the wallet projection lifecycle test moved to `nmp-nip47` (the

@@ -26,6 +26,19 @@ enum KernelUpdateFrame {
     case panic(String)
 }
 
+/// ADR-0037: a typed FlatBuffers sidecar carried alongside the generic
+/// `payload` Value tree. Each envelope wraps one named projection's opaque
+/// NFTS/NFCT bytes plus its schema identity. Hosts that recognise a `schemaId`
+/// decode the bytes with the matching typed decoder; others ignore it and fall
+/// back to the generic snapshot.
+struct TypedProjectionEnvelope {
+    let key: String
+    let schemaId: String
+    let schemaVersion: UInt32
+    let fileIdentifier: String
+    let payload: Data
+}
+
 enum KernelUpdateFrameDecoder {
     static func decode(_ data: Data) throws -> KernelUpdateFrame {
         guard !data.isEmpty else { throw KernelUpdateFrameDecoderError.emptyPayload }
@@ -48,6 +61,32 @@ enum KernelUpdateFrameDecoder {
             }
             return .panic(message)
         }
+    }
+
+    /// ADR-0037: lift the typed projection sidecar into plain Swift envelopes.
+    /// Projections missing a key, schema id, or payload table are skipped so a
+    /// malformed entry never aborts the whole snapshot.
+    private static func extractTypedProjections(
+        from snapshot: nmp_transport_SnapshotFrame
+    ) -> [TypedProjectionEnvelope] {
+        var envelopes: [TypedProjectionEnvelope] = []
+        let projections = snapshot.typedProjections
+        envelopes.reserveCapacity(projections.count)
+        for projection in projections {
+            guard let key = projection.key,
+                  let typed = projection.payload,
+                  let schemaId = typed.schemaId else {
+                continue
+            }
+            envelopes.append(TypedProjectionEnvelope(
+                key: key,
+                schemaId: schemaId,
+                schemaVersion: typed.schemaVersion,
+                fileIdentifier: typed.fileIdentifier ?? "",
+                payload: Data(typed.payload)
+            ))
+        }
+        return envelopes
     }
 }
 

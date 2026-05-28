@@ -38,6 +38,24 @@ use super::{app_ref, c_string_argument, NmpApp};
 /// projector return is data, never a panic).
 pub type NmpSnapshotProjector = unsafe extern "C" fn() -> *const c_char;
 
+impl NmpApp {
+    /// Register a typed FlatBuffers projection closure for a named projection key.
+    ///
+    /// The typed sidecar is emitted alongside the existing generic `Value` tree in
+    /// every `SnapshotFrame` (ADR-0037). `f` runs on the actor thread on every
+    /// tick — it MUST be non-blocking (D8) and returns `None` when there is
+    /// nothing to emit this tick.
+    pub fn register_typed_snapshot_projection(
+        &self,
+        key: impl Into<String>,
+        f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    ) {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.register_typed(key, f);
+        }
+    }
+}
+
 /// Register a host-supplied snapshot projector for `key` — the host-extensible
 /// snapshot-output seam.
 ///
@@ -96,8 +114,8 @@ pub extern "C" fn nmp_app_register_snapshot_projection(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::{nmp_app_free, nmp_app_new};
+    use super::*;
     use std::ffi::CString;
 
     /// A registered C projector contributes a parsed JSON value under its key.
@@ -160,11 +178,7 @@ mod tests {
     #[test]
     fn null_key_is_silent_noop() {
         let app = nmp_app_new();
-        nmp_app_register_snapshot_projection(
-            app,
-            std::ptr::null(),
-            Some(counter_projector),
-        );
+        nmp_app_register_snapshot_projection(app, std::ptr::null(), Some(counter_projector));
         // SAFETY: `nmp_app_new` never returns null.
         let app_ref = unsafe { &*app };
         // A null key must register nothing — the registry contains only the

@@ -3977,6 +3977,7 @@ dependencies = [
 name = "nmp-content"
 version = "0.1.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "proptest",
  "pulldown-cmark",
@@ -4046,6 +4047,7 @@ dependencies = [
 name = "nmp-feed"
 version = "0.1.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-threading",
  "serde",
@@ -4127,6 +4129,7 @@ dependencies = [
 name = "nmp-nip01"
 version = "0.1.0"
 dependencies = [
+ "flatbuffers",
  "nmp-content",
  "nmp-core",
  "nmp-feed",

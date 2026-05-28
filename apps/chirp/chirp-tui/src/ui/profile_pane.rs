@@ -4,26 +4,23 @@
 //!   - Top 8 rows: profile header (avatar block + name/npub + bio + stats)
 //!   - Remaining rows: author's posts from the current timeline
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DIM_TEXT, DIMMER_TEXT, LIST_BG, author_color, format_age,
+    author_color, format_age, ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, LIST_BG,
 };
 use crate::ui::nostr_user::profile_name_span;
 
 const HEADER_HEIGHT: u16 = 8;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
-    let sections = Layout::vertical([
-        Constraint::Length(HEADER_HEIGHT),
-        Constraint::Min(0),
-    ])
-    .split(area);
+    let sections =
+        Layout::vertical([Constraint::Length(HEADER_HEIGHT), Constraint::Min(0)]).split(area);
 
     render_header(f, sections[0], state);
     render_post_list(f, sections[1], state);
@@ -34,23 +31,22 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     let avatar_color = author_color(pubkey);
 
     // Extract profile data from feature snapshot.
-    let (display_name, about, note_count) =
-        if let Some(profile) = &state.features.author_profile {
-            let name = if profile.display.is_empty() {
-                short_pubkey(pubkey)
-            } else {
-                profile.display.clone()
-            };
-            let bio = if profile.about.is_empty() {
-                String::new()
-            } else {
-                profile.about.clone()
-            };
-            let count = profile.note_count.clone();
-            (name, bio, count)
+    let (display_name, about, note_count) = if let Some(profile) = &state.features.author_profile {
+        let name = if profile.display.is_empty() {
+            short_pubkey(pubkey)
         } else {
-            (short_pubkey(pubkey), String::new(), String::new())
+            profile.display.clone()
         };
+        let bio = if profile.about.is_empty() {
+            String::new()
+        } else {
+            profile.about.clone()
+        };
+        let count = profile.note_count.clone();
+        (name, bio, count)
+    } else {
+        (short_pubkey(pubkey), String::new(), String::new())
+    };
 
     let sections = Layout::vertical([
         Constraint::Length(3), // avatar block
@@ -63,8 +59,7 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     // Avatar block — fill with colored "██" blocks, overlay name centered.
     let avatar_bg = avatar_color;
     let avatar_fill = "\u{2588}\u{2588}".repeat((area.width as usize / 2).max(1));
-    let avatar_block = Block::default()
-        .style(Style::default().bg(avatar_bg));
+    let avatar_block = Block::default().style(Style::default().bg(avatar_bg));
     let name_centered = Paragraph::new(display_name.clone())
         .style(
             Style::default()
@@ -77,9 +72,18 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     // Render the colored fill as background first, then overlay the name.
     let fill_line = truncate_to_width(&avatar_fill, area.width as usize);
     let fill_para = Paragraph::new(vec![
-        Line::from(Span::styled(fill_line.clone(), Style::default().fg(avatar_bg).bg(avatar_bg))),
-        Line::from(Span::styled(fill_line.clone(), Style::default().fg(avatar_bg).bg(avatar_bg))),
-        Line::from(Span::styled(fill_line, Style::default().fg(avatar_bg).bg(avatar_bg))),
+        Line::from(Span::styled(
+            fill_line.clone(),
+            Style::default().fg(avatar_bg).bg(avatar_bg),
+        )),
+        Line::from(Span::styled(
+            fill_line.clone(),
+            Style::default().fg(avatar_bg).bg(avatar_bg),
+        )),
+        Line::from(Span::styled(
+            fill_line,
+            Style::default().fg(avatar_bg).bg(avatar_bg),
+        )),
     ]);
     f.render_widget(fill_para, sections[0]);
     f.render_widget(name_centered, sections[0]);
@@ -88,17 +92,17 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     let npub_short = short_pubkey(pubkey);
     let name_line = Line::from(vec![
         Span::styled(
-            truncate_to_width(&display_name, (area.width as usize).saturating_sub(npub_short.len() + 2)),
+            truncate_to_width(
+                &display_name,
+                (area.width as usize).saturating_sub(npub_short.len() + 2),
+            ),
             Style::default()
                 .fg(author_color(pubkey))
                 .bg(LIST_BG)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("  ", Style::default().bg(LIST_BG)),
-        Span::styled(
-            npub_short,
-            Style::default().fg(DIMMER_TEXT).bg(LIST_BG),
-        ),
+        Span::styled(npub_short, Style::default().fg(DIMMER_TEXT).bg(LIST_BG)),
     ]);
     f.render_widget(
         Paragraph::new(name_line).style(Style::default().bg(LIST_BG)),
@@ -108,13 +112,19 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     // Bio — up to 2 lines.
     let bio_text = if about.is_empty() {
         vec![
-            Line::from(Span::styled("no bio", Style::default().fg(DIMMER_TEXT).bg(LIST_BG))),
+            Line::from(Span::styled(
+                "no bio",
+                Style::default().fg(DIMMER_TEXT).bg(LIST_BG),
+            )),
             Line::from(""),
         ]
     } else {
         let bio_truncated = truncate_to_width(&about, area.width as usize);
         vec![
-            Line::from(Span::styled(bio_truncated, Style::default().fg(DIM_TEXT).bg(LIST_BG))),
+            Line::from(Span::styled(
+                bio_truncated,
+                Style::default().fg(DIM_TEXT).bg(LIST_BG),
+            )),
             Line::from(""),
         ]
     };
@@ -134,12 +144,18 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
         Span::styled("Following ", Style::default().fg(DIM_TEXT).bg(LIST_BG)),
         Span::styled(
             format!("{}", follow_count),
-            Style::default().fg(BODY_TEXT).bg(LIST_BG).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(BODY_TEXT)
+                .bg(LIST_BG)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled("  Notes ", Style::default().fg(DIM_TEXT).bg(LIST_BG)),
         Span::styled(
             notes_label,
-            Style::default().fg(BODY_TEXT).bg(LIST_BG).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(BODY_TEXT)
+                .bg(LIST_BG)
+                .add_modifier(Modifier::BOLD),
         ),
     ]);
     let border_color = ACCENT_CYAN;

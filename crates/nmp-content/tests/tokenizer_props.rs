@@ -20,9 +20,7 @@
 //!    every source character is preserved (codex finding #7/#8: leading
 //!    whitespace before hashtags and trimmed URL punctuation were dropped).
 
-use nmp_content::{
-    render_context_can_descend, tokenize, RenderContext, RenderMode, Segment,
-};
+use nmp_content::{render_context_can_descend, tokenize, RenderContext, RenderMode, Segment};
 use proptest::prelude::*;
 
 /// Reconstruct the source string a `Segment` was tokenized from. Only the
@@ -161,7 +159,13 @@ fn url_trailing_punctuation_re_emitted_as_text() {
     let trailing_text: String = tree
         .segments
         .iter()
-        .filter_map(|s| if let Segment::Text(t) = s { Some(t.as_str()) } else { None })
+        .filter_map(|s| {
+            if let Segment::Text(t) = s {
+                Some(t.as_str())
+            } else {
+                None
+            }
+        })
         .collect();
     assert!(
         trailing_text.contains(")."),

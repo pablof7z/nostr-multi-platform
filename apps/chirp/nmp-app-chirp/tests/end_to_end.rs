@@ -13,9 +13,7 @@ use std::ffi::{CStr, CString};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpTimelineSnapshot,
-};
+use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpTimelineSnapshot};
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
 use nmp_ffi::{

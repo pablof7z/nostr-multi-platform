@@ -56,8 +56,57 @@ pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<Va
     }
 }
 
+/// Decode a FlatBuffers snapshot frame into the generic `Value` tree, preferring
+/// the typed `nmp.feed.home` sidecar (ADR-0037) when present.
+///
+/// During the compatibility window the host still renders from the generic
+/// `Value`-based code path. When the typed NFTS sidecar decodes successfully we
+/// re-serialize the [`nmp_nip01::ModularTimelineSnapshot`] back into the generic
+/// projection slot. Because the generic `nmp.feed.home` projection is itself
+/// produced by `serde_json::to_value(ModularTimelineSnapshot)`, this round-trip
+/// is parity-by-construction: same type, same serde derives, identical `Value`
+/// shape. It proves the typed decode is lossless without a render refactor.
+///
+/// When no typed payload is present (a pre-sidecar frame), the generic `Value`
+/// projection is used verbatim, preserving the compatibility fallback.
 fn decode_flatbuffer_snapshot_value(bytes: &[u8]) -> Option<Value> {
-    nmp_core::decode_snapshot_payload(bytes).ok()
+    let (mut value, typed_projections) = nmp_core::decode_snapshot_with_typed(bytes).ok()?;
+    if let Some(typed_home_feed) = typed_home_feed_from_projections(&typed_projections) {
+        if let Ok(typed_value) = serde_json::to_value(&typed_home_feed) {
+            merge_home_feed_projection(&mut value, typed_value);
+        }
+    }
+    Some(value)
+}
+
+/// Locate the typed `nmp.feed.home` sidecar entry and decode it into an owned
+/// [`nmp_nip01::ModularTimelineSnapshot`].
+///
+/// Returns `None` when the projection is absent or the schema id does not match
+/// the NIP-01 timeline schema — either case falls back to the generic `Value`.
+fn typed_home_feed_from_projections(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Option<nmp_nip01::ModularTimelineSnapshot> {
+    let proj = projections
+        .iter()
+        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::typed_wire::SCHEMA_ID)?;
+    nmp_nip01::typed_wire::decode_modular_timeline_snapshot(&proj.payload).ok()
+}
+
+/// Overwrite `value["projections"]["nmp.feed.home"]` with the typed-derived
+/// snapshot value. No-op if the snapshot has no `projections` object.
+///
+/// Mirrors [`SharedSnapshot::from_value`], which reaches through an optional
+/// `"v"` envelope before reading `projections`, so the typed value lands in the
+/// same slot the render path reads from.
+fn merge_home_feed_projection(value: &mut Value, typed_home_feed: Value) {
+    let snapshot = match value.get_mut("v") {
+        Some(inner) => inner,
+        None => value,
+    };
+    if let Some(Value::Object(projections)) = snapshot.get_mut("projections") {
+        projections.insert("nmp.feed.home".to_string(), typed_home_feed);
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -279,155 +328,4 @@ fn number_field(value: &Value, key: &str) -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_direct_shared_diagnostics_and_action_projections() {
-        let payload = sample_payload().to_string();
-
-        let snapshot = SharedSnapshot::from_json_fixture(&payload);
-
-        assert_sample_snapshot(snapshot);
-    }
-
-    #[test]
-    fn parses_enveloped_shared_diagnostics_and_action_projections() {
-        let payload = serde_json::json!({
-            "t": "FullState",
-            "v": sample_payload()
-        })
-        .to_string();
-
-        let snapshot = SharedSnapshot::from_json_fixture(&payload);
-
-        assert_sample_snapshot(snapshot);
-    }
-
-    fn sample_payload() -> Value {
-        serde_json::from_str(
-            r#"{
-                "metrics": {
-                    "events_rx": 5,
-                    "visible_items": 2,
-                    "actor_queue_depth": 1,
-                    "update_sequence": 9
-                },
-                "projections": {
-                    "relay_diagnostics": {
-                        "relays": [{
-                            "relay_url": "wss://relay.example",
-                            "short_url": "relay.example",
-                            "role_label": "Read/Write",
-                            "role_tone": "primary",
-                            "connection_label": "Open",
-                            "connection_tone": "ok",
-                            "auth_label": "OK",
-                            "auth_tone": "ok",
-                            "total_sub_count": 4,
-                            "active_sub_count": 3,
-                            "eosed_sub_count": 1,
-                            "total_events_rx": 42,
-                            "total_events_display": "42",
-                            "reconnect_count": 2,
-                            "bytes_rx_display": "1 KB",
-                            "bytes_tx_display": "128 B",
-                            "last_connected_display": "3s ago",
-                            "last_event_display": "now",
-                            "last_notice": "NOTICE text",
-                            "last_error": null,
-                            "wire_subs": [{
-                                "wire_id": "sub-filter-json",
-                                "short_wire_id": "sub-filt...",
-                                "relay_url": "wss://relay.example",
-                                "filter_summary": "{\"kinds\":[1],\"limit\":20}",
-                                "state_label": "Open",
-                                "state_tone": "ok",
-                                "consumer_count_label": "1 consumer",
-                                "events_rx_display": "12",
-                                "eose_observed": true,
-                                "opened_display": "5s ago",
-                                "last_event_display": "now",
-                                "eose_display": "1s ago",
-                                "close_reason": null
-                            }]
-                        }],
-                        "interests": [{
-                            "key": "home",
-                            "state": "active",
-                            "refcount": 1,
-                            "cache_coverage": "live"
-                        }]
-                    },
-                    "action_results": [{
-                        "correlation_id": "corr-1",
-                        "status": "published",
-                        "error": null
-                    }],
-                    "action_stages": {
-                        "corr-2": [
-                            {"stage": "requested", "at_ms": 1},
-                            {"stage": "publishing", "at_ms": 2}
-                        ]
-                    }
-                }
-            }"#,
-        )
-        .expect("valid sample payload")
-    }
-
-    fn assert_sample_snapshot(snapshot: SharedSnapshot) {
-        assert_eq!(snapshot.metrics.events_rx, 5);
-        assert_eq!(snapshot.relays[0].connection_label, "Open");
-        assert_eq!(snapshot.relays[0].relay_url, "wss://relay.example");
-        assert_eq!(snapshot.relays[0].total_sub_count, 4);
-        assert_eq!(
-            snapshot.relays[0].wire_subs[0].filter_summary,
-            "{\"kinds\":[1],\"limit\":20}"
-        );
-        assert_eq!(snapshot.interests[0].cache_coverage, "live");
-        assert_eq!(snapshot.action_results[0].correlation_id, "corr-1");
-        assert_eq!(snapshot.action_stages[0].stage, "publishing");
-    }
-
-    /// Legacy JSON fixtures may arrive wrapped as
-    /// `{"t":"snapshot","v":<snapshot>}`. The parser must reach into `v` so
-    /// `projections`/`metrics` resolve.
-    #[test]
-    fn unwraps_snapshot_envelope_when_present() {
-        let payload = serde_json::json!({
-            "t": "snapshot",
-            "v": {
-                "metrics": {
-                    "events_rx": 7,
-                    "visible_items": 0,
-                    "actor_queue_depth": 0,
-                    "update_sequence": 3
-                },
-                "projections": {
-                    "relay_diagnostics": {
-                        "relays": [{
-                            "short_url": "relay.example",
-                            "role_label": "Read",
-                            "connection_label": "Open",
-                            "active_sub_count": 1,
-                            "total_events_display": "7",
-                            "last_event_display": null,
-                            "last_error": null
-                        }],
-                        "interests": []
-                    },
-                    "action_results": [],
-                    "action_stages": {}
-                }
-            }
-        })
-        .to_string();
-
-        let snapshot = SharedSnapshot::from_json_fixture(&payload);
-
-        assert_eq!(snapshot.metrics.events_rx, 7);
-        assert_eq!(snapshot.relays.len(), 1);
-        assert_eq!(snapshot.relays[0].short_url, "relay.example");
-    }
-}
+mod tests;

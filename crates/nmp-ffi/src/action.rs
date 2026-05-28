@@ -137,10 +137,7 @@ pub extern "C" fn nmp_app_dispatch_action(
 /// `correlation_id` must be a valid UTF-8 NUL-terminated C string (or null).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn nmp_app_ack_action_stage(
-    app: *mut NmpApp,
-    correlation_id: *const c_char,
-) {
+pub extern "C" fn nmp_app_ack_action_stage(app: *mut NmpApp, correlation_id: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
     };
@@ -256,7 +253,11 @@ pub extern "C" fn nmp_app_register_action_result_observer(
 /// (or a registry-rejected action) does not poison the map — the host can
 /// fix and re-submit immediately. Expired entries are swept lazily on every
 /// call by wall-clock.
-pub(super) fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str) -> String {
+pub(super) fn dispatch_action_json(
+    app: Option<&NmpApp>,
+    namespace: &str,
+    action_json: &str,
+) -> String {
     let Some(app) = app else {
         return error_json("null app");
     };
@@ -287,7 +288,10 @@ pub(super) fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action
             .unwrap_or(0)
     };
     let mut ctx = ActionContext {};
-    match app.action_registry.start(&mut ctx, dispatch_now_ms, namespace, action_json) {
+    match app
+        .action_registry
+        .start(&mut ctx, dispatch_now_ms, namespace, action_json)
+    {
         Ok(correlation_id) => {
             // `start()` is a pure validator and the correlation id is the
             // handle the caller acts on.
@@ -425,4 +429,3 @@ fn json_string(s: &str) -> String {
 #[cfg(test)]
 #[path = "action/tests.rs"]
 mod tests;
-

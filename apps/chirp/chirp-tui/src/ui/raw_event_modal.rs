@@ -1,14 +1,18 @@
-use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::ui::colors::{ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT};
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState, scroll: u16) {
-    let width = (area.width * 80 / 100).max(60).min(area.width.saturating_sub(2));
-    let height = (area.height * 85 / 100).max(10).min(area.height.saturating_sub(2));
+    let width = (area.width * 80 / 100)
+        .max(60)
+        .min(area.width.saturating_sub(2));
+    let height = (area.height * 85 / 100)
+        .max(10)
+        .min(area.height.saturating_sub(2));
     let popup = centered(area, width, height);
 
     f.render_widget(Clear, popup);
@@ -34,8 +38,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState, scroll: u16) {
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0))
             .block(
-                Block::default()
-                    .style(Style::default().fg(DIM_TEXT).add_modifier(Modifier::DIM)),
+                Block::default().style(Style::default().fg(DIM_TEXT).add_modifier(Modifier::DIM)),
             ),
         inner,
     );
@@ -46,5 +49,10 @@ fn centered(area: Rect, width: u16, height: u16) -> Rect {
     let h = height.min(area.height.saturating_sub(2));
     let x = area.x + (area.width.saturating_sub(w)) / 2;
     let y = area.y + (area.height.saturating_sub(h)) / 2;
-    Rect { x, y, width: w, height: h }
+    Rect {
+        x,
+        y,
+        width: w,
+        height: h,
+    }
 }

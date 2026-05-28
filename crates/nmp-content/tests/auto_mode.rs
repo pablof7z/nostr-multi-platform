@@ -71,7 +71,10 @@ fn auto_in_markdown_mode_still_tokenizes_inline_hashtags() {
             }
         }
     }
-    assert!(has_hashtag, "hashtag tokenization didn't propagate through markdown");
+    assert!(
+        has_hashtag,
+        "hashtag tokenization didn't propagate through markdown"
+    );
 }
 
 #[test]

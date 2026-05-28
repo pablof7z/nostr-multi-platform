@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Reusable bounded Nostr feed windowing, cursor paging, and feed controller registry for NMP apps."
 
 [dependencies]
+flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-threading = { path = "../nmp-threading" }
 serde = { workspace = true, features = ["derive"] }

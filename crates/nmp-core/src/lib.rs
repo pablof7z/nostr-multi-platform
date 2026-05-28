@@ -188,8 +188,9 @@ pub use relay::canonical_relay_url;
 pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
-    decode_snapshot_payload, decode_update_frame, encode_panic, encode_snapshot_value,
-    panic_message, PanicFrame, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
+    decode_snapshot_payload, decode_snapshot_with_typed, decode_update_frame, encode_panic,
+    encode_snapshot_value, encode_snapshot_with_typed, panic_message, PanicFrame,
+    TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
     SNAPSHOT_SCHEMA_VERSION,
 };
 
@@ -278,6 +279,11 @@ pub mod __ffi_internal {
         new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
         SnapshotProjectionSlot,
     };
+    // ADR-0037: the typed-projection closure type lives alongside the generic
+    // `ProjectionFn` in `snapshot_registry`; `nmp-ffi` reaches it through this
+    // internal surface to type the `NmpApp::register_typed_snapshot_projection`
+    // seam (the typed counterpart to `register_snapshot_projection`).
+    pub use crate::kernel::snapshot_registry::TypedProjectionFn;
     pub use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 }
 

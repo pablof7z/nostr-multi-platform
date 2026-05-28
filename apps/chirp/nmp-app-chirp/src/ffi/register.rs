@@ -132,6 +132,25 @@ pub extern "C" fn nmp_app_chirp_register(
         Arc::clone(&projection) as Arc<dyn nmp_feed::FeedController>,
     );
 
+    // ADR-0037: typed sidecar for nmp.feed.home — emitted alongside the generic
+    // Value projection during the staged compatibility window. It must encode
+    // the same bounded current window as the generic FeedController projection,
+    // so hosts see one authoritative page/cursor state.
+    let typed_proj_ref = Arc::clone(&projection);
+    app_ref.register_typed_snapshot_projection("nmp.feed.home", move || {
+        let snapshot = typed_proj_ref.snapshot_current_window();
+        let bytes = nmp_nip01::typed_wire::encode_modular_timeline_snapshot(&snapshot);
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.feed.home".to_string(),
+            schema_id: nmp_nip01::typed_wire::SCHEMA_ID.to_string(),
+            schema_version: nmp_nip01::typed_wire::SCHEMA_VERSION,
+            file_identifier: std::str::from_utf8(nmp_nip01::typed_wire::FILE_IDENTIFIER)
+                .unwrap_or("NFTS")
+                .to_string(),
+            payload: bytes,
+        })
+    });
+
     Box::into_raw(Box::new(ChirpHandle {
         projection,
         observer_id,

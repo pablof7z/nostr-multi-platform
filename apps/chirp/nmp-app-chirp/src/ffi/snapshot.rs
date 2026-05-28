@@ -6,11 +6,21 @@ use std::ffi::{c_char, CString};
 use super::handle::ChirpHandle;
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
+///
+/// **Deprecated**: this is a diagnostics-only export as of ADR-0037. Runtime
+/// hosts should consume the typed `nmp.feed.home` projection from the update
+/// stream instead. This function remains for diagnostics/REPL use only and
+/// will be removed in a future release.
+///
 /// Returns null on any failure (null handle, JSON encode error, `CString`
 /// nul-byte conflict). The returned pointer is owned by the caller; pass it
 /// to [`nmp_app_chirp_snapshot_free`] when done.
+#[deprecated(
+    since = "0.1.0",
+    note = "Diagnostics only — use the typed nmp.feed.home projection from the update stream"
+)]
 #[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(clippy::not_unsafe_ptr_arg_deref, deprecated)]
 pub extern "C" fn nmp_app_chirp_snapshot(handle: *mut ChirpHandle) -> *mut c_char {
     if handle.is_null() {
         return std::ptr::null_mut();

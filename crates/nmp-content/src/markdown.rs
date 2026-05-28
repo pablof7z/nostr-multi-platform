@@ -11,9 +11,7 @@
 
 use std::collections::HashMap;
 
-use pulldown_cmark::{
-    CodeBlockKind, Event as MdEvent, HeadingLevel, Options, Parser, Tag, TagEnd,
-};
+use pulldown_cmark::{CodeBlockKind, Event as MdEvent, HeadingLevel, Options, Parser, Tag, TagEnd};
 use url::Url;
 
 use crate::segment::Segment;
@@ -137,21 +135,37 @@ struct CodeFrame {
 }
 
 enum BlockFrame {
-    Heading { level: u8 },
+    Heading {
+        level: u8,
+    },
     Paragraph,
-    BlockQuote { body: Vec<MarkdownNode> },
-    List { ordered_start: Option<u64>, items: Vec<Vec<MarkdownNode>> },
-    Item { body: Vec<MarkdownNode> },
+    BlockQuote {
+        body: Vec<MarkdownNode>,
+    },
+    List {
+        ordered_start: Option<u64>,
+        items: Vec<Vec<MarkdownNode>>,
+    },
+    Item {
+        body: Vec<MarkdownNode>,
+    },
 }
 
 enum InlineFrame {
     Emphasis(Vec<MarkdownInline>),
     Strong(Vec<MarkdownInline>),
-    Link { label: Vec<MarkdownInline>, href: Option<Url> },
+    Link {
+        label: Vec<MarkdownInline>,
+        href: Option<Url>,
+    },
     /// Accumulates the image's inline children (the real alt text) until
     /// `TagEnd::Image`. `alt` collects raw text only — pulldown emits the
     /// alt as `Text` events between `Start(Image)` and `End(Image)`.
-    Image { alt: String, title: Option<String>, src: Option<Url> },
+    Image {
+        alt: String,
+        title: Option<String>,
+        src: Option<Url>,
+    },
 }
 
 impl<'a> Walker<'a> {
@@ -191,20 +205,28 @@ impl<'a> Walker<'a> {
     fn start(&mut self, tag: Tag<'_>) {
         match tag {
             Tag::Heading { level, .. } => {
-                self.block_stack.push(BlockFrame::Heading { level: heading_level(level) });
+                self.block_stack.push(BlockFrame::Heading {
+                    level: heading_level(level),
+                });
             }
             Tag::Paragraph => self.block_stack.push(BlockFrame::Paragraph),
-            Tag::BlockQuote(_) => self.block_stack.push(BlockFrame::BlockQuote { body: Vec::new() }),
-            Tag::List(start) => self
+            Tag::BlockQuote(_) => self
                 .block_stack
-                .push(BlockFrame::List { ordered_start: start, items: Vec::new() }),
+                .push(BlockFrame::BlockQuote { body: Vec::new() }),
+            Tag::List(start) => self.block_stack.push(BlockFrame::List {
+                ordered_start: start,
+                items: Vec::new(),
+            }),
             Tag::Item => self.block_stack.push(BlockFrame::Item { body: Vec::new() }),
             Tag::CodeBlock(kind) => {
                 let info = match kind {
                     CodeBlockKind::Fenced(lang) if !lang.is_empty() => Some(lang.into_string()),
                     _ => None,
                 };
-                self.pending_code = Some(CodeFrame { info, body: String::new() });
+                self.pending_code = Some(CodeFrame {
+                    info,
+                    body: String::new(),
+                });
             }
             Tag::Emphasis => self.inline_stack.push(InlineFrame::Emphasis(Vec::new())),
             Tag::Strong => self.inline_stack.push(InlineFrame::Strong(Vec::new())),
@@ -212,10 +234,16 @@ impl<'a> Walker<'a> {
                 label: Vec::new(),
                 href: Url::parse(&dest_url).ok(),
             }),
-            Tag::Image { dest_url, title, .. } => {
+            Tag::Image {
+                dest_url, title, ..
+            } => {
                 let title = {
                     let t = title.into_string();
-                    if t.is_empty() { None } else { Some(t) }
+                    if t.is_empty() {
+                        None
+                    } else {
+                        Some(t)
+                    }
                 };
                 self.inline_stack.push(InlineFrame::Image {
                     alt: String::new(),
@@ -263,8 +291,15 @@ impl<'a> Walker<'a> {
                 }
             }
             TagEnd::List(_) => {
-                if let Some(BlockFrame::List { ordered_start, items }) = self.block_stack.pop() {
-                    self.emit_block(MarkdownNode::List { ordered_start, items });
+                if let Some(BlockFrame::List {
+                    ordered_start,
+                    items,
+                }) = self.block_stack.pop()
+                {
+                    self.emit_block(MarkdownNode::List {
+                        ordered_start,
+                        items,
+                    });
                 }
             }
             TagEnd::Item => {
@@ -280,7 +315,10 @@ impl<'a> Walker<'a> {
             }
             TagEnd::CodeBlock => {
                 if let Some(frame) = self.pending_code.take() {
-                    self.emit_block(MarkdownNode::CodeBlock { info: frame.info, body: frame.body });
+                    self.emit_block(MarkdownNode::CodeBlock {
+                        info: frame.info,
+                        body: frame.body,
+                    });
                 }
             }
             TagEnd::Emphasis => self.pop_inline_into(MarkdownInline::Emphasis),
@@ -295,7 +333,11 @@ impl<'a> Walker<'a> {
                     self.push_inline(MarkdownInline::Image { alt, title, src });
                 }
             }
-            TagEnd::HtmlBlock | TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow | TagEnd::TableCell => {
+            TagEnd::HtmlBlock
+            | TagEnd::Table
+            | TagEnd::TableHead
+            | TagEnd::TableRow
+            | TagEnd::TableCell => {
                 if matches!(self.block_stack.last(), Some(BlockFrame::Paragraph)) {
                     let _ = self.block_stack.pop();
                     let inlines = std::mem::take(&mut self.pending_inlines);
@@ -395,7 +437,9 @@ fn inline_plain_text(inline: &MarkdownInline, out: &mut String) {
         MarkdownInline::Code(c) => out.push_str(c),
         MarkdownInline::Emphasis(children)
         | MarkdownInline::Strong(children)
-        | MarkdownInline::Link { label: children, .. } => {
+        | MarkdownInline::Link {
+            label: children, ..
+        } => {
             for child in children {
                 inline_plain_text(child, out);
             }

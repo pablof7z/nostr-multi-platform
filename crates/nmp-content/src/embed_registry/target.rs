@@ -25,12 +25,17 @@ pub enum EmbedTarget {
 impl EmbedTarget {
     /// Project a [`NostrUri`] onto the embed-target shape. `Profile` URIs
     /// return `None` — they aren't embeds.
-    #[must_use] 
+    #[must_use]
     pub fn from_uri(uri: &NostrUri) -> Option<Self> {
         match uri {
             NostrUri::Profile { .. } => None,
             NostrUri::Event { event_id, .. } => Some(Self::Event(event_id.clone())),
-            NostrUri::Address { identifier, pubkey, kind, .. } => Some(Self::Address {
+            NostrUri::Address {
+                identifier,
+                pubkey,
+                kind,
+                ..
+            } => Some(Self::Address {
                 kind: *kind,
                 pubkey: pubkey.clone(),
                 identifier: identifier.clone(),
@@ -51,14 +56,14 @@ pub struct ClaimHandle {
 
 impl ClaimHandle {
     /// The target this handle refcounts.
-    #[must_use] 
+    #[must_use]
     pub fn target(&self) -> &EmbedTarget {
         &self.target
     }
 
     /// Per-handle unique id — distinguishes 2 distinct claims for the
     /// same target.
-    #[must_use] 
+    #[must_use]
     pub fn handle_id(&self) -> u64 {
         self.handle_id
     }

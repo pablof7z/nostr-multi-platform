@@ -27,19 +27,25 @@
 //! - **D0-clean** — no UI nouns; `EmbedClaimRegistry` exposes only generic
 //!   claim/release + event-ingest methods.
 
-#![forbid(unsafe_code)]
+// `deny` (not `forbid`) so the single generated FlatBuffers bindings module in
+// `wire::typed_fb` may opt back in via `#[allow(unsafe_code)]`. FlatBuffers
+// accessors are intrinsically `unsafe`; `forbid` cannot be locally overridden.
+// All hand-written code in this crate remains unsafe-free — the allow is scoped
+// to the `#[path]`-included generated file only. (nmp-core uses the same
+// generated-FlatBuffers approach with no crate-level `unsafe` ban.)
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod context;
 pub mod embed_projection;
 pub mod embed_registry;
+mod grouper;
 pub mod markdown;
 pub mod mode;
-pub mod segment;
-pub mod wire;
-mod grouper;
 mod regex_set;
+pub mod segment;
 mod tokenizer;
+pub mod wire;
 
 pub use context::{render_context_can_descend, RenderContext};
 pub use embed_projection::{
@@ -56,6 +62,5 @@ pub use mode::{sniff_mode_from_kind, RenderMode};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};
 pub use tokenizer::{tokenize, tokenize_with_kind};
 pub use wire::{
-    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind,
-    WIRE_MAX_DEPTH,
+    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind, WIRE_MAX_DEPTH,
 };

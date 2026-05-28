@@ -46,10 +46,12 @@
 		8EF0FEE876C6ADF593CE2BDB /* OnboardingView+NIP46.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */; };
 		9376A1F186AFC42A2D7BCDA4 /* PublicGroupBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */; };
 		9718BED488AA1CC0865C033E /* NostrContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974406E9A7D1FE4C4C336C9D /* NostrContentView.swift */; };
+		971D34DDB2AC7875E0824564 /* TypedHomeFeedDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982CCD1D07590E6CD8AC624B /* TypedHomeFeedDecoder.swift */; };
 		998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F5B25557B2147731A5F75C /* KeychainCapability.swift */; };
 		99E0C16264F132D76DC0A2BF /* MarmotBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */; };
 		9E808639BB9728758172B8C0 /* WireSubscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */; };
 		9E910ED32775EBC4511B2F90 /* ThreadScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C01000494AC737F8F8E286D /* ThreadScreen.swift */; };
+		9FE89AB0285443873533CA03 /* TimelineSnapshot.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963FD6DE472A7F2DE345A656 /* TimelineSnapshot.generated.swift */; };
 		A1F822E727F303BB5ED1ABEA /* MarmotInviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */; };
 		A4D78531938555278B719582 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9E4580C1A561577607FE7A /* AccountsView.swift */; };
 		A6D95634F72D197923BC4F21 /* NostrContentGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8AC3C9D7E8BFDA3A272490 /* NostrContentGrouping.swift */; };
@@ -129,8 +131,10 @@
 		8FB756A0788160E169618B43 /* SnapshotProjectionsConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotProjectionsConformanceTests.swift; sourceTree = "<group>"; };
 		900229FDEE3330B7264E8A33 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
 		94EC16BCFE57ED331BD311DC /* NostrMentionChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrMentionChip.swift; sourceTree = "<group>"; };
+		963FD6DE472A7F2DE345A656 /* TimelineSnapshot.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineSnapshot.generated.swift; sourceTree = "<group>"; };
 		974406E9A7D1FE4C4C336C9D /* NostrContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrContentView.swift; sourceTree = "<group>"; };
 		98164B81790316FE7AF3736A /* NostrMediaGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrMediaGrid.swift; sourceTree = "<group>"; };
+		982CCD1D07590E6CD8AC624B /* TypedHomeFeedDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedHomeFeedDecoder.swift; sourceTree = "<group>"; };
 		985298ED1B842E892A6FA759 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayDetailView.swift; sourceTree = "<group>"; };
 		9E09352C7C1CC9D7C5BB6156 /* InvitesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvitesView.swift; sourceTree = "<group>"; };
@@ -207,6 +211,7 @@
 			children = (
 				ED03F335A2A3AA5CE4089C57 /* KernelTypes.generated.swift */,
 				E1E1DEF415CA95E94ACA5218 /* NmpUpdate.generated.swift */,
+				963FD6DE472A7F2DE345A656 /* TimelineSnapshot.generated.swift */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -330,6 +335,7 @@
 				886A82F866183EB8C3674AD1 /* NmpCore.h */,
 				64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */,
 				C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */,
+				982CCD1D07590E6CD8AC624B /* TypedHomeFeedDecoder.swift */,
 				2B1691321A67C8F53BD5CDC6 /* Generated */,
 			);
 			path = Bridge;
@@ -570,6 +576,8 @@
 				D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */,
 				9E910ED32775EBC4511B2F90 /* ThreadScreen.swift in Sources */,
 				F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */,
+				9FE89AB0285443873533CA03 /* TimelineSnapshot.generated.swift in Sources */,
+				971D34DDB2AC7875E0824564 /* TypedHomeFeedDecoder.swift in Sources */,
 				5A64FFA65566FF2762F1A8B7 /* WalletView.swift in Sources */,
 				9E808639BB9728758172B8C0 /* WireSubscriptionDetailView.swift in Sources */,
 			);

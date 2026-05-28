@@ -1,0 +1,47 @@
+namespace nmp.feed;
+
+// Typed FlatBuffers wire shape for the feed-window envelope.
+//
+// This schema encodes ONLY the structural window/page/cursor/metrics types.
+// It deliberately carries no event cards — those live in protocol-specific
+// typed projection schemas. The nmp-feed layer owns the cursor/page/window
+// semantics; protocol layers embed this typed buffer instead of duplicating
+// cursor tables.
+//
+// Regenerate the checked-in Rust bindings only with the matching
+// workspace flatc pin (25.12.19):
+//   flatc --rust --gen-all -o /tmp/nf_gen/ \
+//         crates/nmp-feed/schema/feed_home.fbs
+// then move the file to crates/nmp-feed/src/typed_wire/generated/.
+// ci/check-flatbuffers-version-pins.sh enforces the runtime guard.
+
+// A position in the feed. The in-memory type stores the event id as the raw
+// protocol hex string, so the wire keeps that exact value.
+table FeedCursor {
+  created_at:uint64 = 0;
+  id:string;
+}
+
+// One page of the feed expressed as the current request bound plus the next
+// opaque cursor.
+table FeedPage {
+  limit:uint64 = 0;
+  next_cursor:FeedCursor;
+  has_more:bool = false;
+  total_blocks:uint64 = 0;
+}
+
+// Timing instrument for building the window. This mirrors nmp_feed's
+// in-memory FeedWindowMetrics exactly.
+table FeedWindowMetrics {
+  make_window_us:uint64 = 0;
+}
+
+// The structural feed-window envelope embedded by protocol projections.
+table FeedWindow {
+  page:FeedPage;
+  metrics:FeedWindowMetrics;
+}
+
+root_type FeedWindow;
+file_identifier "NFWM";

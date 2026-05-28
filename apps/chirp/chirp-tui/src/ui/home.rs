@@ -4,8 +4,8 @@
 //!   - Left column (38%): post_list or profile_pane (75%) above relay_panel (25%)
 //!   - Right column (62%): post_detail
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::Frame;
 
 use crate::app::{AppState, Mode, Pane};
 use crate::ui::layout::RenderContext;

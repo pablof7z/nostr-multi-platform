@@ -73,10 +73,7 @@ impl EmbedClaimRegistry {
     /// (`Address`) target whose `resolved.id` matches. Returns a single
     /// delta for the first cleared target (the kernel re-delivers the
     /// replacement via a subsequent insert, which emits its own delta).
-    fn clear_resolutions_for(
-        state: &mut EmbedClaimState,
-        id: &EventId,
-    ) -> Option<EmbedClaimDelta> {
+    fn clear_resolutions_for(state: &mut EmbedClaimState, id: &EventId) -> Option<EmbedClaimDelta> {
         let mut affected: Vec<EmbedTarget> = Vec::new();
         if state.entries.contains_key(&EmbedTarget::Event(id.clone())) {
             affected.push(EmbedTarget::Event(id.clone()));
@@ -102,7 +99,7 @@ impl EmbedClaimRegistry {
     pub fn key(_spec: &EmbedClaimSpec) {}
 
     /// Event dependencies for this view. Unit-shaped spec → none declared.
-    #[must_use] 
+    #[must_use]
     pub fn dependencies(_spec: &EmbedClaimSpec) -> ViewDependencies {
         // The dependency contract is spec-driven and static; the spec here is
         // unit-shaped, so there is nothing to declare. Kernel-side
@@ -113,7 +110,7 @@ impl EmbedClaimRegistry {
     }
 
     /// Open a fresh registry view, returning its empty state + snapshot.
-    #[must_use] 
+    #[must_use]
     pub fn open(
         _ctx: &ViewContext,
         _spec: EmbedClaimSpec,
@@ -180,7 +177,7 @@ impl EmbedClaimRegistry {
     }
 
     /// Outward-facing snapshot of the registry state.
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_ctx: &ViewContext, state: &EmbedClaimState) -> EmbedRegistrySnapshot {
         Self::snapshot_state(state)
     }

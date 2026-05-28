@@ -5,7 +5,13 @@ fn parse(s: &str) -> Vec<MarkdownNode> {
     let blocks = parse_markdown_blocks(s, &HashMap::new());
     blocks
         .into_iter()
-        .filter_map(|seg| if let Segment::MarkdownBlock(b) = seg { Some(b) } else { None })
+        .filter_map(|seg| {
+            if let Segment::MarkdownBlock(b) = seg {
+                Some(b)
+            } else {
+                None
+            }
+        })
         .collect()
 }
 
@@ -57,8 +63,12 @@ fn bold_and_italic_wrap_inline_children() {
     let MarkdownNode::Paragraph(inlines) = &blocks[0] else {
         panic!("expected paragraph");
     };
-    assert!(inlines.iter().any(|i| matches!(i, MarkdownInline::Strong(_))));
-    assert!(inlines.iter().any(|i| matches!(i, MarkdownInline::Emphasis(_))));
+    assert!(inlines
+        .iter()
+        .any(|i| matches!(i, MarkdownInline::Strong(_))));
+    assert!(inlines
+        .iter()
+        .any(|i| matches!(i, MarkdownInline::Emphasis(_))));
 }
 
 #[test]
@@ -67,13 +77,19 @@ fn link_emits_link_inline() {
     let MarkdownNode::Paragraph(inlines) = &blocks[0] else {
         panic!("expected paragraph");
     };
-    assert!(inlines.iter().any(|i| matches!(i, MarkdownInline::Link { .. })));
+    assert!(inlines
+        .iter()
+        .any(|i| matches!(i, MarkdownInline::Link { .. })));
 }
 
 #[test]
 fn bullet_list_emits_items_with_paragraphs() {
     let blocks = parse("- one\n- two\n");
-    let MarkdownNode::List { ordered_start, items } = &blocks[0] else {
+    let MarkdownNode::List {
+        ordered_start,
+        items,
+    } = &blocks[0]
+    else {
         panic!("expected list");
     };
     assert!(ordered_start.is_none());
@@ -82,9 +98,7 @@ fn bullet_list_emits_items_with_paragraphs() {
 
 fn find_image(inlines: &[MarkdownInline]) -> Option<(&str, Option<&str>)> {
     inlines.iter().find_map(|i| match i {
-        MarkdownInline::Image { alt, title, .. } => {
-            Some((alt.as_str(), title.as_deref()))
-        }
+        MarkdownInline::Image { alt, title, .. } => Some((alt.as_str(), title.as_deref())),
         _ => None,
     })
 }
@@ -107,9 +121,9 @@ fn image_alt_does_not_leak_as_inline_text() {
         panic!("expected paragraph");
     };
     // The alt must NOT appear as a sibling Text inline.
-    let leaked = inlines.iter().any(|i| {
-        matches!(i, MarkdownInline::Inline(Segment::Text(t)) if t.contains("alt words"))
-    });
+    let leaked = inlines
+        .iter()
+        .any(|i| matches!(i, MarkdownInline::Inline(Segment::Text(t)) if t.contains("alt words")));
     assert!(!leaked, "alt text leaked as inline: {inlines:?}");
     let (alt, title) = find_image(inlines).expect("image inline");
     assert_eq!(alt, "alt words");
@@ -142,13 +156,20 @@ fn gfm_strikethrough_not_parsed_pd012() {
             _ => None,
         })
         .collect();
-    assert!(text.contains("~~"), "tildes must remain literal: {inlines:?}");
+    assert!(
+        text.contains("~~"),
+        "tildes must remain literal: {inlines:?}"
+    );
 }
 
 #[test]
 fn ordered_list_carries_start() {
     let blocks = parse("1. one\n2. two\n");
-    let MarkdownNode::List { ordered_start, items } = &blocks[0] else {
+    let MarkdownNode::List {
+        ordered_start,
+        items,
+    } = &blocks[0]
+    else {
         panic!("expected list");
     };
     assert_eq!(*ordered_start, Some(1));

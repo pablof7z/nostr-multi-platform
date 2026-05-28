@@ -198,12 +198,8 @@ impl Kernel {
         );
         for (_id, (event, provenance)) in parked.iter() {
             if self.timeline_authors.contains(&event.pubkey) {
-                let _ = self.ingest_timeline_event(
-                    RelayRole::Content,
-                    provenance,
-                    "",
-                    event.clone(),
-                );
+                let _ =
+                    self.ingest_timeline_event(RelayRole::Content, provenance, "", event.clone());
             }
             // else: author still not followed → drop (do not re-park).
         }

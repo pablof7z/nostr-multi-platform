@@ -6,8 +6,8 @@ package org.nmp.android
  * `ios/Chirp/.../KernelBridge.swift`'s `KernelHandle`.
  *
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross FFI
- * (D6) — natives return only a handle / string / void; outcomes arrive in the
- * next JSON snapshot. The Rust side lives in `crates/nmp-android-ffi` and calls
+ * (D6) — natives return only a handle / bytes / void; outcomes arrive in the
+ * next update frame. The Rust side lives in `crates/nmp-android-ffi` and calls
  * into `nmp-ffi`/`nmp-app-chirp` through Rust paths.
  */
 class KernelBridge {
@@ -35,22 +35,19 @@ class KernelBridge {
     }
 
     /**
-     * Blocking (≤250 ms) drain of the kernel snapshot channel.
+     * Blocking (≤250 ms) drain of the kernel update channel.
      *
      * Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery):
      * * `null` — idle tick (`RecvTimeoutError::Timeout` on the Rust side).
      *   The caller should loop back into `nextUpdate` immediately.
-     * * Non-null string — one JSON snapshot envelope.
-     * * Throws [IllegalStateException] — the snapshot channel has been
-     *   closed (`RecvTimeoutError::Disconnected`; the boxed `Sender` in the
-     *   Rust `Session` was dropped, typically as part of `free()`). The
-     *   caller MUST stop polling — looping after a disconnect spins the
-     *   CPU on a dead channel.
+     * * Non-null [ByteArray] — one FlatBuffers `UpdateFrame` (file_identifier "NMPU").
+     *   Decode with [KernelUpdateFrameDecoder].
+     * * Throws [IllegalStateException] — the update channel has been closed
+     *   (`RecvTimeoutError::Disconnected`; the boxed `Sender` in the Rust
+     *   `Session` was dropped, typically as part of `free()`). The caller MUST
+     *   stop polling — looping after a disconnect spins the CPU on a dead channel.
      */
-    fun nextUpdate(): String? = if (handle != 0L) nativeNextUpdate(handle) else null
-
-    /** Full Chirp modular timeline projection produced by `nmp-app-chirp`. */
-    fun chirpSnapshot(): String? = if (handle != 0L) nativeChirpSnapshot(handle) else null
+    fun nextUpdate(): ByteArray? = if (handle != 0L) nativeNextUpdate(handle) else null
 
     /**
      * Demand-driven profile fetch claim: the UI is rendering [pubkey] under
@@ -95,8 +92,7 @@ class KernelBridge {
     private external fun nativeOpenTimeline(handle: Long)
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)
     private external fun nativeStop(handle: Long)
-    private external fun nativeNextUpdate(handle: Long): String?
-    private external fun nativeChirpSnapshot(handle: Long): String?
+    private external fun nativeNextUpdate(handle: Long): ByteArray?
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeFree(handle: Long)

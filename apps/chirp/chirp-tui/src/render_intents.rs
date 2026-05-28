@@ -141,11 +141,7 @@ mod tests {
     fn content_mentions_emit_author_profile_intents() {
         let mut tracker = RenderIntentTracker::default();
         let mention = "1".repeat(64);
-        let diff = tracker.sync_rows(&[row_with_mentions(
-            "n1",
-            "alice",
-            vec![mention.clone()],
-        )]);
+        let diff = tracker.sync_rows(&[row_with_mentions("n1", "alice", vec![mention.clone()])]);
 
         // (1) author + note + mention = 3 distinct intents on first render.
         assert_eq!(diff.removed, Vec::new());
@@ -167,11 +163,7 @@ mod tests {
         let alice = "a".repeat(64);
         // Row authored by alice, content mentions alice — must produce ONE
         // AuthorProfile intent for alice, not two.
-        let diff = tracker.sync_rows(&[row_with_mentions(
-            "n1",
-            &alice,
-            vec![alice.clone()],
-        )]);
+        let diff = tracker.sync_rows(&[row_with_mentions("n1", &alice, vec![alice.clone()])]);
         let alice_intents: Vec<&RenderIntent> = diff
             .added
             .iter()
@@ -198,18 +190,14 @@ mod tests {
         )]);
 
         // Second snapshot drops `m2`, keeps `m1`.
-        let diff = tracker.sync_rows(&[row_with_mentions(
-            "n1",
-            "alice",
-            vec![m1.clone()],
-        )]);
+        let diff = tracker.sync_rows(&[row_with_mentions("n1", "alice", vec![m1.clone()])]);
 
-        assert!(diff.removed.contains(&RenderIntent::AuthorProfile {
-            pubkey: m2,
-        }));
-        assert!(!diff.removed.contains(&RenderIntent::AuthorProfile {
-            pubkey: m1,
-        }));
+        assert!(diff
+            .removed
+            .contains(&RenderIntent::AuthorProfile { pubkey: m2 }));
+        assert!(!diff
+            .removed
+            .contains(&RenderIntent::AuthorProfile { pubkey: m1 }));
         assert!(diff.added.is_empty());
     }
 }

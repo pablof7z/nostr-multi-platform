@@ -140,7 +140,11 @@ fn repost_supersedes_original_and_keeps_layout_to_one_block() {
     let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &boost);
     let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
 
-    assert_eq!(snap.blocks.len(), 1, "repost must evict the original's block");
+    assert_eq!(
+        snap.blocks.len(),
+        1,
+        "repost must evict the original's block"
+    );
     assert!(matches!(
         &snap.blocks[0],
         TimelineBlock::Standalone { id, .. } if id == "B"
@@ -166,7 +170,11 @@ fn repost_arriving_before_original_suppresses_the_late_original() {
     let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
     let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
 
-    assert_eq!(snap.blocks.len(), 1, "late-arriving original must stay suppressed");
+    assert_eq!(
+        snap.blocks.len(),
+        1,
+        "late-arriving original must stay suppressed"
+    );
     assert!(matches!(
         &snap.blocks[0],
         TimelineBlock::Standalone { id, .. } if id == "B"

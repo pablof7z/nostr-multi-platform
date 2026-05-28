@@ -1,15 +1,15 @@
 //! Approach-b Groups tab: 2-pane split showing group list + group chat.
 
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 
 use crate::app::AppState;
 use crate::feature_snapshot::{GroupLine, MessageLine};
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, LIST_BG, REPOST, SELECTED_BG, ZAP, author_color,
+    author_color, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, LIST_BG, REPOST, SELECTED_BG, ZAP,
 };
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -29,7 +29,9 @@ fn render_group_list(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(LIST_BG))
         .title(Span::styled(
             " Groups ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);
@@ -81,8 +83,7 @@ fn append_group_card(
     let name_max = content_width.saturating_sub(right_part_len + 1);
     let name = truncate(&group.name, name_max);
     let name_len = name.chars().count();
-    let mid_pad_len = content_width
-        .saturating_sub(name_len + right_part_len);
+    let mid_pad_len = content_width.saturating_sub(name_len + right_part_len);
 
     lines.push(Line::from(vec![
         gutter.clone(),
@@ -116,7 +117,9 @@ fn render_group_chat(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(DETAIL_BG))
         .title(Span::styled(
             " Chat ",
-            Style::default().fg(ACCENT_CYAN).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(ACCENT_CYAN)
+                .add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);
@@ -161,7 +164,11 @@ fn short_author(value: &str) -> String {
     if value.len() <= 12 {
         value.to_string()
     } else {
-        format!("{}..{}", &value[..6], &value[value.len().saturating_sub(4)..])
+        format!(
+            "{}..{}",
+            &value[..6],
+            &value[value.len().saturating_sub(4)..]
+        )
     }
 }
 

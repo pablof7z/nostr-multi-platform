@@ -37,6 +37,26 @@ pub enum UpdateEnvelope {
     Panic(PanicFrame),
 }
 
+/// Owned, decoded form of one `nmp.transport.TypedProjection` sidecar entry.
+///
+/// The `payload` is opaque to `nmp-core`: it is a host-declared, framework-side
+/// FlatBuffers buffer identified by `schema_id` / `schema_version` /
+/// `file_identifier`. The transport layer never interprets these bytes; it only
+/// carries them losslessly alongside the generic `Value` snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TypedProjectionData {
+    /// Projection key (host-declared identity of this projection).
+    pub key: String,
+    /// Stable schema identifier for the typed payload.
+    pub schema_id: String,
+    /// Schema version of the typed payload. Defaults to `1` on the wire.
+    pub schema_version: u32,
+    /// FlatBuffers file identifier of the typed payload, if any.
+    pub file_identifier: String,
+    /// Opaque typed payload bytes, carried verbatim by the transport.
+    pub payload: Vec<u8>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateFrameDecodeError {
     InvalidFlatbuffer(String),
@@ -61,15 +81,36 @@ impl fmt::Display for UpdateFrameDecodeError {
 impl std::error::Error for UpdateFrameDecodeError {}
 
 /// Encode a full snapshot payload as one FlatBuffers update frame.
+///
+/// Backward-compatible: equivalent to [`encode_snapshot_with_typed`] with an
+/// empty typed-projection sidecar. Because no `typed_projections` slot is
+/// written, the wire bytes are byte-identical to the pre-sidecar format.
 #[must_use]
 pub fn encode_snapshot_value(snapshot: Value) -> UpdateFrameBytes {
+    encode_snapshot_with_typed(snapshot, &[])
+}
+
+/// Encode a snapshot with an optional typed projection sidecar.
+///
+/// When `typed` is empty, the result is byte-identical to
+/// [`encode_snapshot_value`] (the optional `typed_projections` vector is never
+/// added to the FlatBuffers table, so no new vtable slot appears). Each entry's
+/// `payload` is carried verbatim as opaque `[ubyte]`; the transport layer never
+/// interprets typed payload bytes.
+#[must_use]
+pub fn encode_snapshot_with_typed(
+    snapshot: Value,
+    typed: &[TypedProjectionData],
+) -> UpdateFrameBytes {
     let mut builder = FlatBufferBuilder::new();
     let payload = encode_value(&mut builder, &snapshot);
+    let typed_projections = encode_typed_projections(&mut builder, typed);
     let snapshot = fb::SnapshotFrame::create(
         &mut builder,
         &fb::SnapshotFrameArgs {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             payload: Some(payload),
+            typed_projections,
         },
     );
     let root = fb::UpdateFrame::create(
@@ -82,6 +123,45 @@ pub fn encode_snapshot_value(snapshot: Value) -> UpdateFrameBytes {
     );
     fb::finish_update_frame_buffer(&mut builder, root);
     builder.finished_data().to_vec()
+}
+
+/// Build the `typed_projections` vector, returning `None` when there are no
+/// entries so the optional FlatBuffers slot is omitted entirely (wire-stable).
+fn encode_typed_projections<'bldr>(
+    builder: &mut FlatBufferBuilder<'bldr>,
+    typed: &[TypedProjectionData],
+) -> Option<
+    WIPOffset<flatbuffers::Vector<'bldr, flatbuffers::ForwardsUOffset<fb::TypedProjection<'bldr>>>>,
+> {
+    if typed.is_empty() {
+        return None;
+    }
+    let offsets: Vec<_> = typed
+        .iter()
+        .map(|entry| {
+            let schema_id = builder.create_string(&entry.schema_id);
+            let file_identifier = builder.create_string(&entry.file_identifier);
+            let payload = builder.create_vector(&entry.payload);
+            let typed_payload = fb::TypedPayload::create(
+                builder,
+                &fb::TypedPayloadArgs {
+                    schema_id: Some(schema_id),
+                    schema_version: entry.schema_version,
+                    file_identifier: Some(file_identifier),
+                    payload: Some(payload),
+                },
+            );
+            let key = builder.create_string(&entry.key);
+            fb::TypedProjection::create(
+                builder,
+                &fb::TypedProjectionArgs {
+                    key: Some(key),
+                    payload: Some(typed_payload),
+                },
+            )
+        })
+        .collect();
+    Some(builder.create_vector(&offsets))
 }
 
 /// Encode the terminal actor-death signal as one FlatBuffers update frame.
@@ -142,6 +222,87 @@ pub fn decode_snapshot_payload(bytes: &[u8]) -> Result<Value, UpdateFrameDecodeE
             Err(UpdateFrameDecodeError::UnexpectedPanicFrame(panic.msg))
         }
     }
+}
+
+/// Decode a snapshot frame, returning both the generic `Value` payload and the
+/// typed projection sidecar (as opaque [`TypedProjectionData`] entries).
+///
+/// Frames produced before the sidecar existed — or by
+/// [`encode_snapshot_value`] — decode with an empty typed vector, so this is a
+/// strict superset of [`decode_snapshot_payload`]. The typed payload bytes are
+/// returned verbatim; `nmp-core` never interprets them.
+pub fn decode_snapshot_with_typed(
+    bytes: &[u8],
+) -> Result<(Value, Vec<TypedProjectionData>), UpdateFrameDecodeError> {
+    if !fb::update_frame_buffer_has_identifier(bytes) {
+        return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
+            "missing NMPU file identifier".to_string(),
+        ));
+    }
+    let frame = fb::root_as_update_frame(bytes)
+        .map_err(|err| UpdateFrameDecodeError::InvalidFlatbuffer(format!("{err:?}")))?;
+    match frame.kind() {
+        kind if kind == fb::FrameKind::Snapshot => {
+            let snapshot = frame
+                .snapshot()
+                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+            let payload = snapshot
+                .payload()
+                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+            let value = decode_value(payload)?;
+            let typed = decode_typed_projections(&snapshot)?;
+            Ok((value, typed))
+        }
+        kind if kind == fb::FrameKind::Panic => {
+            let panic = frame
+                .panic()
+                .ok_or(UpdateFrameDecodeError::MissingPanicPayload)?;
+            Err(UpdateFrameDecodeError::UnexpectedPanicFrame(
+                panic.msg().to_string(),
+            ))
+        }
+        other => Err(UpdateFrameDecodeError::InvalidFlatbuffer(format!(
+            "unknown frame kind {}",
+            other.0
+        ))),
+    }
+}
+
+fn decode_typed_projections(
+    snapshot: &fb::SnapshotFrame<'_>,
+) -> Result<Vec<TypedProjectionData>, UpdateFrameDecodeError> {
+    let Some(projections) = snapshot.typed_projections() else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(projections.len());
+    for index in 0..projections.len() {
+        let projection = projections.get(index);
+        let key = projection
+            .key()
+            .ok_or_else(|| {
+                UpdateFrameDecodeError::InvalidValue(format!(
+                    "typed projection at index {index} missing key"
+                ))
+            })?
+            .to_string();
+        let typed = projection.payload().ok_or_else(|| {
+            UpdateFrameDecodeError::InvalidValue(format!(
+                "typed projection {key:?} missing payload"
+            ))
+        })?;
+        let payload = typed
+            .payload()
+            .map(|bytes| bytes.bytes().to_vec())
+            .unwrap_or_default();
+        out.push(TypedProjectionData {
+            key,
+            schema_id: typed.schema_id().unwrap_or_default().to_string(),
+            schema_version: typed.schema_version(),
+            file_identifier: typed.file_identifier().unwrap_or_default().to_string(),
+            payload,
+        });
+    }
+    Ok(out)
 }
 
 fn encode_value<'bldr>(
@@ -324,149 +485,4 @@ pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn golden_snapshot_payload() -> Value {
-        serde_json::json!({
-            "schema_version": SNAPSHOT_SCHEMA_VERSION,
-            "rev": 42,
-            "running": true,
-            "projections": { "timeline": [{ "id": "a", "score": 1.5 }] }
-        })
-    }
-
-    fn decode_hex_fixture(input: &str) -> Vec<u8> {
-        let compact: String = input.chars().filter(|ch| !ch.is_whitespace()).collect();
-        assert_eq!(compact.len() % 2, 0, "hex fixture must contain full bytes");
-        compact
-            .as_bytes()
-            .chunks(2)
-            .map(|pair| {
-                let hex = std::str::from_utf8(pair).expect("fixture is ascii hex");
-                u8::from_str_radix(hex, 16).expect("fixture is valid hex")
-            })
-            .collect()
-    }
-
-    fn encode_hex(bytes: &[u8]) -> String {
-        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-    }
-
-    #[test]
-    fn snapshot_frame_has_flatbuffer_identifier_and_round_trips() {
-        let payload = golden_snapshot_payload();
-        let wire = encode_snapshot_value(payload.clone());
-        assert!(fb::update_frame_buffer_has_identifier(&wire));
-        assert_eq!(decode_snapshot_payload(&wire).expect("decode"), payload);
-    }
-
-    #[test]
-    fn snapshot_v1_wire_fixture_is_stable() {
-        let wire = encode_snapshot_value(golden_snapshot_payload());
-        let expected = decode_hex_fixture(include_str!(
-            "../tests/fixtures/update_frame_snapshot_v1.fb.hex"
-        ));
-        if wire != expected {
-            eprintln!("actual snapshot_v1 fixture hex:\n{}", encode_hex(&wire));
-        }
-        assert_eq!(
-            wire, expected,
-            "snapshot v1 FlatBuffers wire fixture drifted"
-        );
-    }
-
-    #[test]
-    fn non_finite_float_fails_decode_instead_of_degrading_to_null() {
-        let mut builder = FlatBufferBuilder::new();
-        let payload = fb::Value::create(
-            &mut builder,
-            &fb::ValueArgs {
-                kind: fb::ValueKind::Float,
-                float_value: f64::NAN,
-                ..Default::default()
-            },
-        );
-        let snapshot = fb::SnapshotFrame::create(
-            &mut builder,
-            &fb::SnapshotFrameArgs {
-                schema_version: SNAPSHOT_SCHEMA_VERSION,
-                payload: Some(payload),
-            },
-        );
-        let root = fb::UpdateFrame::create(
-            &mut builder,
-            &fb::UpdateFrameArgs {
-                kind: fb::FrameKind::Snapshot,
-                snapshot: Some(snapshot),
-                panic: None,
-            },
-        );
-        fb::finish_update_frame_buffer(&mut builder, root);
-
-        let err = decode_snapshot_payload(builder.finished_data()).expect_err("must reject NaN");
-        assert!(matches!(err, UpdateFrameDecodeError::InvalidValue(_)));
-    }
-
-    #[test]
-    fn panic_frame_round_trips() {
-        let wire = encode_panic(r#"actor "panicked" \ boom"#);
-        assert!(fb::update_frame_buffer_has_identifier(&wire));
-        match decode_update_frame(&wire).expect("decode") {
-            UpdateEnvelope::Panic(panic) => assert_eq!(panic.msg, r#"actor "panicked" \ boom"#),
-            other => panic!("expected panic frame, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn snapshot_schema_version_is_one() {
-        assert_eq!(SNAPSHOT_SCHEMA_VERSION, 1);
-    }
-
-    #[test]
-    fn panic_message_extracts_string_and_str_payloads() {
-        let from_string = std::panic::catch_unwind(|| panic!("{}", "owned panic".to_string()))
-            .expect_err("must unwind");
-        assert_eq!(panic_message(&*from_string), "owned panic");
-
-        let from_str =
-            std::panic::catch_unwind(|| panic!("static str panic")).expect_err("must unwind");
-        assert_eq!(panic_message(&*from_str), "static str panic");
-    }
-
-    #[test]
-    fn panic_message_degrades_non_string_payload() {
-        let payload =
-            std::panic::catch_unwind(|| std::panic::panic_any(42u32)).expect_err("must unwind");
-        assert_eq!(panic_message(&*payload), "unknown panic in actor thread");
-    }
-
-    #[test]
-    fn actor_death_emits_decodable_panic_frame_on_channel() {
-        use std::sync::mpsc;
-
-        let (tx, rx) = mpsc::channel::<UpdateFrameBytes>();
-        let supervisor_tx = tx.clone();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            drop(tx);
-            panic!("kernel loop exploded");
-        }));
-
-        if let Err(e) = result {
-            let msg = panic_message(&*e);
-            let frame = encode_panic(format!("actor thread died: {msg}"));
-            let _ = supervisor_tx.send(frame);
-        }
-        drop(supervisor_tx);
-
-        let frame = rx.recv().expect("panic frame must reach the host");
-        match decode_update_frame(&frame).expect("frame decodes") {
-            UpdateEnvelope::Panic(p) => {
-                assert!(p.msg.contains("actor thread died"));
-                assert!(p.msg.contains("kernel loop exploded"));
-            }
-            other => panic!("expected Panic frame, got {other:?}"),
-        }
-        assert!(rx.recv().is_err(), "channel must close after panic frame");
-    }
-}
+mod tests;

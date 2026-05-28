@@ -82,12 +82,10 @@ pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
 
 #[must_use]
 pub fn should_replace(current: Option<&ProfileDisplay>, candidate: &ProfileDisplay) -> bool {
-    current
-        .is_none_or(|profile| {
-            candidate.created_at > profile.created_at
-                || (candidate.created_at == profile.created_at
-                    && candidate.event_id < profile.event_id)
-        })
+    current.is_none_or(|profile| {
+        candidate.created_at > profile.created_at
+            || (candidate.created_at == profile.created_at && candidate.event_id < profile.event_id)
+    })
 }
 
 fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
@@ -133,13 +131,8 @@ mod tests {
 
     #[test]
     fn kind0_profile_with_no_name_yields_none() {
-        let profile = profile_from_event(&event(
-            0,
-            r#"{"about":"hello"}"#,
-            7,
-            "b",
-        ))
-        .expect("profile");
+        let profile =
+            profile_from_event(&event(0, r#"{"about":"hello"}"#, 7, "b")).expect("profile");
         assert_eq!(profile.display, None);
         assert_eq!(profile.picture_url, None);
     }
