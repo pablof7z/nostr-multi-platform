@@ -372,13 +372,12 @@ away from the crate (option C).
 
 ### PD-021 (resolved 2026-05-18 autonomously, user-directed) — M10.5 exit gate re-scoped to the simulator-provable subset; hardware/M10 items deferred to the Pulse track
 
-**Decision (user-directed):** the literal M10.5 exit gate in
-`docs/plan/m10.5-ffi-hardening.md` is over-specified — it predates the Pulse
-e2e app and assumes an "M1–M10 iOS Twitter slice" + iPhone-12 hardware that do
-not exist (M10 Blossom deferred; M2–M9 are kernel substrate, not iOS-integrated
-features). Finalize the simulator-provable subset now; explicitly and honestly
-defer the hardware/M10 items into the Pulse e2e validation track. Do not fake
-numbers.
+**Decision (user-directed):** the original M10.5 exit gate was over-specified:
+it predated the Pulse e2e app and assumed an "M1–M10 iOS Twitter slice" plus
+iPhone-12 hardware that do not exist (M10 Blossom deferred; M2–M9 are kernel
+substrate, not iOS-integrated features). Finalize the simulator-provable subset
+now; explicitly and honestly defer the hardware/M10 items into the Pulse e2e
+validation track. Do not fake numbers.
 
 **What M10.5 closes on (re-scoped gate, all simulator-provable):**
 1. `docs/ffi-surface.md` — canonical FFI surface reference, tagged reviewed
@@ -403,10 +402,8 @@ per PD-001 the canonical set is D0–D8 (D0–D5 policy + D6–D8 substrate
 invariants). The re-scoped doctrine review covers all nine.
 
 **If wrong:** the deferred items are additive; re-open them in the Pulse track
-when hardware/Blossom are in the loop. Revert by treating the original
-"Exit gate" section (retained verbatim above the addendum) as authoritative.
-Full rationale: `docs/plan/m10.5-ffi-hardening.md` § "Re-scope addendum
-(2026-05-18)".
+when hardware/Blossom are in the loop. This decision record is the retained
+rationale; executed plan prose is not a durable source of authority.
 
 **Update 2026-05-18 (S2 tiebreaker run):** the one open M10.5 finding (S2
 working-set overrun) was resolved from "ambiguous" to **decisive** by adding a

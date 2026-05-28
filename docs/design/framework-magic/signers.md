@@ -1,7 +1,7 @@
 # Framework Magic §C11 — Signer Onboarding
 
 > Parent: `docs/design/framework-magic.md`.
-> Read first: `docs/product-spec/subsystems.md` §7.4 (sessions + signer catalog); `docs/design/kernel-substrate.md` §5 (`CapabilityModule`), §6 (`IdentityModule`); `docs/plan/scope-adjustments-2026-05-18.md` §"Folded into M6".
+> Read first: `docs/product-spec/subsystems.md` §7.4 (sessions + signer catalog); `docs/design/kernel-substrate.md` §5 (`CapabilityModule`), §6 (`IdentityModule`).
 
 ## C11. Signer onboarding: bunker:// + nsec creation as kernel actions
 
@@ -39,7 +39,7 @@ In both cases the new account becomes available to the active-session machinery 
    d. Assert the plaintext nsec is **not** present in `SessionState`, in any view payload, in any diagnostic surface, or in the test's reconciler audit log. The plaintext exists only inside the actor's transient action state during encryption.
    e. Assert a follow-up `SwitchActiveAccount { account_id }` succeeds and that the actor can sign a test event using the newly-created identity (round-trip: dispatch a `SendNote` against the new account, observe a signed event in the action ledger before publish).
 
-**Milestone owner:** **[PENDING M6]**. M6 is the signers + write-path milestone (per `scope-adjustments-2026-05-18.md` ladder). M6 owner adds the framework-magic delta after the test goes green. Test checked in as `#[ignore = "pending M6 signers"]`.
+**Milestone owner:** **[PENDING M6]**. M6 is the signers + write-path milestone. M6 owner adds the framework-magic delta after the test goes green. Test checked in as `#[ignore = "pending M6 signers"]`.
 
 ## Why only these two onboarding paths
 
@@ -51,7 +51,7 @@ The full signer catalog at `subsystems.md` §7.4 lists five kinds:
 - NIP-07 (web only) — wired via the web bindings shim; not a v1-ladder contract bullet because the web target is M15.
 - External Android Amber via NIP-55 — wired via the `ExternalSignerCapability` (`kernel-substrate.md` §5); not a v1-ladder contract bullet because Android is M15.
 
-C11 covers the two paths the user explicitly named in `scope-adjustments-2026-05-18.md` §"Folded into M6": *"NIP-46 bunker:// URL parsing + connection flow"* and *"Create new nsec flow. Generate, encrypt (NIP-49), and store via Keychain capability."* The other three signer kinds inherit the same atomicity guarantees by virtue of going through the same `IdentityModule` + `KeyringCapability` plumbing, but their onboarding flows have platform-specific surfaces that the v1 contract does not assert at this level.
+C11 covers the two paths the user explicitly named for signer onboarding: *"NIP-46 bunker:// URL parsing + connection flow"* and *"Create new nsec flow. Generate, encrypt (NIP-49), and store via Keychain capability."* The other three signer kinds inherit the same atomicity guarantees by virtue of going through the same `IdentityModule` + `KeyringCapability` plumbing, but their onboarding flows have platform-specific surfaces that the v1 contract does not assert at this level.
 
 A potential C11.b sibling bullet covering NIP-07 + NIP-55 may be added in the M15 framework-magic delta.
 

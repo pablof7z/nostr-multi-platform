@@ -7,8 +7,9 @@
 - **Canonical doctrine:** `docs/product-spec/overview-and-dx.md` §1.5 →
   `docs/product-spec/doctrine.md` (D0–D8). **Nine** doctrines: D0–D5 policy,
   D6–D8 substrate invariants. The plan's "Doctrine review (D0–D5)" wording is
-  stale (PD-001); this review covers all nine, per the
-  [re-scope addendum](../../plan/m10.5-ffi-hardening.md).
+  stale (PD-001); this review covers all nine, per the scoped decision record
+  in `docs/perf/pending-user-decisions.md` and the measured evidence in this
+  directory.
 - **Verdict legend:** PASS · PASS (noted) · **EXCEPTION** (logged, not waived).
 
 This is a substrate-review of the FFI surface, not a full-framework audit.
@@ -156,8 +157,7 @@ threshold-revision escape is **foreclosed by evidence**; a **bounded actor
 channel + bounded actor-side state is mandatory** (the kernel fix, owned by the
 `nmp-core` session — out of this workstream's scope). The
 `retained_heap_after_drain_bytes` gate (≤ 1 MiB) added to the harness is the
-regression check. Tracked as the headline M10.5 finding in the
-[re-scope addendum](../../plan/m10.5-ffi-hardening.md) and `sim-baseline.md`
+regression check. Tracked as the headline M10.5 finding in `sim-baseline.md`
 §S2 / §Conclusion. The S1 `cycles_completed` FAIL is a separate, documented
 **macOS-host timer artifact** (not a kernel/D8 regression — net-heap slope is
 0); it is unobservable on the Rust host harness and re-routed to the Pulse/iOS

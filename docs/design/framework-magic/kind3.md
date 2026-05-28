@@ -1,7 +1,7 @@
 # Framework Magic §C5 — Kind:3 Auto-Tracking
 
 > Parent: `docs/design/framework-magic.md`.
-> Read first: `docs/design/subscription-compilation/recompilation.md` (trigger model — kind:3 is the symmetric case to `Trigger::Nip65Arrived`); `docs/design/subscription-compilation/intro.md` §2.3 (account scope binding); `docs/plan/scope-adjustments-2026-05-18.md` §"Folded into M2".
+> Read first: `docs/design/subscription-compilation/recompilation.md` (trigger model — kind:3 is the symmetric case to `Trigger::Nip65Arrived`); `docs/design/subscription-compilation/intro.md` §2.3 (account scope binding).
 
 ## 1. The bullet
 
@@ -42,7 +42,7 @@ C1 is a storage-layer invariant. C5 is a planner-layer reactive guarantee. The f
 
 ## 3. NDK reference path
 
-The user's directive in `scope-adjustments-2026-05-18.md` says: *"NDK reference: how NDK auto-follows kind:3 changes and re-routes its open subs."*
+The user's directive for this contract named the NDK reference: *"how NDK auto-follows kind:3 changes and re-routes its open subs."*
 
 Research conclusion (`docs/research/ndk/kind3-auto-tracking.md`): **NDK has no unified kind:3 → open-subscription rewire in core.** The session package (`@nostr-dev-kit/sessions`) opens a long-lived REQ on the active user's pubkey at `sessions/src/store.ts:184-194` and updates `session.followSet` on each newer kind:3 via `handleContactListEvent` at `store.ts:492-512`. However, this state write does not mutate any open subscription's `authors` filter — filters are immutable after `ndk.subscribe()` returns. Svelte gets implicit rewire via runes (`svelte/src/lib/builders/subscription.svelte.ts:164-177`); React requires explicit dependency declaration (`react/src/subscribe/hooks/subscribe.ts:110`). NMP is in the same position as React: the framework-glue must actively observe the follow-list signal and trigger `Trigger::FollowListChanged` (step 2 above) to replace the full-teardown + rebuild pattern with a delta patch.
 
@@ -65,7 +65,7 @@ That second recompile is **not part of the C5 test** — it belongs to the M2 NI
 ## 6. What this bullet does not cover
 
 - **The "following timeline" view module itself.** Its spec, payload, recompute logic live in `nmp-nip01` per `docs/design/view-catalog/profile-timeline-thread-reactions.md`. C5 cares only that *whatever view module* declares follow-set dependence gets the recompile.
-- **Mute-list changes (kind:10000).** The mute list is structurally analogous, but the user's scope-adjustments doc explicitly names kind:3. Mute-list auto-tracking would be a C5-shaped sibling bullet (potential C14 future addition); not in the v1 contract surface.
+- **Mute-list changes (kind:10000).** The mute list is structurally analogous, but the original user directive explicitly named kind:3. Mute-list auto-tracking would be a C5-shaped sibling bullet (potential C14 future addition); not in the v1 contract surface.
 - **Other people's follow lists.** A view module that opens kind:3 for `pubkey != active_account` is asking a one-shot question, not declaring a reactive dependency on the social graph. That path uses the normal C1 supersession; no C5 trigger fires.
 
 These exclusions keep the bullet sharp: C5 is exactly *"the active account's follow-list change re-shapes the open-subscription set."* Everything outside that sentence routes through other contract bullets.

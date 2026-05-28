@@ -60,7 +60,7 @@ These are not "missing" — they're the deliverables. Listed here because they c
 
 ### B6. (DEFERRED to post-v1) Wallet / NWC / NIP-60 integration
 
-Applesauce has `applesauce-wallet` and `applesauce-wallet-connect` as separate packages. NMP defers wallet entirely to post-v1 per `docs/plan/scope-adjustments-2026-05-18.md`. Worth noting they share the EventStore + factories + signer abstractions — when NMP comes back to wallet, the integration patterns will be there to reference.
+Applesauce has `applesauce-wallet` and `applesauce-wallet-connect` as separate packages. NMP currently defers wallet entirely to post-v1; use `docs/plan/post-v1.md` only for live sequencing. Worth noting they share the EventStore + factories + signer abstractions — when NMP comes back to wallet, the integration patterns will be there to reference.
 
 ### B7. Native platform signers (iOS Secure Enclave, etc.)
 

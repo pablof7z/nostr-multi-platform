@@ -1,15 +1,16 @@
 # Build & Validation Plan
 
-> Single overarching plan for shipping NMP v1. Reconciled 2026-05-25 against HEAD `cc10148f` (post step 8 phase F — actor cut-over to Pool).
+> Temporal coordination plan for shipping NMP v1. Reconciled 2026-05-25 against HEAD `cc10148f` (post step 8 phase F — actor cut-over to Pool).
 >
-> **Sources of truth:**
+> **Durable references and temporal trackers:**
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
-> - **Architectural migration spec** — [`docs/architecture/crate-boundaries.md`](architecture/crate-boundaries.md) (12-step crate-boundary plan; §5 is the migration order).
-> - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (work currently on a branch).
-> - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
+> - **Durable doctrine** — [`docs/product-spec/doctrine.md`](product-spec/doctrine.md).
+> - **Durable architecture** — [`docs/architecture/`](architecture/) and [`docs/design/`](design/).
+> - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (temporal work currently on a branch).
+> - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (temporal violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
 > - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-14-review-product-honesty.md`](perf/codex-reviews/opus-direction-14-review-product-honesty.md).
 >
-> **This file is the overview.** Active items belong in `WIP.md` (in-flight) or `BACKLOG.md` (queue). Update this file only when a milestone changes status, doctrine is amended, or the v1 exit criteria move.
+> **This file is not durable understanding.** It is the current release-plan view. Active items belong in `WIP.md` (in-flight) or `BACKLOG.md` (queue). Implemented or invalidated plan detail should be deleted or reduced to the smallest remaining live follow-up; lasting understanding belongs in aim, product, design, architecture, ADR, builder-guide, or wiki docs.
 
 ---
 
@@ -47,9 +48,9 @@ production fallback. Track under [F-10](BACKLOG.md#f-10--canonical-flatbuffers-r
 
 ---
 
-## Doctrine — final
+## Doctrine Checkpoint
 
-The doctrine is final ([`product-spec.md` §1.5, D0–D10](product-spec.md)). Every PR is reviewed against this rubric; a change that makes any doctrine harder to enforce is rewritten or rejected.
+The durable doctrine lives in [`docs/product-spec/doctrine.md`](product-spec/doctrine.md). The list here is only the current release-plan checkpoint used while deciding whether v1 can ship. If this summary drifts, update or delete it rather than treating the plan as durable doctrine.
 
 - **D0** kernel never grows app nouns
 - **D1** best-effort rendering with placeholders
@@ -173,7 +174,6 @@ Where to look for detail:
 - [`docs/plan/test-pyramid.md`](plan/test-pyramid.md) — test structure
 - [`docs/plan/ci-hygiene.md`](plan/ci-hygiene.md) — CI / pre-merge hygiene
 - [`docs/plan/decision-log.md`](plan/decision-log.md) — decision log
-- [`docs/plan/scope-adjustments-2026-05-18.md`](plan/scope-adjustments-2026-05-18.md) — historical scope changes
 - [`docs/plan/post-v1.md`](plan/post-v1.md) — deferred work detail
 - [`docs/plan/marmot-mls.md`](plan/marmot-mls.md) — Marmot/MLS detail
 - [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md) — app-owned component registry and native content kits
@@ -188,5 +188,6 @@ Where to look for detail:
 
 - **Not a schedule.** Milestones are sequential; durations depend on team size and surface complexity. No dates, no person-months.
 - **Not a marketing roadmap.** v1 ships when the exit criteria above are met, not on a calendar.
-- **Not the active-work tracker.** `WIP.md` owns in-flight; `BACKLOG.md` owns the queue. This file is the durable overview.
+- **Not durable understanding.** Implemented or invalidated plan detail must be removed, not preserved as reference documentation.
+- **Not the active-work tracker.** `WIP.md` owns in-flight; `BACKLOG.md` owns the queue. This file is only the current release-plan view.
 - **Not exhaustive about post-v1.** Additional protocol modules (NIP-23 long-form is in, more video/long-form work post-v1), app demonstrations, and the framework GA are scoped only after v1.

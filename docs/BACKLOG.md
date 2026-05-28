@@ -1329,8 +1329,8 @@ nmp-app-chirp symbols outside this calendar's scope) live in
 
 ### PD-041 · Marmot/NWC scope reconciliation — NEEDS OWNER DECISION
 
-`docs/plan/scope-adjustments-2026-05-18.md` deferred M9 DMs/messaging and M12
-Wallet to post-v1, but Marmot/MLS (`nmp-marmot`, `nmp-nip29`, `nmp-nip59`) and
+Earlier temporal planning deferred M9 DMs/messaging and M12 Wallet to post-v1,
+but Marmot/MLS (`nmp-marmot`, `nmp-nip29`, `nmp-nip59`) and
 NWC + NIP-57 (`nmp-nwc`, `nmp-nip57`) were subsequently built and wired.
 
 **Decision needed:** either formally accept the built Marmot/NWC surfaces into

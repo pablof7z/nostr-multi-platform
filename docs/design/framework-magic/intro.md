@@ -13,7 +13,7 @@ The contract enumerates 13 such operations. Each is bound to:
 
 1. A doctrine clause in `docs/aim.md` §6 or `docs/product-spec/overview-and-dx.md` §1.5.
 2. A subsystem section in `docs/product-spec/subsystems.md` §7 that names the mechanism.
-3. A milestone in `docs/plan/scope-adjustments-2026-05-18.md` that owns the implementation.
+3. A temporal tracker entry in `docs/plan.md` or `docs/BACKLOG.md` while the implementation is active.
 4. A test in `crates/nmp-testing/tests/framework_magic_contract.rs` that verifies the guarantee.
 
 ## 2. Doctrine alignment

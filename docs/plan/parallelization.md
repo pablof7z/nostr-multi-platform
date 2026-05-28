@@ -7,7 +7,7 @@ The ladder above is the **dependency order** — what must precede what — not 
 - **[M2](m2-subscription-compilation.md) (outbox), [M3](m3-persistence.md) (LMDB), [M4](m4-negentropy.md) (negentropy)** can pipeline tightly: M3 + M4 are almost mechanically pluggable once M2's compiled-plan abstraction exists.
 - **[M5](m5-nip42.md) (NIP-42)** is independent of M3/M4 and can be done alongside.
 - **[M6](m6-signers-write.md) (signer + write path) is a serialization point** — most downstream milestones ([M7](m7-interaction-loop.md), [M8](m8-multi-account.md), [M9](m9-messaging.md), [M10](m10-blossom.md), [M12](m12-wallet.md)) depend on it. Land this fast.
-- **[M10.5](m10.5-ffi-hardening.md) (FFI hardening)** is itself parallelizable: the stress harness, the iPhone-12 perf rerun, the UI-script Sonnet-agent fleet, and the FFI surface audit are four independent workstreams.
+- **FFI hardening** is itself parallelizable when active: the stress harness, device perf rerun, UI-script fleet, and FFI surface audit are independent workstreams. Durable evidence belongs under `docs/perf/m10.5/`.
 - **Future non-Chirp app proofs** start only after Chirp is complete. Their internal parallelism can split the app-owned Rust crates, generated FFI, and platform view-wiring batches across agents.
 - **[M15](m15-cross-platform.md) (Android + Desktop + Web)** is three parallel tracks once [M14](m14-uniffi.md) (UniFFI) lands.
 

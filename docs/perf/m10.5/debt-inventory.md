@@ -112,8 +112,8 @@ The FFI and iOS bridge code is **clean of blocking debt markers**
 by design or actionable as documentation cleanup. All cardinal doctrines
 (D0–D5) are upheld.
 
-**This audit is necessary but not sufficient for M10.5 exit.** M10.5 exit
-requires (per [`docs/plan/m10.5-ffi-hardening.md`](../../plan/m10.5-ffi-hardening.md)):
+**This audit is necessary but not sufficient for the FFI hardening exit.** The
+full exit evidence requires:
 - Stress harness scenarios passing on simulator and iPhone 12
 - All M1–M10 perf reports re-run with no > 5 % regression
 - Instruments-recorded zero leaks over 10-min canonical workflow

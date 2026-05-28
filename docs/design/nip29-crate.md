@@ -30,7 +30,7 @@ crates/
 ├── nmp-codegen/
 ├── nmp-nip01/                 # profiles (kind:0) — exists post-M1
 ├── nmp-nip02/                 # follows (kind:3) — exists post-M2
-├── nmp-nip17-nse/             # DMs — DEFERRED to post-v1 per scope-adjustments
+├── nmp-nip17-nse/             # DMs — deferred to post-v1
 ├── nmp-nip22/                 # comments (kind:1111)
 ├── nmp-nip23/                 # long-form (kind:30023)
 ├── nmp-nip25/                 # reactions (kind:7)
