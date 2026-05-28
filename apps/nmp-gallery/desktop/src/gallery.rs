@@ -323,7 +323,13 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
 
         "user-npub" => NpubChip::from_profile(&primary).into_element::<Message>(),
 
-        "user-card" => UserCard::from_profile(&primary).into_element::<Message>(),
+        "user-card" => {
+            let mut card = UserCard::from_profile(&primary);
+            if let Some(handle) = app.avatar_handle.clone() {
+                card = card.avatar_handle(handle);
+            }
+            card.into_element::<Message>()
+        }
 
         "content-core" => {
             let ex = &app.data.content_core;

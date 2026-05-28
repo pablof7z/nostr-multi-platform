@@ -1,3 +1,4 @@
+use iced::widget::image::Handle as ImageHandle;
 use iced::widget::{column, row, text};
 use iced::{Alignment, Color, Element};
 use nmp_gallery_tui::profile_wire::ProfileWire;
@@ -14,6 +15,7 @@ pub struct UserCard {
     display_name: Option<String>,
     npub_short: String,
     nip05: Option<String>,
+    avatar_handle: Option<ImageHandle>,
 }
 
 impl UserCard {
@@ -24,14 +26,26 @@ impl UserCard {
             display_name: profile.display_name.clone(),
             npub_short: profile.npub_short.clone(),
             nip05: profile.nip05.clone(),
+            avatar_handle: None,
         }
     }
 
+    /// Forward the pre-built image handle so the embedded `UserAvatar`
+    /// renders the real profile picture instead of the initials fallback.
+    #[must_use]
+    pub fn avatar_handle(mut self, handle: ImageHandle) -> Self {
+        self.avatar_handle = Some(handle);
+        self
+    }
+
     pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {
-        let avatar = UserAvatar::new(&self.pubkey)
+        let mut av = UserAvatar::new(&self.pubkey)
             .display_name(self.display_name.as_deref())
-            .size(40.0)
-            .into_element();
+            .size(40.0);
+        if let Some(handle) = self.avatar_handle {
+            av = av.picture_handle(handle);
+        }
+        let avatar = av.into_element();
 
         let has_name = self
             .display_name
