@@ -292,6 +292,13 @@ impl Kernel {
             // OneshotApi (a stale `event_claim_requested` entry would
             // otherwise short-circuit the next cold-claim).
             self.event_claim_requested.remove(&primary_id);
+            // codex M3 — the last consumer released, so cancel the W5
+            // claim-expansion retargeting tracker for this id. Without
+            // this, the `PendingClaim` would survive until its own
+            // wall-clock budget elapses (`poll_claim_expansion`), keeping
+            // Phase 1/2 hint-retargeting work alive for an event nobody
+            // wants anymore.
+            self.release_claim_expansion(&primary_id);
         }
         self.changed_since_emit = true;
         self.log(format!(

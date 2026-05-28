@@ -336,3 +336,48 @@ fn claimed_events_projection_emits_dto_keyed_by_primary_id() {
     assert_eq!(entry["content"], "post-arrival content");
     assert_eq!(entry["kind"], 1);
 }
+
+/// 7. (codex M3) Releasing the last consumer of a claim also cancels the
+/// claim-expansion retargeting tracker. `claim_event` registers a
+/// `PendingClaim` (Phase 1) alongside the `event_claims` refcount; when the
+/// final consumer releases, `release_event` must call
+/// `release_claim_expansion` so the in-flight Phase 1/2 retargeting work is
+/// torn down rather than left to age out on its own wall-clock budget.
+#[test]
+fn release_event_cancels_claim_expansion_on_empty_set() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let id = hex64("e1");
+    let uri = nevent_uri(&id, Some(1), None);
+
+    let _ = kernel.claim_event(uri.clone(), "view-0".to_string(), true);
+    let _ = kernel.claim_event(uri.clone(), "view-1".to_string(), true);
+    assert_eq!(
+        kernel.test_pending_claims_count(),
+        1,
+        "claim_event must register exactly one claim-expansion tracker"
+    );
+    assert!(
+        kernel.test_claim_phase(&id).is_some(),
+        "the tracker must be live while a consumer holds the claim"
+    );
+
+    // First release: a consumer remains, so the tracker stays.
+    let _ = kernel.release_event(&uri, "view-0");
+    assert!(
+        kernel.test_claim_phase(&id).is_some(),
+        "claim-expansion tracker must persist while any consumer holds the claim"
+    );
+
+    // Last release: the refcount hits zero, so the tracker is cancelled.
+    let _ = kernel.release_event(&uri, "view-1");
+    assert_eq!(
+        kernel.test_pending_claims_count(),
+        0,
+        "release_event must cancel claim-expansion when the last consumer releases"
+    );
+    assert!(
+        kernel.test_claim_phase(&id).is_none(),
+        "the claim-expansion tracker must be gone after the last release"
+    );
+}
