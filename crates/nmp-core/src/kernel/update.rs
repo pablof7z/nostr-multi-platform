@@ -19,7 +19,7 @@ use super::{
     ProfileDispatchSpec, SettingsHubSummary, StoredEvent, ThreadViewPayload, TimelineItem,
     DEFAULT_EMIT_HZ,
 };
-use crate::update_envelope::{encode_snapshot_value, UpdateFrameBytes};
+use crate::update_envelope::{encode_snapshot_with_typed, UpdateFrameBytes};
 
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.
 ///
@@ -226,7 +226,19 @@ impl Kernel {
                 })
             }
         };
-        let encoded = encode_snapshot_value(snapshot);
+        // ADR-0035: run every host-registered typed projection and carry its
+        // opaque FlatBuffers bytes in the frame's `typed_projections` sidecar,
+        // alongside the generic `Value` snapshot. During migration both
+        // representations are emitted for a piloted key (e.g. `"nmp.feed.home"`):
+        // an un-migrated host keeps reading the generic subtree, a migrated host
+        // prefers the typed sidecar. `nmp-core` never interprets the bytes — the
+        // closures live in app/protocol crates. Empty when nothing is
+        // registered, in which case `encode_snapshot_with_typed` produces wire
+        // bytes byte-identical to the legacy `encode_snapshot_value`.
+        // D8: these closures run on this actor thread inside the tick;
+        // `run_typed_projections` documents the non-blocking contract.
+        let typed = self.run_typed_projections();
+        let encoded = encode_snapshot_with_typed(snapshot, &typed);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
