@@ -18,14 +18,13 @@ pub struct TimelineRow {
     pub created_at: u64,
     pub depth: usize,
     pub has_gap: bool,
-    /// `true` only on the FIRST event of a `TimelineBlock::Module` whose
-    /// `root` pointer is `Some` — i.e. the chain's top event is itself a
-    /// reply to a missing ancestor (partial chain), NOT the true thread
-    /// root. The left-pane post list uses this to render a "↳ reply in
-    /// thread" indicator so partial-chain heads don't masquerade as roots.
-    /// `depth` is intentionally left at `0` for the head event so the
-    /// detail-pane navigation anchor (`depth == 0`) still works.
-    pub is_partial_chain_head: bool,
+    /// Raw attribution list (V-80 OP-centric feed): the follows whose replies
+    /// referenced this root. Carried RAW — pubkey, display name mirror, reply
+    /// id, reply timestamp — newest-last as the engine ordered them. The TUI
+    /// renders only the most-recent 1 (Q1 display decision); the projection
+    /// carries all of them so iOS may render N. Empty for roots no follow
+    /// replied to.
+    pub thread_attribution: Vec<RowReplyAttribution>,
     pub relation_counts: RowRelationCounts,
     pub content_tree: Option<ContentTreeWire>,
     pub content_render: ContentRenderData,
@@ -49,35 +48,44 @@ pub struct RowRepost {
     pub repost_created_at: u64,
 }
 
+/// One follow's reply attributed to a feed root (V-80 OP-centric feed).
+///
+/// Raw mirror of `nmp_nip01::op_feed::Nip10ReplyAttribution`: the replying
+/// follow's pubkey, the kind:0 display-name mirror (`None` until a kind:0
+/// arrives — the renderer formats the raw pubkey as fallback), the reply event
+/// id, and the reply timestamp. The TUI renders only the most-recent replier;
+/// the full list is preserved so other surfaces can render more.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowReplyAttribution {
+    pub author_pubkey: String,
+    pub author_profile: ProfileWire,
+    pub reply_event_id: String,
+    pub reply_created_at: u64,
+}
+
 impl TimelineRow {
+    /// Parse a `RootFeedSnapshot` (`{ "cards": [{ "card": …, "attribution": […]
+    /// }], "page": …, "metrics": … }`) into render rows.
+    ///
+    /// Each entry is one feed root — the home feed is thread-roots-only (V-80):
+    /// replies never appear as standalone rows. The inner `card` is a
+    /// `TimelineEventCard`; for reposts its `id` is the superseded target id
+    /// (the engine keys repost slots by `target_id`, so the inline card already
+    /// carries the right identity — no separate cards-map lookup is needed). The
+    /// `attribution` array carries the follows whose replies surfaced or
+    /// referenced this root.
     pub fn from_snapshot(snapshot: &Value) -> Vec<Self> {
-        let cards = snapshot
+        snapshot
             .get("cards")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|card| {
-                let id = card.get("id")?.as_str()?.to_string();
-                Some((id, card))
+            .filter_map(|entry| {
+                let card = entry.get("card")?;
+                let attribution = attribution_from_entry(entry.get("attribution"));
+                Some(Self::from_card(card, attribution))
             })
-            .collect::<std::collections::HashMap<_, _>>();
-
-        let mut rows = Vec::new();
-        if let Some(blocks) = snapshot.get("blocks").and_then(Value::as_array) {
-            for block in blocks {
-                let (ids, has_gap, is_partial_chain) = ids_from_block(block);
-                for (depth, id) in ids.into_iter().enumerate() {
-                    if let Some(card) = cards.get(id.as_str()) {
-                        // Flag belongs only to the chain's head event; the
-                        // rest of the chain are ordinary replies.
-                        let is_partial_chain_head = is_partial_chain && depth == 0;
-                        rows.push(Self::from_card(card, depth, has_gap, is_partial_chain_head));
-                    }
-                }
-            }
-        }
-
-        rows
+            .collect()
     }
 
     pub fn author_label(&self) -> &str {
@@ -93,7 +101,7 @@ impl TimelineRow {
         urls
     }
 
-    fn from_card(card: &Value, depth: usize, has_gap: bool, is_partial_chain_head: bool) -> Self {
+    fn from_card(card: &Value, thread_attribution: Vec<RowReplyAttribution>) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
         let author_profile = author_profile_from_card(&author_pubkey, card);
@@ -127,9 +135,12 @@ impl TimelineRow {
             author_profile,
             content,
             created_at,
-            depth,
-            has_gap,
-            is_partial_chain_head,
+            // Every feed entry is a thread root: depth 0, no chain gap. The
+            // OP-centric feed never surfaces replies as their own rows, so the
+            // partial-chain / multi-depth machinery is gone.
+            depth: 0,
+            has_gap: false,
+            thread_attribution,
             relation_counts: RowRelationCounts::from_card(card),
             content_tree,
             content_render,
@@ -138,6 +149,35 @@ impl TimelineRow {
             raw_card: serde_json::to_string_pretty(card).unwrap_or_default(),
         }
     }
+}
+
+/// Parse the `attribution` array of a `RootCard` into raw render attributions.
+///
+/// Each element mirrors `Nip10ReplyAttribution` (`author_pubkey`,
+/// `author_display`, `author_display_name`, `author_picture_url`,
+/// `reply_event_id`, `reply_created_at`). Display fields fall back exactly as
+/// the card author does (`author_profile_from_card`): the nested
+/// `author_display` object first, the flat `author_display_name` /
+/// `author_picture_url` mirrors next, the raw pubkey last.
+fn attribution_from_entry(value: Option<&Value>) -> Vec<RowReplyAttribution> {
+    value
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let author_pubkey = item.get("author_pubkey")?.as_str()?.to_string();
+            let author_profile = author_profile_from_card(&author_pubkey, item);
+            Some(RowReplyAttribution {
+                author_pubkey,
+                author_profile,
+                reply_event_id: string_field(item, "reply_event_id"),
+                reply_created_at: item
+                    .get("reply_created_at")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            })
+        })
+        .collect()
 }
 
 fn repost_from_card(value: Option<&Value>, outer_created_at: u64) -> Option<RowRepost> {
@@ -231,58 +271,6 @@ impl RowRelationCount {
             Self::Loading => "...".to_string(),
         }
     }
-}
-
-/// Extract event ids from a `TimelineBlock`, plus two structural flags
-/// used downstream by the UI:
-///
-/// - `has_gap`: the module knows an ancestor / mid-chain event is missing.
-/// - `is_partial_chain`: the block's Event root pointer names a different
-///   id than the displayed head. That means the displayed head is a reply to
-///   a missing event ancestor. Applies to both `Standalone` (a 1-event reply
-///   chain that could not be stitched) and `Module` blocks. Non-Event roots
-///   (Address / External) terminate the chain and do not imply a missing
-///   event head.
-fn ids_from_block(block: &Value) -> (Vec<String>, bool, bool) {
-    // `Standalone` is the serde object form `{ "id": "<id>", "root"?: ... }`.
-    if let Some(standalone) = block.get("Standalone") {
-        let Some(id) = standalone.get("id").and_then(Value::as_str) else {
-            return (Vec::new(), false, false);
-        };
-        let id = id.to_string();
-        // A standalone whose `root` Event pointer differs from its own id is
-        // a reply that could not be stitched into a chain — flag it so the
-        // "reply in thread" (↳) indicator lights up.
-        let is_partial_chain = event_root_mismatches_top(standalone.get("root"), Some(&id));
-        return (vec![id], false, is_partial_chain);
-    }
-    let Some(module) = block.get("Module") else {
-        return (Vec::new(), false, false);
-    };
-    let ids = module
-        .get("events")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    let has_gap = module
-        .get("has_gap")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let is_partial_chain = event_root_mismatches_top(module.get("root"), ids.first());
-    (ids, has_gap, is_partial_chain)
-}
-
-fn event_root_mismatches_top(root: Option<&Value>, top: Option<&String>) -> bool {
-    let Some(top) = top else {
-        return false;
-    };
-    root.and_then(|root| root.get("Event"))
-        .and_then(|event| event.get("id"))
-        .and_then(Value::as_str)
-        .is_some_and(|root_id| root_id != top)
 }
 
 fn string_field(card: &Value, key: &str) -> String {

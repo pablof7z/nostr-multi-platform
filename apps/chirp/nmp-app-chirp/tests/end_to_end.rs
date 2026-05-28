@@ -1,13 +1,22 @@
 //! End-to-end: register Chirp through the FFI, drive synthetic kind:1
 //! events through the actor's `IngestPreVerifiedEvents` channel, decode the
-//! snapshot, assert the modular blocks land.
+//! `"nmp.feed.home"` projection, and assert the OP-centric `RootFeedSnapshot`
+//! lands.
 //!
-//! Mirrors the production flow `KernelBridge.swift` will take: open an
-//! `NmpApp`, register the projection, watch ingest fan-out feed the
-//! grouper, render the resulting blocks. Bypasses the relay layer by
-//! pushing pre-verified events directly into the actor command channel —
-//! `nmp-core`'s public `actor_sender()` exposes this for cross-crate tests
-//! (the production wire path makes the same `ActorCommand` enqueue).
+//! V-80 rung 7 — the home feed is now thread-ROOTS-only, produced by the
+//! `nmp-nip01` OP-feed engine (via `nmp_app_template::register_op_feed_defaults`
+//! wired in `nmp_app_chirp_register`). Replies no longer appear as their own
+//! rows; a followed author's reply attributes back to its root. These tests run
+//! with NO signed-in account, so the follow set is empty and the follow
+//! predicate is universally false: every injected reply is dropped (no
+//! attribution, no row), while every root-shaped event surfaces as a card.
+//!
+//! Mirrors the production flow `KernelBridge.swift` takes: open an `NmpApp`,
+//! register the projection, watch ingest fan-out feed the engine, read the
+//! snapshot. Bypasses the relay layer by pushing pre-verified events directly
+//! into the actor command channel (`IngestPreVerifiedEvents` routes through
+//! `kernel.ingest_pre_verified_event`, which fans out to observers without the
+//! `timeline_authors` store gate — so the engine sees every injected event).
 
 use std::ffi::{CStr, CString};
 use std::sync::Mutex;
@@ -21,7 +30,6 @@ use nmp_ffi::{
     nmp_app_read_projection_json, nmp_app_start,
 };
 use nmp_nip01::DEFAULT_TIMELINE_WINDOW_LIMIT;
-use nmp_threading::TimelineBlock;
 
 // Serialize tests because `NmpApp` initialisation spawns process-global
 // actor threads; staggering avoids cross-test interference.
@@ -61,7 +69,7 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
 }
 
 #[test]
-fn root_plus_reply_round_trip_through_feed_projection() {
+fn root_surfaces_and_unfollowed_reply_is_dropped() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
@@ -70,8 +78,9 @@ fn root_plus_reply_round_trip_through_feed_projection() {
     let handle = nmp_app_chirp_register(app, std::ptr::null());
     assert!(!handle.is_null(), "register returned null");
 
-    // Root + one reply with NIP-10 marked root/reply tags pointing at the
-    // root. The grouper should fold the two events into one Module.
+    // Root + one NIP-10-marked reply pointing at the root. With no signed-in
+    // account the follow predicate is universally false, so the reply is
+    // dropped: the feed shows ONLY the root, with no attribution.
     let root_id = "1".repeat(64);
     let reply_id = "2".repeat(64);
     let author = "a".repeat(64);
@@ -94,23 +103,23 @@ fn root_plus_reply_round_trip_through_feed_projection() {
     std::thread::sleep(Duration::from_millis(500));
 
     let snap = feed_projection_for(app);
-    assert_eq!(snap.blocks.len(), 1, "expected one block, got {snap:?}");
-    match &snap.blocks[0] {
-        TimelineBlock::Module { events, .. } => {
-            assert_eq!(events.len(), 2, "module must contain both events");
-            assert!(events.contains(&root_id), "module must contain root id");
-            assert!(events.contains(&reply_id), "module must contain reply id");
-        }
-        other => panic!("expected Module, got {other:?}"),
-    }
-    assert_eq!(snap.cards.len(), 2, "two cards (root + reply)");
+    assert_eq!(
+        snap.cards.len(),
+        1,
+        "feed is roots-only: the root surfaces, the reply does not get a row; got {snap:?}"
+    );
+    assert_eq!(snap.cards[0].card.id, root_id, "the surfaced card is the root");
+    assert!(
+        snap.cards[0].attribution.is_empty(),
+        "the reply is from a non-followed author → no attribution attaches"
+    );
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
 }
 
 #[test]
-fn standalone_note_renders_as_standalone_block() {
+fn standalone_note_renders_as_root_card() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
@@ -124,16 +133,16 @@ fn standalone_note_renders_as_standalone_block() {
     std::thread::sleep(Duration::from_millis(500));
 
     let snap = feed_projection_for(app);
-    assert_eq!(snap.blocks.len(), 1);
-    assert!(matches!(snap.blocks[0], TimelineBlock::Standalone { .. }));
-    assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards.len(), 1, "one root card");
+    assert_eq!(snap.cards[0].card.id, id);
+    assert!(snap.cards[0].attribution.is_empty());
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
 }
 
 #[test]
-fn snapshot_returns_default_window_and_load_older_expands_it() {
+fn snapshot_returns_default_window() {
     let _g = SERIAL.lock().unwrap();
 
     let app = nmp_app_new();
@@ -158,17 +167,33 @@ fn snapshot_returns_default_window_and_load_older_expands_it() {
     std::thread::sleep(Duration::from_millis(500));
 
     let snap = feed_projection_for(app);
-    assert_eq!(snap.blocks.len(), DEFAULT_TIMELINE_WINDOW_LIMIT);
+    assert_eq!(
+        snap.cards.len(),
+        DEFAULT_TIMELINE_WINDOW_LIMIT,
+        "the default window caps the visible root cards"
+    );
     let page = snap.page.expect("window snapshot carries page metadata");
-    assert!(snap.metrics.is_some(), "window snapshot carries metrics");
+    // The engine's RootFeedSnapshot does not emit per-tick timing metrics (V-80
+    // §3-G removed them from this surface); it is always `None` here.
+    assert!(snap.metrics.is_none(), "engine snapshot carries no metrics");
     assert!(page.has_more);
     assert_eq!(page.total_blocks, total);
 
+    // `nmp_app_load_older_feed` is a no-op for the OP engine: its
+    // `FeedController::load_older` returns `false` and `snapshot_json` always
+    // serializes the default window (the engine holds every root bounded by D5
+    // but does not yet grow the request limit on load-older). The previous
+    // `ModularTimelineProjection` grew its window here; window-growth for the
+    // OP engine is a separate follow-up. Assert the no-op so the behaviour is
+    // pinned, not silently regressed.
     let key = CString::new("nmp.feed.home").expect("static key has no nul");
     nmp_app_load_older_feed(app, key.as_ptr());
-    let expanded = feed_projection_for(app);
-    assert_eq!(expanded.blocks.len(), total);
-    assert!(!expanded.page.expect("expanded page").has_more);
+    let after = feed_projection_for(app);
+    assert_eq!(
+        after.cards.len(),
+        DEFAULT_TIMELINE_WINDOW_LIMIT,
+        "window stays at the default after a no-op load-older"
+    );
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);

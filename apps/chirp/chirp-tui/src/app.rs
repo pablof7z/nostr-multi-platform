@@ -56,7 +56,8 @@ pub struct AppState {
     pub show_help: bool,
     pub tab: FeatureTab,
     pub update_count: u64,
-    pub blocks: usize,
+    /// Count of root cards in the latest home-feed snapshot (V-80: the feed is
+    /// thread-roots-only, so this is also the row count).
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
     pub timeline_has_more: bool,
@@ -139,7 +140,6 @@ impl Default for AppState {
             show_help: false,
             tab: FeatureTab::Home,
             update_count: 0,
-            blocks: 0,
             cards: 0,
             rows: Vec::new(),
             timeline_has_more: false,
@@ -336,10 +336,8 @@ impl AppState {
     }
 
     fn apply_feed_snapshot(&mut self, snapshot: Value) {
-        self.blocks = snapshot
-            .get("blocks")
-            .and_then(Value::as_array)
-            .map_or(0, Vec::len);
+        // V-80 RootFeedSnapshot: `cards` is now `Vec<RootCard>` (one per thread
+        // root), not the old flat event-card array. Each entry is one feed row.
         self.cards = snapshot
             .get("cards")
             .and_then(Value::as_array)

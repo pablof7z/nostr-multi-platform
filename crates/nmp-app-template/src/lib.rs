@@ -106,7 +106,7 @@ use nmp_router::{
 pub mod op_feed_defaults;
 pub mod runtimes;
 
-pub use op_feed_defaults::register_op_feed_defaults;
+pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 
 /// Wire the canonical NMP composition into `app`.
 ///

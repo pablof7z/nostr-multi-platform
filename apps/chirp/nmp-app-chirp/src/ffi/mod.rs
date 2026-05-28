@@ -2,10 +2,12 @@
 //!
 //! `extern "C"` symbols Swift links against:
 //!
-//! - [`nmp_app_chirp_register`] — instantiate `ChirpModularTimeline` with the
-//!   active viewer pubkey and register it as a kernel event observer on the
-//!   supplied `NmpApp`. Returns an opaque handle (boxed projection +
-//!   observer id) for later snapshots / unregister.
+//! - [`nmp_app_chirp_register`] — wire the OP-centric home feed (V-80 rung 7)
+//!   via `nmp_app_template::register_op_feed_defaults`: the `nmp-nip01` OP-feed
+//!   engine registered as both a kernel event observer (ingest) and a
+//!   `"nmp.feed.home"` feed controller (output), plus the `ActiveFollowSet`
+//!   producer. Returns an opaque handle (boxed engine + follow set) for later
+//!   snapshots / unregister.
 //! - [`nmp_app_chirp_register_group_chat`] — wire a NIP-29
 //!   `GroupChatProjection` for one group into the kernel: an event observer
 //!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
@@ -16,12 +18,13 @@
 //!   Rust-owned controller for the active gift-wrap interest + kind:10050
 //!   relay-list publish.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
-//!   into a freshly-allocated nul-terminated JSON C string. Swift owns the
-//!   pointer until it calls `nmp_app_chirp_snapshot_free`.
+//!   (the OP-centric `RootFeedSnapshot`) into a freshly-allocated
+//!   nul-terminated JSON C string. Swift owns the pointer until it calls
+//!   `nmp_app_chirp_snapshot_free`.
 //! - [`nmp_app_chirp_snapshot_free`] — companion deallocator for the snapshot
 //!   string.
-//! - [`nmp_app_chirp_unregister`] — drop the observer registration and free
-//!   the handle. Idempotent.
+//! - [`nmp_app_chirp_unregister`] — free the handle. Idempotent. (The engine /
+//!   follow-set observer registrations are torn down by `nmp_app_free`.)
 //! - `nmp_app_chirp_identity_restore`,
 //!   `nmp_app_chirp_identity_sign_in_nsec`, and
 //!   `nmp_app_chirp_identity_remove_account` — Chirp-owned identity wrappers
@@ -36,8 +39,8 @@
 //!   strings, serialization failures, and poisoned mutexes all degrade
 //!   silently rather than raising across the FFI.
 //! * **No business logic in Swift** — Swift takes the JSON string, decodes
-//!   to `[TimelineBlock] + [ChirpEventCard]`, and renders. All grouping
-//!   happens here / in `nmp-threading`.
+//!   the `RootFeedSnapshot` (`[{ card, attribution }]`), and renders. All
+//!   root-indexing / attribution happens here / in `nmp-feed` + `nmp-nip01`.
 //!
 //! ## Module layout
 //!
