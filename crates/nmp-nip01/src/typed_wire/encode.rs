@@ -263,7 +263,14 @@ fn encode_repost_attribution<'bldr>(
     )
 }
 
-fn encode_card<'bldr>(
+/// Encode one [`TimelineEventCard`] into the shared `nmp.nip01.TimelineEventCard`
+/// FlatBuffers table.
+///
+/// `pub(crate)` so the OP-feed encoder (`crate::op_feed::typed_wire`) reuses the
+/// identical per-card builder — including the embedded typed NFCT content tree
+/// and `content_render` bytes — rather than re-deriving the card encoding
+/// (ADR-0038 Commitment 2).
+pub(crate) fn encode_card<'bldr>(
     builder: &mut FlatBufferBuilder<'bldr>,
     card: &TimelineEventCard,
 ) -> WIPOffset<fb::TimelineEventCard<'bldr>> {
