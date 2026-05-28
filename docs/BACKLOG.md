@@ -1014,14 +1014,45 @@ L-1…L-5, claim-URI shape, profile refresh, snapshot shape, and the V-81
 non-terminal release signal. `cargo test -p nmp-nip01` 108 pass;
 `cargo build -p nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Rungs
 6–7 remain.
-**Rung 6 (Stage 5 — `nmp-app-template` OP-feed composition root) landed
-2026-05-28 (PR #743).** The composition root wires the rung 4/5 producers
-(`ActiveFollowSet` + `register_op_feed`) against `&NmpApp`. Surfaced finding:
-the kernel owns the authoritative `ActiveAccountSlot` (`Arc<Mutex<Option<String>>>`)
-but `NmpApp` never exposed it — the kernel "makes its own, never threaded
-back" — so the composition root could not read the live active account or
-drive `ActiveFollowSet::notify_account_changed`. Filed as **V-82** (below).
-Rung 7 remains (the production projection swap; consumes V-82).
+**Rung 6 (Stage 5 — `nmp-app-template` composition root) landed 2026-05-28** —
+`crates/nmp-app-template/src/op_feed_defaults.rs` adds
+`register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, active_account_slot:
+ActiveAccountSlot) -> Arc<OpFeedEngine>`. It constructs
+`nmp_nip02::ActiveFollowSet` over the slot, registers it as a
+`KernelEventObserver`, builds the engine via `nmp_nip01::register_op_feed`
+(follow predicate = `ActiveFollowSet::predicate()`, claim sink =
+`build_actor_claim_sink` over `app.actor_sender()`, no-op `event_lookup`),
+registers the engine as both a `KernelEventObserver` (ingest) and a
+`FeedController` under `"nmp.feed.home"` (output), and wires a self-detecting
+`on_change` callback that resets the engine ONLY on an account switch (the
+pubkey actually changed), never on a kind:3 update (the predicate is live).
+**CRITICAL DECISION — no `expand_follow_timeline_interests`:** the design doc
+§5 Stage 5 / ADR-0036 sketch per-follow `LogicalInterest` registration at the
+composition root "mirroring `sync_follow_feed_interests`," but the kernel
+**still owns** `sync_follow_feed_interests`
+(`crates/nmp-core/src/kernel/ingest/contacts.rs:119`), which already registers
+those interests on the active account's kind:3 and on identity change.
+Re-registering at the composition root would be **duplicate REQ
+subscriptions** — so this rung registers the engine + follow-set observer
+ONLY, no interest expansion. The doc predates the kernel keeping
+`sync_follow_feed_interests`. **Spec-vs-code drift followed:** (1) the
+function takes an explicit `active_account_slot` param — `NmpApp` exposes no
+synchronous `ActiveAccountSlot` accessor (kernel makes its own at
+`mod.rs:1406`, never threaded back); a thin accessor is filed as **V-82**;
+(2) `event_lookup` is a no-op `|_| None` — no synchronous event-by-id read API
+on `NmpApp`; the engine's L-2 re-key fallback keeps it correctness-preserving;
+the optimization is filed as **V-83**; (3) `send_cmd` is crate-private, so the
+claim sink dispatches through `actor_sender()`. **`register_op_feed_defaults`
+is NOT called by `register_defaults` and NOT wired into Chirp this rung** —
+defined + tested only (4 integration tests:
+`crates/nmp-app-template/tests/op_feed_defaults_test.rs`); rung 7 makes Chirp
+call it and removes the `ModularTimelineProjection` registration. `cargo test
+-p nmp-app-template` 7 pass (4 new + 3 existing); `cargo build -p
+nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Master green; Chirp
+unchanged. **Rung-7 note:** the engine's repost cards key the root slot by
+`target_id` (`card.id == target_id`, `ingest.rs:101`), differing from
+`ModularTimelineProjection`'s wrapper-id keying — rung 7's chirp-tui /
+codegen swap must account for this. Rung 7 remains.
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
@@ -1168,6 +1199,50 @@ load-bearing for OP-feed correctness (the engine is robust to the current
 Phase-1-EOSE behavior), so this item is downgraded to a cleanup. If pursued,
 it would let the engine treat the signal as terminal and proactively emit
 `Release` + drop pending, instead of relying on arrival/eviction.
+
+---
+
+### V-82 · `NmpApp::active_account_handle()` accessor for the OP-feed composition root [LOW · sub-item of V-80, rung-7 prerequisite]
+
+**Origin:** rung 6 (Stage 5) needs the kernel's `ActiveAccountSlot` to
+construct `nmp_nip02::ActiveFollowSet`. `NmpApp` exposes **no** synchronous
+accessor for it: the kernel constructs its `active_account_handle` internally
+(`crates/nmp-core/src/kernel/mod.rs:1406`) and never threads a clone back to
+`NmpApp` (unlike `relay_edit_rows`, which `NmpApp` owns and injects via
+`run_actor_with_observers`). So `register_op_feed_defaults` takes the slot as
+an explicit parameter this rung.
+
+**Fix:** add `NmpApp::active_account_handle(&self) -> ActiveAccountSlot`
+mirroring the `relay_edit_rows_handle` pattern — `NmpApp` owns the slot
+(created in `nmp_app_new`), passes a clone into `run_actor_with_observers`,
+and the actor binds it onto the kernel (a new `Kernel::set_active_account_handle`
+setter replacing the kernel's internal `new_active_account_slot()`). That is a
+small `nmp-core`/actor change, deliberately out of rung-6 scope. Once landed,
+`register_op_feed_defaults` can drop its explicit slot parameter and read the
+slot off `app`. **Rung 7 (Chirp cut-over) needs this** to obtain the slot at
+its `register_op_feed_defaults` call site, so this should land with or before
+rung 7.
+
+---
+
+### V-83 · OP-feed `event_lookup` reads the kernel event store (replace no-op closure) [LOW · sub-item of V-80, optimization only]
+
+**Origin:** rung 6 wires the engine's
+`event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` as a no-op
+`|_| None`. There is **no synchronous event-by-id read API on `NmpApp`** — the
+kernel's `EventStore::get_by_id` (`crates/nmp-store/src/events.rs:149`) lives
+on the actor thread and is never published back to `NmpApp`. The no-op is
+**correctness-preserving** for the OP feed: the engine's L-2 fallback holds an
+attribution against the (unresolved) wrapper id and re-keys it when the wrapper
+later arrives via the observer fan-out (§3-L step 2); L-5 shows the placeholder
+card until the target arrives.
+
+**Fix (optimization, not correctness):** expose a kernel-owned, thread-safe
+event-by-id read handle on `NmpApp` (an `Arc<dyn EventStore>` clone, or a
+typed `Kernel::event_by_id` accessor surfaced like `relay_edit_rows_handle`),
+and wire it into the `event_lookup` closure so the engine can resolve a
+locally-cached parent/target immediately instead of waiting for the observer
+re-key. Only matters for repost L-2/L-5 cold-start latency. Post-rung-7.
 
 ---
 
