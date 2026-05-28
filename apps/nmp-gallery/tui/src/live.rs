@@ -32,6 +32,15 @@ use std::{
 use nmp_content::EventClaimSink;
 use serde_json::Value;
 
+/// Hex pubkey of the gallery's primary showcase author — pablof7z, the
+/// NmpGallery demo account (see `nmp_core::display` tests). The user-*
+/// components resolve this identity to a `ProfileWire` reactively through
+/// `LiveProfileMap`; the gallery fires `claim_profile` for it at startup so
+/// the kernel fetches the kind:0 and the next snapshot carries real
+/// metadata.
+pub const PRIMARY_PUBKEY: &str =
+    "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+
 const RELAYS: &[(&str, &str)] = &[
     ("wss://purplepag.es", "indexer"),
     // Primal serves as BOTH content AND indexer. Combined role on a
@@ -91,6 +100,21 @@ impl LiveKernelSink {
         let Ok(pk) = CString::new(pubkey) else { return };
         let Ok(cid) = CString::new(consumer_id) else { return };
         nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr());
+    }
+
+    /// Open the author view for `pubkey`. Unlike a bare `claim_profile`
+    /// (which only registers a kind:0 interest and caches the result), this
+    /// drives the kernel's `author_view` projection — the path that surfaces
+    /// the full `ProfileCard` (`nip05`, `about`, `has_profile`) and adds the
+    /// author's items to `mention_profiles`. `LiveProfileMap` reads exactly
+    /// that projection, so opening the primary author at startup is what
+    /// lets the user-* components resolve to real kind:0 metadata instead of
+    /// sitting on the npub_short fallback forever. (`mention_profiles` is
+    /// built only from open-view item sets — see `kernel/update.rs` — so a
+    /// standalone claim never reaches it.)
+    pub fn open_author(&self, pubkey: &str) {
+        let Ok(pk) = CString::new(pubkey) else { return };
+        nmp_ffi::nmp_app_open_author(self.app, pk.as_ptr());
     }
 }
 
