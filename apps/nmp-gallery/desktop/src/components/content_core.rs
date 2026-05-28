@@ -2,7 +2,7 @@ use egui::Ui;
 
 use nmp_gallery_tui::{
     content_render_data::ContentRenderData,
-    content_tree_wire::{ContentTreeWire, WireNode},
+    content_tree_wire::ContentTreeWire,
 };
 
 /// Content-core inspector — structural view of the content tree.

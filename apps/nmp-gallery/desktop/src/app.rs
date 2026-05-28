@@ -9,21 +9,12 @@ use std::sync::Arc;
 use eframe::App;
 use egui::{CentralPanel, Color32, ScrollArea, SidePanel, TopBottomPanel};
 use nmp_gallery_tui::gallery::REGISTRY_SECTIONS;
-use nmp_gallery_tui::{
-    data::GalleryData,
-    embed_host::EmbedHostState,
-    live::{LiveFacts, LiveItem, LiveProfile},
-};
+use nmp_gallery_tui::{data::GalleryData, embed_host::EmbedHostState};
 
 use crate::bridge::GalleryBridge;
 use crate::render::{render_component, EmbedFrameContext};
 
 const CONSUMER_ID: &str = "nmp-gallery-desktop.preview";
-const PRIMARY_PUBKEY: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
-const MENTION_EVENT_ID: &str = "caef905a1e1520fd6621b56364cca823c262327a32ac063b4ff0435f41aa7660";
-const MEDIA_EVENT_ID: &str = "c2ee64b0371f290edf66fc797598b2d307aa79192f6d6e0bf5344cf81104029b";
-const QUOTE_SOURCE_EVENT_ID: &str =
-    "2df88accbf264b10f47809abcf9d32b4146b035a5a197c9ff30e45ac010d5368";
 
 pub struct GalleryApp {
     bridge: Arc<GalleryBridge>,
@@ -36,8 +27,7 @@ pub struct GalleryApp {
 impl GalleryApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let bridge = Arc::new(GalleryBridge::start(cc.egui_ctx.clone()));
-        let facts = synthetic_facts();
-        let data = GalleryData::from_live(&facts, false).expect("gallery data valid");
+        let data = GalleryData::render_test_data();
         let host = EmbedHostState::new();
 
         Self {
@@ -154,91 +144,5 @@ impl GalleryApp {
                 ui.label("Select a component from the sidebar.");
             }
         });
-    }
-}
-
-/// Synthetic `LiveFacts` — deterministic cold-start data that matches the
-/// TUI bootstrap's offline-fallback values. Embeds are NOT pre-warmed;
-/// the renderer-triggered claim path drives them reactively (ADR-0034).
-fn synthetic_facts() -> LiveFacts {
-    let primary = LiveProfile {
-        pubkey: PRIMARY_PUBKEY.to_string(),
-        display_name: Some("Primary Author".to_string()),
-        picture_url: Some("https://example.invalid/avatar.png".to_string()),
-        nip05: Some("primary.example".to_string()),
-        about: Some("Primary author for gallery showcase".to_string()),
-    };
-    let mention = LiveProfile {
-        pubkey: "1111111111111111111111111111111111111111111111111111111111111111".to_string(),
-        display_name: Some("Resolved Profile".to_string()),
-        picture_url: Some("https://example.invalid/profile.png".to_string()),
-        nip05: Some("resolved.example".to_string()),
-        about: Some("Test-only resolved profile".to_string()),
-    };
-    let quote_target = LiveProfile {
-        pubkey: PRIMARY_PUBKEY.to_string(),
-        display_name: Some("Quoted Author".to_string()),
-        picture_url: None,
-        nip05: None,
-        about: None,
-    };
-
-    let mention_uri = format!(
-        "nostr:{}",
-        nmp_core::display::to_npub(
-            "1111111111111111111111111111111111111111111111111111111111111111"
-        )
-    );
-    let quote_uri = format!(
-        "nostr:{}",
-        nmp_core::nip19::format(&nmp_core::nip19::Nip19Entity::Note(
-            "3333333333333333333333333333333333333333333333333333333333333333".to_string()
-        ))
-        .expect("note id formats")
-    );
-
-    let mention_item = LiveItem {
-        id: MENTION_EVENT_ID.to_string(),
-        author_pubkey: PRIMARY_PUBKEY.to_string(),
-        kind: 1,
-        content: format!("hello {mention_uri}"),
-        content_preview: String::new(),
-        created_at: 1,
-    };
-    let media_item = LiveItem {
-        id: MEDIA_EVENT_ID.to_string(),
-        author_pubkey: PRIMARY_PUBKEY.to_string(),
-        kind: 1,
-        content: "Check out this image https://example.invalid/image1.png and this one https://example.invalid/image2.png".to_string(),
-        content_preview: String::new(),
-        created_at: 2,
-    };
-    let quote_source = LiveItem {
-        id: QUOTE_SOURCE_EVENT_ID.to_string(),
-        author_pubkey: PRIMARY_PUBKEY.to_string(),
-        kind: 1,
-        content: format!("look {quote_uri}"),
-        content_preview: String::new(),
-        created_at: 3,
-    };
-    let quote_target_item = LiveItem {
-        id: "3333333333333333333333333333333333333333333333333333333333333333".to_string(),
-        author_pubkey: PRIMARY_PUBKEY.to_string(),
-        kind: 1,
-        content: "Quoted event body from render data".to_string(),
-        content_preview: String::new(),
-        created_at: 4,
-    };
-
-    LiveFacts {
-        primary_profile: primary,
-        mention_profile: mention,
-        quote_target_profile: quote_target,
-        mention_item,
-        media_item,
-        quote_source_item: quote_source,
-        quote_target_item,
-        mention_profile_uri: mention_uri,
-        quote_event_uri: quote_uri,
     }
 }

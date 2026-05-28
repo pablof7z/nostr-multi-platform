@@ -4071,7 +4071,13 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "image",
+ "nmp-content",
  "nmp-core",
+ "nmp-gallery-tui",
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

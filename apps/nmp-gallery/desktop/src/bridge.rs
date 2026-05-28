@@ -5,8 +5,7 @@
 //! (Rust→Rust, no FFI), drives it via ActorCommand, and decodes snapshot
 //! pushes into serde_json::Value for EmbedHostState.
 
-use std::collections::BTreeSet;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
