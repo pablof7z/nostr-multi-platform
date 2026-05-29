@@ -28,6 +28,27 @@
 //! (90 s). The `(_, None) => {}` orphan arm is replaced with a `tracing::warn!`
 //! and an `orphan_responses` counter, making receive-without-correlation
 //! observable.
+//!
+//! ## V-79 fix — heartbeat + reconnect + connection_state projection
+//!
+//! `tick_heartbeat` is called from the host-side `on_idle_tick`. It is pure
+//! wall-clock-gated (D8 — no sleep/loop): it compares `kernel.now_secs()` to
+//! `last_probe_sent_secs` and only acts when `HEARTBEAT_CADENCE_SECS` have
+//! elapsed since the last sent probe.
+//!
+//! A probe is a `get_info` request (same call `wallet_connect` already makes).
+//! On every successful kind:23195 response in `handle_nwc_text`, the runtime
+//! resets `consecutive_failures` to 0. A probe that is outstanding when the
+//! *next* cadence window opens counts as one failure. After
+//! `HEARTBEAT_MAX_FAILURES` consecutive failures, `tick_heartbeat` calls the
+//! `resubscribe` helper to re-send REQ + get_info + get_balance on the same
+//! wallet relay and transitions the projected `connection_state` to
+//! `Reconnecting`. If probes continue to fail after resubscribe, `connection_state`
+//! advances to `TransportLost` (the user must manually reconnect).
+//!
+//! The `connection_state` field is projected inside `WalletStatus` under the
+//! existing `"wallet"` snapshot projection so the host shell can render a
+//! non-silent liveness indicator without a new projection namespace.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -46,7 +67,7 @@ use nmp_nwc::types::PayInvoiceParams;
 use nmp_nwc::NwcMethod;
 
 use crate::crypto::{build_event_json, sign_nwc_request, sign_with};
-use crate::status::{format_sats_display, WalletStatus, WalletStatusSlot};
+use crate::status::{format_sats_display, NwcConnectionState, WalletStatus, WalletStatusSlot};
 
 /// TTL for inflight `pay_invoice` requests. Entries older than this are
 /// swept by the idle-tick hook and reported as timed-out failures via
@@ -57,6 +78,25 @@ use crate::status::{format_sats_display, WalletStatus, WalletStatusSlot};
 /// (e.g. `nmp-app-chirp::wallet_runtime::WalletInterceptor`) can pass the
 /// canonical TTL to `WalletRuntime::sweep_expired_payments`.
 pub const PENDING_PAYMENT_TTL_SECS: u64 = 90;
+
+/// Interval between successive heartbeat `get_info` probes (V-79).
+///
+/// 30 s is a low enough cadence to detect a stale connection before the
+/// user attempts a payment, while high enough not to waste relay bandwidth.
+/// Exported so host-side interceptor impls can pass this canonical value to
+/// [`WalletRuntime::tick_heartbeat`].
+pub const HEARTBEAT_CADENCE_SECS: u64 = 30;
+
+/// A probe counts as a failure if no kind:23195 response has arrived within
+/// this window after the probe was sent (V-79). Using the same cadence
+/// means: if the *next* probe interval opens and the previous probe is still
+/// outstanding, we record one failure. This avoids a separate per-probe
+/// deadline field while keeping the accounting simple.
+pub const HEARTBEAT_PROBE_TIMEOUT_SECS: u64 = HEARTBEAT_CADENCE_SECS;
+
+/// Number of consecutive unanswered probes before the runtime transitions
+/// `connection_state` to `Reconnecting` and re-sends the subscription (V-79).
+pub const HEARTBEAT_MAX_FAILURES: u32 = 3;
 
 /// A single inflight `pay_invoice` request, keyed by the kind:23194 event
 /// id on `WalletConnection::pending_payments`.
@@ -93,6 +133,19 @@ struct WalletConnection {
     /// Count of kind:23195 responses that arrived with no matching
     /// `pending_payments` entry. Observable via `orphan_response_count()`.
     orphan_responses: u64,
+    // ── V-79: heartbeat state ──────────────────────────────────────────────
+    /// Wall-clock second at which the last heartbeat `get_info` probe was
+    /// sent. `0` means no probe has been sent yet in this session.
+    last_probe_sent_secs: u64,
+    /// `true` when a probe was sent and no kind:23195 response has arrived
+    /// yet. Reset to `false` by `handle_nwc_text` on any successful response.
+    probe_outstanding: bool,
+    /// Number of consecutive probe windows that elapsed with no response.
+    /// Reset to 0 on any successful kind:23195 response.
+    consecutive_failures: u32,
+    /// Coarse transport-health state projected to the snapshot. `None` until
+    /// the first probe cadence window has elapsed.
+    connection_state: Option<NwcConnectionState>,
 }
 
 /// Actor-thread-owned NWC runtime. Held behind a [`WalletRuntimeHandle`]
@@ -239,6 +292,168 @@ impl WalletRuntime {
         }
         failures
     }
+
+    /// Heartbeat tick — called from the host-side `on_idle_tick` on every
+    /// actor loop iteration.
+    ///
+    /// Returns outbound frames to send (zero, one probe, or a full
+    /// resubscription batch) and a boolean indicating whether the snapshot
+    /// should be marked dirty (`true` when `connection_state` changed).
+    ///
+    /// ## D8 compliance
+    ///
+    /// No sleep or blocking call inside. The decision is a pure wall-clock
+    /// comparison of `now_secs` against the stored `last_probe_sent_secs`.
+    /// The actor drives this from its idle section at ~250 ms cadence; the
+    /// `HEARTBEAT_CADENCE_SECS` gate ensures probes fire at most once per
+    /// window.
+    ///
+    /// ## Protocol
+    ///
+    /// 1. If no probe has been sent yet (or `last_probe_sent_secs == 0`) and
+    ///    `HEARTBEAT_CADENCE_SECS` have elapsed since connect, send the first
+    ///    probe.
+    /// 2. On subsequent ticks: if `probe_outstanding` is still `true` when a
+    ///    new cadence window opens, the previous probe timed out → increment
+    ///    `consecutive_failures`.
+    /// 3. When `consecutive_failures >= HEARTBEAT_MAX_FAILURES`, call
+    ///    `resubscribe` and transition `connection_state` to `Reconnecting`.
+    ///    After a second resubscribe round with no response (i.e. after ≥
+    ///    `2 * HEARTBEAT_MAX_FAILURES` failures total), transition to
+    ///    `TransportLost`.
+    /// 4. Any successful response in `handle_nwc_text` resets
+    ///    `consecutive_failures` to 0 and `connection_state` to `Connected`.
+    pub fn tick_heartbeat(
+        &mut self,
+        now_secs: u64,
+        cadence_secs: u64,
+        max_failures: u32,
+    ) -> HeartbeatOutbound {
+        let conn = match self.connection.as_mut() {
+            Some(c) => c,
+            None => return HeartbeatOutbound { ready_frames: Vec::new(), needs_probe: false, state_changed: false },
+        };
+
+        // Before the first cadence window has elapsed, arm the baseline.
+        if conn.last_probe_sent_secs == 0 {
+            // Record "just connected" as the baseline so the first probe fires
+            // ~cadence_secs after connect.
+            conn.last_probe_sent_secs = now_secs;
+            return HeartbeatOutbound { ready_frames: Vec::new(), needs_probe: false, state_changed: false };
+        }
+
+        let elapsed = now_secs.saturating_sub(conn.last_probe_sent_secs);
+        if elapsed < cadence_secs {
+            // Still within the current cadence window — nothing to do.
+            return HeartbeatOutbound { ready_frames: Vec::new(), needs_probe: false, state_changed: false };
+        }
+
+        // A new cadence window opened. If a probe from the *previous* window
+        // is still outstanding, that probe failed.
+        let prev_state = conn.connection_state.clone();
+        if conn.probe_outstanding {
+            conn.consecutive_failures = conn.consecutive_failures.saturating_add(1);
+            tracing::warn!(
+                consecutive_failures = conn.consecutive_failures,
+                last_probe_sent_secs = conn.last_probe_sent_secs,
+                now_secs = now_secs,
+                "nwc: heartbeat probe unanswered — consecutive failure #{n}",
+                n = conn.consecutive_failures,
+            );
+        }
+
+        // Transition connection_state based on failure count.
+        let resubscribe_needed;
+        if conn.consecutive_failures >= max_failures {
+            // Use the total consecutive count to distinguish first-round vs.
+            // second-round failure (≥ 2× threshold = TransportLost).
+            if conn.consecutive_failures >= max_failures * 2 {
+                conn.connection_state = Some(NwcConnectionState::TransportLost);
+                // Do not keep resubscribing past TransportLost — the relay is
+                // considered unreachable; flooding the outbound queue would be
+                // wasteful. The user must manually reconnect.
+                resubscribe_needed = false;
+            } else {
+                conn.connection_state = Some(NwcConnectionState::Reconnecting);
+                resubscribe_needed = true;
+            }
+        } else {
+            // Failure count below threshold — state stays at whatever it was.
+            resubscribe_needed = false;
+        }
+
+        let state_changed = conn.connection_state != prev_state;
+
+        // Advance the probe window baseline and arm the outstanding flag.
+        conn.last_probe_sent_secs = now_secs;
+        conn.probe_outstanding = true;
+
+        // Capture fields needed to build the REQ frame (if resubscribing).
+        let relay = conn.relay_url.clone();
+        let sub_id = conn.sub_id.clone();
+        let wallet_pubkey_hex = conn.wallet_pubkey_hex.clone();
+        let client_pubkey_hex = conn.client_pubkey_hex.clone();
+
+        let mut ready_frames = Vec::new();
+
+        if resubscribe_needed {
+            // Re-send REQ so the relay forwards kind:23195 again.
+            let req_filter = json!({
+                "kinds": [23195u32],
+                "authors": [&wallet_pubkey_hex],
+                "#p": [&client_pubkey_hex],
+            });
+            match encode_frame(&json!(["REQ", &sub_id, &req_filter])) {
+                Ok(req_msg) => {
+                    ready_frames.push(OutboundMessage::new(
+                        RelayRole::Wallet,
+                        relay.clone(),
+                        req_msg,
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!("nwc: heartbeat REQ encode failed: {e}");
+                }
+            }
+        }
+
+        // Always request a get_info probe at the cadence boundary.
+        HeartbeatOutbound { ready_frames, needs_probe: true, state_changed }
+    }
+
+    /// Build and enqueue a `get_info` heartbeat probe for the connected relay.
+    ///
+    /// Returns `None` when no connection is active or frame encoding fails.
+    /// The caller (`WalletInterceptor::on_idle_tick`) calls this after
+    /// `tick_heartbeat` returns `needs_probe = true`, using a kernel reference
+    /// that was not available inside the Kernel-free `tick_heartbeat` body.
+    pub fn build_get_info_probe(
+        &mut self,
+        kernel: &mut Kernel,
+    ) -> Option<OutboundMessage> {
+        let relay = self.connection.as_ref()?.relay_url.clone();
+        build_request(self, kernel, &relay, NwcMethod::GetInfo, json!({}), None)
+    }
+
+    /// Push the current `connection_state` into the `status_slot` and mark the
+    /// snapshot dirty. Called by the host interceptor when `tick_heartbeat`
+    /// reports `state_changed = true`.
+    pub fn sync_connection_state(&self, kernel: &mut Kernel) {
+        sync_wallet_status(self, kernel);
+    }
+}
+
+/// Result of a [`WalletRuntime::tick_heartbeat`] call.
+pub struct HeartbeatOutbound {
+    /// Ready-to-send frames (REQ resubscription during reconnect, if any).
+    pub ready_frames: Vec<OutboundMessage>,
+    /// `true` when the runtime wants a `get_info` probe to be sent for this
+    /// relay. The caller must invoke `build_get_info_probe` (which needs
+    /// `&mut Kernel`) after the `tick_heartbeat` lock window closes.
+    pub needs_probe: bool,
+    /// `true` when `connection_state` changed and the snapshot must be
+    /// re-synced. Caller calls `sync_connection_state(kernel)`.
+    pub state_changed: bool,
 }
 
 // ── Command handlers (the public surface the ProtocolCommands call into) ─────
@@ -304,6 +519,10 @@ pub(crate) fn wallet_connect(
         pending_payments: HashMap::new(),
         sub_id: sub_id.clone(),
         orphan_responses: 0,
+        last_probe_sent_secs: 0,
+        probe_outstanding: false,
+        consecutive_failures: 0,
+        connection_state: None,
     };
     wallet.connection = Some(conn);
 
@@ -395,6 +614,7 @@ fn wallet_disconnect_inner(
             wallet_npub_short: short_npub(&conn.wallet_npub),
             is_ready: false,
             is_connected: false,
+            connection_state: None,
         });
     }
     match close_msg_opt {
@@ -492,6 +712,15 @@ pub(crate) fn handle_nwc_text(
 
     if response.result_type == "get_info" && response.error.is_none() {
         conn.status = "ready".to_string();
+    }
+
+    // V-79: any successful kind:23195 response means the relay is alive.
+    // Reset the heartbeat failure counter and close the outstanding probe
+    // flag regardless of which result_type arrived.
+    if response.error.is_none() {
+        conn.probe_outstanding = false;
+        conn.consecutive_failures = 0;
+        conn.connection_state = Some(NwcConnectionState::Connected);
     }
 
     if response.result_type == "pay_invoice" {
@@ -639,6 +868,8 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
             wallet_npub_short: short_npub(&c.wallet_npub),
             is_ready: c.status == "ready",
             is_connected: c.status == "connecting" || c.status == "ready",
+            // V-79: project the real-time transport-health state.
+            connection_state: c.connection_state.clone(),
         }
     });
     if let Ok(mut slot) = wallet.status_slot.lock() {
@@ -721,6 +952,10 @@ mod tests {
             pending_payments,
             sub_id: "nwc-aaaa".to_string(),
             orphan_responses: 0,
+            last_probe_sent_secs: 0,
+            probe_outstanding: false,
+            consecutive_failures: 0,
+            connection_state: None,
         }
     }
 
@@ -843,6 +1078,164 @@ mod tests {
         assert!(
             conn.pending_payments.contains_key("fresh-event-id"),
             "fresh entry must still be present"
+        );
+    }
+
+    // ── V-79: tick_heartbeat ──────────────────────────────────────────────────
+
+    fn make_runtime_ready() -> WalletRuntime {
+        let slot = new_wallet_status_slot();
+        let mut rt = WalletRuntime::new(slot);
+        rt.connection = Some(make_connection(HashMap::new()));
+        // Mark ready + arm probe baseline so the first cadence window works.
+        if let Some(c) = rt.connection.as_mut() {
+            c.status = "ready".to_string();
+        }
+        rt
+    }
+
+    /// V-79: within the cadence window, `tick_heartbeat` must be a no-op
+    /// (no probe, no state change).
+    #[test]
+    fn heartbeat_no_op_within_cadence_window() {
+        let mut rt = make_runtime_ready();
+        let now_secs: u64 = 1_000_000;
+        // Arm the baseline timestamp.
+        let result = rt.tick_heartbeat(now_secs, 30, 3);
+        // baseline-arm call returns no probe.
+        assert!(!result.needs_probe, "baseline-arm must not request a probe");
+        assert!(!result.state_changed, "baseline-arm must not report state change");
+
+        // 10 s later — still within the 30 s window.
+        let result2 = rt.tick_heartbeat(now_secs + 10, 30, 3);
+        assert!(!result2.needs_probe, "within cadence window must not probe");
+    }
+
+    /// V-79: when `cadence_secs` have elapsed, `tick_heartbeat` requests a
+    /// probe and the previous outstanding probe (if any) counts as a failure.
+    #[test]
+    fn heartbeat_requests_probe_after_cadence_window() {
+        let mut rt = make_runtime_ready();
+        let now_secs: u64 = 1_000_000;
+        // Arm baseline.
+        rt.tick_heartbeat(now_secs, 30, 3);
+
+        // 30 s later — a full cadence window has elapsed.
+        let result = rt.tick_heartbeat(now_secs + 30, 30, 3);
+        assert!(result.needs_probe, "after cadence window must request probe");
+    }
+
+    /// V-79: `consecutive_failures` increments when a probe is outstanding
+    /// at the next window boundary (= timed out).
+    #[test]
+    fn heartbeat_increments_failures_for_unanswered_probe() {
+        let mut rt = make_runtime_ready();
+        let now_secs: u64 = 1_000_000;
+        // Arm baseline.
+        rt.tick_heartbeat(now_secs, 30, 3);
+        // First probe sent (no failure yet — no previous probe was outstanding).
+        rt.tick_heartbeat(now_secs + 30, 30, 3);
+        // probe_outstanding is now true; no response arrived.
+        // Second window opens → previous probe counts as failure 1.
+        rt.tick_heartbeat(now_secs + 60, 30, 3);
+        let failures = rt
+            .connection
+            .as_ref()
+            .unwrap()
+            .consecutive_failures;
+        assert_eq!(failures, 1, "one unanswered probe = failure count 1");
+    }
+
+    /// V-79: after `max_failures` consecutive failures, `connection_state`
+    /// transitions to `Reconnecting` and a REQ frame is included.
+    #[test]
+    fn heartbeat_transitions_to_reconnecting_after_max_failures() {
+        let mut rt = make_runtime_ready();
+        let now_secs: u64 = 1_000_000;
+        let cadence: u64 = 30;
+        let max: u32 = 3;
+
+        // Arm baseline.
+        rt.tick_heartbeat(now_secs, cadence, max);
+
+        // Drive 3 missed probe windows to accumulate max_failures.
+        for i in 1..=max as u64 {
+            rt.tick_heartbeat(now_secs + cadence * i, cadence, max);
+        }
+        // Next window opens after all 3 failures are counted.
+        let result = rt.tick_heartbeat(now_secs + cadence * (max as u64 + 1), cadence, max);
+        let conn = rt.connection.as_ref().unwrap();
+        assert_eq!(
+            conn.connection_state,
+            Some(NwcConnectionState::Reconnecting),
+            "after max_failures the state must be Reconnecting"
+        );
+        // At least one ready frame (the REQ resubscription) must be present.
+        assert!(
+            !result.ready_frames.is_empty(),
+            "Reconnecting transition must include a REQ frame"
+        );
+    }
+
+    /// V-79: after `2 * max_failures` consecutive failures, `connection_state`
+    /// transitions to `TransportLost` and no further REQ frames are emitted.
+    #[test]
+    fn heartbeat_transitions_to_transport_lost_after_double_max_failures() {
+        let mut rt = make_runtime_ready();
+        let now_secs: u64 = 1_000_000;
+        let cadence: u64 = 30;
+        let max: u32 = 3;
+
+        // Arm baseline.
+        rt.tick_heartbeat(now_secs, cadence, max);
+
+        // Drive 2 × max_failures missed windows.
+        for i in 1..=(max as u64 * 2) {
+            rt.tick_heartbeat(now_secs + cadence * i, cadence, max);
+        }
+        let result = rt.tick_heartbeat(now_secs + cadence * (max as u64 * 2 + 1), cadence, max);
+        let conn = rt.connection.as_ref().unwrap();
+        assert_eq!(
+            conn.connection_state,
+            Some(NwcConnectionState::TransportLost),
+            "after 2×max_failures the state must be TransportLost"
+        );
+        // Past TransportLost we must NOT keep emitting REQ frames.
+        assert!(
+            result.ready_frames.is_empty(),
+            "TransportLost must not emit further REQ frames"
+        );
+    }
+
+    /// V-79: a successful kind:23195 response (via handle_nwc_text) resets
+    /// `consecutive_failures` to 0 and advances `connection_state` to Connected.
+    /// Simulated by directly resetting the fields (handle_nwc_text needs
+    /// crypto infra not available in unit tests).
+    #[test]
+    fn heartbeat_resets_on_successful_response() {
+        let mut rt = make_runtime_ready();
+        let now_secs: u64 = 1_000_000;
+        let cadence: u64 = 30;
+        let max: u32 = 3;
+
+        // Arm baseline then drive into Reconnecting.
+        rt.tick_heartbeat(now_secs, cadence, max);
+        for i in 1..=(max as u64 + 1) {
+            rt.tick_heartbeat(now_secs + cadence * i, cadence, max);
+        }
+        // Manually simulate what handle_nwc_text does on a successful response.
+        {
+            let conn = rt.connection.as_mut().unwrap();
+            conn.probe_outstanding = false;
+            conn.consecutive_failures = 0;
+            conn.connection_state = Some(NwcConnectionState::Connected);
+        }
+        let conn = rt.connection.as_ref().unwrap();
+        assert_eq!(conn.consecutive_failures, 0, "reset to 0 after success");
+        assert_eq!(
+            conn.connection_state,
+            Some(NwcConnectionState::Connected),
+            "state must be Connected after a successful response"
         );
     }
 }

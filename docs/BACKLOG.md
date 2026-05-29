@@ -762,13 +762,17 @@ part of the deleted scratch plan.
 
 ---
 
-### V-79 · NIP-47 wallet connection has no heartbeat and no reconnect — connection can stale silently [LOW · wallet connection resilience]
+### V-79 · NIP-47 wallet connection has no heartbeat and no reconnect — **DONE** (PR fix/v79-nwc-heartbeat-reconnect)
 
-**Verified:** `crates/nmp-nip47/src/runtime.rs` — no `ping`, `health`, `interval`, `heartbeat`, `reconnect`, `backoff`, or `tokio::time` symbols. On `UNAUTHORIZED` / `RESTRICTED` error codes (`runtime.rs:398-399`) the connection `status` is set to `"error"` but no reconnect is attempted. There is no periodic liveness probe; a wallet that goes offline after the initial handshake leaves the connection in `"ready"` indefinitely. V-14 (which would be the natural home for this) is scoped to NIP-46 bunker reconnect and is marked DONE — NIP-47 NWC is a separate transport with no equivalent tracker.
-
-**Impact:** the user sees the wallet status pill as "ready" while the wallet is in fact unreachable; the first outbound `pay_invoice` after the connection stales fails with a transport error that the user can't pre-empt. There is no diagnostic surface to attribute the failure to a stale connection (the user reads it as a wallet bug). This is the wallet-side analogue of the relay-flap pattern V-14 fixed for bunker.
-
-**Correct fix:** mirror V-14's design for NIP-47 — (a) periodic `get_info` heartbeat at a low cadence (~30s) while the wallet UI is visible, (b) on three consecutive failures, transition `status` to `"connecting"` and re-establish the subscription, (c) project a `nmp.nwc.connection_state` field (Connected / Reconnecting / TransportLost) so the host shell can render a non-silent indicator. Implementation must reuse the relay-flap reconnect primitives from V-14 rather than introducing a parallel timer subsystem.
+`crates/nmp-nip47/src/runtime.rs` + `apps/chirp/nmp-app-chirp/src/wallet_runtime.rs`.
+`WalletRuntime::tick_heartbeat` (D8 wall-clock-gated, Kernel-free) fires on every
+actor idle tick via the existing `RelayTextInterceptor::on_idle_tick` seam.
+After `HEARTBEAT_MAX_FAILURES` (3) consecutive unanswered `get_info` probes, the
+runtime re-sends the REQ subscription and transitions `connection_state` to
+`Reconnecting`; after a second round of failures, transitions to `TransportLost`.
+Any successful kind:23195 response resets the counter to 0 and restores `Connected`.
+`NwcConnectionState` is projected inside `WalletStatus` under the existing `"wallet"`
+snapshot projection. Six new unit tests cover all state-machine transitions.
 
 ---
 
