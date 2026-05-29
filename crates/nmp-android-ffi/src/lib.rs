@@ -28,8 +28,8 @@ use jni::JNIEnv;
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
-    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free,
+    nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
     nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start,
     nmp_app_stop, NmpApp,
 };
@@ -122,15 +122,27 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "Android User".to_string());
-    let profile = serde_json::json!({ "name": name }).to_string();
-    let relays = default_chirp_relays_json();
-    let Ok(profile) = CString::new(profile) else {
-        return;
+
+    // Build CreateAccount action envelope
+    let relays_json = default_chirp_relays_json();
+    let action = format!(
+        r#"{{"CreateAccount":{{"profile":{{"name":"{}"}},"relays":{},"mls":false}}}}"#,
+        name, relays_json
+    );
+
+    let namespace = match CString::new("nmp.create_account") {
+        Ok(ns) => ns,
+        Err(_) => return,
     };
-    let Ok(relays) = CString::new(relays) else {
-        return;
+    let action_c = match CString::new(action) {
+        Ok(ac) => ac,
+        Err(_) => return,
     };
-    nmp_app_create_new_account(s.app, profile.as_ptr(), relays.as_ptr(), false);
+
+    let result_ptr = nmp_app_dispatch_action(s.app, namespace.as_ptr(), action_c.as_ptr());
+    if !result_ptr.is_null() {
+        nmp_app_free_string(result_ptr);
+    }
 }
 
 #[no_mangle]
