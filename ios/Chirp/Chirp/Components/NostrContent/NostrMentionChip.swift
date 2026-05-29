@@ -54,36 +54,17 @@ public struct NostrMentionChip: View {
     @ViewBuilder
     private var avatar: some View {
         if let avatarUrl {
-            AsyncImage(url: avatarUrl) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
-                    fallback
-                case .empty:
-                    fallback
-                @unknown default:
-                    fallback
-                }
-            }
-            .frame(width: 16, height: 16)
-            .clipShape(Circle())
+            NostrImageView(url: avatarUrl)
+                .frame(width: 16, height: 16)
+                .clipShape(Circle())
         } else {
             fallback
         }
     }
 
     private var fallback: some View {
-        ZStack {
-            Circle()
-                .fill(NostrIdenticon.color(forPubkey: pubkey))
-            Text(NostrIdenticon.initials(forPubkey: pubkey))
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: 16, height: 16)
+        NostrIdenticon.identiconView(forPubkey: pubkey, size: 16)
+            .clipShape(Circle())
     }
 
     private func shortPubkey(_ value: String) -> String {
