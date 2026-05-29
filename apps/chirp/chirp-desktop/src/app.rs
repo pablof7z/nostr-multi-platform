@@ -46,6 +46,7 @@ pub struct DesktopApp {
     edit_about: String,
     edit_picture: String,
     show_edit_profile: bool,
+    nwc_input: String,
 }
 
 impl DesktopApp {
@@ -90,6 +91,7 @@ impl DesktopApp {
             edit_about: String::new(),
             edit_picture: String::new(),
             show_edit_profile: false,
+            nwc_input: String::new(),
         }
     }
 
@@ -550,6 +552,33 @@ impl DesktopApp {
                         self.edit_picture.clear();
                     }
                 });
+            }
+        }
+
+        ui.add_space(12.0);
+        ui.separator();
+
+        // Wallet section
+        ui.label(RichText::new("Wallet (NIP-47)").strong());
+        ui.horizontal(|ui| {
+            ui.add(
+                TextEdit::singleline(&mut self.nwc_input)
+                    .hint_text("nostr+walletconnect://...")
+                    .desired_width(340.0),
+            );
+            if ui.button("Connect").clicked() && !self.nwc_input.trim().is_empty() {
+                match self.bridge.wallet_connect(self.nwc_input.trim()) {
+                    Ok(_) => {
+                        self.nwc_input.clear();
+                    }
+                    Err(e) => eprintln!("wallet connect error: {e}"),
+                }
+            }
+        });
+        if ui.button("Disconnect Wallet").clicked() {
+            match self.bridge.wallet_disconnect() {
+                Ok(_) => {},
+                Err(e) => eprintln!("wallet disconnect error: {e}"),
             }
         }
 
