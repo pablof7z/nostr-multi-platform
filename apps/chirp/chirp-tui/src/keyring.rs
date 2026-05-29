@@ -1,18 +1,17 @@
 //! Host-side keyring capability handler for chirp-tui.
 //!
-//! Wires the NMP `KeyringCapability` socket to the `keyring` crate so the
-//! local nsec persists across restarts via the OS secret store (macOS
-//! Keychain, Linux Secret Service, Windows Credential Manager).
+//! Wires the NMP `KeyringCapability` socket to file-based session storage so
+//! the local nsec persists across restarts without triggering an OS secret
+//! store dialog (e.g. the macOS Keychain access prompt). Each account's secret
+//! is stored as a plain file under the platform data dir.
 
 use std::ffi::{c_char, c_void, CStr, CString};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-use keyring::Entry;
 use nmp_core::substrate::{
     CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringRequest, KeyringResult,
 };
-
-const KEYRING_SERVICE: &str = "chirp-tui";
 
 pub(crate) fn chirp_data_dir() -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
@@ -24,6 +23,26 @@ pub(crate) fn chirp_data_dir() -> Option<PathBuf> {
         let home = std::env::var_os("HOME")?;
         Some(PathBuf::from(home).join(".local/share/chirp-tui"))
     }
+}
+
+/// Directory holding one secret file per account.
+fn sessions_dir() -> Option<PathBuf> {
+    chirp_data_dir().map(|d| d.join("sessions"))
+}
+
+/// Path to the secret file for `account_id` under `base`.
+///
+/// `account_id` is a nostr pubkey (hex), which is already path-safe. We still
+/// reject any value containing a path separator or NUL to avoid traversal.
+fn session_path_in(base: &Path, account_id: &str) -> Option<PathBuf> {
+    if account_id.is_empty()
+        || account_id.contains('/')
+        || account_id.contains('\\')
+        || account_id.contains('\0')
+    {
+        return None;
+    }
+    Some(base.join(account_id))
 }
 
 pub(crate) extern "C" fn keyring_handler(
@@ -79,31 +98,55 @@ fn error_envelope(namespace: &str, correlation_id: &str) -> String {
 }
 
 fn execute(req: KeyringRequest) -> KeyringResult {
+    let Some(base) = sessions_dir() else {
+        return KeyringResult::error(-1);
+    };
+    execute_in(req, &base)
+}
+
+/// Backend for [`execute`] parameterized on the sessions directory so it can be
+/// exercised against an isolated temp dir in tests without touching the real
+/// store or mutating global environment variables.
+fn execute_in(req: KeyringRequest, base: &Path) -> KeyringResult {
     match req {
         KeyringRequest::Store { account_id, secret } => {
-            match Entry::new(KEYRING_SERVICE, &account_id) {
-                Ok(entry) => match entry.set_password(&secret) {
-                    Ok(()) => KeyringResult::ok(None),
-                    Err(_) => KeyringResult::error(-1),
-                },
+            let Some(path) = session_path_in(base, &account_id) else {
+                return KeyringResult::error(-1);
+            };
+            if fs::create_dir_all(base).is_err() {
+                return KeyringResult::error(-1);
+            }
+            if fs::write(&path, secret.as_bytes()).is_err() {
+                return KeyringResult::error(-1);
+            }
+            // Restrict the on-disk secret to the owner (best effort).
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+            }
+            KeyringResult::ok(None)
+        }
+        KeyringRequest::Retrieve { account_id } => {
+            let Some(path) = session_path_in(base, &account_id) else {
+                return KeyringResult::error(-1);
+            };
+            match fs::read_to_string(&path) {
+                Ok(secret) => KeyringResult::ok(Some(secret)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => KeyringResult::not_found(),
                 Err(_) => KeyringResult::error(-1),
             }
         }
-        KeyringRequest::Retrieve { account_id } => match Entry::new(KEYRING_SERVICE, &account_id) {
-            Ok(entry) => match entry.get_password() {
-                Ok(secret) => KeyringResult::ok(Some(secret)),
-                Err(keyring::Error::NoEntry) => KeyringResult::not_found(),
+        KeyringRequest::Delete { account_id } => {
+            let Some(path) = session_path_in(base, &account_id) else {
+                return KeyringResult::error(-1);
+            };
+            match fs::remove_file(&path) {
+                Ok(()) => KeyringResult::ok(None),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => KeyringResult::ok(None),
                 Err(_) => KeyringResult::error(-1),
-            },
-            Err(_) => KeyringResult::error(-1),
-        },
-        KeyringRequest::Delete { account_id } => match Entry::new(KEYRING_SERVICE, &account_id) {
-            Ok(entry) => match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => KeyringResult::ok(None),
-                Err(_) => KeyringResult::error(-1),
-            },
-            Err(_) => KeyringResult::error(-1),
-        },
+            }
+        }
     }
 }
 
@@ -125,5 +168,67 @@ mod tests {
         let result: KeyringResult =
             serde_json::from_str(v["result_json"].as_str().unwrap()).unwrap();
         assert_eq!(result, KeyringResult::error(-50));
+    }
+
+    #[test]
+    fn session_path_rejects_traversal() {
+        let base = Path::new("/tmp/chirp-test-base");
+        assert!(session_path_in(base, "").is_none());
+        assert!(session_path_in(base, "../escape").is_none());
+        assert!(session_path_in(base, "a/b").is_none());
+        assert!(session_path_in(base, "deadbeef").is_some());
+    }
+
+    #[test]
+    fn store_retrieve_delete_roundtrip() {
+        // Isolate to a unique temp dir; no global env mutation, so this is safe
+        // to run in parallel with the other tests in this binary.
+        let base = std::env::temp_dir().join(format!(
+            "chirp-tui-keyring-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+
+        let account = "deadbeefcafe";
+        let secret = "nsec1examplesecretvalue";
+
+        // Missing → not_found.
+        assert_eq!(
+            execute_in(KeyringRequest::Retrieve { account_id: account.to_string() }, &base),
+            KeyringResult::not_found()
+        );
+
+        // Store → ok.
+        assert_eq!(
+            execute_in(
+                KeyringRequest::Store {
+                    account_id: account.to_string(),
+                    secret: secret.to_string(),
+                },
+                &base
+            ),
+            KeyringResult::ok(None)
+        );
+
+        // Retrieve → ok(secret).
+        assert_eq!(
+            execute_in(KeyringRequest::Retrieve { account_id: account.to_string() }, &base),
+            KeyringResult::ok(Some(secret.to_string()))
+        );
+
+        // Delete → ok.
+        assert_eq!(
+            execute_in(KeyringRequest::Delete { account_id: account.to_string() }, &base),
+            KeyringResult::ok(None)
+        );
+
+        // Deleting again (missing) → still ok.
+        assert_eq!(
+            execute_in(KeyringRequest::Delete { account_id: account.to_string() }, &base),
+            KeyringResult::ok(None)
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 }

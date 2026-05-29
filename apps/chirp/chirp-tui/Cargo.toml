@@ -33,7 +33,6 @@ color-eyre = "0.6"
 crossterm = "0.29"
 fastrand = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
 ratatui = { version = "0.30", features = ["crossterm"] }
 ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
 serde_json = "1.0"
