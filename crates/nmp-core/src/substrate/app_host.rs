@@ -102,4 +102,14 @@ pub trait AppHost: ActionRegistrar {
         -> Option<RawEventObserverId>;
 
     fn relay_edit_rows_handle(&self) -> RelayEditRowsSlot;
+
+    /// Register the host-supplied fallback relay URL for client-initiated
+    /// NIP-46 `nostrconnect://` handshakes.
+    ///
+    /// Must be called before `nmp_app_start`. The composition root
+    /// (`nmp_app_template::register_defaults`) supplies a sane default; a
+    /// per-app crate may override it. When no URL has been registered the
+    /// substrate surfaces a typed error rather than silently using a hardcoded
+    /// URL (V-65 / D0).
+    fn set_nostrconnect_bootstrap_relay(&self, url: String);
 }

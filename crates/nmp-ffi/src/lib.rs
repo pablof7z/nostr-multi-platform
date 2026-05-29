@@ -166,11 +166,12 @@ use nmp_core::__ffi_internal::{
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
     new_dm_inbox_observer_id_slot, new_event_store_slot, new_mls_local_nsec_slot,
-    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
-    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
-    ActiveAccountSlot, ActiveLocalKeysSlot, DmInboxObserverIdSlot, EventStoreSlot, MlsLocalNsecSlot,
-    PublishResolverSlot, RawEventForwardPolicySlot, RoutingSubstrateSlot, RoutingTraceSlot,
-    SingletonEventObserverIdSlot, StoragePathSlot,
+    new_nostrconnect_bootstrap_relay_slot, new_publish_resolver_slot,
+    new_raw_event_forward_policy_slot, new_routing_substrate_slot, new_routing_trace_slot,
+    new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveAccountSlot,
+    ActiveLocalKeysSlot, DmInboxObserverIdSlot, EventStoreSlot, MlsLocalNsecSlot,
+    NostrConnectBootstrapRelaySlot, PublishResolverSlot, RawEventForwardPolicySlot,
+    RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::{
@@ -281,6 +282,19 @@ pub struct NmpApp {
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp` and the typed wrapper makes
     /// the slot's purpose visible at the declaration site.
     relay_edit_rows: nmp_core::RelayEditRowsSlot,
+    /// V-65 — host-supplied bootstrap relay URL for client-initiated NIP-46
+    /// `nostrconnect://` handshakes when the user has no configured write relay.
+    ///
+    /// Written by the composition root (via [`AppHost::set_nostrconnect_bootstrap_relay`])
+    /// before `nmp_app_start`; read on the FFI thread when
+    /// [`NmpApp::nostrconnect_relay_url`] is called. `None` (the default)
+    /// means no bootstrap relay was registered: the caller receives an error
+    /// rather than a silent third-party-URL fallback (D0 / V-65).
+    ///
+    /// D14: `Arc<Mutex<Option<String>>>` is NOT the banned
+    /// `Arc<Mutex<Vec<…>>>` shape. The slot is not shared with the actor
+    /// thread — no actor clone is handed to `run_actor_with_observers`.
+    nostrconnect_bootstrap_relay: NostrConnectBootstrapRelaySlot,
     /// Raw bech32 nsec (`nsec1…`) for app crates that need local key material
     /// for MLS (ADR-0025 exception; only the nmp-marmot crate holds the D13
     /// doctrine-allow). The actor thread writes this after every identity
@@ -665,6 +679,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // Typed slot constructor — see `kernel/relay_projection.rs`.
     let relay_edit_rows: nmp_core::RelayEditRowsSlot = new_relay_edit_rows_slot();
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
+    // V-65 — host-supplied bootstrap relay for client-initiated NIP-46
+    // `nostrconnect://` handshakes. Default `None`; the composition root
+    // (e.g. `nmp_app_template::register_defaults`) writes a sane default via
+    // `NmpApp::set_nostrconnect_bootstrap_relay` before `nmp_app_start`. Unlike
+    // the relay-edit-rows slot, this is NOT shared with the actor thread
+    // (the read path is FFI-synchronous on the calling thread).
+    let nostrconnect_bootstrap_relay: NostrConnectBootstrapRelaySlot =
+        new_nostrconnect_bootstrap_relay_slot();
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::mls_local_nsec.
     let mls_local_nsec: MlsLocalNsecSlot = new_mls_local_nsec_slot();
@@ -942,6 +964,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         nip17_dm_inbox_observer_id,
         singleton_event_observer_id,
         relay_edit_rows,
+        nostrconnect_bootstrap_relay,
         mls_local_nsec,
         active_local_keys,
         active_account_handle,
@@ -1936,17 +1959,31 @@ impl NmpApp {
     }
 
     /// Choose the relay for a client-initiated NIP-46 `nostrconnect://`
-    /// handshake from the shared kernel relay-edit projection. Empty or
-    /// poisoned state falls back through the same Rust-owned policy as an app
-    /// with no configured write relays.
+    /// handshake.
+    ///
+    /// Resolution order:
+    /// 1. First write-capable relay in the user's configured relay-edit rows.
+    /// 2. The host-registered bootstrap relay
+    ///    (`set_nostrconnect_bootstrap_relay`), if any.
+    ///
+    /// Returns `None` when neither a write relay nor a bootstrap relay is
+    /// configured — the caller must handle this as a typed error rather than
+    /// falling back to any hardcoded URL (V-65 / D0).
     #[must_use]
-    pub fn nostrconnect_relay_url(&self) -> String {
-        let Ok(guard) = self.relay_edit_rows.lock() else {
-            return nmp_core::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
-        };
-        // Typed slot — iterate via `as_slice()` so the inner `Vec`
-        // never leaks through this consumer.
-        nostrconnect_relay_url(guard.as_slice().iter().map(|row| (row.url(), row.role())))
+    pub fn nostrconnect_relay_url(&self) -> Option<String> {
+        // 1. Try the user's configured write relay.
+        if let Ok(guard) = self.relay_edit_rows.lock() {
+            if let Some(url) =
+                nostrconnect_relay_url(guard.as_slice().iter().map(|row| (row.url(), row.role())))
+            {
+                return Some(url);
+            }
+        }
+        // 2. Fall back to the host-registered bootstrap relay (V-65).
+        self.nostrconnect_bootstrap_relay
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 }
 
@@ -2083,6 +2120,12 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {
         NmpApp::relay_edit_rows_handle(self)
+    }
+
+    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
+        if let Ok(mut guard) = self.nostrconnect_bootstrap_relay.lock() {
+            *guard = Some(url);
+        }
     }
 }
 
