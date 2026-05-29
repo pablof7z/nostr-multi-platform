@@ -16,6 +16,7 @@ struct ChirpApp: App {
         WindowGroup {
             RootShell()
                 .environmentObject(model)
+                .environment(\.nostrProfileHost, model)
                 .tint(ChirpColor.accent)
                 .task { model.start() }
                 .onOpenURL { url in
