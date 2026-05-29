@@ -204,6 +204,10 @@ object KernelUpdateFrameDecoder {
             timeline = m["timeline"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
             claimedProfiles = m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
+            // Pre-merged profile map (claimed > author_view > mention) shipped by
+            // the kernel (PR #812); the UI reads this single key instead of
+            // re-deriving the precedence per-platform.
+            resolvedProfiles = m["resolvedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             authorView = m["authorView"]?.let { decodeAuthorView(it) },
             // "nmp.nip17.dm_inbox" → after convertFromSnakeCase → "nmp.nip17.dmInbox"
             dmInbox = m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },

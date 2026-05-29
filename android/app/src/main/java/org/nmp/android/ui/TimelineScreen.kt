@@ -47,6 +47,7 @@ import org.nmp.android.KernelModel
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpRootCard
 import org.nmp.android.model.ModuleTimelineBlock
+import org.nmp.android.model.ProfileCard
 import org.nmp.android.model.StandaloneTimelineBlock
 import org.nmp.android.model.TimelineBlock
 import org.nmp.android.model.TimelineItem
@@ -64,6 +65,19 @@ import org.nmp.android.model.TimelineItem
 typealias ProfileClaimer = (pubkey: String, consumerId: String, claim: Boolean) -> Unit
 
 val LocalProfileClaimer = compositionLocalOf<ProfileClaimer?> { null }
+
+/**
+ * Pre-merged author profile map from the kernel's `resolved_profiles`
+ * projection (PR #812), keyed by hex pubkey. The kernel applies canonical
+ * precedence (claimed > author_view > mention) so every consumer reads one
+ * map instead of re-deriving the merge.
+ *
+ * Provided once at each screen root (timeline, profile) and read by [NoteRow]
+ * — including embedded notes rendered via `NostrRichText`, which a parameter
+ * thread would miss. Defaults to an empty map outside a provider scope so the
+ * `shortPubkey` fallback still applies.
+ */
+val LocalResolvedProfiles = compositionLocalOf<Map<String, ProfileCard>> { emptyMap() }
 
 /**
  * Lightweight 64-hex pubkey gate. Mirrors the C-ABI `is_hex_pubkey` guard so
@@ -122,7 +136,12 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         else model.releaseProfile(pubkey, consumerId)
     }
 
-    CompositionLocalProvider(LocalProfileClaimer provides claimer) {
+    val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
+
+    CompositionLocalProvider(
+        LocalProfileClaimer provides claimer,
+        LocalResolvedProfiles provides resolvedProfiles,
+    ) {
         Box(modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 Row(
@@ -305,8 +324,6 @@ internal fun NoteRow(
     embedDepth: Int = 0,
     embedded: Boolean = false,
     model: KernelModel? = null,
-    claimedProfiles: Map<String, String> = emptyMap(),
-    mentionProfiles: Map<String, String> = emptyMap(),
 ) {
     val item = items[eventId]
     val card = cards[eventId]
@@ -327,11 +344,11 @@ internal fun NoteRow(
     } else {
         authorPubkey.ifEmpty { "unknown" }
     }
-    // Resolve author name: prefer card authorDisplayName, then fall back to
-    // claimedProfiles (canonical order per H2), then mentionProfiles, then shortPubkey.
+    // Resolve author name: prefer the typed-feed card authorDisplayName, then
+    // the kernel's pre-merged resolved_profiles (PR #812), then shortPubkey.
+    val resolvedProfiles = LocalResolvedProfiles.current
     val author = card?.authorDisplayName?.nonEmptyOrNull()
-        ?: claimedProfiles[authorPubkey]?.nonEmptyOrNull()
-        ?: mentionProfiles[authorPubkey]?.nonEmptyOrNull()
+        ?: resolvedProfiles[authorPubkey]?.displayName?.nonEmptyOrNull()
         ?: shortPubkey
     val initials = author.take(2).uppercase()
     val color = ""
