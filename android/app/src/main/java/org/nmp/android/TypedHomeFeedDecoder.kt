@@ -1,127 +1,177 @@
 package org.nmp.android
 
 import android.util.Log
-import nmp.nip01.ModularTimelineSnapshot
-import nmp.nip01.TimelineBlockEntry
-import nmp.nip01.TimelineBlockKind
+import nmp.feed.FeedWindow
+import nmp.nip01.OpFeedSnapshot
+import nmp.nip01.ReplyAttribution
+import nmp.nip01.RootCard
 import nmp.nip01.TimelineEventCard
 import org.nmp.android.model.ChirpEventCard
-import org.nmp.android.model.ChirpTimelineSnapshot
-import org.nmp.android.model.ModuleTimelineBlock
-import org.nmp.android.model.StandaloneTimelineBlock
-import org.nmp.android.model.TimelineBlock
+import org.nmp.android.model.ChirpOpFeedSnapshot
+import org.nmp.android.model.ChirpReplyAttribution
+import org.nmp.android.model.ChirpRootCard
+import org.nmp.android.model.TimelineWindowCursor
+import org.nmp.android.model.TimelineWindowPage
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 private const val TAG = "TypedHomeFeedDecoder"
 
 /**
- * Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers NFTS buffer.
+ * Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers `NOFS` buffer
+ * (ADR-0038 Stage T4 / B4) into a [ChirpOpFeedSnapshot] — the Android peer of
+ * the iOS `TypedHomeFeedDecoder` (PR #755, commit 27c0a101).
  *
- * Direct port of iOS `TypedHomeFeedDecoder`. ADR-0037 introduced typed
- * FlatBuffers runtime projections carried alongside the generic snapshot
- * `payload`. The authorized pilot is `nmp.feed.home`, whose full assembled
- * view is the nmp-nip01 `ModularTimelineSnapshot` (schema_id =
- * "nmp.nip01.timeline", file_identifier = "NFTS").
+ * ADR-0037 introduced typed FlatBuffers runtime projections carried alongside
+ * the generic snapshot `payload`. The authorized pilot is `nmp.feed.home`,
+ * whose OP-centric view is the nmp-feed `RootFeedSnapshot<TimelineEventCard,
+ * Nip10ReplyAttribution>` (`schema_id = "nmp.nip01.opfeed"`, `file_identifier
+ * = "NOFS"`). The retired NFTS descriptor (`nmp.nip01.timeline`) is no longer
+ * preferred — an `NFTS`-tagged entry is treated as unrecognized and falls
+ * through to the generic projection (ADR-0037 Commitment 4).
  *
- * Falls back gracefully — returns an empty [ChirpTimelineSnapshot] when the
+ * Every entry point falls back gracefully — it returns `null` when the
  * projection is absent, carries the wrong schema id, or cannot be verified as
- * a well-formed NFTS buffer. Callers treat this as "no typed feed available"
- * and keep rendering whatever they had.
+ * a well-formed `NOFS` buffer. Hosts treat `null` as "no typed feed available"
+ * and keep rendering the generic snapshot.
+ *
+ * CONSUMER STATUS — this decoder is currently exercised only by
+ * `OpFeedDecoderTest` (JVM unit test). It is intentionally NOT wired into the
+ * render preference (`KernelModel.decodeUpdate`): the typed [TimelineEventCard]
+ * carries its content tree as embedded `NFCT` bytes and its relation counts as
+ * a typed sub-table, but Android has no Kotlin `NFCT` decoder — so the mapped
+ * [ChirpEventCard.contentTree] stays null here (and Android does not model
+ * relation counts at all). Decoding the typed path into the render would show
+ * blank content. Flipping the runtime preference is a follow-up that first
+ * needs a Kotlin `NFCT` decoder (the same V-84-class follow-up that gates iOS).
+ * This matches the iOS T3 decoder-only posture exactly.
  */
 object TypedHomeFeedDecoder {
 
     /** Projection key published by the kernel (`TypedProjection.key`). */
     const val PROJECTION_KEY = "nmp.feed.home"
 
-    /** Schema id carried in `TypedPayload.schema_id` for the NFTS wire. */
-    const val SCHEMA_ID = "nmp.nip01.timeline"
+    /** Schema id carried in `TypedPayload.schema_id` for the NOFS wire. */
+    const val SCHEMA_ID = "nmp.nip01.opfeed"
 
-    /** FlatBuffers `file_identifier` for `ModularTimelineSnapshot`. */
-    const val FILE_IDENTIFIER = "NFTS"
+    /** FlatBuffers `file_identifier` for `OpFeedSnapshot`. */
+    const val FILE_IDENTIFIER = "NOFS"
 
     /**
      * Extract and decode the `nmp.feed.home` typed payload from a list of
      * [TypedProjectionEnvelope]s lifted off a snapshot frame.
      *
-     * Mirrors iOS `TypedHomeFeedDecoder.decode(from:)`.
+     * Mirrors iOS `TypedHomeFeedDecoder.decode(from:)`. Returns `null` (no
+     * typed feed) when the matching NOFS entry is absent or empty.
      */
-    fun decode(projections: List<TypedProjectionEnvelope>): ChirpTimelineSnapshot {
+    fun decode(projections: List<TypedProjectionEnvelope>): ChirpOpFeedSnapshot? {
         val projection = projections.firstOrNull {
             it.key == PROJECTION_KEY && it.schemaId == SCHEMA_ID
-        } ?: return ChirpTimelineSnapshot()
-        if (projection.payload.isEmpty()) return ChirpTimelineSnapshot()
+        } ?: return null
+        if (projection.payload.isEmpty()) return null
         return decode(projection.payload)
     }
 
     /**
-     * Decode a raw NFTS FlatBuffers buffer into a [ChirpTimelineSnapshot].
+     * Decode a raw `NOFS` FlatBuffers buffer into a [ChirpOpFeedSnapshot].
      *
      * Mirrors iOS `TypedHomeFeedDecoder.decode(bytes:)`. Verifies the
-     * file_identifier before reading any fields; returns an empty snapshot on
-     * any parse error.
+     * file_identifier before reading any fields; returns `null` on any parse
+     * error so the host falls back to the generic projection.
      */
-    fun decode(bytes: ByteArray): ChirpTimelineSnapshot {
-        if (bytes.isEmpty()) return ChirpTimelineSnapshot()
+    fun decode(bytes: ByteArray): ChirpOpFeedSnapshot? {
+        if (bytes.isEmpty()) return null
         return try {
             val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-            if (!ModularTimelineSnapshot.ModularTimelineSnapshotBufferHasIdentifier(bb)) {
-                Log.e(TAG, "NFTS file_identifier missing (${bytes.size} bytes)")
-                return ChirpTimelineSnapshot()
+            if (!OpFeedSnapshot.OpFeedSnapshotBufferHasIdentifier(bb)) {
+                Log.e(TAG, "NOFS file_identifier missing (${bytes.size} bytes)")
+                return null
             }
-            val snapshot = ModularTimelineSnapshot.getRootAsModularTimelineSnapshot(bb)
-            val blocks = buildList {
-                for (i in 0 until snapshot.blocksLength) {
-                    val entry = snapshot.blocks(i) ?: continue
-                    add(makeBlock(entry))
-                }
-            }
+            val snapshot = OpFeedSnapshot.getRootAsOpFeedSnapshot(bb)
             val cards = buildList {
                 for (i in 0 until snapshot.cardsLength) {
-                    val card = snapshot.cards(i) ?: continue
-                    makeCard(card)?.let { add(it) }
+                    val root = snapshot.cards(i) ?: continue
+                    add(makeRootCard(root))
                 }
             }
-            ChirpTimelineSnapshot(blocks = blocks, cards = cards)
+            val page = if (snapshot.hasPage) decodePage(snapshot) else null
+            ChirpOpFeedSnapshot(cards = cards, page = page)
         } catch (e: Exception) {
-            Log.e(TAG, "NFTS decode error: ${e.message} bytes=${bytes.size}")
-            ChirpTimelineSnapshot()
+            Log.e(TAG, "NOFS decode error: ${e.message} bytes=${bytes.size}")
+            null
         }
     }
 
-    private fun makeBlock(entry: TimelineBlockEntry): TimelineBlock {
-        return when (entry.kind) {
-            TimelineBlockKind.Standalone -> {
-                val id = entry.standaloneId ?: ""
-                StandaloneTimelineBlock(eventId = id)
+    // ── Card mapping ─────────────────────────────────────────────────────────
+
+    private fun makeRootCard(root: RootCard): ChirpRootCard {
+        val attribution = buildList {
+            for (i in 0 until root.attributionLength) {
+                val entry = root.attribution(i) ?: continue
+                add(makeAttribution(entry))
             }
-            TimelineBlockKind.Module -> {
-                val eventIds = buildList {
-                    for (i in 0 until entry.moduleEventIdsLength) {
-                        val blockEventId = entry.moduleEventIds(i) ?: continue
-                        val id = blockEventId.id ?: continue
-                        add(id)
-                    }
-                }
-                ModuleTimelineBlock(events = eventIds, hasGap = entry.moduleHasGap)
-            }
-            else -> StandaloneTimelineBlock(eventId = "")
         }
+        return ChirpRootCard(card = makeCard(root.card), attribution = attribution)
     }
 
-    private fun makeCard(card: TimelineEventCard): ChirpEventCard? {
-        // A card without an id is unusable for diffing/rendering — drop it.
-        val id = card.id ?: return null
+    private fun makeCard(card: TimelineEventCard?): ChirpEventCard {
         return ChirpEventCard(
-            id = id,
-            authorPubkey = card.authorPubkey ?: "",
-            kind = card.kind.toInt(),
-            createdAt = card.createdAt.toLong(),
-            content = card.content ?: "",
-            // Honour the has_* companion bools: absent means no kind:0 seen yet.
-            authorDisplayName = if (card.hasAuthorDisplayName) card.authorDisplayName else null,
-            authorPictureUrl = if (card.hasAuthorPictureUrl) card.authorPictureUrl else null,
-            contentPreview = card.contentPreview ?: "",
+            id = card?.id ?: "",
+            authorPubkey = card?.authorPubkey ?: "",
+            kind = (card?.kind ?: 0u).toInt(),
+            createdAt = (card?.createdAt ?: 0UL).toLong(),
+            content = card?.content ?: "",
+            // The typed card carries its content tree as embedded NFCT bytes
+            // (`content_tree_bytes`); Android has no Kotlin NFCT decoder, so this
+            // stays null here. The generic `Value` path fills it from JSON. See
+            // the file header — render-completeness for the typed path is a
+            // follow-up. The field is nullable in the model, so null is valid.
+            contentTree = null,
+            // ADR-0032: `has_*` companion bool distinguishes "absent (no kind:0
+            // yet)" from "present empty string".
+            authorDisplayName = if (card?.hasAuthorDisplayName == true) card.authorDisplayName else null,
+            authorPictureUrl = if (card?.hasAuthorPictureUrl == true) card.authorPictureUrl else null,
+            contentPreview = card?.contentPreview ?: "",
+        )
+    }
+
+    private fun makeAttribution(entry: ReplyAttribution): ChirpReplyAttribution {
+        return ChirpReplyAttribution(
+            authorPubkey = entry.authorPubkey ?: "",
+            authorDisplayName = if (entry.hasAuthorDisplayName) entry.authorDisplayName else null,
+            authorPictureUrl = if (entry.hasAuthorPictureUrl) entry.authorPictureUrl else null,
+            replyEventId = entry.replyEventId ?: "",
+            replyCreatedAt = entry.replyCreatedAt,
+        )
+    }
+
+    // ── Feed-window (NFWM) sub-buffer → page ──────────────────────────────────
+
+    /**
+     * Decode the embedded `feed_window_bytes` (`NFWM`) sub-buffer and map its
+     * `FeedPage` to the [TimelineWindowPage] the renderer paginates on. Returns
+     * `null` when the window is absent, malformed, or carries no page (the
+     * generic decoder likewise ignores `metrics`, so this maps page only).
+     */
+    private fun decodePage(snapshot: OpFeedSnapshot): TimelineWindowPage? {
+        if (snapshot.feedWindowBytesLength == 0) return null
+        // `feedWindowBytesAsByteBuffer` is non-null for this generated table
+        // (the `[ubyte]` accessor); the length guard above rules out an empty
+        // window, so the slice is a well-formed embedded NFWM buffer.
+        val windowBuffer = snapshot.feedWindowBytesAsByteBuffer
+        windowBuffer.order(ByteOrder.LITTLE_ENDIAN)
+        if (!FeedWindow.FeedWindowBufferHasIdentifier(windowBuffer)) return null
+        val window = FeedWindow.getRootAsFeedWindow(windowBuffer)
+        val page = window.page ?: return null
+        val cursor = page.nextCursor?.let { raw ->
+            val id = raw.id ?: return@let null
+            TimelineWindowCursor(createdAt = raw.createdAt, id = id)
+        }
+        return TimelineWindowPage(
+            limit = page.limit,
+            nextCursor = cursor,
+            hasMore = page.hasMore,
+            totalBlocks = page.totalBlocks,
         )
     }
 }

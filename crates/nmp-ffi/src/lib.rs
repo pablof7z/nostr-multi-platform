@@ -11,6 +11,11 @@
 #[cfg(test)]
 #[path = "active_account_handle_tests.rs"]
 mod active_account_handle_tests;
+// V-83 — `NmpApp::event_by_id()` synchronous event-read tests (real event
+// ingest driven through the actor thread; publish-back slot survives Reset).
+#[cfg(test)]
+#[path = "event_by_id_tests.rs"]
+mod event_by_id_tests;
 mod action;
 mod capability;
 mod event_observer;
@@ -159,12 +164,13 @@ use nmp_core::__ffi_internal::{
 // host (per-app crate) constructs the slot and registers it via
 // `register_snapshot_projection("wallet", …)` itself.
 use nmp_core::slots::{
-    new_active_account_slot, new_active_local_keys_slot, new_dm_inbox_observer_id_slot,
-    new_mls_local_nsec_slot, new_publish_resolver_slot, new_raw_event_forward_policy_slot,
-    new_routing_substrate_slot, new_routing_trace_slot, new_singleton_event_observer_id_slot,
-    new_storage_path_slot, ActiveAccountSlot, ActiveLocalKeysSlot, DmInboxObserverIdSlot,
-    MlsLocalNsecSlot, PublishResolverSlot, RawEventForwardPolicySlot, RoutingSubstrateSlot,
-    RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
+    event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
+    new_dm_inbox_observer_id_slot, new_event_store_slot, new_mls_local_nsec_slot,
+    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
+    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, DmInboxObserverIdSlot, EventStoreSlot, MlsLocalNsecSlot,
+    PublishResolverSlot, RawEventForwardPolicySlot, RoutingSubstrateSlot, RoutingTraceSlot,
+    SingletonEventObserverIdSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::{
@@ -321,6 +327,20 @@ pub struct NmpApp {
     /// root (rung 7) and Chirp: host code reads the live active account and
     /// drives `ActiveFollowSet::notify_account_changed` on a switch.
     active_account_handle: ActiveAccountSlot,
+    /// V-83 — the kernel's `EventStore` handle, published back by the actor
+    /// right after kernel construction (and re-published on `Reset`). Unlike
+    /// `active_account_handle` (host-constructed, handed down), the store is
+    /// **kernel-built** (`build_event_store` inside the kernel constructor), so
+    /// this follows the `routing_trace` publish-back pattern: `nmp_app_new`
+    /// mints an empty slot, hands an `Arc::clone` to the actor, and the actor
+    /// (the sole writer per D4) publishes `kernel.event_store_handle()` into it.
+    ///
+    /// Host code reads through it synchronously via [`NmpApp::event_by_id`] —
+    /// the V-80 OP-feed engine's repost L-2/L-5 backward-hydration paths resolve
+    /// a locally-cached parent/target event id this way instead of degrading to
+    /// "no card". Substrate-generic: an event id maps to a `KernelEvent` with no
+    /// NIP noun (D0). `None` before `nmp_app_start` (the cold-start state).
+    event_store_handle: EventStoreSlot,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
@@ -663,6 +683,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // mutation IS the slot the host reads — single source of truth.
     let active_account_handle: ActiveAccountSlot = new_active_account_slot();
     let actor_active_account = Arc::clone(&active_account_handle);
+    // V-83 — event-store publish-back slot. The `NmpApp` keeps one `Arc` clone
+    // (read via `NmpApp::event_by_id` / `event_store_handle`); the actor carries
+    // the matching clone and publishes `kernel.event_store_handle()` into it
+    // right after kernel construction (and re-publishes on `Reset`), so the
+    // store the host reads IS the store the kernel writes — no divergent mirror.
+    // Publish-back (kernel-built store), NOT the V-82 hand-down pattern.
+    let event_store_handle: EventStoreSlot = new_event_store_slot();
+    let actor_event_store = Arc::clone(&event_store_handle);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
     // requests during start/sign-in/create/switch/remove.
@@ -868,6 +896,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // `NmpApp::active_account_handle` reads the slot the kernel
                 // actually writes on sign-in / switch / logout.
                 actor_active_account,
+                // V-83 — the actor's clone of the event-store publish-back slot.
+                // The actor publishes `kernel.event_store_handle()` into it after
+                // kernel construction (and re-publishes on `Reset`) so
+                // `NmpApp::event_by_id` reads the live kernel store.
+                actor_event_store,
             );
         }));
         if let Err(e) = result {
@@ -912,6 +945,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         mls_local_nsec,
         active_local_keys,
         active_account_handle,
+        event_store_handle,
         storage_path,
         routing_trace,
         routing_substrate,
@@ -1720,6 +1754,46 @@ impl NmpApp {
     #[must_use]
     pub fn active_account_handle(&self) -> ActiveAccountSlot {
         Arc::clone(&self.active_account_handle)
+    }
+
+    /// V-83 — clone of the kernel's `EventStore` publish-back slot (`Arc`).
+    ///
+    /// Returns the SAME `Arc<Mutex<Option<Arc<dyn EventStore>>>>` the actor
+    /// publishes the kernel's store handle into after kernel construction (and
+    /// re-publishes on `Reset`). Host code that needs a `'static` synchronous
+    /// event reader (e.g. the V-80 OP-feed composition root's `event_lookup`
+    /// closure, which outlives the `&NmpApp` borrow) captures this handle and
+    /// reads through [`event_by_id_from_store`] on every call — so a `Reset`
+    /// (which re-publishes a fresh store into the same slot) is observed without
+    /// re-capturing. `None` inside the slot until the actor builds the kernel.
+    ///
+    /// Substrate-generic — the slot holds an `EventStore` handle; an event id
+    /// maps to a `KernelEvent` with no NIP noun (D0). Parallel in shape to
+    /// [`Self::active_account_handle`].
+    #[must_use]
+    pub fn event_store_handle(&self) -> EventStoreSlot {
+        Arc::clone(&self.event_store_handle)
+    }
+
+    /// V-83 — synchronous event-by-id read against the kernel's event store.
+    ///
+    /// Reads the kernel-owned `EventStore` (published into the slot by the
+    /// actor — the sole writer per D4) and returns the
+    /// [`nmp_core::substrate::KernelEvent`] for `id` (a 64-char lowercase hex
+    /// event id), or `None` when the store has
+    /// no such event, `id` is malformed, the store has not been published yet
+    /// (pre-`nmp_app_start`), or a lock is poisoned (D6 — degrades gracefully,
+    /// never panics across the FFI boundary).
+    ///
+    /// `EventStore::get_by_id` is a `&self` read on a `Send + Sync` store; the
+    /// store insert is ordered before the kernel-event observer fan-out
+    /// (`kernel/ingest/timeline.rs`), so a synchronous read from a
+    /// `KernelEventObserver` callback (which runs on the actor thread) observes
+    /// the just-ingested event without re-entrancy: `insert` has already
+    /// released the store's internal lock by the time the fan-out fires.
+    #[must_use]
+    pub fn event_by_id(&self, id: &str) -> Option<nmp_core::substrate::KernelEvent> {
+        event_by_id_from_store(&self.event_store_handle, id)
     }
 
     /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]

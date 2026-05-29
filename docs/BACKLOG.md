@@ -1052,7 +1052,24 @@ nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Master green; Chirp
 unchanged. **Rung-7 note:** the engine's repost cards key the root slot by
 `target_id` (`card.id == target_id`, `ingest.rs:101`), differing from
 `ModularTimelineProjection`'s wrapper-id keying — rung 7's chirp-tui /
-codegen swap must account for this. Rung 7 remains.
+codegen swap must account for this.
+
+**MIGRATION COMPLETE (2026-05-29).** Rung 7 (Chirp cutover, #747) plus the
+ADR-0038 typed-`NOFS` ladder all landed: B1 typed schema/encoder/emission
+(#752), B2 chirp-tui typed decoder (#753), B3 iOS decoder (#755), B4 Android
+decoder (#757), plus V-82 (#745) + V-83 (#756). The OP-centric home feed is
+**LIVE on master**: chirp-tui reads via the typed `NOFS` path; iOS/Android
+read via the generic `RootFeedSnapshot` fallback (their typed decoders ship
+**decoder-only** — wiring them into render needs a Swift/Kotlin NFCT
+content-tree decoder, tracked as **V-84/V-85** below). Behavior verified
+through the real production composition + projection + render via integration
+and unit tests (`op_feed_defaults_test`, `op_feed_repost_hydration_test`,
+chirp-tui snapshot/render-parity, B1 golden-wire, B4 Kotlin golden 5/5).
+**Live tmux / iOS-sim runtime confirmation was blocked by environment only**
+(unsigned-binary macOS keychain prompt; incomplete Xcode-26-beta `UIUtilities`
+framework stubs in `/tmp/LocalFrameworks` + missing `docs/dev/xcode26-workarounds.md`)
+— reproducible by a developer in a configured GUI/Xcode env. See
+[`docs/perf/pending-user-decisions.md`](perf/pending-user-decisions.md).
 
 **Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
 replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
@@ -1225,7 +1242,7 @@ rung 7.
 
 ---
 
-### V-83 · OP-feed `event_lookup` reads the kernel event store (replace no-op closure) [LOW · sub-item of V-80, optimization only]
+### V-83 · OP-feed `event_lookup` reads the kernel event store (replace no-op closure) [LOW · sub-item of V-80, optimization only] — LANDED 2026-05-29 (#756)
 
 **Origin:** rung 6 wires the engine's
 `event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` as a no-op
@@ -1242,7 +1259,36 @@ event-by-id read handle on `NmpApp` (an `Arc<dyn EventStore>` clone, or a
 typed `Kernel::event_by_id` accessor surfaced like `relay_edit_rows_handle`),
 and wire it into the `event_lookup` closure so the engine can resolve a
 locally-cached parent/target immediately instead of waiting for the observer
-re-key. Only matters for repost L-2/L-5 cold-start latency. Post-rung-7.
+re-key. Only matters for repost L-2/L-5 cold-start latency. **DONE 2026-05-29 (#756):**
+landed via a publish-back `EventStoreSlot` + `NmpApp::event_by_id` (single-writer
+actor, Reset-survivable); the no-op closure is replaced and repost L-2/L-5
+hydration is exercised by `op_feed_repost_hydration_test.rs`.
+
+---
+
+### V-84 · iOS Swift NFCT (content-tree) decoder — wire the iOS typed NOFS read into render [MEDIUM · ADR-0038 rollout tail · post-v1]
+
+**Origin (B3, #755):** iOS ships the typed `NOFS` decoder **decoder-only**. It
+is not wired into the render because iOS has **no Swift NFCT content-tree
+decoder** — a typed read would yield blank tweet bodies (`contentTree`
+unfillable). iOS therefore renders the home feed via the generic `Value`
+`RootFeedSnapshot` path (correct, live). Pre-existing gap (the NFTS predecessor
+had it too). **Fix:** build a Swift decoder for the embedded `NFCT` content-tree
+buffer, then flip `TypedHomeFeedDecoder` into the render preference so iOS gets
+the typed hot-path. Behavior is unaffected until then (generic fallback).
+
+### V-85 · Android Kotlin NFCT decoder — wire the Android typed NOFS read into render [LOW · ADR-0038 rollout tail · post-v1]
+
+**Origin (B4, #757):** same as V-84 for Android (gallery). The Kotlin `NOFS`
+decoder ships decoder-only (golden test 5/5); Android renders via the generic
+fallback. Needs a Kotlin NFCT decoder to wire the typed render. Non-blocking.
+
+### V-86 · `ci/check-flatbuffers-version-pins.sh` glob misses the Chirp `nmp/{nip01,feed}` Kotlin tree [LOW · CI hygiene]
+
+**Origin (B4, #757):** the pin-check glob does not cover the newly-added
+Android `nmp/nip01` + `nmp/feed` generated Kotlin bindings (pinned `25.2.10`).
+Pre-existing-shaped gap; extend the glob so the Android NOFS/timeline/feed
+bindings are pin-checked in CI.
 
 ---
 

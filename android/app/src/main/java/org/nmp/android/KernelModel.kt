@@ -122,8 +122,20 @@ class KernelModel : ViewModel() {
                 null
             }
             is KernelDecodedUpdateFrame.Snapshot -> {
-                val typedTimeline = TypedHomeFeedDecoder.decode(frame.typedProjections)
-                frame.update.copy(modularTimeline = typedTimeline)
+                // ADR-0038 Stage T4: the typed `nmp.feed.home` decoder
+                // ([TypedHomeFeedDecoder]) now targets the OP-centric `NOFS`
+                // shape and returns the distinct `ChirpOpFeedSnapshot` type. It
+                // is intentionally NOT wired into the render preference here
+                // (decoder-only, matching the iOS T3 posture): Android has no
+                // Kotlin `NFCT` decoder, so the typed card's content tree cannot
+                // be filled and a typed render would show blank content. Until
+                // that follow-up lands the host always renders the generic
+                // `Value` projection carried in `frame.update.modularTimeline`.
+                // (The prior NFTS wiring overwrote the generic timeline with an
+                // empty NFTS decode anyway — the producer emits `NOFS`, not
+                // `NFTS`, since Stage T1 — so dropping it also fixes a latent
+                // feed-blanking bug.)
+                frame.update
             }
         }
     }

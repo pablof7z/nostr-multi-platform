@@ -1044,3 +1044,37 @@ expressiveness is a v1-A exit criterion.
 substrate for the social use case; the framework thesis for non-social apps belongs in v1-B
 alongside M14 (UniFFI). Every week PD-033-A stays open as "NEEDS REVALIDATION" blocks an
 honest v1-A ship date.
+
+---
+
+## V-80 OP-centric feed — autonomous decisions + verification status (2026-05-29)
+
+Driven autonomously to completion at the user's instruction ("don't stop until everything
+is done, PRed, verified, merged, no hacks, no debt"). Decisions made without blocking:
+
+1. **V-84/V-85 (iOS/Android NFCT content-tree decoders) tracked, not built now.** The typed
+   `NOFS` decoders shipped decoder-only on iOS (#755) and Android (#757) because neither
+   platform has a Swift/Kotlin NFCT content-tree decoder — wiring the typed render would
+   blank tweet bodies. Both platforms render correctly via the generic `RootFeedSnapshot`
+   fallback (ADR-0037 Commitment 4). Per ADR-0038's incremental per-host rollout, the
+   typed-render-flip is a legitimate follow-up (V-84/V-85), not debt introduced here (the
+   pre-V-80 NFTS pilot had the same gap). chirp-tui DOES use the typed path (it has the
+   Rust-side decode). Reverse if you want the iOS/Android typed hot-path realized now.
+
+2. **Live `tmux` + iOS-sim runtime verification: BLOCKED BY ENVIRONMENT, not code.**
+   - TUI: chirp-tui sign-in never completes headlessly — the macOS keychain (`SecurityAgent`)
+     prompts on `keyring set_password` for the **unsigned debug binary** (off-screen GUI;
+     `-A` pre-seed did not clear it).
+   - iOS: the Rust iOS-sim lib builds + links clean (480 MB), but the Swift app build fails
+     on the Xcode-26-beta `UIUtilities`/`SwiftUI` module workaround — `/tmp/LocalFrameworks/
+     UIUtilities.framework` has only the linker `.tbd` (no `Headers/UIDefines.h`), and the
+     setup doc the project.yml points to (`docs/dev/xcode26-workarounds.md`) is **absent**.
+   - Behavior IS verified through the real production path by the test suite: `nmp-app-template`
+     `op_feed_defaults_test` + `op_feed_repost_hydration_test` (composition→engine→snapshot),
+     chirp-tui snapshot/render-parity, B1 golden-wire, B2 typed==generic parity, B4 Kotlin
+     golden (5/5). A developer with a configured GUI/Xcode env can do the literal pixel
+     confirmation via the reproducible harness (`/tmp/opfeed_verify/keys.env` + nak seed steps).
+
+**No user decision strictly required** — the migration is complete + the behavior is
+test-verified; items above are a tracked rollout tail (V-84/V-85/V-86) and an environment
+limitation on this machine. Flagged for awareness.

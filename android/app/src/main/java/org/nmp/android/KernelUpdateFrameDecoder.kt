@@ -40,7 +40,8 @@ sealed interface KernelDecodedUpdateFrame {
  *
  * Mirrors iOS `TypedProjectionEnvelope` (ADR-0037). The [payload] bytes are
  * opaque; hosts that recognise [schemaId] decode them with the matching typed
- * decoder (e.g. [TypedHomeFeedDecoder] for "nmp.nip01.timeline").
+ * decoder (e.g. [TypedHomeFeedDecoder] for "nmp.nip01.opfeed", the OP-centric
+ * `NOFS` home feed — ADR-0038).
  */
 data class TypedProjectionEnvelope(
     val key: String,
