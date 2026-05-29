@@ -117,6 +117,17 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeShowcaseRe
 }
 
 #[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeRegistryJson<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+) -> jstring {
+    match env.new_string(crate::registry::raw_json()) {
+        Ok(js) => js.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
     _env: JNIEnv,
     _class: JClass,
