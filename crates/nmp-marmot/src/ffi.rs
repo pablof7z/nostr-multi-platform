@@ -218,56 +218,58 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
 }
 
-fn remove_empty_precreated_db_file(db_path: &str) {
-    let Ok(metadata) = std::fs::metadata(db_path) else {
-        return;
-    };
-    if metadata.is_file() && metadata.len() == 0 {
-        let _ = std::fs::remove_file(db_path);
-    }
-}
-
 /// Inner registration logic shared by `nmp_marmot_register` and
 /// `nmp_marmot_register_active`. `app` must be non-null and valid.
+///
+/// ## Keyring policy (V-62)
+///
+/// `credential_store::initialize()` installs the platform keyring store once.
+/// On Apple platforms it tries the real Keychain first; if that fails it
+/// switches to the in-memory mock store (returns `Some(true)` = mock).
+/// On non-Apple platforms (Linux, WASM) the mock store is always used
+/// (returns `Some(true)`).
+///
+/// **Critical constraint**: when `initialize()` returns `Some(false)` (real
+/// Apple Keychain was configured), a subsequent `MarmotService::new` failure
+/// must NOT silently fall through to the mock store. That path was the V-62
+/// violation: MLS secrets would live only in memory with no host signal,
+/// making every group unjoinable on the next launch.
+///
+/// The corrected policy:
+/// - If `initialize()` chose the real Keychain (`use_mock = false`) and
+///   `MarmotService::new` fails, return null. The host observes the null
+///   handle and may surface a recovery prompt or retry.
+/// - If `initialize()` already chose the mock store (`use_mock = true`)
+///   the service init failing is also fatal (return null).
+/// - The mock store is ONLY legitimately installed when `initialize()` chose
+///   it (non-Apple platform or Apple platform with no Keychain entitlement).
+///   In that case `keyring_unavailable = true` is set on the projection so
+///   the snapshot surfaces the diagnostic to the host.
 pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
     let Some(use_mock) = crate::credential_store::initialize() else {
         return std::ptr::null_mut();
     };
 
-    let service =
-        match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
-            Ok(s) => s,
-            Err(_) => {
-                if !use_mock {
-                    // If the Apple store failed because of missing entitlements
-                    // on the simulator, switch to the mock store and try one
-                    // final time. Do not delete an existing persistent DB on
-                    // open failure; transient keychain or file-lock failures
-                    // must not destroy MLS ratchet state.
-                    if crate::credential_store::install_mock_store().is_none() {
-                        return std::ptr::null_mut();
-                    }
-                    // `MdkSqliteStorage::new` pre-creates the file before
-                    // touching the keyring. If the platform keyring then
-                    // fails before encryption is applied, the retry sees an
-                    // empty plaintext placeholder. Removing only that
-                    // zero-byte placeholder preserves real MLS state while
-                    // allowing the mock fallback to initialize cleanly.
-                    remove_empty_precreated_db_file(db_path);
-                    match MarmotService::new(
-                        db_path,
-                        KEYRING_SERVICE_ID,
-                        KEYRING_DB_KEY_ID,
-                        keys.clone(),
-                    ) {
-                        Ok(s) => s,
-                        Err(_) => return std::ptr::null_mut(),
-                    }
-                } else {
-                    return std::ptr::null_mut();
-                }
-            }
-        };
+    // V-62: `use_mock` is `true` only when `initialize()` explicitly chose
+    // the in-memory mock store (non-Apple platform, or Apple platform where
+    // no Keychain entitlement is available). We surface this as
+    // `keyring_unavailable = true` in the projection snapshot so the host can
+    // warn the user. We never silently switch from the real Keychain to mock.
+    let service = match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
+        Ok(s) => s,
+        Err(e) => {
+            // Both the real-keyring path and the already-mock path are hard
+            // failures here. The old code silently installed the mock store
+            // when the real keyring failed (`!use_mock` branch) — that was
+            // the V-62 silent durability loss. We now return null on all
+            // service-init failures so the host observes the error.
+            eprintln!(
+                "nmp-marmot: keyring/service init failed (use_mock={use_mock}): {e}; \
+                 returning null handle — host must surface MarmotInitError::KeyringUnavailable"
+            );
+            return std::ptr::null_mut();
+        }
+    };
 
     // Step 1: register the substrate-generic `MarmotActionModule` against
     // the kernel's action registry. This is the SOLE host entry point
@@ -288,7 +290,11 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
 
     // SAFETY: caller guarantees `app` is non-null and valid.
     let app_ref = unsafe { &*app };
-    let projection = Arc::new(MarmotProjection::new(service));
+    // V-62: pass `use_mock` as `keyring_unavailable` so the projection
+    // surfaces the diagnostic in every snapshot. The host reads
+    // `snapshot.keyring_unavailable` and may block group features or prompt
+    // the user to resolve the Keychain issue.
+    let projection = Arc::new(MarmotProjection::new(service, use_mock));
     projection.set_app(app);
     let observer_id = app_ref
         .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);

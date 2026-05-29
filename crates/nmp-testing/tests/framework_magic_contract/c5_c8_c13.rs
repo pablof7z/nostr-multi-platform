@@ -255,6 +255,9 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::{decode_update_frame, UpdateEnvelope};
     use std::time::Duration;
 
+    // A fixed nsec used only in tests (same key as in actor/commands/tests.rs).
+    const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
     let (tx, rx) = spawn_actor();
 
     // Start the actor with a visible limit that will include our injected event.
@@ -264,7 +267,26 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     })
     .expect("send Start");
 
+    // Sign in so OpenContactListSubscription has an active pubkey to work with.
+    // Without an active account, open_contact_list_sub short-circuits to
+    // toast_no_account and follow_feed_kinds stays empty, which means
+    // projections.timeline is absent (D5 snapshot bounding, PR #770 / V-46).
+    tx.send(ActorCommand::SignInNsec {
+        secret: zeroize::Zeroizing::new(TEST_NSEC.to_string()),
+    })
+    .expect("send SignInNsec");
+
+    // Open the timeline view (kind:1) so follow_feed_kinds is non-empty.
+    // D5: projections.timeline is only emitted when the shell has subscribed
+    // via nmp_app_open_timeline (i.e. follow_feed_kinds is non-empty).
+    // The test event is kind:1, so we declare {1} as the feed kinds.
+    tx.send(ActorCommand::OpenContactListSubscription {
+        kinds: std::collections::BTreeSet::from([1u32]),
+    })
+    .expect("send OpenContactListSubscription");
+
     // Build a kind:1 event with a fixed author pubkey (no kind:0 will arrive).
+    // Author is distinct from the signed-in account so no profile auto-arrives.
     let author_pk = "c13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13a";
     let event_id = "c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000";
     let raw = RawEvent {
@@ -279,6 +301,9 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
 
     use nmp_core::store::VerifiedEvent;
     let verified = VerifiedEvent::from_raw_unchecked(raw);
+    // Ingest last: the diag-firehose-stress path pushes directly into
+    // self.timeline regardless of timeline_authors, so follow_feed_kinds
+    // only needs to be set before make_update / snapshot emission.
     tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
         .expect("send IngestPreVerifiedEvents");
 

@@ -621,12 +621,21 @@ impl Kernel {
     /// `ingest_relay_list` flow:
     ///
     /// 1. **Debt A trace fire** — call `route_subscription_relays` with the
-    ///    just-updated author and the canonical content kinds (1+6) so the
-    ///    injected `OutboxRouter`'s trace observer records a routing decision
+    ///    just-updated author and an EMPTY kind slice so the injected
+    ///    `OutboxRouter`'s trace observer records a routing decision
     ///    attributed to lane 1 (`Nip65/Read`) reflecting the freshly-landed
-    ///    state. The synthetic interest mirrors the per-author timeline
-    ///    subscription shape `author_requests` builds; the returned URL set
-    ///    is discarded — only the trace fire matters here.
+    ///    state. The returned URL set is discarded — only the trace fire
+    ///    matters here.
+    ///
+    ///    V-68 / D0: the kind set is NOT a substrate default. This is a
+    ///    mailbox-change observer that fires for *any* author whose NIP-65
+    ///    relay list mutated — it has no app-timeline concept to declare, and
+    ///    is not coupled to the follow-feed's host-declared
+    ///    `follow_feed_kinds`. The read-lane routing decision is independent of
+    ///    `kinds` (`is_discovery_kind` covers only {0, 3, 10000–19999}; content
+    ///    kinds like 1/6 never alter the lane), so passing `&[]` is the honest,
+    ///    policy-free choice — it removes the prior hardcoded `{1, 6}` social
+    ///    default without changing routing behavior.
     ///
     /// 2. **A1 recompile trigger** — enqueue
     ///    [`crate::subs::CompileTrigger::Nip65Arrived`] so the M2 subscription
@@ -646,7 +655,7 @@ impl Kernel {
         let _ = self.route_subscription_relays(
             crate::stable_hash::stable_hash64(("mailbox-changed", event_id, created_at)),
             &[author],
-            &[1, 6],
+            &[], // V-68/D0: no substrate social default; trace lane is kind-independent.
             super::mailboxes::BootstrapSeed::Discovery,
         );
         self.lifecycle
