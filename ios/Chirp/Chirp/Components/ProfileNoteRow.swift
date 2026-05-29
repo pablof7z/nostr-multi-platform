@@ -16,6 +16,7 @@ struct ProfileNoteRow: View {
     let onAvatarTap: () -> Void
     let onRowTap: () -> Void
     let onLike: () -> Void
+    var onRepost: (() -> Void)? = nil
 
     @EnvironmentObject private var model: KernelModel
     @State private var likeTapped = false
@@ -81,6 +82,19 @@ struct ProfileNoteRow: View {
                                 .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
                         }
                         .buttonStyle(.plain)
+
+                        if let onRepost {
+                            Button {
+                                onRepost()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                Label("Repost", systemImage: "arrow.2.squarepath")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.plain)
+                        }
 
                         if item.relayCount > 0 {
                             HStack(spacing: 4) {

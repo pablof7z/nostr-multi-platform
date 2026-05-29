@@ -102,6 +102,9 @@ struct ThreadScreen: View {
                             // ADR-0032: shell-side abbreviation of the raw
                             // event id for ComposeView's reply banner.
                             replyTargetID = ReplyTarget(eventID: item.id, shortID: item.id.shortHex)
+                        },
+                        onRepost: {
+                            model.repost(eventID: item.id, authorPubkey: item.authorPubkey)
                         }
                     )
                     .id(item.id)

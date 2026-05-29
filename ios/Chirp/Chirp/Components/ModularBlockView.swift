@@ -49,6 +49,8 @@ struct ModularBlockView: View {
     let items: [String: TimelineItem]
     let mentionProfiles: [String: MentionProfile]
     let onLike: (String) -> Void
+    /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
+    var onRepost: ((String, String) -> Void)? = nil
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. `nil`
     /// when the embedding host does not wire zap (kept optional so views
     /// other than the home feed don't need to thread a no-op). The row
@@ -80,6 +82,7 @@ struct ModularBlockView: View {
                     timelineItems: items,
                     relationCounts: cards[id]?.relationCounts,
                     onLike: onLike,
+                    onRepost: onRepost,
                     onZap: onZap
                 )
         } else if let card = cards[id] {
@@ -95,6 +98,7 @@ struct ModularBlockView: View {
                 timelineItems: items,
                 relationCounts: card.relationCounts,
                 onLike: onLike,
+                onRepost: onRepost,
                 onZap: onZap
             )
         } else {

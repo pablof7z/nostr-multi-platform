@@ -111,6 +111,7 @@ struct HomeFeedView: View {
             mentionProfiles: model.mentionProfiles,
             onRefresh: { model.openTimeline() },
             onLike: { model.react(targetEventID: $0, reaction: "❤") },
+            onRepost: { eventID, pubkey in model.repost(eventID: eventID, authorPubkey: pubkey) },
             // NIP-57 (V-106) — tapping zap opens the amount picker rather than
             // firing a fixed 21-sat zap. `lnurl` is the pre-extracted
             // `authorLnurl` from the timeline item (Rust decides zapability;
@@ -214,6 +215,7 @@ private struct TimelineListView: View, Equatable {
     let mentionProfiles: [String: MentionProfile]
     let onRefresh: () -> Void
     let onLike: (String) -> Void
+    let onRepost: (String, String) -> Void
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. The row
     /// only surfaces the button when `authorLnurl != nil`, so this closure
     /// is always called with a non-empty `lnurl`. Threaded through alongside
@@ -249,6 +251,7 @@ private struct TimelineListView: View, Equatable {
                         items: itemLookup,
                         mentionProfiles: mentionProfiles,
                         onLike: onLike,
+                        onRepost: onRepost,
                         onZap: onZap
                     )
                 }

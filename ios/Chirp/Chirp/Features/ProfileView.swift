@@ -225,6 +225,9 @@ struct ProfileView: View {
                         },
                         onLike: {
                             model.react(targetEventID: item.id, reaction: "❤")
+                        },
+                        onRepost: {
+                            model.repost(eventID: item.id, authorPubkey: item.authorPubkey)
                         }
                     )
 

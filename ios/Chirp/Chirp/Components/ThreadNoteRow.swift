@@ -13,6 +13,7 @@ struct ThreadNoteRow: View {
     let onAvatarTap: () -> Void
     let onLike: () -> Void
     let onReply: () -> Void
+    var onRepost: (() -> Void)? = nil
 
     @EnvironmentObject private var model: KernelModel
     @State private var likeTapped = false
@@ -133,6 +134,19 @@ struct ThreadNoteRow: View {
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.plain)
+
+                if let onRepost {
+                    Button {
+                        onRepost()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Label("Repost", systemImage: "arrow.2.squarepath")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 if item.relayCount > 0 {
                     HStack(spacing: 4) {
