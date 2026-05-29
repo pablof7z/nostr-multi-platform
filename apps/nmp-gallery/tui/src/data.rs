@@ -108,9 +108,10 @@ pub struct MediaProtocol {
 /// hand-extracting kind:0 fields from the kernel snapshot and stuffing them
 /// into bespoke state, the app holds one `LiveProfileMap`, calls
 /// `update_from_snapshot` on every snapshot tick, and `resolve(pubkey)` at
-/// render time. The map fills itself from the kernel's `mention_profiles`
-/// and `author_view.profile` projections — there is no app-side
-/// field-by-field copying and no invented profile label.
+/// render time. The map fills itself from the kernel's canonical
+/// `resolved_profiles` projection — a single pre-merged ProfileCard per
+/// pubkey. There is no app-side three-source merge, no field-by-field
+/// copying, and no invented profile label.
 #[derive(Default)]
 pub struct LiveProfileMap {
     profiles: HashMap<String, ProfileWire>,
@@ -123,63 +124,32 @@ impl LiveProfileMap {
 
     /// Ingest a kernel snapshot, updating the resolved-profile map.
     ///
-    /// Precedence (highest to lowest):
-    /// 1. `claimed_profiles` — component-owned full ProfileCard
-    /// 2. `author_view.profile` — full ProfileCard when has_profile=true
-    /// 3. `mention_profiles` — only-if-absent (lightweight: display_name + picture_url)
-    ///
-    /// Three projections feed this:
-    /// - `projections.claimed_profiles` — `{ pubkey: ProfileCard }`, emitted
-    ///   for component-owned profile claims. This is the user-avatar happy path.
-    /// - `projections.author_view.profile` — the full `ProfileCard`
-    ///   (`pubkey, npub, display_name, picture_url, nip05, about,
-    ///   has_profile`). Richer than `mention_profiles`, so when present and
-    ///   `has_profile == true` it *overrides* any same-pubkey entry from
-    ///   `mention_profiles`.
-    /// - `projections.mention_profiles` — `{ pubkey: { pubkey, display_name,
-    ///   picture_url } }`. The lightweight per-mention payload (no nip05 /
-    ///   about). Only fills gaps: if a pubkey is already in the map from
-    ///   claimed_profiles or author_view.profile, mention_profiles is skipped.
-    ///   Establishes a profile entry for every author the kernel has kind:0 for
-    ///   among the visible items.
+    /// Reads the kernel's canonical `projections.resolved_profiles`
+    /// projection (added in PR #812): `{ pubkey: ProfileCard }`, where each
+    /// `ProfileCard` is the pre-merged result of `claimed_profiles`,
+    /// `author_view.profile`, and `mention_profiles` resolved once in Rust
+    /// with the kernel's precedence rules. The app no longer re-implements
+    /// that three-source merge — it decodes the finished card directly.
     pub fn update_from_snapshot(&mut self, snapshot: &Value) {
         let Some(projections) = snapshot.get("projections") else {
             return;
         };
-
-        // Step 1: Apply claimed_profiles (highest priority)
-        if let Some(claimed_profiles) = projections
-            .get("claimed_profiles")
+        let Some(resolved) = projections
+            .get("resolved_profiles")
             .and_then(Value::as_object)
-        {
-            for (pubkey, profile) in claimed_profiles {
-                self.apply_profile_card(pubkey, profile);
-            }
-        }
-
-        // Step 2: Apply author_view.profile (second priority, overwrites mention_profiles only)
-        if let Some(profile) = projections
-            .get("author_view")
-            .and_then(|av| av.get("profile"))
-        {
-            self.apply_profile_card("", profile);
-        }
-
-        // Step 3: Apply mention_profiles only-if-absent (lowest priority)
-        if let Some(mention_profiles) = projections
-            .get("mention_profiles")
-            .and_then(Value::as_object)
-        {
-            for (pubkey, payload) in mention_profiles {
-                // Only fill gaps: skip if pubkey already in map
-                if !self.profiles.contains_key(pubkey) {
-                    let display_name = string_field(payload, "display_name");
-                    let picture_url = string_field(payload, "picture_url");
-                    let wire = self.entry_for(pubkey);
-                    wire.display_name = display_name;
-                    wire.picture_url = picture_url;
-                }
-            }
+        else {
+            return;
+        };
+        for (pubkey, card) in resolved {
+            let display_name = string_field(card, "display_name");
+            let picture_url = string_field(card, "picture_url");
+            let nip05 = string_field(card, "nip05");
+            let about = string_field(card, "about");
+            let wire = self.entry_for(pubkey);
+            wire.display_name = display_name;
+            wire.picture_url = picture_url;
+            wire.nip05 = nip05;
+            wire.about = about;
         }
     }
 
@@ -203,28 +173,6 @@ impl LiveProfileMap {
             .or_insert_with(|| profile_wire_for_pubkey(pubkey))
     }
 
-    fn apply_profile_card(&mut self, fallback_pubkey: &str, profile: &Value) {
-        let is_real = profile
-            .get("has_profile")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        if !is_real {
-            return;
-        }
-        let pubkey = string_field(profile, "pubkey").unwrap_or_else(|| fallback_pubkey.to_string());
-        if pubkey.is_empty() {
-            return;
-        }
-        let display_name = string_field(profile, "display_name");
-        let picture_url = string_field(profile, "picture_url");
-        let nip05 = string_field(profile, "nip05");
-        let about = string_field(profile, "about");
-        let wire = self.entry_for(&pubkey);
-        wire.display_name = display_name;
-        wire.picture_url = picture_url;
-        wire.nip05 = nip05;
-        wire.about = about;
-    }
 }
 
 /// Build a name-less `ProfileWire` for `pubkey`: identity fields only
@@ -330,4 +278,61 @@ fn tree_for_content(content: &str) -> Result<ContentTreeWire, String> {
     let value =
         serde_json::to_value(wire).map_err(|e| format!("content tree encode failed: {e}"))?;
     ContentTreeWire::from_value(&value).ok_or_else(|| "content tree decode failed".to_string())
+}
+
+#[cfg(test)]
+mod live_profile_map_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A snapshot carrying the canonical `resolved_profiles` projection
+    /// (PR #812) populates the map with the kernel's pre-merged card —
+    /// `resolve(pubkey)` returns those fields verbatim, no app-side merge.
+    #[test]
+    fn reads_resolved_profiles_projection() {
+        let pubkey = showcase_pubkey();
+        let snapshot = json!({
+            "projections": {
+                "resolved_profiles": {
+                    pubkey: {
+                        "pubkey": pubkey,
+                        "display_name": "Resolved Name",
+                        "picture_url": "https://example.com/a.png",
+                        "nip05": "name@example.com",
+                        "about": "merged once in the kernel",
+                        "has_profile": true,
+                    }
+                }
+            }
+        });
+
+        let mut map = LiveProfileMap::new();
+        map.update_from_snapshot(&snapshot);
+
+        let wire = map.resolve(pubkey);
+        assert_eq!(wire.display_name.as_deref(), Some("Resolved Name"));
+        assert_eq!(wire.picture_url.as_deref(), Some("https://example.com/a.png"));
+        assert_eq!(wire.nip05.as_deref(), Some("name@example.com"));
+        assert_eq!(wire.about.as_deref(), Some("merged once in the kernel"));
+    }
+
+    /// Graceful degradation: a snapshot without `resolved_profiles` (an older
+    /// kernel, or before PR #812 lands) is a no-op. `resolve(pubkey)` falls
+    /// back to the identity-only wire — the honest "no profile yet" state,
+    /// never a fabricated name.
+    #[test]
+    fn absent_resolved_profiles_is_a_noop() {
+        let pubkey = showcase_pubkey();
+        let snapshot = json!({ "projections": {} });
+
+        let mut map = LiveProfileMap::new();
+        map.update_from_snapshot(&snapshot);
+
+        let wire = map.resolve(pubkey);
+        assert_eq!(wire.display_name, None);
+        assert_eq!(wire.picture_url, None);
+        assert_eq!(wire.nip05, None);
+        assert_eq!(wire.about, None);
+        assert_eq!(wire.pubkey, pubkey);
+    }
 }
