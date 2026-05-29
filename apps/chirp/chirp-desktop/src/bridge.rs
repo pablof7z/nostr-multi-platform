@@ -23,6 +23,7 @@ use nmp_ffi::{
     nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
     nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
+    nmp_app_set_capability_callback,
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, NmpApp,
 };
 use serde_json::{json, Value};
@@ -97,6 +98,11 @@ impl AppRuntime {
         // SAFETY: `app` is a valid, non-null pointer from `nmp_app_new`.
         unsafe {
             nmp_signer_broker_init(app);
+            nmp_app_set_capability_callback(
+                app,
+                ptr::null_mut(),
+                Some(crate::keyring::keyring_handler),
+            );
         }
 
         let chirp = unsafe { nmp_app_chirp_register(app, ptr::null()) };

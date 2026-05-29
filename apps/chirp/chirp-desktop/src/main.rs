@@ -8,6 +8,7 @@
 
 mod app;
 mod bridge;
+mod keyring;
 mod render;
 mod snapshot;
 
