@@ -261,7 +261,7 @@ private fun DmConversationView(
                     .padding(vertical = 8.dp)
             ) {
                 itemsIndexed(
-                    conversation.messages,
+                    conversation!!.messages,
                     key = { _, msg -> msg.id }
                 ) { _, message ->
                     DmMessageBubble(message = message)
@@ -450,4 +450,20 @@ private fun escapeJson(s: String): String {
         .replace("\n", "\\n")
         .replace("\r", "\\r")
         .replace("\t", "\\t")
+}
+
+/**
+ * Parse a hex color string (e.g. "#RRGGBB" or "RRGGBB") into a Compose [Color].
+ * Returns null if the string is blank or malformed.
+ */
+private fun parseHexColor(hex: String): Color? {
+    if (hex.isBlank()) return null
+    return try {
+        val cleaned = if (hex.startsWith("#")) hex.substring(1) else hex
+        val value = cleaned.toLong(16)
+        val argb = if (cleaned.length == 6) (0xFF000000L or value).toInt() else value.toInt()
+        Color(argb)
+    } catch (_: NumberFormatException) {
+        null
+    }
 }

@@ -5,8 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -21,7 +25,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.nmp.android.ui.DiagnosticsScreen
+import org.nmp.android.ui.DmScreen
+import org.nmp.android.ui.RelayScreen
+import org.nmp.android.ui.SignInScreen
 import org.nmp.android.ui.TimelineScreen
+import org.nmp.android.ui.WalletScreen
 
 /**
  * Single-activity Compose host. Mirrors iOS Chirp `RootShell`'s tabs, but for L1
@@ -57,6 +65,30 @@ private fun RootTabs(model: KernelModel) {
                 NavigationBarItem(
                     selected = tab == 1,
                     onClick = { tab = 1 },
+                    icon = { Icon(Icons.Filled.MailOutline, contentDescription = null) },
+                    label = { Text("DMs") },
+                )
+                NavigationBarItem(
+                    selected = tab == 2,
+                    onClick = { tab = 2 },
+                    icon = { Icon(Icons.Filled.Wifi, contentDescription = null) },
+                    label = { Text("Relays") },
+                )
+                NavigationBarItem(
+                    selected = tab == 3,
+                    onClick = { tab = 3 },
+                    icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
+                    label = { Text("Account") },
+                )
+                NavigationBarItem(
+                    selected = tab == 4,
+                    onClick = { tab = 4 },
+                    icon = { Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null) },
+                    label = { Text("Wallet") },
+                )
+                NavigationBarItem(
+                    selected = tab == 5,
+                    onClick = { tab = 5 },
                     icon = { Icon(Icons.Filled.Speed, contentDescription = null) },
                     label = { Text("Diagnostics") },
                 )
@@ -65,6 +97,10 @@ private fun RootTabs(model: KernelModel) {
     ) { inner ->
         when (tab) {
             0 -> TimelineScreen(model, Modifier.padding(inner))
+            1 -> DmScreen(model, Modifier.padding(inner))
+            2 -> RelayScreen(model, Modifier.padding(inner))
+            3 -> SignInScreen(model, Modifier.padding(inner))
+            4 -> WalletScreen(model, Modifier.padding(inner))
             else -> DiagnosticsScreen(model, Modifier.padding(inner))
         }
     }
