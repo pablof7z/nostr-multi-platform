@@ -1305,6 +1305,9 @@ pub(super) fn dispatch_command(
             *ctx.startup_sent = false;
             if *ctx.running {
                 ctx.kernel.start();
+                // D1 — first snapshot must reach the shell before any relay TCP
+                // connection is dialed, so emit_now precedes spawn_missing_relays.
+                emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
                 spawn_missing_relays(
                     ctx.relay_controls,
                     ctx.slot_to_url,
@@ -1313,7 +1316,6 @@ pub(super) fn dispatch_command(
                     ctx.next_relay_generation,
                 );
             }
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::PushInterest(interest) => {
