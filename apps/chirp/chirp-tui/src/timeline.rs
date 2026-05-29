@@ -146,8 +146,45 @@ impl TimelineRow {
             content_render,
             mention_pubkeys,
             repost,
-            raw_card: serde_json::to_string_pretty(card).unwrap_or_default(),
+            // Canonicalize key order before pretty-printing. The generic
+            // `nmp.feed.home` projection rides through `nmp-core`'s snapshot
+            // codec, whose `encode_value` sorts every object's keys
+            // alphabetically (deterministic wire form), whereas the typed
+            // `NOFS` sidecar is decoded and re-serialized via
+            // `serde_json::to_value(OpFeedSnapshot)` in struct-field order
+            // (serde_json's `preserve_order` is on workspace-wide). The two
+            // render to semantically identical rows, but this debug echo would
+            // otherwise differ by key order alone. Sorting here (same rule as
+            // `encode_value`) keeps `raw_card` transport-independent, which is
+            // the Stage T2 render-parity contract (ADR-0038).
+            raw_card: canonical_pretty(card),
         }
+    }
+}
+
+/// Pretty-print `value` with every object's keys sorted lexicographically,
+/// recursively. Mirrors `nmp_core::update_envelope::encode_value`'s canonical
+/// ordering so a card's `raw_card` echo is identical whether it arrived via the
+/// generic (codec-sorted) projection or the typed `NOFS` (struct-order) sidecar.
+fn canonical_pretty(value: &Value) -> String {
+    serde_json::to_string_pretty(&sorted_keys(value)).unwrap_or_default()
+}
+
+/// Recursively rebuild `value` with object keys in lexicographic order.
+fn sorted_keys(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries: Vec<(&String, &Value)> = map.iter().collect();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, val)| (key.clone(), sorted_keys(val)))
+                    .collect(),
+            )
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sorted_keys).collect()),
+        other => other.clone(),
     }
 }
 
