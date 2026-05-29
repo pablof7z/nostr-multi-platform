@@ -37,6 +37,8 @@ data class SnapshotProjections(
     val accounts: List<AccountSummary> = emptyList(),
     val timeline: List<TimelineItem> = emptyList(),
     @SerialName("nmp.nip17.dm_inbox") val dmInbox: DmInboxSnapshot? = null,
+    @SerialName("wallet_status") val walletStatus: String? = null,
+    @SerialName("wallet_balance") val walletBalance: String? = null,
 )
 
 @Serializable

@@ -219,6 +219,28 @@ class KernelModel : ViewModel() {
     fun sendDm(recipientPubkey: String, content: String) =
         bridge.dispatchAction("nmp.nip17.send", """{"recipient_pubkey":"$recipientPubkey","content":"${escapeJson(content)}"}""")
 
+    // -------------------------------------------------------------------------
+    // Wallet (NIP-47 / NWC)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Connect a NIP-47 wallet via NWC URI. Routes through dispatch_action("nmp.wallet.connect", ...).
+     *
+     * The actionJson format is: {"Connect":{"uri":"nostr+walletconnect://..."}}
+     */
+    fun dispatchWalletConnect(actionJson: String) {
+        val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
+        Log.d(TAG, "wallet connect response: $response")
+    }
+
+    /**
+     * Disconnect the current NIP-47 wallet. Routes through dispatch_action("nmp.wallet.disconnect", ...).
+     */
+    fun dispatchWalletDisconnect() {
+        val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
+        Log.d(TAG, "wallet disconnect response: $response")
+    }
+
     private fun escapeJson(s: String): String {
         return s.replace("\\", "\\\\")
             .replace("\"", "\\\"")
