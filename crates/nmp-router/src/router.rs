@@ -214,8 +214,10 @@ impl OutboxRouter for GenericOutboxRouter {
             let mut attempts: Vec<RouteAttempt> = Vec::new();
 
             // Lane 1 — author's NIP-65 write set.
+            // Count admissible URLs (not net-new keys) so that a URL that
+            // also appeared in an earlier lane still reports Matched here.
             {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
                     for url in writes {
                         if ctx.blocked_relays.contains(&url) {
@@ -225,14 +227,16 @@ impl OutboxRouter for GenericOutboxRouter {
                             continue;
                         }
                         out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+                        if tracing_active {
+                            lane_count += 1;
+                        }
                     }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Nip65,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -246,7 +250,7 @@ impl OutboxRouter for GenericOutboxRouter {
             // both sources in its `BTreeSet<RoutingSource>` (additive via
             // `RoutedRelaySet::add`).
             {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 for url in relay_hints_from_tags(&evt.tags) {
                     if ctx.blocked_relays.contains(&url) {
                         continue;
@@ -255,13 +259,15 @@ impl OutboxRouter for GenericOutboxRouter {
                         continue;
                     }
                     out.add(url, RoutingSource::Hint);
+                    if tracing_active {
+                        lane_count += 1;
+                    }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Hint,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -276,33 +282,38 @@ impl OutboxRouter for GenericOutboxRouter {
             // session's active-write set MUST NOT be added — that would
             // leak the operator's account-keyed relays to events the
             // active account did not author.
-            {
-                let before = out.relays.len();
-                if let Some(active) = ctx.active_account {
-                    if active == &evt.pubkey {
-                        for url in ctx.session_keys.active_write.iter() {
-                            if ctx.blocked_relays.contains(url) {
-                                continue;
-                            }
-                            out.add(
-                                url.clone(),
-                                RoutingSource::UserConfigured(
-                                    UserConfiguredCategory::ActiveAccountWrite,
-                                ),
-                            );
+            //
+            // An attempt is only emitted when the lane is applicable (active
+            // account is present and matches the event pubkey). No attempt
+            // means "lane did not apply to this call", symmetrical with Lane 6
+            // not emitting an attempt for non-discovery kinds.
+            if let Some(active) = ctx.active_account {
+                if active == &evt.pubkey {
+                    let mut lane_count = 0usize;
+                    for url in ctx.session_keys.active_write.iter() {
+                        if ctx.blocked_relays.contains(url) {
+                            continue;
+                        }
+                        out.add(
+                            url.clone(),
+                            RoutingSource::UserConfigured(
+                                UserConfiguredCategory::ActiveAccountWrite,
+                            ),
+                        );
+                        if tracing_active {
+                            lane_count += 1;
                         }
                     }
-                }
-                if tracing_active {
-                    let added = out.relays.len() - before;
-                    attempts.push(RouteAttempt {
-                        lane: RoutingLane::UserConfigured,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
-                        } else {
-                            LaneOutcome::Empty
-                        },
-                    });
+                    if tracing_active {
+                        attempts.push(RouteAttempt {
+                            lane: RoutingLane::UserConfigured,
+                            outcome: if lane_count > 0 {
+                                LaneOutcome::Matched { count: lane_count }
+                            } else {
+                                LaneOutcome::Empty
+                            },
+                        });
+                    }
                 }
             }
 
@@ -316,20 +327,24 @@ impl OutboxRouter for GenericOutboxRouter {
             // only to the stale relays — by always also asking the
             // operator's indexers we let a newer kind:10002 published on
             // a different relay still arrive.
+            //
+            // An attempt is emitted only for discovery kinds (lane applicable).
             if is_discovery_kind(evt.kind) {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.indexer_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(url.clone(), RoutingSource::Indexer);
+                    if tracing_active {
+                        lane_count += 1;
+                    }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Indexer,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -339,8 +354,10 @@ impl OutboxRouter for GenericOutboxRouter {
 
             // Lane 7 — AppRelay fallback when no earlier lane resolved
             // anything (every prior lane empty / didn't fire).
+            // Lane 7 fires only when `out.is_empty()`, so lane_count equals
+            // net-new URLs — no overlap with earlier lanes possible.
             if out.is_empty() {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.app_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
@@ -348,13 +365,15 @@ impl OutboxRouter for GenericOutboxRouter {
                     out.add(url.clone(), RoutingSource::AppRelay {
                         mode: AppRelayMode::Fallback,
                     });
+                    if tracing_active {
+                        lane_count += 1;
+                    }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::AppRelayFallback,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -443,8 +462,10 @@ impl OutboxRouter for GenericOutboxRouter {
             let mut attempts: Vec<RouteAttempt> = Vec::new();
 
             // Lane 1 — each author's NIP-65 read set.
+            // Count admissible URLs so that a URL that also appeared in an
+            // earlier lane still reports Matched here.
             {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 for author in &interest.shape.authors {
                     if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
                         for url in reads {
@@ -455,15 +476,17 @@ impl OutboxRouter for GenericOutboxRouter {
                                 continue;
                             }
                             out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
+                            if tracing_active {
+                                lane_count += 1;
+                            }
                         }
                     }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Nip65,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -481,9 +504,11 @@ impl OutboxRouter for GenericOutboxRouter {
             // lane 4 below for symmetry with the publish path.
             //
             // Track Hint and Provenance separately for per-lane granularity.
+            // Count admissible passes (not net-new keys) for accuracy when
+            // a hint relay was already added by lane 1.
             {
-                let mut hint_added = 0usize;
-                let mut prov_added = 0usize;
+                let mut hint_count = 0usize;
+                let mut prov_count = 0usize;
                 for hint in &interest.hints {
                     if ctx.blocked_relays.contains(&hint.url) {
                         continue;
@@ -498,12 +523,11 @@ impl OutboxRouter for GenericOutboxRouter {
                             UserConfiguredCategory::Debug,
                         ),
                     };
-                    let prev_len = out.relays.len();
                     out.add(hint.url.clone(), lane_src.clone());
-                    if tracing_active && out.relays.len() > prev_len {
+                    if tracing_active {
                         match &lane_src {
-                            RoutingSource::Hint => hint_added += 1,
-                            RoutingSource::Provenance => prov_added += 1,
+                            RoutingSource::Hint => hint_count += 1,
+                            RoutingSource::Provenance => prov_count += 1,
                             _ => {}
                         }
                     }
@@ -511,16 +535,16 @@ impl OutboxRouter for GenericOutboxRouter {
                 if tracing_active {
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Hint,
-                        outcome: if hint_added > 0 {
-                            LaneOutcome::Matched { count: hint_added }
+                        outcome: if hint_count > 0 {
+                            LaneOutcome::Matched { count: hint_count }
                         } else {
                             LaneOutcome::Empty
                         },
                     });
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Provenance,
-                        outcome: if prov_added > 0 {
-                            LaneOutcome::Matched { count: prov_added }
+                        outcome: if prov_count > 0 {
+                            LaneOutcome::Matched { count: prov_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -535,35 +559,39 @@ impl OutboxRouter for GenericOutboxRouter {
             // For multi-author interests that DON'T include the active
             // account, the active-read set is silent — we're reading
             // about other people, not from our own read mailbox.
-            {
-                let before = out.relays.len();
-                if let Some(active) = ctx.active_account {
-                    let active_in_scope = interest.shape.authors.is_empty()
-                        || interest.shape.authors.contains(active);
-                    if active_in_scope {
-                        for url in ctx.session_keys.active_read.iter() {
-                            if ctx.blocked_relays.contains(url) {
-                                continue;
-                            }
-                            out.add(
-                                url.clone(),
-                                RoutingSource::UserConfigured(
-                                    UserConfiguredCategory::ActiveAccountRead,
-                                ),
-                            );
+            //
+            // An attempt is only emitted when the lane is applicable (active
+            // account is in scope), symmetric with Lane 6 only emitting for
+            // discovery kinds.
+            if let Some(active) = ctx.active_account {
+                let active_in_scope = interest.shape.authors.is_empty()
+                    || interest.shape.authors.contains(active);
+                if active_in_scope {
+                    let mut lane_count = 0usize;
+                    for url in ctx.session_keys.active_read.iter() {
+                        if ctx.blocked_relays.contains(url) {
+                            continue;
+                        }
+                        out.add(
+                            url.clone(),
+                            RoutingSource::UserConfigured(
+                                UserConfiguredCategory::ActiveAccountRead,
+                            ),
+                        );
+                        if tracing_active {
+                            lane_count += 1;
                         }
                     }
-                }
-                if tracing_active {
-                    let added = out.relays.len() - before;
-                    attempts.push(RouteAttempt {
-                        lane: RoutingLane::UserConfigured,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
-                        } else {
-                            LaneOutcome::Empty
-                        },
-                    });
+                    if tracing_active {
+                        attempts.push(RouteAttempt {
+                            lane: RoutingLane::UserConfigured,
+                            outcome: if lane_count > 0 {
+                                LaneOutcome::Matched { count: lane_count }
+                            } else {
+                                LaneOutcome::Empty
+                            },
+                        });
+                    }
                 }
             }
 
@@ -576,20 +604,24 @@ impl OutboxRouter for GenericOutboxRouter {
             // would otherwise keep refreshing only against the stale
             // relays; asking the operator's indexers in parallel lets a
             // newer kind:10002 published elsewhere still arrive).
+            //
+            // An attempt is only emitted when the lane applies (discovery kinds).
             if interest.shape.kinds.iter().any(|k| is_discovery_kind(*k)) {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.indexer_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(url.clone(), RoutingSource::Indexer);
+                    if tracing_active {
+                        lane_count += 1;
+                    }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::Indexer,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },
@@ -599,8 +631,10 @@ impl OutboxRouter for GenericOutboxRouter {
 
             // Lane 7 — AppRelay fallback when no earlier lane resolved
             // anything.
+            // Since `out.is_empty()` gate ensures no overlap with earlier
+            // lanes, lane_count equals net-new URLs.
             if out.is_empty() {
-                let before = out.relays.len();
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.app_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
@@ -608,13 +642,15 @@ impl OutboxRouter for GenericOutboxRouter {
                     out.add(url.clone(), RoutingSource::AppRelay {
                         mode: AppRelayMode::Fallback,
                     });
+                    if tracing_active {
+                        lane_count += 1;
+                    }
                 }
                 if tracing_active {
-                    let added = out.relays.len() - before;
                     attempts.push(RouteAttempt {
                         lane: RoutingLane::AppRelayFallback,
-                        outcome: if added > 0 {
-                            LaneOutcome::Matched { count: added }
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
                         } else {
                             LaneOutcome::Empty
                         },

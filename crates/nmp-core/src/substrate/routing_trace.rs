@@ -91,16 +91,18 @@ pub enum RoutingLane {
 /// Outcome of a single lane's attempt during a routing call.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LaneOutcome {
-    /// The lane resolved at least one relay URL. `count` is the number of
-    /// distinct URLs contributed by this lane (before deduplication with
-    /// URLs from earlier lanes).
+    /// The lane contributed at least one relay URL that passed the
+    /// blocked-relay and admission-policy filters. `count` is the number of
+    /// admissible URLs the lane processed — it may include URLs that were
+    /// already in the set from an earlier lane (stacking semantics), so
+    /// this is an "attempted-and-admitted" count, not a net-new count.
     Matched {
-        /// Number of relay URLs contributed by this lane.
+        /// Number of admissible relay URLs contributed by this lane.
         count: usize,
     },
-    /// The lane ran but resolved no relay URLs (empty NIP-65 cache entry,
-    /// no hint tags on the event, no active-account relays configured,
-    /// etc.).
+    /// The lane ran but all candidate URLs were either absent (empty NIP-65
+    /// cache entry, no hint tags on the event, no active-account relays
+    /// configured, etc.) or filtered out by blocked-relay / admission policy.
     Empty,
 }
 
