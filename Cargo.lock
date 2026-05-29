@@ -4913,6 +4913,7 @@ dependencies = [
  "libc",
  "mdk-core",
  "mdk-sqlite-storage",
+ "nmp-app-chirp",
  "nmp-core",
  "nmp-ffi",
  "nmp-marmot",
