@@ -1,6 +1,8 @@
 package org.nmp.gallery.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,22 +25,30 @@ import org.nmp.gallery.screens.SectionListScreen
  * `sectionId` lives in the detail route alongside `componentId` so the
  * detail screen can route to the user / content rendering family without
  * a back-trip to find-by-id (handy if the user opens the app deep-linked).
+ *
+ * The section list is driven by [GalleryModel.registrySections] — the live
+ * registry JSON returned by the Rust kernel — rather than the compile-time
+ * [org.nmp.gallery.gallery.REGISTRY_SECTIONS] constant.
  */
 @Composable
 fun GalleryNavigation(model: GalleryModel) {
     val nav = rememberNavController()
+    val sections by model.registrySections.collectAsState()
     NavHost(navController = nav, startDestination = "sections") {
         composable("sections") {
-            SectionListScreen(onSectionTap = { section ->
-                nav.navigate("components/${section.id}")
-            })
+            SectionListScreen(
+                sections = sections,
+                onSectionTap = { section ->
+                    nav.navigate("components/${section.id}")
+                },
+            )
         }
         composable(
             route = "components/{sectionId}",
             arguments = listOf(navArgument("sectionId") { type = NavType.StringType }),
         ) { entry ->
             val sectionId = entry.arguments?.getString("sectionId").orEmpty()
-            val section = findSection(sectionId) ?: return@composable
+            val section = findSection(sectionId, sections) ?: return@composable
             ComponentListScreen(
                 section = section,
                 onComponentTap = { component ->
@@ -56,8 +66,8 @@ fun GalleryNavigation(model: GalleryModel) {
         ) { entry ->
             val sectionId = entry.arguments?.getString("sectionId").orEmpty()
             val componentId = entry.arguments?.getString("componentId").orEmpty()
-            val section = findSection(sectionId) ?: return@composable
-            val (_, component) = findComponent(componentId) ?: return@composable
+            val section = findSection(sectionId, sections) ?: return@composable
+            val (_, component) = findComponent(componentId, sections) ?: return@composable
             ComponentDetailScreen(
                 model = model,
                 section = section,

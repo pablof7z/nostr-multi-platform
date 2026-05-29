@@ -16,12 +16,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import org.nmp.gallery.gallery.REGISTRY_SECTIONS
 import org.nmp.gallery.gallery.RegistrySection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SectionListScreen(onSectionTap: (RegistrySection) -> Unit) {
+fun SectionListScreen(
+    sections: List<RegistrySection>,
+    onSectionTap: (RegistrySection) -> Unit,
+) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("NMP Component Gallery") }) },
     ) { inner ->
@@ -31,7 +33,7 @@ fun SectionListScreen(onSectionTap: (RegistrySection) -> Unit) {
                 .padding(inner),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(REGISTRY_SECTIONS, key = { it.id }) { section ->
+            items(sections, key = { it.id }) { section ->
                 SectionRow(section = section, onTap = { onSectionTap(section) })
                 HorizontalDivider()
             }
