@@ -27,12 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import android.util.Log
-import org.json.JSONObject
-import org.nmp.android.KernelBridge
 import org.nmp.android.KernelModel
-
-private const val TAG = "SignInScreen"
 
 /**
  * Sign-in screen for Android Chirp app. Provides three authentication paths:
@@ -40,8 +35,8 @@ private const val TAG = "SignInScreen"
  * 2. Create a local account with a display name
  * 3. Connect to a Bunker relay (NIP-46 remote signer)
  *
- * Routes through KernelBridge.dispatchAction for Bunker; direct kernel methods
- * for local auth (reflecting the iOS KernelBridge architecture).
+ * All actions route through the shared KernelModel: signInNsec, createAccount,
+ * and dispatchAction for Bunker. No local KernelBridge instantiation.
  */
 @Composable
 fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
@@ -49,8 +44,6 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
     var displayName by remember { mutableStateOf("") }
     var bunkerRelayUrl by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-
-    val bridge = remember { KernelBridge() }
 
     Column(
         modifier = modifier
@@ -101,10 +94,7 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
                         if (nsecSecret.isBlank()) {
                             errorMessage = "Please enter a private key"
                         } else {
-                            // Route through dispatch_action for consistency
-                            val actionJson = """{"SignInNsec":"${escapeJson(nsecSecret)}"}"""
-                            val response = bridge.dispatchAction("nmp.sign_in", actionJson)
-                            handleResponse(response) { errorMessage = it }
+                            model.signInNsec(nsecSecret)
                             nsecSecret = ""
                         }
                     },
@@ -145,7 +135,7 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 )
                 Button(
                     onClick = {
-                        model.createLocalAccount()
+                        model.createAccount(displayName)
                         displayName = ""
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -188,10 +178,8 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
                         if (bunkerRelayUrl.isBlank()) {
                             errorMessage = "Please enter a relay URL"
                         } else {
-                            // Dispatch the bunker sign-in action
                             val actionJson = """{"ConnectBunker":"${escapeJson(bunkerRelayUrl)}"}"""
-                            val response = bridge.dispatchAction("nmp.sign_in", actionJson)
-                            handleResponse(response) { errorMessage = it }
+                            model.dispatchAction("nmp.sign_in", actionJson)
                             bunkerRelayUrl = ""
                         }
                     },
@@ -223,28 +211,6 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.size(32.dp))
-    }
-}
-
-/**
- * Parse the response JSON from dispatchAction and extract error if present.
- * Logs the response and invokes onError if the response contains an error field.
- */
-private fun handleResponse(response: String, onError: (String) -> Unit) {
-    try {
-        val json = JSONObject(response)
-        if (json.has("error")) {
-            val errorMsg = json.optString("error", "Unknown error")
-            Log.e(TAG, "Sign-in error: $errorMsg")
-            onError(errorMsg)
-        } else if (json.has("correlation_id")) {
-            Log.d(TAG, "Sign-in accepted: ${json.optString("correlation_id")}")
-        } else {
-            Log.d(TAG, "Sign-in response: $response")
-        }
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to parse sign-in response: $response", e)
-        onError("Invalid response from server")
     }
 }
 
