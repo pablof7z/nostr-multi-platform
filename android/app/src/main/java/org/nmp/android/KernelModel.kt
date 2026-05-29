@@ -5,13 +5,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
+import org.nmp.android.model.RelayStatus
 
 private const val TAG = "NmpCore"
 
@@ -43,6 +48,16 @@ class KernelModel : ViewModel() {
 
     private val _lastSnapshotAtMs = MutableStateFlow<Long?>(null)
     val lastSnapshotAtMs: StateFlow<Long?> = _lastSnapshotAtMs.asStateFlow()
+
+    /** Derived: account list from the latest snapshot projections. */
+    val accounts: StateFlow<List<AccountSummary>> =
+        state.map { it.projections?.accounts ?: emptyList() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Derived: relay status list from the latest snapshot. */
+    val relays: StateFlow<List<RelayStatus>> =
+        state.map { it.relayStatuses }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var started = false
 
@@ -142,6 +157,58 @@ class KernelModel : ViewModel() {
     fun openAuthor(pubkey: String) {
         bridge.openAuthor(pubkey)
     }
+
+    // -------------------------------------------------------------------------
+    // Account management
+    // -------------------------------------------------------------------------
+
+    /** Sign in with an nsec secret key. */
+    fun signInNsec(secret: String) = bridge.dispatchAction("nmp.sign_in_nsec", """{"SignInNsec":{"secret":"$secret"}}""")
+
+    /** Create a new local account with the given display name. */
+    fun createAccount(displayName: String) = bridge.createLocalAccount(displayName)
+
+    /** Switch the active account to the given pubkey. */
+    fun switchAccount(pubkey: String) = bridge.dispatchAction("nmp.switch_account", """{"pubkey":"$pubkey"}""")
+
+    /** Remove the account identified by the given pubkey. */
+    fun removeAccount(pubkey: String) = bridge.dispatchAction("nmp.remove_account", """{"pubkey":"$pubkey"}""")
+
+    // -------------------------------------------------------------------------
+    // Relay management
+    // -------------------------------------------------------------------------
+
+    /** Add a relay with the given URL and role ("read", "write", or "both"). */
+    fun addRelay(url: String, role: String = "both") = bridge.dispatchAction("nmp.add_relay", """{"url":"$url","role":"$role"}""")
+
+    /** Remove a relay by URL. */
+    fun removeRelay(url: String) = bridge.dispatchAction("nmp.remove_relay", """{"url":"$url"}""")
+
+    // -------------------------------------------------------------------------
+    // Social
+    // -------------------------------------------------------------------------
+
+    /** Zap a note. */
+    fun zapNote(eventId: String, amountMsats: Long = 21000L, comment: String = "") =
+        bridge.dispatchAction("nmp.zap", """{"event_id":"$eventId","amount_msats":$amountMsats,"comment":"${escapeJson(comment)}"}""")
+
+    /** React to a note (NIP-25). */
+    fun react(eventId: String, reaction: String = "+") =
+        bridge.dispatchAction("nmp.nip25.react", """{"target_event_id":"$eventId","reaction":"$reaction"}""")
+
+    /** Follow a pubkey. */
+    fun follow(pubkey: String) = bridge.dispatchAction("nmp.follow", """{"pubkey":"$pubkey"}""")
+
+    /** Unfollow a pubkey. */
+    fun unfollow(pubkey: String) = bridge.dispatchAction("nmp.unfollow", """{"pubkey":"$pubkey"}""")
+
+    // -------------------------------------------------------------------------
+    // DMs
+    // -------------------------------------------------------------------------
+
+    /** Send a NIP-17 direct message to the given recipient pubkey. */
+    fun sendDm(recipientPubkey: String, content: String) =
+        bridge.dispatchAction("nmp.nip17.send", """{"recipient_pubkey":"$recipientPubkey","content":"${escapeJson(content)}"}""")
 
     private fun escapeJson(s: String): String {
         return s.replace("\\", "\\\\")
