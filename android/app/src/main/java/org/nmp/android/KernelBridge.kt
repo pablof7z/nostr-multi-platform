@@ -107,6 +107,24 @@ class KernelBridge {
     }
 
     /**
+     * Add a relay with the given URL and role ("read", "write", or "both").
+     *
+     * D6: null handle is a silent no-op.
+     */
+    fun addRelay(url: String, role: String = "both") {
+        if (handle != 0L) nativeAddRelay(handle, url, role)
+    }
+
+    /**
+     * Remove a relay by URL.
+     *
+     * D6: null handle is a silent no-op.
+     */
+    fun removeRelay(url: String) {
+        if (handle != 0L) nativeRemoveRelay(handle, url)
+    }
+
+    /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
      * must not store this value beyond the lifetime of this bridge.
@@ -131,5 +149,7 @@ class KernelBridge {
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
     private external fun nativeOpenThread(handle: Long, noteId: String)
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
+    private external fun nativeAddRelay(handle: Long, url: String, role: String)
+    private external fun nativeRemoveRelay(handle: Long, url: String)
     private external fun nativeFree(handle: Long)
 }

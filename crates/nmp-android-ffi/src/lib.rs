@@ -31,8 +31,8 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
     nmp_app_dispatch_action, nmp_app_free,
     nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start,
-    nmp_app_stop, NmpApp,
+    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_relay,
+    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -367,6 +367,48 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenAuthor(
         return;
     };
     nmp_app_open_author(s.app, pubkey.as_ptr());
+}
+
+/// Add a relay by URL and role string ("read", "write", or "both").
+///
+/// D6: null handle, null URL, or null role is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeAddRelay(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    url: JString,
+    role: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(url) = jstring_to_cstring(&mut env, &url) else {
+        return;
+    };
+    let Some(role) = jstring_to_cstring(&mut env, &role) else {
+        return;
+    };
+    nmp_app_add_relay(s.app, url.as_ptr(), role.as_ptr());
+}
+
+/// Remove a relay by URL.
+///
+/// D6: null handle or null URL is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveRelay(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    url: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(url) = jstring_to_cstring(&mut env, &url) else {
+        return;
+    };
+    nmp_app_remove_relay(s.app, url.as_ptr());
 }
 
 #[no_mangle]

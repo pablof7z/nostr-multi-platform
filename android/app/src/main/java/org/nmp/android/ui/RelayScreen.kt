@@ -100,8 +100,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     items(relays, key = { it.relayUrl }) { relay ->
                         RelayRow(relay) {
-                            // Remove relay action placeholder
-                            // model.removeRelay(relay.relayUrl)
+                            model.removeRelay(relay.relayUrl)
                         }
                         HorizontalDivider()
                     }
@@ -117,8 +116,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 onRoleChange = { newRelayRole = it },
                 onAdd = {
                     if (newRelayUrl.isNotBlank()) {
-                        // Add relay action placeholder
-                        // model.addRelay(newRelayUrl, newRelayRole)
+                        model.addRelay(newRelayUrl, newRelayRole)
                         newRelayUrl = ""
                         newRelayRole = "Read"
                     }
