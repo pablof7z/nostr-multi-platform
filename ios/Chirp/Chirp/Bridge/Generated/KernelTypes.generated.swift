@@ -215,6 +215,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let dmRelayList: DmRelayListSnapshot?
     let relayDiagnostics: RelayDiagnosticsSnapshot?
     let mentionProfiles: [String: MentionProfileWire]?
+    let claimedProfiles: [String: ProfileCard]?
     let settingsHub: SettingsHubSummary?
 
     enum CodingKeys: String, CodingKey {
@@ -248,6 +249,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case dmRelayList = "nmp.nip17.dmRelayList"
         case relayDiagnostics
         case mentionProfiles
+        case claimedProfiles
         case settingsHub
     }
 }
