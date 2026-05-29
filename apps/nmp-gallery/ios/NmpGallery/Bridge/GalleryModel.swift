@@ -63,10 +63,16 @@ let SHOWCASE_NOTE_NEVENT = GALLERY_SHOWCASE.note.uri
 let SHOWCASE_HIGHLIGHT_EVENT_ID = GALLERY_SHOWCASE.highlight.primaryId
 let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 
-/// Wire-shape of `projections.author_view.profile` — the kernel's
+/// Wire-shape of one entry in `projections.resolved_profiles` — the kernel's
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
-private struct AuthorProfileWire: Decodable {
+///
+/// The kernel pre-merges `claimed_profiles`, `author_view.profile`, and
+/// `mention_profiles` into this single key (see PR #812), so every entry
+/// carries a Rust-formatted bech32 `npub` regardless of which source won —
+/// mention-sourced entries simply have empty `nip05` / `about` and `lnurl:
+/// null`. The extra `lnurl` field the card carries is ignored here.
+private struct ResolvedProfileWire: Decodable {
     let pubkey: String
     let npub: String
     let displayName: String?
@@ -76,36 +82,18 @@ private struct AuthorProfileWire: Decodable {
     let hasProfile: Bool?
 }
 
-/// Wire-shape of one entry in `projections.mention_profiles` — the kernel's
-/// `MentionProfilePayload`. Carries the bare minimum (no `npub`, no `nip05`,
-/// no `about`) so the gallery decoder falls back to deriving an `npubShort`
-/// from the hex pubkey when only this surface is available.
-private struct MentionProfileWire: Decodable {
-    let pubkey: String
-    let displayName: String?
-    let pictureUrl: String?
-}
-
-/// Wire-shape of `projections.author_view` (or null when no view is open).
-private struct AuthorViewWire: Decodable {
-    let pubkey: String
-    let profile: AuthorProfileWire
-}
-
 /// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The
 /// kernel's `KernelSnapshot` ships a host-extensible `projections` map; the
-/// gallery reads three profile keys from it:
+/// gallery reads the pre-merged profile key from it:
 ///
-///   * `projections.claimed_profiles[pubkey]` — populated by component-owned
-///     `claim_profile` lifecycles. This is the registry component happy path.
-///   * `projections.author_view.profile` — populated by `open_author`,
-///     carries a full `ProfileCard` with `npub`, `nip05`, and `about`.
-///   * `projections.mention_profiles[pubkey]` — populated for every author
-///     whose notes appear in a visible timeline / author view / thread
-///     view. Carries `display_name` + `picture_url` only (no `npub`).
+///   * `projections.resolved_profiles[pubkey]` — the kernel's single,
+///     pre-merged `ProfileCard` per pubkey. The kernel applies the three-source
+///     precedence (`claimed_profiles` → `author_view.profile` →
+///     `mention_profiles`) once in Rust (PR #812); the gallery no longer
+///     re-implements that merge. Always present (`{}` when empty).
 ///
-/// `snapshot.profiles[pubkey] -> ProfileWire?` is synthesised from those
-/// surfaces so the per-component pages stay decoupled from the wire
+/// `snapshot.profiles[pubkey] -> ProfileWire?` is decoded directly from that
+/// surface so the per-component pages stay decoupled from the wire
 /// shape. Decoding is fault-tolerant — a missing/null projection key
 /// degrades to an empty map instead of failing the whole tick.
 struct GallerySnapshot: Decodable, Equatable {
@@ -126,7 +114,7 @@ struct GallerySnapshot: Decodable, Equatable {
     }
 
     private enum ProjectionsKeys: String, CodingKey {
-        case claimedProfiles, authorView, mentionProfiles, accounts
+        case resolvedProfiles, accounts
     }
 
     init(from decoder: Decoder) throws {
@@ -142,28 +130,17 @@ struct GallerySnapshot: Decodable, Equatable {
             keyedBy: ProjectionsKeys.self,
             forKey: .projections
         ) {
-            if let claimed = try? projections.decodeIfPresent(
-                [String: AuthorProfileWire].self,
-                forKey: .claimedProfiles
+            // The kernel ships one pre-merged card per pubkey under
+            // `resolved_profiles` (PR #812). The three-source precedence
+            // (claimed_profiles → author_view → mention_profiles) is applied
+            // in Rust; the gallery just decodes the result.
+            if let resolved = try? projections.decodeIfPresent(
+                [String: ResolvedProfileWire].self,
+                forKey: .resolvedProfiles
             ) {
-                for (pubkey, card) in claimed {
-                    assembled[pubkey] = profileWire(fromAuthorProfile: card, pubkey: pubkey)
-                }
-            }
-            if let view = try? projections.decodeIfPresent(
-                AuthorViewWire.self,
-                forKey: .authorView
-            ) {
-                let card = view.profile
-                let pubkey = card.pubkey.isEmpty ? view.pubkey : card.pubkey
-                assembled[pubkey] = profileWire(fromAuthorProfile: card, pubkey: pubkey)
-            }
-            if let mentions = try? projections.decodeIfPresent(
-                [String: MentionProfileWire].self,
-                forKey: .mentionProfiles
-            ) {
-                for (pubkey, payload) in mentions where assembled[pubkey] == nil {
-                    assembled[pubkey] = profileWire(fromMention: payload, pubkey: pubkey)
+                for (pubkey, card) in resolved {
+                    let key = card.pubkey.isEmpty ? pubkey : card.pubkey
+                    assembled[key] = profileWire(fromResolvedProfile: card, pubkey: key)
                 }
             }
             if let accs = try? projections.decodeIfPresent(
@@ -188,10 +165,13 @@ struct GallerySnapshot: Decodable, Equatable {
     }
 }
 
-/// Build a `ProfileWire` from the kernel's `ProfileCard` (which carries
-/// `npub` already-formatted by Rust per aim.md §2). `npubShort` is the only
-/// Swift-side derivation; aim.md §2 stipulates shells own abbreviation.
-private func profileWire(fromAuthorProfile card: AuthorProfileWire, pubkey: String) -> ProfileWire {
+/// Build a `ProfileWire` from one `resolved_profiles` entry (the kernel's
+/// pre-merged `ProfileCard`, which carries `npub` already-formatted by Rust
+/// per aim.md §2). `npubShort` is the only Swift-side derivation; aim.md §2
+/// stipulates shells own abbreviation. Every entry — including
+/// mention-sourced ones — carries a real bech32 `npub`, so the truncation is
+/// uniform.
+private func profileWire(fromResolvedProfile card: ResolvedProfileWire, pubkey: String) -> ProfileWire {
     ProfileWire(
         pubkey: pubkey,
         displayName: card.displayName?.nonEmpty,
@@ -203,37 +183,12 @@ private func profileWire(fromAuthorProfile card: AuthorProfileWire, pubkey: Stri
     )
 }
 
-/// Build a `ProfileWire` from a `mention_profiles` payload. The mention
-/// surface carries no `npub` / `nip05` / `about`, so the bech32 is empty
-/// (the npubShort still derives from the hex via `shortenNpub`'s pubkey
-/// suffix fallback when the npub is missing).
-private func profileWire(fromMention payload: MentionProfileWire, pubkey: String) -> ProfileWire {
-    ProfileWire(
-        pubkey: pubkey,
-        displayName: payload.displayName?.nonEmpty,
-        about: nil,
-        pictureUrl: payload.pictureUrl?.nonEmpty,
-        nip05: nil,
-        npub: "",
-        npubShort: shortHexPubkey(pubkey)
-    )
-}
-
 /// Truncate a bech32 npub for display (e.g. `npub1abcd…wxyz`). Mirrors the
 /// Rust-side helper the kernel deleted (aim.md §2 — shells own abbreviation).
 private func shortenNpub(_ npub: String) -> String {
     guard npub.count > 12 else { return npub }
     let prefix = npub.prefix(9) // "npub1XXXX"
     let suffix = npub.suffix(4)
-    return "\(prefix)…\(suffix)"
-}
-
-/// Fallback display string when no npub is available (mention_profiles
-/// payload). Shows the first 8 and last 4 hex chars.
-private func shortHexPubkey(_ hex: String) -> String {
-    guard hex.count > 12 else { return hex }
-    let prefix = hex.prefix(8)
-    let suffix = hex.suffix(4)
     return "\(prefix)…\(suffix)"
 }
 
@@ -323,9 +278,8 @@ final class GalleryModel: NostrProfileHost {
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
     /// The decode is split into two reads of the same JSON blob:
-    ///   1. Typed `GallerySnapshot` decode — claimed_profiles / author_view /
-    ///      mention_profiles / accounts. Lean: stays decoupled from any
-    ///      embed-projection drift.
+    ///   1. Typed `GallerySnapshot` decode — resolved_profiles / accounts.
+    ///      Lean: stays decoupled from any embed-projection drift.
     ///   2. Raw JSONSerialization read passed through to `embedHost` so the
     ///      kind-dispatched embed projection (`projections.claimed_events`)
     ///      flows into the SwiftUI environment without expanding the typed
