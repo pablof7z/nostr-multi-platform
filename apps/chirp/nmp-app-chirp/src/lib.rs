@@ -41,7 +41,11 @@ mod wallet_runtime;
 pub mod snapshot_types;
 
 pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
-pub use typed_api::ChirpClient;
+pub use typed_api::{
+    ChirpClient, publish_note_action, react_action, follow_action, unfollow_action,
+    send_dm_action, zap_action, create_account_action, sign_in_nsec_action,
+    switch_account_action, remove_account_action, publish_profile_action,
+};
 pub use snapshot_types::{
     ActionResult, ActionStageRow, InterestRow, ProfileCard, RelayRow, RelayWireSubRow,
     RuntimeMetrics,
