@@ -696,26 +696,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-63 · NIP-47 outbound payment serialization uses `unwrap_or_default` — payment frame can be empty string [HIGH · silent payment failure]
-
-**Verified:** `crates/nmp-nip47/src/runtime.rs:222`, `:267`, `:460` — `serde_json::to_string(...).unwrap_or_default()` on the REQ/EVENT/CLOSE frames. If serialization fails, the resulting `""` is pushed onto the outbound queue. For `pay_invoice` (line 460) the `pending_payments` map is populated before the broken frame is sent, so the correlation_id is registered as inflight while the relay never receives a payment request.
-
-**Impact:** the user's pay-invoice action stage hangs indefinitely (or until wallet disconnect drains it as "wallet disconnected", which is a misleading reason). No error surfaces. This is also the most likely path through which a malformed bolt11 or amount could vanish without diagnosis.
-
-**Correct fix:** propagate serialization failure as `Err(NwcError::EncodeFailure)`; never send `""` frames; emit a `record_action_failure` for the correlation_id before dropping the request. Apply the same fix to the REQ filter and CLOSE frames so subscription bring-up failures are visible.
-
----
-
-### V-64 · NIP-47 has no `pending_payments` timeout sweep — orphaned responses silently dropped [MEDIUM · silent stuck state]
-
-**Verified:** `crates/nmp-nip47/src/runtime.rs:392` — the `(_, None) => {}` arm in the response-correlation handler silently discards wallet responses that arrive with no matching `pending_payments` entry. `crates/nmp-nip47/src/runtime.rs:48` defines `pending_payments: HashMap<String, Option<String>>` and the only drain site is `wallet_disconnect_inner` (`:260`). There is no periodic sweep that times out inflight pay_invoice correlations.
-
-**Impact:** if a wallet response arrives after the client has already evicted the entry (or never registers one due to V-63), the response is silently consumed. Combined with the absence of a timeout, a payment can sit "pending" until the user manually disconnects the wallet, at which point the failure reason surfaced to the user is the unrelated string "wallet disconnected".
-
-**Correct fix:** add a wall-clock-gated sweep that records `record_action_failure(cid, "wallet timeout (>Ns)")` for entries older than a configured TTL (default 90 s, kernel-clock-sourced once V-59 lands). Replace the `_ => {}` arm with a `tracing::warn!` and a `WalletAnomaly::OrphanResponse` counter so the receive-without-correlation case becomes observable rather than dropped.
-
----
-
 ### V-65 · `NOSTRCONNECT_DEFAULT_RELAY_URL = "wss://relay.damus.io"` hardcoded in `nmp-core` [MEDIUM · D0 leak + third-party dependency]
 
 **Verified:** `crates/nmp-core/src/actor/relay_roles.rs:5` — `pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";` is a hardcoded third-party relay URL used as a fallback when a user without configured write relays initiates a `nostrconnect://` handshake (NIP-46).

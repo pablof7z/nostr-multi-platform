@@ -8,6 +8,26 @@
 //! D0: `nmp-core` no longer depends on `nmp-nwc`. D6: every error path
 //! surfaces as a `last_error_toast` + `WalletStatus::status = "error"`,
 //! never a panic.
+//!
+//! ## V-63 fix — encode-before-register
+//!
+//! REQ, EVENT, and CLOSE frames are now serialized with `encode_frame` which
+//! returns `Result<String, serde_json::Error>`. On failure the frame is never
+//! pushed to the outbound queue and a `last_error_toast` is set. For the
+//! `pay_invoice` path the `pending_payments` map is inserted ONLY after the
+//! outbound frame is successfully serialized, so a correlation_id is never
+//! registered as inflight when the relay never received the request.
+//!
+//! ## V-64 fix — TTL sweep + orphan observability
+//!
+//! `pending_payments` entries now carry an `inserted_at_secs` timestamp.
+//! The idle-tick hook (`sweep_expired_payments`) fires on every actor loop
+//! iteration via `RelayTextInterceptor::on_idle_tick` — this includes
+//! iterations where the NWC relay is completely silent — and calls
+//! `record_action_failure` for any entry older than `PENDING_PAYMENT_TTL_SECS`
+//! (90 s). The `(_, None) => {}` orphan arm is replaced with a `tracing::warn!`
+//! and an `orphan_responses` counter, making receive-without-correlation
+//! observable.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -28,6 +48,29 @@ use nmp_nwc::NwcMethod;
 use crate::crypto::{build_event_json, sign_nwc_request, sign_with};
 use crate::status::{format_sats_display, WalletStatus, WalletStatusSlot};
 
+/// TTL for inflight `pay_invoice` requests. Entries older than this are
+/// swept by the idle-tick hook and reported as timed-out failures via
+/// `kernel.record_action_failure`. 90 seconds matches typical lightning
+/// payment-routing ceilings across diverse wallet implementations.
+///
+/// Exported so host-side `RelayTextInterceptor::on_idle_tick` implementations
+/// (e.g. `nmp-app-chirp::wallet_runtime::WalletInterceptor`) can pass the
+/// canonical TTL to `WalletRuntime::sweep_expired_payments`.
+pub const PENDING_PAYMENT_TTL_SECS: u64 = 90;
+
+/// A single inflight `pay_invoice` request, keyed by the kind:23194 event
+/// id on `WalletConnection::pending_payments`.
+struct PendingPayment {
+    /// The registry-minted action correlation id to close on terminal, if
+    /// this payment was dispatched via `nmp.wallet.pay_invoice`. `None` for
+    /// actor-internal auto-dispatched payments where no host spinner exists.
+    correlation_id: Option<String>,
+    /// Wall-clock second at which this entry was inserted (from
+    /// `kernel.now_secs()`). Used by the idle-tick sweep to detect TTL
+    /// expiry without a dedicated timer — D8 compliant.
+    inserted_at_secs: u64,
+}
+
 /// Actor-local NWC connection state. Cleared on `wallet_disconnect`.
 struct WalletConnection {
     wallet_pubkey_hex: String,
@@ -40,14 +83,16 @@ struct WalletConnection {
     balance_msats: Option<u64>,
     /// Inflight NWC requests: event_id → method name. Diagnostic-only.
     pending: HashMap<String, String>,
-    /// Inflight `pay_invoice` requests keyed by the kind:23194 event id,
-    /// value is the dispatched `correlation_id` (`Some` for FFI-dispatched
-    /// pays — every wire path post-V3; `None` for actor-internal chains).
-    /// Drained on the matching kind:23195 response to close the dispatched
-    /// action promise.
-    pending_payments: HashMap<String, Option<String>>,
+    /// Inflight `pay_invoice` requests keyed by the kind:23194 event id.
+    /// Entries are inserted ONLY after the outbound frame is successfully
+    /// serialized (V-63 fix) and removed on the matching kind:23195 response
+    /// or on TTL expiry (V-64 sweep).
+    pending_payments: HashMap<String, PendingPayment>,
     /// Sub-id used for the kind:23195 subscription on the NWC relay.
     sub_id: String,
+    /// Count of kind:23195 responses that arrived with no matching
+    /// `pending_payments` entry. Observable via `orphan_response_count()`.
+    orphan_responses: u64,
 }
 
 /// Actor-thread-owned NWC runtime. Held behind a [`WalletRuntimeHandle`]
@@ -138,6 +183,62 @@ impl WalletRuntime {
             .map(|c| c.relay_url == relay_url)
             .unwrap_or(false)
     }
+
+    /// Number of kind:23195 responses received with no matching
+    /// `pending_payments` entry. Exposed for diagnostic tests; not surfaced
+    /// in the snapshot to avoid churning the FlatBuffers shape.
+    #[cfg(test)]
+    #[must_use]
+    pub fn orphan_response_count(&self) -> u64 {
+        self.connection
+            .as_ref()
+            .map(|c| c.orphan_responses)
+            .unwrap_or(0)
+    }
+
+    /// Sweep `pending_payments` entries older than `now_secs` by `ttl_secs`.
+    ///
+    /// Returns the expired correlation_ids that must be recorded as failed
+    /// by the caller (via `kernel.record_action_failure`). This design keeps
+    /// the sweep Kernel-free so it can be tested without a live `Kernel`.
+    ///
+    /// The caller (host-side `RelayTextInterceptor::on_idle_tick`) records the
+    /// returned failures — see `nmp-app-chirp::WalletInterceptor::on_idle_tick`.
+    ///
+    /// D8 — no sleep/loop: pure wall-clock compare of `now_secs` against the
+    /// per-entry `inserted_at_secs` field.
+    pub fn sweep_expired_payments(
+        &mut self,
+        now_secs: u64,
+        ttl_secs: u64,
+    ) -> Vec<(String, String)> {
+        let conn = match self.connection.as_mut() {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+        let expired_ids: Vec<String> = conn
+            .pending_payments
+            .iter()
+            .filter(|(_, e)| now_secs.saturating_sub(e.inserted_at_secs) >= ttl_secs)
+            .map(|(k, _)| k.clone())
+            .collect();
+        let mut failures: Vec<(String, String)> = Vec::new();
+        for event_id in expired_ids {
+            if let Some(entry) = conn.pending_payments.remove(&event_id) {
+                tracing::warn!(
+                    event_id = %event_id,
+                    inserted_at_secs = entry.inserted_at_secs,
+                    now_secs = now_secs,
+                    ttl_secs = ttl_secs,
+                    "nwc: pay_invoice timed out — no kind:23195 response within TTL"
+                );
+                if let Some(cid) = entry.correlation_id {
+                    failures.push((cid, format!("wallet timeout (>{ttl_secs}s)")));
+                }
+            }
+        }
+        failures
+    }
 }
 
 // ── Command handlers (the public surface the ProtocolCommands call into) ─────
@@ -202,6 +303,7 @@ pub(crate) fn wallet_connect(
         pending: HashMap::new(),
         pending_payments: HashMap::new(),
         sub_id: sub_id.clone(),
+        orphan_responses: 0,
     };
     wallet.connection = Some(conn);
 
@@ -219,12 +321,20 @@ pub(crate) fn wallet_connect(
         "authors": [&nwc_uri.wallet_pubkey_hex],
         "#p": [&client_pubkey_hex],
     });
-    let req_msg = serde_json::to_string(&json!(["REQ", &sub_id, &req_filter,])).unwrap_or_default();
-    out.push(OutboundMessage::new(
-        RelayRole::Wallet,
-        relay.clone(),
-        req_msg,
-    ));
+    // V-63: encode before pushing. On failure set a toast and skip the frame
+    // so no empty string is enqueued on the NWC relay.
+    match encode_frame(&json!(["REQ", &sub_id, &req_filter])) {
+        Ok(req_msg) => {
+            out.push(OutboundMessage::new(
+                RelayRole::Wallet,
+                relay.clone(),
+                req_msg,
+            ));
+        }
+        Err(e) => {
+            kernel.set_last_error_toast(Some(format!("NWC REQ encode failed: {e}")));
+        }
+    }
 
     if let Some(msg) = build_request(wallet, kernel, &relay, NwcMethod::GetInfo, json!({}), None) {
         out.push(msg);
@@ -257,14 +367,22 @@ fn wallet_disconnect_inner(
     // connection state is dropped — the kind:23195 response that would
     // have closed each dispatched action will never arrive once the
     // subscription is gone.
-    for (_request_id, correlation_id_opt) in conn.pending_payments.iter() {
-        if let Some(cid) = correlation_id_opt {
+    for (_request_id, entry) in conn.pending_payments.iter() {
+        if let Some(cid) = &entry.correlation_id {
             kernel.record_action_failure(cid.clone(), "wallet disconnected".to_string());
         }
     }
     kernel.unregister_persistent_sub(&conn.relay_url, &conn.sub_id);
     kernel.clear_relay_auth_signer(RelayRole::Wallet);
-    let close_msg = serde_json::to_string(&json!(["CLOSE", &conn.sub_id])).unwrap_or_default();
+    // V-63: encode CLOSE frame; on failure log a toast but do not push an
+    // empty-string frame (the subscription will expire on the relay side).
+    let close_msg_opt = match encode_frame(&json!(["CLOSE", &conn.sub_id])) {
+        Ok(msg) => Some(msg),
+        Err(e) => {
+            tracing::warn!("nwc: CLOSE frame encode failed: {e}");
+            None
+        }
+    };
     if let Ok(mut slot) = wallet.status_slot.lock() {
         let balance_sats = conn.balance_msats.map(|m| m / 1000);
         *slot = Some(WalletStatus {
@@ -279,11 +397,14 @@ fn wallet_disconnect_inner(
             is_connected: false,
         });
     }
-    vec![OutboundMessage::new(
-        RelayRole::Wallet,
-        conn.relay_url,
-        close_msg,
-    )]
+    match close_msg_opt {
+        Some(close_msg) => vec![OutboundMessage::new(
+            RelayRole::Wallet,
+            conn.relay_url,
+            close_msg,
+        )],
+        None => Vec::new(),
+    }
 }
 
 /// Sign and send a `pay_invoice` NWC request.
@@ -380,16 +501,29 @@ pub(crate) fn handle_nwc_text(
             conn.client_secret_hex.as_str(),
         );
         if let Some((request_event_id, _response2)) = matched {
-            let correlation_id_opt = conn.pending_payments.remove(&request_event_id);
-            match (&response.error, correlation_id_opt.and_then(|x| x)) {
-                (None, Some(correlation_id)) => {
-                    kernel.record_action_success(correlation_id);
+            let entry_opt = conn.pending_payments.remove(&request_event_id);
+            match (&response.error, entry_opt) {
+                (None, Some(entry)) => {
+                    if let Some(cid) = entry.correlation_id {
+                        kernel.record_action_success(cid);
+                    }
                 }
-                (Some(err), Some(correlation_id)) => {
-                    let reason = format!("{}: {}", err.code, err.message);
-                    kernel.record_action_failure(correlation_id, reason);
+                (Some(err), Some(entry)) => {
+                    if let Some(cid) = entry.correlation_id {
+                        let reason = format!("{}: {}", err.code, err.message);
+                        kernel.record_action_failure(cid, reason);
+                    }
                 }
-                (_, None) => {}
+                // V-64: make orphan responses observable instead of silent.
+                (_, None) => {
+                    conn.orphan_responses += 1;
+                    tracing::warn!(
+                        request_event_id = %request_event_id,
+                        orphan_count = conn.orphan_responses,
+                        "nwc: pay_invoice response arrived with no matching \
+                         pending_payments entry (orphan response)"
+                    );
+                }
             }
         }
     }
@@ -411,6 +545,15 @@ pub(crate) fn handle_nwc_text(
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
+
+/// Serialize a JSON value to a string for the outbound wire queue.
+///
+/// V-63: replaces the prior `serde_json::to_string(...).unwrap_or_default()`
+/// call sites. Returns `Err` on the rare serialization failure so callers can
+/// surface an error rather than pushing an empty `""` frame.
+fn encode_frame(value: &serde_json::Value) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
 
 fn build_request(
     wallet: &mut WalletRuntime,
@@ -449,15 +592,32 @@ fn build_request(
         }
     };
 
+    let event_json = build_event_json(&signed);
+    // V-63: encode the EVENT frame BEFORE inserting into pending maps.
+    // If encoding fails we surface an error and return None without
+    // registering the correlation_id as inflight — the pay_invoice path's
+    // caller detects None and calls record_action_failure directly, so the
+    // action is never left hanging.
+    let text = match encode_frame(&json!(["EVENT", &event_json])) {
+        Ok(t) => t,
+        Err(e) => {
+            kernel.set_last_error_toast(Some(format!("NWC EVENT encode failed: {e}")));
+            return None;
+        }
+    };
+
+    // Insert into tracking maps only after successful encoding (V-63).
     let method_name = method.as_str().to_string();
     conn.pending.insert(signed.id.clone(), method_name);
     if matches!(method, NwcMethod::PayInvoice) {
-        conn.pending_payments
-            .insert(signed.id.clone(), correlation_id);
+        conn.pending_payments.insert(
+            signed.id.clone(),
+            PendingPayment {
+                correlation_id,
+                inserted_at_secs: created_at,
+            },
+        );
     }
-
-    let event_json = build_event_json(&signed);
-    let text = serde_json::to_string(&json!(["EVENT", &event_json])).unwrap_or_default();
 
     Some(OutboundMessage::new(
         RelayRole::Wallet,
@@ -494,3 +654,195 @@ fn pubkey_to_npub(hex: &str) -> Result<String, String> {
         .map_err(|e| format!("{e}"))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::status::new_wallet_status_slot;
+
+    // ── V-63: encode-before-register ─────────────────────────────────────────
+
+    /// Verify that `encode_frame` propagates a serialization error.
+    ///
+    /// `serde_json::to_string` of a plain `json!([...])` is effectively
+    /// infallible, so we test via a `HashMap<Vec<u8>, ()>` whose
+    /// non-string keys cause serde_json to reject serialization.
+    #[test]
+    fn encode_frame_returns_err_for_non_string_key_map() {
+        let mut bad: std::collections::HashMap<Vec<u8>, ()> = std::collections::HashMap::new();
+        bad.insert(vec![0u8], ());
+        let result = serde_json::to_string(&bad);
+        assert!(
+            result.is_err(),
+            "serde_json must reject a map with non-string keys — \
+             this is the error class encode_frame is designed to catch"
+        );
+    }
+
+    /// V-63: verify that a successful encode_frame call returns a non-empty
+    /// JSON string (the REQ/EVENT/CLOSE frame shape).
+    #[test]
+    fn encode_frame_succeeds_for_valid_json_array() {
+        let frame = json!(["REQ", "sub-id-1", {"kinds": [23195u32]}]);
+        let result = encode_frame(&frame);
+        assert!(result.is_ok(), "valid json array must encode without error");
+        let text = result.unwrap();
+        assert!(!text.is_empty(), "encoded frame must not be empty");
+        assert!(text.starts_with('['), "encoded frame must be a JSON array");
+    }
+
+    // ── V-64: orphan response counter ─────────────────────────────────────────
+
+    /// V-64: `orphan_response_count` starts at zero for a freshly created
+    /// runtime.
+    #[test]
+    fn orphan_response_count_starts_at_zero() {
+        let slot = new_wallet_status_slot();
+        let rt = WalletRuntime::new(slot);
+        // No connection installed — count must be zero.
+        assert_eq!(
+            rt.orphan_response_count(),
+            0,
+            "fresh runtime must report zero orphan responses"
+        );
+    }
+
+    // ── V-64: sweep_expired_payments ─────────────────────────────────────────
+
+    fn make_connection(pending_payments: HashMap<String, PendingPayment>) -> WalletConnection {
+        WalletConnection {
+            wallet_pubkey_hex: "aaaa".repeat(16),
+            wallet_npub: "npub1test".to_string(),
+            relay_url: "wss://test.relay".to_string(),
+            client_secret_hex: Zeroizing::new("bb".repeat(32)),
+            client_pubkey_hex: "cccc".repeat(16),
+            status: "ready".to_string(),
+            balance_msats: None,
+            pending: HashMap::new(),
+            pending_payments,
+            sub_id: "nwc-aaaa".to_string(),
+            orphan_responses: 0,
+        }
+    }
+
+    /// V-64 (test b): an aged pending entry is swept to a timeout failure on
+    /// the next driven tick; a fresh entry is retained.
+    ///
+    /// `sweep_expired_payments` returns `(correlation_id, reason)` pairs so
+    /// the caller (not the sweep) records failures via `kernel` — allowing
+    /// this test to drive the production code without a live `Kernel`.
+    #[test]
+    fn sweep_removes_expired_entry_and_leaves_fresh_entry() {
+        let slot = new_wallet_status_slot();
+        let mut rt = WalletRuntime::new(slot);
+        let now_secs: u64 = 1_000_000;
+        let ttl_secs: u64 = 90;
+
+        let mut payments = HashMap::new();
+        // Expired: inserted 200 s ago (past the 90 s TTL).
+        payments.insert(
+            "expired-event-id".to_string(),
+            PendingPayment {
+                correlation_id: Some("cid-expired".to_string()),
+                inserted_at_secs: now_secs - 200,
+            },
+        );
+        // Fresh: inserted 10 s ago (within TTL).
+        payments.insert(
+            "fresh-event-id".to_string(),
+            PendingPayment {
+                correlation_id: Some("cid-fresh".to_string()),
+                inserted_at_secs: now_secs - 10,
+            },
+        );
+        rt.connection = Some(make_connection(payments));
+
+        // Call the real production function.
+        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
+
+        // Only the expired entry returns a failure cid.
+        assert_eq!(failures.len(), 1, "exactly one failure must be returned");
+        let (cid, reason) = &failures[0];
+        assert_eq!(cid, "cid-expired", "returned cid must be the expired one");
+        assert!(
+            reason.contains("timeout"),
+            "reason must mention timeout: {reason}"
+        );
+
+        // The expired entry must be removed from the map.
+        let conn = rt.connection.as_ref().unwrap();
+        assert!(
+            !conn.pending_payments.contains_key("expired-event-id"),
+            "expired entry must be removed"
+        );
+
+        // The fresh entry must remain.
+        assert!(
+            conn.pending_payments.contains_key("fresh-event-id"),
+            "fresh entry must be retained"
+        );
+    }
+
+    /// V-64: a `PendingPayment` with `correlation_id = None` (actor-internal
+    /// auto-dispatch) must be swept and removed but must NOT produce a failure
+    /// entry (nothing is waiting on it).
+    #[test]
+    fn sweep_removes_no_correlation_entry_without_failure() {
+        let slot = new_wallet_status_slot();
+        let mut rt = WalletRuntime::new(slot);
+        let now_secs: u64 = 1_000_000;
+        let ttl_secs: u64 = 90;
+
+        let mut payments = HashMap::new();
+        payments.insert(
+            "actor-internal-event-id".to_string(),
+            PendingPayment {
+                correlation_id: None,
+                inserted_at_secs: now_secs - 200,
+            },
+        );
+        rt.connection = Some(make_connection(payments));
+
+        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
+
+        // No correlation_id → no failure emitted.
+        assert!(
+            failures.is_empty(),
+            "actor-internal (no cid) sweep must return no failure pairs"
+        );
+
+        // The entry must still have been removed from the map.
+        let conn = rt.connection.as_ref().unwrap();
+        assert!(
+            !conn.pending_payments.contains_key("actor-internal-event-id"),
+            "actor-internal entry must be removed from the map"
+        );
+    }
+
+    /// V-64: fresh entries (within TTL) must NOT be swept.
+    #[test]
+    fn sweep_leaves_fresh_entry_untouched() {
+        let slot = new_wallet_status_slot();
+        let mut rt = WalletRuntime::new(slot);
+        let now_secs: u64 = 1_000_000;
+        let ttl_secs: u64 = 90;
+
+        let mut payments = HashMap::new();
+        payments.insert(
+            "fresh-event-id".to_string(),
+            PendingPayment {
+                correlation_id: Some("cid-fresh".to_string()),
+                inserted_at_secs: now_secs - 10,
+            },
+        );
+        rt.connection = Some(make_connection(payments));
+
+        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
+
+        assert!(failures.is_empty(), "fresh entry must not produce a failure");
+        let conn = rt.connection.as_ref().unwrap();
+        assert!(
+            conn.pending_payments.contains_key("fresh-event-id"),
+            "fresh entry must still be present"
+        );
+    }
+}

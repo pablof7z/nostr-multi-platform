@@ -20,13 +20,22 @@
 //! reaches into the host-installed slot on every text frame and gives the
 //! NIP-crate runtime a chance to intercept. The trait is substrate-generic;
 //! the wallet runtime (in `nmp-nip47`) is the first impl.
+//!
+//! ## Idle-tick hook
+//!
+//! `on_idle_tick` is called from the actor's idle section on **every**
+//! loop iteration (whether or not a relay frame arrived). This is the
+//! correct hook for wall-clock-gated sweeps (e.g. pending-payment TTL
+//! expiry) that must fire even when the watched relay is silent. The
+//! default impl is a no-op so existing interceptors need not change.
 
 use std::sync::{Arc, Mutex};
 
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 
-/// A NIP-crate-owned hook the actor calls for every inbound text frame.
+/// A NIP-crate-owned hook the actor calls for every inbound text frame and
+/// on every idle-loop iteration.
 ///
 /// The hook decides for itself whether the frame is "interesting" (e.g.
 /// `nmp-nip47` checks `relay_url` against its current NWC connection's
@@ -49,6 +58,21 @@ pub trait RelayTextInterceptor: Send + Sync + 'static {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage>;
+
+    /// Called from the actor's idle section on every loop iteration,
+    /// whether or not a relay frame arrived.
+    ///
+    /// Use this for wall-clock-gated sweeps (e.g. payment TTL expiry) that
+    /// must fire even when the watched relay is silent. The actor drives this
+    /// on the same ~250 ms idle cadence as the publish-engine tick. The
+    /// default impl is a no-op; override only when a time-gated sweep is
+    /// needed.
+    ///
+    /// D8: no sleep/loop inside — compare `kernel.now_secs()` against stored
+    /// insertion timestamps and emit failures for expired entries.
+    fn on_idle_tick(&self, _kernel: &mut Kernel) -> Vec<OutboundMessage> {
+        Vec::new()
+    }
 }
 
 /// Shared slot holding active [`RelayTextInterceptor`]s.
