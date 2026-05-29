@@ -81,7 +81,7 @@ pub struct SnapshotProjectionEntry {
     /// Plain types pass through verbatim: `"WalletStatusData"`,
     /// `"GroupChatSnapshot"`. Container types are written in their full
     /// Swift form: `"[PublishQueueEntry]"`, `"[String: [ActionStageEntry]]"`,
-    /// `"[String: MentionProfileWire]"`, `"[String]"`. The renderer never
+    /// `"[String: ProfileCard]"`, `"[String]"`. The renderer never
     /// composes these — what you write here is what appears on the line.
     pub swift_type: &'static str,
 }
@@ -263,18 +263,28 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         swift_field: "dmRelayList",
         swift_type: "DmRelayListSnapshot",
     },
-    // Diagnostics roll-up + per-author mention map + settings hub view.
-    // All single-component snake_case keys that pass through
+    // Diagnostics roll-up + pre-merged resolved-profile map + settings hub
+    // view. All single-component snake_case keys that pass through
     // `.convertFromSnakeCase` cleanly.
     SnapshotProjectionEntry {
         json_key: "relay_diagnostics",
         swift_field: "relayDiagnostics",
         swift_type: "RelayDiagnosticsSnapshot",
     },
+    // Pre-merged profile map (PR #812) — replaces the per-shell merge of
+    // `claimed_profiles` / `author_view.profile` / `mention_profiles`. Keyed
+    // by pubkey, one `ProfileCard` per profile the kernel can resolve, applying
+    // the canonical precedence (claimed > author_view > mention) once in Rust
+    // (`kernel/update/projections.rs`). Same Rust type as `claimed_profiles`
+    // (`BTreeMap<String, ProfileCard>`), so it round-trips through the existing
+    // Swift `ProfileCard` exactly like `claimed_profiles` does. Chirp reads
+    // this instead of the narrower `mention_profiles` projection, which is no
+    // longer in this registry (the kernel still emits it as a building block
+    // for this merge — Swift just stops decoding it directly).
     SnapshotProjectionEntry {
-        json_key: "mention_profiles",
-        swift_field: "mentionProfiles",
-        swift_type: "[String: MentionProfileWire]",
+        json_key: "resolved_profiles",
+        swift_field: "resolvedProfiles",
+        swift_type: "[String: ProfileCard]",
     },
     // Reference-first claimed-profile map — keyed by pubkey, one
     // `ProfileCard` per currently claimed UI profile. Built in
