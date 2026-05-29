@@ -30,7 +30,7 @@ private let diagLog = Logger(subsystem: "org.nmp.chirp.diag", category: "KernelM
 /// / deferred-ACK reducer in this class — a D10 thin-shell violation —
 /// was deleted in favour of that projection.
 @MainActor
-final class KernelModel: ObservableObject {
+final class KernelModel: ObservableObject, NostrProfileHost {
 
     // ── Snapshot slot — single source of truth for kernel-driven state ──
 
@@ -119,6 +119,12 @@ final class KernelModel: ObservableObject {
     var mentionProfiles: [String: MentionProfile] {
         guard let wire = snapshot?.mentionProfiles else { return [:] }
         return wire.mapValues(MentionProfile.init(wire:))
+    }
+
+    /// Claimed profiles from the kernel snapshot. Falls back to `[:]` when
+    /// an older kernel elides the projection.
+    var claimedProfiles: [String: ProfileCard] {
+        snapshot?.projections?.claimedProfiles ?? [:]
     }
 
     var hasActiveAccount: Bool { activeAccount != nil }
@@ -332,6 +338,36 @@ final class KernelModel: ObservableObject {
     func releaseProfile(pubkey: String, consumerID: String) {
         kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
+
+    /// NostrProfileHost conformance: look up a profile by pubkey.
+    /// First checks claimed profiles, then falls back to mention profiles.
+    func profile(forPubkey pubkey: String) -> ProfileWire? {
+        if let card = claimedProfiles[pubkey] {
+            return ProfileWire(
+                pubkey: pubkey,
+                displayName: (card.displayName?.isEmpty == false) ? card.displayName : nil,
+                about: card.about.isEmpty ? nil : card.about,
+                pictureUrl: card.pictureUrl,
+                nip05: card.nip05.isEmpty ? nil : card.nip05,
+                npub: card.npub,
+                npubShort: pubkey.shortHex
+            )
+        }
+        if let mention = mentionProfiles[pubkey] {
+            let isRawKey = mention.display == pubkey.shortHex
+            return ProfileWire(
+                pubkey: pubkey,
+                displayName: isRawKey ? nil : mention.display,
+                about: nil,
+                pictureUrl: mention.pictureUrl,
+                nip05: nil,
+                npub: "",
+                npubShort: pubkey.shortHex
+            )
+        }
+        return nil
+    }
+
     func openFirehose(tag: String) { kernel.openFirehose(tag: tag) }
 
     // ── T66a command surface (identity / publish / multi-account) ────────
