@@ -11,10 +11,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, OnceLock};
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::{
-    register_bunker_hook, ActorCommand, BunkerHookRequest, RemoteSignerHandle,
-    NOSTRCONNECT_DEFAULT_RELAY_URL,
-};
+use nmp_core::{register_bunker_hook, ActorCommand, BunkerHookRequest, RemoteSignerHandle};
 use nmp_signer_broker::{percent_encode_query_value, BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
 use nmp_signers::Nip46Signer;
@@ -92,7 +89,13 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
     relay_url: *const c_char,
     callback_scheme: *const c_char,
 ) -> *mut c_char {
-    let relay = relay_url_from_arg_or_app(app, relay_url);
+    // V-65: `relay_url_from_arg_or_app` now returns `Option<String>`. A
+    // `None` here means neither an explicit relay arg nor a host-registered
+    // bootstrap relay is available — return null rather than using any
+    // hardcoded third-party URL (D0).
+    let Some(relay) = relay_url_from_arg_or_app(app, relay_url) else {
+        return std::ptr::null_mut();
+    };
     let callback: Option<&str> = if callback_scheme.is_null() {
         None
     } else {
@@ -117,20 +120,26 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
     }
 }
 
-fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const c_char) -> String {
+/// Resolve the relay URL for a `nostrconnect://` handshake.
+///
+/// Resolution order:
+/// 1. An explicit `relay_url` C-string argument (non-null, non-empty).
+/// 2. The app's configured write relay or host-registered bootstrap relay
+///    (`NmpApp::nostrconnect_relay_url`).
+///
+/// Returns `None` when neither source provides a relay — the caller must NOT
+/// fall back to any hardcoded URL (V-65 / D0).
+fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const c_char) -> Option<String> {
     if !relay_url.is_null() {
         // SAFETY: caller guarantees non-null means a valid C string for the
         // call duration.
         if let Ok(relay) = unsafe { CStr::from_ptr(relay_url).to_str() } {
             if !relay.is_empty() {
-                return relay.to_string();
+                return Some(relay.to_string());
             }
         }
     }
-    app_ref(app).map_or_else(
-        || NOSTRCONNECT_DEFAULT_RELAY_URL.to_string(),
-        NmpApp::nostrconnect_relay_url,
-    )
+    app_ref(app).and_then(NmpApp::nostrconnect_relay_url)
 }
 
 /// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe.
@@ -196,15 +205,17 @@ mod tests {
 
         assert_eq!(
             relay_url_from_arg_or_app(std::ptr::null_mut(), relay.as_ptr()),
-            "wss://explicit.example"
+            Some("wss://explicit.example".to_string())
         );
     }
 
     #[test]
-    fn null_app_null_relay_uses_core_default() {
+    fn null_app_null_relay_returns_none() {
+        // V-65: no hardcoded fallback — null app + null relay arg means no
+        // relay is available; the caller must handle this as a typed error.
         assert_eq!(
             relay_url_from_arg_or_app(std::ptr::null_mut(), std::ptr::null()),
-            NOSTRCONNECT_DEFAULT_RELAY_URL
+            None
         );
     }
 

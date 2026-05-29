@@ -222,7 +222,6 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
-pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
 // `has_role` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::has_role` (the FFI surface filters relay-edit
 // rows by role when computing the write-relay slice for the per-app crate's
