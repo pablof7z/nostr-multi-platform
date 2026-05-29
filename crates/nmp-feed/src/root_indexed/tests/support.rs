@@ -14,7 +14,8 @@ use crate::root_indexed::attribution::AttributionPayload;
 use crate::root_indexed::card::RootFeedSnapshot;
 use crate::root_indexed::claim::ClaimRequest;
 use crate::root_indexed::engine::{
-    CardBuilder, ClaimSink, EventLookup, FollowPredicate, ProfileDetector, RootIndexedFeed,
+    CardBuilder, ClaimSink, EventGate, EventLookup, FollowPredicate, ProfileDetector,
+    RootIndexedFeed,
 };
 use crate::FeedRequest;
 
@@ -160,6 +161,13 @@ pub(super) struct Harness {
 
 impl Harness {
     pub(super) fn new(follows: &[&str]) -> Self {
+        // Allow-all gate: existing tests exercise the post-gate state machine.
+        Self::with_gate(follows, Arc::new(|_| true))
+    }
+
+    /// Construct a harness with a caller-supplied [`EventGate`], so a test can
+    /// assert that gated-out kinds never touch engine state.
+    pub(super) fn with_gate(follows: &[&str], event_gate: EventGate) -> Self {
         let follow_set: HashSet<String> = follows.iter().map(|s| (*s).to_string()).collect();
         let follow: FollowPredicate = Arc::new(move |pk: &str| follow_set.contains(pk));
 
@@ -206,6 +214,7 @@ impl Harness {
         let engine = Arc::new(RootIndexedFeed::new(
             TestResolver,
             follow,
+            event_gate,
             event_lookup,
             claim_sink,
             profile_detector,

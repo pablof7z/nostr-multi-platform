@@ -67,6 +67,11 @@ pub type ClaimSink = Arc<dyn Fn(ClaimRequest) + Send + Sync>;
 pub type ProfileDetector<A> =
     Box<dyn Fn(&KernelEvent) -> Option<(String, <A as AttributionPayload>::Profile)> + Send + Sync>;
 
+/// Gate predicate: `true` for feed-eligible event kinds (roots or attributions).
+/// Events that fail the gate are dropped at the observer entry point before any
+/// state is touched. Caller-supplied so the engine stays kind-agnostic (D0).
+pub type EventGate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
+
 /// Build a render card from a root event, plus the supersedes-target event when
 /// present (L-5 hydration rebuilds with both).
 pub type CardBuilder<C> = Box<dyn Fn(&KernelEvent, Option<&KernelEvent>) -> C + Send + Sync>;
@@ -93,6 +98,7 @@ struct RootSlot<C> {
 struct Capabilities<R, A: AttributionPayload, C> {
     resolver: R,
     follow: FollowPredicate,
+    event_gate: EventGate,
     event_lookup: EventLookup,
     claim_sink: ClaimSink,
     profile_detector: ProfileDetector<A>,
@@ -157,6 +163,8 @@ where
     /// Construct the engine from its resolver and closure capabilities.
     ///
     /// * `follow` — true for pubkeys whose references qualify as attribution.
+    /// * `event_gate` — true for feed-eligible kinds; events that fail the gate
+    ///   are dropped at the observer entry point before any state is touched.
     /// * `event_lookup` — read-cache lookup, needed for repost L-2/L-5 rebuild.
     /// * `claim_sink` — receives every [`ClaimRequest`]; the wiring layer turns
     ///   these into host hydration calls.
@@ -168,6 +176,7 @@ where
     pub fn new(
         resolver: R,
         follow: FollowPredicate,
+        event_gate: EventGate,
         event_lookup: EventLookup,
         claim_sink: ClaimSink,
         profile_detector: ProfileDetector<A>,
@@ -178,6 +187,7 @@ where
             caps: Capabilities {
                 resolver,
                 follow,
+                event_gate,
                 event_lookup,
                 claim_sink,
                 profile_detector,
