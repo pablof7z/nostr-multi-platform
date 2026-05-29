@@ -25,13 +25,16 @@ impl Kernel {
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
     /// `"publish_outbox"`, `"relay_edit_rows"`, `"relay_role_options"`,
-    /// `"settings_hub"`, `"accounts"`, `"active_account"`, `"profile"`,
-    /// `"timeline"`, `"author_view"`, `"thread_view"`, `"inserted"`,
-    /// `"updated"`, or `"removed"` is overwritten so the kernel-owned value
-    /// stays authoritative. A serialization failure degrades to a stable empty
-    /// value (`[]` for the lists, `null` for the optional payloads) — D6: never
-    /// a panic at the snapshot boundary — and the key is still present,
-    /// mirroring the old always-emitted typed fields.
+    /// `"settings_hub"`, `"accounts"`, `"active_account"`, or `"profile"` is
+    /// overwritten so the kernel-owned value stays authoritative.
+    ///
+    /// D5: view-dependent keys (`timeline`, `inserted`, `updated`, `removed`,
+    /// `author_view`, `thread_view`) are only inserted when the corresponding
+    /// view is open — they do NOT cross the language boundary when no view is
+    /// subscribed. All shells decode them as Optional with appropriate defaults.
+    /// A serialization failure degrades to a stable empty value (`[]` for the
+    /// lists, `null` for the optional payloads) — D6: never a panic at the
+    /// snapshot boundary.
     pub(super) fn snapshot_projections_with_publish_cluster(
         &mut self,
         items: &[TimelineItem],
@@ -127,42 +130,66 @@ impl Kernel {
             "active_account".to_string(),
             serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
         );
-        // D0: views cluster. `profile` is the active-account profile card;
-        // `timeline` is the visible item list (renamed from the generic
-        // typed-field name `items`); `author_view` / `thread_view` are the
-        // open-view payloads (`null` when no view is open); `inserted` /
-        // `updated` / `removed` are the per-tick timeline deltas. A
-        // serialization failure degrades to `[]` for the lists and `null` for
-        // the optional payloads so every key is always present, matching the
-        // old always-emitted typed fields.
+        // D0: views cluster. `profile` is the active-account profile card.
+        // The remaining view-dependent keys are bounded by D5: they cross the
+        // language boundary only when the corresponding view is actually open.
+        //
+        // `timeline` / `inserted` / `updated` / `removed`: present only when
+        // the shell has called `nmp_app_open_timeline` (i.e.
+        // `follow_feed_kinds` is non-empty). The shell sets
+        // `follow_feed_kinds` via `ActorCommand::OpenContactListSubscription`
+        // and never reads these keys before that call — every shell decodes
+        // them as Optional with a `[]` default (iOS: `?? []`, Kotlin:
+        // `= emptyList()`, web: `Array.isArray(...) ? ... : []`).
+        //
+        // `author_view` / `thread_view`: present only when the respective
+        // view is open (their return values are already `Option<_>`; we skip
+        // inserting the key entirely rather than inserting JSON `null`). All
+        // shells decode these as Optional and handle `None` / absent gracefully.
+        //
+        // Serialization failures degrade to empty arrays or `null` as before —
+        // D6: never a panic at the snapshot boundary.
         projections.insert(
             "profile".to_string(),
             serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
         );
-        projections.insert(
-            "timeline".to_string(),
-            serde_json::to_value(items).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
-        );
-        projections.insert(
-            "author_view".to_string(),
-            serde_json::to_value(self.author_view()).unwrap_or(serde_json::Value::Null),
-        );
-        projections.insert(
-            "thread_view".to_string(),
-            serde_json::to_value(self.thread_view()).unwrap_or(serde_json::Value::Null),
-        );
-        projections.insert(
-            "inserted".to_string(),
-            serde_json::to_value(inserted).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
-        );
-        projections.insert(
-            "updated".to_string(),
-            serde_json::to_value(updated).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
-        );
-        projections.insert(
-            "removed".to_string(),
-            serde_json::to_value(removed).unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
-        );
+        // D5: timeline cluster — only cross the boundary when the shell has
+        // subscribed to the follow feed via `nmp_app_open_timeline`.
+        if !self.follow_feed_kinds.is_empty() {
+            projections.insert(
+                "timeline".to_string(),
+                serde_json::to_value(items)
+                    .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            );
+            projections.insert(
+                "inserted".to_string(),
+                serde_json::to_value(inserted)
+                    .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            );
+            projections.insert(
+                "updated".to_string(),
+                serde_json::to_value(updated)
+                    .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            );
+            projections.insert(
+                "removed".to_string(),
+                serde_json::to_value(removed)
+                    .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+            );
+        }
+        // D5: author_view / thread_view — only insert when the view is open.
+        if let Some(author_view) = self.author_view() {
+            projections.insert(
+                "author_view".to_string(),
+                serde_json::to_value(author_view).unwrap_or(serde_json::Value::Null),
+            );
+        }
+        if let Some(thread_view) = self.thread_view() {
+            projections.insert(
+                "thread_view".to_string(),
+                serde_json::to_value(thread_view).unwrap_or(serde_json::Value::Null),
+            );
+        }
         // Diagnostics-screen projection. Pre-rolls the relay + wire-sub
         // arrays into one struct with every aggregate (active / EOSE'd /
         // total sub counts, total events_rx) and every display string
@@ -182,14 +209,15 @@ impl Kernel {
         // {display, picture_url, avatar_initials, avatar_color} for every
         // author surfaced in ANY currently-open view. Built from the union of
         // the home `timeline` (the `items` parameter, already
-        // `visible_items()`), the open `author_view` items, and the open
-        // `thread_view` items so HomeFeedView / ThreadScreen / ProfileView
-        // all find their authors pre-mapped without reconstructing the dict
-        // in Swift (V-31 thin-shell; replaces the Swift Dictionary
-        // derivations at `HomeFeedView.swift:187-197` and
-        // `ThreadScreen.swift:23-35`). First writer wins on collision —
-        // matches `mention_profiles_from_items` semantics. Empty `{}` only
-        // when no events are visible and no view is open; never absent (D1).
+        // `visible_items()` — empty when the timeline view is not open), the
+        // open `author_view` items, and the open `thread_view` items so
+        // HomeFeedView / ThreadScreen / ProfileView all find their authors
+        // pre-mapped without reconstructing the dict in Swift (V-31
+        // thin-shell; replaces the Swift Dictionary derivations at
+        // `HomeFeedView.swift:187-197` and `ThreadScreen.swift:23-35`).
+        // First writer wins on collision — matches
+        // `mention_profiles_from_items` semantics. Empty `{}` when no events
+        // are visible and no view is open; never absent (D1).
         let mut mention_profiles = self.mention_profiles_from_items(items);
         for (k, v) in self
             .author_view()

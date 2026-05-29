@@ -22,17 +22,15 @@ pub enum NwcMethod {
     GetInfo,
     GetBalance,
     PayInvoice,
-    MakeInvoice,
 }
 
 impl NwcMethod {
-    #[must_use] 
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::GetInfo => "get_info",
             Self::GetBalance => "get_balance",
             Self::PayInvoice => "pay_invoice",
-            Self::MakeInvoice => "make_invoice",
         }
     }
 }
@@ -43,16 +41,6 @@ pub struct PayInvoiceParams {
     pub invoice: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amount: Option<u64>,
-}
-
-/// Parameters for `make_invoice`.
-#[derive(Debug, Clone, Serialize)]
-pub struct MakeInvoiceParams {
-    pub amount: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expiry: Option<u64>,
 }
 
 // ── Response ──────────────────────────────────────────────────────────────────
@@ -94,13 +82,6 @@ pub struct PayInvoiceResult {
     pub preimage: String,
 }
 
-/// Decoded `make_invoice` result.
-#[derive(Debug, Clone, Deserialize)]
-pub struct MakeInvoiceResult {
-    pub invoice: String,
-    pub payment_hash: Option<String>,
-}
-
 impl NwcResponse {
     /// Extract balance in msats from a `get_balance` response.
     #[must_use] 
@@ -137,7 +118,6 @@ mod tests {
         assert_eq!(NwcMethod::GetInfo.as_str(), "get_info");
         assert_eq!(NwcMethod::GetBalance.as_str(), "get_balance");
         assert_eq!(NwcMethod::PayInvoice.as_str(), "pay_invoice");
-        assert_eq!(NwcMethod::MakeInvoice.as_str(), "make_invoice");
     }
 
     fn response(result_type: &str, error: Option<NwcError>, result: serde_json::Value)

@@ -165,6 +165,12 @@ impl Kernel {
             // observe a genuine structural compile failure instead of silent
             // empty frames. `None` (→ JSON null) in steady state.
             last_planner_error: self.lifecycle.last_planner_error().map(str::to_owned),
+            // V-67 (D6): surface the LMDB open failure so the host observes the
+            // degraded-store state on every tick instead of silently losing all
+            // persisted events. Omitted from the wire when `None`
+            // (`skip_serializing_if`) to keep the snapshot size unchanged for
+            // healthy (no-failure) sessions.
+            store_open_failure: self.store_open_failure.clone(),
             // D0: NIP-47 NWC wallet state and NIP-46 bunker handshake state are
             // no longer kernel fields — both are app nouns surfaced via
             // host-registered snapshot projections (`"wallet"` /

@@ -186,6 +186,8 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
+mod v67_store_open_failure_tests;
+#[cfg(test)]
 mod test_router;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
@@ -989,6 +991,16 @@ pub struct Kernel {
     /// Set by `set_relay_score_store` after construction. D4: the kernel
     /// holds `Box` (not `Arc`) because it is the sole logical writer.
     relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
+    /// V-67: set when a persistent storage path was supplied but the LMDB
+    /// store failed to open. `None` in the healthy case AND when no path was
+    /// given (in-memory is the legitimate default for tests/CI — not a
+    /// degradation). Surfaced on every snapshot tick via `store_open_failure`
+    /// so the host observes the degraded-store state immediately instead of
+    /// silently losing all persisted events.
+    ///
+    /// D6: no stderr writes; diagnostic flows through the normal snapshot
+    /// channel. D0: generic name ("store", not an LMDB/NIP noun).
+    store_open_failure: Option<String>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -1014,10 +1026,17 @@ struct EventStoreBundle {
 ///    the FFI surface.
 ///
 /// When neither is present (the common case for the in-process test
-/// suites) the in-memory store is used. If the LMDB store cannot be
-/// opened, the function falls back to the in-memory store silently — D6:
-/// library code performs no I/O side effects / stderr writes.
-fn build_event_store(storage_path: Option<&str>) -> EventStoreBundle {
+/// suites) the in-memory store is used. When a path is present but the
+/// store cannot be opened, the function still falls back to the in-memory
+/// store (so the app runs) but returns a non-`None` failure reason — the
+/// caller stores this on `Kernel::store_open_failure` and surfaces it
+/// through the normal snapshot channel (D6: no stderr writes).
+///
+/// Return value: `(bundle, open_failure)`.
+/// - `open_failure` is `Some(reason)` ONLY when a path was resolved but
+///   the open failed — it is `None` for the legitimate no-path/no-feature
+///   in-memory default so the host can distinguish "degraded" from "normal".
+fn build_event_store(storage_path: Option<&str>) -> (EventStoreBundle, Option<String>) {
     #[cfg(feature = "lmdb-backend")]
     {
         // Priority 1: FFI-supplied path. Priority 2: env-var fallback.
@@ -1025,24 +1044,46 @@ fn build_event_store(storage_path: Option<&str>) -> EventStoreBundle {
             .map(str::to_owned)
             .or_else(|| std::env::var("NMP_LMDB_PATH").ok());
         if let Some(path) = resolved {
-            // D6: silent fallback to the in-memory store if the open fails.
-            if let Ok(s) = crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
-                let relay_score_store =
-                    crate::substrate::LmdbRelayAuthorScoreStore::from_event_store(s.clone());
-                return EventStoreBundle {
-                    store: Arc::new(s),
-                    relay_score_store: Some(Box::new(relay_score_store)),
-                };
+            match crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
+                Ok(s) => {
+                    let relay_score_store =
+                        crate::substrate::LmdbRelayAuthorScoreStore::from_event_store(s.clone());
+                    return (
+                        EventStoreBundle {
+                            store: Arc::new(s),
+                            relay_score_store: Some(Box::new(relay_score_store)),
+                        },
+                        None,
+                    );
+                }
+                Err(e) => {
+                    // V-67: path was supplied but open failed — fall back to
+                    // in-memory and surface the reason as a diagnostic. D6: no
+                    // stderr write; the caller stores this on
+                    // `Kernel::store_open_failure` and emits it through the
+                    // snapshot channel.
+                    return (
+                        EventStoreBundle {
+                            store: Arc::new(MemEventStore::new()),
+                            relay_score_store: None,
+                        },
+                        Some(e.to_string()),
+                    );
+                }
             }
         }
     }
     // `storage_path` is unused when the `lmdb-backend` feature is off.
     #[cfg(not(feature = "lmdb-backend"))]
     let _ = storage_path;
-    EventStoreBundle {
-        store: Arc::new(MemEventStore::new()),
-        relay_score_store: None,
-    }
+    // No path or feature — in-memory is the legitimate default; no failure.
+    (
+        EventStoreBundle {
+            store: Arc::new(MemEventStore::new()),
+            relay_score_store: None,
+        },
+        None,
+    )
 }
 
 /// Choose the [`PublishStore`](crate::publish::PublishStore) backing the
@@ -1450,7 +1491,7 @@ impl Kernel {
         storage_path: Option<&str>,
         active_account_handle: Option<ActiveAccountSlot>,
     ) -> Self {
-        let store_bundle = build_event_store(storage_path);
+        let (store_bundle, store_open_failure) = build_event_store(storage_path);
         let store = store_bundle.store;
         let publish_store =
             publish_store.unwrap_or_else(|| resolve_publish_store(storage_path, &store));
@@ -1683,6 +1724,7 @@ impl Kernel {
             active_account_handle,
             relay_score_map: relay_score::RelayAuthorScoreMap::new(),
             relay_score_store: None,
+            store_open_failure,
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
@@ -2215,6 +2257,15 @@ impl Kernel {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn mailbox_cache_arc(&self) -> Arc<dyn MailboxCache> {
         Arc::clone(&self.mailbox_cache)
+    }
+
+    /// V-67 test seam — inject a `store_open_failure` string as if `build_event_store`
+    /// had failed to open the LMDB path. Lets unit tests verify that the failure is
+    /// projected through `make_update` without requiring the `lmdb-backend` feature or
+    /// a real filesystem failure. Mirrors the `set_planner_error_for_test` seam (T171).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn set_store_open_failure_for_test(&mut self, reason: impl Into<String>) {
+        self.store_open_failure = Some(reason.into());
     }
 
     /// Read-only access to the injected [`OutboxRouter`].

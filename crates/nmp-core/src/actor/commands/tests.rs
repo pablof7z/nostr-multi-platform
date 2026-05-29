@@ -1860,18 +1860,42 @@ fn snapshot_json_carries_new_projections() {
     assert_eq!(relay_rows[0]["role_label"].as_str(), Some("Both"));
     assert_eq!(relay_rows[0]["role_tint"].as_str(), Some("accent"));
     // D0: the views cluster (`profile`, `timeline`, `author_view`,
-    // `thread_view`, `inserted`, `updated`, `removed`) is likewise no longer a
-    // typed `KernelSnapshot` field set — all seven are kernel-owned built-in
-    // entries in the same `projections` map, always present (matching the old
-    // always-emitted typed fields). `author_view` / `thread_view` are JSON
-    // null when no view is open.
+    // `thread_view`, `inserted`, `updated`, `removed`) is no longer a typed
+    // `KernelSnapshot` field set — all are kernel-owned built-in entries in the
+    // same `projections` map. D5: `timeline`, `inserted`, `updated`, `removed`
+    // are present only when `follow_feed_kinds` is non-empty (the shell has
+    // called `nmp_app_open_timeline`); `author_view` / `thread_view` appear
+    // only when the respective view is open. `profile` is always present.
     assert!(projections.get("profile").is_some());
-    assert!(projections.get("timeline").is_some());
-    assert!(projections.get("author_view").is_some());
-    assert!(projections.get("thread_view").is_some());
-    assert!(projections.get("inserted").is_some());
-    assert!(projections.get("updated").is_some());
-    assert!(projections.get("removed").is_some());
+    // `timeline` and deltas are absent — no `nmp_app_open_timeline` call above.
+    assert!(
+        projections.get("timeline").is_none(),
+        "D5: timeline must be absent before nmp_app_open_timeline"
+    );
+    assert!(
+        projections.get("inserted").is_none(),
+        "D5: inserted must be absent before nmp_app_open_timeline"
+    );
+    assert!(
+        projections.get("updated").is_none(),
+        "D5: updated must be absent before nmp_app_open_timeline"
+    );
+    assert!(
+        projections.get("removed").is_none(),
+        "D5: removed must be absent before nmp_app_open_timeline"
+    );
+    // `author_view` IS present: `sign_in_with_nip65` → `sign_in_nsec` →
+    // `retarget_timeline` → `kernel.open_author(pk, false)`, which opens the
+    // active account's author view as part of the sign-in flow.
+    assert!(
+        projections.get("author_view").is_some(),
+        "author_view must be present: sign_in calls open_author for the active account"
+    );
+    // `thread_view` is absent — no thread has been opened.
+    assert!(
+        projections.get("thread_view").is_none(),
+        "D5: thread_view must be absent before open_thread"
+    );
     // The typed `KernelSnapshot` fields must be gone — a shell that still
     // reads them would silently get `null`.
     assert!(parsed.get("profile").is_none());

@@ -97,7 +97,11 @@ This rules out:
 - Slow marshaling of large datasets across the language boundary.
 - The event store ever being visible to native code.
 
-*Implementation detail: `AppState` carries small screen-shaped state plus a `HashMap<ViewId, ViewPayload>` for views currently open. Closing a view drops its entry. The event store, gossip cache, sync watermarks, working set, and signer state live exclusively in the Rust actor.*
+*Implementation detail: The kernel's snapshot `projections` map is divided into two clusters.*
+
+*Static cluster (always present regardless of open views): identity pair (`accounts`, `active_account`), publish cluster (`publish_queue`, `publish_outbox`, `outbox_summary`, `relay_edit_rows`, `relay_role_options`, `settings_hub`), diagnostics (`relay_diagnostics`), profile card (`profile`), mention payloads (`mention_profiles`), and claim projections (`claimed_profiles`, `claimed_events`). These keys are required for app chrome that is visible regardless of which content screen is open.*
+
+*View-dependent cluster (only present when the view is subscribed): `timeline`, `inserted`, `updated`, `removed` appear only when the shell has registered a follow-feed subscription via `nmp_app_open_timeline`; `author_view` appears only while an author profile screen is open; `thread_view` appears only while a thread screen is open. All shells decode these as Optional with appropriate empty defaults — absent means "not subscribed", not "error". The event store, gossip cache, sync watermarks, working set, and signer state live exclusively in the Rust actor.*
 
 ---
 

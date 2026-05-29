@@ -116,19 +116,37 @@ fn snapshot_carries_advancing_last_tick_ms() {
 /// A kind:1 ingest must surface in the snapshot's `items[]` array — the list the
 /// UI renders as the timeline. Before ingest the array is empty; after ingest it
 /// carries exactly one item carrying the ingested id and content.
+///
+/// D5: `timeline` is absent from the snapshot until the shell opens the timeline
+/// view (sets `follow_feed_kinds` via `nmp_app_open_timeline`). This test
+/// verifies both the absent-before-open state and the present-after-open state.
 #[test]
 fn timeline_event_appears_in_snapshot_items_after_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Cold snapshot: no notes ingested yet → empty timeline projection.
+    // D5: before the shell opens the timeline view, `timeline` must be absent
+    // from the snapshot — it does not cross the language boundary when no view
+    // is subscribed.
+    let before_open = snapshot(&mut kernel);
+    assert!(
+        before_open["projections"]["timeline"].is_null(),
+        "D5: `timeline` must be absent when follow_feed_kinds is empty (no view open)",
+    );
+
+    // Simulate the shell calling `nmp_app_open_timeline` by setting
+    // `follow_feed_kinds` (the `pub(crate)` field that
+    // `ActorCommand::OpenContactListSubscription` populates in production).
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+
+    // With the timeline view open, an empty timeline must project `[]`.
     // D0: the timeline is no longer a typed `KernelSnapshot.items` field —
     // it is a built-in entry in the `projections` map under the key
     // `"timeline"`.
-    let before = snapshot(&mut kernel);
+    let empty = snapshot(&mut kernel);
     assert_eq!(
-        before["projections"]["timeline"].as_array().map(Vec::len),
+        empty["projections"]["timeline"].as_array().map(Vec::len),
         Some(0),
-        "a fresh kernel must project an empty `timeline[]`",
+        "an open timeline with no notes must project an empty `timeline[]`",
     );
 
     ingest_note(
@@ -178,6 +196,8 @@ fn timeline_event_appears_in_snapshot_items_after_ingest() {
 fn timeline_projection_respects_visible_limit() {
     const LIMIT: usize = 3;
     let mut kernel = Kernel::new(LIMIT);
+    // D5: open the timeline view so the projection is emitted.
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
     for i in 0..(LIMIT + 4) {
         // Distinct 64-hex ids per note (vary the leading byte).
@@ -192,6 +212,90 @@ fn timeline_projection_respects_visible_limit() {
         after["projections"]["timeline"].as_array().map(Vec::len),
         Some(LIMIT),
         "the projection must clamp timeline[] to visible_limit, not dump the cache",
+    );
+}
+
+// ─── D5 view-dependent projection bounding ────────────────────────────────────
+
+/// D5 (`docs/product-spec/doctrine.md §D5`): view-dependent snapshot keys must
+/// be absent when no view is subscribed. This test verifies the snapshot cluster
+/// shrinks correctly — `timeline`, `inserted`, `updated`, `removed`,
+/// `author_view`, and `thread_view` must all be absent from a fresh kernel that
+/// has no open views.
+///
+/// When the timeline view is opened (`follow_feed_kinds` non-empty), the four
+/// timeline keys appear. When an author-view / thread-view is opened, those keys
+/// appear. Closing them again must make the keys disappear from the next tick.
+#[test]
+fn d5_view_dependent_keys_absent_when_no_view_open() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "a note");
+
+    // Phase 1: no views open — all six view-dependent keys must be absent.
+    let snap = snapshot(&mut kernel);
+    for key in &["timeline", "inserted", "updated", "removed", "author_view", "thread_view"] {
+        assert!(
+            snap["projections"][key].is_null(),
+            "D5: `{key}` must be absent when no view is open",
+        );
+    }
+
+    // Phase 2: open timeline view → four timeline keys must appear.
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let snap = snapshot(&mut kernel);
+    assert!(
+        snap["projections"]["timeline"].is_array(),
+        "D5: `timeline` must appear after follow_feed_kinds is set",
+    );
+    assert!(
+        snap["projections"]["inserted"].is_array(),
+        "D5: `inserted` must appear after follow_feed_kinds is set",
+    );
+    assert!(
+        snap["projections"]["updated"].is_array(),
+        "D5: `updated` must appear after follow_feed_kinds is set",
+    );
+    assert!(
+        snap["projections"]["removed"].is_array(),
+        "D5: `removed` must appear after follow_feed_kinds is set",
+    );
+    // author_view / thread_view still absent — no view opened yet.
+    assert!(
+        snap["projections"]["author_view"].is_null(),
+        "D5: `author_view` must remain absent when no author view is open",
+    );
+    assert!(
+        snap["projections"]["thread_view"].is_null(),
+        "D5: `thread_view` must remain absent when no thread view is open",
+    );
+
+    // Phase 3: open an author view → author_view must appear.
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.open_author(FOLLOW_A.to_string(), false);
+    let snap = snapshot(&mut kernel);
+    assert!(
+        !snap["projections"]["author_view"].is_null(),
+        "D5: `author_view` must appear after open_author",
+    );
+
+    // Phase 4: close the timeline subscription → four timeline keys must vanish.
+    kernel.follow_feed_kinds = std::collections::BTreeSet::new();
+    let snap = snapshot(&mut kernel);
+    assert!(
+        snap["projections"]["timeline"].is_null(),
+        "D5: `timeline` must disappear after follow_feed_kinds is cleared",
+    );
+    assert!(
+        snap["projections"]["inserted"].is_null(),
+        "D5: `inserted` must disappear after follow_feed_kinds is cleared",
+    );
+    assert!(
+        snap["projections"]["updated"].is_null(),
+        "D5: `updated` must disappear after follow_feed_kinds is cleared",
+    );
+    assert!(
+        snap["projections"]["removed"].is_null(),
+        "D5: `removed` must disappear after follow_feed_kinds is cleared",
     );
 }
 
@@ -851,6 +955,8 @@ fn mention_profiles_projection_covers_home_timeline_when_no_view_open() {
 #[test]
 fn timeline_item_picks_up_profile_after_later_kind0_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // D5: open the timeline view so the projection is emitted.
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
     // Note arrives first, with no profile yet → author_picture_url is null.
     ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "a note");

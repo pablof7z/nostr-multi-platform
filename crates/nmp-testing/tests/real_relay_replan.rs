@@ -140,7 +140,10 @@ fn compile_author_set(followees: &BTreeSet<Pubkey>) -> (BTreeSet<Pubkey>, String
     let interest = LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::ActiveAccount,
-        shape: InterestShape::timeline_for(followees.clone()),
+        // V-68: this real-relay test is explicitly scoped to NIP-01/NIP-18
+        // social-timeline routing, so the test plays the host role and declares
+        // {1, 6} (text notes + reposts) — the substrate no longer injects it.
+        shape: InterestShape::timeline_for(followees.clone(), [1u32, 6u32].into_iter().collect()),
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,

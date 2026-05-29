@@ -157,7 +157,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
     };
 
     // Alice: the projection the FFI symbols drive.
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()));
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
 
     // 1. publish_key_package dispatch.
     let r = proj
@@ -243,7 +243,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
 
 #[test]
 fn create_group_without_key_packages_reports_seam() {
-    let proj = MarmotProjection::new(in_memory(Keys::generate()));
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
     let r = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -279,7 +279,7 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
         .event_30443
         .as_json();
 
-    let proj = MarmotProjection::new(in_memory(Keys::generate()));
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
     let r = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -317,7 +317,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
         .event_30443
         .as_json();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys));
+    let proj = MarmotProjection::new(in_memory(alice_keys), true);
     let group_id_hex = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -361,7 +361,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
 
 #[test]
 fn unknown_op_and_bad_json_degrade() {
-    let proj = MarmotProjection::new(in_memory(Keys::generate()));
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
     let r = proj
         .with_inner(|h| ops::dispatch(h, &json!({ "op": "frobnicate" }), 1))
         .unwrap();
@@ -419,7 +419,7 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
     let gift_id_hex = gift.id.to_hex();
 
     // Bob's projection + the tap the FFI register path would install.
-    let bob_proj = Arc::new(MarmotProjection::new(bob_service));
+    let bob_proj = Arc::new(MarmotProjection::new(bob_service, true));
     let tap = MarmotIngestTap::new(Arc::clone(&bob_proj));
 
     // Pre-condition: no pending welcomes yet.
@@ -472,7 +472,7 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
 /// panic across the actor boundary, snapshot unaffected.
 #[test]
 fn raw_tap_malformed_and_unsupported_are_silent() {
-    let proj = Arc::new(MarmotProjection::new(in_memory(Keys::generate())));
+    let proj = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), true));
     let tap = MarmotIngestTap::new(Arc::clone(&proj));
 
     tap.on_raw_event(1059, "not json at all");
@@ -540,7 +540,7 @@ use crate::projection::handler::MarmotMlsOpHandler;
 #[test]
 fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let alice_keys = Keys::generate();
-    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone())));
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), true));
 
     let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
@@ -622,7 +622,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         .event_30443
         .as_json();
 
-    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone())));
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), true));
 
     let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null.

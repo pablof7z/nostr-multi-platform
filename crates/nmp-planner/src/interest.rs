@@ -181,11 +181,19 @@ pub struct InterestShape {
 
 impl InterestShape {
     /// Convenience constructor for a tailing author+kind timeline interest.
+    ///
+    /// `kinds` is **caller-supplied policy**, not a planner default. The planner
+    /// is substrate: it carries whatever kind set a host or NIP module declares
+    /// as filter data, but it must not choose app concepts like "a social
+    /// timeline means kind:1 + kind:6" (V-68 / D0). The follow-feed call site
+    /// threads the host-declared set (e.g. Chirp's `{1, 6}` from
+    /// `ActorCommand::OpenContactListSubscription { kinds }`); a long-form app
+    /// would pass `{30023}`. An empty set yields a wildcard-kinds shape.
     #[must_use]
-    pub fn timeline_for(authors: BTreeSet<Pubkey>) -> Self {
+    pub fn timeline_for(authors: BTreeSet<Pubkey>, kinds: BTreeSet<u32>) -> Self {
         Self {
             authors,
-            kinds: [1u32, 6u32].into_iter().collect(),
+            kinds,
             ..Default::default()
         }
     }
@@ -328,17 +336,18 @@ mod tests {
     }
 
     #[test]
-    fn timeline_for_sets_authors_and_kinds_only() {
+    fn timeline_for_carries_caller_kinds_verbatim() {
         let authors: BTreeSet<Pubkey> = [hex("aa"), hex("bb")].into_iter().collect();
-        let shape = InterestShape::timeline_for(authors.clone());
+        // V-68: pass an ARBITRARY, non-social kind set to prove the
+        // constructor is kind-agnostic — it must not inject {1, 6} or any
+        // other app default. A long-form host would declare {30023}.
+        let caller_kinds: BTreeSet<u32> = [30023u32, 9999u32].into_iter().collect();
+        let shape = InterestShape::timeline_for(authors.clone(), caller_kinds.clone());
 
         // Authors carried through verbatim.
         assert_eq!(shape.authors, authors);
-        // Timeline = text notes (kind 1) + reposts (kind 6).
-        assert_eq!(
-            shape.kinds,
-            [1u32, 6u32].into_iter().collect::<BTreeSet<u32>>()
-        );
+        // Kinds are exactly what the caller supplied — no substrate policy.
+        assert_eq!(shape.kinds, caller_kinds);
         // Every other dimension stays at its wildcard / default.
         assert!(shape.tags.is_empty());
         assert!(shape.event_ids.is_empty());
@@ -502,12 +511,13 @@ mod tests {
     fn interest_shape_equality_is_field_wise_and_deterministic() {
         // Two shapes built independently with the same field values must be
         // equal — the §3.4 plan-id stability contract depends on this.
-        let a = InterestShape::timeline_for([hex("aa")].into_iter().collect());
-        let b = InterestShape::timeline_for([hex("aa")].into_iter().collect());
+        let kinds: BTreeSet<u32> = [30023u32].into_iter().collect();
+        let a = InterestShape::timeline_for([hex("aa")].into_iter().collect(), kinds.clone());
+        let b = InterestShape::timeline_for([hex("aa")].into_iter().collect(), kinds.clone());
         assert_eq!(a, b);
 
         // A different author set breaks equality.
-        let c = InterestShape::timeline_for([hex("bb")].into_iter().collect());
+        let c = InterestShape::timeline_for([hex("bb")].into_iter().collect(), kinds);
         assert_ne!(a, c);
     }
 }
