@@ -75,39 +75,29 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    `nmp-router::publish_relay_list::KIND_RELAY_LIST`, and `nmp-wot` to
    re-export from `nmp_core::kinds` once the dependency edges are confirmed
    compatible with the boundary spec. Out of scope for the current slice.
-3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
-   `apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses and builds
-   zap input in the TUI; the host-side zap auto-pay loop was removed so Rust owns the
-   LNURL → `nmp.wallet.pay_invoice` chain; `apps/chirp/chirp-tui/src/runtime_commands.rs:249-269`
-   still bypasses the canonical action door for Marmot; and
-   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two protocol
-   publishes while tracking only one correlation id. **Next step:** expose composite Rust
-   actions/action-stage projections for zap, Marmot rich results, and relay-settings publish.
-4. **P4 — make wasm use the same snapshot and error contract as native.**
-   `crates/nmp-wasm/src/snapshot.rs:80-84` ignores the `KernelReducer` and hand-builds a
-   status-shaped snapshot; `crates/nmp-wasm/src/lib.rs:70-78` exposes public errors as
-   `Result<JsValue, JsValue>`; `crates/nmp-wasm/src/lib.rs:165-170` rejects a promise for
-   invalid JSON. **Next step:** route wasm snapshots through the canonical kernel update path
-   and return caller-visible failures as data envelopes.
 
-   **Additional publish-path gaps found (2026-05-27 research pass):**
-   - `crates/nmp-wasm/src/publish_path.rs:57` — `// TODO: wire AppAction variants` (action
-     dispatch not plumbed for wasm).
-   - `crates/nmp-wasm/src/publish_path.rs:81` — `// TODO: NIP-46 bunker signing not wired —
-     blocked on a wasm-native async transport for the bunker RPC`.
-   - `crates/nmp-wasm/src/runtime.rs:32` — `// TODO: in-process publish path missing on wasm
-     — ActorCommand is feature="native"-gated`. The wasm runtime has no equivalent of the
-     native actor command channel for synchronous publish.
-   - `crates/nmp-wasm/src/signer_slot.rs:32` — `// TODO: certain signer kinds not yet
-     recognised` in the wasm signer-slot dispatch.
-   - `crates/nmp-wasm/src/lib.rs:200` — `// TODO: wasm32 tests TBD` — no
-     `wasm-bindgen-test` infrastructure is set up; the wasm publish path and signer
-     wiring have zero automated coverage.
-5. **P5 — close native update-loop and envelope discipline gaps.**
-   `apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt:70-75`
-   polls for updates; `apps/nmp-gallery/nmp-app-gallery/src/android.rs:221-228` returns `null` on
-   `recv_timeout`. **Next step:** use blocking/pushed update
-   delivery with lifecycle cancellation and decode one typed `UpdateEnvelope` first.
+   **Files still needing migration (2026-05-29 audit):** `nmp-nip59`
+   `KIND_GIFT_WRAP`; `nmp-nip17` `KIND_DM_RELAY_LIST` + `KIND_CHAT_MESSAGE`;
+   `nmp-nip57` `KIND_ZAP_REQUEST` + `KIND_ZAP_RECEIPT`; `nmp-marmot`
+   `KIND_GIFT_WRAP`; `nmp-router` `KIND_RELAY_LIST`. Note: `nmp-nip29`'s
+   `KIND_CHAT_MESSAGE` (value `9`) is a different kind from `nmp-nip17`'s
+   `KIND_CHAT_MESSAGE` (value `14`) and should stay crate-local — it is not a
+   duplicate of the canonical registry constant.
+3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
+   ~~`apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses in the
+   TUI~~: **FIXED** — now routes through `runtime.zap()`. ~~`apps/chirp/chirp-tui/src/runtime_commands.rs:249-269`
+   bypasses the action door for Marmot~~: **ACCEPTABLE** — `marmot_register_active` is
+   identity setup, not a reactive dispatch bypass.
+   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` **CURRENT:** dispatches two
+   protocol publishes while tracking only one correlation id. **Next step:** expose a
+   composite Rust action / action-stage projection for the relay-settings publish.
+4. ~~**P4 — make wasm use the same snapshot and error contract as native.**~~
+   **DONE (2026-05-29 audit):** all 5 cited TODO markers resolved. Wasm is
+   post-v1 per user direction 2026-05-29.
+5. ~~**P5 — close native update-loop and envelope discipline gaps.**~~
+   **DONE (2026-05-29 audit):** Gallery polling now properly handles disconnect
+   (`IllegalStateException` pattern); the `recv_timeout` two-arm pattern on the
+   Rust side is correct.
 6. **P6 — strengthen enforcement so these regressions trip earlier.**
    V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
    dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
@@ -195,17 +185,22 @@ exist" — both are wrong. Silent degradation with no user-visible signal.
 
 ### V-12 · Production files above 500-LOC ceiling [MEDIUM · ongoing test extraction]
 
-*Production splits needed (no test section to extract; post-v1):*
-- `crates/nmp-core/src/ffi/mod.rs` — 1559 LOC
+*Production splits needed (no test section to extract; post-v1). LOC refreshed
+from the 2026-05-29 audit:*
+- `crates/nmp-core/src/kernel/mod.rs` — 2358 LOC (grew significantly)
+- `crates/nmp-core/src/actor/dispatch.rs` — 1967 LOC
+- `crates/nmp-core/src/actor/mod.rs` — 1852 LOC
 - `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs` — 1495 LOC
-- `crates/nmp-core/src/actor/mod.rs` — 1488 LOC
-- `crates/nmp-core/src/actor/dispatch.rs` — 1477 LOC
-- `crates/nmp-core/src/kernel/mod.rs` — 1386 LOC
-- `crates/nmp-core/src/actor/commands/identity.rs` — ~1211 LOC production
-- `crates/nmp-core/src/kernel/update.rs` — 983 LOC
-- `crates/nmp-core/src/publish/engine.rs` — 827 LOC (already has extracted tests.rs)
-- `crates/nmp-core/src/actor/commands/publish.rs` — 803 LOC (no test section)
-- `crates/nmp-core/src/kernel/relay_diagnostics.rs` — 539 LOC production (tests extracted PR #407)
+- `crates/nmp-core/src/actor/commands/identity.rs` — ~1223 LOC production
+- `crates/nmp-core/src/actor/commands/publish.rs` — 816 LOC (no test section)
+
+*Removed from this list:*
+- `crates/nmp-core/src/ffi/mod.rs` — no longer exists; migrated to `nmp-ffi`.
+- `crates/nmp-core/src/kernel/update.rs` — now 282 LOC, under ceiling (FIXED). The
+  view-projection cluster was split into the new
+  `crates/nmp-core/src/kernel/update/projections.rs` (275 LOC, under ceiling).
+- `crates/nmp-core/src/publish/engine.rs` — now 458 LOC, under ceiling.
+- `crates/nmp-core/src/kernel/relay_diagnostics.rs` — now 420 LOC, under ceiling.
 
 ### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
 
@@ -223,7 +218,7 @@ rewritten against "real framework seams (LogicalInterest, kernel-owned timeline 
 handshake gate)." Code-grounded inspection found the current framework does not expose those
 seams generically:
 
-1. **`NmpSnapshotProjector` is zero-arg** (`crates/nmp-core/src/ffi/snapshot.rs:39`):
+1. **`NmpSnapshotProjector` is zero-arg** (`crates/nmp-ffi/src/snapshot.rs:39`):
    ```rust
    pub type NmpSnapshotProjector = unsafe extern "C" fn() -> *const c_char;
    ```
@@ -233,7 +228,8 @@ seams generically:
 
 2. **No generic `nmp_app_snapshot`** — only `nmp_app_chirp_snapshot` exists
    (`apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs:14`), typed to `*mut ChirpHandle`.
-   A non-Chirp app has no pull path either.
+   A non-Chirp app has no pull path either. (As of the 2026-05-29 audit,
+   `nmp_app_chirp_snapshot` is now `#[deprecated]` per ADR-0037.)
 
 3. **No follow-set-aware `LogicalInterest` seam without `nmp-nip02`** — subscribing to
    "kind:1 from the active user's follow set, outbox-routed" requires `nmp-nip02`'s
@@ -263,64 +259,6 @@ written rationale. V-45 splits sub-item (c) into its own tracked item.
 
 ---
 
-### V-38 · NIP-47 NWC wallet stack wrongly in `nmp-core` [HIGH · post-v1 · staged fix required]
-
-**Verified:** the entire NIP-47 Nostr Wallet Connect runtime lives inside
-`nmp-core`, with an inverted dependency direction that no other NIP-crate in
-the workspace exhibits:
-
-- `crates/nmp-core/Cargo.toml:90` — `nmp-nwc = { path = "../nmp-nwc", optional = true }`.
-  Every other NIP crate (`nmp-nip02`, `nmp-nip17`, `nmp-nip57`, `nmp-router`) goes
-  `nip-crate → nmp-core`; only NWC inverts this so `nmp-core → nmp-nwc`. The
-  module docstring at `actor/commands/wallet.rs:6` says the quiet part out
-  loud: *"D0: nmp-core may depend on nmp-nwc (the protocol crate). The
-  inverse is not true."* That is exactly the inversion the substrate doctrine
-  forbids — the kernel must be the substrate every protocol crate adapts to,
-  never a consumer of protocol semantics.
-- `crates/nmp-core/src/actor/commands/wallet.rs` (716 LOC) — `WalletRuntime`,
-  `WalletConnection`, `WalletStatus`, `WalletStatusSlot`, the kind:23194
-  builder, the kind:23195 response handler, NWC URI parse, NIP-04 encrypt
-  bridge.
-- `crates/nmp-core/src/wallet/mod.rs` + `wallet/action.rs` — `WalletAction`
-  enum + `WalletPayInvoiceModule` `ActionModule` impl, registered in
-  `kernel/action_registry.rs:347`. Mounted at `lib.rs:45` as a top-level
-  `pub mod wallet` of `nmp-core`.
-- `crates/nmp-core/src/actor/mod.rs:540,546,569` — three protocol-noun
-  variants on the closed `ActorCommand` enum (`WalletConnect`,
-  `WalletDisconnect`, `WalletPayInvoice`) gated on `feature = "wallet"`.
-- `crates/nmp-core/src/actor/dispatch.rs:737,749` — dispatch arms.
-- `crates/nmp-core/src/ffi/wallet.rs` — three bespoke C-ABI symbols
-  (`nmp_app_wallet_connect`, `nmp_app_wallet_disconnect`,
-  `nmp_app_wallet_pay_invoice`).
-
-**Correct destination:** a new `crates/nmp-nip47/` that depends on both
-`nmp-core` and `nmp-nwc`. Direction flips from `nmp-core → nmp-nwc` (today) to
-`nmp-nip47 → nmp-core` and `nmp-nip47 → nmp-nwc` (post-fix). The Theme A
-discriminator in PD-039 classifies wallet connection lifecycle as permanent
-bespoke FFI — those C symbols stay byte-stable, only their bodies become thin
-shims.
-
-**Migration difficulty: HARD.** Three substrate seams must land first:
-1. Open `ActorCommand` for protocol crates (Opus direction review #10 — prerequisite
-   shared by V-39, V-40, V-41).
-2. Relay-text handler plug-in seam for the NWC relay role.
-3. Wallet-status `Arc<Mutex<_>>` slot wiring via `NmpApp` extension points.
-
-**Staged fix plan:** Stage 1 (open-ActorCommand seam, shared with V-39/V-40/V-41) →
-Stage 2 (create `nmp-nip47`, move all wallet code) → Stage 3 (thin-shim FFI bodies) →
-Stage 4 (delete `feature = "wallet"` from `nmp-core/Cargo.toml`).
-
-**Blocked conformance test (2026-05-27):** `crates/nmp-nip47/tests/nip47_tag_conformance.rs:14-16`
-carries `#[ignore = "V-38 follow-up: needs Kernel::new_for_test() public ctor"]`. The test
-cannot run because `Kernel::new_for_test()` is not public (it is gated behind
-`cfg(feature = "test-support")` in `nmp-core` and not re-exported for downstream crate use).
-Unblocking it is a prerequisite for Stage 2: the conformance test must pass against the new
-`nmp-nip47` crate before the wallet migration can be called done.
-
-**Deadline:** post-v1.
-
----
-
 ### V-42 · NIP-23 / NIP-51 / NIP-94 / NIP-96 absent from crates and untracked [HIGH · v1-A for mute · post-v1 for rest]
 
 **Evidence:** `ls crates/` shows `nmp-nip{01,02,17,29,42,57,59,65}` only.
@@ -344,40 +282,6 @@ add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
 
 ---
 
-### V-43 · Zap `dispatch_action` multi-step chain has no contract — `correlation_id: None` at wallet dispatch [MEDIUM · post-v1]
-
-**Evidence:** `crates/nmp-core/src/actor/commands/zap.rs:202`:
-
-```rust
-let _ = command_tx.send(ActorCommand::WalletPayInvoice {
-    bolt11: bolt11.clone(),
-    amount_msats: Some(amount_msats),
-    correlation_id: None,     // ← chain breaks here
-});
-// ...
-if let Some(cid) = correlation_id {
-    let _ = command_tx.send(ActorCommand::RecordActionSuccess { correlation_id: cid });
-}
-```
-
-The original zap correlation closes `RecordActionSuccess` the moment the LNURL provider
-returns a valid bolt11 — before the wallet pays or the kind:9735 receipt arrives. The
-wallet pay runs under a separate, anonymous correlation_id. A host that dispatches
-`nmp.nip57.zap` sees `Success` ~200 ms after LNURL responds, regardless of whether
-payment happens.
-
-`crates/nmp-core/src/kernel/publish_cmd.rs:233-236` — `action_lifecycle_projection`
-does not collapse two correlation_ids into one chain, so there is no framework-level
-way to observe the full zap outcome.
-
-**Recommended action:** document `nmp.nip57.zap` as a multi-step chain contract in
-`docs/dispatch-actions.md`; either (a) keep the original `correlation_id` open until
-kind:9735 receipt arrives, or (b) introduce `Stage::Bolt11Received` /
-`Stage::WalletPaid` / `Stage::ReceiptObserved` on the `action_stages` substrate.
-Option (b) generalises to every future multi-step dispatch. Prerequisite: V-41 Stage 1.
-
----
-
 ### V-44 · No decrypt-only crate for iOS Notification Service Extension [v1-A if DMs ship · post-v1 Android]
 
 **Evidence:** `aim.md` §7 open design question #5 (open since the start). No
@@ -394,7 +298,12 @@ No actor, no storage, no relay code. Target: ~2 MB static lib.
 
 ---
 
-### V-45 · No `LogicalInterest::SocialTimeline` substrate seam [MEDIUM · v1-B framework readiness]
+### V-45 · No `LogicalInterest::SocialTimeline` substrate seam [CLOSED — replaced by ADR-0036 composition-root approach]
+
+**Resolved (V-80 rung 4, 2026-05-28):** `LogicalInterest::SocialTimeline` was
+deliberately NOT added. The composition-root approach (`ActiveFollowSet`
+closure-based predicate in `nmp-nip02`, wired at `nmp-app-template`) supersedes
+this item. See ADR-0036. This entry is closed.
 
 **Evidence (extracted from V-37c):** every "show me notes from people I follow" app
 needs this pattern. Today it requires reading 30+ lines of Chirp's
@@ -411,7 +320,7 @@ Drop V-37(c) as a sub-item; track here separately.
 
 ### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [HIGH · pre-v1 doctrine fix]
 
-**Evidence:** `crates/nmp-core/src/kernel/update.rs:267-440` —
+**Evidence:** `crates/nmp-core/src/kernel/update/projections.rs:35-274` —
 `snapshot_projections_with_publish_cluster` unconditionally inserts on every tick:
 `publish_queue`, `publish_outbox`, `outbox_summary`, `relay_edit_rows`,
 `relay_role_options`, `settings_hub`, `accounts`, `active_account`, `profile`,
@@ -419,9 +328,9 @@ Drop V-37(c) as a sub-item; track here separately.
 `relay_diagnostics`, `mention_profiles` — plus all host-registered projections.
 
 D5 (`plan.md:43`) reads "snapshots bounded by open views." The built-in cluster is
-not bounded. Even with zero open views, the cluster carries 17+ keys including
-`relay_diagnostics` (rolls every relay + every wire sub) and `mention_profiles`
-(walks every visible item).
+not bounded. Even with zero open views, the cluster carries 20 keys
+unconditionally inserted including `relay_diagnostics` (rolls every relay + every
+wire sub) and `mention_profiles` (walks every visible item).
 
 The perf gate (`perf_tests.rs:128`) runs against `Kernel::new()` with zero registered
 host projections — it does not exercise the full cluster.
@@ -433,7 +342,7 @@ view-dependent keys (`author_view`, `thread_view`, `timeline`, `inserted`, `upda
 
 ---
 
-### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
+### V-49 · F-05 codegen coverage is ~20% (9/45 structs as of 2026-05-29 audit) — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
 **Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
 — 258 LOC, 8 generated structs. `ios/Chirp/Chirp/Bridge/KernelBridge.swift` — 1,895 LOC,
@@ -632,13 +541,21 @@ The Rust crates compile + test clean + codegen-drift clean, so the doctrine
 landing is durable; this V-entry tracks the surface that still needs a human
 Xcode pass.
 
+**Status note (2026-05-29 audit):** the helper namespace already exists as
+`ios/Chirp/Chirp/Extensions/PubkeyFormatting.swift` (NOT `DisplayFormat.swift`).
+Its existing helpers cover the same `shortPubkey` / `relativeAgo` /
+`avatarInitials` / `avatarColor` functionality. The remaining work is wiring the
+still-formatted fields through it, not adding a new namespace. Remaining
+formatted fields: `RelayDiagnosticsWireSub` (6 fields), `RelayDiagnosticsRow`
+(7 fields), `ThreadView` (2 fields), `PublishOutboxItem` (5 fields),
+`PublishOutboxRelay` (3 fields), and the `BunkerHandshake` labels.
+
 **Approach:**
-1. Add a `DisplayFormat.swift` namespace with `shortPubkey(_ hex: String)`,
+1. Reuse the existing `PubkeyFormatting.swift` helpers (`shortPubkey(_ hex: String)`,
    `relativeAgo(_ unixSeconds: UInt64)`, `avatarInitials(_ hex: String)`,
-   `avatarColor(_ hex: String)` static helpers (8+8 / `Xs/Xm/Xh/Xd ago`
-   buckets / djb2 — matches the canonical `nmp_core::display::*` algorithms
-   the Rust shells use). Mirrors the equivalent shell-side helpers added to
-   `chirp-tui` in the doctrine PR.
+   `avatarColor(_ hex: String)`; 8+8 / `Xs/Xm/Xh/Xd ago` buckets / djb2 — matches
+   the canonical `nmp_core::display::*` algorithms the Rust shells use). Mirrors
+   the equivalent shell-side helpers added to `chirp-tui` in the doctrine PR.
 2. For every Bridge Decodable file, drop the now-deleted CodingKeys + struct
    fields. Where the field becomes `Optional` (`authorDisplayName`,
    `authorPictureUrl`, `displayName`, `pictureUrl`, etc.), use `String?` +
@@ -1287,8 +1204,11 @@ fallback. Needs a Kotlin NFCT decoder to wire the typed render. Non-blocking.
 
 **Origin (B4, #757):** the pin-check glob does not cover the newly-added
 Android `nmp/nip01` + `nmp/feed` generated Kotlin bindings (pinned `25.2.10`).
-Pre-existing-shaped gap; extend the glob so the Android NOFS/timeline/feed
-bindings are pin-checked in CI.
+It also misses `android/app/src/main/java/nmp/transport/` (9 files) — the main
+Android Chirp app's transport layer is **completely unchecked** by the pin glob,
+not just the Chirp `nmp/{nip01,feed}` trees. Pre-existing-shaped gap; extend the
+glob so the Android NOFS/timeline/feed bindings **and the `nmp/transport` tree**
+are pin-checked in CI.
 
 ---
 
@@ -1679,7 +1599,28 @@ residuals. One dedicated cleanup PR per AGENTS.md §no hacks.
 
 Show the user which relays delivered a given event. The data is already tracked: `EventStore::provenance_for(event_id)` (`crates/nmp-store/src/events.rs:288`) returns `Vec<ProvenanceEntry>` with `relay_url`, `first_seen_ms`, `last_seen_ms`, and a `primary: bool` flag (up to 32 relays per event, persisted in LMDB).
 
+**Status (2026-05-29 audit):** the `relay_count` badge exists on iOS (`NoteRowView`). Still missing: the full `relay_provenance` list on `TimelineEventCard`, the "Received from" detail view, and the Android / TUI implementations.
+
+**Required work:**
+
+1. **Expose provenance in the projection** — `TimelineItem` already carries `relay_count: u32`. Add a `relay_provenance: Vec<String>` field (list of relay URLs) to `TimelineItem` and `TimelineEventCard`. Populate from `store.provenance_for(&event.id)` in `Kernel::timeline_item` (`crates/nmp-core/src/kernel/update.rs:464`). Keep `relay_count` as the cheap badge signal; `relay_provenance` is the detail payload. Consider making it opt-in via a projection flag to avoid bloating every timeline row snapshot.
+
+2. **iOS Chirp** — long-press or info sheet on any note row opens a "Received from" list showing relay URLs with first-seen timestamps. Tapping a relay URL copies it or navigates to relay diagnostics.
+
+3. **Android Chirp** — same UX as iOS: bottom sheet or dialog on long-press.
+
+4. **chirp-tui** — `?` key or dedicated pane shows relay provenance for the selected event. Already has `DiagnosticsView` precedent.
+
+5. **chirp-web** — tooltip or expandable row section.
+
+**Note:** `relay_count: u32` is already on `TimelineItem` and rendered in iOS (`NoteRowView`). Step 1 is the only Rust change; steps 2–5 are pure presentation work per platform.
+
 ### F-10 · Canonical FlatBuffers runtime update transport [V1 INFRA · in progress]
+
+**Status (2026-05-29 audit):** the generic FlatBuffers `Value` tree is the
+mandatory primary transport; typed projections are deployed as sidecars for the
+feed (`NOFS` / `NFTS`). There is no `FullState` / `ViewBatch` typed root yet, and
+the JSON `Value` tree remains the main generic interchange shape.
 
 Replace the Rust-to-frontend JSON update payload with one canonical
 FlatBuffers schema for `FullState`, `ViewBatch`, and side-effect frames.
@@ -1707,53 +1648,6 @@ generic FlatBuffers value tree `payload_bytes=873200`, `make_update_us=42075`,
 ceilings, but it confirms the generic value tree is an interim transport shape;
 typed snapshot tables are the next F-10 performance step if foreground logs show
 `make_update_us` or payload size approaching budget.
-
-**Required work:**
-
-1. **Expose provenance in the projection** — `TimelineItem` already carries `relay_count: u32`. Add a `relay_provenance: Vec<String>` field (list of relay URLs) to `TimelineItem` and `TimelineEventCard`. Populate from `store.provenance_for(&event.id)` in `Kernel::timeline_item` (`crates/nmp-core/src/kernel/update.rs:464`). Keep `relay_count` as the cheap badge signal; `relay_provenance` is the detail payload. Consider making it opt-in via a projection flag to avoid bloating every timeline row snapshot.
-
-2. **iOS Chirp** — long-press or info sheet on any note row opens a "Received from" list showing relay URLs with first-seen timestamps. Tapping a relay URL copies it or navigates to relay diagnostics.
-
-3. **Android Chirp** — same UX as iOS: bottom sheet or dialog on long-press.
-
-4. **chirp-tui** — `?` key or dedicated pane shows relay provenance for the selected event. Already has `DiagnosticsView` precedent.
-
-5. **chirp-web** — tooltip or expandable row section.
-
-**Note:** `relay_count: u32` is already on `TimelineItem` and rendered in iOS (`NoteRowView`). Step 1 is the only Rust change; steps 2–5 are pure presentation work per platform.
-
-### F-11 · Versioned releases + automated app upgrades [V1 RELEASE]
-
-NMP must be consumed as a coordinated framework release, not a set of random
-path dependencies. User direction on 2026-05-28 made this a product/operational
-requirement: apps should pin an NMP release, upgrade through `nmp upgrade`, and
-regenerate deterministic bindings/components.
-
-**Source of truth:** [`docs/plan/m17-release.md`](plan/m17-release.md) owns the
-release doctrine and exit gate. [`docs/cli.md`](cli.md) owns command behavior.
-The machine-readable release manifest lives in `release/nmp-release.toml`.
-
-**Required work:**
-
-1. Classify every workspace package as public or private in the release manifest.
-2. Make `nmp init` support both release-consumer (`--nmp-version`) and local
-   framework-development (`--nmp-path`) dependency modes.
-3. Make `nmp gen modules` honor `[nmp]` so generated FFI crates use versioned
-   `nmp-*` dependencies for release consumers and local paths for development.
-4. Add `nmp upgrade --to <version>` and `nmp doctor` as the app-facing upgrade
-   and verification path, including direct `nmp-*` dependency rewrites in
-   app-module crates.
-5. Add release-readiness automation: manifest coverage check, package dry-run
-   for public crates, and a release-tag/manual workflow.
-6. Later release hardening: npm package publishing for `@nmp/cli`,
-   semver/API compatibility checks, schema golden compatibility fixtures, and
-   previous-release fixture app upgrade tests.
-
-**Acceptance:** a temp app initialized with `--nmp-version 0.x.y` generates an
-FFI crate with versioned `nmp-core` / `nmp-ffi` deps; `nmp upgrade --to 0.x.z`
-updates the manifest and deterministic regeneration keeps the app on the new
-release baseline; release-readiness CI can prove every workspace crate is
-classified before a tag is cut.
 
 ---
 
@@ -1811,3 +1705,6 @@ Recorded so Opus reviews do not re-flag these as violations.
 | WalletPayInvoice dispatch_action bypass | PR #361 (2026-05-23): `WalletPayInvoiceModule` registered under `"nmp.wallet"` namespace; `nmp_app_wallet_pay_invoice` rewritten as thin `dispatch_action_json` wrapper. Zero direct-FFI bypasses of the dispatch_action seam remain. |
 | ADR-0025 Marmot bespoke FFI exception — FULLY RETIRED | PR #363 (Rust seam), PR #367 (iOS dispatch_action migration), PR #370 (deleted `nmp_marmot_dispatch` C symbol + REPL/TUI migrated to `MarmotHandle::dispatch` Rust method). Zero `extern "C" fn nmp_marmot_dispatch` in workspace. |
 | Follow / Unfollow / React ActionModules app-local in `nmp-app-chirp` (Opus direction review #10 escape path) | 2026-05-24: lifted to `crates/nmp-nip02/` (NIP-02 follow list + NIP-25 reactions). Chirp's `register_chirp_actions` now delegates to `nmp_nip02::register_actions(app)`. Any Nostr app on top of NMP wires the social graph with a single call (mirrors `nmp_nip17::register_actions` / `nmp_nip57::register_actions` / `nmp_nip65::register_actions`). The deleted `Chirp{Follow,Unfollow,React}Module` impls are now `FollowModule` / `UnfollowModule` / `ReactModule` in `nmp-nip02`; namespaces (`nmp.follow`, `nmp.unfollow`, `nmp.nip25.react`) and JSON shapes unchanged — migration is binary-compatible for every existing host. |
+| V-38 · NIP-47 NWC wallet stack out of nmp-core | `crates/nmp-nip47/` created; `wallet/` and `actor/commands/wallet.rs` deleted from nmp-core; Cargo.toml dep removed |
+| V-43 · Zap correlation_id chain | correlation_id threaded through in nmp-nip57 (was nmp-core/zap.rs, now nmp-nip57/lnurl/mod.rs) |
+| F-11 · Versioned releases + nmp upgrade | `release/nmp-release.toml`, `nmp upgrade`, `nmp doctor`, `nmp init --nmp-version` all implemented |
