@@ -318,27 +318,25 @@ Drop V-37(c) as a sub-item; track here separately.
 
 ---
 
-### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [HIGH · pre-v1 doctrine fix]
+### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [RESOLVED]
 
-**Evidence:** `crates/nmp-core/src/kernel/update/projections.rs:35-274` —
-`snapshot_projections_with_publish_cluster` unconditionally inserts on every tick:
-`publish_queue`, `publish_outbox`, `outbox_summary`, `relay_edit_rows`,
-`relay_role_options`, `settings_hub`, `accounts`, `active_account`, `profile`,
-`timeline`, `author_view`, `thread_view`, `inserted`, `updated`, `removed`,
-`relay_diagnostics`, `mention_profiles` — plus all host-registered projections.
+**Resolved** by PR fix/v46-snapshot-d5-bounding (2026-05-29).
 
-D5 (`plan.md:43`) reads "snapshots bounded by open views." The built-in cluster is
-not bounded. Even with zero open views, the cluster carries 20 keys
-unconditionally inserted including `relay_diagnostics` (rolls every relay + every
-wire sub) and `mention_profiles` (walks every visible item).
+**Option (b) implemented** — view-dependent keys moved to a "only-if-view-subscribed"
+branch in `crates/nmp-core/src/kernel/update/projections.rs`:
 
-The perf gate (`perf_tests.rs:128`) runs against `Kernel::new()` with zero registered
-host projections — it does not exercise the full cluster.
+- `timeline`, `inserted`, `updated`, `removed`: emitted only when
+  `follow_feed_kinds` is non-empty (i.e., the shell has called
+  `nmp_app_open_timeline` / `ActorCommand::OpenContactListSubscription`).
+- `author_view`: emitted only when `author_view()` returns `Some(...)`.
+- `thread_view`: emitted only when `thread_view()` returns `Some(...)`.
 
-**Recommended action:** either (a) rewrite D5 to "bounded by a static cluster gated by
-`snapshot_perf_firehose_gate` + open-view-dependent payloads", or (b) move genuinely
-view-dependent keys (`author_view`, `thread_view`, `timeline`, `inserted`, `updated`,
-`removed`) into a "only-if-view-subscribed" branch. Option (b) is doctrine-honest.
+**Shell tolerance verified** before change: iOS `SnapshotProjections` declares all
+six keys as `Optional` (Swift `?`); Android `SnapshotProjections` uses default
+`emptyList()` / nullable; TUI reads via `.get(key)` returning `Option`; web uses
+`Array.isArray(...)` guard and `?? undefined` optional chain — all shells are
+absence-tolerant. D5 doctrine text updated to describe the static vs.
+view-dependent cluster split.
 
 ---
 
