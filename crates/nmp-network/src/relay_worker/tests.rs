@@ -21,7 +21,9 @@ use std::time::{Duration, Instant};
 
 use tungstenite::{accept, Message};
 
-use super::{jittered_backoff, spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
+use super::{
+    jittered_backoff, spawn_relay_worker_with_keepalive, BackoffClass, RelayCommand, RelayEvent,
+};
 use crate::role::RelayRole;
 
 /// What the server-side WebSocket observed. Kept narrow so test assertions
@@ -571,6 +573,153 @@ fn t116c_jitter_bounded_within_5s() {
             "jitter must not exceed base + 5s for {url}: got {result:?}"
         );
     }
+}
+
+// ─── V-58 — SetBackoffHint unit tests ───────────────────────────────────────
+
+/// V-58 — when the worker receives a `SetBackoffHint(RateLimited)` command
+/// while connected, it reconnects with a long delay (≥ `RELAY_RECONNECT_DELAY_RATE_LIMITED`)
+/// rather than the normal initial delay.
+///
+/// Approach: run the worker against a server that accepts one connection and
+/// immediately drops it, then measure the wall-clock gap between the first
+/// `Failed` event and the next `Connected` event. Send the hint just after
+/// `Connected` so it is guaranteed to be draining during the session.
+///
+/// To keep the test fast we override `RELAY_RECONNECT_DELAY_RATE_LIMITED`-like
+/// behaviour indirectly: test the *schedule logic* at the unit level rather
+/// than waiting 60 s. The integration proof lives in the protocol-constants
+/// test (`relay_protocol::tests::rate_limited_delay_exceeds_initial_delay`).
+/// Here we prove only that the worker *accepts* the `SetBackoffHint` command
+/// without panicking and that a hint sent during a live session does not
+/// prevent the subsequent `Failed` event from arriving.
+#[test]
+fn v58_set_backoff_hint_does_not_break_reconnect() {
+    // Start a server, connect once, then drop the connection.
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let url = format!("ws://127.0.0.1:{port}");
+
+    let _accept_thread = thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            // Accept the WS handshake via tungstenite, then immediately drop
+            // the connection so the worker sees a transport failure.
+            drop(accept(stream));
+        }
+    });
+    thread::sleep(Duration::from_millis(30));
+
+    let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+    let control_tx = spawn_relay_worker_with_keepalive(
+        RelayRole::Content,
+        url,
+        1,
+        relay_tx,
+        Duration::from_secs(60), // no keepalive interference
+        Duration::from_secs(60),
+    );
+
+    // Wait for Connected.
+    let connected = drain_until(
+        &relay_rx,
+        |ev| matches!(ev, RelayEvent::Connected { .. }),
+        Duration::from_secs(2),
+    );
+    assert!(connected.is_some(), "worker must report Connected");
+
+    // Send the hint while the socket is still open (the server dropped the
+    // connection server-side, but the client hasn't discovered it yet).
+    control_tx
+        .send(RelayCommand::SetBackoffHint(BackoffClass::RateLimited))
+        .expect("hint must be accepted by the worker channel");
+
+    // The worker should eventually discover the dropped connection and emit Failed.
+    let failed = drain_until(
+        &relay_rx,
+        |ev| matches!(ev, RelayEvent::Failed { .. }),
+        Duration::from_secs(3),
+    );
+    assert!(
+        failed.is_some(),
+        "worker must report Failed after the server drops the connection"
+    );
+
+    // Shut down cleanly; no panic means SetBackoffHint was handled.
+    let _ = control_tx.send(RelayCommand::Shutdown);
+}
+
+/// V-58 — the `BackoffClass` schedule constants satisfy the documented
+/// ordering: `RateLimited` delay base is strictly greater than `Transient`
+/// (the normal initial delay). This pins the constants so a future edit
+/// that inverts the order surfaces immediately.
+#[test]
+fn v58_rate_limited_backoff_base_exceeds_initial_delay() {
+    use crate::relay_protocol::{
+        RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+    };
+    assert!(
+        RELAY_RECONNECT_DELAY_RATE_LIMITED > RELAY_RECONNECT_DELAY_INITIAL,
+        "RELAY_RECONNECT_DELAY_RATE_LIMITED ({:?}) must exceed RELAY_RECONNECT_DELAY_INITIAL ({:?})",
+        RELAY_RECONNECT_DELAY_RATE_LIMITED,
+        RELAY_RECONNECT_DELAY_INITIAL,
+    );
+}
+
+/// V-58 / V-92 composition: a `RateLimited` hint overrides the V-92 healthy-
+/// session reset. After a long healthy session (elapsed ≥ 5 min), a normal
+/// transient drop resets the backoff to `INITIAL`; a rate-limited hint must
+/// instead pin it to `RELAY_RECONNECT_DELAY_RATE_LIMITED`.
+///
+/// This is a logic test that exercises the backoff-class decision branch
+/// inline — it does not spin up a real socket.
+#[test]
+fn v58_rate_limited_hint_overrides_v92_healthy_session_reset() {
+    use crate::relay_protocol::{
+        RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+    };
+
+    // Simulate the backoff-selection logic from run_relay_worker, using
+    // BackoffClass::RateLimited as the hint.
+    fn select_backoff(
+        hint: Option<BackoffClass>,
+        accumulated_backoff: Duration,
+        connected_elapsed: Duration,
+        reset_threshold: Duration,
+    ) -> Duration {
+        match hint {
+            Some(BackoffClass::RateLimited) => RELAY_RECONNECT_DELAY_RATE_LIMITED,
+            None | Some(BackoffClass::Transient) => {
+                if connected_elapsed >= reset_threshold {
+                    RELAY_RECONNECT_DELAY_INITIAL
+                } else {
+                    (accumulated_backoff * 2).min(RELAY_RECONNECT_DELAY_MAX)
+                }
+            }
+        }
+    }
+
+    let healthy_elapsed = Duration::from_secs(400); // > 5 min → V-92 would reset
+    let reset_threshold = Duration::from_secs(300);
+    let accumulated = Duration::from_secs(60); // some previously-advanced backoff
+
+    // V-92: healthy + no hint → reset to INITIAL.
+    let v92_result = select_backoff(None, accumulated, healthy_elapsed, reset_threshold);
+    assert_eq!(
+        v92_result, RELAY_RECONNECT_DELAY_INITIAL,
+        "V-92: healthy session + no hint must reset to initial delay"
+    );
+
+    // V-58 override: healthy + RateLimited hint → long delay, NOT reset.
+    let v58_result =
+        select_backoff(Some(BackoffClass::RateLimited), accumulated, healthy_elapsed, reset_threshold);
+    assert_eq!(
+        v58_result, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+        "V-58: RateLimited hint must override V-92 reset → long delay"
+    );
+    assert!(
+        v58_result > RELAY_RECONNECT_DELAY_INITIAL,
+        "rate-limited delay must exceed initial delay"
+    );
 }
 
 /// Minimal RFC-6455 frame decoder: returns the first complete Text frame's

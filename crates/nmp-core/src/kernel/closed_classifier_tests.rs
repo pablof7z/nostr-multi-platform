@@ -306,6 +306,73 @@ fn closed_eviction_is_relay_scoped_sibling_survives() {
     );
 }
 
+// ─── V-58 — rate-limited CLOSED enqueues a backoff hint ─────────────────────
+
+/// A `CLOSED ["rate-limited: …"]` frame must enqueue exactly one backoff hint
+/// (URL = the delivering relay URL) so the actor can forward it to the pool
+/// worker for a long reconnect delay.
+///
+/// This pins the kernel side of the V-58 fix: `on_closed_rate_limited` must
+/// write to `pending_backoff_hints`, and `take_backoff_hints` must drain it.
+#[test]
+fn v58_rate_limited_closed_enqueues_backoff_hint() {
+    use crate::kernel::BackoffHint;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let role = RelayRole::Content;
+    let url = role.url();
+
+    // Before the frame: queue must be empty.
+    assert!(
+        kernel.take_backoff_hints().is_empty(),
+        "no hints expected before any CLOSED frame"
+    );
+
+    let _ = kernel.handle_text(role, url, &closed_frame("sub-rl", "rate-limited: slow down"));
+
+    let hints = kernel.take_backoff_hints();
+    assert_eq!(hints.len(), 1, "exactly one hint must be enqueued");
+    let (hint_url, hint_class) = &hints[0];
+    assert_eq!(hint_url, url, "hint must carry the delivering relay URL");
+    assert_eq!(
+        *hint_class,
+        BackoffHint::RateLimited,
+        "hint class must be RateLimited"
+    );
+
+    // Queue must be drained after take_backoff_hints.
+    assert!(
+        kernel.take_backoff_hints().is_empty(),
+        "take_backoff_hints must drain the queue"
+    );
+}
+
+/// A `CLOSED` for any reason other than `rate-limited:` must NOT enqueue
+/// a backoff hint — only rate-limited causes the long-backoff signal.
+#[test]
+fn v58_non_rate_limited_closed_does_not_enqueue_hint() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let role = RelayRole::Content;
+    let url = role.url();
+
+    for reason in [
+        "error: internal",
+        "restricted: paid only",
+        "blocked: spam",
+        "auth-required: please AUTH",
+        "totally-made-up: unknown",
+        "duplicate: same sub",
+        "invalid: bad filter",
+    ] {
+        let _ = kernel.handle_text(role, url, &closed_frame("sub-x", reason));
+        let hints = kernel.take_backoff_hints();
+        assert!(
+            hints.is_empty(),
+            "reason {reason:?} must NOT enqueue a backoff hint, got: {hints:?}"
+        );
+    }
+}
+
 /// The per-frame CLOSED reason text is surfaced to the diagnostic snapshot:
 /// `classify_and_route_closed` stamps `RelayHealth.last_error` with the raw
 /// reason so the UI can show *why* the relay closed the subscription.
