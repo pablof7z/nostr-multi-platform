@@ -295,3 +295,14 @@ pub struct DmMessage {
     #[serde(default)]
     pub outgoing: bool,
 }
+
+/// `action_stages` projection payload — publish lifecycle rows.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct ActionStageRow {
+    #[serde(default)]
+    pub correlation_id: String,
+    #[serde(default)]
+    pub stage: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
