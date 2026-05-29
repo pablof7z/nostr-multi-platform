@@ -118,6 +118,57 @@ guard** and never derive UI truth from anything but the latest applied snapshot.
 > (`ProfileViews.swift:41-46`). Caching the *render input* briefly is fine;
 > caching *facts* the kernel owns is the D4 violation.
 
+## Reading a snapshot projection in `apply()`
+
+> **Disambiguation.** "Snapshot projection" here is the named-state-slice
+> mechanism — a value delivered under its key in `snapshot.projections[key]`
+> (registered Rust-side via `register_snapshot_projection`; see
+> [15 — Codegen and FFI](15-codegen-and-ffi.md)). It is **not** the ViewModule
+> view-delta system, and it is **not** the SwiftUI `authorViewCache` *projection
+> cache* mentioned at the rev-guard nuance above — those are unrelated uses of
+> the word.
+
+The named typed fields in `apply()` (`items`, `profile`, `relayStatuses`) are
+the kernel's built-in slices. App- and module-owned state arrives in the **same
+frame** under `snapshot.projections["nmp.your.key"]` — you read it right
+alongside the named fields, decode it, and assign it to an `@Published`
+property. Chirp's NIP-02 follow list is the precedent:
+
+```swift
+// ios/Chirp/Chirp/Bridge/KernelBridge.swift:884 — a computed accessor reads
+// the projection off the decoded snapshot by its registered key.
+var followList: FollowListSnapshot? { projections?.followList }   // projections["nmp.follow_list"]
+
+// ios/Chirp/Chirp/Bridge/KernelModel.swift:614 — consumed in apply(), every tick.
+private func apply(result: KernelUpdateResult) {
+    guard result.update.rev > rev else { return }   // same rev guard — drop reorders
+    rev = update.rev
+    items = update.items                             // built-in named field
+    // …then the projection slice, decoded + assigned wholesale:
+    followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
+}
+```
+
+The decode path is the same FlatBuffers reader as every other field
+(`KernelUpdateFrameDecoder.swift:43-56` reads `SnapshotFrame.payload` and
+decodes the `projections` object into the shadow model). A projection slice is
+**not special at read time** — it obeys every chapter rule:
+
+- **Wholesale-replace** the projection on every snapshot; never merge or append
+  into the prior value (D4).
+- **Honor the monotonic rev guard** — a projection read from a stale frame is
+  dropped with the rest of that frame.
+- **Render placeholders, not spinners** — an absent projection key means "not
+  populated yet", which renders the D1 placeholder, never a loading gate.
+- **Never derive UI truth** from anything but the latest applied snapshot;
+  `projections[key]` is a shadow of kernel-owned state, not a cache you mutate.
+
+> Typed FlatBuffers projections (ADR-0037) are a **different read site**:
+> `snapshot.typedProjections` (`KernelUpdateFrameDecoder.swift:74`,
+> e.g. `TypedHomeFeedDecoder` at `KernelBridge.swift:533`), not
+> `projections[key]`. Use the `projections[key]` read above for the common
+> named-JSON-slice case.
+
 ## What a kernel-consuming SwiftUI view looks like
 
 `@EnvironmentObject KernelModel`, render the snapshot, dispatch commands on

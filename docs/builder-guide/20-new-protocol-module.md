@@ -38,6 +38,17 @@ one of each. Minimum surface per family:
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | section [16](16-capabilities.md) |
 | `IdentityModule` | scope kind; no long-lived state | section [11](11-sessions-signers.md) |
 
+> **Exposing module state to the host — register a snapshot projector.** When
+> your module owns a read model the host shell must display (a NIP-29 group-chat
+> aggregate, NIP-57 zap counts, a NIP-02 follow list), expose a
+> `snapshot_json(&self) -> serde_json::Value` on it and register it under an
+> `nmp.<module>.*` key via the `register_snapshot_projection` seam — the
+> canonical exemplar is `crates/nmp-nip29/src/register.rs:66`
+> (`cf. nmp-nip02/src/projection.rs`, `nmp-nip57/src/projection.rs`). This is
+> **separate** from the `ViewModule` `snapshot` associated type in the checklist
+> above; the mechanism and read path are documented in
+> [15 — How to add a snapshot projection](15-codegen-and-ffi.md).
+
 The unifying ownership rule a protocol crate states explicitly
 (`nmp-nip29/src/domain/mod.rs:6-9`): "the kind is the dispatch; the `h` tag is
 the ownership." Pick *one* such rule and document it in your `lib.rs`.
