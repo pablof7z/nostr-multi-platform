@@ -810,6 +810,16 @@ pub(super) struct KernelSnapshot {
     /// `SubscriptionLifecycle::last_planner_error()`, surfaced so the host
     /// observes it instead of silent empty frames. `null` in steady state.
     pub(super) last_planner_error: Option<String>,
+    /// V-67 (D6) — set when the kernel was asked to open a durable store at a
+    /// specific path but the open failed. The kernel fell back to an ephemeral
+    /// in-memory store, so all locally-stored events are transient for this
+    /// session. `null` in the healthy case AND when no storage path was
+    /// configured (in-memory is the legitimate default for tests/CI).
+    ///
+    /// The host MUST surface this to the user (e.g. an alert or a persistent
+    /// banner) so they are not surprised when events are missing on next launch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) store_open_failure: Option<String>,
     // D0: NIP-47 NWC is an app noun — there is NO typed `wallet_status` field.
     // Wallet state is surfaced through the host-registered `"wallet"` snapshot
     // projection (see `projections` below): a shell reads `projections.wallet`
