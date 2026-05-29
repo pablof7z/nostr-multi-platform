@@ -95,6 +95,19 @@ impl DesktopApp {
                     Ok(s) => s,
                     Err(_) => continue,
                 };
+                // Backfill fields the kernel emits in projections, not as top-level JSON.
+                if let Some(v) = snap.projection::<Option<String>>("active_account") {
+                    snap.active_account = v;
+                }
+                if let Some(v) = snap.projection::<crate::snapshot::ProfileCard>("profile") {
+                    snap.profile = v;
+                }
+                if let Some(v) = snap.projection::<Vec<crate::snapshot::AccountSummary>>("accounts") {
+                    snap.accounts = v;
+                }
+                if let Some(v) = snap.projection::<Vec<crate::snapshot::TimelineItem>>("timeline") {
+                    snap.items = v;
+                }
                 // Prefer the typed OP-feed sidecar when present (same as TUI).
                 if let Some(feed) = extract_home_feed_from_typed(&typed) {
                     snap.projections.insert("nmp.feed.home".to_string(), feed);

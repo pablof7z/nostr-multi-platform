@@ -970,7 +970,6 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
- "keyring",
  "nmp-app-chirp",
  "nmp-chirp-config",
  "nmp-content",
