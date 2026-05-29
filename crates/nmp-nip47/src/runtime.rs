@@ -196,31 +196,33 @@ impl WalletRuntime {
             .unwrap_or(0)
     }
 
-    /// Sweep `pending_payments` entries older than `now_secs` by `ttl_secs`,
-    /// calling `record_action_failure` for each expired correlation_id.
+    /// Sweep `pending_payments` entries older than `now_secs` by `ttl_secs`.
     ///
-    /// Called by the idle-tick hook so it fires even when the NWC relay is
-    /// silent (D8 — no sleep/loop, pure wall-clock compare).
+    /// Returns the expired correlation_ids that must be recorded as failed
+    /// by the caller (via `kernel.record_action_failure`). This design keeps
+    /// the sweep Kernel-free so it can be tested without a live `Kernel`.
     ///
-    /// Public so the host-side `RelayTextInterceptor::on_idle_tick` impl
-    /// (e.g. `nmp-app-chirp::WalletInterceptor`) can call this with the
-    /// canonical TTL.
+    /// The caller (host-side `RelayTextInterceptor::on_idle_tick`) records the
+    /// returned failures — see `nmp-app-chirp::WalletInterceptor::on_idle_tick`.
+    ///
+    /// D8 — no sleep/loop: pure wall-clock compare of `now_secs` against the
+    /// per-entry `inserted_at_secs` field.
     pub fn sweep_expired_payments(
         &mut self,
-        kernel: &mut Kernel,
         now_secs: u64,
         ttl_secs: u64,
-    ) {
+    ) -> Vec<(String, String)> {
         let conn = match self.connection.as_mut() {
             Some(c) => c,
-            None => return,
+            None => return Vec::new(),
         };
-        let mut expired_ids: Vec<String> = Vec::new();
-        for (event_id, entry) in conn.pending_payments.iter() {
-            if now_secs.saturating_sub(entry.inserted_at_secs) >= ttl_secs {
-                expired_ids.push(event_id.clone());
-            }
-        }
+        let expired_ids: Vec<String> = conn
+            .pending_payments
+            .iter()
+            .filter(|(_, e)| now_secs.saturating_sub(e.inserted_at_secs) >= ttl_secs)
+            .map(|(k, _)| k.clone())
+            .collect();
+        let mut failures: Vec<(String, String)> = Vec::new();
         for event_id in expired_ids {
             if let Some(entry) = conn.pending_payments.remove(&event_id) {
                 tracing::warn!(
@@ -231,13 +233,11 @@ impl WalletRuntime {
                     "nwc: pay_invoice timed out — no kind:23195 response within TTL"
                 );
                 if let Some(cid) = entry.correlation_id {
-                    kernel.record_action_failure(
-                        cid,
-                        format!("wallet timeout (>{ttl_secs}s)"),
-                    );
+                    failures.push((cid, format!("wallet timeout (>{ttl_secs}s)")));
                 }
             }
         }
+        failures
     }
 }
 
@@ -708,30 +708,8 @@ mod tests {
 
     // ── V-64: sweep_expired_payments ─────────────────────────────────────────
 
-    /// V-64: an aged pending entry is swept to a timeout failure on the next
-    /// driven tick.
-    ///
-    /// We test `sweep_expired_payments` in isolation to avoid the need for a
-    /// live `Kernel` (which requires `test-support`). The logic under test is
-    /// purely: remove entries past TTL, call `record_action_failure` for those
-    /// with a correlation_id, leave fresh entries intact.
-    ///
-    /// Because `Kernel` is opaque we use the `test-support` feature-gated
-    /// version via the `nmp-core` dev-dep.
-    ///
-    /// This test validates the data-path logic using a manually crafted
-    /// `WalletRuntime` with a synthetic connection whose entries are already
-    /// past TTL.
-    #[test]
-    fn sweep_removes_expired_entry_and_leaves_fresh_entry() {
-        // Build a minimal WalletConnection with two pending entries:
-        // one that is past TTL and one that is fresh.
-        let slot = new_wallet_status_slot();
-        let mut rt = WalletRuntime::new(slot);
-        let now_secs: u64 = 1_000_000;
-        let ttl_secs: u64 = 90;
-
-        rt.connection = Some(WalletConnection {
+    fn make_connection(pending_payments: HashMap<String, PendingPayment>) -> WalletConnection {
+        WalletConnection {
             wallet_pubkey_hex: "aaaa".repeat(16),
             wallet_npub: "npub1test".to_string(),
             relay_url: "wss://test.relay".to_string(),
@@ -740,112 +718,131 @@ mod tests {
             status: "ready".to_string(),
             balance_msats: None,
             pending: HashMap::new(),
-            pending_payments: {
-                let mut m = HashMap::new();
-                // Expired: inserted 200 s ago (past the 90 s TTL).
-                m.insert(
-                    "expired-event-id".to_string(),
-                    PendingPayment {
-                        correlation_id: Some("cid-expired".to_string()),
-                        inserted_at_secs: now_secs - 200,
-                    },
-                );
-                // Fresh: inserted 10 s ago (within TTL).
-                m.insert(
-                    "fresh-event-id".to_string(),
-                    PendingPayment {
-                        correlation_id: Some("cid-fresh".to_string()),
-                        inserted_at_secs: now_secs - 10,
-                    },
-                );
-                m
-            },
+            pending_payments,
             sub_id: "nwc-aaaa".to_string(),
             orphan_responses: 0,
-        });
+        }
+    }
 
-        // We can't call record_action_failure without a real Kernel, so we
-        // verify the sweep's structural effect: the expired entry is removed
-        // and the fresh entry is retained. We use a no-op Kernel mock via
-        // the nmp_core::testing surface (test-support feature).
-        //
-        // Since Kernel construction is `pub(crate)`, we test the domain
-        // logic directly by asserting map state after manually calling the
-        // sweep with a fake Kernel placeholder (the test-support path).
-        //
-        // Direct map mutation test: extract the logic we can assert without
-        // a live kernel.
+    /// V-64 (test b): an aged pending entry is swept to a timeout failure on
+    /// the next driven tick; a fresh entry is retained.
+    ///
+    /// `sweep_expired_payments` returns `(correlation_id, reason)` pairs so
+    /// the caller (not the sweep) records failures via `kernel` — allowing
+    /// this test to drive the production code without a live `Kernel`.
+    #[test]
+    fn sweep_removes_expired_entry_and_leaves_fresh_entry() {
+        let slot = new_wallet_status_slot();
+        let mut rt = WalletRuntime::new(slot);
+        let now_secs: u64 = 1_000_000;
+        let ttl_secs: u64 = 90;
+
+        let mut payments = HashMap::new();
+        // Expired: inserted 200 s ago (past the 90 s TTL).
+        payments.insert(
+            "expired-event-id".to_string(),
+            PendingPayment {
+                correlation_id: Some("cid-expired".to_string()),
+                inserted_at_secs: now_secs - 200,
+            },
+        );
+        // Fresh: inserted 10 s ago (within TTL).
+        payments.insert(
+            "fresh-event-id".to_string(),
+            PendingPayment {
+                correlation_id: Some("cid-fresh".to_string()),
+                inserted_at_secs: now_secs - 10,
+            },
+        );
+        rt.connection = Some(make_connection(payments));
+
+        // Call the real production function.
+        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
+
+        // Only the expired entry returns a failure cid.
+        assert_eq!(failures.len(), 1, "exactly one failure must be returned");
+        let (cid, reason) = &failures[0];
+        assert_eq!(cid, "cid-expired", "returned cid must be the expired one");
+        assert!(
+            reason.contains("timeout"),
+            "reason must mention timeout: {reason}"
+        );
+
+        // The expired entry must be removed from the map.
         let conn = rt.connection.as_ref().unwrap();
-        assert_eq!(conn.pending_payments.len(), 2, "must start with 2 entries");
+        assert!(
+            !conn.pending_payments.contains_key("expired-event-id"),
+            "expired entry must be removed"
+        );
 
-        // Compute which entries would be swept.
-        let expired: Vec<String> = conn
-            .pending_payments
-            .iter()
-            .filter(|(_, e)| now_secs.saturating_sub(e.inserted_at_secs) >= ttl_secs)
-            .map(|(k, _)| k.clone())
-            .collect();
-        assert_eq!(expired.len(), 1, "exactly one entry must be past TTL");
-        assert_eq!(expired[0], "expired-event-id");
-
-        let fresh: Vec<String> = conn
-            .pending_payments
-            .iter()
-            .filter(|(_, e)| now_secs.saturating_sub(e.inserted_at_secs) < ttl_secs)
-            .map(|(k, _)| k.clone())
-            .collect();
-        assert_eq!(fresh.len(), 1, "exactly one entry must be within TTL");
-        assert_eq!(fresh[0], "fresh-event-id");
+        // The fresh entry must remain.
+        assert!(
+            conn.pending_payments.contains_key("fresh-event-id"),
+            "fresh entry must be retained"
+        );
     }
 
     /// V-64: a `PendingPayment` with `correlation_id = None` (actor-internal
-    /// auto-dispatch) must be swept and removed without calling
-    /// `record_action_failure` (nothing is waiting on it).
+    /// auto-dispatch) must be swept and removed but must NOT produce a failure
+    /// entry (nothing is waiting on it).
     #[test]
-    fn sweep_removes_no_correlation_entry_without_failure_call() {
+    fn sweep_removes_no_correlation_entry_without_failure() {
         let slot = new_wallet_status_slot();
         let mut rt = WalletRuntime::new(slot);
         let now_secs: u64 = 1_000_000;
         let ttl_secs: u64 = 90;
 
-        rt.connection = Some(WalletConnection {
-            wallet_pubkey_hex: "aaaa".repeat(16),
-            wallet_npub: "npub1test".to_string(),
-            relay_url: "wss://test.relay".to_string(),
-            client_secret_hex: Zeroizing::new("bb".repeat(32)),
-            client_pubkey_hex: "cccc".repeat(16),
-            status: "ready".to_string(),
-            balance_msats: None,
-            pending: HashMap::new(),
-            pending_payments: {
-                let mut m = HashMap::new();
-                m.insert(
-                    "actor-internal-event-id".to_string(),
-                    PendingPayment {
-                        correlation_id: None,
-                        inserted_at_secs: now_secs - 200,
-                    },
-                );
-                m
+        let mut payments = HashMap::new();
+        payments.insert(
+            "actor-internal-event-id".to_string(),
+            PendingPayment {
+                correlation_id: None,
+                inserted_at_secs: now_secs - 200,
             },
-            sub_id: "nwc-aaaa".to_string(),
-            orphan_responses: 0,
-        });
+        );
+        rt.connection = Some(make_connection(payments));
 
-        let conn = rt.connection.as_ref().unwrap();
-        let expired: Vec<String> = conn
-            .pending_payments
-            .iter()
-            .filter(|(_, e)| now_secs.saturating_sub(e.inserted_at_secs) >= ttl_secs)
-            .map(|(k, _)| k.clone())
-            .collect();
-        assert_eq!(expired.len(), 1, "actor-internal entry must be swept");
-        // correlation_id is None — no action failure expected (tested by
-        // inspection since we can't intercept record_action_failure here).
-        let entry = conn.pending_payments.get("actor-internal-event-id").unwrap();
+        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
+
+        // No correlation_id → no failure emitted.
         assert!(
-            entry.correlation_id.is_none(),
-            "actor-internal entry must carry no correlation_id"
+            failures.is_empty(),
+            "actor-internal (no cid) sweep must return no failure pairs"
+        );
+
+        // The entry must still have been removed from the map.
+        let conn = rt.connection.as_ref().unwrap();
+        assert!(
+            !conn.pending_payments.contains_key("actor-internal-event-id"),
+            "actor-internal entry must be removed from the map"
+        );
+    }
+
+    /// V-64: fresh entries (within TTL) must NOT be swept.
+    #[test]
+    fn sweep_leaves_fresh_entry_untouched() {
+        let slot = new_wallet_status_slot();
+        let mut rt = WalletRuntime::new(slot);
+        let now_secs: u64 = 1_000_000;
+        let ttl_secs: u64 = 90;
+
+        let mut payments = HashMap::new();
+        payments.insert(
+            "fresh-event-id".to_string(),
+            PendingPayment {
+                correlation_id: Some("cid-fresh".to_string()),
+                inserted_at_secs: now_secs - 10,
+            },
+        );
+        rt.connection = Some(make_connection(payments));
+
+        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
+
+        assert!(failures.is_empty(), "fresh entry must not produce a failure");
+        let conn = rt.connection.as_ref().unwrap();
+        assert!(
+            conn.pending_payments.contains_key("fresh-event-id"),
+            "fresh entry must still be present"
         );
     }
 }

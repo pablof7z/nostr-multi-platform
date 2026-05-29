@@ -41,14 +41,19 @@ impl RelayTextInterceptor for WalletInterceptor {
     }
 
     fn on_idle_tick(&self, kernel: &mut Kernel) -> Vec<OutboundMessage> {
+        let now_secs = kernel.now_secs();
         let Ok(mut guard) = self.runtime.lock() else {
             return Vec::new();
         };
         let Some(rt) = guard.as_mut() else {
             return Vec::new();
         };
-        let now_secs = kernel.now_secs();
-        rt.sweep_expired_payments(kernel, now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
+        let failures =
+            rt.sweep_expired_payments(now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
+        drop(guard);
+        for (cid, reason) in failures {
+            kernel.record_action_failure(cid, reason);
+        }
         Vec::new()
     }
 }
