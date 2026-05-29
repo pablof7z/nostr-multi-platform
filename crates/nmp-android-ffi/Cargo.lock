@@ -1136,6 +1136,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "serde",
+ "tracing",
 ]
 
 [[package]]

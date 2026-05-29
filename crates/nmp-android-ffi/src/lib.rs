@@ -28,9 +28,10 @@ use jni::JNIEnv;
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_free,
-    nmp_app_new, nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback,
-    nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
+    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
+    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start,
+    nmp_app_stop, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -253,6 +254,105 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
         return;
     };
     nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+}
+
+/// Dispatch a named action through the action registry.
+///
+/// Returns a JSON C string the caller receives as a jstring. The caller need not
+/// free it — JNI String lifetime is managed by the VM.
+///
+/// * `{"correlation_id":"<32-hex>"}` — the action was accepted and assigned a
+///   correlation id.
+/// * `{"error":"<message>"}` — the action was rejected (null app, invalid
+///   arguments, unknown namespace, malformed JSON).
+///
+/// D6: on null handle or any error, returns "{}" (empty JSON object).
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    namespace: JString,
+    action_json: JString,
+) -> jni::sys::jstring {
+    let Some(s) = session_ref(handle) else {
+        return env
+            .new_string("{}")
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    };
+    let Some(namespace) = jstring_to_cstring(&mut env, &namespace) else {
+        return env
+            .new_string("{}")
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    };
+    let Some(action_json) = jstring_to_cstring(&mut env, &action_json) else {
+        return env
+            .new_string("{}")
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    };
+
+    // Call the FFI function; it returns a heap-allocated C string we must free.
+    let result_ptr = nmp_app_dispatch_action(s.app, namespace.as_ptr(), action_json.as_ptr());
+    if result_ptr.is_null() {
+        return env
+            .new_string("{}")
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    }
+
+    // Convert to a Rust string, then to JString.
+    let result_str = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
+        .to_string_lossy()
+        .into_owned();
+
+    // Free the C string.
+    nmp_app_free_string(result_ptr);
+
+    // Return as jstring.
+    env.new_string(&result_str)
+        .unwrap_or_else(|_| env.new_string("{}").unwrap())
+        .into_raw()
+}
+
+/// Open a thread by note ID.
+///
+/// D6: null handle or invalid note_id is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenThread(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    note_id: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(note_id) = jstring_to_cstring(&mut env, &note_id) else {
+        return;
+    };
+    nmp_app_open_thread(s.app, note_id.as_ptr());
+}
+
+/// Open an author by pubkey.
+///
+/// D6: null handle or invalid pubkey is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenAuthor(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    nmp_app_open_author(s.app, pubkey.as_ptr());
 }
 
 #[no_mangle]
