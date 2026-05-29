@@ -1,4 +1,4 @@
-//! V-51 phase 2 — JSON DTO for the routing-trace projection.
+//! V-51 phase 2 / V-75 — JSON DTO for the routing-trace projection.
 //!
 //! The substrate types ([`crate::substrate::RoutingSource`],
 //! [`crate::substrate::PublishTrace`], etc.) deliberately do NOT carry
@@ -23,6 +23,11 @@
 //!       "author": "<hex pubkey>",
 //!       "event_id_short": "abcdef012345",
 //!       "explicit_targets_set": false,
+//!       "lane_attempts": [
+//!         { "lane": "Nip65",   "outcome": { "kind": "Empty" } },
+//!         { "lane": "Hint",    "outcome": { "kind": "Empty" } },
+//!         { "lane": "AppRelayFallback", "outcome": { "kind": "Matched", "count": 1 } }
+//!       ],
 //!       "urls": [
 //!         {
 //!           "url": "wss://relay.example/",
@@ -38,6 +43,9 @@
 //!       "kinds": [1, 6, 7],
 //!       "authors_count": 5,
 //!       "explicit_targets_set": false,
+//!       "lane_attempts": [
+//!         { "lane": "Nip65", "outcome": { "kind": "Matched", "count": 3 } }
+//!       ],
 //!       "urls": [
 //!         {
 //!           "url": "wss://relay.example/",
@@ -55,6 +63,12 @@
 //! that grammar; the JSON serialisation re-uses the same labels so the
 //! Swift / TypeScript decoders agree with the human-readable form.
 //!
+//! `lane_attempts` is the V-75 extension: one entry per lane that ran in
+//! the generic algorithm. Empty array when `explicit_targets_set` is true.
+//! Lane names match [`crate::substrate::RoutingLane`] variant names;
+//! `AppRelayFallback` is the sentinel for "all prior lanes were empty and
+//! Lane 7 fired".
+//!
 //! ## Doctrine
 //!
 //! - **D0** — no app nouns; the DTO speaks lane attribution only.
@@ -71,8 +85,8 @@ use crate::kernel::routing_trace::{
     PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
 };
 use crate::substrate::{
-    AppRelayMode, ClassRoutingPath, Direction, EventClass, RoutingRelayUrl, RoutingSource,
-    UserConfiguredCategory,
+    AppRelayMode, ClassRoutingPath, Direction, EventClass, LaneOutcome, RouteAttempt, RoutingLane,
+    RoutingRelayUrl, RoutingSource, UserConfiguredCategory,
 };
 use std::collections::BTreeSet;
 
@@ -113,6 +127,7 @@ fn publish_entry_to_json(entry: &PublishTraceEntry) -> Value {
         "author": entry.trace.author,
         "event_id_short": entry.trace.event_id_short,
         "explicit_targets_set": entry.trace.explicit_targets_set,
+        "lane_attempts": attempts_to_json(&entry.trace.attempts),
         "urls": urls_to_json(&entry.urls),
     })
 }
@@ -124,6 +139,7 @@ fn subscription_entry_to_json(entry: &SubscriptionTraceEntry) -> Value {
         "kinds": entry.trace.kinds,
         "authors_count": entry.trace.authors_count,
         "explicit_targets_set": entry.trace.explicit_targets_set,
+        "lane_attempts": attempts_to_json(&entry.trace.attempts),
         "urls": urls_to_json(&entry.urls),
     })
 }
@@ -139,6 +155,33 @@ fn urls_to_json(urls: &[(RoutingRelayUrl, BTreeSet<RoutingSource>)]) -> Value {
             })
             .collect(),
     )
+}
+
+/// Render the per-lane attempt list (V-75) as a JSON array of objects.
+/// Each entry has `"lane"` (string discriminant) and `"outcome"` (`"Matched"`
+/// with a `count`, or `"Empty"`). Empty slice renders as an empty JSON array.
+fn attempts_to_json(attempts: &[RouteAttempt]) -> Value {
+    Value::Array(attempts.iter().map(attempt_to_json).collect())
+}
+
+fn attempt_to_json(a: &RouteAttempt) -> Value {
+    let lane = routing_lane_str(a.lane);
+    let outcome = match a.outcome {
+        LaneOutcome::Matched { count } => json!({ "kind": "Matched", "count": count }),
+        LaneOutcome::Empty => json!({ "kind": "Empty" }),
+    };
+    json!({ "lane": lane, "outcome": outcome })
+}
+
+fn routing_lane_str(lane: RoutingLane) -> &'static str {
+    match lane {
+        RoutingLane::Nip65 => "Nip65",
+        RoutingLane::Hint => "Hint",
+        RoutingLane::Provenance => "Provenance",
+        RoutingLane::UserConfigured => "UserConfigured",
+        RoutingLane::Indexer => "Indexer",
+        RoutingLane::AppRelayFallback => "AppRelayFallback",
+    }
 }
 
 /// Render a single [`RoutingSource`] lane as a `{ "kind": "...", ...}` object.
@@ -240,6 +283,7 @@ mod tests {
                 author: "alice".into(),
                 event_id_short: Some("abcdef012345".into()),
                 explicit_targets_set: false,
+                attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",
@@ -271,6 +315,7 @@ mod tests {
                 kinds: vec![1, 6, 7],
                 authors_count: 3,
                 explicit_targets_set: true,
+                attempts: vec![],
             },
             &make_routed("wss://r.example/", Src::Indexer),
         );
@@ -294,6 +339,7 @@ mod tests {
                 author: "alice".into(),
                 event_id_short: None,
                 explicit_targets_set: true,
+                attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",
@@ -368,6 +414,7 @@ mod tests {
                 author: "bob".into(),
                 event_id_short: Some("00aabbccddee".into()),
                 explicit_targets_set: false,
+                attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",
@@ -380,5 +427,103 @@ mod tests {
         let s = serde_json::to_string(&v).unwrap();
         let v2: Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v, v2);
+    }
+
+    #[test]
+    fn lane_attempts_serializes_matched_and_empty_with_correct_discriminants() {
+        // V-75 DTO guard: `lane_attempts` in both publish and subscription
+        // entries must carry correct `"lane"` discriminants and `"outcome"`
+        // shapes for `Matched { count }` and `Empty`.
+        use crate::substrate::{LaneOutcome, RouteAttempt, RoutingLane};
+
+        let p = RoutingTraceProjection::new();
+        p.on_publish(
+            PublishTrace {
+                kind: 1,
+                author: "alice".into(),
+                event_id_short: None,
+                explicit_targets_set: false,
+                attempts: vec![
+                    RouteAttempt {
+                        lane: RoutingLane::Nip65,
+                        outcome: LaneOutcome::Empty,
+                    },
+                    RouteAttempt {
+                        lane: RoutingLane::Hint,
+                        outcome: LaneOutcome::Empty,
+                    },
+                    RouteAttempt {
+                        lane: RoutingLane::AppRelayFallback,
+                        outcome: LaneOutcome::Matched { count: 2 },
+                    },
+                ],
+            },
+            &make_routed("wss://app.example/", Src::AppRelay { mode: AppRelayMode::Fallback }),
+        );
+        p.on_subscription(
+            SubscriptionTrace {
+                interest_id: 7,
+                kinds: vec![1],
+                authors_count: 1,
+                explicit_targets_set: false,
+                attempts: vec![
+                    RouteAttempt {
+                        lane: RoutingLane::Nip65,
+                        outcome: LaneOutcome::Matched { count: 3 },
+                    },
+                ],
+            },
+            &make_routed("wss://r.example/", Src::Nip65 { direction: Direction::Read }),
+        );
+
+        let v = projection_to_json(&p);
+
+        // Publish entry: 3 attempts — two Empty then one Matched.
+        let pub_attempts = &v["publishes"][0]["lane_attempts"];
+        assert_eq!(pub_attempts.as_array().unwrap().len(), 3);
+
+        let a0 = &pub_attempts[0];
+        assert_eq!(a0["lane"], "Nip65");
+        assert_eq!(a0["outcome"]["kind"], "Empty");
+
+        let a1 = &pub_attempts[1];
+        assert_eq!(a1["lane"], "Hint");
+        assert_eq!(a1["outcome"]["kind"], "Empty");
+
+        let a2 = &pub_attempts[2];
+        assert_eq!(a2["lane"], "AppRelayFallback");
+        assert_eq!(a2["outcome"]["kind"], "Matched");
+        assert_eq!(a2["outcome"]["count"], 2);
+
+        // Subscription entry: 1 attempt, Matched.
+        let sub_attempts = &v["subscriptions"][0]["lane_attempts"];
+        assert_eq!(sub_attempts.as_array().unwrap().len(), 1);
+        assert_eq!(sub_attempts[0]["lane"], "Nip65");
+        assert_eq!(sub_attempts[0]["outcome"]["kind"], "Matched");
+        assert_eq!(sub_attempts[0]["outcome"]["count"], 3);
+    }
+
+    #[test]
+    fn all_routing_lane_variants_serialize_with_stable_discriminant() {
+        // Doctrine guard: every `RoutingLane` variant produces a stable
+        // `"lane"` string in the DTO. Prevents accidental rename drift.
+        use crate::substrate::{LaneOutcome, RouteAttempt, RoutingLane};
+        let cases = vec![
+            (RoutingLane::Nip65, "Nip65"),
+            (RoutingLane::Hint, "Hint"),
+            (RoutingLane::Provenance, "Provenance"),
+            (RoutingLane::UserConfigured, "UserConfigured"),
+            (RoutingLane::Indexer, "Indexer"),
+            (RoutingLane::AppRelayFallback, "AppRelayFallback"),
+        ];
+        for (lane, expected) in cases {
+            let a = RouteAttempt { lane, outcome: LaneOutcome::Empty };
+            let v = attempt_to_json(&a);
+            assert_eq!(
+                v["lane"].as_str().unwrap(),
+                expected,
+                "RoutingLane::{lane:?} serialized to wrong discriminant"
+            );
+        }
     }
 }

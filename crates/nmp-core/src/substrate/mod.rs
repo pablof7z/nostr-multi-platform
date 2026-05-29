@@ -120,7 +120,10 @@ pub use routing::{
     RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, SessionKeySet,
     UserConfiguredCategory,
 };
-pub use routing_trace::{truncate_event_id, PublishTrace, RoutingTraceObserver, SubscriptionTrace};
+pub use routing_trace::{
+    truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane,
+    RoutingTraceObserver, SubscriptionTrace,
+};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
