@@ -21,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -371,6 +372,18 @@ internal fun NoteRow(
             cards = cards,
             embedDepth = embedDepth,
         )
+        Spacer(Modifier.size(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            IconButton(
+                onClick = { model?.zapNote(eventId) },
+                enabled = model != null,
+            ) {
+                Text("⚡", style = MaterialTheme.typography.labelMedium)
+            }
+        }
     }
 }
 
