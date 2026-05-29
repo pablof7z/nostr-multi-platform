@@ -102,6 +102,11 @@ use crate::relay_protocol::{
     is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
 
+/// After a relay has been connected for this duration, the reconnect backoff
+/// is reset to [`RELAY_RECONNECT_DELAY_INITIAL`] on the next disconnect,
+/// preventing accumulated backoff from earlier failure cycles (V-92 / GH #615).
+const RELAY_BACKOFF_RESET_AFTER_SECS: Duration = Duration::from_secs(300); // 5 minutes
+
 /// Spawn-with-explicit-keepalive worker that dials `relay_url` on
 /// transport lane `role`.
 ///
@@ -154,6 +159,9 @@ fn run_relay_worker(
     loop {
         match open_relay_socket(&relay_url) {
             Ok(mut socket) => {
+                // Record when this connection attempt succeeded, for backoff reset
+                // logic (V-92 / GH #615).
+                let connected_at = Instant::now();
                 if relay_tx
                     .send(RelayEvent::Connected {
                         role,
@@ -180,10 +188,20 @@ fn run_relay_worker(
                     &mut keepalive,
                 ) {
                     RelayWorkerResult::Reconnect => {
-                        // Mid-session drop: wait with backoff before retrying.
-                        // Do NOT reset backoff here — a relay that connects and
-                        // immediately disconnects should back off progressively,
-                        // not spin at 3 s per cycle.
+                        // V-92 / GH #615: if the connection was healthy for at least
+                        // RELAY_BACKOFF_RESET_AFTER_SECS, reset backoff to the initial
+                        // value. This prevents accumulated backoff from much earlier
+                        // failure cycles from affecting a relay that reconnects after
+                        // sustained stable operation.
+                        if connected_at.elapsed() >= RELAY_BACKOFF_RESET_AFTER_SECS {
+                            backoff = RELAY_RECONNECT_DELAY_INITIAL;
+                        } else {
+                            // Mid-session drop: wait with backoff before retrying.
+                            // Do NOT reset backoff here — a relay that connects and
+                            // immediately disconnects should back off progressively,
+                            // not spin at 3 s per cycle.
+                            backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
+                        }
                         // T116c / G12: jitter spreads simultaneous reconnects
                         // across a [0, 5s] window to avoid global thundering-herd.
                         if !wait_before_reconnect(
@@ -193,7 +211,6 @@ fn run_relay_worker(
                         ) {
                             return;
                         }
-                        backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
                     }
                     // HTTP 401/403 received mid-session (e.g., after NIP-42 auth
                     // failure): relay is denying this client permanently.
