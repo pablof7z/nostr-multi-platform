@@ -95,15 +95,6 @@ class KernelBridge {
         if (handle != 0L) nativeNextUpdate(handle, timeoutMs) else null
 
     /**
-     * Minimal status envelope from the gallery projection
-     * (`{schema, alive, projections:{}}`). Live profile data is NOT in this
-     * envelope — it arrives via [nextUpdate] from the push callback. Used
-     * only for diagnostic / readiness checks.
-     */
-    fun gallerySnapshot(): String? =
-        if (handle != 0L) nativeGallerySnapshot(handle) else null
-
-    /**
      * Dispatch a typed action through the kernel's action seam. Payload is
      * an action-specific JSON object; return value is the JSON envelope the
      * action handler produced (or null on transport failure).
@@ -131,6 +122,5 @@ class KernelBridge {
     private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): ByteArray?
-    private external fun nativeGallerySnapshot(handle: Long): String?
     private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
 }
