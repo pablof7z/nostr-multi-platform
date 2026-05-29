@@ -318,22 +318,32 @@ is the same anti-pattern recurring (ADR-0025 / ADR-0037 deprecation target), and
 it will keep recurring in every new app until the live in-repo consumers are
 migrated and the positive pattern is taught.
 
-**The bespoke pull-snapshot cluster (this repo):**
-- `nmp_app_gallery_snapshot` (+`_free`) — **live** consumer
-  (`apps/nmp-gallery/nmp-app-gallery/src/lib.rs:164`; header
-  `apps/nmp-gallery/ios/NmpGallery/Bridge/NmpGallery.h:115-116`).
-- `nmp_marmot_snapshot` — **live** consumer (`ios/Chirp/Chirp/Bridge/NmpCore.h:487`).
-- `nmp_app_chirp_snapshot` — already `#[deprecated]` per ADR-0037; appears to
-  have **zero live callers** → removal candidate (verified + removed via the
-  2026-05-29 `snapshot-projection-cleanup` workflow, tracked separately).
+**The bespoke pull-snapshot cluster (this repo) — refined by the 2026-05-29
+`snapshot-projection-cleanup` workflow (8-agent fan-out):**
+- `nmp_marmot_snapshot` (`crates/nmp-marmot/src/ffi.rs:422`; header `NmpCore.h:487`)
+  and `nmp_marmot_group_messages` (`ffi.rs:435`; `NmpCore.h:488`) — **genuinely
+  live** (real callers: chirp-repl, chirp-tui, `MarmotBridge.swift`, `nmp-app-chirp`
+  re-export). **These are the real migrate-first work.**
+- `nmp_app_gallery_snapshot` (+`_free`) — **NOT a live consumer**: the Kotlin
+  `gallerySnapshot()` and Swift `gallerySnapshotJSON()` wrappers are defined but
+  have **zero call sites**; the symbol returns only `{schema, alive, projections:{}}`
+  (liveness already covered by `nmp_app_is_alive` + the push frame). It is **dead
+  code** → removed in **PR #791** (no migration needed).
+- `nmp_app_chirp_snapshot` — **already deleted** from master (PR #733/#766,
+  commit `242802d7`), before this workflow. No action; mentioned only to close the
+  lead.
 
-**The work tracked here (NOT auto-dispatched):** migrate the gallery and marmot
-*consumers* onto the canonical seam — `register_snapshot_projection` →
+**The work tracked here (NOT auto-dispatched):** migrate the two live **Marmot**
+read-leg consumers onto the canonical seam — `register_snapshot_projection` →
 `KernelSnapshot::projections` → pushed FlatBuffers `SnapshotFrame` read from
 `projections[key]` in the host `apply()` — then **remove** the bespoke pull
-symbols. Drive each deprecation to completion; no half-landed `#[deprecated]`
-state left behind (single-canonical-path doctrine). These are real shell changes
-and are deliberately gated on orchestrator review, not run by an autonomous agent.
+symbols. `nmp_marmot_group_messages` is parameterized by `group_id_hex`, so its
+migration carries the one real design choice (fold per-group message tails into
+`nmp.marmot.snapshot` keyed by group id, vs. project active-group tails); resolve
+in the ADR amendment. Drive each to completion; no half-landed state. These are
+real shell changes, gated on orchestrator review, not run by an autonomous agent.
+The ADR-0025 Step-12 sanction that keeps the Marmot read leg alive cites the
+**now-deleted** Chirp pull precedent — so that sanction must be re-decided here too.
 
 **Blocking prerequisite — V-37 + an unresolved architectural question:** V-37
 already tracks the missing affordances. Note the tension: V-37 item (b) frames
