@@ -820,6 +820,19 @@ pub(super) struct KernelSnapshot {
     /// banner) so they are not surprised when events are missing on next launch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) store_open_failure: Option<String>,
+    /// V-66 (D3) — set to `true` when the kernel has an active account but
+    /// `relay_edit_rows` is empty, meaning every outbound connection falls
+    /// back to `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` without
+    /// user consent. The fallback still operates so the app stays functional,
+    /// but the host MUST surface this diagnostic (e.g. a banner: "No relays
+    /// configured — using defaults") so the user knows their publish target.
+    ///
+    /// Absent from the wire (`skip_serializing_if`) when the condition is not
+    /// active: a kernel with no active account, or one whose `relay_edit_rows`
+    /// is non-empty, emits no field — wire stays byte-for-byte identical to
+    /// pre-V-66 snapshots in the healthy case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) no_configured_relays: Option<bool>,
     // D0: NIP-47 NWC is an app noun — there is NO typed `wallet_status` field.
     // Wallet state is surfaced through the host-registered `"wallet"` snapshot
     // projection (see `projections` below): a shell reads `projections.wallet`

@@ -10,6 +10,32 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
+/// Coarse-grained NWC transport-health state projected alongside [`WalletStatus`].
+///
+/// V-79: the host shell binds this to render a non-silent liveness indicator
+/// even when `status == "ready"` (which reflects the last *protocol* state, not
+/// real-time relay reachability).
+///
+/// Transitions:
+/// * `Connected` — at least one successful heartbeat response was received
+///   within the probe window; the connection is believed healthy.
+/// * `Reconnecting` — ≥ `HEARTBEAT_MAX_FAILURES` consecutive probes went
+///   unanswered; a re-subscription was issued and we are waiting for a fresh
+///   get_info response.
+/// * `TransportLost` — ≥ `HEARTBEAT_MAX_FAILURES` consecutive probes went
+///   unanswered *after* a resubscribe was already attempted; the relay itself
+///   appears unreachable. The user must manually reconnect.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NwcConnectionState {
+    /// Transport believed healthy; last heartbeat probe was answered.
+    Connected,
+    /// Probes missed; a resubscribe was issued; awaiting confirmation.
+    Reconnecting,
+    /// Resubscribe also unanswered — relay is considered unreachable.
+    TransportLost,
+}
+
 /// NIP-47 wallet connection status — projected to the snapshot under
 /// `projections["wallet"]`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -38,6 +64,12 @@ pub struct WalletStatus {
     /// `status == "connecting" || status == "ready"`. Pre-computed for the
     /// shell (thin-shell V-23).
     pub is_connected: bool,
+    /// V-79: real-time transport-health state derived from the periodic
+    /// heartbeat probe. `None` until the first heartbeat interval elapses
+    /// (i.e. for the first ~30 s after connect, when we have no probe data
+    /// yet). The shell renders a non-silent indicator when this is
+    /// `Reconnecting` or `TransportLost`.
+    pub connection_state: Option<NwcConnectionState>,
 }
 
 /// Format a satoshi count with `,` thousands separators (e.g. `12345` →

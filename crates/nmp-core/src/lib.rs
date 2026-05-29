@@ -200,7 +200,6 @@ pub use update_envelope::{
 // `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor. The enum
 // variants themselves are already `pub`.
 pub use actor::ActorCommand;
-pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 
 // Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
 // re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.

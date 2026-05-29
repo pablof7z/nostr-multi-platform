@@ -1,9 +1,5 @@
 //! Relay role parsing for `RelayEditRow.role`.
 
-/// Fallback relay for client-initiated NIP-46 `nostrconnect://` handshakes
-/// when the user has no configured write relay.
-pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";
-
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct RelayRoleOption {
@@ -132,17 +128,20 @@ fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
         .map(str::to_ascii_lowercase)
 }
 
-/// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow.
-pub fn nostrconnect_relay_url<'a, I>(rows: I) -> String
+/// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow
+/// from the user's configured relay rows.
+///
+/// Returns the first write-capable relay URL, or `None` when no write relay
+/// is configured. The caller is responsible for supplying a host-registered
+/// bootstrap relay when `None` is returned — nmp-core holds no hardcoded
+/// fallback URL (V-65 / D0).
+pub fn nostrconnect_relay_url<'a, I>(rows: I) -> Option<String>
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {
     rows.into_iter()
         .find(|(_, role)| has_role(role, "write"))
-        .map_or_else(
-            || NOSTRCONNECT_DEFAULT_RELAY_URL.to_string(),
-            |(url, _)| url.to_string(),
-        )
+        .map(|(url, _)| url.to_string())
 }
 
 fn role_metadata(role: &str) -> Option<&'static RelayRoleMetadata> {
@@ -166,7 +165,7 @@ mod tests {
 
         assert_eq!(
             nostrconnect_relay_url(rows),
-            "wss://write.example",
+            Some("wss://write.example".to_string()),
             "first write-capable relay should own nostrconnect handshakes"
         );
     }
@@ -180,19 +179,21 @@ mod tests {
 
         assert_eq!(
             nostrconnect_relay_url(rows),
-            "wss://composite.example",
+            Some("wss://composite.example".to_string()),
             "both,indexer semantically includes write"
         );
     }
 
     #[test]
-    fn nostrconnect_falls_back_without_write_relay() {
+    fn nostrconnect_returns_none_without_write_relay() {
         let rows = [
             ("wss://read.example", "read"),
             ("wss://indexer.example", "indexer"),
         ];
 
-        assert_eq!(nostrconnect_relay_url(rows), NOSTRCONNECT_DEFAULT_RELAY_URL);
+        // V-65: no hardcoded fallback — the caller supplies a host-registered
+        // bootstrap relay when the user has no configured write relay.
+        assert_eq!(nostrconnect_relay_url(rows), None);
     }
 
     #[test]

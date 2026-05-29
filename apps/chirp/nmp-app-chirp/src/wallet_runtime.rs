@@ -21,11 +21,17 @@ use nmp_nip47::{
 /// (via [`nmp_nip47::dispatch_nwc_relay_text`]) into the substrate-generic
 /// [`RelayTextInterceptor`] trait the actor calls.
 ///
-/// `on_idle_tick` implements the V-64 TTL sweep: the actor calls this on
-/// every loop iteration (including iterations where the NWC relay is silent),
-/// so expired `pending_payments` entries are closed as timed-out failures even
-/// when no kind:23195 response arrives. The sweep is wall-clock-gated via
-/// `kernel.now_secs()` — D8 compliant (no sleep/loop inside).
+/// `on_idle_tick` implements two wall-clock-gated sweeps (D8 — no sleep/loop):
+///
+/// 1. **V-64 TTL sweep** — expires `pending_payments` entries older than
+///    `PENDING_PAYMENT_TTL_SECS` and records them as timed-out action
+///    failures. Fires even when the NWC relay is completely silent.
+///
+/// 2. **V-79 heartbeat** — sends a `get_info` probe at
+///    `HEARTBEAT_CADENCE_SECS` cadence. On `HEARTBEAT_MAX_FAILURES`
+///    consecutive unanswered probes, re-sends the REQ subscription
+///    (`Reconnecting`). If probes still go unanswered after a second round,
+///    transitions `connection_state` to `TransportLost`.
 struct WalletInterceptor {
     runtime: WalletRuntimeHandle,
 }
@@ -42,19 +48,61 @@ impl RelayTextInterceptor for WalletInterceptor {
 
     fn on_idle_tick(&self, kernel: &mut Kernel) -> Vec<OutboundMessage> {
         let now_secs = kernel.now_secs();
-        let Ok(mut guard) = self.runtime.lock() else {
-            return Vec::new();
-        };
-        let Some(rt) = guard.as_mut() else {
-            return Vec::new();
-        };
-        let failures =
-            rt.sweep_expired_payments(now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
-        drop(guard);
+
+        // ── Phase 1: run sweeps inside the lock, collect results ──────────────
+        let (failures, heartbeat, ready_frames) = {
+            let Ok(mut guard) = self.runtime.lock() else {
+                return Vec::new();
+            };
+            let Some(rt) = guard.as_mut() else {
+                return Vec::new();
+            };
+
+            // V-64: sweep expired pending_payments.
+            let failures = rt.sweep_expired_payments(now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
+
+            // V-79: heartbeat tick — pure wall-clock gated, Kernel-free.
+            let heartbeat = rt.tick_heartbeat(
+                now_secs,
+                nmp_nip47::HEARTBEAT_CADENCE_SECS,
+                nmp_nip47::HEARTBEAT_MAX_FAILURES,
+            );
+            let ready_frames = heartbeat.ready_frames.clone();
+            (failures, heartbeat, ready_frames)
+        }; // lock dropped
+
+        // ── Phase 2: Kernel-touching work (lock released) ─────────────────────
+
+        // Record payment timeouts.
         for (cid, reason) in failures {
             kernel.record_action_failure(cid, reason);
         }
-        Vec::new()
+
+        let mut outbound = ready_frames;
+
+        // If connection_state changed, sync the snapshot slot.
+        if heartbeat.state_changed {
+            let Ok(mut guard) = self.runtime.lock() else {
+                return outbound;
+            };
+            if let Some(rt) = guard.as_mut() {
+                rt.sync_connection_state(kernel);
+            }
+        }
+
+        // Build and enqueue the get_info probe if needed.
+        if heartbeat.needs_probe {
+            let Ok(mut guard) = self.runtime.lock() else {
+                return outbound;
+            };
+            if let Some(rt) = guard.as_mut() {
+                if let Some(msg) = rt.build_get_info_probe(kernel) {
+                    outbound.push(msg);
+                }
+            }
+        }
+
+        outbound
     }
 }
 

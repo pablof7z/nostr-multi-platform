@@ -257,3 +257,36 @@ pub use crate::kernel::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
+
+// ─── Nostrconnect bootstrap relay (V-65) ───────────────────────────────────
+//
+// Host-supplied fallback relay for client-initiated NIP-46 `nostrconnect://`
+// handshakes when the user has no configured write relay.
+//
+// The slot holds a single URL (`Option<String>`), mirroring `StoragePathSlot`.
+// `None` (the default) means the host has not registered a bootstrap relay;
+// the substrate then surfaces a typed diagnostic rather than silently using a
+// hardcoded third-party URL (V-65 fix: removes `NOSTRCONNECT_DEFAULT_RELAY_URL`
+// from nmp-core entirely).
+//
+// D0: the slot holds a plain URL string — no protocol noun in the type.
+// The `nostrconnect` qualifier appears here (and in the `AppHost` method name)
+// because this is a narrow, well-known seam — the same tradeoff made for
+// `set_coverage_hook` and `set_routing_substrate`.
+// D14: `Arc<Mutex<Option<String>>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape.
+
+/// Typed slot for the host-supplied `nostrconnect://` bootstrap relay URL.
+///
+/// Written by the composition root via
+/// [`AppHost::set_nostrconnect_bootstrap_relay`] before `nmp_app_start`;
+/// read synchronously on the FFI thread when building the `nostrconnect://`
+/// URI. `None` (the default) means no bootstrap relay is registered; the
+/// substrate returns a typed error rather than falling back to any hardcoded
+/// URL (V-65 / D0).
+pub type NostrConnectBootstrapRelaySlot = Arc<Mutex<Option<String>>>;
+
+/// Construct a fresh, empty [`NostrConnectBootstrapRelaySlot`].
+#[must_use]
+pub fn new_nostrconnect_bootstrap_relay_slot() -> NostrConnectBootstrapRelaySlot {
+    Arc::new(Mutex::new(None))
+}

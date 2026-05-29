@@ -18,6 +18,7 @@ use crate::snapshot::{
     AuthorViewPayload, RelayEditRow, Snapshot, ThreadViewPayload,
     TimelineItem,
 };
+use nmp_chirp_config;
 
 // ---------------------------------------------------------------------------
 // App state
@@ -436,16 +437,10 @@ impl DesktopApp {
                 if ui.button("Create new account").clicked() {
                     self.bridge.create_account(
                         [("name".to_string(), "New User".to_string())].into(),
-                        vec![
-                            (
-                                "wss://relay.primal.net".to_string(),
-                                "both,indexer".to_string(),
-                            ),
-                            (
-                                "wss://purplepag.es".to_string(),
-                                "indexer".to_string(),
-                            ),
-                        ],
+                        nmp_chirp_config::chirp_default_relay_bootstrap()
+                            .iter()
+                            .map(|e| (e.url.to_string(), e.role.to_string()))
+                            .collect(),
                     );
                     self.bridge.open_timeline();
                 }
