@@ -7,10 +7,9 @@ name: test
 # Excluded crates (do not build on a bare `ubuntu-latest` runner):
 #   - nmp-android-ffi : standalone `[workspace]` table, not a parent member.
 #   - nmp-app-chirp   : hard-depends on `apple-native-keyring-store` (Apple-only).
-#   - nmp-desktop     : `iced` pulls `winit`, which needs libxkbcommon/
-#                       wayland/xcb apt packages absent on the bare runner.
-#                       It is a thin GUI shell with no tests.
-#   - nmp-gallery-desktop : also uses iced; excluded for the same reason.
+#   - nmp-gallery-desktop : uses iced, which pulls `winit` needing
+#                       libxkbcommon/wayland/xcb apt packages absent on the
+#                       bare runner. It is a thin GUI shell with no tests.
 
 on:
   push:
@@ -39,7 +38,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: cargo test (default features)
-        run: cargo test --workspace --exclude nmp-android-ffi --exclude nmp-app-chirp --exclude nmp-desktop --exclude nmp-gallery-desktop
+        run: cargo test --workspace --exclude nmp-android-ffi --exclude nmp-app-chirp --exclude nmp-gallery-desktop
 
       - name: cargo test (lmdb-backend)
         run: cargo test -p nmp-core --features lmdb-backend
