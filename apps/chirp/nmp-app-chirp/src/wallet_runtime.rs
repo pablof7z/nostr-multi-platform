@@ -20,6 +20,12 @@ use nmp_nip47::{
 /// Adapter that wires the wallet runtime's [`nmp_nip47::handle_nwc_text`]
 /// (via [`nmp_nip47::dispatch_nwc_relay_text`]) into the substrate-generic
 /// [`RelayTextInterceptor`] trait the actor calls.
+///
+/// `on_idle_tick` implements the V-64 TTL sweep: the actor calls this on
+/// every loop iteration (including iterations where the NWC relay is silent),
+/// so expired `pending_payments` entries are closed as timed-out failures even
+/// when no kind:23195 response arrives. The sweep is wall-clock-gated via
+/// `kernel.now_secs()` — D8 compliant (no sleep/loop inside).
 struct WalletInterceptor {
     runtime: WalletRuntimeHandle,
 }
@@ -32,6 +38,18 @@ impl RelayTextInterceptor for WalletInterceptor {
         text: &str,
     ) -> Vec<OutboundMessage> {
         nmp_nip47::dispatch_nwc_relay_text(&self.runtime, kernel, relay_url, text)
+    }
+
+    fn on_idle_tick(&self, kernel: &mut Kernel) -> Vec<OutboundMessage> {
+        let Ok(mut guard) = self.runtime.lock() else {
+            return Vec::new();
+        };
+        let Some(rt) = guard.as_mut() else {
+            return Vec::new();
+        };
+        let now_secs = kernel.now_secs();
+        rt.sweep_expired_payments(kernel, now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
+        Vec::new()
     }
 }
 
