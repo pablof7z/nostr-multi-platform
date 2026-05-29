@@ -23,6 +23,10 @@ nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 # In-process kernel: we still decode FlatBuffer frames and use display helpers.
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 
+# NIP-01 typed OP-feed codec: decode_op_feed_snapshot + OP_FEED_SCHEMA_ID for
+# the typed sidecar render cutover (ADR-0038).
+nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+
 # Content IR consumed directly in-process (Rust→Rust, no wire projection).
 nmp-content = { path = "../../../crates/nmp-content" }
 
