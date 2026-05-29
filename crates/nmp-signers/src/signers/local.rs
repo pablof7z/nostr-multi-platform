@@ -188,7 +188,9 @@ impl LocalKeySigner {
     }
 
     fn sign_now(&self, unsigned: &UnsignedEvent) -> Result<SignedEvent, SignerError> {
-        let kind = Kind::from_u16(u16::try_from(unsigned.kind).unwrap_or(u16::MAX));
+        let kind_u16 = u16::try_from(unsigned.kind)
+            .map_err(|_| SignerError::KindOutOfRange { kind: unsigned.kind })?;
+        let kind = Kind::from_u16(kind_u16);
         // Hard-fail on any malformed tag rather than silently dropping it.
         // A dropped tag would produce a signed event that differs from the
         // caller's intent — the actor's `sign_with` enforces the same
@@ -308,5 +310,41 @@ impl Nip44 for LocalKeySigner {
             nip44::decrypt(self.keys.secret_key(), sender, payload)
                 .map_err(|e| SignerError::Backend(format!("nip44 decrypt: {e}"))),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unsigned_with_kind(kind: u32) -> UnsignedEvent {
+        UnsignedEvent {
+            pubkey: String::new(),
+            kind,
+            tags: Vec::new(),
+            content: "hi".to_string(),
+            created_at: 1_700_000_000,
+        }
+    }
+
+    #[test]
+    fn sign_now_rejects_kind_above_u16_max() {
+        let signer = LocalKeySigner::generate();
+        let err = signer
+            .sign_now(&unsigned_with_kind(70_000))
+            .expect_err("kind above u16::MAX must not be silently coerced");
+        match err {
+            SignerError::KindOutOfRange { kind } => assert_eq!(kind, 70_000),
+            other => panic!("expected KindOutOfRange, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sign_now_accepts_in_range_kind() {
+        let signer = LocalKeySigner::generate();
+        let signed = signer
+            .sign_now(&unsigned_with_kind(1))
+            .expect("kind 1 must sign");
+        assert_eq!(signed.unsigned.kind, 1);
     }
 }
