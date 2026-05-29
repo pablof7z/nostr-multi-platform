@@ -31,8 +31,9 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
     nmp_app_dispatch_action, nmp_app_free,
     nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_relay,
-    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account,
+    nmp_app_remove_relay, nmp_app_set_update_callback, nmp_app_signin_nsec,
+    nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -409,6 +410,63 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveRelay(
         return;
     };
     nmp_app_remove_relay(s.app, url.as_ptr());
+}
+
+/// Sign in with an nsec secret key.
+///
+/// D6: null handle or invalid secret is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSignInNsec(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    secret: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(secret) = jstring_to_cstring(&mut env, &secret) else {
+        return;
+    };
+    nmp_app_signin_nsec(s.app, secret.as_ptr());
+}
+
+/// Switch the active account to the given pubkey.
+///
+/// D6: null handle or invalid pubkey is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSwitchAccount(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    nmp_app_switch_active(s.app, pubkey.as_ptr());
+}
+
+/// Remove an account by pubkey.
+///
+/// D6: null handle or invalid pubkey is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveAccount(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    nmp_app_remove_account(s.app, pubkey.as_ptr());
 }
 
 #[no_mangle]

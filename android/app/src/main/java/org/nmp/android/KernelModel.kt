@@ -171,9 +171,9 @@ class KernelModel : ViewModel() {
     // Account management
     // -------------------------------------------------------------------------
 
-    /** Sign in with an nsec secret key. */
+    /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace). */
     fun signInNsec(secret: String) {
-        bridge.dispatchAction("nmp.sign_in_nsec", """{"SignInNsec":{"secret":"$secret"}}""")
+        bridge.signInNsec(secret)
         bridge.openTimeline()
     }
 
@@ -185,14 +185,14 @@ class KernelModel : ViewModel() {
         bridge.openTimeline()
     }
 
-    /** Switch the active account to the given pubkey. */
+    /** Switch the active account (direct C-ABI — no ActionModule for switch namespace). */
     fun switchAccount(pubkey: String) {
-        bridge.dispatchAction("nmp.switch_account", """{"pubkey":"$pubkey"}""")
+        bridge.switchAccount(pubkey)
         bridge.openTimeline()
     }
 
-    /** Remove the account identified by the given pubkey. */
-    fun removeAccount(pubkey: String) = bridge.dispatchAction("nmp.remove_account", """{"pubkey":"$pubkey"}""")
+    /** Remove the account identified by the given pubkey (direct C-ABI). */
+    fun removeAccount(pubkey: String) = bridge.removeAccount(pubkey)
 
     // -------------------------------------------------------------------------
     // Relay management

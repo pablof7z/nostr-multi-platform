@@ -124,6 +124,21 @@ class KernelBridge {
         if (handle != 0L) nativeRemoveRelay(handle, url)
     }
 
+    /** Sign in with an nsec secret key (calls nmp_app_signin_nsec directly — no ActionModule for sign-in). */
+    fun signInNsec(secret: String) {
+        if (handle != 0L) nativeSignInNsec(handle, secret)
+    }
+
+    /** Switch the active account to the given pubkey (calls nmp_app_switch_active directly). */
+    fun switchAccount(pubkey: String) {
+        if (handle != 0L) nativeSwitchAccount(handle, pubkey)
+    }
+
+    /** Remove an account by pubkey (calls nmp_app_remove_account directly). */
+    fun removeAccount(pubkey: String) {
+        if (handle != 0L) nativeRemoveAccount(handle, pubkey)
+    }
+
     /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
@@ -151,5 +166,8 @@ class KernelBridge {
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)
     private external fun nativeRemoveRelay(handle: Long, url: String)
+    private external fun nativeSignInNsec(handle: Long, secret: String)
+    private external fun nativeSwitchAccount(handle: Long, pubkey: String)
+    private external fun nativeRemoveAccount(handle: Long, pubkey: String)
     private external fun nativeFree(handle: Long)
 }
