@@ -8,7 +8,6 @@
 > - **Durable architecture** — [`docs/architecture/`](architecture/) and [`docs/design/`](design/).
 > - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (temporal work currently on a branch).
 > - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (temporal violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
-> - **Most recent strategic direction review** — [`docs/perf/codex-reviews/opus-direction-14-review-product-honesty.md`](perf/codex-reviews/opus-direction-14-review-product-honesty.md).
 >
 > **This file is not durable understanding.** It is the current release-plan view. Active items belong in `WIP.md` (in-flight) or `BACKLOG.md` (queue). Implemented or invalidated plan detail should be deleted or reduced to the smallest remaining live follow-up; lasting understanding belongs in aim, product, design, architecture, ADR, builder-guide, or wiki docs.
 
@@ -156,7 +155,7 @@ These are not negotiable; they exist because each was learned the hard way. Full
 - **Agents must NEVER run full-workspace `cargo test`.** Scoped tests only — the orchestrator owns the full-suite pre-merge gate.
 - **Heartbeat commits MUST be pathspec-scoped** (`git commit -- <file>`); land via throwaway worktree when the main tree is dirty.
 - **README + this file are heartbeat-maintained.** Refresh dynamic parts only at each heartbeat; ≤200 LOC budget for the README, ≤250 LOC for this file.
-- **After every merge to master, ask codex for a post-merge review** and record findings in `docs/perf/codex-reviews/`.
+- **After every merge to master, review the diff for notable findings.** Promote actionable items into `BACKLOG.md`; do not commit code reviews to the repo.
 
 ---
 
@@ -177,10 +176,9 @@ Where to look for detail:
 - [`docs/plan/post-v1.md`](plan/post-v1.md) — deferred work detail
 - [`docs/plan/marmot-mls.md`](plan/marmot-mls.md) — Marmot/MLS detail
 - [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md) — app-owned component registry and native content kits
-- [`docs/plan/m0-fixture.md`](plan/m0-fixture.md) – [`m17-release.md`](plan/m17-release.md) — per-milestone detail
-- [`docs/architecture-audit/`](architecture-audit/) — 2026-05-23 13-agent audit, PD-033-C plan, codegen plan
-- [`docs/perf/codex-reviews/`](perf/codex-reviews/) — post-merge codex reviews + opus direction reviews
-- [`docs/decisions/`](decisions/) — ADRs 0001–0027
+- [`docs/plan/m12-wallet.md`](plan/m12-wallet.md) – [`m17-release.md`](plan/m17-release.md) — per-milestone detail (active/future only)
+- [`docs/architecture-audit/`](architecture-audit/) — PD-033-C plan, codegen plan
+- [`docs/decisions/`](decisions/) — ADRs 0001–0038
 
 ---
 
