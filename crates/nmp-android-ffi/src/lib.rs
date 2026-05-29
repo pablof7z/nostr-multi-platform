@@ -122,15 +122,22 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "Android User".to_string());
-    let profile = serde_json::json!({ "name": name }).to_string();
-    let relays = default_chirp_relays_json();
-    let Ok(profile) = CString::new(profile) else {
+    let relays_json = default_chirp_relays_json_array();
+    let action = format!(
+        r#"{{"CreateAccount":{{"profile":{{"name":"{name}"}},"relays":{relays_json},"mls":false}}}}"#,
+        name = name.replace('"', ""),
+        relays_json = relays_json
+    );
+    let Ok(ns_c) = CString::new("nmp.create_account") else {
         return;
     };
-    let Ok(relays) = CString::new(relays) else {
+    let Ok(action_c) = CString::new(action) else {
         return;
     };
-    nmp_app_create_new_account(s.app, profile.as_ptr(), relays.as_ptr(), false);
+    let result_ptr = nmp_app_dispatch_action(s.app, ns_c.as_ptr(), action_c.as_ptr());
+    if !result_ptr.is_null() {
+        nmp_ffi::nmp_app_free_string(result_ptr);
+    }
 }
 
 #[no_mangle]
@@ -315,6 +322,14 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     env.new_string(&result_str)
         .unwrap_or_else(|_| env.new_string("{}").unwrap())
         .into_raw()
+}
+
+fn default_chirp_relays_json_array() -> String {
+    let relays: Vec<serde_json::Value> = nmp_chirp_config::chirp_default_relay_bootstrap()
+        .iter()
+        .map(|e| serde_json::json!({"url": e.url, "role": e.role}))
+        .collect();
+    serde_json::Value::Array(relays).to_string()
 }
 
 /// Open a thread by note ID.
