@@ -237,12 +237,12 @@ private fun Placeholder(
 private fun RootCardRow(
     root: ChirpRootCard,
     items: Map<String, TimelineItem>,
-    model: KernelModel? = null,
+    model: KernelModel,
 ) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clickable(enabled = model != null) { model?.openThread(root.card.id) }
+            .clickable { model.openThread(root.card.id) }
     ) {
         NoteRow(root.card.id, items, mapOf(root.card.id to root.card), model = model)
         if (root.attribution.isNotEmpty()) {
