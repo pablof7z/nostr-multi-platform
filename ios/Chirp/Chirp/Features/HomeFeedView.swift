@@ -207,11 +207,11 @@ private struct TimelineListView: View, Equatable {
     let roots: [ChirpRootCard]
     let nextCursor: TimelineWindowCursor?
     let items: [TimelineItem]
-    /// V-31 — kernel-owned mention-profile map (replaces the Swift
+    /// V-31 — kernel-owned profile map (replaces the Swift
     /// `Dictionary(items.map …)` derivation this view used to build). Bound
-    /// from `model.mentionProfiles`, which reads the `mention_profiles`
-    /// snapshot projection (`update.rs` covers home-timeline + author-view
-    /// + thread-view items).
+    /// from `model.mentionProfiles`, which reads the pre-merged
+    /// `resolved_profiles` snapshot projection (PR #812 — claimed +
+    /// author_view + mention, merged once in Rust).
     let mentionProfiles: [String: MentionProfile]
     let onRefresh: () -> Void
     let onLike: (String) -> Void

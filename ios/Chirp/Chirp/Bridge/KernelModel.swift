@@ -118,11 +118,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// recent terminal). `nil` in steady state.
     var actionLifecycle: ActionLifecycleSnapshot? { snapshot?.actionLifecycle }
 
-    /// Per-author mention payloads — adapted from the wire DTO at read time.
-    /// Falls back to `[:]` when an older kernel elides the projection.
+    /// Resolved profiles for mention/author rendering — adapted from the
+    /// pre-merged `resolved_profiles` projection (PR #812) at read time. This
+    /// map applies the canonical precedence (claimed > author_view > mention)
+    /// in Rust, so it is strictly broader than the old `mention_profiles`
+    /// source it replaces. The component-facing `[String: MentionProfile]`
+    /// shape is unchanged. Falls back to `[:]` when an older kernel elides the
+    /// projection.
     var mentionProfiles: [String: MentionProfile] {
-        guard let wire = snapshot?.mentionProfiles else { return [:] }
-        return wire.mapValues(MentionProfile.init(wire:))
+        guard let cards = snapshot?.resolvedProfiles else { return [:] }
+        return cards.mapValues(MentionProfile.init(card:))
     }
 
     /// Claimed profiles from the kernel snapshot. Falls back to `[:]` when

@@ -888,13 +888,15 @@ struct KernelUpdate: Decodable {
     /// Per-tick timeline delta — removed item ids (`projections["removed"]`).
     var removed: [String]? { projections?.removed }
 
-    /// Per-author mention payloads scoped to the open author-view items
-    /// (`projections["mention_profiles"]`). Replaces the Swift
-    /// `Dictionary(items.map { ... MentionProfile(...) })` derivation
-    /// ProfileView used to build at body-time. Empty `[:]` when no author
-    /// view is open; never nil for a current-schema kernel. Computed so
-    /// the consumer keeps reading `update.mentionProfiles` unchanged.
-    var mentionProfiles: [String: MentionProfileWire]? { projections?.mentionProfiles }
+    /// Pre-merged profile map — `projections["resolved_profiles"]` (PR #812).
+    /// Keyed by pubkey, one `ProfileCard` per profile the kernel can resolve,
+    /// applying the canonical precedence once in Rust: claimed_profiles >
+    /// author_view.profile > mention_profiles. Replaces the narrower
+    /// `mention_profiles` projection Chirp used to read (which omitted claimed
+    /// profiles). Always present as `{}` when empty (D1); never nil for a
+    /// current-schema kernel. Same Rust/Swift type as `claimed_profiles`
+    /// (`[String: ProfileCard]`).
+    var resolvedProfiles: [String: ProfileCard]? { projections?.resolvedProfiles }
 
     /// NIP-29 group-chat read model — `projections["nmp.nip29.group_chat"]`.
     /// `nil` until `nmp_app_chirp_register_group_chat` has wired a group's
@@ -964,38 +966,29 @@ struct KernelUpdate: Decodable {
 // from a fresh run, so a new dotted-key projection added to the Rust
 // registry without regenerating Swift cannot land on master.
 
-// ─── mention_profiles projection wire type ────────────────────────────────
+// ─── resolved_profiles projection adapter ─────────────────────────────────
 //
-// Per-author DTO bundled in `projections["mention_profiles"]`. Mirrors
-// `nmp-core::kernel::types::MentionProfilePayload`. Thin-shell rule: a pure
-// transport DTO — the projection's `MentionProfile` adapter below converts
-// it to the existing rich struct used by `NoteRenderContext`. No Swift
-// derives a `MentionProfile` from a `TimelineItem` anymore.
-
-/// Wire shape for one entry in `projections["mention_profiles"]`. Raw kind:0
-/// metadata fields — `displayName` is `nil` when no kind:0 has arrived for
-/// this pubkey, `pictureUrl` is `nil` when kind:0 has no `picture`. The
-/// presentation layer chooses the fallback (typically the abbreviated hex
-/// pubkey for the display name). ADR-0032 — backend ships raw data,
-/// presentation layer formats.
-struct MentionProfileWire: Decodable, Equatable {
-    let pubkey: String
-    let displayName: String?
-    let pictureUrl: String?
-}
+// `MentionProfile` is the rich, component-facing struct `NoteRenderContext`
+// consumes. It is now built from a `ProfileCard` carried by the pre-merged
+// `projections["resolved_profiles"]` map (PR #812) rather than from the older
+// `mention_profiles` wire DTO. The component API (`[String: MentionProfile]`)
+// is unchanged — only the source projection is broader (claimed + author_view
+// + mention, merged once in Rust). No Swift derives a `MentionProfile` from a
+// `TimelineItem` anymore.
 
 extension MentionProfile {
-    /// Bridge from the kernel-supplied wire payload. `displayName` falls
-    /// back to the abbreviated hex pubkey when no kind:0 has arrived;
-    /// avatar initials and tint colour are derived locally from the same
-    /// inputs (`PubkeyFormatting.swift`).
-    init(wire: MentionProfileWire) {
-        let display = wire.displayName ?? wire.pubkey.shortHex
+    /// Bridge from a resolved `ProfileCard`. `display` falls back to the
+    /// abbreviated hex pubkey when no kind:0 has arrived (`ProfileCard
+    /// .displayLabel`); avatar initials and tint colour are derived locally
+    /// from the same inputs (`PubkeyFormatting.swift`). ADR-0032 — backend
+    /// ships raw data, presentation layer formats.
+    init(card: ProfileCard) {
+        let display = card.displayLabel
         self.init(
             display: display,
-            pictureUrl: wire.pictureUrl,
+            pictureUrl: card.pictureUrl,
             initials: display.displayInitials,
-            colorHex: wire.pubkey.pubkeyColorHex
+            colorHex: card.pubkey.pubkeyColorHex
         )
     }
 }
