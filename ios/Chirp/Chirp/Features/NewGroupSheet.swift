@@ -23,6 +23,9 @@ struct NewGroupSheet: View {
     @State private var name = ""
     @State private var groupDescription = ""
     @State private var inviteeText = ""
+    /// B1: Default relay URL for user input when creating a public NIP-29 group.
+    /// This is a UI placeholder; the kernel's bootstrap relays flow through the
+    /// snapshot (`relayEditRows`, `relayStatuses`). User can modify before submit.
     @State private var publicRelayUrl = "wss://relay.groups.nip29.com"
     @State private var publicLocalId = ""
     @State private var errorMessage: String?
