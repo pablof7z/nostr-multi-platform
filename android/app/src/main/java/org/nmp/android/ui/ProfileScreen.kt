@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.model.ProfileCard
 import org.nmp.android.model.TimelineItem
 
 /**
@@ -65,18 +66,20 @@ fun ProfileScreen(
     val snapshot by model.state.collectAsStateWithLifecycle()
 
     // The kernel publishes the author's timeline via openAuthor(pubkey).
-    // Display name and profile metadata come from the snapshot's items and
-    // mention projections (best-effort until author_view projection is available).
-    // For now, items are fetched but the profile metadata display is minimal.
+    // Profile metadata is resolved from snapshot projections (D8: push semantics,
+    // no derived state). Resolution order: claimed_profiles (demand-driven kind:0)
+    // → author_view.profile (open author screen) → mention_profiles (sidebar cache).
     val items: List<TimelineItem> = snapshot.items
 
     val itemLookup = items.associateBy { it.id }
 
-    // Extract author display name from first item if available, or fall back to
-    // shortened pubkey (D8: no derived state; this is just presentation formatting).
-    val authorDisplayName = items.firstOrNull()
-        ?.let { it.content.ifEmpty { null } }
-        ?.let { "Author" } // Placeholder until kernel provides profile card
+    val projections = snapshot.projections
+    // Resolution order: claimed_profiles (demand-driven kind:0 via claimProfile)
+    // → author_view.profile (kernel's open author screen state)
+    // → mention_profiles (sidebar cache from visible timelines)
+    val profileCard: ProfileCard? = projections?.claimedProfiles?.get(pubkey)
+        ?: projections?.authorView?.profile?.takeIf { it.pubkey == pubkey }
+        ?: projections?.mentionProfiles?.get(pubkey)
 
     val shortPubkey = if (pubkey.length >= 16) {
         "${pubkey.take(8)}…${pubkey.takeLast(8)}"
@@ -84,7 +87,9 @@ fun ProfileScreen(
         pubkey.ifEmpty { "unknown" }
     }
 
-    val displayName = authorDisplayName ?: shortPubkey
+    // Display name: kernel-provided displayName, else shorten the pubkey.
+    // The kernel ships None until a kind:0 arrives — presentation layer owns fallback (aim.md §2).
+    val displayName = profileCard?.displayName?.takeIf { it.isNotEmpty() } ?: shortPubkey
     val initials = displayName.take(2).uppercase()
     val noteCount = items.size
 

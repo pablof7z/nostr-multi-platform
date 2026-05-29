@@ -10,11 +10,13 @@ import nmp.transport.UpdateFrame
 import nmp.transport.Value
 import nmp.transport.ValueKind
 import org.nmp.android.model.AccountSummary
+import org.nmp.android.model.AuthorViewPayload
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
 import org.nmp.android.model.KernelMetricsLite
 import org.nmp.android.model.KernelUpdate
+import org.nmp.android.model.ProfileCard
 import org.nmp.android.model.RelayStatus
 import org.nmp.android.model.SnapshotProjections
 import org.nmp.android.model.TimelineItem
@@ -200,11 +202,42 @@ object KernelUpdateFrameDecoder {
             activeAccount = m["activeAccount"]?.stringOrNull(),
             accounts = m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
             timeline = m["timeline"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
+            claimedProfiles = m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
+            mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
+            authorView = m["authorView"]?.let { decodeAuthorView(it) },
             // "nmp.nip17.dm_inbox" → after convertFromSnakeCase → "nmp.nip17.dmInbox"
             dmInbox = m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },
             // "wallet" → no underscores → key stays "wallet"
             walletStatus = m["wallet"]?.let { decodeWalletStatusString(it) },
             walletBalance = m["wallet"]?.let { decodeWalletBalanceString(it) },
+        )
+    }
+
+    private fun decodeProfileCard(v: Value): ProfileCard? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return ProfileCard(
+            pubkey = m["pubkey"]?.stringOr("") ?: "",
+            npub = m["npub"]?.stringOr("") ?: "",
+            displayName = m["displayName"]?.stringOrNull(),
+            pictureUrl = m["pictureUrl"]?.stringOrNull(),
+            nip05 = m["nip05"]?.stringOr("") ?: "",
+            about = m["about"]?.stringOr("") ?: "",
+            hasProfile = m["hasProfile"]?.boolOr(false) ?: false,
+            lnurl = m["lnurl"]?.stringOrNull(),
+        )
+    }
+
+    private fun decodeAuthorView(v: Value): AuthorViewPayload? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return AuthorViewPayload(
+            pubkey = m["pubkey"]?.stringOr("") ?: "",
+            state = m["state"]?.stringOr("") ?: "",
+            profile = m["profile"]?.let { decodeProfileCard(it) } ?: ProfileCard(),
+            items = m["items"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
+            noteCount = m["noteCount"]?.intOr(0) ?: 0,
+            noteCountDisplay = m["noteCountDisplay"]?.stringOr("") ?: "",
         )
     }
 
@@ -410,6 +443,29 @@ object KernelUpdateFrameDecoder {
             val item: Value = list(i) ?: continue
             val decoded = decode(item) ?: continue
             result.add(decoded)
+        }
+        return result
+    }
+
+    /**
+     * Decode a FlatBuffers map-of-maps (e.g. `claimed_profiles`,
+     * `mention_profiles`) into a Kotlin `Map<String, T>`.
+     *
+     * The outer Value must be `ValueKind.Map`. Each entry's raw key is
+     * preserved as-is (these are hex pubkeys, not snake_case field names,
+     * so no camelCase conversion is applied).
+     */
+    private fun <T : Any> Value.mapOf(decode: (Value) -> T?): Map<String, T> {
+        if (kind != ValueKind.Map) return emptyMap()
+        val len = mapLength
+        if (len == 0) return emptyMap()
+        val result = HashMap<String, T>(len * 2)
+        for (i in 0 until len) {
+            val pair: nmp.transport.Pair = map(i) ?: continue
+            val entryValue: Value = pair.value ?: continue
+            val rawKey = pair.key // hex pubkey — keep as-is, no camelCase conversion
+            val decoded = decode(entryValue) ?: continue
+            result[rawKey] = decoded
         }
         return result
     }
