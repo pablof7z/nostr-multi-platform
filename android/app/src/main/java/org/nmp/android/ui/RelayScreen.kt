@@ -98,7 +98,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 }
             } else {
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                    items(relays, key = { it.relayUrl }) { relay ->
+                    items(relays, key = { "${it.role}:${it.relayUrl}" }) { relay ->
                         RelayRow(relay) {
                             model.removeRelay(relay.relayUrl)
                         }
