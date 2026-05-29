@@ -30,6 +30,7 @@ pub enum AppTab {
     Thread(String),
     Author(String),
     Settings,
+    Diagnostics,
 }
 
 pub struct DesktopApp {
@@ -193,6 +194,12 @@ impl DesktopApp {
             {
                 self.tab = AppTab::Settings;
             }
+            if ui
+                .selectable_label(matches!(current_tab, AppTab::Diagnostics), "📊  Diagnostics")
+                .clicked()
+            {
+                self.tab = AppTab::Diagnostics;
+            }
 
             ui.add_space(12.0);
             ui.separator();
@@ -234,6 +241,7 @@ impl DesktopApp {
                     self.author_view(ui, snap, pubkey, payload);
                 }
                 AppTab::Settings => self.settings_view(ui, snap),
+                AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
             }
         });
     }
@@ -614,6 +622,122 @@ impl DesktopApp {
                 self.new_relay_url.clear();
             }
         });
+    }
+
+    fn diagnostics_panel(&self, ui: &mut Ui, snap: &Snapshot) {
+        ui.heading("Routing & Relay Diagnostics");
+        ui.separator();
+
+        // Relay summary
+        let connected_count = snap
+            .relay_statuses
+            .iter()
+            .filter(|r| {
+                r.connection.eq_ignore_ascii_case("connected")
+                    || r.connection.eq_ignore_ascii_case("ready")
+            })
+            .count();
+        ui.label(RichText::new(format!(
+            "Relays: {}/{} connected",
+            connected_count,
+            snap.relay_statuses.len()
+        ))
+        .strong());
+        ui.add_space(8.0);
+
+        // Relay list with status
+        ui.label(RichText::new("Relay Status").strong().color(Color32::from_rgb(96, 165, 250)));
+        ui.add_space(4.0);
+
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .max_height(300.0)
+            .show(ui, |ui| {
+                egui::Grid::new("diagnostics_relays")
+                    .num_columns(4)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("Relay").strong());
+                        ui.label(RichText::new("Role").strong());
+                        ui.label(RichText::new("Status").strong());
+                        ui.label(RichText::new("Events").strong());
+                        ui.end_row();
+
+                        for relay in &snap.relay_statuses {
+                            // Status dot
+                            let (dot_char, dot_color) = Self::status_color(&relay.connection);
+                            ui.label(RichText::new(dot_char).color(dot_color));
+
+                            // URL (shortened)
+                            let display_url = if relay.relay_url.len() > 30 {
+                                format!("{}…", &relay.relay_url[..27])
+                            } else {
+                                relay.relay_url.clone()
+                            };
+                            ui.label(display_url).on_hover_text(&relay.relay_url);
+
+                            // Role
+                            let role_color = match relay.role.as_str() {
+                                "read" => Color32::from_rgb(96, 165, 250),
+                                "write" => Color32::from_rgb(34, 197, 94),
+                                "indexer" => Color32::from_rgb(168, 85, 247),
+                                _ => Color32::from_rgb(107, 114, 128),
+                            };
+                            ui.label(RichText::new(&relay.role).color(role_color));
+
+                            // Status
+                            let status_color = if relay.connection.eq_ignore_ascii_case("connected")
+                                || relay.connection.eq_ignore_ascii_case("ready")
+                            {
+                                Color32::from_rgb(74, 222, 128)
+                            } else if relay.connection.eq_ignore_ascii_case("disconnected")
+                                || relay.connection.eq_ignore_ascii_case("down")
+                            {
+                                Color32::from_rgb(248, 113, 113)
+                            } else {
+                                Color32::from_rgb(249, 115, 22)
+                            };
+                            ui.label(
+                                RichText::new(&relay.connection).color(status_color),
+                            );
+
+                            // Event count
+                            ui.label(RichText::new(relay.events_rx.to_string()).weak().small());
+
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        ui.add_space(16.0);
+        ui.separator();
+        ui.add_space(8.0);
+
+        // Metrics summary
+        ui.label(RichText::new("Snapshot Metrics").strong().color(Color32::from_rgb(96, 165, 250)));
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            ui.label(format!("Total events received: {}", snap.metrics.events_rx));
+            ui.separator();
+            ui.label(format!("Note events: {}", snap.metrics.note_events));
+            ui.separator();
+            ui.label(format!("Visible items: {}", snap.metrics.visible_items));
+        });
+
+        ui.add_space(8.0);
+        ui.label(format!("Snapshot revision: {}", snap.rev));
+    }
+
+    fn status_color(connection: &str) -> (char, Color32) {
+        let lower = connection.to_ascii_lowercase();
+        if lower.contains("connected") || lower == "ready" || lower == "open" {
+            ('●', Color32::from_rgb(74, 222, 128))
+        } else if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") {
+            ('○', Color32::from_rgb(248, 113, 113))
+        } else {
+            ('◌', Color32::from_rgb(249, 115, 22))
+        }
     }
 }
 
