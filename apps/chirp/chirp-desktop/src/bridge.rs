@@ -26,6 +26,12 @@ use nmp_ffi::{
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, NmpApp,
 };
 use serde_json::{json, Value};
+use std::ffi::c_void;
+
+unsafe extern "C" {
+    fn nmp_app_wallet_connect(app: *mut c_void, uri: *const std::ffi::c_char);
+    fn nmp_app_wallet_disconnect(app: *mut c_void);
+}
 
 // ---------------------------------------------------------------------------
 // Update bridge (mirrors chirp-tui/src/bridge.rs)
@@ -249,6 +255,32 @@ impl AppRuntime {
         if !self.app.is_null() {
             unsafe { nmp_app_cancel_bunker_handshake(self.app) };
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Wallet actions (NIP-47 NWC)
+    // ------------------------------------------------------------------
+
+    pub fn wallet_connect(&self, nwc_uri: &str) -> Result<String, String> {
+        if self.app.is_null() {
+            return Err("runtime app is not available".to_string());
+        }
+        let uri = CString::new(nwc_uri)
+            .map_err(|_| "NWC URI contains NUL byte".to_string())?;
+        unsafe {
+            nmp_app_wallet_connect(self.app.cast(), uri.as_ptr());
+        }
+        Ok("wallet_connected".to_string())
+    }
+
+    pub fn wallet_disconnect(&self) -> Result<String, String> {
+        if self.app.is_null() {
+            return Err("runtime app is not available".to_string());
+        }
+        unsafe {
+            nmp_app_wallet_disconnect(self.app.cast());
+        }
+        Ok("wallet_disconnected".to_string())
     }
 
     // ------------------------------------------------------------------
