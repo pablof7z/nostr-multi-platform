@@ -1788,13 +1788,11 @@ mandatory primary transport; typed projections are deployed as sidecars for the
 feed (`NOFS` / `NFTS`). There is no `FullState` / `ViewBatch` typed root yet, and
 the JSON `Value` tree remains the main generic interchange shape.
 
-**ADR-0038 rollout progress (2026-05-29):** V-84 (iOS Swift NFCT decoder) and
-V-85 (Android Kotlin NFCT decoder) are both LANDED at HEAD — the typed path is
-now the live preferred path on iOS, Android, and TUI. The only remaining open
-rollout item is **V-86** (CI glob fix: extend
-`ci/check-flatbuffers-version-pins.sh` to cover the Android `nmp/{nip01,feed}`
-Kotlin tree and `nmp/transport/` — in progress on branch
-`fix/flatbuffers-v86-backlog-cleanup`).
+**ADR-0038 rollout progress (2026-05-29):** V-84 (iOS Swift NFCT decoder, PR
+#762), V-85 (Android Kotlin NFCT decoder, PR #764), and V-86 (CI glob fix,
+PR #781) are all LANDED at HEAD — the typed path is now the live preferred path
+on iOS, Android, and TUI; the Android `nmp/` tree is fully pin-checked in CI.
+ADR-0038 rollout is complete.
 
 Replace the Rust-to-frontend JSON update payload with one canonical
 FlatBuffers schema for `FullState`, `ViewBatch`, and side-effect frames.
