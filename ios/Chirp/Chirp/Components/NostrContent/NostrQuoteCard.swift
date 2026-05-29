@@ -199,48 +199,27 @@ public struct NostrQuoteCard: View {
     @ViewBuilder
     private var avatar: some View {
         if let avatarUrl = model.authorAvatarUrl {
-            AsyncImage(url: avatarUrl) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    avatarFallback
-                }
-            }
-            .frame(width: 26, height: 26)
-            .clipShape(Circle())
+            NostrImageView(url: avatarUrl)
+                .frame(width: 26, height: 26)
+                .clipShape(Circle())
         } else {
             avatarFallback
         }
     }
 
     private var avatarFallback: some View {
-        ZStack {
-            Circle()
-                .fill(NostrIdenticon.color(forPubkey: model.authorPubkey ?? model.id))
-            Text(NostrIdenticon.initials(forPubkey: model.authorPubkey ?? model.id))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: 26, height: 26)
+        NostrIdenticon.identiconView(
+            forPubkey: model.authorPubkey ?? model.id,
+            size: 26
+        )
+        .clipShape(Circle())
     }
 
     private func thumbnail(_ url: URL) -> some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: 160)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            default:
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(renderer.codeBackgroundColor)
-                    .frame(maxWidth: .infinity, minHeight: 60, maxHeight: 120)
-            }
-        }
+        NostrImageView(url: url)
+            .frame(maxWidth: .infinity, maxHeight: 160)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private var border: some View {

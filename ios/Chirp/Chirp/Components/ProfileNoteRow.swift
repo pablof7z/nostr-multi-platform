@@ -17,7 +17,20 @@ struct ProfileNoteRow: View {
     let onRowTap: () -> Void
     let onLike: () -> Void
 
+    @EnvironmentObject private var model: KernelModel
     @State private var likeTapped = false
+
+    private var authorDisplayLabel: String {
+        model.profile(forPubkey: item.authorPubkey)?.display
+            ?? renderContext.mentionProfiles[item.authorPubkey]?.display
+            ?? item.authorPubkey.shortHex
+    }
+
+    private var authorAvatarInitials: String {
+        let name = model.profile(forPubkey: item.authorPubkey)?.display
+            ?? renderContext.mentionProfiles[item.authorPubkey]?.display
+        return (name ?? item.authorPubkey).displayInitials
+    }
 
     var body: some View {
         Button(action: onRowTap) {
@@ -25,7 +38,7 @@ struct ProfileNoteRow: View {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
                         url: item.authorPictureUrl,
-                        initials: item.authorPubkey.displayInitials,
+                        initials: authorAvatarInitials,
                         colorHex: item.authorPubkey.pubkeyColorHex,
                         size: 40
                     )
@@ -34,7 +47,7 @@ struct ProfileNoteRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text(item.authorPubkey.shortHex)
+                        Text(authorDisplayLabel)
                             .font(.headline)
                             .foregroundStyle(.primary)
                             .lineLimit(1)

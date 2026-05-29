@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 /// SwiftUI renderer for a `ContentTreeWire`. Walks `tree.roots`, flattens the
@@ -117,6 +118,13 @@ public struct NostrContentView: View {
         case .url(let value):
             return Text(value).foregroundStyle(renderer.linkColor)
         case .emoji(let shortcode, _):
+            // Apps fill `renderer.emojiImages` from kind:0 / NIP-30 tag data
+            // and the inline run renders the image directly. Empty dict
+            // (the default) falls back to the literal `:shortcode:` text so
+            // unwired apps still get a readable surface.
+            if let img = renderer.emojiImages[shortcode] {
+                return Text(Image(uiImage: img))
+            }
             return Text(":\(shortcode):")
         case .invoice:
             return Text("⚡ invoice").foregroundStyle(renderer.linkColor)
@@ -162,9 +170,18 @@ public struct NostrContentView: View {
             if !parsed.isEmpty {
                 NostrMediaGrid(imageUrls: parsed)
             }
-        case .video, .audio:
+        case .video:
+            // Inline playback via `AVKit.VideoPlayer` so video media nodes
+            // render with native scrub / fullscreen controls. Audio stays on
+            // the compact link-style row (no waveform UI in v1).
             if let first = urls.first.flatMap(URL.init(string:)) {
-                mediaRow(first, systemImage: kind == .audio ? "speaker.wave.2.fill" : "play.rectangle.fill")
+                VideoPlayer(player: AVPlayer(url: first))
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        case .audio:
+            if let first = urls.first.flatMap(URL.init(string:)) {
+                mediaRow(first, systemImage: "speaker.wave.2.fill")
             }
         }
     }

@@ -77,12 +77,12 @@
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22815F76AA03DAE183DBA656 /* GroupChatView.swift */; };
-		F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */; };
 		F1EA6E7AABA81D70DD3C93F2 /* NostrQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181DB651D587AA70439571C4 /* NostrQuoteCard.swift */; };
 		F5E5940625200643254B4588 /* NostrContentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475509EE4AB3F523D5551F7 /* NostrContentRenderer.swift */; };
 		F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */; };
 		FE40E7C03666DA6206011600 /* NostrMinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E197335AFEEA7FFCA5CE05 /* NostrMinimalContentView.swift */; };
 		FF5483FCDF48B8892ABE5F53 /* ChirpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25460F5E697F421F8C7BE89E /* ChirpUITests.swift */; };
+		FF7FE7A227B906F0BA447517 /* NostrProfileHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E2340660A274A48B1B782E /* NostrProfileHost.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -114,6 +114,7 @@
 		1ED689DD9659151162F819BC /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
 		22815F76AA03DAE183DBA656 /* GroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatView.swift; sourceTree = "<group>"; };
 		23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+NIP46.swift"; sourceTree = "<group>"; };
+		24E2340660A274A48B1B782E /* NostrProfileHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrProfileHost.swift; sourceTree = "<group>"; };
 		25460F5E697F421F8C7BE89E /* ChirpUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpUITests.swift; sourceTree = "<group>"; };
 		26F1B192612D9C6F32B2C698 /* OpFeedDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpFeedDecoderTests.swift; sourceTree = "<group>"; };
 		2C01000494AC737F8F8E286D /* ThreadScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadScreen.swift; sourceTree = "<group>"; };
@@ -335,7 +336,6 @@
 		935D67AACBA8594449383214 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */,
 				E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */,
 				31F55FC6A139DA43D434DBF9 /* RootShell.swift */,
 			);
@@ -355,6 +355,7 @@
 				D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */,
 				7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */,
 				886A82F866183EB8C3674AD1 /* NmpCore.h */,
+				24E2340660A274A48B1B782E /* NostrProfileHost.swift */,
 				5A015A4A241347592C09EC0B /* ProfileWire.swift */,
 				64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */,
 				C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */,
@@ -545,7 +546,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A4D78531938555278B719582 /* AccountsView.swift in Sources */,
-				F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */,
 				4E112E69FDB45203BAC81E1D /* ChatsView.swift in Sources */,
 				192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */,
 				62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */,
@@ -585,6 +585,7 @@
 				681E3489EF4C39A680D6A7D3 /* NostrMediaGrid.swift in Sources */,
 				E439898111D51048950A9505 /* NostrMentionChip.swift in Sources */,
 				FE40E7C03666DA6206011600 /* NostrMinimalContentView.swift in Sources */,
+				FF7FE7A227B906F0BA447517 /* NostrProfileHost.swift in Sources */,
 				F1EA6E7AABA81D70DD3C93F2 /* NostrQuoteCard.swift in Sources */,
 				EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */,
 				5AD3263D1EAB352DEDE89C80 /* NoteEntityViews.swift in Sources */,
