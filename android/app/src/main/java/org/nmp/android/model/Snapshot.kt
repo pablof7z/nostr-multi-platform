@@ -36,6 +36,7 @@ data class SnapshotProjections(
     @SerialName("active_account") val activeAccount: String? = null,
     val accounts: List<AccountSummary> = emptyList(),
     val timeline: List<TimelineItem> = emptyList(),
+    @SerialName("nmp.nip17.dm_inbox") val dmInbox: DmInboxSnapshot? = null,
 )
 
 @Serializable
@@ -76,4 +77,27 @@ data class RelayStatus(
     val auth: String = "",
     val activeWireSubscriptions: Int = 0,
     val reconnectCount: Long = 0,
+)
+
+@Serializable
+data class DmMessage(
+    val id: String = "",
+    val senderPubkey: String = "",
+    val content: String = "",
+    val createdAt: Long = 0,
+    val replyTo: String? = null,
+    val isOutgoing: Boolean = false,
+    val sourceRelays: List<String>? = null,
+)
+
+@Serializable
+data class DmConversation(
+    val peerPubkey: String = "",
+    val messages: List<DmMessage> = emptyList(),
+)
+
+@Serializable
+data class DmInboxSnapshot(
+    val conversations: List<DmConversation> = emptyList(),
+    val remoteSignerUnsupported: Boolean = false,
 )
