@@ -135,7 +135,7 @@ struct ChirpAvatar: View {
     }
 
     var body: some View {
-        let resolvedUrl = url ?? profileHost?.profile(forPubkey: pubkey)?.pictureUrl?.absoluteString
+        let resolvedUrl = url ?? profileHost?.profile(forPubkey: pubkey)?.pictureUrl
 
         ZStack {
             Circle().fill(ChirpColor.avatar(from: colorHex))
