@@ -225,7 +225,12 @@ fn fake_signed(id: &str, author: &str, content: &str) -> SignedEvent {
 /// Seed a kind:10002 so `Nip65OutboxResolver` routes the publish to a real
 /// write relay instead of returning `NoTargets`.
 fn seed_kind10002(kernel: &mut Kernel, author: &str, write_url: &str) {
-    let id = format!("{:0<64}", format!("{}k10002eon", &author[..2]));
+    // Use the author pubkey as the event id — guaranteed valid hex (64 hex
+    // chars) and unique per author.  The old approach embedded literal
+    // non-hex chars ('k', 'e', 'o', 'n'); V-70 strengthened
+    // `is_structurally_valid()` to check hex chars, so those synthetic
+    // events were rejected as Malformed and never entered the store.
+    let id = author.to_string();
     let raw = RawEvent {
         id,
         pubkey: author.to_string(),

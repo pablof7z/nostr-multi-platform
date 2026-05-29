@@ -1429,7 +1429,12 @@ fn react_routes_to_reacted_to_author_inbox_relay() {
     // is injected directly with an explicit `"read"` marker — that is the relay
     // the resolver routes the inbox copy to.
     const AUTHOR_INBOX_RELAY: &str = "wss://reacted-author-inbox.test";
-    let k10002_id = format!("{:0<64}", "cccck10002inbox");
+    // Use the target_author pubkey as the event id — guaranteed valid hex (64
+    // hex chars).  The old string "cccck10002inbox" contained 'k', 'i', 'n'
+    // which are not valid hex characters; V-70 strengthened
+    // `is_structurally_valid()` to check hex chars, so that synthetic event
+    // was rejected as Malformed and never entered the store.
+    let k10002_id = target_author.to_string();
     kernel.inject_replaceable_event(
         &k10002_id,
         target_author,

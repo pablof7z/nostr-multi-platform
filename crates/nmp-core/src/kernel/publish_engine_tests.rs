@@ -63,9 +63,13 @@ fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str])
         .iter()
         .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
         .collect();
-    // Use a deterministic id keyed off the first 2 chars of the pubkey.
-    let id_prefix = &author_pubkey[..2];
-    let id = format!("{:0<64}", format!("{}k10002", id_prefix));
+    // Use the author pubkey as the event id — guaranteed valid hex (64 hex
+    // chars) and unique per author in a fresh-kernel test.  The old two-char
+    // prefix approach embedded a literal 'k' which is not a valid hex
+    // character; V-70 strengthened `is_structurally_valid()` to check hex
+    // chars, so those synthetic events were rejected as Malformed and never
+    // entered the store (mirrors the canonical `seed_kind10002_for_test`).
+    let id = author_pubkey.to_string();
     let raw = RawEvent {
         id,
         pubkey: author_pubkey.to_string(),
