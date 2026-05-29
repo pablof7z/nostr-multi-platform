@@ -29,7 +29,6 @@ pub enum AppTab {
     Home,
     Thread(String),
     Author(String),
-    Dms,
     Settings,
 }
 
@@ -47,8 +46,6 @@ pub struct DesktopApp {
     edit_about: String,
     edit_picture: String,
     show_edit_profile: bool,
-    selected_dm_pubkey: Option<String>,
-    dm_compose: String,
 }
 
 impl DesktopApp {
@@ -93,8 +90,6 @@ impl DesktopApp {
             edit_about: String::new(),
             edit_picture: String::new(),
             show_edit_profile: false,
-            selected_dm_pubkey: None,
-            dm_compose: String::new(),
         }
     }
 
@@ -191,12 +186,6 @@ impl DesktopApp {
                     self.tab = AppTab::Author(pk.clone());
                     self.bridge.open_author(pk);
                 }
-            }
-            if ui
-                .selectable_label(matches!(current_tab, AppTab::Dms), "💬  DMs")
-                .clicked()
-            {
-                self.tab = AppTab::Dms;
             }
             if ui
                 .selectable_label(matches!(current_tab, AppTab::Settings), "⚙️  Settings")
