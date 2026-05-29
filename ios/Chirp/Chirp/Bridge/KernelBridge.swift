@@ -151,7 +151,6 @@ final class KernelHandle {
     }
 
     func claimEvent(uri: String, consumerID: String) {
-        guard let raw else { return }
         uri.withCString { uriPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_claim_event(raw, uriPtr, cidPtr)
@@ -160,7 +159,6 @@ final class KernelHandle {
     }
 
     func releaseEvent(uri: String, consumerID: String) {
-        guard let raw else { return }
         uri.withCString { uriPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_release_event(raw, uriPtr, cidPtr)

@@ -90,9 +90,7 @@ public struct NostrWireUri: Decodable, Equatable, Sendable {
     public let eventKind: UInt32?
 
     private enum CodingKeys: String, CodingKey {
-        case uri, kind, relays, author
-        case primaryId = "primary_id"
-        case eventKind = "event_kind"
+        case uri, kind, relays, author, primaryId, eventKind
     }
 
     public init(
