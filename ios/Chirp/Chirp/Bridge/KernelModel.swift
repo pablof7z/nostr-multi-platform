@@ -350,6 +350,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     /// NostrProfileHost conformance: look up a profile by pubkey.
     /// First checks claimed profiles, then falls back to mention profiles.
+    ///
+    /// `ProfileWire.npub` is `nil` on the mention-profiles path because the
+    /// mention projection carries no bech32 encoding. Callers that need npub
+    /// for copy/share must guard for nil — only the claimedProfiles path
+    /// guarantees a non-nil npub.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         if let card = claimedProfiles[pubkey] {
             return ProfileWire(
@@ -359,7 +364,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 pictureUrl: card.pictureUrl,
                 nip05: card.nip05.isEmpty ? nil : card.nip05,
                 npub: card.npub,
-                npubShort: pubkey.shortHex
+                npubShort: card.npub.count > 12
+                    ? "\(card.npub.prefix(9))…\(card.npub.suffix(4))"
+                    : card.npub
             )
         }
         if let mention = mentionProfiles[pubkey] {
@@ -370,7 +377,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 about: nil,
                 pictureUrl: mention.pictureUrl,
                 nip05: nil,
-                npub: "",
+                npub: nil,
                 npubShort: pubkey.shortHex
             )
         }
