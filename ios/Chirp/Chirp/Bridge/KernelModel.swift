@@ -174,6 +174,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// The NIP-29 group the group-chat screen reads and posts to. A single
     /// fixed room for the first-consumer proof; a real multi-group app
     /// would thread a chosen `GroupId` through navigation.
+    ///
+    /// D7/B1: This hardcoded relay is intentional — it's a fixed demo group
+    /// identifier for the first-consumer proof, not a bootstrap relay. The
+    /// kernel's actual relay defaults flow through the snapshot
+    /// (`relayStatuses`, `relayEditRows`) populated by nmp-core.
     static let demoGroupId = GroupId(
         hostRelayUrl: "wss://relay.groups.nip29.com",
         localId: "chirp-demo")
