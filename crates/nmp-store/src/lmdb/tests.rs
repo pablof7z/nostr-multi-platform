@@ -76,7 +76,7 @@ fn replaceable_dup_id_merges_provenance() {
     let keys = Keys::generate();
     let raw = signed_event_with_keys(&keys, 0, 1000, "m", None);
 
-    let id = raw.id_bytes();
+    let id = raw.id_bytes().expect("fixture: valid hex");
     let o1 = store
         .insert(verified(raw.clone()), &"wss://r1/".into(), 1_000_000)
         .unwrap();
@@ -98,7 +98,7 @@ fn replaceable_dup_id_merges_provenance() {
 fn ephemeral_kind_is_not_stored() {
     let (store, _dir) = open_tmp();
     let raw = signed_event(20_000, 1000, "ephemeral", None);
-    let id = raw.id_bytes();
+    let id = raw.id_bytes().expect("fixture: valid hex");
     let o = store
         .insert(verified(raw), &"wss://r/".into(), 1_000_000)
         .unwrap();
@@ -122,7 +122,7 @@ fn nip40_expired_on_arrival_rejected() {
         .unwrap();
     let json = ev.try_as_json().unwrap();
     let raw: RawEvent = serde_json::from_str(&json).unwrap();
-    let id = raw.id_bytes();
+    let id = raw.id_bytes().expect("fixture: valid hex");
     let o = store
         .insert(verified(raw), &"wss://r/".into(), 1_000_000)
         .unwrap();
@@ -310,7 +310,7 @@ fn tombstone_max_merge_takes_newer_deleted_at() {
     let (store, _dir) = open_tmp();
     let keys = Keys::generate();
     let target = signed_event_with_keys(&keys, 1, 50, "doomed", None);
-    let target_id = target.id_bytes();
+    let target_id = target.id_bytes().expect("fixture: valid hex");
     store
         .insert(verified(target), &"wss://r/".into(), 50_000)
         .unwrap();

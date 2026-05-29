@@ -85,7 +85,7 @@ impl EligibleFilter {
                 .query_visit(&query, scan_limit, &mut |ev| {
                     out.push(SyncedItem {
                         created_at: ev.raw.created_at,
-                        id: ev.raw.id_bytes(),
+                        id: ev.raw.id_bytes().expect("StoredEvent has verified hex id"),
                     });
                     std::ops::ControlFlow::Continue(())
                 })

@@ -736,15 +736,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-70 · `hex_to_bytes32` returns all-zeros on malformed hex — `RawEvent::id_bytes/pubkey_bytes` produce valid-shape but wrong IDs [LOW · sharp-edge API]
-
-**Verified:** `crates/nmp-store/src/types/ids.rs:20-34` — `hex_to_bytes32(s)` returns `[0u8; 32]` whenever `s.len() != 64` or any byte is non-hex. `crates/nmp-store/src/types/events.rs:38-46` exposes this via `RawEvent::id_bytes()` and `RawEvent::pubkey_bytes()` with doc-comments that admit the silent-zero behaviour.
-
-**Impact:** `VerifiedEvent::try_from_raw` gates inserts behind Schnorr verification so a malformed `RawEvent` cannot enter the store with a zero ID/pubkey under normal flow. But any caller (current or future) that reads `id_bytes`/`pubkey_bytes` from an unverified `RawEvent` (e.g. for prefiltering, indexing, debug telemetry) silently receives the all-zeros sentinel. The all-zeros pubkey is a valid 32-byte shape, so downstream comparisons (`== local_pubkey`) cannot distinguish "decode failure" from "actually zero".
-
-**Correct fix:** change the signature to `fn hex_to_bytes32(s: &str) -> Option<[u8; 32]>` and propagate through `RawEvent::id_bytes/pubkey_bytes` as `Option<EventId>` / `Option<PubKey>`. Callers must handle the `None` arm explicitly. This is a one-shot mechanical refactor confined to `nmp-store`.
-
----
 
 ### V-71 · `nip65_resolver` module doc claims `tracing::debug!` logging that the code does not perform [LOW · false documentation + missing observability]
 

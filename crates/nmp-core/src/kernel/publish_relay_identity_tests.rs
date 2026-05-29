@@ -26,7 +26,11 @@ fn fake_signed(id: &str, author: &str) -> SignedEvent {
 
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_url: &str) {
     let raw = RawEvent {
-        id: format!("{:0<64}", "relayidentity"),
+        // Use the author pubkey as the event id — guaranteed valid hex (64
+        // hex chars).  The old string "relayidentity" is not valid hex;
+        // V-70 strengthened `is_structurally_valid()` to check hex chars,
+        // so that synthetic event was rejected as Malformed.
+        id: author_pubkey.to_string(),
         pubkey: author_pubkey.to_string(),
         created_at: 1_700_000_000,
         kind: 10002,

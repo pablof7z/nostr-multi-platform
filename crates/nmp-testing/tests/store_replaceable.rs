@@ -11,13 +11,13 @@ for_each_backend!(
     |h: &mut StoreHarness| {
         // Insert kind:0 v1 (older).
         let ev1 = h.make_event(ALICE_HEX, 0, 1_000);
-        let id1 = ev1.id_bytes();
+        let id1 = ev1.id_bytes().expect("fixture: valid hex");
         let o1 = h.insert_raw(ev1, "wss://t/", 1_000_000);
         assert!(matches!(o1, InsertOutcome::Inserted { .. }), "{o1:?}");
 
         // Insert kind:0 v2 (newer created_at).
         let ev2 = h.make_event(ALICE_HEX, 0, 2_000);
-        let id2 = ev2.id_bytes();
+        let id2 = ev2.id_bytes().expect("fixture: valid hex");
         let o2 = h.insert_raw(ev2, "wss://t/", 2_000_000);
         assert!(
             matches!(o2, InsertOutcome::Replaced { .. }),
@@ -37,19 +37,19 @@ for_each_backend!(
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].raw.id_bytes(), id2);
+        assert_eq!(results[0].raw.id_bytes().expect("fixture: valid hex"), id2);
     }
 );
 
 for_each_backend!(older_replaceable_is_superseded, |h: &mut StoreHarness| {
     // Insert kind:0 v2 (newer) first.
     let ev2 = h.make_event(ALICE_HEX, 0, 2_000);
-    let id2 = ev2.id_bytes();
+    let id2 = ev2.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev2, "wss://t/", 2_000_000);
 
     // Insert kind:0 v1 (older created_at) — should be Superseded.
     let ev1 = h.make_event(ALICE_HEX, 0, 1_000);
-    let id1 = ev1.id_bytes();
+    let id1 = ev1.id_bytes().expect("fixture: valid hex");
     let o1 = h.insert_raw(ev1, "wss://t/", 1_000_000);
     assert!(
         matches!(o1, InsertOutcome::Superseded { .. }),
@@ -79,8 +79,8 @@ for_each_backend!(replaceable_tiebreak_by_id, |h: &mut StoreHarness| {
         "smaller id should replace larger id at same timestamp, got {o:?}"
     );
 
-    let winner_id = ev_small.id_bytes();
-    let loser_id = ev_large.id_bytes();
+    let winner_id = ev_small.id_bytes().expect("fixture: valid hex");
+    let loser_id = ev_large.id_bytes().expect("fixture: valid hex");
     h.assert_present(&winner_id);
     h.assert_absent(&loser_id);
 });
@@ -90,9 +90,9 @@ for_each_backend!(
     |h: &mut StoreHarness| {
         // kind:0 and kind:3 are separate replaceable slots — they should not interfere.
         let ev0 = h.make_event(ALICE_HEX, 0, 1_000);
-        let id0 = ev0.id_bytes();
+        let id0 = ev0.id_bytes().expect("fixture: valid hex");
         let ev3 = h.make_event(ALICE_HEX, 3, 1_000);
-        let id3 = ev3.id_bytes();
+        let id3 = ev3.id_bytes().expect("fixture: valid hex");
 
         h.insert_raw(ev0, "wss://t/", 1_000_000);
         h.insert_raw(ev3, "wss://t/", 1_000_000);

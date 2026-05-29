@@ -24,7 +24,7 @@ fn kind5_self_delete_e_tag_writes_tombstone() {
     let keys = Keys::generate();
 
     let target = signed_event_with_keys(&keys, 1, 1000, "doomed", None);
-    let target_id = target.id_bytes();
+    let target_id = target.id_bytes().expect("fixture: valid hex");
     store
         .insert(verified(target.clone()), &"wss://r/".into(), 1_000_000)
         .unwrap();
@@ -64,7 +64,7 @@ fn kind5_foreign_target_silently_skipped() {
     let bob = nostr::Keys::generate();
 
     let alice_event = signed_event_with_keys(&alice, 1, 1000, "alice's note", None);
-    let alice_id = alice_event.id_bytes();
+    let alice_id = alice_event.id_bytes().expect("fixture: valid hex");
     store
         .insert(verified(alice_event.clone()), &"wss://r/".into(), 1_000_000)
         .unwrap();
@@ -109,7 +109,7 @@ fn kind5_foreign_pre_tombstone_then_event_arrives_inserts() {
 
     // Build Alice's event WITHOUT inserting it yet — we just need the id.
     let alice_event = signed_event_with_keys(&alice, 1, 1000, "alice's note", None);
-    let alice_id = alice_event.id_bytes();
+    let alice_id = alice_event.id_bytes().expect("fixture: valid hex");
 
     // Bob ships kind:5 referencing Alice's id first.
     let bob_k5 = EventBuilder::new(Kind::EventDeletion, "")
@@ -151,7 +151,7 @@ fn kind5_self_pre_tombstone_then_target_arrives_tombstoned() {
 
     // Build Alice's event first (don't insert).
     let alice_event = signed_event_with_keys(&alice, 1, 1000, "alice's note", None);
-    let alice_id = alice_event.id_bytes();
+    let alice_id = alice_event.id_bytes().expect("fixture: valid hex");
 
     // Alice ships her own kind:5 referencing her event id first.
     let self_k5 = EventBuilder::new(Kind::EventDeletion, "")
@@ -194,14 +194,14 @@ fn delete_by_filter_by_relay_only_purges_single_source_events() {
 
     // Event A: single source on r1.
     let a = signed_event(1, 1000, "single-source", None);
-    let a_id = a.id_bytes();
+    let a_id = a.id_bytes().expect("fixture: valid hex");
     store
         .insert(verified(a), &"wss://r1/".into(), 1_000_000)
         .unwrap();
 
     // Event B: re-delivered from r1 and r2 — multi-source.
     let b = signed_event(1, 1001, "multi-source", None);
-    let b_id = b.id_bytes();
+    let b_id = b.id_bytes().expect("fixture: valid hex");
     store
         .insert(verified(b.clone()), &"wss://r1/".into(), 1_000_000)
         .unwrap();

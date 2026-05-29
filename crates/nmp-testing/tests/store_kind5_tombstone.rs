@@ -11,7 +11,7 @@ for_each_backend!(
     |h: &mut StoreHarness| {
         // Insert a kind:1 by Alice.
         let kind1 = h.make_event(ALICE_HEX, 1, 1_000);
-        let kind1_id = kind1.id_bytes();
+        let kind1_id = kind1.id_bytes().expect("fixture: valid hex");
         let kind1_id_hex = kind1.id.clone();
         h.insert_raw(kind1, "wss://t/", 1_000_000);
         h.assert_present(&kind1_id);
@@ -40,7 +40,7 @@ for_each_backend!(
 for_each_backend!(kind5_tombstone_blocks_reinsert, |h: &mut StoreHarness| {
     // Insert and delete kind:1.
     let kind1 = h.make_event(ALICE_HEX, 1, 1_000);
-    let kind1_id = kind1.id_bytes();
+    let kind1_id = kind1.id_bytes().expect("fixture: valid hex");
     let kind1_id_hex = kind1.id.clone();
     let kind1_clone = kind1.clone();
     h.insert_raw(kind1, "wss://t/", 1_000_000);
@@ -81,7 +81,7 @@ for_each_backend!(kind5_stored_as_regular_event, |h: &mut StoreHarness| {
         2_000,
         vec![vec!["e".to_string(), kind1_id_hex]],
     );
-    let kind5_id = kind5.id_bytes();
+    let kind5_id = kind5.id_bytes().expect("fixture: valid hex");
     h.insert_raw(kind5, "wss://t/", 2_000_000);
 
     h.assert_present(&kind5_id);

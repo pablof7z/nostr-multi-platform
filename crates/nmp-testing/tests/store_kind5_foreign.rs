@@ -10,7 +10,7 @@ for_each_backend!(
     |h: &mut StoreHarness| {
         // Insert kind:1 by Alice.
         let kind1 = h.make_event(ALICE_HEX, 1, 1_000);
-        let kind1_id = kind1.id_bytes();
+        let kind1_id = kind1.id_bytes().expect("fixture: valid hex");
         let kind1_id_hex = kind1.id.clone();
         h.insert_raw(kind1, "wss://t/", 1_000_000);
 
@@ -39,7 +39,7 @@ for_each_backend!(foreign_kind5_is_stored, |h: &mut StoreHarness| {
 
     let kind5_bob =
         h.make_event_with_tags(BOB_HEX, 5, 2_000, vec![vec!["e".to_string(), kind1_id_hex]]);
-    let kind5_id = kind5_bob.id_bytes();
+    let kind5_id = kind5_bob.id_bytes().expect("fixture: valid hex");
     h.insert_raw(kind5_bob, "wss://t/", 2_000_000);
 
     h.assert_present(&kind5_id);

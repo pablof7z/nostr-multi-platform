@@ -25,7 +25,7 @@ for_each_backend!(
 
         // Now the target (owned by Alice) arrives — should be Tombstoned.
         let target = h.make_event_with_id(&target_id_hex, ALICE_HEX, 1, 1_000);
-        let target_id = target.id_bytes();
+        let target_id = target.id_bytes().expect("fixture: valid hex");
         let o = h.insert_raw(target, "wss://t/", 1_000_000);
         assert!(
             matches!(
@@ -56,7 +56,7 @@ for_each_backend!(
 
         // Alice's event arrives — Bob's pre-tombstone must NOT block it.
         let target = h.make_event_with_id(&target_id_hex, ALICE_HEX, 1, 1_000);
-        let target_id = target.id_bytes();
+        let target_id = target.id_bytes().expect("fixture: valid hex");
         let o = h.insert_raw(target, "wss://t/", 1_000_000);
         assert!(
             matches!(o, InsertOutcome::Inserted { .. }),
@@ -89,7 +89,7 @@ for_each_backend!(
             1_000,
             vec![vec!["d".to_string(), d_tag.to_string()]],
         );
-        let article_id = article.id_bytes();
+        let article_id = article.id_bytes().expect("fixture: valid hex");
         let o = h.insert_raw(article, "wss://t/", 1_000_000);
         assert!(
             matches!(
@@ -111,7 +111,7 @@ for_each_backend!(
         // Regression: inserting the exact same replaceable event twice should be Duplicate,
         // not Superseded. The second insert should merge provenance.
         let ev = h.make_event(ALICE_HEX, 0, 1_000);
-        let id = ev.id_bytes();
+        let id = ev.id_bytes().expect("fixture: valid hex");
         let ev2 = ev.clone();
 
         let o1 = h.insert_raw(ev, "wss://a/", 1_000_000);

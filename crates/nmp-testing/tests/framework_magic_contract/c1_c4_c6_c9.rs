@@ -48,7 +48,7 @@ pub fn c1_replaceable_supersedes_on_insert() {
     let h = StoreHarness::mem();
 
     let ev1 = h.make_event(ALICE_HEX, 0, 1_000);
-    let id1 = ev1.id_bytes();
+    let id1 = ev1.id_bytes().expect("fixture: valid hex");
     assert!(matches!(
         h.insert_raw(ev1, "wss://r1/", 1_000_000),
         InsertOutcome::Inserted { .. }
@@ -56,7 +56,7 @@ pub fn c1_replaceable_supersedes_on_insert() {
     h.assert_present(&id1);
 
     let ev2 = h.make_event(ALICE_HEX, 0, 2_000);
-    let id2 = ev2.id_bytes();
+    let id2 = ev2.id_bytes().expect("fixture: valid hex");
     let o2 = h.insert_raw(ev2, "wss://r1/", 2_000_000);
     assert!(
         matches!(o2, InsertOutcome::Replaced { .. }),
@@ -66,7 +66,7 @@ pub fn c1_replaceable_supersedes_on_insert() {
     h.assert_present(&id2);
 
     let ev_stale = h.make_event(ALICE_HEX, 0, 500);
-    let id_stale = ev_stale.id_bytes();
+    let id_stale = ev_stale.id_bytes().expect("fixture: valid hex");
     let o_stale = h.insert_raw(ev_stale, "wss://r2/", 3_000_000);
     assert!(
         matches!(o_stale, InsertOutcome::Superseded { .. }),
@@ -80,12 +80,12 @@ pub fn c1_replaceable_supersedes_on_insert() {
     let id_large = "f".repeat(64);
     let id_small = "0".repeat(64);
     let ev_large = h.make_event_with_id(&id_large, BOB_HEX, 0, 5_000);
-    let large_id_bytes = ev_large.id_bytes();
+    let large_id_bytes = ev_large.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev_large, "wss://r1/", 5_000_000);
     h.assert_present(&large_id_bytes);
 
     let ev_small = h.make_event_with_id(&id_small, BOB_HEX, 0, 5_000);
-    let small_id_bytes = ev_small.id_bytes();
+    let small_id_bytes = ev_small.id_bytes().expect("fixture: valid hex");
     let o_small = h.insert_raw(ev_small, "wss://r1/", 5_000_001);
     assert!(
         matches!(o_small, InsertOutcome::Replaced { .. }),
@@ -111,7 +111,7 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         1_000,
         vec![vec!["d".to_string(), "foo".to_string()]],
     );
-    let id1 = ev1.id_bytes();
+    let id1 = ev1.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev1, "wss://t/", 1_000_000);
     let ev2 = h.make_event_with_tags(
         ALICE_HEX,
@@ -119,7 +119,7 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         2_000,
         vec![vec!["d".to_string(), "foo".to_string()]],
     );
-    let id2 = ev2.id_bytes();
+    let id2 = ev2.id_bytes().expect("fixture: valid hex");
     let o2 = h.insert_raw(ev2, "wss://t/", 2_000_000);
     assert!(
         matches!(o2, InsertOutcome::Replaced { .. }),
@@ -134,7 +134,7 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         1_000,
         vec![vec!["d".to_string(), "bar".to_string()]],
     );
-    let id_bar = ev_bar.id_bytes();
+    let id_bar = ev_bar.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev_bar, "wss://t/", 1_000_000);
     h.assert_present(&id2);
     h.assert_present(&id_bar);
@@ -146,9 +146,9 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         .store
         .get_param_replaceable(&ALICE_PUBKEY, 30_023, b"bar")
         .unwrap();
-    assert_eq!(foo.unwrap().raw.id_bytes(), id2, "foo slot must hold v2");
+    assert_eq!(foo.unwrap().raw.id_bytes().expect("fixture: valid hex"), id2, "foo slot must hold v2");
     assert_eq!(
-        bar.unwrap().raw.id_bytes(),
+        bar.unwrap().raw.id_bytes().expect("fixture: valid hex"),
         id_bar,
         "bar slot must be independent"
     );
@@ -159,7 +159,7 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         1_000,
         vec![vec!["d".to_string(), "foo".to_string()]],
     );
-    let id_24 = ev_24.id_bytes();
+    let id_24 = ev_24.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev_24, "wss://t/", 1_000_000);
     h.assert_present(&id2);
     h.assert_present(&id_24);
@@ -168,7 +168,7 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         .get_param_replaceable(&ALICE_PUBKEY, 30_024, b"foo")
         .unwrap();
     assert_eq!(
-        r24.unwrap().raw.id_bytes(),
+        r24.unwrap().raw.id_bytes().expect("fixture: valid hex"),
         id_24,
         "kind:30024 slot is independent"
     );
@@ -184,7 +184,7 @@ pub fn c3_kind5_delete_removes_referenced_and_tombstones() {
     let h = StoreHarness::mem();
 
     let kind1 = h.make_event(ALICE_HEX, 1, 1_000);
-    let kind1_id = kind1.id_bytes();
+    let kind1_id = kind1.id_bytes().expect("fixture: valid hex");
     let kind1_id_hex = kind1.id.clone();
     let kind1_clone = kind1.clone();
     h.insert_raw(kind1, "wss://r1/", 1_000_000);
@@ -219,7 +219,7 @@ pub fn c3_kind5_delete_removes_referenced_and_tombstones() {
 
     // Bob's kind:5 on Alice's event must be a no-op (cross-author delete forbidden).
     let alice_ev2 = h.make_event(ALICE_HEX, 1, 3_000);
-    let alice_ev2_id = alice_ev2.id_bytes();
+    let alice_ev2_id = alice_ev2.id_bytes().expect("fixture: valid hex");
     let alice_ev2_hex = alice_ev2.id.clone();
     h.insert_raw(alice_ev2, "wss://r1/", 3_000_000);
     h.insert_raw(
@@ -251,7 +251,7 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
         1_000,
         vec![vec!["expiration".to_string(), "999".to_string()]],
     );
-    let past_id = ev_past.id_bytes();
+    let past_id = ev_past.id_bytes().expect("fixture: valid hex");
     let o = h.insert_raw(ev_past, "wss://t/", 1_700_000_000_000u64);
     assert!(
         matches!(
@@ -271,7 +271,7 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
         1u64,
         vec![vec!["expiration".to_string(), "2".to_string()]],
     );
-    let ev_id = ev.id_bytes();
+    let ev_id = ev.id_bytes().expect("fixture: valid hex");
     let ev_clone = ev.clone();
     h.insert_raw(ev, "wss://t/", 1u64);
     h.assert_present(&ev_id);
@@ -282,7 +282,7 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert!(expiring.iter().any(|e| e.raw.id_bytes() == ev_id));
+    assert!(expiring.iter().any(|e| e.raw.id_bytes().expect("fixture: valid hex") == ev_id));
 
     let report = h
         .store
@@ -382,7 +382,7 @@ pub fn c6_authors_subscription_routes_to_per_author_write_relays() {
 pub fn c9_provenance_merges_across_relay_redeliveries() {
     let h = StoreHarness::mem();
     let ev = h.make_event(ALICE_HEX, 1, 1_000_000);
-    let id = ev.id_bytes();
+    let id = ev.id_bytes().expect("fixture: valid hex");
     let ev2 = ev.clone();
     let ev3 = ev.clone();
 

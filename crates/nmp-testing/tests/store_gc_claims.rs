@@ -8,7 +8,7 @@ use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 
 for_each_backend!(claim_pins_events, |h: &mut StoreHarness| {
     let ev = h.make_event(ALICE_HEX, 1, 1_000);
-    let id = ev.id_bytes();
+    let id = ev.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev, "wss://t/", 1_000_000);
 
     let claimer = ClaimerId(1);
@@ -20,7 +20,7 @@ for_each_backend!(claim_pins_events, |h: &mut StoreHarness| {
 
 for_each_backend!(release_removes_pins, |h: &mut StoreHarness| {
     let ev = h.make_event(ALICE_HEX, 1, 1_000);
-    let id = ev.id_bytes();
+    let id = ev.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev, "wss://t/", 1_000_000);
 
     let claimer = ClaimerId(1);
@@ -40,7 +40,7 @@ for_each_backend!(claim_over_budget_returns_error, |h: &mut StoreHarness| {
     let ids: Vec<_> = (0..3)
         .map(|i| {
             let ev = h.make_event(ALICE_HEX, 1, i as u64 + 1_000);
-            let id = ev.id_bytes();
+            let id = ev.id_bytes().expect("fixture: valid hex");
             h.insert_raw(ev, "wss://t/", (i as u64 + 1) * 1_000_000);
             id
         })
@@ -55,7 +55,7 @@ for_each_backend!(claim_over_budget_returns_error, |h: &mut StoreHarness| {
 
 for_each_backend!(hot_set_hint_does_not_error, |h: &mut StoreHarness| {
     let ev = h.make_event(ALICE_HEX, 1, 1_000);
-    let id = ev.id_bytes();
+    let id = ev.id_bytes().expect("fixture: valid hex");
     h.insert_raw(ev, "wss://t/", 1_000_000);
 
     // hot_set_hint is best-effort; the mem backend is a no-op.

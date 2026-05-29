@@ -15,7 +15,7 @@ for_each_backend!(
             1_000,
             vec![vec!["d".to_string(), "foo".to_string()]],
         );
-        let id1 = ev1.id_bytes();
+        let id1 = ev1.id_bytes().expect("fixture: valid hex");
         let o1 = h.insert_raw(ev1, "wss://t/", 1_000_000);
         assert!(matches!(o1, InsertOutcome::Inserted { .. }), "{o1:?}");
 
@@ -25,7 +25,7 @@ for_each_backend!(
             2_000,
             vec![vec!["d".to_string(), "foo".to_string()]],
         );
-        let id2 = ev2.id_bytes();
+        let id2 = ev2.id_bytes().expect("fixture: valid hex");
         let o2 = h.insert_raw(ev2, "wss://t/", 2_000_000);
         assert!(matches!(o2, InsertOutcome::Replaced { .. }), "{o2:?}");
 
@@ -40,7 +40,7 @@ for_each_backend!(
             retrieved.is_some(),
             "get_param_replaceable should return the newer event"
         );
-        assert_eq!(retrieved.unwrap().raw.id_bytes(), id2);
+        assert_eq!(retrieved.unwrap().raw.id_bytes().expect("fixture: valid hex"), id2);
     }
 );
 
@@ -51,7 +51,7 @@ for_each_backend!(different_dtag_separate_slots, |h: &mut StoreHarness| {
         1_000,
         vec![vec!["d".to_string(), "foo".to_string()]],
     );
-    let id_foo = ev_foo.id_bytes();
+    let id_foo = ev_foo.id_bytes().expect("fixture: valid hex");
 
     let ev_bar = h.make_event_with_tags(
         ALICE_HEX,
@@ -59,7 +59,7 @@ for_each_backend!(different_dtag_separate_slots, |h: &mut StoreHarness| {
         1_000,
         vec![vec!["d".to_string(), "bar".to_string()]],
     );
-    let id_bar = ev_bar.id_bytes();
+    let id_bar = ev_bar.id_bytes().expect("fixture: valid hex");
 
     h.insert_raw(ev_foo, "wss://t/", 1_000_000);
     h.insert_raw(ev_bar, "wss://t/", 1_000_000);
@@ -76,8 +76,8 @@ for_each_backend!(different_dtag_separate_slots, |h: &mut StoreHarness| {
         .store
         .get_param_replaceable(&ALICE_PUBKEY, 30_023, b"bar")
         .unwrap();
-    assert_eq!(r_foo.unwrap().raw.id_bytes(), id_foo);
-    assert_eq!(r_bar.unwrap().raw.id_bytes(), id_bar);
+    assert_eq!(r_foo.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_foo);
+    assert_eq!(r_bar.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_bar);
 });
 
 for_each_backend!(
@@ -90,7 +90,7 @@ for_each_backend!(
             1_000,
             vec![vec!["d".to_string(), "foo".to_string()]],
         );
-        let id_23 = ev_23.id_bytes();
+        let id_23 = ev_23.id_bytes().expect("fixture: valid hex");
 
         let ev_24 = h.make_event_with_tags(
             ALICE_HEX,
@@ -98,7 +98,7 @@ for_each_backend!(
             2_000,
             vec![vec!["d".to_string(), "foo".to_string()]],
         );
-        let id_24 = ev_24.id_bytes();
+        let id_24 = ev_24.id_bytes().expect("fixture: valid hex");
 
         h.insert_raw(ev_23, "wss://t/", 1_000_000);
         h.insert_raw(ev_24, "wss://t/", 2_000_000);
@@ -114,8 +114,8 @@ for_each_backend!(
             .store
             .get_param_replaceable(&ALICE_PUBKEY, 30_024, b"foo")
             .unwrap();
-        assert_eq!(r23.unwrap().raw.id_bytes(), id_23);
-        assert_eq!(r24.unwrap().raw.id_bytes(), id_24);
+        assert_eq!(r23.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_23);
+        assert_eq!(r24.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_24);
     }
 );
 
@@ -129,7 +129,7 @@ for_each_backend!(
             2_000,
             vec![vec!["d".to_string(), "foo".to_string()]],
         );
-        let id2 = ev2.id_bytes();
+        let id2 = ev2.id_bytes().expect("fixture: valid hex");
         h.insert_raw(ev2, "wss://t/", 2_000_000);
 
         let ev1 = h.make_event_with_tags(
@@ -138,7 +138,7 @@ for_each_backend!(
             1_000,
             vec![vec!["d".to_string(), "foo".to_string()]],
         );
-        let id1 = ev1.id_bytes();
+        let id1 = ev1.id_bytes().expect("fixture: valid hex");
         let o = h.insert_raw(ev1, "wss://t/", 1_000_000);
         assert!(matches!(o, InsertOutcome::Superseded { .. }), "{o:?}");
 

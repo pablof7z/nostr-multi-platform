@@ -21,7 +21,7 @@ for_each_backend!(
             NOW_SECS,
             vec![vec!["expiration".to_string(), exp.to_string()]],
         );
-        let id = ev.id_bytes();
+        let id = ev.id_bytes().expect("fixture: valid hex");
         h.insert_raw(ev, "wss://t/", NOW_MS);
 
         // Before expiry window: scan_expiring_before(now + 5) should return it.
@@ -32,7 +32,7 @@ for_each_backend!(
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].raw.id_bytes(), id);
+        assert_eq!(results[0].raw.id_bytes().expect("fixture: valid hex"), id);
     }
 );
 
@@ -68,7 +68,7 @@ for_each_backend!(gc_step_reaps_expired_events, |h: &mut StoreHarness| {
             vec!["expiration".to_string(), "2".to_string()], // expires at unix second 2
         ],
     );
-    let past_id = ev_past.id_bytes();
+    let past_id = ev_past.id_bytes().expect("fixture: valid hex");
     // Insert with received_at before expiry (unix ms 1 = received before exp=2).
     h.insert_raw(ev_past, "wss://t/", 1);
     h.assert_present(&past_id);
@@ -101,7 +101,7 @@ for_each_backend!(expired_on_arrival_is_rejected, |h: &mut StoreHarness| {
             vec!["expiration".to_string(), "999".to_string()], // exp < created_at even
         ],
     );
-    let id = ev.id_bytes();
+    let id = ev.id_bytes().expect("fixture: valid hex");
     // received_at_ms converts to NOW_SECS which is > 999.
     let o = h.insert_raw(ev, "wss://t/", NOW_MS);
     assert!(
