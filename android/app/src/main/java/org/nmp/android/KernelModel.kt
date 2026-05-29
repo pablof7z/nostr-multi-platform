@@ -143,6 +143,15 @@ class KernelModel : ViewModel() {
         bridge.openAuthor(pubkey)
     }
 
+    /**
+     * Dispatch a named action through the action registry (generic path).
+     * Fire-and-forget — outcomes arrive in the next snapshot tick.
+     */
+    fun dispatchAction(namespace: String, actionJson: String) {
+        val response = bridge.dispatchAction(namespace, actionJson)
+        Log.d(TAG, "dispatchAction($namespace) response: $response")
+    }
+
     private fun escapeJson(s: String): String {
         return s.replace("\\", "\\\\")
             .replace("\"", "\\\"")
