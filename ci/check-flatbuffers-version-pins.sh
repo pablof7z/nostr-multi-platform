@@ -34,4 +34,9 @@ while IFS= read -r file; do
 done < <(grep -rl "fun validateVersion" \
     "${REPO_ROOT}/apps/nmp-gallery/android/app/src/main/kotlin/nmp/transport" | sort)
 
+while IFS= read -r file; do
+    require_line "${file#"${REPO_ROOT}/"}" "FLATBUFFERS_25_2_10()"
+done < <(grep -rl "fun validateVersion" \
+    "${REPO_ROOT}/android/app/src/main/java/nmp" | sort)
+
 echo "flatbuffers-version-pins: OK"
