@@ -15,7 +15,7 @@ use egui::{
 use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
-    AuthorViewPayload, RelayEditRow, Snapshot, ThreadViewPayload,
+    AuthorViewPayload, DmConversationSnapshot, RelayEditRow, Snapshot, ThreadViewPayload,
     TimelineItem,
 };
 use nmp_chirp_config;
@@ -29,6 +29,7 @@ pub enum AppTab {
     Home,
     Thread(String),
     Author(String),
+    Dms,
     Settings,
 }
 
@@ -38,12 +39,16 @@ pub struct DesktopApp {
     tab: AppTab,
     compose: String,
     nsec_input: String,
+    bunker_relay_input: String,
+    bunker_uri: Option<String>,
     new_relay_url: String,
     new_relay_role: String,
     edit_display_name: String,
     edit_about: String,
     edit_picture: String,
     show_edit_profile: bool,
+    selected_dm_pubkey: Option<String>,
+    dm_compose: String,
 }
 
 impl DesktopApp {
@@ -80,12 +85,16 @@ impl DesktopApp {
             tab: AppTab::Home,
             compose: String::new(),
             nsec_input: String::new(),
+            bunker_relay_input: "wss://relay.primal.net".to_string(),
+            bunker_uri: None,
             new_relay_url: String::new(),
             new_relay_role: "both".to_string(),
             edit_display_name: String::new(),
             edit_about: String::new(),
             edit_picture: String::new(),
             show_edit_profile: false,
+            selected_dm_pubkey: None,
+            dm_compose: String::new(),
         }
     }
 
@@ -184,6 +193,12 @@ impl DesktopApp {
                 }
             }
             if ui
+                .selectable_label(matches!(current_tab, AppTab::Dms), "💬  DMs")
+                .clicked()
+            {
+                self.tab = AppTab::Dms;
+            }
+            if ui
                 .selectable_label(matches!(current_tab, AppTab::Settings), "⚙️  Settings")
                 .clicked()
             {
@@ -229,6 +244,7 @@ impl DesktopApp {
                     let payload: Option<AuthorViewPayload> = snap.projection("author_view");
                     self.author_view(ui, snap, pubkey, payload);
                 }
+                AppTab::Dms => self.dm_panel(ui, snap),
                 AppTab::Settings => self.settings_view(ui, snap),
             }
         });
@@ -468,6 +484,32 @@ impl DesktopApp {
             });
         }
 
+
+        // Bunker login section
+        if snap.active_account.is_none() {
+            ui.horizontal(|ui| {
+                ui.add(
+                    TextEdit::singleline(&mut self.bunker_relay_input)
+                        .hint_text("wss://relay.example.com")
+                        .desired_width(260.0),
+                );
+                if ui.button("Connect with bunker").clicked() {
+                    match self.bridge.connect_bunker(self.bunker_relay_input.trim()) {
+                        Ok(uri) => self.bunker_uri = Some(uri),
+                        Err(e) => eprintln!("bunker connect error: {e}"),
+                    }
+                }
+            });
+            if let Some(ref uri) = self.bunker_uri {
+                ui.label(RichText::new("Scan or paste nostrconnect:// URI:").small());
+                ui.text_edit_singleline(&mut uri.clone());
+                if ui.button("Cancel").clicked() {
+                    self.bridge.cancel_bunker_handshake();
+                    self.bunker_uri = None;
+                }
+            }
+        }
+
         // Edit profile section
         if let Some(ref _pk) = snap.active_account {
             ui.add_space(12.0);
@@ -530,12 +572,13 @@ impl DesktopApp {
         ui.label(RichText::new("Relays").strong());
         let rows: Vec<RelayEditRow> = snap.projection("relay_edit_rows").unwrap_or_default();
         egui::Grid::new("relay_grid")
-            .num_columns(3)
+            .num_columns(4)
             .spacing([12.0, 4.0])
             .show(ui, |ui| {
                 ui.label(RichText::new("URL").small().strong());
                 ui.label(RichText::new("Role").small().strong());
                 ui.label(RichText::new("Status").small().strong());
+                ui.label(RichText::new("").small());
                 ui.end_row();
                 for r in &rows {
                     ui.label(&r.url);
@@ -547,6 +590,9 @@ impl DesktopApp {
                         .map(|s| s.connection.clone())
                         .unwrap_or_else(|| "unknown".to_string());
                     ui.label(RichText::new(status).small());
+                    if ui.small_button("✕").clicked() {
+                        self.bridge.remove_relay(&r.url);
+                    }
                     ui.end_row();
                 }
             });
@@ -663,6 +709,15 @@ fn note_card(
                                 &item.nav_target_id
                             };
                             let _ = bridge.react(target, "+");
+                        }
+                        if ui.small_button("⚡ Zap").clicked() {
+                            let target = if item.nav_target_id.is_empty() {
+                                &item.id
+                            } else {
+                                &item.nav_target_id
+                            };
+                            // Default amount: 21 sats = 21,000 msats
+                            let _ = bridge.zap(&item.author_pubkey, 21_000, target);
                         }
                     });
                 });

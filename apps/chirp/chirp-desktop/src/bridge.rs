@@ -15,8 +15,9 @@ use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
 };
 use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_unregister, nmp_signer_broker_init, ChirpHandle, MarmotHandle,
+    nmp_app_cancel_bunker_handshake, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister, nmp_signer_broker_init,
+    ChirpHandle, MarmotHandle,
 };
 use nmp_ffi::{
     nmp_app_dispatch_action,
@@ -245,6 +246,16 @@ impl AppRuntime {
         self.dispatch_action("nmp.unfollow", &action)
     }
 
+    pub fn zap(&self, recipient_pubkey: &str, amount_msats: u64, target_event_id: &str) -> Result<String, String> {
+        let action = json!({
+            "recipient_pubkey": recipient_pubkey,
+            "amount_msats": amount_msats,
+            "target_event_id": target_event_id,
+            "comment": ""
+        }).to_string();
+        self.dispatch_action("nmp.nip57.zap", &action)
+    }
+
     // ------------------------------------------------------------------
     // Account lifecycle
     // ------------------------------------------------------------------
@@ -283,7 +294,16 @@ impl AppRuntime {
             return;
         }
         if let (Ok(url_c), Ok(role_c)) = (CString::new(url), CString::new(role)) {
-            unsafe { nmp_ffi::nmp_app_add_relay(self.app, url_c.as_ptr(), role_c.as_ptr()) };
+            unsafe { nmp_app_add_relay(self.app, url_c.as_ptr(), role_c.as_ptr()) };
+        }
+    }
+
+    pub fn remove_relay(&self, url: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(url_c) = CString::new(url) {
+            unsafe { nmp_app_remove_relay(self.app, url_c.as_ptr()) };
         }
     }
 

@@ -971,6 +971,7 @@ dependencies = [
  "eframe",
  "egui",
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-content",
  "nmp-core",
  "nmp-ffi",
