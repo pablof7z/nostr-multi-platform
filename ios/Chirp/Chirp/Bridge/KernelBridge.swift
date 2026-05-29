@@ -150,6 +150,24 @@ final class KernelHandle {
         }
     }
 
+    func claimEvent(uri: String, consumerID: String) {
+        guard let raw else { return }
+        uri.withCString { uriPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_claim_event(raw, uriPtr, cidPtr)
+            }
+        }
+    }
+
+    func releaseEvent(uri: String, consumerID: String) {
+        guard let raw else { return }
+        uri.withCString { uriPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_release_event(raw, uriPtr, cidPtr)
+            }
+        }
+    }
+
     /// Signal that the author feed for `pubkey` is no longer visible.
     /// Tears down the author-subscription so the kernel's wire_subs count
     /// returns to baseline. Call from `.onDisappear` on the AuthorView
