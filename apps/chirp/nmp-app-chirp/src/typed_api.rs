@@ -9,6 +9,9 @@
 //! All methods return a [`Result<String, String>`] where success yields the
 //! action's correlation ID (a stable opaque identifier for correlating with
 //! action_stages snapshot projections), and error yields an error message.
+//!
+//! Pure action envelope builders are also exported as free functions, allowing
+//! tests and code to construct action JSON without a live kernel instance.
 
 use std::ffi::{CStr, CString};
 use serde_json::{json, Value};
@@ -98,15 +101,8 @@ impl ChirpClient {
     /// Returns the correlation ID on success; error if the action was rejected
     /// by the action registry.
     pub fn publish_note(&self, content: &str, reply_to_id: Option<&str>) -> Result<String, String> {
-        let action = json!({
-            "PublishNote": {
-                "content": content,
-                "reply_to_id": reply_to_id,
-                "target": "Auto"
-            }
-        })
-        .to_string();
-        self.dispatch_action("nmp.publish", &action)
+        let (namespace, action) = publish_note_action(content, reply_to_id);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// React to (e.g., like/repost) an event.
@@ -114,34 +110,26 @@ impl ChirpClient {
     /// `reaction` is a single character or emoji string (commonly "+" for
     /// like, "🔄" for repost, etc.).
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String, String> {
-        let action = json!({
-            "target_event_id": event_id,
-            "reaction": reaction
-        })
-        .to_string();
-        self.dispatch_action("nmp.nip25.react", &action)
+        let (namespace, action) = react_action(event_id, reaction);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Follow a user by pubkey (add to contacts list).
     pub fn follow(&self, pubkey: &str) -> Result<String, String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        self.dispatch_action("nmp.follow", &action)
+        let (namespace, action) = follow_action(pubkey);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Unfollow a user by pubkey (remove from contacts list).
     pub fn unfollow(&self, pubkey: &str) -> Result<String, String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        self.dispatch_action("nmp.unfollow", &action)
+        let (namespace, action) = unfollow_action(pubkey);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Send a direct message (NIP-17 private encrypted message).
     pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, String> {
-        let action = json!({
-            "recipient_pubkey": recipient_pubkey,
-            "content": content,
-        })
-        .to_string();
-        self.dispatch_action("nmp.nip17.send", &action)
+        let (namespace, action) = send_dm_action(recipient_pubkey, content);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Zap (send sats to) an event or user.
@@ -157,14 +145,8 @@ impl ChirpClient {
         target_event_id: &str,
         comment: &str,
     ) -> Result<String, String> {
-        let action = json!({
-            "recipient_pubkey": recipient_pubkey,
-            "amount_msats": amount_msats,
-            "target_event_id": target_event_id,
-            "comment": comment
-        })
-        .to_string();
-        self.dispatch_action("nmp.nip57.zap", &action)
+        let (namespace, action) = zap_action(recipient_pubkey, amount_msats, target_event_id, comment);
+        self.dispatch_action(&namespace, &action)
     }
 
     // ── Account lifecycle ──────────────────────────────────────────────
@@ -180,49 +162,26 @@ impl ChirpClient {
         picture: &str,
         relays: &[(&str, &str)],
     ) -> Result<String, String> {
-        let mut profile_fields = serde_json::Map::new();
-        if !name.is_empty() {
-            profile_fields.insert("name".to_string(), Value::String(name.to_string()));
-        }
-        if !about.is_empty() {
-            profile_fields.insert("about".to_string(), Value::String(about.to_string()));
-        }
-        if !picture.is_empty() {
-            profile_fields.insert("picture".to_string(), Value::String(picture.to_string()));
-        }
-
-        let relays_json: Vec<serde_json::Value> = relays
-            .iter()
-            .map(|(url, role)| json!({ "url": url, "role": role }))
-            .collect();
-
-        let action = json!({
-            "CreateAccount": {
-                "profile": Value::Object(profile_fields),
-                "relays": relays_json,
-                "mls": false
-            }
-        })
-        .to_string();
-        self.dispatch_action("nmp.create_account", &action)
+        let (namespace, action) = create_account_action(name, about, picture, relays);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Sign in with an nsec (secret key in Nostr format).
     pub fn sign_in_nsec(&self, secret: &str) -> Result<String, String> {
-        let action = json!({ "SignInNsec": { "secret": secret } }).to_string();
-        self.dispatch_action("nmp.sign_in_nsec", &action)
+        let (namespace, action) = sign_in_nsec_action(secret);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Switch the active account to the given pubkey.
     pub fn switch_account(&self, pubkey: &str) -> Result<String, String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        self.dispatch_action("nmp.switch_account", &action)
+        let (namespace, action) = switch_account_action(pubkey);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Remove an account by pubkey (deletes it from the keyring).
     pub fn remove_account(&self, pubkey: &str) -> Result<String, String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        self.dispatch_action("nmp.remove_account", &action)
+        let (namespace, action) = remove_account_action(pubkey);
+        self.dispatch_action(&namespace, &action)
     }
 
     /// Publish profile metadata (name, about, picture).
@@ -232,19 +191,171 @@ impl ChirpClient {
         about: &str,
         picture: &str,
     ) -> Result<String, String> {
-        let mut fields = serde_json::Map::new();
-        if !name.is_empty() {
-            fields.insert("name".to_string(), Value::String(name.to_string()));
-        }
-        if !about.is_empty() {
-            fields.insert("about".to_string(), Value::String(about.to_string()));
-        }
-        if !picture.is_empty() {
-            fields.insert("picture".to_string(), Value::String(picture.to_string()));
-        }
-        let action = json!({ "PublishProfile": { "fields": Value::Object(fields) } }).to_string();
+        let action = publish_profile_action(name, about, picture);
         self.dispatch_action("nmp.publish", &action)
     }
+}
+
+// ── Pure action envelope builders (no app pointer required) ─────────────────
+
+/// Build a PublishNote action envelope.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn publish_note_action(content: &str, reply_to_id: Option<&str>) -> (String, String) {
+    let action = json!({
+        "PublishNote": {
+            "content": content,
+            "reply_to_id": reply_to_id,
+            "target": "Auto"
+        }
+    })
+    .to_string();
+    ("nmp.publish".to_string(), action)
+}
+
+/// Build a React (like/repost) action envelope.
+///
+/// `reaction` is a single character or emoji string (commonly "+" for like,
+/// "🔄" for repost, etc.).
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn react_action(event_id: &str, reaction: &str) -> (String, String) {
+    let action = json!({
+        "target_event_id": event_id,
+        "reaction": reaction
+    })
+    .to_string();
+    ("nmp.nip25.react".to_string(), action)
+}
+
+/// Build a Follow action envelope (add to contacts list).
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn follow_action(pubkey: &str) -> (String, String) {
+    let action = json!({ "pubkey": pubkey }).to_string();
+    ("nmp.follow".to_string(), action)
+}
+
+/// Build an Unfollow action envelope (remove from contacts list).
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn unfollow_action(pubkey: &str) -> (String, String) {
+    let action = json!({ "pubkey": pubkey }).to_string();
+    ("nmp.unfollow".to_string(), action)
+}
+
+/// Build a SendDM (NIP-17 private encrypted message) action envelope.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn send_dm_action(recipient_pubkey: &str, content: &str) -> (String, String) {
+    let action = json!({
+        "recipient_pubkey": recipient_pubkey,
+        "content": content,
+    })
+    .to_string();
+    ("nmp.nip17.send".to_string(), action)
+}
+
+/// Build a Zap action envelope (send sats to an event or user).
+///
+/// `amount_msats` is in millisatoshis (divide by 1000 for sats).
+/// `comment` is an optional note to attach to the zap.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn zap_action(
+    recipient_pubkey: &str,
+    amount_msats: u64,
+    target_event_id: &str,
+    comment: &str,
+) -> (String, String) {
+    let action = json!({
+        "recipient_pubkey": recipient_pubkey,
+        "amount_msats": amount_msats,
+        "target_event_id": target_event_id,
+        "comment": comment
+    })
+    .to_string();
+    ("nmp.nip57.zap".to_string(), action)
+}
+
+/// Build a CreateAccount action envelope.
+///
+/// `relays` is a list of `(url, role)` tuples, where role is typically
+/// `"read"`, `"write"`, or `"read+write"`.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn create_account_action(
+    name: &str,
+    about: &str,
+    picture: &str,
+    relays: &[(&str, &str)],
+) -> (String, String) {
+    let mut profile_fields = serde_json::Map::new();
+    if !name.is_empty() {
+        profile_fields.insert("name".to_string(), Value::String(name.to_string()));
+    }
+    if !about.is_empty() {
+        profile_fields.insert("about".to_string(), Value::String(about.to_string()));
+    }
+    if !picture.is_empty() {
+        profile_fields.insert("picture".to_string(), Value::String(picture.to_string()));
+    }
+
+    let relays_json: Vec<serde_json::Value> = relays
+        .iter()
+        .map(|(url, role)| json!({ "url": url, "role": role }))
+        .collect();
+
+    let action = json!({
+        "CreateAccount": {
+            "profile": Value::Object(profile_fields),
+            "relays": relays_json,
+            "mls": false
+        }
+    })
+    .to_string();
+    ("nmp.create_account".to_string(), action)
+}
+
+/// Build a SignInNsec action envelope.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn sign_in_nsec_action(secret: &str) -> (String, String) {
+    let action = json!({ "SignInNsec": { "secret": secret } }).to_string();
+    ("nmp.sign_in_nsec".to_string(), action)
+}
+
+/// Build a SwitchAccount action envelope.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn switch_account_action(pubkey: &str) -> (String, String) {
+    let action = json!({ "pubkey": pubkey }).to_string();
+    ("nmp.switch_account".to_string(), action)
+}
+
+/// Build a RemoveAccount action envelope.
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn remove_account_action(pubkey: &str) -> (String, String) {
+    let action = json!({ "pubkey": pubkey }).to_string();
+    ("nmp.remove_account".to_string(), action)
+}
+
+/// Build a PublishProfile action envelope.
+///
+/// Returns the action JSON string (call with "nmp.publish" namespace).
+pub fn publish_profile_action(name: &str, about: &str, picture: &str) -> String {
+    let mut fields = serde_json::Map::new();
+    if !name.is_empty() {
+        fields.insert("name".to_string(), Value::String(name.to_string()));
+    }
+    if !about.is_empty() {
+        fields.insert("about".to_string(), Value::String(about.to_string()));
+    }
+    if !picture.is_empty() {
+        fields.insert("picture".to_string(), Value::String(picture.to_string()));
+    }
+    json!({ "PublishProfile": { "fields": Value::Object(fields) } }).to_string()
 }
 
 /// Parse a dispatch result envelope.
