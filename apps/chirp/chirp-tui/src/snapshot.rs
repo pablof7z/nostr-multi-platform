@@ -63,11 +63,16 @@ pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<Va
 /// During the compatibility window the host still renders from the generic
 /// `Value`-based code path. When the typed `NOFS` sidecar decodes successfully we
 /// re-serialize the decoded [`nmp_nip01::OpFeedSnapshot`] back into the generic
-/// projection slot. Because the generic `nmp.feed.home` projection is itself
-/// produced by `serde_json::to_value(RootFeedSnapshot)`, this round-trip is
-/// parity-by-construction: same type, same serde derives, identical `Value`
-/// shape — so the render path produces identical `TimelineRow`s from either
-/// source. It proves the typed decode is lossless without a render refactor.
+/// projection slot. Both sources carry the same type (`RootFeedSnapshot` /
+/// `OpFeedSnapshot`) with the same serde derives, so every *structured* field of
+/// the rendered `TimelineRow` is identical. The two `Value`s are NOT byte-shape
+/// identical, though: the generic projection rides through `nmp-core`'s snapshot
+/// codec, whose `encode_value` sorts object keys alphabetically, while this
+/// re-serialized typed value stays in struct-field order (`preserve_order`). The
+/// only render field that echoes raw key order is `TimelineRow::raw_card`, which
+/// is normalized to a canonical key order at construction (see
+/// `timeline::canonical_pretty`) so the rendered rows are identical regardless of
+/// transport. This proves the typed decode is lossless without a render refactor.
 ///
 /// When no typed payload is present (a pre-sidecar frame, or an unrecognized
 /// descriptor such as the retired NFTS schema — ADR-0037 Commitment 4), the
