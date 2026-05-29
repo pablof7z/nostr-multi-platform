@@ -46,9 +46,10 @@ use std::sync::Arc;
 
 use nmp_core::planner::{HintSource, LogicalInterest};
 use nmp_core::substrate::{
-    truncate_event_id, AppRelayMode, ClassRoutingPath, Direction, EventClass, OutboxRouter,
-    PublishTrace, RoutedRelaySet, RoutingContext, RoutingError, RoutingSource,
-    RoutingTraceObserver, SubscriptionTrace, UnsignedEvent, UserConfiguredCategory,
+    truncate_event_id, AppRelayMode, ClassRoutingPath, Direction, EventClass, LaneOutcome,
+    OutboxRouter, PublishTrace, RouteAttempt, RoutedRelaySet, RoutingContext, RoutingError,
+    RoutingLane, RoutingSource, RoutingTraceObserver, SubscriptionTrace, UnsignedEvent,
+    UserConfiguredCategory,
 };
 
 use crate::relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
@@ -199,6 +200,9 @@ impl OutboxRouter for GenericOutboxRouter {
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
         let explicit_targets_set = ctx.explicit_targets.is_some();
+        // D8: gate attempt accumulation on observer presence — Vec::new()
+        // is zero-alloc, but .push() allocates; skip it when nobody reads.
+        let tracing_active = self.trace_observer.is_some();
         let out = if let Some(explicit) = ctx.explicit_targets {
             // §3.4 — the override seam. Skip the generic algorithm.
             // Lane 5: classify `evt.kind` so the ClassRouted attribution
@@ -207,17 +211,36 @@ impl OutboxRouter for GenericOutboxRouter {
             explicit_set_for_kind(explicit, ctx.blocked_relays, evt.kind)
         } else {
             let mut out = RoutedRelaySet::new();
+            let mut attempts: Vec<RouteAttempt> = Vec::new();
 
             // Lane 1 — author's NIP-65 write set.
-            if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
-                for url in writes {
-                    if ctx.blocked_relays.contains(&url) {
-                        continue;
+            // Count admissible URLs (not net-new keys) so that a URL that
+            // also appeared in an earlier lane still reports Matched here.
+            {
+                let mut lane_count = 0usize;
+                if let Some(writes) = ctx.mailbox_cache.write_relays(&evt.pubkey) {
+                    for url in writes {
+                        if ctx.blocked_relays.contains(&url) {
+                            continue;
+                        }
+                        if !self.admission.is_admissible(&url) {
+                            continue;
+                        }
+                        out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+                        if tracing_active {
+                            lane_count += 1;
+                        }
                     }
-                    if !self.admission.is_admissible(&url) {
-                        continue;
-                    }
-                    out.add(url, RoutingSource::Nip65 { direction: Direction::Write });
+                }
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Nip65,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
                 }
             }
 
@@ -226,14 +249,30 @@ impl OutboxRouter for GenericOutboxRouter {
             // appearing as a hint AND in the NIP-65 write set will carry
             // both sources in its `BTreeSet<RoutingSource>` (additive via
             // `RoutedRelaySet::add`).
-            for url in relay_hints_from_tags(&evt.tags) {
-                if ctx.blocked_relays.contains(&url) {
-                    continue;
+            {
+                let mut lane_count = 0usize;
+                for url in relay_hints_from_tags(&evt.tags) {
+                    if ctx.blocked_relays.contains(&url) {
+                        continue;
+                    }
+                    if !self.admission.is_admissible(&url) {
+                        continue;
+                    }
+                    out.add(url, RoutingSource::Hint);
+                    if tracing_active {
+                        lane_count += 1;
+                    }
                 }
-                if !self.admission.is_admissible(&url) {
-                    continue;
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Hint,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
                 }
-                out.add(url, RoutingSource::Hint);
             }
 
             // Lane 4 — UserConfigured (active-account write). Only fires
@@ -243,8 +282,14 @@ impl OutboxRouter for GenericOutboxRouter {
             // session's active-write set MUST NOT be added — that would
             // leak the operator's account-keyed relays to events the
             // active account did not author.
+            //
+            // An attempt is only emitted when the lane is applicable (active
+            // account is present and matches the event pubkey). No attempt
+            // means "lane did not apply to this call", symmetrical with Lane 6
+            // not emitting an attempt for non-discovery kinds.
             if let Some(active) = ctx.active_account {
                 if active == &evt.pubkey {
+                    let mut lane_count = 0usize;
                     for url in ctx.session_keys.active_write.iter() {
                         if ctx.blocked_relays.contains(url) {
                             continue;
@@ -255,6 +300,19 @@ impl OutboxRouter for GenericOutboxRouter {
                                 UserConfiguredCategory::ActiveAccountWrite,
                             ),
                         );
+                        if tracing_active {
+                            lane_count += 1;
+                        }
+                    }
+                    if tracing_active {
+                        attempts.push(RouteAttempt {
+                            lane: RoutingLane::UserConfigured,
+                            outcome: if lane_count > 0 {
+                                LaneOutcome::Matched { count: lane_count }
+                            } else {
+                                LaneOutcome::Empty
+                            },
+                        });
                     }
                 }
             }
@@ -269,24 +327,56 @@ impl OutboxRouter for GenericOutboxRouter {
             // only to the stale relays — by always also asking the
             // operator's indexers we let a newer kind:10002 published on
             // a different relay still arrive.
+            //
+            // An attempt is emitted only for discovery kinds (lane applicable).
             if is_discovery_kind(evt.kind) {
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.indexer_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(url.clone(), RoutingSource::Indexer);
+                    if tracing_active {
+                        lane_count += 1;
+                    }
+                }
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Indexer,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
                 }
             }
 
             // Lane 7 — AppRelay fallback when no earlier lane resolved
             // anything (every prior lane empty / didn't fire).
+            // Lane 7 fires only when `out.is_empty()`, so lane_count equals
+            // net-new URLs — no overlap with earlier lanes possible.
             if out.is_empty() {
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.app_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(url.clone(), RoutingSource::AppRelay {
                         mode: AppRelayMode::Fallback,
+                    });
+                    if tracing_active {
+                        lane_count += 1;
+                    }
+                }
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::AppRelayFallback,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
                     });
                 }
             }
@@ -298,10 +388,32 @@ impl OutboxRouter for GenericOutboxRouter {
             if out.is_empty() {
                 return Err(RoutingError::Unroutable(evt.pubkey.clone()));
             }
-            out
+
+            // Stash the attempts into the out set's trace slot via a
+            // thread-local trick would be awkward; instead return them
+            // out-of-band through a temporary struct. The trace observer
+            // gets them via the `PublishTrace` summary below.
+            //
+            // Note: `attempts` was built while tracing_active; if the
+            // observer is None, `attempts` is empty (no pushes occurred).
+            if let Some(obs) = self.trace_observer.as_ref() {
+                obs.on_publish(
+                    PublishTrace {
+                        kind: evt.kind,
+                        author: evt.pubkey.clone(),
+                        event_id_short: truncate_event_id(None),
+                        explicit_targets_set,
+                        attempts,
+                    },
+                    &out,
+                );
+            }
+            return Ok(out);
         };
 
-        // V-51 — fire trace observer if installed (D8 gate).
+        // V-51 — fire trace observer if installed (D8 gate). This branch
+        // is the explicit_targets path (lane 5 / ClassRouted). No generic
+        // lane attempts; `attempts` is empty.
         if let Some(obs) = self.trace_observer.as_ref() {
             obs.on_publish(
                 PublishTrace {
@@ -309,6 +421,7 @@ impl OutboxRouter for GenericOutboxRouter {
                     author: evt.pubkey.clone(),
                     event_id_short: truncate_event_id(None),
                     explicit_targets_set,
+                    attempts: vec![],
                 },
                 &out,
             );
@@ -323,23 +436,61 @@ impl OutboxRouter for GenericOutboxRouter {
         ctx: &RoutingContext<'_>,
     ) -> Result<RoutedRelaySet, RoutingError> {
         let explicit_targets_set = ctx.explicit_targets.is_some();
-        let out = if let Some(explicit) = ctx.explicit_targets {
-            RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays)
-        } else {
+        // D8: gate attempt accumulation on observer presence.
+        let tracing_active = self.trace_observer.is_some();
+        if let Some(explicit) = ctx.explicit_targets {
+            // Explicit-targets path: no generic lane attempts.
+            let out = RoutedRelaySet::from_explicit(explicit, ctx.blocked_relays);
+            if let Some(obs) = self.trace_observer.as_ref() {
+                obs.on_subscription(
+                    SubscriptionTrace {
+                        interest_id: interest.id.0,
+                        kinds: interest.shape.kinds.iter().copied().collect(),
+                        authors_count: interest.shape.authors.len(),
+                        explicit_targets_set,
+                        attempts: vec![],
+                    },
+                    &out,
+                );
+            }
+            return Ok(out);
+        }
+
+        // Generic algorithm path (no explicit_targets).
+        {
             let mut out = RoutedRelaySet::new();
+            let mut attempts: Vec<RouteAttempt> = Vec::new();
 
             // Lane 1 — each author's NIP-65 read set.
-            for author in &interest.shape.authors {
-                if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
-                    for url in reads {
-                        if ctx.blocked_relays.contains(&url) {
-                            continue;
+            // Count admissible URLs so that a URL that also appeared in an
+            // earlier lane still reports Matched here.
+            {
+                let mut lane_count = 0usize;
+                for author in &interest.shape.authors {
+                    if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
+                        for url in reads {
+                            if ctx.blocked_relays.contains(&url) {
+                                continue;
+                            }
+                            if !self.admission.is_admissible(&url) {
+                                continue;
+                            }
+                            out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
+                            if tracing_active {
+                                lane_count += 1;
+                            }
                         }
-                        if !self.admission.is_admissible(&url) {
-                            continue;
-                        }
-                        out.add(url, RoutingSource::Nip65 { direction: Direction::Read });
                     }
+                }
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Nip65,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
                 }
             }
 
@@ -351,21 +502,54 @@ impl OutboxRouter for GenericOutboxRouter {
             // stack on top of lane 1 — never substitute. `UserConfigured`
             // hints (user typed a relay in app settings) attribute to
             // lane 4 below for symmetry with the publish path.
-            for hint in &interest.hints {
-                if ctx.blocked_relays.contains(&hint.url) {
-                    continue;
+            //
+            // Track Hint and Provenance separately for per-lane granularity.
+            // Count admissible passes (not net-new keys) for accuracy when
+            // a hint relay was already added by lane 1.
+            {
+                let mut hint_count = 0usize;
+                let mut prov_count = 0usize;
+                for hint in &interest.hints {
+                    if ctx.blocked_relays.contains(&hint.url) {
+                        continue;
+                    }
+                    if !self.admission.is_admissible(&hint.url) {
+                        continue;
+                    }
+                    let lane_src = match hint.source {
+                        HintSource::EventTag { .. } => RoutingSource::Hint,
+                        HintSource::Provenance { .. } => RoutingSource::Provenance,
+                        HintSource::UserConfigured => RoutingSource::UserConfigured(
+                            UserConfiguredCategory::Debug,
+                        ),
+                    };
+                    out.add(hint.url.clone(), lane_src.clone());
+                    if tracing_active {
+                        match &lane_src {
+                            RoutingSource::Hint => hint_count += 1,
+                            RoutingSource::Provenance => prov_count += 1,
+                            _ => {}
+                        }
+                    }
                 }
-                if !self.admission.is_admissible(&hint.url) {
-                    continue;
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Hint,
+                        outcome: if hint_count > 0 {
+                            LaneOutcome::Matched { count: hint_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Provenance,
+                        outcome: if prov_count > 0 {
+                            LaneOutcome::Matched { count: prov_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
                 }
-                let lane = match hint.source {
-                    HintSource::EventTag { .. } => RoutingSource::Hint,
-                    HintSource::Provenance { .. } => RoutingSource::Provenance,
-                    HintSource::UserConfigured => RoutingSource::UserConfigured(
-                        UserConfiguredCategory::Debug,
-                    ),
-                };
-                out.add(hint.url.clone(), lane);
             }
 
             // Lane 4 — UserConfigured (active-account read). Fires when
@@ -375,10 +559,15 @@ impl OutboxRouter for GenericOutboxRouter {
             // For multi-author interests that DON'T include the active
             // account, the active-read set is silent — we're reading
             // about other people, not from our own read mailbox.
+            //
+            // An attempt is only emitted when the lane is applicable (active
+            // account is in scope), symmetric with Lane 6 only emitting for
+            // discovery kinds.
             if let Some(active) = ctx.active_account {
                 let active_in_scope = interest.shape.authors.is_empty()
                     || interest.shape.authors.contains(active);
                 if active_in_scope {
+                    let mut lane_count = 0usize;
                     for url in ctx.session_keys.active_read.iter() {
                         if ctx.blocked_relays.contains(url) {
                             continue;
@@ -389,6 +578,19 @@ impl OutboxRouter for GenericOutboxRouter {
                                 UserConfiguredCategory::ActiveAccountRead,
                             ),
                         );
+                        if tracing_active {
+                            lane_count += 1;
+                        }
+                    }
+                    if tracing_active {
+                        attempts.push(RouteAttempt {
+                            lane: RoutingLane::UserConfigured,
+                            outcome: if lane_count > 0 {
+                                LaneOutcome::Matched { count: lane_count }
+                            } else {
+                                LaneOutcome::Empty
+                            },
+                        });
                     }
                 }
             }
@@ -402,24 +604,56 @@ impl OutboxRouter for GenericOutboxRouter {
             // would otherwise keep refreshing only against the stale
             // relays; asking the operator's indexers in parallel lets a
             // newer kind:10002 published elsewhere still arrive).
+            //
+            // An attempt is only emitted when the lane applies (discovery kinds).
             if interest.shape.kinds.iter().any(|k| is_discovery_kind(*k)) {
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.indexer_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(url.clone(), RoutingSource::Indexer);
+                    if tracing_active {
+                        lane_count += 1;
+                    }
+                }
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::Indexer,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
+                    });
                 }
             }
 
             // Lane 7 — AppRelay fallback when no earlier lane resolved
             // anything.
+            // Since `out.is_empty()` gate ensures no overlap with earlier
+            // lanes, lane_count equals net-new URLs.
             if out.is_empty() {
+                let mut lane_count = 0usize;
                 for url in ctx.session_keys.app_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
                     out.add(url.clone(), RoutingSource::AppRelay {
                         mode: AppRelayMode::Fallback,
+                    });
+                    if tracing_active {
+                        lane_count += 1;
+                    }
+                }
+                if tracing_active {
+                    attempts.push(RouteAttempt {
+                        lane: RoutingLane::AppRelayFallback,
+                        outcome: if lane_count > 0 {
+                            LaneOutcome::Matched { count: lane_count }
+                        } else {
+                            LaneOutcome::Empty
+                        },
                     });
                 }
             }
@@ -439,22 +673,25 @@ impl OutboxRouter for GenericOutboxRouter {
                     .unwrap_or_default();
                 return Err(RoutingError::Unroutable(pk));
             }
-            out
-        };
 
-        if let Some(obs) = self.trace_observer.as_ref() {
-            obs.on_subscription(
-                SubscriptionTrace {
-                    interest_id: interest.id.0,
-                    kinds: interest.shape.kinds.iter().copied().collect(),
-                    authors_count: interest.shape.authors.len(),
-                    explicit_targets_set,
-                },
-                &out,
-            );
+            if let Some(obs) = self.trace_observer.as_ref() {
+                obs.on_subscription(
+                    SubscriptionTrace {
+                        interest_id: interest.id.0,
+                        kinds: interest.shape.kinds.iter().copied().collect(),
+                        authors_count: interest.shape.authors.len(),
+                        explicit_targets_set,
+                        attempts,
+                    },
+                    &out,
+                );
+            }
+            return Ok(out);
         }
 
-        Ok(out)
+        // Both branches above always `return`; this is unreachable but
+        // required to satisfy the compiler's exhaustive-return check.
+        unreachable!("route_subscription: all control paths return above")
     }
 }
 
@@ -465,3 +702,7 @@ mod tests;
 #[cfg(test)]
 #[path = "router/tests_lanes.rs"]
 mod tests_lanes;
+
+#[cfg(test)]
+#[path = "router/tests_v75.rs"]
+mod tests_v75;

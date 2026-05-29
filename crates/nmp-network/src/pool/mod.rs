@@ -83,6 +83,9 @@ pub use types::{
     ClosedReason, HealthState, PoolConfig, PoolEvent, PoolSnapshot, PoolSnapshotRow, RelayFrame,
     RelayHandle, RelayHealth, RelayUrl, TransportError, WireFrame,
 };
+// V-58 — re-export so callers (nmp-core actor) can name the hint type through
+// the pool's public surface without reaching into relay_protocol directly.
+pub use crate::relay_protocol::BackoffClass;
 
 use inner::{wire_frame_to_command, PoolInner};
 
@@ -179,6 +182,23 @@ impl Pool {
         };
         drop(guard);
         tx.send(command).is_ok()
+    }
+
+    /// V-58 — deliver a one-shot [`BackoffClass`] hint to the worker for
+    /// handle `h`. A `RateLimited` hint causes the **next** socket reconnect
+    /// for this URL to use [`crate::relay_protocol::RELAY_RECONNECT_DELAY_RATE_LIMITED`]
+    /// (60 s + jitter) instead of the normal exponential curve.
+    ///
+    /// The hint is one-shot: the worker consumes and clears it on the next
+    /// disconnect so subsequent reconnects resume the normal schedule.
+    ///
+    /// Returns `true` iff the hint was successfully enqueued. Stale handles
+    /// and closed slots return `false` (same structural rejection as `send`).
+    pub fn set_backoff_hint(&self, h: RelayHandle, class: BackoffClass) -> bool {
+        match self.inner.lock() {
+            Ok(guard) => guard.set_backoff_hint_for(h, class),
+            Err(_) => false,
+        }
     }
 
     /// Per-handle health snapshot. Stale handle → `None`.

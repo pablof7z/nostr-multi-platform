@@ -23,17 +23,21 @@ pub(super) fn insert(
     received_at_ms: u64,
 ) -> Result<InsertOutcome, StoreError> {
     // 1. Structural validation.
+    // is_structurally_valid() now verifies hex chars, so any id_bytes()/pubkey_bytes()
+    // call after this gate is guaranteed to return Some.
     if !event.is_structurally_valid() {
+        // id may be malformed hex; callers of Rejected do not read the id field.
+        let id = event.id_bytes().unwrap_or([0u8; 32]);
         return Ok(InsertOutcome::Rejected {
-            id: event.id_bytes(),
-            reason: RejectReason::Malformed("invalid id/pubkey/sig length".into()),
+            id,
+            reason: RejectReason::Malformed("invalid id/pubkey/sig length or non-hex".into()),
         });
     }
 
     // 2. Ephemeral kinds — never stored.
     if event.is_ephemeral() {
         return Ok(InsertOutcome::Ephemeral {
-            id: event.id_bytes(),
+            id: event.id_bytes().expect("passed is_structurally_valid"),
         });
     }
 
@@ -47,13 +51,13 @@ pub(super) fn insert(
             // GC-reaper path. Mem does not store one here either — keep
             // parity: no tombstone on ExpiredOnArrival.
             return Ok(InsertOutcome::Rejected {
-                id: event.id_bytes(),
+                id: event.id_bytes().expect("passed is_structurally_valid"),
                 reason: RejectReason::ExpiredOnArrival,
             });
         }
     }
 
-    let id_bytes = event.id_bytes();
+    let id_bytes = event.id_bytes().expect("passed is_structurally_valid");
 
     let mut txn = inner
         .env
@@ -220,8 +224,12 @@ fn pre_query_existing(
     event: &RawEvent,
 ) -> Result<Option<EventId>, StoreError> {
     use nostr::prelude::*;
+    // pre_query_existing is only called after is_structurally_valid() passes,
+    // so pubkey_bytes() is guaranteed Some.
     if event.is_replaceable() {
-        let pk_bytes = event.pubkey_bytes();
+        let pk_bytes = event
+            .pubkey_bytes()
+            .expect("passed is_structurally_valid: pubkey is valid hex");
         let pk = match PublicKey::from_slice(&pk_bytes) {
             Ok(pk) => pk,
             Err(_) => return Ok(None),
@@ -244,7 +252,9 @@ fn pre_query_existing(
             Some(d) => d,
             None => return Ok(None),
         };
-        let pk_bytes = event.pubkey_bytes();
+        let pk_bytes = event
+            .pubkey_bytes()
+            .expect("passed is_structurally_valid: pubkey is valid hex");
         let pk = match PublicKey::from_slice(&pk_bytes) {
             Ok(pk) => pk,
             Err(_) => return Ok(None),
@@ -287,13 +297,17 @@ fn handle_kind5(
 ) -> Result<InsertOutcome, StoreError> {
     use nostr::prelude::*;
 
-    let kind5_id = event.id_bytes();
-    let kind5_pubkey = event.pubkey_bytes();
+    // handle_kind5 is only called after is_structurally_valid() passes.
+    let kind5_id = event.id_bytes().expect("passed is_structurally_valid");
+    let kind5_pubkey = event.pubkey_bytes().expect("passed is_structurally_valid");
     let kind5_at = event.created_at;
 
     // Process `e`-tag deletes — self-deletes only.
     for target_hex in event.e_tags() {
-        let target_id_bytes = RawEvent::hex_to_bytes32_owned(&target_hex);
+        // target_hex is from an e-tag value — may be malformed. Skip if undecidable.
+        let Some(target_id_bytes) = RawEvent::hex_to_bytes32_owned(&target_hex) else {
+            continue;
+        };
         // Author check: load target via fork; skip if author mismatch.
         let target_is_self = match inner
             .lmdb
@@ -436,13 +450,12 @@ fn handle_kind5(
 }
 
 /// Hex-eq for the deleter_pubkey check. `dp` is `[u8; 32]`; `pubkey_hex`
-/// is lowercase hex.
+/// is lowercase hex. Returns `false` for non-hex or wrong-length input.
 fn hex_eq(dp: &[u8; 32], pubkey_hex: &str) -> bool {
-    if pubkey_hex.len() != 64 {
-        return false;
+    match RawEvent::hex_to_bytes32_owned(pubkey_hex) {
+        Some(parsed) => &parsed == dp,
+        None => false,
     }
-    let parsed = RawEvent::hex_to_bytes32_owned(pubkey_hex);
-    &parsed == dp
 }
 
 // (delete_by_filter moved to `delete.rs` so this file fits the 500-LOC cap.)

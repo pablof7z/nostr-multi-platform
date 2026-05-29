@@ -451,6 +451,21 @@ pub(crate) struct RelayAuthCredentials {
     pub(crate) pubkey_hex: String,
 }
 
+/// V-58 — kernel-side backoff hint for a relay URL. The kernel populates
+/// `Kernel::pending_backoff_hints` when it classifies a NIP-01 CLOSED reason
+/// that warrants a long reconnect delay; the actor drains the queue and
+/// forwards each hint to the pool worker via `Pool::set_backoff_hint`.
+///
+/// The enum lives in `nmp-core` (not `nmp-network`) because the kernel
+/// owns the CLOSED-reason classification. The actor maps it to
+/// [`nmp_network::pool::BackoffClass`] before calling the pool.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BackoffHint {
+    /// Relay issued `CLOSED ["rate-limited: …"]` — use
+    /// `RELAY_RECONNECT_DELAY_RATE_LIMITED` on the next reconnect.
+    RateLimited,
+}
+
 /// The kernel owns all Nostr protocol state for the active app session.
 ///
 /// It is driven by the actor loop in `crate::relay` through a simple message-
@@ -515,6 +530,18 @@ pub struct Kernel {
     /// [`DiagnosticFirehoseState`].
     diagnostic_firehose: DiagnosticFirehoseState,
     deferred_outbound: VecDeque<OutboundMessage>,
+    /// V-58 — pending one-shot backoff hints the actor drains after each
+    /// `handle_message` call and forwards to the pool worker via
+    /// `Pool::set_backoff_hint`. Each entry is `(relay_url, class)`.
+    ///
+    /// `relay_url` is the raw delivering URL the CLOSED frame arrived on
+    /// (same key the pool uses to look up the worker slot). The kernel
+    /// populates this only for `CloseReason::RateLimited`; the actor is
+    /// responsible for mapping it to the correct pool handle via the
+    /// `relay_controls` map (the same way every other per-URL dispatch
+    /// works). Using the URL avoids a new handle-lookup API on Kernel and
+    /// keeps the field substrate-generic (no `RelayHandle` dependency).
+    pending_backoff_hints: Vec<(String, BackoffHint)>,
     seed_contacts: HashMap<String, Vec<String>>,
     /// Substrate NIP-65 (kind:10002) cache — step 3 of
     /// `docs/architecture/crate-boundaries.md` (V-50). Replaces the
@@ -1648,6 +1675,7 @@ impl Kernel {
             thread_view: ThreadViewState::default(),
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
+            pending_backoff_hints: Vec::new(),
             seed_contacts: HashMap::new(),
             #[cfg(any(test, feature = "test-support"))]
             mailbox_cache: Arc::new(TestInMemoryMailboxCache::new()),
@@ -2379,6 +2407,16 @@ impl Kernel {
     /// install fresh parsers.
     pub(crate) fn ingest_dispatcher_slot(&self) -> Arc<std::sync::RwLock<EventIngestDispatcher>> {
         Arc::clone(&self.ingest_dispatcher)
+    }
+
+    /// V-58 — drain any pending backoff hints enqueued during the last
+    /// `handle_message` call. The actor calls this immediately after each
+    /// inbound frame dispatch to forward hints to the pool worker.
+    ///
+    /// Returns an empty `Vec` (no allocation) when there are no hints.
+    /// The returned `Vec` is owned; the kernel's queue is cleared on return.
+    pub(crate) fn take_backoff_hints(&mut self) -> Vec<(String, BackoffHint)> {
+        std::mem::take(&mut self.pending_backoff_hints)
     }
 }
 

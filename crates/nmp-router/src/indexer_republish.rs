@@ -84,8 +84,12 @@ impl IndexerRepublishPolicy {
     }
 
     fn event_has_indexer_provenance(&self, raw: &RawEvent, indexer_urls: &[String]) -> bool {
+        // raw here comes from query results (StoredEvent.raw) — id is verified hex.
+        let Some(id_bytes) = raw.id_bytes() else {
+            return false;
+        };
         self.store
-            .provenance_for(&raw.id_bytes())
+            .provenance_for(&id_bytes)
             .map(|entries| {
                 entries
                     .iter()

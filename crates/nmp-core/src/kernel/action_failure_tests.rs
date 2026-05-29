@@ -149,7 +149,12 @@ fn signed(id: &str, author: &str) -> SignedEvent {
 /// ever registered. Mirrors `publish_terminal_status_tests::seed_kind10002`.
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_url: &str) {
     let raw = RawEvent {
-        id: format!("{:0<64}", format!("{}k10002", &author_pubkey[..2])),
+        // Use the author pubkey as the event id — guaranteed valid hex (64
+        // hex chars) and unique per author.  The old two-char prefix approach
+        // embedded a literal 'k' which is not a valid hex character; V-70
+        // strengthened `is_structurally_valid()` to check hex chars, so those
+        // synthetic events were rejected as Malformed.
+        id: author_pubkey.to_string(),
         pubkey: author_pubkey.to_string(),
         created_at: 1_700_000_000,
         kind: 10002,

@@ -19,9 +19,9 @@ use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 use crate::substrate::HostOpHandlerSlot;
-use nmp_network::pool::{Pool, PoolEvent, RelayFrame as PoolFrame};
+use nmp_network::pool::{BackoffClass, Pool, PoolEvent, RelayFrame as PoolFrame};
 
-use crate::kernel::RelayFrame;
+use crate::kernel::{BackoffHint, RelayFrame};
 
 /// Convert a [`nmp_network::pool::RelayFrame`] (the wire frame variant the
 /// pool's translator emits) into the kernel's wire-transport-agnostic
@@ -1700,6 +1700,20 @@ pub(super) fn handle_relay_event(
             let kernel_frame = pool_frame_to_relay_frame(frame);
             let mut outbound = kernel.handle_message(role, &url_str, kernel_frame);
             outbound.extend(kernel.pending_view_requests());
+            // V-58: drain any backoff hints the kernel enqueued during
+            // `handle_message` (e.g. from a rate-limited CLOSED) and forward
+            // each one to the pool worker. The hint is URL-keyed; we look up
+            // the handle via `relay_controls` the same way every other per-URL
+            // dispatch does. Stale or missing handles are silently ignored.
+            for (hint_url, hint) in kernel.take_backoff_hints() {
+                let canonical = CanonicalRelayUrl::parse_or_raw(&hint_url);
+                if let Some(control) = relay_controls.get(&canonical) {
+                    let class = match hint {
+                        BackoffHint::RateLimited => BackoffClass::RateLimited,
+                    };
+                    pool.set_backoff_hint(control.handle, class);
+                }
+            }
             if let Some(text) = raw_text {
                 let interceptors = relay_text_interceptor
                     .lock()

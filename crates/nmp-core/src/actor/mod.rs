@@ -1646,6 +1646,34 @@ pub fn run_actor_with_observers(
         // requests, and lifecycle triggers all survive in kernel state until
         // Start flushes them through spawn_missing_relays + the first
         // running-gated idle tick.
+
+        // V-64: drive wall-clock-gated sweeps (e.g. NIP-47 pending-payment
+        // TTL expiry) even when no relay frame arrives. The interceptor's
+        // default `on_idle_tick` is a no-op; the nmp-nip47 impl uses this
+        // hook to close expired pay_invoice correlations via
+        // `record_action_failure`. No running gate — sweeps must fire even
+        // before Start so that entries enqueued during connection setup are
+        // not orphaned if the relay never connects.
+        {
+            let interceptors = relay_text_interceptor
+                .lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
+            for interceptor in interceptors {
+                let extra = interceptor.on_idle_tick(&mut kernel);
+                if !extra.is_empty() {
+                    send_all_outbound(
+                        &mut relay_controls,
+                        &mut slot_to_url,
+                        &pool,
+                        &mut kernel,
+                        &mut next_relay_generation,
+                        extra,
+                    );
+                }
+            }
+        }
+
         if running {
             let pending = kernel.pending_view_requests();
             if !pending.is_empty() {

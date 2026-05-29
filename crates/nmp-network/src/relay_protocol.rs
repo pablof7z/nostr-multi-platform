@@ -10,6 +10,13 @@
 //!
 //! - [`RELAY_RECONNECT_DELAY_INITIAL`] / [`RELAY_RECONNECT_DELAY_MAX`] — the
 //!   exponential-backoff bounds for mid-session reconnects.
+//! - [`RELAY_RECONNECT_DELAY_RATE_LIMITED`] — the long-backoff base used when
+//!   the relay previously issued a NIP-01 `CLOSED ["rate-limited: …"]` frame
+//!   (V-58). Applied on the next socket reconnect regardless of whether V-92's
+//!   healthy-session reset would otherwise fire, so a rate-limiting relay is
+//!   never hammered at the same cadence as a plain transient drop.
+//! - [`BackoffClass`] — typed hint the kernel pushes down to the worker so
+//!   the next reconnect uses the appropriate schedule.
 //! - [`KEEPALIVE_IDLE_THRESHOLD`] / [`KEEPALIVE_PONG_TIMEOUT`] — the production
 //!   knobs the native worker passes to [`crate::keepalive::KeepaliveState`].
 //! - [`jittered_backoff`] — per-URL deterministic jitter that spreads
@@ -33,6 +40,36 @@ pub const RELAY_RECONNECT_DELAY_INITIAL: Duration = Duration::from_secs(3);
 
 /// Upper bound on the exponential reconnect-delay growth.
 pub const RELAY_RECONNECT_DELAY_MAX: Duration = Duration::from_secs(300);
+
+/// V-58 — long-backoff base for reconnects that follow a NIP-01
+/// `CLOSED ["rate-limited: …"]` frame. Replaces the normal exponential
+/// curve for one reconnect cycle; the curve resumes from this base
+/// (capped at [`RELAY_RECONNECT_DELAY_MAX`]) if the relay continues to
+/// rate-limit on the next session. Jitter ([`jittered_backoff`]) is
+/// still applied on top so simultaneous rate-limited relays don't
+/// thunder-herd at the same instant.
+pub const RELAY_RECONNECT_DELAY_RATE_LIMITED: Duration = Duration::from_secs(60);
+
+/// Typed backoff hint the kernel delivers to the relay worker after
+/// classifying a NIP-01 `CLOSED` reason (V-58). The worker stores the
+/// hint and applies it on the very next `RelayWorkerResult::Reconnect`
+/// branch — a one-shot override, cleared on consumption.
+///
+/// Lives in `nmp-network` (not `nmp-core`) because the worker needs
+/// the type directly; `nmp-core` maps its own `CloseReason::RateLimited`
+/// to this enum and pushes it down through the pool — the allowed
+/// direction (`nmp-core` → `nmp-network`, never the reverse).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BackoffClass {
+    /// Normal transient drop — use the existing exponential curve.
+    Transient,
+    /// Relay issued a `CLOSED ["rate-limited: …"]` frame — use the
+    /// long base of [`RELAY_RECONNECT_DELAY_RATE_LIMITED`] for the
+    /// next reconnect. Overrides the V-92 healthy-session reset so a
+    /// relay that was healthy-for-5-min and then rate-limits still
+    /// backs off long rather than reconnecting at the initial 3 s.
+    RateLimited,
+}
 
 /// T120b / G4 — emit a Ping after this much inbound silence.
 pub const KEEPALIVE_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
@@ -123,5 +160,20 @@ mod tests {
         assert!(is_permanent_error("Forbidden — bring NIP-42"));
         assert!(!is_permanent_error("502 Bad Gateway"));
         assert!(!is_permanent_error("connection reset by peer"));
+    }
+
+    // V-58 — BackoffClass variants are distinct and the rate-limited base
+    // is strictly greater than the normal initial delay.
+    #[test]
+    fn backoff_class_variants_are_distinct() {
+        assert_ne!(BackoffClass::Transient, BackoffClass::RateLimited);
+    }
+
+    #[test]
+    fn rate_limited_delay_exceeds_initial_delay() {
+        assert!(
+            RELAY_RECONNECT_DELAY_RATE_LIMITED > RELAY_RECONNECT_DELAY_INITIAL,
+            "rate-limited backoff must be longer than the transient initial delay"
+        );
     }
 }

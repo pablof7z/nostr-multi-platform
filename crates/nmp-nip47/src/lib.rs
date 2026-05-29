@@ -45,6 +45,6 @@ pub use protocol::{
 };
 pub use runtime::{
     active_wallet_runtime, install_wallet_runtime, new_wallet_runtime_handle, WalletRuntime,
-    WalletRuntimeHandle,
+    WalletRuntimeHandle, PENDING_PAYMENT_TTL_SECS,
 };
 pub use status::{format_sats_display, new_wallet_status_slot, WalletStatus, WalletStatusSlot};

@@ -15,10 +15,8 @@ use std::thread::{self, JoinHandle};
 
 use tungstenite::Message;
 
-use crate::relay_protocol::{KEEPALIVE_IDLE_THRESHOLD, KEEPALIVE_PONG_TIMEOUT};
-use crate::relay_worker::{
-    spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent,
-};
+use crate::relay_protocol::{BackoffClass, KEEPALIVE_IDLE_THRESHOLD, KEEPALIVE_PONG_TIMEOUT};
+use crate::relay_worker::{spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
 use crate::role::RelayRole;
 
 use super::types::{
@@ -210,6 +208,17 @@ impl PoolInner {
             return None;
         }
         state.command_tx.clone()
+    }
+
+    /// V-58 — deliver a one-shot [`BackoffClass`] hint to the worker for
+    /// handle `h`. The worker stores the hint and applies it on the next
+    /// socket disconnect; a stale handle or a closed slot is a no-op.
+    /// Returns `true` iff the hint was successfully enqueued.
+    pub(super) fn set_backoff_hint_for(&self, h: RelayHandle, class: BackoffClass) -> bool {
+        let Some(tx) = self.command_tx_for(h) else {
+            return false;
+        };
+        tx.send(RelayCommand::SetBackoffHint(class)).is_ok()
     }
 
     /// Health for a (potentially stale) handle. Stale handle → `None`.

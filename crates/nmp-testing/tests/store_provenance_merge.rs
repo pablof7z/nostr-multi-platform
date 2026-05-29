@@ -10,7 +10,7 @@ for_each_backend!(
     duplicate_merges_provenance_keeps_earliest,
     |h: &mut StoreHarness| {
         let ev = h.make_event(ALICE_HEX, 1, 1_000_000);
-        let id = ev.id_bytes();
+        let id = ev.id_bytes().expect("fixture: valid hex");
         let ev2 = ev.clone();
 
         let o1 = h.insert_raw(ev, "wss://a/", 1_000);
@@ -51,7 +51,7 @@ for_each_backend!(
     same_relay_duplicate_updates_last_seen,
     |h: &mut StoreHarness| {
         let ev = h.make_event(ALICE_HEX, 1, 1_000_000);
-        let id = ev.id_bytes();
+        let id = ev.id_bytes().expect("fixture: valid hex");
         let ev2 = ev.clone();
 
         h.insert_raw(ev, "wss://a/", 1_000);
@@ -76,7 +76,7 @@ for_each_backend!(
 
 for_each_backend!(provenance_sources_after_count, |h: &mut StoreHarness| {
     let ev = h.make_event(ALICE_HEX, 1, 1_000_000);
-    let id = ev.id_bytes();
+    let id = ev.id_bytes().expect("fixture: valid hex");
 
     let relays = ["wss://r1/", "wss://r2/", "wss://r3/"];
     for (i, relay) in relays.iter().enumerate() {

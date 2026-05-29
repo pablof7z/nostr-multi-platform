@@ -201,7 +201,9 @@ fn timeline_projection_respects_visible_limit() {
 
     for i in 0..(LIMIT + 4) {
         // Distinct 64-hex ids per note (vary the leading byte).
-        let id = format!("{:0<64}", format!("{:02x}note", i));
+        // The old format embedded literal "note" (non-hex chars); V-70
+        // strengthened `is_structurally_valid()` to reject non-hex ids.
+        let id = format!("{:064x}", i);
         ingest_note(&mut kernel, &id, ACCOUNT, 1_700_000_000 + i as u64, "n");
     }
 
