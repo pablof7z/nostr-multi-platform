@@ -1,5 +1,6 @@
 package org.nmp.android.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,18 +13,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -104,51 +114,73 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val opCards = s.modularTimeline.cards
     val hasOpFeed = opCards.isNotEmpty()
 
+    var showComposeDialog by remember { mutableStateOf(false) }
+
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
         if (claim) model.claimProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
 
     CompositionLocalProvider(LocalProfileClaimer provides claimer) {
-        Column(modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Chirp", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "rev ${s.rev} · ${if (hasOpFeed) opCards.size else s.items.size} cards",
-                    style = MaterialTheme.typography.labelSmall,
-                )
+        Box(modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Chirp", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "rev ${s.rev} · ${if (hasOpFeed) opCards.size else s.items.size} cards",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                HorizontalDivider()
+                if (!hasOpFeed && s.items.isEmpty()) {
+                    Placeholder(
+                        activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
+                        hasAccount = s.activeAccount.isNotEmpty(),
+                        hasSnapshot = snapshotCount > 0,
+                        lastErrorToast = s.lastErrorToast,
+                        onCreateAccount = { model.createLocalAccount() },
+                    )
+                } else if (hasOpFeed) {
+                    // Typed OP-centric feed: one row per ChirpRootCard.
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
+                            RootCardRow(root, itemLookup, model)
+                            HorizontalDivider()
+                        }
+                    }
+                } else {
+                    // Legacy item fallback — items rendered as standalone blocks.
+                    val legacyBlocks = s.items.map { StandaloneTimelineBlock(it.id) }
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        itemsIndexed(legacyBlocks, key = { index, block -> blockKey(index, block) }) { _, block ->
+                            TimelineBlockRow(block, itemLookup, emptyMap(), model)
+                            HorizontalDivider()
+                        }
+                    }
+                }
             }
-            HorizontalDivider()
-            if (!hasOpFeed && s.items.isEmpty()) {
-                Placeholder(
-                    activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
-                    hasAccount = s.activeAccount.isNotEmpty(),
-                    hasSnapshot = snapshotCount > 0,
-                    lastErrorToast = s.lastErrorToast,
-                    onCreateAccount = { model.createLocalAccount() },
-                )
-            } else if (hasOpFeed) {
-                // Typed OP-centric feed: one row per ChirpRootCard.
-                LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
-                        RootCardRow(root, itemLookup)
-                        HorizontalDivider()
-                    }
-                }
-            } else {
-                // Legacy item fallback — items rendered as standalone blocks.
-                val legacyBlocks = s.items.map { StandaloneTimelineBlock(it.id) }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(legacyBlocks, key = { index, block -> blockKey(index, block) }) { _, block ->
-                        TimelineBlockRow(block, itemLookup, emptyMap())
-                        HorizontalDivider()
-                    }
-                }
+            FloatingActionButton(
+                onClick = { showComposeDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "New note")
             }
         }
+    }
+
+    if (showComposeDialog) {
+        ComposeNoteDialog(
+            onDismiss = { showComposeDialog = false },
+            onPublish = { content ->
+                model.publishNote(content)
+                showComposeDialog = false
+            }
+        )
     }
 }
 
@@ -204,9 +236,14 @@ private fun Placeholder(
 private fun RootCardRow(
     root: ChirpRootCard,
     items: Map<String, TimelineItem>,
+    model: KernelModel? = null,
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        NoteRow(root.card.id, items, mapOf(root.card.id to root.card))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = model != null) { model?.openThread(root.card.id) }
+    ) {
+        NoteRow(root.card.id, items, mapOf(root.card.id to root.card), model = model)
         if (root.attribution.isNotEmpty()) {
             val label = root.attribution
                 .take(3)
@@ -226,10 +263,11 @@ private fun TimelineBlockRow(
     block: TimelineBlock,
     items: Map<String, TimelineItem>,
     cards: Map<String, ChirpEventCard>,
+    model: KernelModel? = null,
 ) {
     when (block) {
-        is StandaloneTimelineBlock -> NoteRow(block.eventId, items, cards)
-        is ModuleTimelineBlock -> ModuleBlockRow(block, items, cards)
+        is StandaloneTimelineBlock -> NoteRow(block.eventId, items, cards, model = model)
+        is ModuleTimelineBlock -> ModuleBlockRow(block, items, cards, model)
     }
 }
 
@@ -238,10 +276,11 @@ private fun ModuleBlockRow(
     block: ModuleTimelineBlock,
     items: Map<String, TimelineItem>,
     cards: Map<String, ChirpEventCard>,
+    model: KernelModel? = null,
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         block.events.forEachIndexed { index, eventId ->
-            NoteRow(eventId, items, cards)
+            NoteRow(eventId, items, cards, model = model)
             if (index < block.events.lastIndex) {
                 HorizontalDivider(Modifier.padding(start = 56.dp))
             }
@@ -264,6 +303,7 @@ internal fun NoteRow(
     cards: Map<String, ChirpEventCard>,
     embedDepth: Int = 0,
     embedded: Boolean = false,
+    model: KernelModel? = null,
 ) {
     val item = items[eventId]
     val card = cards[eventId]
@@ -301,7 +341,14 @@ internal fun NoteRow(
 
     val rowPadding = if (embedded) 10.dp else 12.dp
     Column(Modifier.fillMaxWidth().padding(rowPadding)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable(enabled = model != null && authorPubkey.isNotEmpty()) {
+                if (authorPubkey.isNotEmpty()) {
+                    model?.openAuthor(authorPubkey)
+                }
+            }
+        ) {
             Avatar(initials, color)
             Spacer(Modifier.size(8.dp))
             Column {
@@ -372,3 +419,50 @@ private fun blockKey(index: Int, block: TimelineBlock): String {
 }
 
 private fun String.nonEmptyOrNull(): String? = if (isEmpty()) null else this
+
+/**
+ * Minimal compose note dialog: text input + send button.
+ *
+ * Routes the note through KernelModel.publishNote, which dispatches the
+ * nmp.publish action and returns a correlation_id on success.
+ */
+@Composable
+private fun ComposeNoteDialog(
+    onDismiss: () -> Unit,
+    onPublish: (content: String) -> Unit,
+) {
+    var content by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Note") },
+        text = {
+            TextField(
+                value = content,
+                onValueChange = { content = it },
+                label = { Text("What's happening?") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                maxLines = 8,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (content.isNotBlank()) {
+                        onPublish(content)
+                    }
+                },
+                enabled = content.isNotBlank(),
+            ) {
+                Text("Publish")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}

@@ -100,6 +100,58 @@ class KernelModel : ViewModel() {
     }
 
     /**
+     * Publish a new note. Routes through dispatch_action("nmp.publish", ...).
+     *
+     * Returns the correlation_id if accepted, or null on error.
+     */
+    fun publishNote(
+        content: String,
+        replyToId: String? = null,
+        target: String = "Auto",
+    ): String? {
+        val actionJson = when {
+            replyToId != null -> {
+                """{"PublishNote":{"content":"${escapeJson(content)}","reply_to_id":"$replyToId","target":"$target"}}"""
+            }
+            else -> {
+                """{"PublishNote":{"content":"${escapeJson(content)}","reply_to_id":null,"target":"$target"}}"""
+            }
+        }
+        val response = bridge.dispatchAction("nmp.publish", actionJson)
+        return try {
+            val json = org.json.JSONObject(response)
+            json.optString("correlation_id").takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.d(TAG, "publishNote parse error: $response", e)
+            null
+        }
+    }
+
+    /**
+     * Open a thread by note ID. The kernel batches a kind:1 REQ and opens
+     * the timeline to display the thread.
+     */
+    fun openThread(noteId: String) {
+        bridge.openThread(noteId)
+    }
+
+    /**
+     * Open an author profile by pubkey. The kernel batches a kind:0 REQ and
+     * opens the timeline to display the author's notes.
+     */
+    fun openAuthor(pubkey: String) {
+        bridge.openAuthor(pubkey)
+    }
+
+    private fun escapeJson(s: String): String {
+        return s.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }
+
+    /**
      * Decode one FlatBuffers update frame.
      *
      * Extracts both the generic [KernelUpdate] (from `SnapshotFrame.payload`)
