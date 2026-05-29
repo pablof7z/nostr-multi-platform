@@ -976,6 +976,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-ffi",
+ "nmp-nip01",
  "serde",
  "serde_json",
  "zeroize",
