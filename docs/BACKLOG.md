@@ -307,6 +307,51 @@ written rationale. V-45 splits sub-item (c) into its own tracked item.
 
 ---
 
+### V-107 · Migrate gallery + marmot consumers off bespoke pull-snapshot symbols onto the canonical projection seam [HIGH · PRIORITIZED FOR AWARENESS · depends on V-37]
+
+**Surfaced 2026-05-29 (podcast-player polling incident).** A downstream app
+(`/Users/pablofernandez/Work/podcast-player`) independently reinvented the
+`nmp_app_*_snapshot` *pull* accessor + 500 ms `Task.sleep` poll loop — a D8
+violation — because the canonical reactive seam is **undocumented in the
+builder-guide** and the nearest in-repo examples are bespoke pull symbols. This
+is the same anti-pattern recurring (ADR-0025 / ADR-0037 deprecation target), and
+it will keep recurring in every new app until the live in-repo consumers are
+migrated and the positive pattern is taught.
+
+**The bespoke pull-snapshot cluster (this repo):**
+- `nmp_app_gallery_snapshot` (+`_free`) — **live** consumer
+  (`apps/nmp-gallery/nmp-app-gallery/src/lib.rs:164`; header
+  `apps/nmp-gallery/ios/NmpGallery/Bridge/NmpGallery.h:115-116`).
+- `nmp_marmot_snapshot` — **live** consumer (`ios/Chirp/Chirp/Bridge/NmpCore.h:487`).
+- `nmp_app_chirp_snapshot` — already `#[deprecated]` per ADR-0037; appears to
+  have **zero live callers** → removal candidate (verified + removed via the
+  2026-05-29 `snapshot-projection-cleanup` workflow, tracked separately).
+
+**The work tracked here (NOT auto-dispatched):** migrate the gallery and marmot
+*consumers* onto the canonical seam — `register_snapshot_projection` →
+`KernelSnapshot::projections` → pushed FlatBuffers `SnapshotFrame` read from
+`projections[key]` in the host `apply()` — then **remove** the bespoke pull
+symbols. Drive each deprecation to completion; no half-landed `#[deprecated]`
+state left behind (single-canonical-path doctrine). These are real shell changes
+and are deliberately gated on orchestrator review, not run by an autonomous agent.
+
+**Blocking prerequisite — V-37 + an unresolved architectural question:** V-37
+already tracks the missing affordances. Note the tension: V-37 item (b) frames
+the need as a generic *pull* path (`nmp_app_get_snapshot`), but the
+podcast-player incident is direct evidence that the architecturally-correct
+direction is the *push* registry (`register_snapshot_projection`), which is D8-
+clean and already exists. **The V-37 ADR must explicitly decide push-vs-pull for
+non-Chirp app projections before this migration begins.**
+
+**Related tracking (do not duplicate):** V-37 (HIGH — missing seam affordances +
+needs-ADR), PD-039 (bespoke `nmp_app_*` symbol retirement calendar; gallery/marmot
+pulls fall under it), PD-041 (Marmot formally in the v1 support matrix), V-87
+item 4 (stale `apps/nmp-gallery/tui/src/live.rs:161-195` citation — re-audit
+before touching gallery). Positive builder-guide guidance for the seam is being
+added by the same 2026-05-29 workflow (root-cause fix for the recurrence).
+
+---
+
 ### V-42 · NIP-23 / NIP-51 / NIP-94 / NIP-96 absent from crates and untracked [HIGH · v1-A for mute · post-v1 for rest]
 
 **Evidence:** `ls crates/` shows `nmp-nip{01,02,17,29,42,57,59,65}` only.
