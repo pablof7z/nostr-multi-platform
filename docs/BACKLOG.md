@@ -763,16 +763,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-75 · Router Lane 7 (AppRelay) catch-all silent — V-51 routing-trace cannot attribute empty-outbox causes [LOW · routing observability]
-
-**Verified:** `crates/nmp-router/src/router.rs:250-260` and `:377-388` — the AppRelay catch-all fires when all prior lanes (NIP-65, hint cache, recipient inbox, etc.) produce empty sets. No diagnostic is emitted for which lane attempted what; the catch-all is the silent terminator of an empty publish set.
-
-**Impact:** V-51's routing-trace inspector can show "event Y went to relay B via lane N" but cannot show "lanes 1–6 returned empty for reason R". When a publish appears to succeed against an app relay that the user didn't configure, the user has no way to find out why their NIP-65 write relays were skipped.
-
-**Correct fix:** each lane emits a typed `RouteAttempt { lane, outcome }` into the routing-trace ring buffer, including empty-set outcomes. The Lane 7 fallback explicitly attributes itself as `Lane::AppRelayFallback` so the V-51 inspector can show the empty-cause chain. This is a strict extension of V-51, not a duplicate.
-
----
-
 ### V-76 · `web/chirp` silently falls back to `InProcessNmpClient` on Worker construction failure [LOW · web production degradation]
 
 **Verified:** `web/chirp/src/nmp/client.ts:43-47` — Worker construction failure is caught and the client downgrades to `InProcessNmpClient`, which runs nmp-wasm on the main thread. No console warning, no telemetry, no UI signal.

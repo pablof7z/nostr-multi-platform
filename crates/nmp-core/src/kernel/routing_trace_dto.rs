@@ -71,8 +71,8 @@ use crate::kernel::routing_trace::{
     PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
 };
 use crate::substrate::{
-    AppRelayMode, ClassRoutingPath, Direction, EventClass, RoutingRelayUrl, RoutingSource,
-    UserConfiguredCategory,
+    AppRelayMode, ClassRoutingPath, Direction, EventClass, LaneOutcome, RouteAttempt, RoutingLane,
+    RoutingRelayUrl, RoutingSource, UserConfiguredCategory,
 };
 use std::collections::BTreeSet;
 
@@ -113,6 +113,7 @@ fn publish_entry_to_json(entry: &PublishTraceEntry) -> Value {
         "author": entry.trace.author,
         "event_id_short": entry.trace.event_id_short,
         "explicit_targets_set": entry.trace.explicit_targets_set,
+        "lane_attempts": attempts_to_json(&entry.trace.attempts),
         "urls": urls_to_json(&entry.urls),
     })
 }
@@ -124,6 +125,7 @@ fn subscription_entry_to_json(entry: &SubscriptionTraceEntry) -> Value {
         "kinds": entry.trace.kinds,
         "authors_count": entry.trace.authors_count,
         "explicit_targets_set": entry.trace.explicit_targets_set,
+        "lane_attempts": attempts_to_json(&entry.trace.attempts),
         "urls": urls_to_json(&entry.urls),
     })
 }
@@ -139,6 +141,33 @@ fn urls_to_json(urls: &[(RoutingRelayUrl, BTreeSet<RoutingSource>)]) -> Value {
             })
             .collect(),
     )
+}
+
+/// Render the per-lane attempt list (V-75) as a JSON array of objects.
+/// Each entry has `"lane"` (string discriminant) and `"outcome"` (`"Matched"`
+/// with a `count`, or `"Empty"`). Empty slice renders as an empty JSON array.
+fn attempts_to_json(attempts: &[RouteAttempt]) -> Value {
+    Value::Array(attempts.iter().map(attempt_to_json).collect())
+}
+
+fn attempt_to_json(a: &RouteAttempt) -> Value {
+    let lane = routing_lane_str(a.lane);
+    let outcome = match a.outcome {
+        LaneOutcome::Matched { count } => json!({ "kind": "Matched", "count": count }),
+        LaneOutcome::Empty => json!({ "kind": "Empty" }),
+    };
+    json!({ "lane": lane, "outcome": outcome })
+}
+
+fn routing_lane_str(lane: RoutingLane) -> &'static str {
+    match lane {
+        RoutingLane::Nip65 => "Nip65",
+        RoutingLane::Hint => "Hint",
+        RoutingLane::Provenance => "Provenance",
+        RoutingLane::UserConfigured => "UserConfigured",
+        RoutingLane::Indexer => "Indexer",
+        RoutingLane::AppRelayFallback => "AppRelayFallback",
+    }
 }
 
 /// Render a single [`RoutingSource`] lane as a `{ "kind": "...", ...}` object.
@@ -240,6 +269,7 @@ mod tests {
                 author: "alice".into(),
                 event_id_short: Some("abcdef012345".into()),
                 explicit_targets_set: false,
+                attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",
@@ -271,6 +301,7 @@ mod tests {
                 kinds: vec![1, 6, 7],
                 authors_count: 3,
                 explicit_targets_set: true,
+                attempts: vec![],
             },
             &make_routed("wss://r.example/", Src::Indexer),
         );
@@ -294,6 +325,7 @@ mod tests {
                 author: "alice".into(),
                 event_id_short: None,
                 explicit_targets_set: true,
+                attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",
@@ -368,6 +400,7 @@ mod tests {
                 author: "bob".into(),
                 event_id_short: Some("00aabbccddee".into()),
                 explicit_targets_set: false,
+                attempts: vec![],
             },
             &make_routed(
                 "wss://r.example/",

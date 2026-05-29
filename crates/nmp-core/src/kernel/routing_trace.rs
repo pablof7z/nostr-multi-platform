@@ -219,6 +219,7 @@ mod tests {
             author: "alice".into(),
             event_id_short: None,
             explicit_targets_set: false,
+            attempts: vec![],
         }
     }
 
@@ -228,6 +229,7 @@ mod tests {
             kinds: vec![1],
             authors_count: 1,
             explicit_targets_set: false,
+            attempts: vec![],
         }
     }
 
@@ -454,6 +456,7 @@ mod tests {
                 author: ALICE.to_string(),
                 event_id_short: crate::substrate::truncate_event_id(None),
                 explicit_targets_set: false,
+                attempts: vec![],
             },
             &routed,
         );
