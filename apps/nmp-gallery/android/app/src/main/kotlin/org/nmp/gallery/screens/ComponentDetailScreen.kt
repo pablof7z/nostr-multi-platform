@@ -51,10 +51,30 @@ fun ComponentDetailScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             when (section.id) {
+                "relay" -> RelayComponentSection(model = model, component = component)
                 "user" -> UserComponentPage(model = model, componentId = component.id)
                 "content" -> ContentComponentPage(model = model, componentId = component.id)
+                "embeds" -> EmbedsComponentSection(model = model, component = component)
                 else -> Text("Unknown section: ${section.id}")
             }
         }
     }
+}
+
+@Composable
+private fun RelayComponentSection(model: GalleryModel, component: RegistryComponent) {
+    Text(
+        text = "${component.label} — coming soon",
+        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(16.dp),
+    )
+}
+
+@Composable
+private fun EmbedsComponentSection(model: GalleryModel, component: RegistryComponent) {
+    Text(
+        text = "${component.label} — coming soon",
+        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(16.dp),
+    )
 }
