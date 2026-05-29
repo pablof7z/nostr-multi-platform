@@ -77,7 +77,9 @@ class GalleryModel : ViewModel() {
         pollJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val raw = try {
-                    bridge.nextUpdate(timeoutMs = 250L)
+                    // Block until a snapshot arrives (D8 — no polling).
+                    // Kernel emits at ~4 Hz; 30s timeout is defensive.
+                    bridge.nextUpdate(timeoutMs = 30_000L)
                 } catch (e: IllegalStateException) {
                     // V-57 P5: Rust JNI distinguishes RecvTimeoutError::Disconnected
                     // (channel closed — sender dropped) from RecvTimeoutError::Timeout

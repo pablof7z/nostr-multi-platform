@@ -91,7 +91,7 @@ class KernelBridge {
      *   The caller MUST stop polling — looping after a disconnect spins
      *   the CPU on a dead channel.
      */
-    fun nextUpdate(timeoutMs: Long = 250L): ByteArray? =
+    fun nextUpdate(timeoutMs: Long = 30_000L): ByteArray? =
         if (handle != 0L) nativeNextUpdate(handle, timeoutMs) else null
 
     /**
