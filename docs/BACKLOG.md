@@ -753,16 +753,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-72 · `LocalKeySigner` silently coerces overflowing event `kind` to `u16::MAX` (65535) [LOW · silent overflow]
-
-**Verified:** `crates/nmp-signers/src/signers/local.rs:191` — `u16::try_from(unsigned.kind).unwrap_or(u16::MAX)` for an `unsigned.kind: u32`. NIP-01 kinds beyond 65535 are non-spec but architecturally reachable; the signer silently rebinds to kind 65535.
-
-**Impact:** a caller that passes an out-of-range `kind` gets a signed event with a different kind than they asked for. The signature is valid for kind 65535, so the relay accepts it and the recipient sees the wrong event class. There is no warning at the signer boundary.
-
-**Correct fix:** return `SignerError::KindOutOfRange { kind: u32 }` instead of silently coercing. Callers that genuinely want kind 65535 must pass it as a typed `u16` upstream.
-
----
-
 ### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
 
 **Verified:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs:114` — null or malformed `viewer_pubkey` is replaced with `Pubkey::default()` (32 zero bytes) and the register call proceeds. No error is returned to Swift.
