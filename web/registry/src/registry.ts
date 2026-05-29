@@ -11,6 +11,7 @@ import type { Component, Section } from "./registry/types";
 import { contentComponents } from "./registry/content";
 import { userComponents } from "./registry/user";
 import { relayComponents } from "./registry/relay";
+import { embedComponents } from "./registry/embeds";
 
 export type { Component, ComponentFile, Platform, PlatformImpl, Section } from "./registry/types";
 export { PLATFORM_LABELS, PLATFORM_ORDER } from "./registry/types";
@@ -19,12 +20,14 @@ export const COMPONENTS: Component[] = [
   ...contentComponents,
   ...userComponents,
   ...relayComponents,
+  ...embedComponents,
 ];
 
 export const SECTIONS: Section[] = [
   { label: "Content", components: contentComponents },
   { label: "User", components: userComponents },
   { label: "Relay", components: relayComponents },
+  { label: "Embeds & Kinds", components: embedComponents },
 ];
 
 export function findComponent(routeId: string): Component | undefined {

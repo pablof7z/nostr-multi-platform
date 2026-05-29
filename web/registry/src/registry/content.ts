@@ -229,7 +229,7 @@ export const contentComponents: Component[] = [
           { source: "swiftui/content-kind-registry/NostrKindRegistry.swift", target: "Components/NostrContent/NostrKindRegistry.swift", role: "source", content: swiftuiNostrKindRegistrySwift },
           { source: "swiftui/content-kind-registry/EmbeddedEvent.swift", target: "Components/NostrContent/EmbeddedEvent.swift", role: "source", content: swiftuiEmbeddedEventSwift },
         ],
-        screenshots: ["swiftui-content-kind-registry-preview.png"],
+        screenshots: ["swiftui-content-kind-registry-preview.png", "content-kind-registry-ios-gallery-preview.png"],
         customization: [
           "Build the registry once at app start with `NostrKindRegistry.makeDefault()` then `registry.setArticle(ArticleEmbed())` / `registry.setHighlight(HighlightEmbed())` to swap in richer per-kind components.",
           "Inject it into the SwiftUI environment via `.environment(\\.nostrKindRegistry, registry)` — `NostrContentView` and `EmbeddedEvent` both read from there.",
@@ -274,7 +274,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-kind-30023/ArticleEmbed.swift", target: "Components/NostrContent/ArticleEmbed.swift", role: "source", content: swiftuiArticleEmbedSwift },
         ],
-        screenshots: ["swiftui-content-kind-30023-preview.png"],
+        screenshots: ["swiftui-content-kind-30023-preview.png", "content-kind-30023-ios-gallery-preview.png"],
         customization: [
           "Replace the hero `AsyncImage` with your own loader (Nuke / Kingfisher) — the rest of the layout stays untouched.",
           "Bind a tap callback by wrapping the returned `AnyView` with `.onTapGesture` at the call site; the renderer itself is purely declarative.",
@@ -314,7 +314,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-kind-9802/HighlightEmbed.swift", target: "Components/NostrContent/HighlightEmbed.swift", role: "source", content: swiftuiHighlightEmbedSwift },
         ],
-        screenshots: ["swiftui-content-kind-9802-preview.png"],
+        screenshots: ["swiftui-content-kind-9802-preview.png", "content-kind-9802-ios-gallery-preview.png"],
         customization: [
           "Tweak the accent colour by editing the literal `Color.yellow.opacity(0.7)` — it merges cleanly on `nmp update component`.",
           "Extend `sourceFooter` to render rich previews when an `e` tag's referenced note has already been claimed.",
