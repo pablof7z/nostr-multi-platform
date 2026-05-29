@@ -74,6 +74,39 @@ class KernelBridge {
     }
 
     /**
+     * Dispatch a named action through the action registry.
+     *
+     * Returns a JSON response:
+     * * `{"correlation_id":"<32-hex>"}` — the action was accepted and assigned
+     *   a correlation id.
+     * * `{"error":"<message>"}` — the action was rejected (invalid arguments,
+     *   unknown namespace, malformed JSON).
+     * * `"{}"` — null handle or internal error.
+     */
+    fun dispatchAction(namespace: String, actionJson: String): String =
+        if (handle != 0L) nativeDispatchAction(handle, namespace, actionJson) else "{}"
+
+    /**
+     * Open a thread by note ID. The kernel batches a corresponding
+     * kind:1 REQ and opens the thread timeline for rendering.
+     *
+     * D6: null handle or invalid note_id is a silent no-op.
+     */
+    fun openThread(noteId: String) {
+        if (handle != 0L) nativeOpenThread(handle, noteId)
+    }
+
+    /**
+     * Open an author profile by pubkey. The kernel batches a corresponding
+     * kind:0 REQ and opens the author timeline for rendering.
+     *
+     * D6: null handle or invalid pubkey is a silent no-op.
+     */
+    fun openAuthor(pubkey: String) {
+        if (handle != 0L) nativeOpenAuthor(handle, pubkey)
+    }
+
+    /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
      * must not store this value beyond the lifetime of this bridge.
@@ -95,5 +128,8 @@ class KernelBridge {
     private external fun nativeNextUpdate(handle: Long): ByteArray?
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
+    private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
+    private external fun nativeOpenThread(handle: Long, noteId: String)
+    private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeFree(handle: Long)
 }
