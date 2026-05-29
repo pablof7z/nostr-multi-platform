@@ -4,7 +4,7 @@
 //! have passed Schnorr signature verification can enter the store.
 
 use super::errors::VerifyError;
-use super::ids::{hex_nibble, hex_to_bytes32, EventId, PubKey};
+use super::ids::{hex_to_bytes32, EventId, PubKey};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -33,15 +33,23 @@ pub struct RawEvent {
 }
 
 impl RawEvent {
-    /// Decode hex id → 32 bytes. Returns zeroes on malformed input.
+    /// Decode hex id → 32 bytes.
+    ///
+    /// Returns `None` if `self.id` is not a valid 64-character hex string.
+    /// Call sites on verified events (post-Schnorr) may `.expect()` with a
+    /// clear message; call sites on unverified input must propagate or skip.
     #[must_use]
-    pub fn id_bytes(&self) -> EventId {
+    pub fn id_bytes(&self) -> Option<EventId> {
         hex_to_bytes32(&self.id)
     }
 
-    /// Decode hex pubkey → 32 bytes. Returns zeroes on malformed input.
+    /// Decode hex pubkey → 32 bytes.
+    ///
+    /// Returns `None` if `self.pubkey` is not a valid 64-character hex string.
+    /// Call sites on verified events (post-Schnorr) may `.expect()` with a
+    /// clear message; call sites on unverified input must propagate or skip.
     #[must_use]
-    pub fn pubkey_bytes(&self) -> PubKey {
+    pub fn pubkey_bytes(&self) -> Option<PubKey> {
         hex_to_bytes32(&self.pubkey)
     }
 
@@ -113,29 +121,26 @@ impl RawEvent {
             .collect()
     }
 
-    /// Returns true iff the event has plausible field lengths (non-empty id,
-    /// pubkey, sig). This is a cheap pre-filter only — cryptographic
-    /// verification is done by `VerifiedEvent::try_from_raw`.
+    /// Returns true iff the event has valid field lengths and hex-decodable
+    /// `id` and `pubkey` strings. This is a cheap pre-filter only —
+    /// cryptographic verification is done by `VerifiedEvent::try_from_raw`.
+    ///
+    /// Checking hex here ensures that `id_bytes()` / `pubkey_bytes()` are
+    /// guaranteed to return `Some` for any event that passes this gate.
     #[must_use]
     pub fn is_structurally_valid(&self) -> bool {
-        self.id.len() == 64 && self.pubkey.len() == 64 && self.sig.len() == 128
+        self.sig.len() == 128
+            && hex_to_bytes32(&self.id).is_some()
+            && hex_to_bytes32(&self.pubkey).is_some()
     }
 
-    /// Hex-decode this event's id. Used internally by mem/insert.rs.
-    pub(crate) fn hex_to_bytes32_owned(s: &str) -> [u8; 32] {
-        let mut out = [0u8; 32];
-        if s.len() != 64 {
-            return out;
-        }
-        for (i, chunk) in s.as_bytes().chunks(2).enumerate() {
-            if i >= 32 {
-                break;
-            }
-            if let (Some(&hi), Some(&lo)) = (chunk.first(), chunk.get(1)) {
-                out[i] = (hex_nibble(hi) << 4) | hex_nibble(lo);
-            }
-        }
-        out
+    /// Hex-decode an arbitrary 64-hex string to 32 bytes.
+    ///
+    /// Returns `None` on bad length or non-hex characters.
+    /// Used internally by `mem/insert.rs` and `lmdb/insert.rs` for tag-derived
+    /// hex strings that are not Schnorr-verified and may be malformed.
+    pub(crate) fn hex_to_bytes32_owned(s: &str) -> Option<[u8; 32]> {
+        hex_to_bytes32(s)
     }
 }
 

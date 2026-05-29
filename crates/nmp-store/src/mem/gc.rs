@@ -110,7 +110,8 @@ pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcRepor
             st.tombstones.insert(
                 id_hex.clone(),
                 TombstoneRow {
-                    target_id: ev.raw.id_bytes(),
+                    // ev.raw is a stored (verified) event — id_bytes() is guaranteed Some.
+                    target_id: ev.raw.id_bytes().expect("stored event has valid hex id"),
                     kind5_event_id: None,
                     deleter_pubkey: None,
                     deleted_at: now_secs,

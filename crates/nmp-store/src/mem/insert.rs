@@ -26,17 +26,21 @@ pub(super) fn insert(
     received_at_ms: u64,
 ) -> Result<InsertOutcome, StoreError> {
     // 1. Structural validation (sig check deferred to nostr crate wiring).
+    // is_structurally_valid() now verifies hex chars, so any id_bytes()/pubkey_bytes()
+    // call after this gate is guaranteed to return Some.
     if !event.is_structurally_valid() {
+        // id may be malformed hex; callers of Rejected do not read the id field.
+        let id = event.id_bytes().unwrap_or([0u8; 32]);
         return Ok(InsertOutcome::Rejected {
-            id: event.id_bytes(),
-            reason: RejectReason::Malformed("invalid id/pubkey/sig length".into()),
+            id,
+            reason: RejectReason::Malformed("invalid id/pubkey/sig length or non-hex".into()),
         });
     }
 
     // 2. Ephemeral: deliver to live consumers, do not store.
     if event.is_ephemeral() {
         return Ok(InsertOutcome::Ephemeral {
-            id: event.id_bytes(),
+            id: event.id_bytes().expect("passed is_structurally_valid"),
         });
     }
 
@@ -45,13 +49,13 @@ pub(super) fn insert(
         let now_secs = received_at_ms / 1000;
         if exp <= now_secs {
             return Ok(InsertOutcome::Rejected {
-                id: event.id_bytes(),
+                id: event.id_bytes().expect("passed is_structurally_valid"),
                 reason: RejectReason::ExpiredOnArrival,
             });
         }
     }
 
-    let id_bytes = event.id_bytes();
+    let id_bytes = event.id_bytes().expect("passed is_structurally_valid");
     let id_hex = event.id.clone();
     let mut st = store.lock()?;
 
@@ -188,7 +192,7 @@ fn handle_supersession(
     received_at_ms: u64,
     key: (String, u32, Option<String>),
 ) -> InsertOutcome {
-    let id_bytes = event.id_bytes();
+    let id_bytes = event.id_bytes().expect("passed is_structurally_valid");
     let id_hex = event.id.clone();
     let (pubkey_hex, kind, d_tag_filter) = key;
 
@@ -232,7 +236,9 @@ fn handle_supersession(
             || (event.created_at == existing_time && event.id < existing_id_str);
 
         if incoming_wins {
-            let replaced_id = hex_to_bytes32_owned(existing_hex);
+            // existing_hex is a key from st.events — it is a stored (verified) event id.
+            let replaced_id = RawEvent::hex_to_bytes32_owned(existing_hex)
+                .expect("stored event key is valid hex");
             st.events.remove(existing_hex);
             st.provenance.remove(existing_hex);
             let new_id = id_bytes;
@@ -250,9 +256,11 @@ fn handle_supersession(
                 replaced_id,
             }
         } else {
+            // existing_hex is a key from st.events — it is a stored (verified) event id.
             InsertOutcome::Superseded {
                 id: id_bytes,
-                current_id: hex_to_bytes32_owned(existing_hex),
+                current_id: RawEvent::hex_to_bytes32_owned(existing_hex)
+                    .expect("stored event key is valid hex"),
             }
         }
     } else {
@@ -278,7 +286,7 @@ fn handle_normal_insert(
     source: &RelayUrl,
     received_at_ms: u64,
 ) -> InsertOutcome {
-    let id_bytes = event.id_bytes();
+    let id_bytes = event.id_bytes().expect("passed is_structurally_valid");
     let id_hex = event.id.clone();
 
     if st.events.contains_key(&id_hex) {
@@ -311,7 +319,7 @@ fn handle_kind5_insert(
     source: &RelayUrl,
     received_at_ms: u64,
 ) -> InsertOutcome {
-    let kind5_id_bytes = event.id_bytes();
+    let kind5_id_bytes = event.id_bytes().expect("passed is_structurally_valid");
     let kind5_id_hex = event.id.clone();
     let kind5_pubkey = event.pubkey.clone();
     let kind5_at = event.created_at;
@@ -322,7 +330,8 @@ fn handle_kind5_insert(
             if existing.raw.pubkey != kind5_pubkey {
                 continue;
             }
-            let target_id = existing.raw.id_bytes();
+            // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
+            let target_id = existing.raw.id_bytes().expect("stored event has valid hex id");
             st.events.remove(&target_hex);
             st.provenance.remove(&target_hex);
             merge_tombstone(
@@ -331,7 +340,10 @@ fn handle_kind5_insert(
                 kind5_tomb(target_id, kind5_id_bytes, &kind5_pubkey, kind5_at, source),
             );
         } else {
-            let target_id = hex_to_bytes32_owned(&target_hex);
+            // target_hex is from an e-tag value — may be malformed. Skip if undecidable.
+            let Some(target_id) = RawEvent::hex_to_bytes32_owned(&target_hex) else {
+                continue;
+            };
             merge_tombstone(
                 &mut st.tombstones,
                 target_hex,
@@ -373,20 +385,20 @@ fn handle_kind5_insert(
         for target_hex in to_delete {
             if let Some(existing) = st.events.remove(&target_hex) {
                 st.provenance.remove(&target_hex);
+                // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
+                let target_id = existing
+                    .raw
+                    .id_bytes()
+                    .expect("stored event has valid hex id");
                 merge_tombstone(
                     &mut st.tombstones,
                     target_hex,
-                    kind5_tomb(
-                        existing.raw.id_bytes(),
-                        kind5_id_bytes,
-                        &kind5_pubkey,
-                        kind5_at,
-                        source,
-                    ),
+                    kind5_tomb(target_id, kind5_id_bytes, &kind5_pubkey, kind5_at, source),
                 );
             }
         }
         // Address tombstone for events arriving later (max-merge).
+        // [0u8;32] is a sentinel for "no primary id" on address-tombstones (documented).
         merge_tombstone(
             &mut st.addr_tombstones,
             addr_key,
@@ -422,7 +434,11 @@ fn kind5_tomb(
     TombstoneRow {
         target_id,
         kind5_event_id: Some(kind5_id),
-        deleter_pubkey: Some(hex_to_bytes32_owned(kind5_pubkey)),
+        // kind5_pubkey is from a verified event — hex is guaranteed valid.
+        deleter_pubkey: Some(
+            RawEvent::hex_to_bytes32_owned(kind5_pubkey)
+                .expect("kind5 event passed is_structurally_valid: pubkey is valid hex"),
+        ),
         deleted_at,
         sources: vec![source.clone()],
         origin: TombstoneOrigin::Kind5,
@@ -450,6 +466,3 @@ fn merge_tombstone(map: &mut HashMap<String, TombstoneRow>, key: String, incomin
     }
 }
 
-fn hex_to_bytes32_owned(s: &str) -> [u8; 32] {
-    RawEvent::hex_to_bytes32_owned(s)
-}

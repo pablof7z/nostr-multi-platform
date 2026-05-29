@@ -145,7 +145,7 @@ impl StoreHarness {
         source: &str,
     ) -> (EventId, InsertOutcome) {
         let ev = self.make_event(pubkey_hex, kind, created_at);
-        let id = ev.id_bytes();
+        let id = ev.id_bytes().expect("harness fixture: valid hex");
         let outcome = self.insert_raw(ev, source, created_at * 1000);
         (id, outcome)
     }
@@ -192,7 +192,7 @@ impl StoreHarness {
             .expect("scan_by_kind_time should not error");
         for ev_result in events_iter {
             let ev = ev_result.expect("event iteration should not error");
-            let id = ev.raw.id_bytes();
+            let id = ev.raw.id_bytes().expect("stored event has valid hex id");
             let prov = self
                 .store
                 .provenance_for(&id)
