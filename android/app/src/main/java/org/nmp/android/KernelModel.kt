@@ -172,13 +172,24 @@ class KernelModel : ViewModel() {
     // -------------------------------------------------------------------------
 
     /** Sign in with an nsec secret key. */
-    fun signInNsec(secret: String) = bridge.dispatchAction("nmp.sign_in_nsec", """{"SignInNsec":{"secret":"$secret"}}""")
+    fun signInNsec(secret: String) {
+        bridge.dispatchAction("nmp.sign_in_nsec", """{"SignInNsec":{"secret":"$secret"}}""")
+        bridge.openTimeline()
+    }
 
     /** Create a new local account with the given display name. */
-    fun createAccount(displayName: String) = bridge.createLocalAccount(displayName)
+    fun createAccount(displayName: String) {
+        bridge.createLocalAccount(displayName)
+        // Mirror desktop bridge: openTimeline after account creation so the
+        // kernel starts fetching notes for the new account immediately.
+        bridge.openTimeline()
+    }
 
     /** Switch the active account to the given pubkey. */
-    fun switchAccount(pubkey: String) = bridge.dispatchAction("nmp.switch_account", """{"pubkey":"$pubkey"}""")
+    fun switchAccount(pubkey: String) {
+        bridge.dispatchAction("nmp.switch_account", """{"pubkey":"$pubkey"}""")
+        bridge.openTimeline()
+    }
 
     /** Remove the account identified by the given pubkey. */
     fun removeAccount(pubkey: String) = bridge.dispatchAction("nmp.remove_account", """{"pubkey":"$pubkey"}""")
