@@ -23,7 +23,8 @@ use nmp_ffi::{
     nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
     nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
-    nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, NmpApp,
+    nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
+    nmp_app_cancel_publish, NmpApp,
 };
 use serde_json::{json, Value};
 use std::ffi::c_void;
@@ -380,6 +381,28 @@ impl AppRuntime {
         }
         if let Ok(url_c) = CString::new(url) {
             unsafe { nmp_app_remove_relay(self.app, url_c.as_ptr()) };
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Publish lifecycle actions
+    // ------------------------------------------------------------------
+
+    pub fn retry_publish(&self, handle: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(handle) {
+            unsafe { nmp_app_retry_publish(self.app, c.as_ptr()) };
+        }
+    }
+
+    pub fn cancel_publish(&self, handle: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(handle) {
+            unsafe { nmp_app_cancel_publish(self.app, c.as_ptr()) };
         }
     }
 

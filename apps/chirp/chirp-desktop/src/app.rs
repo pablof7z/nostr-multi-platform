@@ -16,7 +16,7 @@ use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
     AuthorViewPayload, RelayEditRow, Snapshot, ThreadViewPayload,
-    TimelineItem,
+    TimelineItem, ActionStageRow,
 };
 use nmp_chirp_config;
 
@@ -31,6 +31,7 @@ pub enum AppTab {
     Author(String),
     Settings,
     Diagnostics,
+    Outbox,
 }
 
 pub struct DesktopApp {
@@ -202,6 +203,12 @@ impl DesktopApp {
             {
                 self.tab = AppTab::Diagnostics;
             }
+            if ui
+                .selectable_label(matches!(current_tab, AppTab::Outbox), "📤  Outbox")
+                .clicked()
+            {
+                self.tab = AppTab::Outbox;
+            }
 
             ui.add_space(12.0);
             ui.separator();
@@ -244,6 +251,7 @@ impl DesktopApp {
                 }
                 AppTab::Settings => self.settings_view(ui, snap),
                 AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
+                AppTab::Outbox => self.outbox_panel(ui, snap),
             }
         });
     }
@@ -756,6 +764,79 @@ impl DesktopApp {
 
         ui.add_space(8.0);
         ui.label(format!("Snapshot revision: {}", snap.rev));
+    }
+
+    fn outbox_panel(&mut self, ui: &mut Ui, snap: &Snapshot) {
+        ui.heading("Publish Outbox");
+        ui.separator();
+
+        let action_stages: Vec<ActionStageRow> = snap.projection("action_stages").unwrap_or_default();
+
+        if action_stages.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(40.0);
+                ui.label(
+                    RichText::new("No pending publishes")
+                        .size(15.0)
+                        .weak(),
+                );
+            });
+            return;
+        }
+
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                egui::Grid::new("outbox_grid")
+                    .num_columns(4)
+                    .spacing([12.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("ID").small().strong());
+                        ui.label(RichText::new("Status").small().strong());
+                        ui.label(RichText::new("Reason").small().strong());
+                        ui.label(RichText::new("Actions").small().strong());
+                        ui.end_row();
+
+                        for row in &action_stages {
+                            // Truncated correlation ID
+                            let short_id = if row.correlation_id.len() > 16 {
+                                format!("{}…", &row.correlation_id[..13])
+                            } else {
+                                row.correlation_id.clone()
+                            };
+                            ui.label(RichText::new(short_id).monospace().small())
+                                .on_hover_text(&row.correlation_id);
+
+                            // Status
+                            let status_color = match row.stage.as_str() {
+                                "publishing" => Color32::from_rgb(249, 115, 22),
+                                "published" => Color32::from_rgb(74, 222, 128),
+                                "failed" | "error" => Color32::from_rgb(248, 113, 113),
+                                _ => Color32::from_rgb(148, 163, 184),
+                            };
+                            ui.label(RichText::new(&row.stage).color(status_color).small());
+
+                            // Reason (if present)
+                            if let Some(reason) = &row.reason {
+                                ui.label(RichText::new(reason).small().weak());
+                            } else {
+                                ui.label(RichText::new("—").small().weak());
+                            }
+
+                            // Action buttons
+                            ui.horizontal(|ui| {
+                                if ui.small_button("Retry").clicked() {
+                                    self.bridge.retry_publish(&row.correlation_id);
+                                }
+                                if ui.small_button("Cancel").clicked() {
+                                    self.bridge.cancel_publish(&row.correlation_id);
+                                }
+                            });
+
+                            ui.end_row();
+                        }
+                    });
+            });
     }
 
     fn status_color(connection: &str) -> (char, Color32) {
