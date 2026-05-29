@@ -658,7 +658,7 @@ once `nmp-codegen`'s Swift emitter is taught the new shape (the
 `gen modules --check` gate against `apps/fixture/nmp.toml` is currently
 green because the fixture types do not include these projection shapes).
 
-### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX]
+### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX] (related: GH #611 AccountsView polling, GH #612 op.wait blocks actor)
 
 **Verified:** `crates/nmp-core/src/actor/commands/identity.rs:826`, `:864`, and
 `:1019` still call the synchronous `sign_active` path while publishing the
@@ -686,7 +686,7 @@ a zeroizable key type or mutable erasure hook, then delete the partial-mitigatio
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
 
-### V-58 · Reconnect worker backoff is blind to relay close reason [LOW · reliability]
+### V-58 · Reconnect worker backoff is blind to relay close reason [LOW · reliability] (related: GH #616 — rate-limited CLOSED read side missing)
 
 **Verified:** `crates/nmp-core/src/kernel/ingest/closed.rs:27` and `:149` — two `// TODO` comments note that `last_close_reason` (populated from `CLOSED` relay frames, which may carry machine-readable prefixes such as `"rate-limited"` or `"slow-down"`) is not forwarded to the reconnect worker's backoff logic. The backoff schedule runs at a fixed/jitter cadence regardless of the close reason.
 
@@ -1289,6 +1289,322 @@ fallback. Needs a Kotlin NFCT decoder to wire the typed render. Non-blocking.
 Android `nmp/nip01` + `nmp/feed` generated Kotlin bindings (pinned `25.2.10`).
 Pre-existing-shaped gap; extend the glob so the Android NOFS/timeline/feed
 bindings are pin-checked in CI.
+
+---
+
+> **Provenance — V-87 … V-105 (2026-05-29 GH-issue audit, issues #600–#630).**
+> These nineteen entries fold the 31 open GitHub issues from the offline-first /
+> doctrine audit into Section 1. Every citation below was re-confirmed against
+> HEAD (`c5302157`) before being recorded — per the Section 1 invariant, no entry
+> asserts a live violation that the current tree does not exhibit. Where an issue's
+> originally-filed `file:line` had drifted, the citation is corrected here; where
+> the described violation is **already fixed at HEAD**, the entry says so and the
+> action is to close the stale GH issue rather than re-open a phantom violation.
+
+### V-87 · D1 startup violations cluster [HIGH · pre-v1 · issues #600–#606]
+
+The D1 / offline-first contract (`docs/product-spec/offline-first.md` §1–§6):
+the first rendered frame must not depend on relay I/O or relay connectivity.
+Seven candidate sites were filed; HEAD-verified status below.
+
+1. **#600 — ALREADY FIXED AT HEAD. Close the issue.**
+   `crates/nmp-core/src/actor/dispatch.rs:443-451` — the `Start` arm now calls
+   `emit_now` (`:444`) **before** `spawn_missing_relays` (`:445`), with the
+   explicit comment "first snapshot must reach the shell before any relay TCP
+   connection is dialed, so emit_now precedes spawn_missing_relays". The order
+   the issue asked for is already in place. No live violation; mark #600 resolved.
+2. `crates/nmp-core/src/actor/mod.rs:1176` [#601] — the actor blocks on
+   `command_rx.recv()` (`let first_command = match command_rx.recv()`) before
+   constructing the Kernel. No snapshot can emit until the host sends a command;
+   a host that waits for the first snapshot before sending `Start` deadlocks.
+   **Confirmed live.**
+3. `crates/nmp-core/src/actor/relay_mgmt.rs:178-188` [#602] — `maybe_send_startup`
+   (`:178`) early-returns unless `all_relays_connected(connected_relays)` (`:188`,
+   helper at `:51`) is true. One tardy lane (e.g. Indexer) delays Content-lane
+   startup REQs indefinitely. **Confirmed live.**
+4. **#603 — CITATION STALE. Re-scope before fixing.** The filed citation
+   `apps/nmp-gallery/tui/src/live.rs:161-195` (`bootstrap()` chaining six
+   `recv_timeout` loops) does **not** exist at HEAD: `live.rs` is 217 lines, has
+   no `bootstrap` fn and no `recv_timeout` call. The polling bootstrap appears to
+   have been refactored out. Re-audit the gallery TUI live path (`live.rs`,
+   `embed_host.rs`) for any remaining pre-first-frame blocking loop and re-file
+   with a HEAD-accurate citation, or close #603.
+5. `ios/Chirp/Chirp/Features/HomeFeedView.swift:101` [#604] — empty
+   `blocks`/`items` renders `ChirpPlaceholder(…)` until the first kernel tick;
+   the shell cannot distinguish "no events" from "not yet ticked". **Confirmed
+   live** (placeholder branch present; copy now differs from the originally-filed
+   string — see V-99).
+6. **#605 — CITATION STALE.** `ios/Chirp/Chirp/Features/ThreadScreen.swift` (202
+   lines) does **not** contain the string "Fetching notes from the relay network"
+   anywhere in the iOS tree, and the `threadView == nil` hard-gate at `:30-64` is
+   not present as filed. Re-audit `ThreadScreen.swift` for the current loading
+   gate and re-file with a HEAD-accurate `file:line`, or close #605. (See V-99 —
+   the user-facing-copy half of this issue is also stale.)
+7. `crates/nmp-core/src/kernel/types.rs:184` [#606] — `ProfileCard.has_profile:
+   bool` is consumed as a render gate at
+   `ios/Chirp/Chirp/Features/ProfileView.swift:142,168` (`profile?.hasProfile ==
+   true`). It trains callers to block fields on relay data. **Confirmed live**
+   (the iOS gate is real; the originally-filed gallery `live.rs:419` cite is
+   stale — `live.rs` is only 217 lines — so the gallery half needs re-citing).
+
+**Required fix:** Items 2–3 require kernel/actor changes to emit the first
+snapshot before any network I/O or relay-connectivity gate. Items 5, 7 require
+shell changes: render immediately with placeholders, never gate on relay state.
+Item 1 is done (close #600). Items 4, 6 need re-citation against HEAD or closure.
+
+### V-88 · View payload `state` string invites render-gating [MEDIUM · P2/D1 · issue #607]
+
+**Verified:** `crates/nmp-core/src/kernel/types.rs:240` (`AuthorViewPayload`,
+struct at `:238`) and `:277` (`ThreadViewPayload`, struct at `:274`) each carry
+`pub(super) state: String` with values `"queued"`/`"opening"`/`"ready"`. The
+`"ready"` value structurally invites `if state == "ready" { render() }` — the
+offline-first anti-pattern. Subscription-lifecycle state is an internal kernel
+concern and must not surface on the view payload as a render gate.
+
+**Correct fix:** Remove `state` from `AuthorViewPayload`/`ThreadViewPayload`;
+always emit whatever local data is available; move lifecycle state to a
+debug/diagnostics-only channel.
+
+### V-89 · Sentinel API values cause double-stamping — P2 type-safety gaps [MEDIUM · issues #608 #609 #610]
+
+Three builders require sentinel (zero/empty) inputs that callers must not replace
+with real values, with no type-level enforcement of the distinction:
+
+1. **#608 — CITATION STALE; re-scope to the real seam.** The filed cite
+   `crates/nmp-nip59/src/wrap.rs:41-55` (dual-public `gift_wrap` /
+   `gift_wrap_with_signer`) does **not** match HEAD: `wrap.rs` exposes only
+   `unwrap_gift_wrap` (`:33`); there is no `gift_wrap(sender: &Keys, …)` free
+   function. The signer seam is `gift_wrap_with_signer` at
+   `crates/nmp-nip59/src/signer_seal.rs:234` (re-exported `lib.rs:38`). PR #760
+   already made `wallet_connect` `pub(crate)`. Re-file #608 against the actual
+   `signer_seal.rs` API surface, or close it if the dual-path no longer exists.
+2. `crates/nmp-nip17/src/lib.rs:107` [#609] — `build_dm_rumor(input,
+   sender_pubkey: &str)` writes `pubkey: sender_pubkey.to_string()` (`:125`);
+   action-executor call sites must pass `sender_pubkey = ""` and a real value
+   double-stamps. No type enforcement. **Confirmed live.**
+3. `crates/nmp-nip57/src/build.rs:117-122`, `action.rs:200` [#610] —
+   `ZapRequestBuilder::build(author, created_at)` (`build.rs:117`, writes
+   `pubkey: author.into()` at `:155`) is called with `String::new(), 0` at
+   `action.rs:200`; `created_at = 0` is the documented D7 sentinel (`action.rs:199`)
+   and real values double-stamp. **Confirmed live.**
+
+**Correct fix:** Each function should accept `Option<T>` or use a builder/typestate
+split (`Unsigned*` type at action call time, signed variant post-actor-signing).
+
+### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
+
+Two D8 violations (no blocking on the actor thread):
+
+1. `crates/nmp-nip17/src/dm_send.rs:221` [#612] — `ProtocolCommand::run` calls
+   `op.wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)`, blocking up to the 12 s gift-wrap
+   budget for the remote-signer response on the actor thread, stalling the kernel
+   loop for all other commands. **Confirmed live.**
+2. `crates/nmp-ffi/src/capability.rs:56` (`nmp_app_dispatch_capability`), invoked
+   in-actor via `self.dispatch_capability(&req)` at
+   `crates/nmp-ffi/src/lib.rs:1524,1541` [#613] — the registered platform
+   capability callback runs synchronously on the actor thread; iOS Keychain
+   blocks hundreds of ms. **Confirmed live** (filed `lib.rs:1399` drifted; the
+   real in-actor call sites are `:1524,:1541`).
+
+**Note:** Related to V-54 (NIP-46 onboarding blocks the actor thread, at
+`identity.rs:826,864,1019`). V-90 covers two additional blocking paths not in
+V-54's scope.
+
+**Correct fix:** Move both operations off the actor thread. The protocol command
+must use a non-blocking async channel; capability dispatch must queue the callback
+and settle via a dedicated capability thread.
+
+### V-91 · Android nativeNextUpdate blocks calling thread 250ms per poll [MEDIUM · P2/P3 · issue #614]
+
+**Verified:** `crates/nmp-android-ffi/src/lib.rs:185` —
+`Java_org_nmp_android_KernelBridge_nativeNextUpdate*` (declared `:163,:172`) calls
+`s.rx.recv_timeout(Duration::from_millis(250))`, forcing Kotlin into a polling
+drain loop with a 250 ms blocking budget per call. iOS uses a push model (callback
+on the listener thread); Android should match. The `recv_timeout` polling pattern
+is a D8 violation at the FFI boundary.
+
+**Correct fix:** Replace the `recv_timeout` polling pattern with a push-based
+callback notification model matching the iOS `set_update_callback` architecture.
+
+### V-92 · Relay reconnect backoff never resets after a healthy session [LOW · reliability · issue #615]
+
+**Verified:** `crates/nmp-network/src/relay_worker/mod.rs:152` initializes
+`backoff = RELAY_RECONNECT_DELAY_INITIAL`; the mid-session-drop branch at
+`:183-184` carries the explicit comment "Do NOT reset backoff here", and backoff
+only ever doubles (capped at `RELAY_RECONNECT_DELAY_MAX`). No reset path exists
+after a sustained `Connected` state, so a relay that drops after a long healthy
+session re-enters at the maximum backoff. **Confirmed live.**
+
+**Correct fix:** Reset backoff to `RELAY_RECONNECT_DELAY_INITIAL` after a
+configurable minimum connected duration (e.g. 5 minutes). Related to V-58 (backoff
+blind to close reason) — that fix and this fix compose naturally.
+
+### V-93 · Kernel constructor blocks synchronously on LMDB open and pending load [MEDIUM · D1/P3 · issue #617]
+
+**Verified:** `crates/nmp-core/src/kernel/mod.rs:1020` (`build_event_store`, LMDB
+open) and `:1098` (`load_profile_intents`, which walks all pending publish records
+via `publish_store.load_pending()` at `:1102`) run synchronously in the construction
+path. A slow LMDB open or a large publish-intent backlog delays kernel construction
+and therefore blocks the first snapshot emit. Related to V-67 (LMDB silent
+degradation) but a distinct startup-latency issue. **Confirmed live.**
+
+**Correct fix:** Defer the publish-intent load to after the first snapshot is
+emitted; open LMDB asynchronously or on a background task that resolves before the
+first publish command needs it.
+
+### V-94 · 10+ must-call-before-`nmp_app_start` constraints have no type enforcement [MEDIUM · P3 · issue #618]
+
+**Verified:** multiple `crates/nmp-ffi/src/lib.rs` setup symbols must be wired
+before `nmp_app_start` for correct behavior, but ordering is documented in prose
+only — `nmp_app_set_storage_path` (slot doc `lib.rs:345`; omission permanently
+loses storage), `set_coverage_hook` (`lib.rs:1160`; a late call is silently
+ignored), `nmp_app_set_update_callback` (`lib.rs:207`), and the REQ-frame setters.
+No compile-time or runtime check prevents calling `Start` before these are wired.
+**Confirmed live.**
+
+**Correct fix:** Introduce a builder/configuration type (`NmpAppConfig`) that must
+be fully constructed before `nmp_app_start` can be called. At minimum, add a
+runtime assertion that emits a `KernelDiagnostic::MissingSetup` before the first
+tick.
+
+### V-95 · WalletRuntime initialization order not type-enforced — OnceLock error risk [MEDIUM · P2/P3 · issue #619]
+
+**Verified:** `crates/nmp-nip47/src/runtime.rs:107` (`install_wallet_runtime`)
+populates a process-global `OnceLock` read by `active_wallet_runtime()` (`:80`
+doc); `WalletConnectModule`/`WalletDisconnectModule`/`WalletPayInvoiceModule`
+`execute` read it and return a runtime error when `install_wallet_runtime` was
+never called (`:114` doc). The type system does not prevent dispatch before
+installation. **Confirmed live.**
+
+**Correct fix:** Pass `Arc<Mutex<Option<WalletRuntime>>>` as a field on each module
+struct (injected at registration time via `nmp-app-template`), eliminating the
+global and making the initialization order visible from the type signature.
+
+### V-96 · NIP-57 bolt11-fetch path consolidation [MEDIUM · P1 · issue #620] — PARTIALLY RESOLVED AT HEAD
+
+**Verified:** the two migration-artifact paths the issue targets are **already**
+`pub(crate)` at HEAD: `crates/nmp-nip57/src/lnurl/mod.rs:419`
+(`pub(crate) fn fetch_lnurl_invoice_blocking`) and `:559`
+(`pub(crate) fn fetch_bolt11_for_zap`). The architecturally-correct in-kernel path
+`FetchLnurlInvoiceCommand` is the only public bolt11 surface (`lib.rs:30`
+re-export; used by `action.rs:35`). The "three public paths" framing no longer
+holds — crate-external callers can only reach the protocol command.
+
+**Remaining work:** confirm no crate-internal caller still routes through the two
+`pub(crate)` blocking helpers outside `FetchLnurlInvoiceCommand::run`; if clean,
+close #620. If an internal bypass remains, delete it. This is verification-only,
+not a structural re-architecture.
+
+### V-97 · Four sign-in paths to the same "activate local account" operation [MEDIUM · P1 · issue #622]
+
+**Verified:** `crates/nmp-ffi/src/lib.rs:1496` (`sign_in_nsec`), `:1502`
+(`restore_local_nsec_from_keyring`), `:1518` (`sign_in_local_nsec_with_keyring`),
+and the C-ABI `nmp_app_signin_nsec` (`lib.rs:80`) all activate a local account
+with subtly different key-storage semantics (the latter three funnel into
+`sign_in_nsec`). No structural signal guides new app authors to the correct path.
+**Confirmed live.**
+
+**Correct fix:** Consolidate behind one public path (`sign_in_with_local_nsec(
+keyring: bool)`); make the others `pub(crate)` or document them as internal
+migration shims with explicit deprecation.
+
+### V-98 · iOS WalletView switches on raw Rust wire status strings [MEDIUM · P5/V-53 · issue #623]
+
+**Verified:** `ios/Chirp/Chirp/Features/WalletView.swift:71`
+(`status.status.capitalized` — Swift reformats a wire key for display), `:93`
+(`status.status == "connecting"` — branches on the raw protocol string), and
+`:69,:73` feeding `statusColor(_:)` (`:108`) which switches on the wire string
+(e.g. `case "connecting"` at `:111`) for theme color. **Confirmed live.** Three
+P5 violations.
+
+**Correct fix:** Rust projection emits `statusLabel: String`, `statusTone: String`
+(e.g. "warning"/"success"/"idle"). Related to V-53 (ADR-0032 iOS sweep) — fold
+this site into that sweep.
+
+### V-99 · iOS UI copy references the relay network [LOW · P5/D1 · issue #624] — CITATIONS STALE
+
+**Status:** both filed citations describe user-facing copy that does **not** exist
+at HEAD. `ios/Chirp/Chirp/Features/ThreadScreen.swift:58-59` does not contain
+"Fetching notes from the relay network" (no such string anywhere in the iOS tree),
+and `HomeFeedView.swift:113` no longer carries the "Loading your timeline…"
+subtitle as filed. The copy appears to have already been changed.
+
+**Required fix:** Re-audit the iOS loading/placeholder copy at HEAD
+(`HomeFeedView.swift` placeholder branch `:101`, `ThreadScreen.swift` loading
+state) for any remaining relay-dependency phrasing and re-file #624 with accurate
+`file:line`, or close it. The doctrine (never communicate relay-dependency to
+users; offline-first copy only) stands regardless. Paired with V-87 items 5–6.
+
+### V-100 · iOS WalletView validates the NIP-47 URI scheme in Swift [LOW · P5 · issue #625]
+
+**Verified:** `ios/Chirp/Chirp/Features/WalletView.swift:209-211` —
+`schemeLooksValid(_:)` checks `trimmed.lowercased().hasPrefix("nostr+walletconnect://")`
+in Swift and gates the connect button (`.disabled(!schemeLooksValid(uri))` at
+`:192`). Protocol URI validation belongs in Rust. **Confirmed live.**
+
+**Correct fix:** Remove the Swift-side validation. `dispatch_action(
+"nmp.nwc.connect", {"uri": …})` should validate and surface a typed
+`ActionError::InvalidNwcUri` in the action-lifecycle projection.
+
+### V-101 · iOS NIP-29 group relay URL hardcoded in Swift `@State` [LOW · P5 · issue #626]
+
+**Verified:** `ios/Chirp/Chirp/Features/NewGroupSheet.swift:26` —
+`@State private var publicRelayUrl = "wss://relay.groups.nip29.com"`, a
+compile-time third-party URL baked into Swift state. **Confirmed live.**
+
+**Correct fix:** Surface a default NIP-29 relay URL through the kernel
+configuration projection so it can be updated without a client release. Related to
+V-65 (NOSTRCONNECT_DEFAULT_RELAY_URL) — same category.
+
+### V-102 · `TimelineEventCard`/`ModularTimelineSnapshot` are app-domain types exported from a protocol crate [MEDIUM · D0 · issue #627]
+
+**Verified:** `crates/nmp-nip01/src/timeline_projection.rs:44`
+(`pub struct TimelineEventCard`) and `ModularTimelineSnapshot` in the same module
+embed app-layer concerns (display-name formatting, picture URLs, timeline
+windowing, feed cursor) but are exported from a protocol crate. "Timeline" and
+"feed card" are app nouns forbidden from NIP crates under D0. **Confirmed live.**
+
+**Correct fix:** Move these types to `crates/nmp-app-template/` or a new
+`crates/nmp-social-feed/` crate. The protocol crate retains only the raw event
+data types.
+
+### V-103 · Missing D1 bootstrap regression test [MEDIUM · test coverage · issue #628]
+
+**Verified:** `docs/product-spec/offline-first.md` §7 (line 80–82) mandates that
+every viewer-class app have a smoke test that boots the kernel with **zero relay
+connectivity** and verifies the first rendered frame is produced from local-store
+content alone. No `d1_bootstrap`-style test exists in `crates/nmp-testing/tests/`.
+**Confirmed: gap is live.**
+
+**Correct fix:** Add `crates/nmp-testing/tests/d1_bootstrap.rs` that (1) seeds LMDB
+with events, (2) boots the kernel with no relay URLs configured, (3) asserts
+`make_update` emits a non-empty snapshot before any relay connection is attempted.
+
+### V-104 · Six `e2e_full_pipeline` tests are unimplemented stubs [MEDIUM · test coverage · issue #629]
+
+**Verified:** `crates/nmp-testing/tests/e2e_full_pipeline.rs` — all six integration
+tests are `#[ignore]` stubs whose bodies are `todo!("implement once …")`
+(`:83,:123,:164,:203,:244,:292`). The milestones the stubs wait on (M2, M3, M8) are
+marked DONE in `docs/plan.md`. The six cover `cold_open_profile_view_full_pipeline`
+(`:61`), `kind3_update_rewires_subscriptions`, `publish_roundtrip_via_outbox`,
+`negentropy_skips_redundant_req` (`:181` — the core D1/D2 regression),
+`auth_required_for_read_flow`, and `monotonic_rev_under_concurrent_ingests`.
+**Confirmed live.**
+
+**Correct fix:** Implement each test. `negentropy_skips_redundant_req` in
+particular is load-bearing for D1/D2 doctrine and must pass before v1 ships.
+
+### V-105 · Test infra: `wait_for_snapshot_predicate` uses untyped substring scanning [LOW · test hygiene · issue #630]
+
+**Verified:** `crates/nmp-testing/tests/nip46_bunker_signing.rs:191` (and `:229,
+:237`) probe snapshot JSON blobs with `frame.contains("\"signer_kind\":\"nip46\"")`
+because no typed "signer registered" observable exists; and
+`crates/nmp-testing/tests/publish_unsigned_event.rs:146-149` runs a ~300 ms blind
+`recv_timeout` drain loop to "ensure the Start completes". **Confirmed live.**
+
+**Correct fix:** (1) Add an `ActorEvent::SignerRegistered` variant or a signer-state
+field in `UpdateEnvelope` so tests can use a typed `recv()`. (2) Add an
+`ActorCommand::Barrier` equivalent to replace the drain loop.
 
 ---
 
