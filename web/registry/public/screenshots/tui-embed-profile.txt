@@ -1,12 +1,12 @@
 ┌NmpGallery TUI / registry─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│┌Components──────────────────────┐ ┌Embedded Highlight───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐│
-││Relay                           │ │NIP-84 highlight as a styled embed                                                                                                           ││
-││  NostrRelayList                │ │component: tui/embed-highlight                                                                                                               ││
+│┌Components──────────────────────┐ ┌Embedded Profile─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐│
+││Relay                           │ │nostr:npub mention rendered inline                                                                                                           ││
+││  NostrRelayList                │ │component: tui/embed-profile                                                                                                                 ││
 ││                                │ │                                                                                                                                             ││
 ││User                            │ │                                                                                                                                             ││
-││  NostrAvatar                   │ │┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐││
-││  NostrProfileName              │ ││quote 4fb59c…02393a                                                                                                                        │││
-││  NostrNip05Badge               │ │└───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘││
+││  NostrAvatar                   │ │@PABLOF7z                                                                                                                                    ││
+││  NostrProfileName              │ │                                                                                                                                             ││
+││  NostrNip05Badge               │ │                                                                                                                                             ││
 ││  NostrNpubChip                 │ │                                                                                                                                             ││
 ││  NostrUserCard                 │ │                                                                                                                                             ││
 ││                                │ │                                                                                                                                             ││
@@ -20,9 +20,9 @@
 ││                                │ │                                                                                                                                             ││
 ││Embeds & Kinds                  │ │                                                                                                                                             ││
 ││  Embedded Article              │ │                                                                                                                                             ││
-││  Embedded Profile              │ │                                                                                                                                             ││
+││› Embedded Profile              │ │                                                                                                                                             ││
 ││  Embedded Note                 │ │                                                                                                                                             ││
-││› Embedded Highlight            │ │                                                                                                                                             ││
+││  Embedded Highlight            │ │                                                                                                                                             ││
 ││                                │ │                                                                                                                                             ││
 ││                                │ │                                                                                                                                             ││
 ││                                │ │                                                                                                                                             ││

@@ -45,9 +45,9 @@ struct DirectComponentView: View {
         case "user-avatar":
             UserAvatarPage(pubkey: SHOWCASE_PUBKEY_HEX)
         case "user-name":
-            UserProfileNamePage(profile: model.bestEffortProfile)
+            UserProfileNamePage(pubkey: SHOWCASE_PUBKEY_HEX)
         case "user-nip05":
-            UserNip05Page(profile: model.bestEffortProfile)
+            UserNip05Page(pubkey: SHOWCASE_PUBKEY_HEX)
         case "user-npub":
             UserNpubPage(profile: model.bestEffortProfile)
         case "user-card":

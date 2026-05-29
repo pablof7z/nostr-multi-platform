@@ -53,21 +53,29 @@ struct UserAvatarPage: View {
 
 // MARK: - user-name
 
-/// Renders the display-name component using the best-effort profile.
+/// Renders the display-name component using the relay-backed profile.
 ///
-/// When `displayName` is nil (kind:0 not yet arrived) the registry
-/// component falls back to the Rust-formatted `npubShort` — never a
-/// Swift-side abbreviation (aim.md §6.9).
+/// Includes a `NostrAvatar` to own the profile claim — this mirrors the
+/// real-world pattern where `NostrProfileName` appears alongside an avatar
+/// in a note row or profile header, with `NostrAvatar` owning the claim
+/// lifecycle. `NostrProfileName` just renders what it receives.
 struct UserProfileNamePage: View {
-    let profile: ProfileWire
+    let pubkey: String
+    @Environment(GalleryModel.self) private var model
 
     var body: some View {
         VStack(spacing: 16) {
             PageFrame(caption: "NostrProfileName(profile:)") {
-                NostrProfileName(profile: profile)
+                NostrProfileName(profile: model.bestEffortProfile)
             }
             PageFrame(caption: "Custom font") {
-                NostrProfileName(profile: profile, font: .title2)
+                NostrProfileName(profile: model.bestEffortProfile, font: .title2)
+            }
+            PageFrame(caption: "Context: NostrAvatar owns the claim") {
+                HStack(spacing: 10) {
+                    NostrAvatar(pubkey: pubkey, size: 32)
+                    NostrProfileName(profile: model.bestEffortProfile)
+                }
             }
         }
     }
@@ -77,19 +85,24 @@ struct UserProfileNamePage: View {
 
 /// Renders the NIP-05 badge component using the best-effort profile.
 ///
-/// When the profile has no `nip05` field the failable initializer
-/// returns nil and the first `PageFrame` shows the documented
-/// "(no NIP-05 on this profile)" hint — that is the correct showcase for the
-/// real-world behaviour, not a loading state. The second `PageFrame`
-/// renders the direct initializer only when the same relay-backed profile
-/// supplies a NIP-05 value.
+/// Renders the NIP-05 badge component using the relay-backed profile.
+///
+/// Includes a `NostrAvatar` to own the profile claim — same lifecycle
+/// pattern as `UserProfileNamePage`. The failable initializer returns nil
+/// when no NIP-05 is present on the profile, which is the correct
+/// degraded state, not a loading state.
 struct UserNip05Page: View {
-    let profile: ProfileWire
+    let pubkey: String
+    @Environment(GalleryModel.self) private var model
 
     var body: some View {
         VStack(spacing: 16) {
+            // NostrAvatar owns the profile claim for this page.
+            NostrAvatar(pubkey: pubkey, size: 0)
+                .frame(width: 0, height: 0)
+                .clipped()
             PageFrame(caption: "NostrNip05Badge(profile:)") {
-                if let badge = NostrNip05Badge(profile: profile) {
+                if let badge = NostrNip05Badge(profile: model.bestEffortProfile) {
                     badge
                 } else {
                     Text("(no NIP-05 on this profile)")
@@ -98,7 +111,7 @@ struct UserNip05Page: View {
                 }
             }
             PageFrame(caption: "Direct init from profile value") {
-                if let nip05 = profile.nip05 {
+                if let nip05 = model.bestEffortProfile.nip05 {
                     NostrNip05Badge(nip05: nip05)
                 } else {
                     Text("(no NIP-05 on this profile)")

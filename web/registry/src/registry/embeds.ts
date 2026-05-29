@@ -44,7 +44,7 @@ export const embedComponents: Component[] = [
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
         ],
-        screenshots: ["tui-embed-article.png"],
+        screenshots: ["tui-embed-article.png", "tui-embed-article-preview.png"],
         customization: [
           "Replace `DefaultArticleRenderer` by registering your own `KindRenderer` for `ArticleProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "Author byline pulls `author_display_name` straight from `ArticleProjection`; the Rust kernel resolves kind:0 enrichment before the snapshot reaches the TUI.",
@@ -66,7 +66,7 @@ export const embedComponents: Component[] = [
         longDescription:
           "Inline kind:0 profile embed — renders an npub mention as an avatar + display-name chip resolved from the kernel profile projection.",
         files: [],
-        screenshots: ["embed-profile-ios-gallery-preview.png"],
+        screenshots: ["embed-profile-ios-gallery-preview.png", "tui-embed-profile-preview.png"],
         customization: [],
       },
     },
@@ -85,7 +85,7 @@ export const embedComponents: Component[] = [
         longDescription:
           "Kind:1 short text note embed — claims the referenced `nevent` and renders the resolved note inline through the kind registry.",
         files: [],
-        screenshots: ["embed-note-ios-gallery-preview.png"],
+        screenshots: ["embed-note-ios-gallery-preview.png", "tui-embed-note-preview.png"],
         customization: [],
       },
     },
@@ -122,7 +122,7 @@ export const embedComponents: Component[] = [
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
         ],
-        screenshots: ["tui-embed-highlight.png"],
+        screenshots: ["tui-embed-highlight.png", "tui-embed-highlight-preview.png"],
         customization: [
           "Replace `DefaultHighlightRenderer` by registering your own `KindRenderer` for `HighlightProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "The source footer branches on `source_url` → `source_event_id` → `source_event_addr` in priority order; extend the match arms to render richer previews when the referenced event has been claimed.",
