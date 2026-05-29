@@ -25,13 +25,14 @@ use nmp_ffi::{
     nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
     nmp_app_set_capability_callback,
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_cancel_publish, nmp_app_signin_nsec, nmp_app_create_new_account,
-    nmp_app_switch_active, nmp_app_remove_account, NmpApp,
+    nmp_app_cancel_publish, NmpApp,
 };
 use nmp_app_chirp::typed_api::{
-    follow_action, publish_note_action, react_action, send_dm_action, unfollow_action,
+    publish_note_action, react_action, follow_action, unfollow_action,
+    send_dm_action, zap_action, create_account_action, sign_in_nsec_action,
+    switch_account_action, remove_account_action, publish_profile_action,
 };
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::ffi::c_void;
 
 unsafe extern "C" {
@@ -211,28 +212,18 @@ impl AppRuntime {
         profile: std::collections::HashMap<String, String>,
         relays: Vec<(String, String)>,
     ) {
-        if self.app.is_null() {
-            return;
-        }
-        let profile_json = json!(profile).to_string();
-        // nmp_app_create_new_account expects relays as [["url","role"],…].
-        // serde serialises Vec<(String,String)> to exactly that shape.
-        let relays_json = serde_json::to_string(&relays).unwrap_or_else(|_| "[]".to_string());
-        if let (Ok(profile_c), Ok(relays_c)) = (
-            CString::new(profile_json),
-            CString::new(relays_json),
-        ) {
-            nmp_app_create_new_account(self.app, profile_c.as_ptr(), relays_c.as_ptr(), false);
-        }
+        let name = profile.get("name").map(String::as_str).unwrap_or("");
+        let about = profile.get("about").map(String::as_str).unwrap_or("");
+        let picture = profile.get("picture").map(String::as_str).unwrap_or("");
+        let relays_ref: Vec<(&str, &str)> =
+            relays.iter().map(|(u, r)| (u.as_str(), r.as_str())).collect();
+        let (ns, action) = create_account_action(name, about, picture, &relays_ref);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn sign_in_nsec(&self, secret: String) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(secret) {
-            nmp_app_signin_nsec(self.app, c.as_ptr());
-        }
+        let (ns, action) = sign_in_nsec_action(&secret);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn connect_bunker(&self, relay_url: &str) -> Result<String, String> {
@@ -327,13 +318,8 @@ impl AppRuntime {
     }
 
     pub fn zap(&self, recipient_pubkey: &str, amount_msats: u64, target_event_id: &str) -> Result<String, String> {
-        let action = json!({
-            "recipient_pubkey": recipient_pubkey,
-            "amount_msats": amount_msats,
-            "target_event_id": target_event_id,
-            "comment": ""
-        }).to_string();
-        self.dispatch_action("nmp.nip57.zap", &action)
+        let (ns, action) = zap_action(recipient_pubkey, amount_msats, target_event_id, "");
+        self.dispatch_action(&ns, &action)
     }
 
     // ------------------------------------------------------------------
@@ -341,36 +327,17 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn switch_account(&self, pubkey: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(pubkey) {
-            nmp_app_switch_active(self.app, c.as_ptr());
-        }
+        let (ns, action) = switch_account_action(pubkey);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn remove_account(&self, pubkey: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(pubkey) {
-            nmp_app_remove_account(self.app, c.as_ptr());
-        }
+        let (ns, action) = remove_account_action(pubkey);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
-        let mut fields = serde_json::Map::new();
-        if !name.is_empty() {
-            fields.insert("name".to_string(), Value::String(name.to_string()));
-        }
-        if !about.is_empty() {
-            fields.insert("about".to_string(), Value::String(about.to_string()));
-        }
-        if !picture.is_empty() {
-            fields.insert("picture".to_string(), Value::String(picture.to_string()));
-        }
-        let action = json!({ "PublishProfile": { "fields": Value::Object(fields) } }).to_string();
-        self.dispatch_action("nmp.publish", &action)
+        self.dispatch_action("nmp.publish", &publish_profile_action(name, about, picture))
     }
 
     // ------------------------------------------------------------------
