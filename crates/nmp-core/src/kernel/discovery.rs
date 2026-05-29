@@ -3,9 +3,19 @@
 //!
 //! Three narrow entry points keep the kernel change reviewable:
 //! - [`Kernel::collect_unknown_refs`] — called from ingest right after an
-//!   event is persisted; feeds referenced-but-missing ids into
-//!   [`crate::subs::UnknownIds`] using the **borrowed visitor** (D8: zero
-//!   per-event allocation when every reference is already cached).
+//!   event is persisted; feeds referenced-but-missing ids (`p`/`e`/`q` tags)
+//!   into [`crate::subs::UnknownIds`] using the **borrowed visitor** (D8:
+//!   zero per-event allocation when every reference is already cached).
+//! - [`Kernel::collect_content_mention_pubkeys`] — called from ingest for
+//!   note kinds (kind:1 etc.) immediately after `collect_unknown_refs`. Scans
+//!   `event.content` for `nostr:npub1…` / `nostr:nprofile1…` URIs that appear
+//!   **only** in the content body (no matching `p`-tag) and feeds their pubkeys
+//!   into `UnknownIds` via the same `note_pubkey` path. D8-clean: the
+//!   `nostr:` substring guard short-circuits before any allocation on the
+//!   common path (content with no mentions). Implementor note: `nmp-content`
+//!   depends on `nmp-core` so importing the full tokenizer here would create a
+//!   dep cycle; the minimal `nostr:` URI extractor below reuses the existing
+//!   `parse_nostr_uri` free function that already lives in `nmp_core::nip21`.
 //! - [`Kernel::drain_unknown_oneshots`] — turns the deduped unknown set into
 //!   [`crate::subs::OneshotApi`] requests on the lifecycle's registry, AND
 //!   enqueues a [`crate::subs::CompileTrigger::ViewOpened`] so the planner's
@@ -32,6 +42,7 @@
 //! no `Result` is produced (D6).
 
 use super::{Kernel, OutboundMessage};
+use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{InterestScope, InterestShape};
 use crate::subs::CompileTrigger;
 
@@ -83,6 +94,66 @@ impl Kernel {
             |id| events.contains_key(id),
             |pk| profiles.contains_key(pk),
         );
+    }
+
+    /// Ingest seam (V-56): record profile pubkeys mentioned in `content` as
+    /// `nostr:npub1…` / `nostr:nprofile1…` URIs that do **not** appear in a
+    /// `p`-tag. These content-only mentions would otherwise render indefinitely
+    /// without a kind:0 fetch.
+    ///
+    /// D8: the `content.contains("nostr:")` guard exits before any allocation
+    /// on the common path (notes without `nostr:` URIs). When mentions are
+    /// present the only allocations are `to_string()` calls for pubkeys that
+    /// are genuinely missing from both `profiles` and the pending `unknown_ids`
+    /// set — the same cost as a `p`-tag hit in `collect_unknown_refs`.
+    ///
+    /// D6: parse failures are silently skipped (no panic, no `Result`).
+    ///
+    /// Implementation note: `nmp-content` depends on `nmp-core`, so reusing
+    /// the full regex tokenizer would create a dep cycle. The hand-rolled
+    /// scanner below reuses `parse_nostr_uri` (already in `nmp_core::nip21`)
+    /// and splits on ASCII whitespace / common delimiters to isolate tokens —
+    /// the same set of surface tokens the tokenizer's regex matches.
+    pub(in crate::kernel) fn collect_content_mention_pubkeys(&mut self, content: &str) {
+        // Fast-path: most notes contain no `nostr:` URIs. A single `contains`
+        // is O(n) but avoids all allocation and the borrow split below.
+        if !content.contains("nostr:") {
+            return;
+        }
+
+        // Split-borrow: `unknown_ids` is `&mut` while `profiles` is `&`.
+        let Self {
+            unknown_ids,
+            profiles,
+            ..
+        } = self;
+
+        // Tokenise on whitespace and common delimiters that can surround a
+        // `nostr:` URI in plain text (parentheses, commas, angle-brackets,
+        // newlines, zero-width joiners are irrelevant at the byte level because
+        // bech32 is alphanumeric only — splitting on these never truncates a
+        // valid bech32 string).
+        for raw in content.split(|c: char| c.is_ascii_whitespace() || matches!(c, ',' | '(' | ')' | '"' | '\'' | '<' | '>')) {
+            // Only try to parse tokens that look like a nostr: URI.  The
+            // leading 10 characters `nostr:npub1` / `nostr:npro` are the
+            // only profile-bearing prefixes we care about.
+            if !raw.starts_with("nostr:npub1") && !raw.starts_with("nostr:nprofile1") {
+                continue;
+            }
+            // Strip any trailing punctuation that is not valid bech32
+            // (e.g. the `.` in "...see nostr:npub1xxx.").
+            let trimmed = raw.trim_end_matches(|c: char| !c.is_alphanumeric());
+            match parse_nostr_uri(trimmed) {
+                Ok(NostrUri::Profile { pubkey, .. }) => {
+                    unknown_ids.note_pubkey(&pubkey, |pk| profiles.contains_key(pk));
+                }
+                // Event / Address refs in content are already covered by
+                // collect_unknown_refs via `e`/`q` tags (Article VII: no
+                // speculative future-proofing).
+                Ok(NostrUri::Event { .. } | NostrUri::Address { .. }) => {}
+                Err(_) => {}
+            }
+        }
     }
 
     /// Drain the unknown-id set up to [`Self::MAX_DISCOVERY_CONCURRENCY`]

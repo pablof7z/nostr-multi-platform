@@ -162,6 +162,13 @@ impl Kernel {
         // when every reference is already cached (D8). The actor turns the
         // deduped set into OneshotApi fetches via `drain_unknown_oneshots`.
         self.collect_unknown_refs(&event.tags);
+        // V-56: extend discovery to profile mentions that appear ONLY in
+        // event.content (nostr:npub1…/nostr:nprofile1… URIs with no matching
+        // p-tag). Must happen before `event.content` is moved into StoredEvent
+        // below. D8-clean: the `nostr:` substring guard in
+        // `collect_content_mention_pubkeys` short-circuits before any alloc on
+        // the common (no-mention) path.
+        self.collect_content_mention_pubkeys(&event.content);
         self.request_profile_for_rendered_note(&event.pubkey);
 
         let cached = StoredEvent {

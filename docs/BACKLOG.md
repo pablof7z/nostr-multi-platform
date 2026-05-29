@@ -649,25 +649,6 @@ exists, do not claim full zeroization for local-key accounts.
 
 ---
 
-### V-56 · Content-level profile mentions do not feed profile discovery [MEDIUM · v1 UX]
-
-**Verified:** `crates/nmp-core/src/kernel/ingest/timeline.rs:132-138` only feeds
-event tags (`p`/`e`/`q`) and the note author into discovery/profile fetch.
-`crates/nmp-core/src/subs/unknown_ids.rs:121-128` already exposes
-`UnknownIds::note_pubkey`, and `crates/nmp-content/src/tokenizer.rs:206-210`
-extracts `nostr:npub1...` / `nostr:nprofile1...` mentions, but no production
-ingest path connects those content-extracted pubkeys to `UnknownIds`.
-
-**Impact:** a visible `nostr:npub1...` mention that is not also present in a
-`p` tag may render indefinitely without a kind:0 profile fetch.
-
-**Correct fix:** add a D8-clean content-mention demand producer that extracts
-profile pubkeys during ingest and records them through the existing
-`UnknownIds::note_pubkey` path. The kind:0 re-fetch after kind:10002 arrival is
-already implemented via `refresh_profile_after_mailbox`; do not duplicate that
-part of the deleted scratch plan.
-
----
 
 ### V-106 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
 
