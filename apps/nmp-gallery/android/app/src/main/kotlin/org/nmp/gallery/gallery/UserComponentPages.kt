@@ -2,6 +2,7 @@ package org.nmp.gallery.gallery
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -59,12 +60,51 @@ fun UserComponentPage(
 @Composable
 private fun UserComponentBody(componentId: String, pubkey: String, profile: ProfileWire) {
     when (componentId) {
-        "user-avatar" -> NostrAvatar(pubkey = pubkey, size = 80.dp)
+        "user-avatar" -> UserAvatarShowcase(pubkey = pubkey)
         "user-name" -> NostrProfileName(profile = profile)
         "user-nip05" -> NostrNip05Badge(profile = profile)
         "user-npub" -> NostrNpubChip(profile = profile)
         "user-card" -> NostrUserCard(profile = profile)
         else -> Text("Unknown user component: $componentId")
+    }
+}
+
+@Composable
+private fun UserAvatarShowcase(pubkey: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Default size variant
+        SectionCard(caption = "NostrAvatar(pubkey:)") {
+            NostrAvatar(pubkey = pubkey, size = 80.dp)
+        }
+
+        // Smaller sizes variant
+        SectionCard(caption = "Smaller sizes") {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(8.dp),
+            ) {
+                NostrAvatar(pubkey = pubkey, size = 32.dp)
+                NostrAvatar(pubkey = pubkey, size = 48.dp)
+                NostrAvatar(pubkey = pubkey, size = 64.dp)
+            }
+        }
+
+        // Identicon fallback variant (empty string forces identicon)
+        SectionCard(caption = "Identicon fallback (no picture URL)") {
+            NostrAvatar(pubkey = pubkey, avatarUrl = "", size = 80.dp)
+        }
+    }
+}
+
+@Composable
+private fun SectionCard(caption: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        content()
     }
 }
 
