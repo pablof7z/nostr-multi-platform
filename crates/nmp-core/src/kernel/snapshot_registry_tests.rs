@@ -142,6 +142,11 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "relay_diagnostics",
             "relay_edit_rows",
             "relay_role_options",
+            // pre-merged profile map: pubkey -> ProfileCard, merged once in
+            // Rust from claimed_profiles > author_view.profile > mention_profiles
+            // (each only-if-absent). Always present (D1) so consumers can delete
+            // their per-platform merge code.
+            "resolved_profiles",
             // settings-hub view (relays subtitle pre-format)
             "settings_hub",
             // D5: `author_view`, `thread_view`, `timeline`, `inserted`,

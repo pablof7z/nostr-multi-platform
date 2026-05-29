@@ -1,4 +1,4 @@
-use super::super::{ClaimedEventDto, Kernel, SettingsHubSummary, TimelineItem};
+use super::super::{ClaimedEventDto, Kernel, ProfileCard, SettingsHubSummary, TimelineItem};
 
 impl Kernel {
     /// Collect the snapshot `projections` map: every host-registered
@@ -298,6 +298,47 @@ impl Kernel {
             serde_json::to_value(&claimed_events)
                 .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
         );
+        // `resolved_profiles` — pre-merged profile map for all consumers.
+        // Precedence: claimed_profiles (highest) → author_view.profile
+        // (only-if-absent) → mention_profiles (only-if-absent). Shipping the
+        // merge once here lets every shell delete its per-platform merge code
+        // (e.g. the TUI `LiveProfileMap` three-step ingest) and just read this
+        // key. Always present as `{}` when empty (D1); BTreeMap for
+        // deterministic key ordering (snapshot diff stability), mirroring
+        // `claimed_profiles` / `claimed_events`.
+        {
+            let mut resolved: std::collections::BTreeMap<String, ProfileCard> =
+                std::collections::BTreeMap::new();
+
+            // 1. claimed_profiles — highest precedence.
+            for (pubkey, card) in &claimed_profiles {
+                resolved.insert(pubkey.clone(), card.clone());
+            }
+
+            // 2. author_view.profile — only-if-absent (claimed wins). Gated on
+            //    `has_profile` so a placeholder author card never displaces a
+            //    real claimed card and never seeds an empty entry.
+            if let Some(av) = self.author_view() {
+                if av.profile.has_profile {
+                    resolved
+                        .entry(av.profile.pubkey.clone())
+                        .or_insert_with(|| av.profile.clone());
+                }
+            }
+
+            // 3. mention_profiles — only-if-absent (lowest precedence).
+            for (pubkey, m) in &mention_profiles {
+                resolved
+                    .entry(pubkey.clone())
+                    .or_insert_with(|| ProfileCard::from_mention(pubkey, m));
+            }
+
+            projections.insert(
+                "resolved_profiles".to_string(),
+                serde_json::to_value(&resolved)
+                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
+            );
+        }
         projections
     }
 }

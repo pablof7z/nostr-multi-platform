@@ -190,6 +190,25 @@ pub(super) struct ProfileCard {
     pub(super) lnurl: Option<String>,
 }
 
+impl ProfileCard {
+    /// Build a card from a lightweight `mention_profiles` payload.
+    /// `nip05`/`about` are empty, `lnurl` is None — the mention projection
+    /// never carries them. `has_profile` is true iff at least one display
+    /// field is present.
+    pub(in crate::kernel) fn from_mention(pubkey: &str, m: &MentionProfilePayload) -> Self {
+        Self {
+            pubkey: pubkey.to_string(),
+            npub: crate::display::to_npub(pubkey),
+            display_name: m.display_name.clone(),
+            picture_url: m.picture_url.clone(),
+            nip05: String::new(),
+            about: String::new(),
+            has_profile: m.display_name.is_some() || m.picture_url.is_some(),
+            lnurl: None,
+        }
+    }
+}
+
 /// Dispatch spec for a `ProfileAction` that fires a real write.
 ///
 /// When this is `Some`, the shell wires the button to

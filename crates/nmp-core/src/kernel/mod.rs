@@ -62,6 +62,8 @@ mod discovery_tests;
 mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
 mod event_claim_tests;
+#[cfg(test)]
+mod resolved_profiles_tests;
 // V-59 rung 1 (#4) — `event_claim_released` ring projection + the
 // in-process `EventClaimReleasedObserver` registration. `pub(crate)` so the
 // trait is reachable for the struct field type in this module.
