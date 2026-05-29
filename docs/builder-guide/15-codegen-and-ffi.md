@@ -136,6 +136,97 @@ bindings dir. Any doc or agent claiming UniFFI ships today, or claiming JSON
 remains a runtime fallback after the FlatBuffers migration, is drift — file it
 into [27 — Doc/code discrepancies](27-discrepancies.md).
 
+## How to add a snapshot projection to your app
+
+> **Disambiguation — read this first.** This guide uses the word *projection*
+> ~30 times for the **ViewModule** system (a typed reactive view: `Spec` →
+> `Payload`/`Delta`, `on_projection_changed` — see [06](06-reactivity-contract.md)).
+> This section is a **different mechanism**: a **snapshot projection** — a named
+> slice of app/module state delivered under its key in
+> `KernelSnapshot.projections[key]`. The word's existing presence in this guide
+> does **not** cover this; they are unrelated. Everywhere below, "snapshot
+> projection" means the `projections` map, never the ViewModule view-delta.
+
+**What it is.** A snapshot projection is a named slice of app- or module-owned
+state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.publish.status`,
+`nmp.nip57.zaps`, `nmp.follow_list`), that rides the kernel's reactive snapshot
+push frame ([06 — Reactivity contract](06-reactivity-contract.md)) into the host.
+The kernel pushes a **whole snapshot every emit tick**; each registered
+projection appears under its key in that snapshot's `projections` map
+(`crates/nmp-core/src/kernel/types.rs:868`). The host reads `projections[key]`
+in its apply callback. **No polling, no pull symbol** — the value arrives on the
+same frame as every other field.
+
+### The seam it rides — `register_snapshot_projection`
+
+Registration lands on the permanent C-ABI seam
+`nmp_app_register_snapshot_projection` (Rust method
+`NmpApp::register_snapshot_projection`, `crates/nmp-ffi/src/lib.rs:1109`; C-ABI
+export `crates/nmp-ffi/src/snapshot.rs:83`; header declaration
+`ios/Chirp/Chirp/Bridge/NmpCore.h:255`). You give it a key and a closure
+`Fn() -> serde_json::Value`; on every snapshot tick the kernel runs the closure
+and appends the result to `KernelSnapshot.projections` under your key. Keys are
+last-writer-wins; the handful of **kernel-reserved built-in keys**
+(`publish_queue`, `accounts`, `profile`, the views cluster — see
+`types.rs:846-867`) always win over a host registration of the same name.
+
+This seam is **structurally permanent**, not transitional: it is listed under
+"Structural permanent (26) — keep, freeze-locked" in
+`docs/architecture-audit/ffi-deprecation-calendar.md:61` (entry at `:152`). It is
+the output-side counterpart to the action-registry seam — the supported way a
+non-social app extends the snapshot **without editing `nmp-core`'s typed
+fields**. ADR-0037's typed FlatBuffers projection reuses this exact seam.
+
+**Register it from your module's `register`/wiring fn.** The canonical exemplar
+is `nmp-nip29`: its module wiring fn registers the projector directly
+(`crates/nmp-nip29/src/register.rs:66`):
+
+```rust
+// crates/nmp-nip29/src/register.rs — inside the module's wiring fn.
+// `projection` is the module's read-model (a NIP-29 group-chat aggregate).
+app.register_snapshot_projection("nmp.nip29.group_chat", move || {
+    projection.snapshot_json() // cheap, non-blocking: returns serde_json::Value
+});
+```
+
+The same one-liner is how Chirp wires its NIP-02 follow list
+(`apps/chirp/nmp-app-chirp/src/ffi/register.rs:371`:
+`register_snapshot_projection("nmp.follow_list", move || projection.snapshot_json())`)
+and how `nmp-nip57` exposes its zap-count aggregate
+(`crates/nmp-nip57/src/projection.rs:47`, key `nmp.nip57.zaps`). A protocol
+module owns a `snapshot_json(&self) -> serde_json::Value` method on its read
+model; the host (or the module's wiring fn) registers it under an `nmp.<module>.*`
+key.
+
+> **D8 + D6 — the projector runs on the actor thread inside the snapshot tick.**
+> It MUST be cheap and non-blocking — no I/O, no mutex waits (D8); a blocking
+> closure stalls every subsequent snapshot and freezes the host's update stream.
+> Each closure is panic-isolated (`catch_unwind` per closure, D6:
+> `crates/nmp-core/src/kernel/snapshot_registry.rs:125`), so a panic in one
+> projector never aborts the snapshot.
+
+### Sibling channel — typed FlatBuffers projections (NOT `projections[key]`)
+
+For schema-validated payloads, `NmpApp::register_typed_snapshot_projection`
+(`crates/nmp-ffi/src/snapshot.rs:48`, `Fn() -> Option<TypedProjectionData>`)
+rides a **separate sidecar**: its output lands in the frame's
+`typed_projections`, read on the host via `snapshot.typedProjections`
+(`KernelUpdateFrameDecoder.swift:74`), **not** in `projections[key]`. The
+production exemplar is the op-feed (`crates/nmp-app-template/src/op_feed_defaults.rs:286`,
+`OP_FEED_SNAPSHOT_KEY`), decoded by `TypedHomeFeedDecoder` (ADR-0037 / ADR-0038).
+Reach for this only when you need typed FlatBuffers across the boundary; for the
+common "expose a named JSON slice and read it in `apply()`" case, use the generic
+`register_snapshot_projection` path above and read `projections[key]` — see
+[17 — iOS shell](17-ios-shell.md) for the read half.
+
+> **One thing to avoid.** Do **not** mint a bespoke `nmp_app_<app>_snapshot`
+> pull symbol that returns a JSON C string (the deprecated anti-pattern —
+> `nmp_app_chirp_snapshot`, retired per ADR-0037; bespoke-FFI sprawl per the
+> deprecation calendar). A pull symbol forces the shell to call on a timer to
+> stay current — a polling loop, which violates D8 and defeats the rev guard.
+> The projection registry **is** the replacement: register once, ride the push
+> frame, read `projections[key]`.
+
 ## Why generated enums, not a registry (ADR-0010)
 
 The type-erased alternative (`Vec<u8>` actions, string-keyed runtime dispatch)
@@ -176,4 +267,5 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
 
 See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
-[17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md)
+[06 — Reactivity contract — the push frame carries `projections`](06-reactivity-contract.md) ·
+[17 — iOS shell — reading `projections[key]` in `apply()`](17-ios-shell.md)
