@@ -273,6 +273,54 @@ impl DesktopApp {
                     let payload: Option<AuthorViewPayload> = snap.projection("author_view");
                     self.author_view(ui, snap, pubkey, payload);
                 }
+                AppTab::Dms => {
+                    ui.heading("Direct Messages");
+                    ui.separator();
+                    let payload: Option<crate::snapshot::DmConversationSnapshot> =
+                        snap.projection("nmp.nip17.dm_inbox");
+                    match payload {
+                        None => {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(40.0);
+                                ui.label(RichText::new("No direct messages").weak());
+                            });
+                        }
+                        Some(dm_snapshot) => {
+                            if dm_snapshot.conversations.is_empty() {
+                                ui.vertical_centered(|ui| {
+                                    ui.add_space(40.0);
+                                    ui.label(RichText::new("No conversations").weak());
+                                });
+                            } else {
+                                ScrollArea::vertical()
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        for conversation in &dm_snapshot.conversations {
+                                            Frame::group(ui.style())
+                                                .fill(ui.visuals().faint_bg_color)
+                                                .show(ui, |ui| {
+                                                    let peer_name = if conversation.peer_display.is_empty() {
+                                                        nmp_core::display::short_npub(&conversation.peer_pubkey)
+                                                    } else {
+                                                        conversation.peer_display.clone()
+                                                    };
+                                                    ui.label(RichText::new(&peer_name).strong());
+                                                    if let Some(last_msg) = conversation.messages.last() {
+                                                        let preview = if last_msg.content.len() > 60 {
+                                                            format!("{}…", &last_msg.content[..57])
+                                                        } else {
+                                                            last_msg.content.clone()
+                                                        };
+                                                        ui.label(RichText::new(&preview).small().weak());
+                                                    }
+                                                });
+                                            ui.add_space(6.0);
+                                        }
+                                    });
+                            }
+                        }
+                    }
+                }
                 AppTab::Settings => self.settings_view(ui, snap),
                 AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
                 AppTab::Outbox => self.outbox_panel(ui, snap),
