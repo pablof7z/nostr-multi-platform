@@ -4,6 +4,13 @@ import SwiftUI
 struct ChirpApp: App {
     @StateObject private var model = KernelModel()
 
+    @State private var kindRegistry: NostrKindRegistry = {
+        let reg = NostrKindRegistry.makeDefault()
+        reg.setArticle(ArticleEmbed())
+        reg.setHighlight(HighlightEmbed())
+        return reg
+    }()
+
     // T118 / G3 — iOS scenePhase observer. SwiftUI publishes
     // `.active` / `.inactive` / `.background` transitions; we route the
     // two terminal phases to the kernel and silently drop `.inactive` (the
@@ -17,6 +24,9 @@ struct ChirpApp: App {
             RootShell()
                 .environmentObject(model)
                 .environment(\.nostrProfileHost, model)
+                .environment(\.embedHost, model.embedHost)
+                .environment(\.embedClaimSink, model)
+                .environment(\.nostrKindRegistry, kindRegistry)
                 .tint(ChirpColor.accent)
                 .task { model.start() }
                 .onOpenURL { url in
