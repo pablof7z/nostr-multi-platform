@@ -18,7 +18,7 @@ data class KernelUpdate(
     val running: Boolean = false,
     val relayUrl: String = "",
     @SerialName("items") val legacyItems: List<TimelineItem> = emptyList(),
-    val modularTimeline: ChirpTimelineSnapshot = ChirpTimelineSnapshot(),
+    val modularTimeline: ChirpOpFeedSnapshot = ChirpOpFeedSnapshot(),
     val metrics: KernelMetricsLite? = null,
     val relayStatuses: List<RelayStatus> = emptyList(),
     val lastErrorToast: String? = null,

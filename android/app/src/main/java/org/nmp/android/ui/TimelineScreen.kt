@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.model.ChirpEventCard
+import org.nmp.android.model.ChirpRootCard
 import org.nmp.android.model.ModuleTimelineBlock
 import org.nmp.android.model.StandaloneTimelineBlock
 import org.nmp.android.model.TimelineBlock
@@ -97,12 +98,11 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         ?.accounts
         ?.firstOrNull { it.id == s.activeAccount }
     val itemLookup = s.items.associateBy { it.id }
-    val cardLookup = s.modularTimeline.cards.associateBy { it.id }
-    val blocks = if (s.modularTimeline.blocks.isNotEmpty()) {
-        s.modularTimeline.blocks
-    } else {
-        s.items.map { StandaloneTimelineBlock(it.id) }
-    }
+
+    // V-85 OP-centric render: prefer typed root cards from the NOFS decoder;
+    // fall back to the legacy `s.items` path (ADR-0037 Commitment 4).
+    val opCards = s.modularTimeline.cards
+    val hasOpFeed = opCards.isNotEmpty()
 
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
         if (claim) model.claimProfile(pubkey, consumerId)
@@ -117,12 +117,12 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
             ) {
                 Text("Chirp", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "rev ${s.rev} · ${blocks.size} blocks",
+                    "rev ${s.rev} · ${if (hasOpFeed) opCards.size else s.items.size} cards",
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
             HorizontalDivider()
-            if (blocks.isEmpty()) {
+            if (!hasOpFeed && s.items.isEmpty()) {
                 Placeholder(
                     activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
                     hasAccount = s.activeAccount.isNotEmpty(),
@@ -130,10 +130,20 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     lastErrorToast = s.lastErrorToast,
                     onCreateAccount = { model.createLocalAccount() },
                 )
-            } else {
+            } else if (hasOpFeed) {
+                // Typed OP-centric feed: one row per ChirpRootCard.
                 LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
-                        TimelineBlockRow(block, itemLookup, cardLookup)
+                    itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
+                        RootCardRow(root, itemLookup)
+                        HorizontalDivider()
+                    }
+                }
+            } else {
+                // Legacy item fallback — items rendered as standalone blocks.
+                val legacyBlocks = s.items.map { StandaloneTimelineBlock(it.id) }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    itemsIndexed(legacyBlocks, key = { index, block -> blockKey(index, block) }) { _, block ->
+                        TimelineBlockRow(block, itemLookup, emptyMap())
                         HorizontalDivider()
                     }
                 }
@@ -180,6 +190,33 @@ private fun Placeholder(
                     Text("Create local account")
                 }
             }
+        }
+    }
+}
+
+/**
+ * One row in the OP-centric feed: the root note plus an optional attribution
+ * badge listing the follow(s) who referenced this root. Raw data only — no
+ * display helpers inline (D8); the relative-time calculation below is a
+ * presentation-layer concern acceptable here.
+ */
+@Composable
+private fun RootCardRow(
+    root: ChirpRootCard,
+    items: Map<String, TimelineItem>,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        NoteRow(root.card.id, items, mapOf(root.card.id to root.card))
+        if (root.attribution.isNotEmpty()) {
+            val label = root.attribution
+                .take(3)
+                .joinToString { it.authorDisplayName?.ifEmpty { it.authorPubkey.take(8) } ?: it.authorPubkey.take(8) }
+            Text(
+                "Replied by $label",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 56.dp, bottom = 4.dp),
+            )
         }
     }
 }

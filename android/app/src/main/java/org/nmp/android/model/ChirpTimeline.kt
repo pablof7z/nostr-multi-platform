@@ -1,6 +1,7 @@
 package org.nmp.android.model
 
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -19,6 +20,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
+/**
+ * Stale pre-V-80 render model: retained for the author-view / thread-view
+ * modular renderer which still uses `{ blocks, cards }` shape. The home-feed
+ * projection has migrated to [ChirpOpFeedSnapshot] (V-85). This type is
+ * deprecated for home-feed use; do NOT add new callers.
+ */
 @Serializable
 data class ChirpTimelineSnapshot(
     val blocks: List<TimelineBlock> = emptyList(),
@@ -28,18 +35,18 @@ data class ChirpTimelineSnapshot(
 @Serializable
 data class ChirpEventCard(
     val id: String = "",
-    val authorPubkey: String = "",
+    @SerialName("author_pubkey") val authorPubkey: String = "",
     val kind: Int = 0,
-    val createdAt: Long = 0,
+    @SerialName("created_at") val createdAt: Long = 0,
     val content: String = "",
-    val contentTree: ContentTreeWire? = null,
+    @SerialName("content_tree") val contentTree: ContentTreeWire? = null,
     // aim.md §2 — display_name + picture_url are nullable: the
     // backend ships JSON null when no kind:0 has arrived for this
     // author, and the Compose layer is responsible for choosing its
     // own fallback (typically a short-pubkey abbreviation).
-    val authorDisplayName: String? = null,
-    val authorPictureUrl: String? = null,
-    val contentPreview: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+    @SerialName("content_preview") val contentPreview: String = "",
 )
 
 @Serializable(with = TimelineBlockSerializer::class)
