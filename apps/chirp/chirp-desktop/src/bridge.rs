@@ -282,6 +282,14 @@ impl AppRuntime {
         self.dispatch_action("nmp.unfollow", &action)
     }
 
+    pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, String> {
+        let action = json!({
+            "recipient_pubkey": recipient_pubkey,
+            "content": content,
+        }).to_string();
+        self.dispatch_action("nmp.nip17.send", &action)
+    }
+
     pub fn zap(&self, recipient_pubkey: &str, amount_msats: u64, target_event_id: &str) -> Result<String, String> {
         let action = json!({
             "recipient_pubkey": recipient_pubkey,
