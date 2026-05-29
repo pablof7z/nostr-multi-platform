@@ -25,11 +25,11 @@ use nmp_ffi::{
     nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
     nmp_app_set_capability_callback,
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_cancel_publish, NmpApp,
+    nmp_app_cancel_publish, nmp_app_signin_nsec, nmp_app_create_new_account,
+    nmp_app_switch_active, nmp_app_remove_account, NmpApp,
 };
 use nmp_app_chirp::typed_api::{
-    follow_action, publish_note_action, react_action, remove_account_action, send_dm_action,
-    sign_in_nsec_action, switch_account_action, unfollow_action,
+    follow_action, publish_note_action, react_action, send_dm_action, unfollow_action,
 };
 use serde_json::{json, Value};
 use std::ffi::c_void;
@@ -211,25 +211,28 @@ impl AppRuntime {
         profile: std::collections::HashMap<String, String>,
         relays: Vec<(String, String)>,
     ) {
+        if self.app.is_null() {
+            return;
+        }
         let profile_json = json!(profile).to_string();
-        let relays_json: Vec<serde_json::Value> = relays
-            .into_iter()
-            .map(|(url, role)| json!({ "url": url, "role": role }))
-            .collect();
-        let action = json!({
-            "CreateAccount": {
-                "profile": serde_json::from_str::<Value>(&profile_json).unwrap_or(Value::Null),
-                "relays": relays_json,
-                "mls": false
-            }
-        })
-        .to_string();
-        let _ = self.dispatch_action("nmp.create_account", &action);
+        // nmp_app_create_new_account expects relays as [["url","role"],…].
+        // serde serialises Vec<(String,String)> to exactly that shape.
+        let relays_json = serde_json::to_string(&relays).unwrap_or_else(|_| "[]".to_string());
+        if let (Ok(profile_c), Ok(relays_c)) = (
+            CString::new(profile_json),
+            CString::new(relays_json),
+        ) {
+            nmp_app_create_new_account(self.app, profile_c.as_ptr(), relays_c.as_ptr(), false);
+        }
     }
 
     pub fn sign_in_nsec(&self, secret: String) {
-        let (ns, action) = sign_in_nsec_action(&secret);
-        let _ = self.dispatch_action(&ns, &action);
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(secret) {
+            nmp_app_signin_nsec(self.app, c.as_ptr());
+        }
     }
 
     pub fn connect_bunker(&self, relay_url: &str) -> Result<String, String> {
@@ -338,13 +341,21 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn switch_account(&self, pubkey: &str) {
-        let (ns, action) = switch_account_action(pubkey);
-        let _ = self.dispatch_action(&ns, &action);
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(pubkey) {
+            nmp_app_switch_active(self.app, c.as_ptr());
+        }
     }
 
     pub fn remove_account(&self, pubkey: &str) {
-        let (ns, action) = remove_account_action(pubkey);
-        let _ = self.dispatch_action(&ns, &action);
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(pubkey) {
+            nmp_app_remove_account(self.app, c.as_ptr());
+        }
     }
 
     pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
