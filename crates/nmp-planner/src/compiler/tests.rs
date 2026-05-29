@@ -462,7 +462,10 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
     let timeline = LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
-        shape: InterestShape::timeline_for([pk("alice")].into_iter().collect()),
+        shape: InterestShape::timeline_for(
+            [pk("alice")].into_iter().collect(),
+            [30023u32].into_iter().collect(),
+        ),
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
@@ -488,7 +491,10 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
     );
 
     // Exactly one sub-shape carries the timeline kinds, one the profile kinds.
-    let timeline_kinds: BTreeSet<u32> = [1, 6].into_iter().collect();
+    // V-68: `timeline_for` no longer injects {1, 6}; this test declares an
+    // arbitrary host kind set ({30023}) to prove the constructor carries
+    // caller policy verbatim and the compiler routes it without rewriting.
+    let timeline_kinds: BTreeSet<u32> = [30023].into_iter().collect();
     let profile_kinds: BTreeSet<u32> = [0, 3, 10002].into_iter().collect();
     let has_timeline = relay
         .sub_shapes
@@ -500,7 +506,7 @@ fn timeline_and_profile_for_same_author_produce_two_subshapes() {
         .any(|s| s.shape.kinds == profile_kinds);
     assert!(
         has_timeline,
-        "one sub-shape must carry the timeline kinds {{1,6}}"
+        "one sub-shape must carry the host-declared timeline kinds {{30023}}"
     );
     assert!(
         has_profile,
