@@ -298,4 +298,15 @@ pub fn register_defaults(app: &mut impl AppHost) {
     nmp_wot::register_runtime(app);
     runtimes::register_dm_runtime(app);
     runtimes::register_zap_receipts_runtime(app);
+
+    // ── Bootstrap relay for client-initiated NIP-46 (V-65) ──────────────
+    //
+    // Fallback relay for `nostrconnect://` handshakes when the user has no
+    // configured write relay. This is the *composition-root* home for the
+    // default — operator policy legitimately lives here, not in nmp-core (D0).
+    //
+    // A per-app crate may override this after calling `register_defaults` by
+    // invoking `AppHost::set_nostrconnect_bootstrap_relay` a second time
+    // (last-writer-wins, like every other pre-start slot).
+    app.set_nostrconnect_bootstrap_relay("wss://relay.damus.io".to_string());
 }

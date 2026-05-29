@@ -686,16 +686,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-65 · `NOSTRCONNECT_DEFAULT_RELAY_URL = "wss://relay.damus.io"` hardcoded in `nmp-core` [MEDIUM · D0 leak + third-party dependency]
-
-**Verified:** `crates/nmp-core/src/actor/relay_roles.rs:5` — `pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";` is a hardcoded third-party relay URL used as a fallback when a user without configured write relays initiates a `nostrconnect://` handshake (NIP-46).
-
-**Impact:** (1) D0 — `nmp-core` should not contain protocol-named third-party endpoints. (2) reliability — if `damus.io` rate-limits or goes offline, every NMP build worldwide that hasn't onboarded write relays cannot complete NIP-46 client-initiated handshakes. (3) policy — choice of bootstrap relay is an app/operator decision, not a framework constant.
-
-**Correct fix:** move the default to host-supplied policy. The host registers a `NostrConnectBootstrapRelays` capability (single URL or weighted list) via `NmpApp::register_capability`; the actor reads from the capability slot. nmp-core retains no hardcoded URL. Until removed, the existing constant must at minimum be flagged on the doctrine-lint banned-token list.
-
----
-
 ### V-66 · `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` activate silently when relay rows are empty [MEDIUM · D3 violation + masked config bug]
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:1417,1420` — when `relay_edit_rows` is empty the kernel substitutes `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` for the active routing set. The substitution is silent (no toast, no log, no slot delta) so the host has no way to tell whether the user has zero configured relays or whether their configuration was wiped.
@@ -1418,7 +1408,7 @@ compile-time third-party URL baked into Swift state. **Confirmed live.**
 
 **Correct fix:** Surface a default NIP-29 relay URL through the kernel
 configuration projection so it can be updated without a client release. Related to
-V-65 (NOSTRCONNECT_DEFAULT_RELAY_URL) — same category.
+the hardcoded-URL-in-substrate category (V-65 fixed in PR; same pattern).
 
 ### V-102 · `TimelineEventCard`/`ModularTimelineSnapshot` are app-domain types exported from a protocol crate [MEDIUM · D0 · issue #627]
 
