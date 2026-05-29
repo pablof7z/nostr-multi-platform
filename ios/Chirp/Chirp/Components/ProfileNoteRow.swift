@@ -37,6 +37,7 @@ struct ProfileNoteRow: View {
             HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
+                        pubkey: item.authorPubkey,
                         url: item.authorPictureUrl,
                         initials: authorAvatarInitials,
                         colorHex: item.authorPubkey.pubkeyColorHex,
