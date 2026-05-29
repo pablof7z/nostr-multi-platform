@@ -21,6 +21,25 @@ use crate::snapshot::{
 use nmp_chirp_config;
 
 // ---------------------------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------------------------
+
+/// Extract the typed OP-feed `nmp.feed.home` sidecar and deserialize it.
+///
+/// Returns `None` when the projection is absent or the schema doesn't match.
+fn extract_home_feed_from_typed(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Option<serde_json::Value> {
+    let proj = projections
+        .iter()
+        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
+    nmp_nip01::decode_op_feed_snapshot(&proj.payload)
+        .ok()
+        .and_then(|snapshot| serde_json::to_value(&snapshot).ok())
+}
+
+
+// ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
 
@@ -30,6 +49,7 @@ pub enum AppTab {
     Thread(String),
     Author(String),
     Settings,
+    Diagnostics,
 }
 
 pub struct DesktopApp {
@@ -46,6 +66,7 @@ pub struct DesktopApp {
     edit_about: String,
     edit_picture: String,
     show_edit_profile: bool,
+    nwc_input: String,
 }
 
 impl DesktopApp {
@@ -58,17 +79,17 @@ impl DesktopApp {
         let egui_ctx = cc.egui_ctx.clone();
         std::thread::spawn(move || {
             for event in rx {
-                let env = match nmp_core::decode_update_frame(&event.payload) {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                let nmp_core::UpdateEnvelope::Snapshot(v) = env else {
+                let Ok((value, typed)) = nmp_core::decode_snapshot_with_typed(&event.payload) else {
                     continue;
                 };
-                let snap: Snapshot = match serde_json::from_value(v) {
+                let mut snap: Snapshot = match serde_json::from_value(value) {
                     Ok(s) => s,
                     Err(_) => continue,
                 };
+                // Extract nmp.feed.home from typed sidecar
+                if let Some(feed) = extract_home_feed_from_typed(&typed) {
+                    snap.projections.insert("nmp.feed.home".to_string(), feed);
+                }
                 if let Ok(mut slot) = reader_latest.lock() {
                     *slot = Some(snap);
                 }
@@ -90,6 +111,7 @@ impl DesktopApp {
             edit_about: String::new(),
             edit_picture: String::new(),
             show_edit_profile: false,
+            nwc_input: String::new(),
         }
     }
 
@@ -193,6 +215,12 @@ impl DesktopApp {
             {
                 self.tab = AppTab::Settings;
             }
+            if ui
+                .selectable_label(matches!(current_tab, AppTab::Outbox), "📤  Outbox")
+                .clicked()
+            {
+                self.tab = AppTab::Outbox;
+            }
 
             ui.add_space(12.0);
             ui.separator();
@@ -234,6 +262,7 @@ impl DesktopApp {
                     self.author_view(ui, snap, pubkey, payload);
                 }
                 AppTab::Settings => self.settings_view(ui, snap),
+                AppTab::Outbox => self.diagnostics_panel(ui, snap),
             }
         });
     }
@@ -556,6 +585,29 @@ impl DesktopApp {
         ui.add_space(12.0);
         ui.separator();
 
+        // Wallet section
+        ui.label(RichText::new("Wallet (NIP-47)").strong());
+        ui.horizontal(|ui| {
+            ui.add(
+                TextEdit::singleline(&mut self.nwc_input)
+                    .hint_text("nostr+walletconnect://...")
+                    .desired_width(340.0),
+            );
+            if ui.button("Connect").clicked() && !self.nwc_input.trim().is_empty() {
+                match self.bridge.wallet_connect(self.nwc_input.trim()) {
+                    Ok(_) => {
+                        self.nwc_input.clear();
+                    }
+                    Err(e) => eprintln!("wallet connect error: {e}"),
+                }
+            }
+        });
+        if ui.button("Disconnect Wallet").clicked() {
+            match self.bridge.wallet_disconnect() {
+                Ok(_) => {},
+                Err(e) => eprintln!("wallet disconnect error: {e}"),
+            }
+        }
         // Relays section
         ui.label(RichText::new("Relays").strong());
         let rows: Vec<RelayEditRow> = snap.projection("relay_edit_rows").unwrap_or_default();
@@ -614,6 +666,123 @@ impl DesktopApp {
                 self.new_relay_url.clear();
             }
         });
+    }
+}
+
+    fn diagnostics_panel(&self, ui: &mut Ui, snap: &Snapshot) {
+        ui.heading("Routing & Relay Diagnostics");
+        ui.separator();
+
+        // Relay summary
+        let connected_count = snap
+            .relay_statuses
+            .iter()
+            .filter(|r| {
+                r.connection.eq_ignore_ascii_case("connected")
+                    || r.connection.eq_ignore_ascii_case("ready")
+            })
+            .count();
+        ui.label(RichText::new(format!(
+            "Relays: {}/{} connected",
+            connected_count,
+            snap.relay_statuses.len()
+        ))
+        .strong());
+        ui.add_space(8.0);
+
+        // Relay list with status
+        ui.label(RichText::new("Relay Status").strong().color(Color32::from_rgb(96, 165, 250)));
+        ui.add_space(4.0);
+
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .max_height(300.0)
+            .show(ui, |ui| {
+                egui::Grid::new("diagnostics_relays")
+                    .num_columns(4)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("Relay").strong());
+                        ui.label(RichText::new("Role").strong());
+                        ui.label(RichText::new("Status").strong());
+                        ui.label(RichText::new("Events").strong());
+                        ui.end_row();
+
+                        for relay in &snap.relay_statuses {
+                            // Status dot
+                            let (dot_char, dot_color) = Self::status_color(&relay.connection);
+                            ui.label(RichText::new(dot_char).color(dot_color));
+
+                            // URL (shortened)
+                            let display_url = if relay.relay_url.len() > 30 {
+                                format!("{}…", &relay.relay_url[..27])
+                            } else {
+                                relay.relay_url.clone()
+                            };
+                            ui.label(display_url).on_hover_text(&relay.relay_url);
+
+                            // Role
+                            let role_color = match relay.role.as_str() {
+                                "read" => Color32::from_rgb(96, 165, 250),
+                                "write" => Color32::from_rgb(34, 197, 94),
+                                "indexer" => Color32::from_rgb(168, 85, 247),
+                                _ => Color32::from_rgb(107, 114, 128),
+                            };
+                            ui.label(RichText::new(&relay.role).color(role_color));
+
+                            // Status
+                            let status_color = if relay.connection.eq_ignore_ascii_case("connected")
+                                || relay.connection.eq_ignore_ascii_case("ready")
+                            {
+                                Color32::from_rgb(74, 222, 128)
+                            } else if relay.connection.eq_ignore_ascii_case("disconnected")
+                                || relay.connection.eq_ignore_ascii_case("down")
+                            {
+                                Color32::from_rgb(248, 113, 113)
+                            } else {
+                                Color32::from_rgb(249, 115, 22)
+                            };
+                            ui.label(
+                                RichText::new(&relay.connection).color(status_color),
+                            );
+
+                            // Event count
+                            ui.label(RichText::new(relay.events_rx.to_string()).weak().small());
+
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        ui.add_space(16.0);
+        ui.separator();
+        ui.add_space(8.0);
+
+        // Metrics summary
+        ui.label(RichText::new("Snapshot Metrics").strong().color(Color32::from_rgb(96, 165, 250)));
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            ui.label(format!("Total events received: {}", snap.metrics.events_rx));
+            ui.separator();
+            ui.label(format!("Note events: {}", snap.metrics.note_events));
+            ui.separator();
+            ui.label(format!("Visible items: {}", snap.metrics.visible_items));
+        });
+
+        ui.add_space(8.0);
+        ui.label(format!("Snapshot revision: {}", snap.rev));
+    }
+
+    fn status_color(connection: &str) -> (char, Color32) {
+        let lower = connection.to_ascii_lowercase();
+        if lower.contains("connected") || lower == "ready" || lower == "open" {
+            ('●', Color32::from_rgb(74, 222, 128))
+        } else if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") {
+            ('○', Color32::from_rgb(248, 113, 113))
+        } else {
+            ('◌', Color32::from_rgb(249, 115, 22))
+        }
     }
 }
 
