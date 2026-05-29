@@ -188,7 +188,12 @@ fn interest_for_pablo() -> LogicalInterest {
     LogicalInterest {
         id: InterestId(20251024),
         scope: InterestScope::Global,
-        shape: InterestShape::timeline_for([PABLO_HEX.to_string()].into_iter().collect()),
+        // V-68: NIP-01 social-timeline-scoped real-relay test; the test plays
+        // the host and declares {1, 6} (the substrate no longer injects it).
+        shape: InterestShape::timeline_for(
+            [PABLO_HEX.to_string()].into_iter().collect(),
+            [1u32, 6u32].into_iter().collect(),
+        ),
         hints: vec![],
         lifecycle: InterestLifecycle::OneShot,
         is_indexer_discovery: false,

@@ -104,20 +104,27 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
 
-### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation]
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1 DONE, Stage 2-3 OPEN]
 
 **Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
-subscription defaults that belong in NIP/app modules:
+subscription defaults that belong in NIP/app modules. The four sites and their
+status (Stage 1 landed 2026-05-29):
 
-- `crates/nmp-core/src/kernel/requests/profile.rs:532-550` hardcodes selected-author
-  note/repost requests as `{"kinds":[1,6], ...}`.
-- `crates/nmp-core/src/kernel/requests/thread.rs:217-223` hardcodes recursive thread
-  reply requests as `{"kinds":[1,6], ...}`.
-- `crates/nmp-core/src/kernel/ingest/mod.rs:623-650` fires mailbox-change routing
-  traces with `&[1, 6]` as the canonical content kind set.
-- `crates/nmp-planner/src/interest.rs:183-189` exposes
-  `InterestShape::timeline_for` as a generic-looking constructor while internally
-  selecting `[1, 6]`.
+- ✅ **DONE** `crates/nmp-planner/src/interest.rs` — `InterestShape::timeline_for`
+  no longer injects `[1, 6]`; it now takes `kinds: BTreeSet<u32>` and carries the
+  caller-supplied set verbatim. It has **zero production callers** (every caller is
+  a test or a real-relay integration test); the constructor is now kind-agnostic and
+  tests pass arbitrary host kinds (`{30023}`), with the NIP-01-scoped real-relay
+  tests explicitly declaring `{1, 6}` as the host.
+- ✅ **DONE** `crates/nmp-core/src/kernel/ingest/mod.rs` — the mailbox-change trace
+  fire now passes `&[]` instead of `&[1, 6]`. This site's routing decision is
+  kind-independent (the trace URL result is discarded, and `is_discovery_kind`
+  covers only `{0, 3, 10000–19999}` so content kinds never alter the lane), so the
+  removal is behavior-preserving.
+- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
+  still hardcodes selected-author note/repost requests as `{"kinds":[1,6], ...}`.
+- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/thread.rs:~217-223`
+  still hardcodes recursive thread reply requests as `{"kinds":[1,6], ...}`.
 
 **Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
 substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`
@@ -125,12 +132,48 @@ as filter data, but they must not choose app defaults. Defaults like "follow-lis
 timeline means kind:1 + kind:6" belong in `nmp-nip01`, `nmp-nip02`,
 `nmp-app-template`, or an app crate such as Chirp.
 
-**Required fix:** move the remaining social subscription constructors and trace
-inputs out of `nmp-core`/generic planner APIs. Keep the existing
+**Stage 2 (author-view + thread-reply) — the remaining production behavior.**
+These two sites carry live behavior and CANNOT reuse the follow-feed's
+host-declared `Kernel::follow_feed_kinds`: `nmp_app_open_author`
+(`ProfileView.swift`) and `nmp_app_open_thread` fire **independently** of
+`nmp_app_open_timeline`/`OpenContactListSubscription`, so a deep-link can open an
+author/thread before the home feed ever declared its kinds — borrowing
+`follow_feed_kinds` would request zero kinds and silently break profile/thread
+views. The correct seam is **per-call kinds**, extending the existing
+`OpenContactListSubscription { kinds }` pattern: add `kinds: BTreeSet<u32>` to
+`ActorCommand::OpenAuthor` and `ActorCommand::OpenThread`, thread them through
+`Kernel::open_author` / `open_thread` → `author_requests` / thread reply builder,
+and have the FFI symbols (`nmp_app_open_author` / `nmp_app_open_thread`) accept the
+kind set from the host. Because kinds arrive *with* the call there is no ordering
+problem — the Swift `ProfileView`/thread call site declares them exactly as
+`nmp_app_open_timeline` declares `{1, 6}` today. Cost is FFI + `NmpCore.h` +
+`KernelBridge.swift` churn (iOS blast radius), which is why it is staged.
+
+  *Rejected alternative:* a single app-level `content_kinds` field set once at app
+  init would avoid the ABI churn, but only if an init hook is guaranteed to run
+  before any view opens, and it must be a **separate** field from
+  `follow_feed_kinds` (overloading conflates "no declared kinds" with "follow-feed
+  inactive"). Per-call kinds is the safe default; pursue the field only if that
+  init guarantee is proven cheap.
+
+**Stage 3 (finalizer):** once Stage 2 lands and no `[1, 6]` literal remains in
+`nmp-core`/`nmp-planner` production code, add a doctrine-lint rule banning hardcoded
+social content-kind sets (`[1, 6]` / `[1u32, 6u32]`) in those crates' non-test
+source so the door stays closed. Do NOT add the lint before Stage 2 — `profile.rs`
+and `thread.rs` still carry the literal and would fail the build.
+
+**Required fix (general):** move the remaining social subscription constructors and
+trace inputs out of `nmp-core`/generic planner APIs. Keep the existing
 `ActorCommand::OpenContactListSubscription { kinds }` direction: hosts or NIP
 modules declare the kind set, and the substrate registers/executes those kinds as
 data. Tests covering follow-feed behavior must use arbitrary host-declared kinds,
 not `{1, 6}`, unless the test is explicitly scoped to a NIP-01/NIP-18 module.
+
+**Note (out of scope, separate cleanup):** `crates/nmp-core/src/kernel/ingest/event.rs`
+and `ingest/eose.rs` are orphan files (not declared as modules in `ingest/mod.rs`,
+so not compiled). `event.rs` contains a stale duplicate of `on_mailbox_changed`
+still carrying `&[1, 6]`; it is dead code and was left untouched to keep this PR
+scoped. A follow-up should delete the orphan files.
 
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
@@ -653,26 +696,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-61 · Marmot `PendingGroupChange::drop` silently clears unresolved MLS commit [HIGH · MLS state divergence]
-
-**Verified:** `crates/nmp-marmot/src/service.rs:172` — `PendingGroupChange::drop` clears the pending MLS commit on drop without surfacing an error. If a panic or early return drops the guard before the commit is resolved, the group's local MLS state is mutated as if the commit were applied, but no kind:445/`commit` event reaches the relay.
-
-**Impact:** group state diverges from the relay-published timeline. Subsequent members joining or syncing see a different epoch than this client. There is no recovery path short of leaving and rejoining the group.
-
-**Correct fix:** the drop path must either (a) roll the pending change back to pre-commit state, or (b) record a typed `MarmotError::OrphanedCommit` on the kernel error toast and refuse further group sends until the operator resolves the divergence. Silent drop is not a doctrined option.
-
----
-
-### V-62 · Marmot keyring failure silently installs in-memory mock store [HIGH · MLS secret durability]
-
-**Verified:** `crates/nmp-marmot/src/ffi.rs:228-269` — nested fallback: real keyring open fails → delete-and-retry path → on second failure installs the in-memory mock store with no host-visible signal. MLS group secrets thereafter live only in process memory.
-
-**Impact:** the user believes MLS groups are persistent; on next launch the secret material is gone and every group is unjoinable. There is no toast, no error code returned to the host, no metric. Once secrets are lost, group membership cannot be recovered.
-
-**Correct fix:** surface a typed `MarmotInitError::KeyringUnavailable` to the host; let the app decide whether to block group features, prompt the user, or fall back to an explicit ephemeral session. Never install the mock store as an implicit decision inside `ffi.rs`.
-
----
-
 ### V-63 · NIP-47 outbound payment serialization uses `unwrap_or_default` — payment frame can be empty string [HIGH · silent payment failure]
 
 **Verified:** `crates/nmp-nip47/src/runtime.rs:222`, `:267`, `:460` — `serde_json::to_string(...).unwrap_or_default()` on the REQ/EVENT/CLOSE frames. If serialization fails, the resulting `""` is pushed onto the outbound queue. For `pay_invoice` (line 460) the `pending_payments` map is populated before the broken frame is sent, so the correlation_id is registered as inflight while the relay never receives a payment request.
@@ -707,7 +730,7 @@ part of the deleted scratch plan.
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:1417,1420` — when `relay_edit_rows` is empty the kernel substitutes `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` for the active routing set. The substitution is silent (no toast, no log, no slot delta) so the host has no way to tell whether the user has zero configured relays or whether their configuration was wiped.
 
-**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62), the loss is invisible until they notice their followers no longer see their notes.
+**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62 — now fixed), the loss is invisible until they notice their followers no longer see their notes.
 
 **Correct fix:** distinguish "no rows" from "rows present but degraded". When `relay_edit_rows` is empty the kernel must publish `KernelDiagnostic::NoConfiguredRelays` and either (a) refuse to publish with a typed `NoTargets` error (matches V-50/V-51 fail-closed direction) or (b) require the host to explicitly opt in via a `BootstrapRelaysCapability`. Hardcoded URL constants in nmp-core must not be the production path.
 
@@ -719,7 +742,7 @@ part of the deleted scratch plan.
 
 **Impact:** the user runs the app, ingests events, publishes notes — and on the next launch every locally-stored event is gone (because the LMDB file was never opened, so the in-memory store was the only persistence layer). Notifications, drafts, profile cache, follow list — all transient without warning. This is one of the harder failure modes to diagnose because everything else works.
 
-**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring): silent mock installation is not a doctrined option.
+**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring — fixed in PR fix/v61-v62-marmot-silent-failures): silent mock installation is not a doctrined option.
 
 ---
 
