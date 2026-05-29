@@ -1,12 +1,14 @@
 //! Gallery application state and live-kernel layout.
 
+use std::cell::RefCell;
 use std::io::Read as _;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::{button, column, container, row, rule, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Subscription};
+use serde_json::Value;
+use tokio::sync::mpsc;
 
 use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
@@ -74,13 +76,18 @@ pub struct GalleryApp {
     avatar_url_fetching: Option<String>,
     avatar_pending: Arc<Mutex<Option<Vec<u8>>>>,
     avatar_handle: Option<ImageHandle>,
+    // Snapshot receiver for the iced subscription. Taken from bridge in new()
+    // and held here so subscription() can initialize the subscription stream.
+    snapshot_rx: RefCell<Option<mpsc::UnboundedReceiver<Value>>>,
 }
 
 impl GalleryApp {
     #[must_use]
     pub fn new() -> Self {
+        let mut bridge = GalleryBridge::start();
+        let snapshot_rx = bridge.take_snapshot_receiver();
         Self {
-            bridge: GalleryBridge::start(),
+            bridge,
             data: GalleryData::live_initial(primary_pubkey()),
             profiles: LiveProfileMap::new(),
             embed_host: EmbedHostState::new(),
@@ -89,6 +96,7 @@ impl GalleryApp {
             avatar_url_fetching: None,
             avatar_pending: Arc::new(Mutex::new(None)),
             avatar_handle: None,
+            snapshot_rx: RefCell::new(snapshot_rx),
         }
     }
 }
@@ -97,49 +105,83 @@ impl GalleryApp {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Poll,
+    Snapshot(Value),
     Select(usize),
 }
 
 // ── Subscription ──────────────────────────────────────────────────────────────
 
-pub fn subscription(_app: &GalleryApp) -> Subscription<Message> {
-    iced::time::every(Duration::from_millis(250)).map(|_instant| Message::Poll)
+/// Custom subscription recipe: drives iced redraws from the kernel's push
+/// channel without any timer poll (D8 — no polling).
+struct SnapshotRecipe(std::sync::Mutex<Option<mpsc::UnboundedReceiver<Value>>>);
+
+impl iced::advanced::subscription::Recipe for SnapshotRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut iced::advanced::subscription::Hasher) {
+        use std::hash::Hash;
+        "gallery-snapshot".hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: iced::advanced::subscription::EventStream,
+    ) -> iced::futures::stream::BoxStream<'static, Message> {
+        let rx = self
+            .0
+            .lock()
+            .expect("snapshot mutex uncontested")
+            .take()
+            .expect("receiver present exactly once");
+        Box::pin(iced::futures::stream::unfold(rx, |mut rx| async move {
+            rx.recv().await.map(|v| (Message::Snapshot(v), rx))
+        }))
+    }
+}
+
+pub fn subscription(app: &GalleryApp) -> Subscription<Message> {
+    if let Some(rx) = app.snapshot_rx.borrow_mut().take() {
+        iced::advanced::subscription::from_recipe(SnapshotRecipe(
+            std::sync::Mutex::new(Some(rx)),
+        ))
+    } else {
+        Subscription::none()
+    }
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
 
 pub fn update(app: &mut GalleryApp, message: Message) {
     match message {
-        Message::Poll => {
-            // 1. Drain any new kernel snapshot.
-            if let Some(snap) = app.bridge.take_snapshot() {
-                app.profiles.update_from_snapshot(&snap);
-                let embed_authors = app.embed_host.update_from_snapshot(&snap);
-                for pk in &embed_authors {
-                    app.bridge.claim_profile(pk, CONSUMER_ID);
-                }
-                app.last_rev += 1;
+        Message::Snapshot(snap) => {
+            // 1. Update profiles and embed host from the kernel snapshot.
+            app.profiles.update_from_snapshot(&snap);
+            let embed_authors = app.embed_host.update_from_snapshot(&snap);
+
+            // 2. Claim profiles for any newly discovered embed authors.
+            for pk in &embed_authors {
+                app.bridge.claim_profile(pk, CONSUMER_ID);
             }
 
-            // 2. Re-claim primary pubkey on every tick so the kind:0 fetch
-            //    sticks once a relay connects (kernel deduplicates per pair).
+            // 3. Claim the primary pubkey so the kind:0 fetch proceeds.
             app.bridge.claim_profile(primary_pubkey(), CONSUMER_ID);
 
-            // 3. Claim embed event refs from the four showcase content trees.
+            // 4. Claim embed event refs from the four showcase content trees.
             claim_tree_refs(&app.bridge, &app.data.embed_article.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_profile.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_note.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_highlight.tree.nodes);
 
-            // 4. Check if a background avatar fetch completed. Create the Handle
+            app.last_rev += 1;
+
+            // 5. Check if a background avatar fetch completed. Create the Handle
             //    exactly once here — never in view() — so the same Handle ID is
             //    passed to iced every frame and the GPU texture is not re-uploaded.
             if let Some(bytes) = app.avatar_pending.lock().ok().and_then(|mut s| s.take()) {
                 app.avatar_handle = Some(ImageHandle::from_bytes(bytes));
             }
 
-            // 5. Start fetching the primary pubkey's picture_url if it changed.
+            // 6. Start fetching the primary pubkey's picture_url if it changed.
             let primary = app.profiles.resolve(primary_pubkey());
             if let Some(url) = primary.picture_url {
                 if app.avatar_url_fetching.as_deref() != Some(&url) {
