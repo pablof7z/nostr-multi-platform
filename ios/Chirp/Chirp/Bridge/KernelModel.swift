@@ -62,6 +62,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
 
+    /// Embed host — updated on every snapshot push so EmbeddedEvent views
+    /// see resolved envelopes as soon as the kernel delivers them (D8).
+    let embedHost = EmbedHost()
+
     /// D7 actor-death surface — flips to `true` exactly once when the Rust
     /// supervisor emits an `{"t":"panic",...}` update frame (the actor thread
     /// died inside `catch_unwind`) OR when the foreground-resume probe
@@ -597,6 +601,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // reads through this slot. `lastErrorToast` stays distinct because
         // tap-to-dismiss has nowhere else to land.
         snapshot = update
+        embedHost.update(from: update.projections)
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
@@ -668,6 +673,15 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         lastSnapshotAt = Date()
     }
 
+}
+
+extension KernelModel: EventClaimSinkProtocol {
+    func claim(uri: String, consumerId: String) {
+        kernel.claimEvent(uri: uri, consumerID: consumerId)
+    }
+    func release(uri: String, consumerId: String) {
+        kernel.releaseEvent(uri: uri, consumerID: consumerId)
+    }
 }
 
 // ─── Swift-side timing accumulator ───────────────────────────────────────
