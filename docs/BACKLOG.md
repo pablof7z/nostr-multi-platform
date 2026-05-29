@@ -1571,6 +1571,69 @@ contradictory scope.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
+### F-00 · Unify app directory layout — `apps/<app>/{ios,android,desktop,tui,web}` + `apps/<app>/crates/` [PRIORITY · repo structure]
+
+**Problem:** `ios/Chirp/` and the monolithic `android/` project (containing both `:app`
+for Chirp and `:gallery` for Gallery) live at the repo root, while `apps/nmp-gallery/`
+already hosts its own `{ios,android,desktop,tui}` platform subdirectories. The result is
+two conflicting layout conventions in the same repo.
+
+**Target layout:**
+```
+apps/
+  chirp/
+    crates/          # app-specific Rust crates (nmp-app-chirp, nmp-chirp-config)
+    ios/             # ← move from ios/Chirp/
+    android/         # ← extracted from android/app/ (standalone Gradle project)
+    desktop/         # already in place
+    tui/             # already in place
+    repl/            # already in place
+  nmp-gallery/
+    crates/          # ← move nmp-app-gallery here
+    ios/             # already in place
+    android/         # already in place (standalone; supersedes android/gallery/)
+    desktop/         # already in place
+    tui/             # already in place
+  fixture/
+    crates/          # ← move fixture-todo-core, nmp-app-fixture here
+```
+Top-level `ios/` and `android/` directories are deleted after migration.
+
+**Key complication — Android is a monolithic multi-module Gradle project:**
+`android/settings.gradle.kts` includes both `:app` (Chirp) and `:gallery` (Gallery) as
+subprojects in a single Gradle build. `apps/nmp-gallery/android/` already exists as a
+standalone Gallery Gradle project, so gallery is partially duplicated. The migration must:
+1. Extract Chirp's `:app` module into a standalone Gradle project at `apps/chirp/android/`.
+2. Confirm whether `android/gallery/` is a live build target or superseded by
+   `apps/nmp-gallery/android/`; consolidate to the latter and delete `android/gallery/`.
+3. Delete the top-level `android/` wrapper once both sub-projects are self-contained.
+
+**Full migration checklist:**
+1. **iOS** — Move `ios/Chirp/` → `apps/chirp/ios/`; update `ios/Chirp/project.yml` root
+   path, all `xcodegen` spec paths, Xcode scheme files, and `DerivedData` references.
+   Regenerate `project.pbxproj` via `xcodegen generate`. Update `justfile` targets and
+   `ci/check-ffi-header-drift.sh` / `ci/check-flatbuffers-version-pins.sh`.
+2. **Android** — Create a standalone Gradle project at `apps/chirp/android/` with its own
+   `settings.gradle.kts` (include `:app` only). Move source from `android/app/`. Update
+   JNI / `.cargo/config.toml` library output paths. Audit `android/gallery/` vs
+   `apps/nmp-gallery/android/` and delete the redundant copy.
+3. **Rust crates** — Move `apps/chirp/{nmp-app-chirp,nmp-chirp-config}` →
+   `apps/chirp/crates/`; `apps/nmp-gallery/nmp-app-gallery` →
+   `apps/nmp-gallery/crates/nmp-app-gallery`; `apps/fixture/{nmp-app-fixture,fixture-todo-core}`
+   → `apps/fixture/crates/`. Update workspace `Cargo.toml` members to use glob paths
+   (`apps/chirp/crates/*`, etc.) and fix all inter-crate `path = "…"` dependencies.
+4. **CI** — Update every path in `ci/check-ffi-header-drift.sh`,
+   `ci/check-flatbuffers-version-pins.sh`, and any GitHub Actions workflow files.
+5. **Justfile** — Update `ios/Chirp/…` and `android/…` references.
+6. **Docs / README** — Update path references in `docs/` and top-level `README.md`.
+7. **Verification** — `cargo test -p nmp-app-chirp`, `cargo test -p nmp-testing --test
+   doctrine_lint_smoke`, Xcode build clean, Android `./gradlew :app:build` from new location.
+
+**Prerequisite for:** nothing — purely structural, no feature dependency. Do not let this
+block v1 work; tackle between feature slices.
+
+---
+
 ### F-01 · Fix V-01 — IndexedDB store [V1 BLOCKER · partial]
 
 All prior stages merged (chirp-web now supports NIP-07 PublishNote end-to-end).
