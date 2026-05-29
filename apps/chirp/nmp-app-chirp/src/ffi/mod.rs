@@ -17,12 +17,6 @@
 //!   raw-event observer, a `"nmp.nip17.dm_inbox"` snapshot projection, and a
 //!   Rust-owned controller for the active gift-wrap interest + kind:10050
 //!   relay-list publish.
-//! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
-//!   (the OP-centric `RootFeedSnapshot`) into a freshly-allocated
-//!   nul-terminated JSON C string. Swift owns the pointer until it calls
-//!   `nmp_app_chirp_snapshot_free`.
-//! - [`nmp_app_chirp_snapshot_free`] — companion deallocator for the snapshot
-//!   string.
 //! - [`nmp_app_chirp_unregister`] — free the handle. Idempotent. (The engine /
 //!   follow-set observer registrations are torn down by `nmp_app_free`.)
 //! - `nmp_app_chirp_identity_restore`,
@@ -70,8 +64,4 @@ pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
-// ADR-0037: `nmp_app_chirp_snapshot` is `#[deprecated]` (diagnostics-only) but
-// must stay re-exported — it is a `#[no_mangle]` C-ABI symbol the host links
-// against. Allow the deprecation lint on this re-export only.
-#[allow(deprecated)]
-pub use snapshot::{nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister};
+pub use snapshot::nmp_app_chirp_unregister;
