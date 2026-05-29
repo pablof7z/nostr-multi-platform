@@ -775,16 +775,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-74 · NIP-47 NWC URI parser drops unknown params silently — misspelled `relay=` vanishes [LOW · silent config drop]
-
-**Verified:** `crates/nmp-nwc/src/parse.rs:135` — the `_ => {}` arm in the URI param match silently discards any param key the parser does not recognise. A user-pasted URI with `relays=wss://...` (note the `s`) or `Relay=wss://...` is accepted as a parse success with no relay configured.
-
-**Impact:** the user pastes a malformed NWC URI, the parse succeeds with a missing relay, the wallet connection fails on the next outbound, and the user has no clue why. This is a textbook silent-config-drop pattern; the URI parser is the right place to surface it.
-
-**Correct fix:** the `_` arm must either (a) return `NwcParseError::UnknownParam { key }` so the host can warn the user, or (b) record the unknown key into a `parse_warnings: Vec<String>` field on the parsed URI which the host surfaces in the wallet-connect sheet. Doctrine prefers (a) for required-shape params (`relay=`, `secret=`) and (b) for unknown extension params.
-
----
-
 ### V-75 · Router Lane 7 (AppRelay) catch-all silent — V-51 routing-trace cannot attribute empty-outbox causes [LOW · routing observability]
 
 **Verified:** `crates/nmp-router/src/router.rs:250-260` and `:377-388` — the AppRelay catch-all fires when all prior lanes (NIP-65, hint cache, recipient inbox, etc.) produce empty sets. No diagnostic is emitted for which lane attempted what; the catch-all is the silent terminator of an empty publish set.
@@ -802,16 +792,6 @@ part of the deleted scratch plan.
 **Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) sees a Chirp web app that "works" but blocks the main thread on every kernel tick. Performance is silently degraded; the diagnostic surface is empty.
 
 **Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "performance-degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
-
----
-
-### V-77 · `nmp-nwc` defines `MakeInvoice` end-to-end but never dispatches it — dead receive-side API surface [LOW · misleading API surface]
-
-**Verified:** `crates/nmp-nwc/src/types.rs:25` declares `NwcMethod::MakeInvoice`; `crates/nmp-nwc/src/types.rs:50` defines `MakeInvoiceParams`; `crates/nmp-nwc/src/types.rs:99` defines `MakeInvoiceResult`; `crates/nmp-nwc/src/build.rs:160` exports `make_invoice_content(...)`. The only caller is the in-crate test `make_invoice_request_shape` at `build.rs:250`. There is no `make_invoice_result()` parser, no `ActorCommand` or `dispatch_action` namespace, no FFI symbol, and no Swift/Kotlin/TS host caller. The receive-side NIP-47 leg (invoice creation, used by lightning-address resolution, receive flows, and zap-recipient pairing) is wire-protocol-complete but never reachable at runtime.
-
-**Impact:** NMP advertises NIP-47 NWC support (see `docs/plan.md:29` — "NWC wallet (NIP-47, still in nmp-core)") but the receive half is dead. Any host integrator who reads the public type surface (`pub use ... MakeInvoiceParams, MakeInvoiceResult` in `nmp-nwc/src/lib.rs:28`) sees a complete `MakeInvoice` API, attempts to call it, and discovers no entry point exists. This is the misleading-API-surface failure mode the doctrine prohibits: types that exist but cannot be invoked.
-
-**Correct fix:** either (a) finish the receive path — add `MakeInvoiceResult::from_response()`, an `nmp.nwc.make_invoice` dispatch action, and an FFI / wasm symbol — gated on a real receive-flow consumer (zap-recipient or invoice-request UI); or (b) delete `MakeInvoice`, `MakeInvoiceParams`, `MakeInvoiceResult`, and `make_invoice_content` until a caller exists. Doctrine prefers (b) — no scaffolding without a consumer.
 
 ---
 

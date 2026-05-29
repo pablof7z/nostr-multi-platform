@@ -62,6 +62,16 @@ pub enum ParseError {
     InvalidRelayUrl,
     MissingSecret,
     InvalidSecret,
+    /// A query parameter key was not recognised by the parser.
+    ///
+    /// NIP-47 defines exactly three URI query parameters: `relay`, `secret`,
+    /// and `lud16`. Any other key — including common typos such as `relays=`
+    /// or `Relay=` — is rejected so the host can surface a diagnostic to the
+    /// user instead of silently losing the parameter value (e.g. a relay URL
+    /// that would have been the only relay in the list).
+    UnknownParam {
+        key: String,
+    },
 }
 
 impl std::fmt::Display for ParseError {
@@ -74,6 +84,9 @@ impl std::fmt::Display for ParseError {
             Self::InvalidRelayUrl => write!(f, "relay must be a wss:// or ws:// URL"),
             Self::MissingSecret => write!(f, "missing secret= query parameter"),
             Self::InvalidSecret => write!(f, "secret must be a 64-char hex string"),
+            Self::UnknownParam { key } => {
+                write!(f, "unrecognised URI parameter \"{key}\" (check for typos)")
+            }
         }
     }
 }
@@ -87,7 +100,11 @@ impl NwcUri {
     ///
     /// # Errors
     ///
-    /// Returns `ParseError` if the URI scheme, wallet pubkey, or required `relay` parameter are invalid.
+    /// Returns `ParseError` if the URI scheme, wallet pubkey, or required `relay` / `secret`
+    /// parameters are invalid, or if any unrecognised query parameter key is encountered
+    /// (`ParseError::UnknownParam { key }`). The latter guards against silent config drops:
+    /// a typo such as `relays=wss://…` would otherwise be accepted as a parse success with
+    /// no relay configured, causing the wallet connection to fail with no explanation.
     #[must_use]
     pub fn parse(uri: &str) -> Result<Self, ParseError> {
         const SCHEME: &str = "nostr+walletconnect://";
@@ -132,7 +149,7 @@ impl NwcUri {
                     }
                     "secret" => client_secret_hex = Some(v),
                     "lud16" => lud16 = Some(v),
-                    _ => {}
+                    _ => return Err(ParseError::UnknownParam { key: k.to_string() }),
                 }
             }
         }
@@ -401,5 +418,50 @@ mod tests {
         );
         let parsed = NwcUri::parse(&uri).unwrap();
         assert_eq!(parsed.wallet_pubkey_hex, wallet_pk);
+    }
+
+    /// A common user typo: `relays=` (note the trailing 's') instead of `relay=`.
+    /// Without the UnknownParam guard this parses as success with no relay
+    /// configured, causing a silent connection failure at runtime.
+    #[test]
+    fn typo_relays_plural_returns_unknown_param() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        let uri = format!(
+            "nostr+walletconnect://{}?relays=wss://r.io&secret={}",
+            wallet_pk, secret
+        );
+        assert_eq!(
+            NwcUri::parse(&uri).unwrap_err(),
+            ParseError::UnknownParam { key: "relays".to_string() }
+        );
+    }
+
+    /// Case-variant `Relay=` (capital R) must also be rejected — NWC param
+    /// keys are case-sensitive per the URI spec; `relay=` is the only valid form.
+    #[test]
+    fn capital_relay_returns_unknown_param() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        let uri = format!(
+            "nostr+walletconnect://{}?Relay=wss://r.io&secret={}",
+            wallet_pk, secret
+        );
+        assert_eq!(
+            NwcUri::parse(&uri).unwrap_err(),
+            ParseError::UnknownParam { key: "Relay".to_string() }
+        );
+    }
+
+    /// Verify that the Display output for UnknownParam is human-readable and
+    /// names the offending key — the host surfaces this string in a toast.
+    #[test]
+    fn unknown_param_display_names_the_key() {
+        let err = ParseError::UnknownParam { key: "relays".to_string() };
+        let rendered = format!("{err}");
+        assert!(
+            rendered.contains("relays"),
+            "Display must include the offending key, got: {rendered}"
+        );
     }
 }
