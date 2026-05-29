@@ -13,9 +13,8 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///     `UpdateFrame`; the gallery reads `projections.claimed_profiles[pubkey]`
 ///     for component-owned profile claims, with `author_view` /
     ///     `mention_profiles` as secondary projections for other showcases.
-///   • `nmp_app_gallery_snapshot` is a status envelope only
-///     (`{schema, alive, projections:{}}`); it is NOT a profile source. The
-///     gallery does not rely on it for component data.
+///   • There is no pull-side snapshot accessor; kernel liveness is observed
+///     through `nmp_app_is_alive` and all state arrives via the push callback.
 ///
 /// Lifetime:
 ///   1. `init()`         — `nmp_app_new()` then `nmp_app_gallery_register(raw)`.
@@ -192,20 +191,6 @@ final class GalleryKernelHandle {
         return String(cString: ptr)
     }
 
-    // ── Status-envelope pull (NOT a profile source) ──────────────────────
-
-    /// Pull the gallery's status envelope (`{schema, alive, projections:{}}`).
-    /// Returns nil on any kernel-side failure (null pointer, allocation error,
-    /// JSON encode failure — all silent under D6). Use this for alive-checks /
-    /// diagnostics only — profile data comes through the push callback
-    /// registered via `listen(_:)`. The snapshot accessor takes the same `app`
-    /// pointer that drives every other FFI call (there is no separate handle
-    /// because the gallery carries no per-app projection mutex).
-    func gallerySnapshotJSON() -> String? {
-        guard let ptr = nmp_app_gallery_snapshot(raw) else { return nil }
-        defer { nmp_app_gallery_snapshot_free(ptr) }
-        return String(cString: ptr)
-    }
 }
 
 // MARK: - Update sink

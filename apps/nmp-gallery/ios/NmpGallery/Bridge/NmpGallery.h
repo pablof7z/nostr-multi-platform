@@ -89,31 +89,21 @@ void nmp_app_signin_nsec(void *app, const char *secret);
 // D0 keeps the gallery's bespoke projection outside `nmp-core` while still
 // letting the iOS shell link a single Rust archive.
 //
-// Profile-data flow (CRITICAL): profile data does NOT travel through
-// `nmp_app_gallery_snapshot`. Profile data arrives via the push callback
-// registered with `nmp_app_set_update_callback`; the FlatBuffers update frame
-// the kernel passes to that callback carries the full snapshot.
-// Identical to Chirp's update-channel pattern.
-//
-// `nmp_app_gallery_snapshot` returns a minimal status envelope only:
-//   { "schema": "nmp.gallery.snapshot/1", "alive": <bool>, "projections": {} }
-// The gallery uses it for diagnostics / alive-checks, not for component data.
+// Profile-data flow (CRITICAL): all kernel state arrives via the push
+// callback registered with `nmp_app_set_update_callback`; the FlatBuffers
+// update frame the kernel passes to that callback carries the full snapshot.
+// Identical to Chirp's update-channel pattern. There is no pull-side snapshot
+// accessor — kernel liveness is observed through `nmp_app_is_alive`.
 //
 // Flow:
 // 1. Call `nmp_app_gallery_register(app)` once after `nmp_app_new()` succeeds
 //    and BEFORE `nmp_app_start`. Silent no-op on a NULL app (D6).
 // 2. Register the push callback via `nmp_app_set_update_callback`.
 //    FlatBuffers update frames arrive on every emit tick.
-// 3. `nmp_app_gallery_snapshot(app)` is for status only; the shell owns the
-//    returned pointer until it calls `nmp_app_gallery_snapshot_free(ptr)`.
-//    The snapshot accessor takes the same `app` pointer (there is no
-//    separate handle — the gallery has no per-app projection mutex).
 //
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or serialization failure (D6).
 void nmp_app_gallery_register(void *app);
-char *nmp_app_gallery_snapshot(void *app);
-void nmp_app_gallery_snapshot_free(char *ptr);
 const char *nmp_app_gallery_showcase_references_json(void);
 
 // ── Heap-string release ──────────────────────────────────────────────────
