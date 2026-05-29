@@ -43,10 +43,10 @@ import XCTest
 ///
 /// ## Known gap
 ///
-/// None — all 6 registered Rust projections (`nmp.nip29.group_chat`,
+/// None — all 7 registered Rust projections (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `nmp.follow_list`,
-/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`) have Swift decoders covered
-/// by this conformance test as of this file.
+/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`) have
+/// Swift decoders covered by this conformance test as of this file.
 final class SnapshotProjectionsConformanceTests: XCTestCase {
 
     /// The exact decoder configuration `KernelHandle.decode` uses for the
@@ -92,6 +92,15 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
           "nmp.nip17.dm_relay_list": {
             "active_pubkey": null,
             "read_relay_urls": []
+          },
+          "claimed_profiles": {
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+              "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "npub": "npub1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "nip05": "",
+              "about": "",
+              "has_profile": false
+            }
           }
         }
         """
@@ -120,9 +129,12 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNotNil(
             projections.dmRelayList,
             "SnapshotProjections.dmRelayList decoded nil — check CodingKeys.dmRelayList raw value matches \"nmp.nip17.dmRelayList\" (post-convertFromSnakeCase of \"nmp.nip17.dm_relay_list\")")
+        XCTAssertNotNil(
+            projections.claimedProfiles,
+            "SnapshotProjections.claimedProfiles decoded nil — check CodingKeys.claimedProfiles raw value matches \"claimedProfiles\" (post-convertFromSnakeCase of \"claimed_profiles\")")
     }
 
-    /// Sanity check: all six projection fields default to nil when the
+    /// Sanity check: all seven projection fields default to nil when the
     /// kernel emits an empty projections map (an older kernel build that
     /// predates the projections, or a fresh actor with no registrations yet).
     /// This is the steady-state any new field MUST tolerate (D1 — never
@@ -136,5 +148,6 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNil(projections.followList)
         XCTAssertNil(projections.zaps)
         XCTAssertNil(projections.dmRelayList)
+        XCTAssertNil(projections.claimedProfiles)
     }
 }

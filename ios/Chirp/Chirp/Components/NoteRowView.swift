@@ -39,11 +39,16 @@ struct NoteRowView: View {
     /// ADR-0032 presentation-layer derivations of the raw `authorPubkey`
     /// hex. Kept as computed properties so the view body stays readable.
     private var authorDisplayLabel: String {
-        item.authorPubkey.shortHex
+        model.profile(forPubkey: item.authorPubkey)?.display
+            ?? eventCards[item.id]?.authorDisplayName
+            ?? mentionProfiles[item.authorPubkey]?.display
+            ?? item.authorPubkey.shortHex
     }
 
     private var authorAvatarInitials: String {
-        item.authorPubkey.displayInitials
+        let name = model.profile(forPubkey: item.authorPubkey)?.display
+            ?? eventCards[item.id]?.authorDisplayName
+        return (name ?? item.authorPubkey).displayInitials
     }
 
     private var authorAvatarColorHex: String {

@@ -266,11 +266,11 @@ struct ModularBlockView: View {
     }
 
     private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
-        // ADR-0032: kind:0 metadata is now `Optional<String>` on the wire.
-        // Presentation layer chooses the fallback: card's kind:0 name when
-        // present, otherwise the abbreviated hex pubkey.
-        if let name = card?.authorDisplayName, !name.isEmpty { return name }
         let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+        if !pubkey.isEmpty, let name = model.profile(forPubkey: pubkey)?.display {
+            return name
+        }
+        if let name = card?.authorDisplayName, !name.isEmpty { return name }
         return pubkey.isEmpty ? "Unknown" : pubkey.shortHex
     }
 
