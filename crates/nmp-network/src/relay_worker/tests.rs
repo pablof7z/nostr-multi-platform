@@ -22,7 +22,8 @@ use std::time::{Duration, Instant};
 use tungstenite::{accept, Message};
 
 use super::{
-    jittered_backoff, spawn_relay_worker_with_keepalive, BackoffClass, RelayCommand, RelayEvent,
+    apply_reconnect_backoff, jittered_backoff, spawn_relay_worker_with_keepalive, BackoffClass,
+    RelayCommand, RelayEvent,
 };
 use crate::role::RelayRole;
 
@@ -619,11 +620,11 @@ fn v58_set_backoff_hint_does_not_break_reconnect() {
         Duration::from_secs(60),
     );
 
-    // Wait for Connected.
+    // Wait for Connected. 5s budget so the test survives slow CI machines.
     let connected = drain_until(
         &relay_rx,
         |ev| matches!(ev, RelayEvent::Connected { .. }),
-        Duration::from_secs(2),
+        Duration::from_secs(5),
     );
     assert!(connected.is_some(), "worker must report Connected");
 
@@ -634,10 +635,12 @@ fn v58_set_backoff_hint_does_not_break_reconnect() {
         .expect("hint must be accepted by the worker channel");
 
     // The worker should eventually discover the dropped connection and emit Failed.
+    // 5s budget: the server-side drop may take a round-trip before the client
+    // sees it, and CI machines can be slow.
     let failed = drain_until(
         &relay_rx,
         |ev| matches!(ev, RelayEvent::Failed { .. }),
-        Duration::from_secs(3),
+        Duration::from_secs(5),
     );
     assert!(
         failed.is_some(),
@@ -670,55 +673,46 @@ fn v58_rate_limited_backoff_base_exceeds_initial_delay() {
 /// transient drop resets the backoff to `INITIAL`; a rate-limited hint must
 /// instead pin it to `RELAY_RECONNECT_DELAY_RATE_LIMITED`.
 ///
-/// This is a logic test that exercises the backoff-class decision branch
-/// inline — it does not spin up a real socket.
+/// This test calls the real production `apply_reconnect_backoff` function so
+/// a future edit that reorders the V-58/V-92 branches surfaces immediately.
 #[test]
 fn v58_rate_limited_hint_overrides_v92_healthy_session_reset() {
     use crate::relay_protocol::{
-        RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+        RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_RATE_LIMITED,
     };
 
-    // Simulate the backoff-selection logic from run_relay_worker, using
-    // BackoffClass::RateLimited as the hint.
-    fn select_backoff(
-        hint: Option<BackoffClass>,
-        accumulated_backoff: Duration,
-        connected_elapsed: Duration,
-        reset_threshold: Duration,
-    ) -> Duration {
-        match hint {
-            Some(BackoffClass::RateLimited) => RELAY_RECONNECT_DELAY_RATE_LIMITED,
-            None | Some(BackoffClass::Transient) => {
-                if connected_elapsed >= reset_threshold {
-                    RELAY_RECONNECT_DELAY_INITIAL
-                } else {
-                    (accumulated_backoff * 2).min(RELAY_RECONNECT_DELAY_MAX)
-                }
-            }
-        }
-    }
-
     let healthy_elapsed = Duration::from_secs(400); // > 5 min → V-92 would reset
-    let reset_threshold = Duration::from_secs(300);
-    let accumulated = Duration::from_secs(60); // some previously-advanced backoff
+    let mut backoff_v92 = Duration::from_secs(60); // some previously-advanced backoff
+    let mut backoff_v58 = Duration::from_secs(60);
 
-    // V-92: healthy + no hint → reset to INITIAL.
-    let v92_result = select_backoff(None, accumulated, healthy_elapsed, reset_threshold);
+    // V-92: healthy session + no hint → reset to INITIAL.
+    let v92_base = apply_reconnect_backoff(None, &mut backoff_v92, healthy_elapsed);
     assert_eq!(
-        v92_result, RELAY_RECONNECT_DELAY_INITIAL,
-        "V-92: healthy session + no hint must reset to initial delay"
+        v92_base, RELAY_RECONNECT_DELAY_INITIAL,
+        "V-92: healthy session + no hint must reset backoff base to INITIAL"
+    );
+    assert_eq!(
+        backoff_v92, RELAY_RECONNECT_DELAY_INITIAL,
+        "apply_reconnect_backoff must mutate current_backoff to INITIAL on V-92 reset"
     );
 
-    // V-58 override: healthy + RateLimited hint → long delay, NOT reset.
-    let v58_result =
-        select_backoff(Some(BackoffClass::RateLimited), accumulated, healthy_elapsed, reset_threshold);
+    // V-58 override: healthy session + RateLimited hint → long delay, NOT reset.
+    let v58_base = apply_reconnect_backoff(
+        Some(BackoffClass::RateLimited),
+        &mut backoff_v58,
+        healthy_elapsed,
+    );
     assert_eq!(
-        v58_result, RELAY_RECONNECT_DELAY_RATE_LIMITED,
-        "V-58: RateLimited hint must override V-92 reset → long delay"
+        v58_base, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+        "V-58: RateLimited hint must override V-92 reset → long base delay"
+    );
+    assert_eq!(
+        backoff_v58, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+        "apply_reconnect_backoff must pin current_backoff to RATE_LIMITED"
     );
     assert!(
-        v58_result > RELAY_RECONNECT_DELAY_INITIAL,
-        "rate-limited delay must exceed initial delay"
+        v58_base > RELAY_RECONNECT_DELAY_INITIAL,
+        "rate-limited base must exceed initial delay"
     );
 }
 

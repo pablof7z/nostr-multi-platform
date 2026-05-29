@@ -168,9 +168,14 @@ fn run_relay_worker(
     let mut pending = VecDeque::new();
     let mut backoff = RELAY_RECONNECT_DELAY_INITIAL;
     // V-58 — one-shot backoff hint. `None` = normal exponential curve.
-    // Set to `Some(BackoffClass::RateLimited)` by a `SetBackoffHint` command
-    // delivered while the socket is live; consumed (and cleared) in the very
-    // next `Reconnect` branch so subsequent reconnects resume the normal curve.
+    // Set by a `SetBackoffHint` command delivered while the socket is live;
+    // consumed (and cleared via `.take()`) in the first `Reconnect` branch
+    // so subsequent reconnects resume the normal curve. Lifetime is bounded
+    // to the next disconnect after the hint arrives — a hint set during a
+    // healthy session that stays up a long time will still apply to whatever
+    // drop eventually terminates it. This is intentional: a relay that said
+    // "rate-limited" continues to warrant long backoff on its next reconnect
+    // regardless of how long it stayed healthy after the CLOSED.
     let mut backoff_hint: Option<BackoffClass> = None;
     let control = io_ready::spawn_control_inbox(control_rx);
     loop {
@@ -207,39 +212,18 @@ fn run_relay_worker(
                 );
                 match result {
                     RelayWorkerResult::Reconnect => {
-                        // V-58: consume the one-shot hint (if any) to decide
-                        // the reconnect delay for *this* disconnect.  A
-                        // `RateLimited` hint overrides both the V-92 healthy-
-                        // session reset and the normal exponential advance,
-                        // so the worker backs off long even if the session was
-                        // otherwise stable.
-                        let delay = match backoff_hint.take() {
-                            Some(BackoffClass::RateLimited) => {
-                                // Pin backoff to the long value so *future*
-                                // reconnects (hint absent) also start higher.
-                                backoff = RELAY_RECONNECT_DELAY_RATE_LIMITED;
-                                jittered_backoff(RELAY_RECONNECT_DELAY_RATE_LIMITED, &relay_url)
-                            }
-                            None | Some(BackoffClass::Transient) => {
-                                // V-92 / GH #615: if the connection was healthy
-                                // for at least RELAY_BACKOFF_RESET_AFTER_SECS,
-                                // reset backoff to the initial value. This
-                                // prevents accumulated backoff from much earlier
-                                // failure cycles from affecting a relay that
-                                // reconnects after sustained stable operation.
-                                if connected_at.elapsed() >= RELAY_BACKOFF_RESET_AFTER_SECS {
-                                    backoff = RELAY_RECONNECT_DELAY_INITIAL;
-                                } else {
-                                    // Mid-session drop: wait with backoff before
-                                    // retrying. Do NOT reset backoff here — a
-                                    // relay that connects and immediately
-                                    // disconnects should back off progressively.
-                                    backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
-                                }
-                                jittered_backoff(backoff, &relay_url)
-                            }
-                        };
-                        // T116c / G12: jitter already applied inside `delay`.
+                        // V-58 / V-92: delegate the schedule decision to the
+                        // extracted `apply_reconnect_backoff` so the logic is
+                        // testable without a live socket. The hint is one-shot:
+                        // `.take()` clears it so subsequent reconnects resume
+                        // the normal exponential curve.
+                        let base = apply_reconnect_backoff(
+                            backoff_hint.take(),
+                            &mut backoff,
+                            connected_at.elapsed(),
+                        );
+                        // T116c / G12: jitter spreads simultaneous reconnects.
+                        let delay = jittered_backoff(base, &relay_url);
                         if !wait_before_reconnect(&control, &mut pending, delay) {
                             return;
                         }
@@ -262,11 +246,9 @@ fn run_relay_worker(
                 if permanent {
                     return;
                 }
-                // Connect-time failure: no hint consumption — the hint was set
-                // while a *previous* session was live; we apply the normal curve
-                // at connect time (the hint is only meaningful after a live session
-                // drops). The hint persists and will be consumed on the next
-                // mid-session disconnect.
+                // Connect-time failure (never reached run_connected_relay, so
+                // no hint was ever stored in backoff_hint for this iteration).
+                // Apply the normal exponential curve; no hint to consume.
                 // T116c / G12: jitter spreads simultaneous reconnects
                 // across a [0, 5s] window to avoid global thundering-herd.
                 if !wait_before_reconnect(
@@ -402,6 +384,52 @@ fn run_connected_relay(
             {
                 return result;
             }
+        }
+    }
+}
+
+/// V-58 / V-92 — compute and apply the reconnect backoff for one disconnect.
+///
+/// Called by `run_relay_worker` in the `Reconnect` branch. Mutates
+/// `current_backoff` in place (so the next call starts from the updated value)
+/// and returns the jittered delay to wait before retrying.
+///
+/// Rules (in priority order):
+///
+/// 1. `hint = Some(BackoffClass::RateLimited)` — relay just rate-limited us.
+///    Override V-92 reset and normal exponential advance: pin the base to
+///    [`RELAY_RECONNECT_DELAY_RATE_LIMITED`] (60 s) regardless of session age.
+///    Jitter is applied on top.
+/// 2. `hint = None | Some(BackoffClass::Transient)` — normal transient drop.
+///    V-92 / GH #615: if the session ran for ≥ [`RELAY_BACKOFF_RESET_AFTER_SECS`]
+///    (5 min), reset the base to [`RELAY_RECONNECT_DELAY_INITIAL`] so
+///    accumulated earlier-cycle debt does not bleed into stable relays.
+///    Otherwise advance the exponential curve (×2 capped at
+///    [`RELAY_RECONNECT_DELAY_MAX`]). Jitter is applied on top.
+///
+/// This is `pub(crate)` so tests can call the real production logic directly
+/// without spinning up a socket.
+pub(crate) fn apply_reconnect_backoff(
+    hint: Option<BackoffClass>,
+    current_backoff: &mut Duration,
+    connected_elapsed: Duration,
+) -> Duration {
+    match hint {
+        Some(BackoffClass::RateLimited) => {
+            // V-58: pin base to the long value so *future* reconnects
+            // (hint absent) also start from the rate-limited floor.
+            *current_backoff = RELAY_RECONNECT_DELAY_RATE_LIMITED;
+            *current_backoff
+        }
+        None | Some(BackoffClass::Transient) => {
+            // V-92 / GH #615: healthy session → reset to initial.
+            if connected_elapsed >= RELAY_BACKOFF_RESET_AFTER_SECS {
+                *current_backoff = RELAY_RECONNECT_DELAY_INITIAL;
+            } else {
+                // Mid-session drop: advance the exponential curve.
+                *current_backoff = (*current_backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
+            }
+            *current_backoff
         }
     }
 }
