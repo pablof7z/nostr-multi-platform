@@ -239,7 +239,7 @@ pub(crate) fn wallet_connect(
 }
 
 /// Clear wallet state and send a CLOSE to the NWC relay.
-pub fn wallet_disconnect(
+pub(crate) fn wallet_disconnect(
     wallet: &mut WalletRuntime,
     kernel: &mut Kernel,
 ) -> Vec<OutboundMessage> {
@@ -292,7 +292,7 @@ fn wallet_disconnect_inner(
 /// originates from `nmp_app_dispatch_action` under `nmp.wallet.pay_invoice`;
 /// `None` is reserved for actor-internal auto-dispatched payments where no
 /// host spinner exists to close.
-pub fn wallet_pay_invoice(
+pub(crate) fn wallet_pay_invoice(
     wallet: &mut WalletRuntime,
     kernel: &mut Kernel,
     bolt11: &str,
@@ -346,7 +346,7 @@ pub fn wallet_pay_invoice(
 
 /// Called from the actor's relay-event handler when a text frame arrives
 /// from the NWC relay. Decodes kind:23195 responses and updates state.
-pub fn handle_nwc_text(
+pub(crate) fn handle_nwc_text(
     wallet: &mut WalletRuntime,
     relay_text: &str,
     kernel: &mut Kernel,
