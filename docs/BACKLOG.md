@@ -1141,7 +1141,13 @@ hydration is exercised by `op_feed_repost_hydration_test.rs`.
 
 ---
 
-### V-84 · iOS Swift NFCT (content-tree) decoder — wire the iOS typed NOFS read into render [MEDIUM · ADR-0038 rollout tail · post-v1]
+### V-84 · iOS Swift NFCT (content-tree) decoder — wire the iOS typed NOFS read into render [MEDIUM · ADR-0038 rollout tail · post-v1] — LANDED 2026-05-29
+
+**Status:** FIXED at HEAD. `TypedHomeFeedDecoder.swift` has a complete
+`decodeContentTree` implementation; the comment reads "CONSUMER STATUS — the
+typed path is now LIVE." `KernelBridge.swift:533` calls
+`TypedHomeFeedDecoder.decode(from: envelopes)` and `KernelModel.swift:88`
+prefers `typedHomeFeed` over the generic path.
 
 **Origin (B3, #755):** iOS ships the typed `NOFS` decoder **decoder-only**. It
 is not wired into the render because iOS has **no Swift NFCT content-tree
@@ -1152,7 +1158,13 @@ had it too). **Fix:** build a Swift decoder for the embedded `NFCT` content-tree
 buffer, then flip `TypedHomeFeedDecoder` into the render preference so iOS gets
 the typed hot-path. Behavior is unaffected until then (generic fallback).
 
-### V-85 · Android Kotlin NFCT decoder — wire the Android typed NOFS read into render [LOW · ADR-0038 rollout tail · post-v1]
+### V-85 · Android Kotlin NFCT decoder — wire the Android typed NOFS read into render [LOW · ADR-0038 rollout tail · post-v1] — LANDED 2026-05-29
+
+**Status:** FIXED at HEAD. `TypedHomeFeedDecoder.kt` has a full
+`decodeContentTree` method; its docstring states "V-85 adds the native Kotlin
+NFCT decoder (decodeContentTree) so ChirpEventCard.contentTree is now
+populated… The typed path is now the live preferred path; KernelModel.decodeUpdate
+wires it." `KernelModel.kt:131-133` confirms the wiring.
 
 **Origin (B4, #757):** same as V-84 for Android (gallery). The Kotlin `NOFS`
 decoder ships decoder-only (golden test 5/5); Android renders via the generic
@@ -1895,6 +1907,14 @@ Show the user which relays delivered a given event. The data is already tracked:
 mandatory primary transport; typed projections are deployed as sidecars for the
 feed (`NOFS` / `NFTS`). There is no `FullState` / `ViewBatch` typed root yet, and
 the JSON `Value` tree remains the main generic interchange shape.
+
+**ADR-0038 rollout progress (2026-05-29):** V-84 (iOS Swift NFCT decoder) and
+V-85 (Android Kotlin NFCT decoder) are both LANDED at HEAD — the typed path is
+now the live preferred path on iOS, Android, and TUI. The only remaining open
+rollout item is **V-86** (CI glob fix: extend
+`ci/check-flatbuffers-version-pins.sh` to cover the Android `nmp/{nip01,feed}`
+Kotlin tree and `nmp/transport/` — in progress on branch
+`fix/flatbuffers-v86-backlog-cleanup`).
 
 Replace the Rust-to-frontend JSON update payload with one canonical
 FlatBuffers schema for `FullState`, `ViewBatch`, and side-effect frames.
