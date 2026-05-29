@@ -8,9 +8,14 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against `origin/master` **9fe2aced** (2026-05-27). Update this file
+> Verified against `origin/master` **c295efcc** (2026-05-29). Update this file
 > in every PR that touches an item listed here. (Cleanup pass 2026-05-27 — completed
 > items removed; see git history for prior state.)
+>
+> Reconciled against `origin/master` **c295efcc** 2026-05-29 — removed items closed
+> during the v0.1.0/0.1.1 backend sweep (V-46, V-58, V-61–V-67, V-69–V-72, V-74–V-75,
+> V-77, V-79, V-84–V-86, V-92, V-96); renumbered duplicate V-68-iOS to V-106;
+> deduplicated V-82; resolved PD-041.
 
 ---
 
@@ -361,28 +366,6 @@ Drop V-37(c) as a sub-item; track here separately.
 
 ---
 
-### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [RESOLVED]
-
-**Resolved** by PR fix/v46-snapshot-d5-bounding (2026-05-29).
-
-**Option (b) implemented** — view-dependent keys moved to a "only-if-view-subscribed"
-branch in `crates/nmp-core/src/kernel/update/projections.rs`:
-
-- `timeline`, `inserted`, `updated`, `removed`: emitted only when
-  `follow_feed_kinds` is non-empty (i.e., the shell has called
-  `nmp_app_open_timeline` / `ActorCommand::OpenContactListSubscription`).
-- `author_view`: emitted only when `author_view()` returns `Some(...)`.
-- `thread_view`: emitted only when `thread_view()` returns `Some(...)`.
-
-**Shell tolerance verified** before change: iOS `SnapshotProjections` declares all
-six keys as `Optional` (Swift `?`); Android `SnapshotProjections` uses default
-`emptyList()` / nullable; TUI reads via `.get(key)` returning `Option`; web uses
-`Array.isArray(...)` guard and `?? undefined` optional chain — all shells are
-absence-tolerant. D5 doctrine text updated to describe the static vs.
-view-dependent cluster split.
-
----
-
 ### V-49 · F-05 codegen coverage is ~20% (9/45 structs as of 2026-05-29 audit) — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
 **Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
@@ -686,17 +669,7 @@ part of the deleted scratch plan.
 
 ---
 
-### V-67 · Kernel init silently degrades to in-memory store on LMDB open failure [MEDIUM · silent durability loss]
-
-**Verified:** `crates/nmp-core/src/kernel/mod.rs:872` — LMDB open failure during kernel init falls through to an ephemeral in-process store. No `KernelDiagnostic` is emitted; no host callback is invoked. The kernel reports itself as healthy.
-
-**Impact:** the user runs the app, ingests events, publishes notes — and on the next launch every locally-stored event is gone (because the LMDB file was never opened, so the in-memory store was the only persistence layer). Notifications, drafts, profile cache, follow list — all transient without warning. This is one of the harder failure modes to diagnose because everything else works.
-
-**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring — fixed in PR fix/v61-v62-marmot-silent-failures): silent mock installation is not a doctrined option.
-
----
-
-### V-68 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
+### V-106 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
 
 **Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:446` — `func zap(...) { amountMsats: UInt64 = 21_000, ... }` with a doc-comment at `:433-434` stating "defaults to 21,000 msats (21 sats) until an amount picker lands." Every zap dispatch from the iOS shell that doesn't explicitly pass an amount sends 21 sats.
 
@@ -706,16 +679,6 @@ part of the deleted scratch plan.
 
 ---
 
-
-### V-71 · `nip65_resolver` module doc claims `tracing::debug!` logging that the code does not perform [LOW · false documentation + missing observability]
-
-**Verified:** `crates/nmp-router/src/nip65_resolver.rs:30` — module doc states "bad-shape kind:10002 tags (missing url, non-wss) are logged via `tracing::debug!` and skipped". A `grep tracing|debug!|warn!` of the file returns only the doc-comment itself; no tracing call exists.
-
-**Impact:** (1) documentation lies — a maintainer reading the module believes there is observability that doesn't exist. (2) the V-51 routing-trace inspector cannot attribute "kind:10002 tag was malformed" as a cause of an empty outbox set, because the malformed-tag path is silent. Diagnosing "why didn't my note publish?" is harder than the doc implies.
-
-**Correct fix:** add the `tracing::debug!(target: "nmp.router.nip65", url=?, reason=?, "skipping malformed kind:10002 tag")` calls at the two skip sites (missing URL, non-`wss://`), and surface a `RouterAnomaly::MalformedRelayTag` counter into V-51's routing-trace snapshot so the inspector can attribute empty-set outcomes.
-
----
 
 ### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
 
@@ -749,20 +712,6 @@ part of the deleted scratch plan.
 - Stage 3: `ZapAction::execute` — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
 
 **Deadline:** Stages 2-3 are post-v1. Either this is fixed or v1 copy drops "send zaps" as a v1 capability for bunker accounts.
-
----
-
-### V-79 · NIP-47 wallet connection has no heartbeat and no reconnect — **DONE** (PR fix/v79-nwc-heartbeat-reconnect)
-
-`crates/nmp-nip47/src/runtime.rs` + `apps/chirp/nmp-app-chirp/src/wallet_runtime.rs`.
-`WalletRuntime::tick_heartbeat` (D8 wall-clock-gated, Kernel-free) fires on every
-actor idle tick via the existing `RelayTextInterceptor::on_idle_tick` seam.
-After `HEARTBEAT_MAX_FAILURES` (3) consecutive unanswered `get_info` probes, the
-runtime re-sends the REQ subscription and transitions `connection_state` to
-`Reconnecting`; after a second round of failures, transitions to `TransportLost`.
-Any successful kind:23195 response resets the counter to 0 and restores `Connected`.
-`NwcConnectionState` is projected inside `WalletStatus` under the existing `"wallet"`
-snapshot projection. Six new unit tests cover all state-machine transitions.
 
 ---
 
@@ -1052,29 +1001,6 @@ it would let the engine treat the signal as terminal and proactively emit
 
 ---
 
-### V-82 · `NmpApp::active_account_handle()` accessor for the OP-feed composition root [LOW · sub-item of V-80, rung-7 prerequisite]
-
-**Origin:** rung 6 (Stage 5) needs the kernel's `ActiveAccountSlot` to
-construct `nmp_nip02::ActiveFollowSet`. `NmpApp` exposes **no** synchronous
-accessor for it: the kernel constructs its `active_account_handle` internally
-(`crates/nmp-core/src/kernel/mod.rs:1406`) and never threads a clone back to
-`NmpApp` (unlike `relay_edit_rows`, which `NmpApp` owns and injects via
-`run_actor_with_observers`). So `register_op_feed_defaults` takes the slot as
-an explicit parameter this rung.
-
-**Fix:** add `NmpApp::active_account_handle(&self) -> ActiveAccountSlot`
-mirroring the `relay_edit_rows_handle` pattern — `NmpApp` owns the slot
-(created in `nmp_app_new`), passes a clone into `run_actor_with_observers`,
-and the actor binds it onto the kernel (a new `Kernel::set_active_account_handle`
-setter replacing the kernel's internal `new_active_account_slot()`). That is a
-small `nmp-core`/actor change, deliberately out of rung-6 scope. Once landed,
-`register_op_feed_defaults` can drop its explicit slot parameter and read the
-slot off `app`. **Rung 7 (Chirp cut-over) needs this** to obtain the slot at
-its `register_op_feed_defaults` call site, so this should land with or before
-rung 7.
-
----
-
 ### V-83 · OP-feed `event_lookup` reads the kernel event store (replace no-op closure) [LOW · sub-item of V-80, optimization only] — LANDED 2026-05-29 (#756)
 
 **Origin:** rung 6 wires the engine's
@@ -1096,47 +1022,6 @@ re-key. Only matters for repost L-2/L-5 cold-start latency. **DONE 2026-05-29 (#
 landed via a publish-back `EventStoreSlot` + `NmpApp::event_by_id` (single-writer
 actor, Reset-survivable); the no-op closure is replaced and repost L-2/L-5
 hydration is exercised by `op_feed_repost_hydration_test.rs`.
-
----
-
-### V-84 · iOS Swift NFCT (content-tree) decoder — wire the iOS typed NOFS read into render [MEDIUM · ADR-0038 rollout tail · post-v1] — LANDED 2026-05-29
-
-**Status:** FIXED at HEAD. `TypedHomeFeedDecoder.swift` has a complete
-`decodeContentTree` implementation; the comment reads "CONSUMER STATUS — the
-typed path is now LIVE." `KernelBridge.swift:533` calls
-`TypedHomeFeedDecoder.decode(from: envelopes)` and `KernelModel.swift:88`
-prefers `typedHomeFeed` over the generic path.
-
-**Origin (B3, #755):** iOS ships the typed `NOFS` decoder **decoder-only**. It
-is not wired into the render because iOS has **no Swift NFCT content-tree
-decoder** — a typed read would yield blank tweet bodies (`contentTree`
-unfillable). iOS therefore renders the home feed via the generic `Value`
-`RootFeedSnapshot` path (correct, live). Pre-existing gap (the NFTS predecessor
-had it too). **Fix:** build a Swift decoder for the embedded `NFCT` content-tree
-buffer, then flip `TypedHomeFeedDecoder` into the render preference so iOS gets
-the typed hot-path. Behavior is unaffected until then (generic fallback).
-
-### V-85 · Android Kotlin NFCT decoder — wire the Android typed NOFS read into render [LOW · ADR-0038 rollout tail · post-v1] — LANDED 2026-05-29
-
-**Status:** FIXED at HEAD. `TypedHomeFeedDecoder.kt` has a full
-`decodeContentTree` method; its docstring states "V-85 adds the native Kotlin
-NFCT decoder (decodeContentTree) so ChirpEventCard.contentTree is now
-populated… The typed path is now the live preferred path; KernelModel.decodeUpdate
-wires it." `KernelModel.kt:131-133` confirms the wiring.
-
-**Origin (B4, #757):** same as V-84 for Android (gallery). The Kotlin `NOFS`
-decoder ships decoder-only (golden test 5/5); Android renders via the generic
-fallback. Needs a Kotlin NFCT decoder to wire the typed render. Non-blocking.
-
-### V-86 · `ci/check-flatbuffers-version-pins.sh` glob misses the Chirp `nmp/{nip01,feed}` Kotlin tree [LOW · CI hygiene]
-
-**Origin (B4, #757):** the pin-check glob does not cover the newly-added
-Android `nmp/nip01` + `nmp/feed` generated Kotlin bindings (pinned `25.2.10`).
-It also misses `android/app/src/main/java/nmp/transport/` (9 files) — the main
-Android Chirp app's transport layer is **completely unchecked** by the pin glob,
-not just the Chirp `nmp/{nip01,feed}` trees. Pre-existing-shaped gap; extend the
-glob so the Android NOFS/timeline/feed bindings **and the `nmp/transport` tree**
-are pin-checked in CI.
 
 ---
 
@@ -1274,19 +1159,6 @@ is a D8 violation at the FFI boundary.
 **Correct fix:** Replace the `recv_timeout` polling pattern with a push-based
 callback notification model matching the iOS `set_update_callback` architecture.
 
-### V-92 · Relay reconnect backoff never resets after a healthy session [LOW · reliability · issue #615]
-
-**Verified:** `crates/nmp-network/src/relay_worker/mod.rs:152` initializes
-`backoff = RELAY_RECONNECT_DELAY_INITIAL`; the mid-session-drop branch at
-`:183-184` carries the explicit comment "Do NOT reset backoff here", and backoff
-only ever doubles (capped at `RELAY_RECONNECT_DELAY_MAX`). No reset path exists
-after a sustained `Connected` state, so a relay that drops after a long healthy
-session re-enters at the maximum backoff. **Confirmed live.**
-
-**Correct fix:** Reset backoff to `RELAY_RECONNECT_DELAY_INITIAL` after a
-configurable minimum connected duration (e.g. 5 minutes). Related to V-58 (backoff
-blind to close reason) — that fix and this fix compose naturally.
-
 ### V-93 · Kernel constructor blocks synchronously on LMDB open and pending load [MEDIUM · D1/P3 · issue #617]
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:1020` (`build_event_store`, LMDB
@@ -1327,21 +1199,6 @@ installation. **Confirmed live.**
 **Correct fix:** Pass `Arc<Mutex<Option<WalletRuntime>>>` as a field on each module
 struct (injected at registration time via `nmp-app-template`), eliminating the
 global and making the initialization order visible from the type signature.
-
-### V-96 · NIP-57 bolt11-fetch path consolidation [MEDIUM · P1 · issue #620] — PARTIALLY RESOLVED AT HEAD
-
-**Verified:** the two migration-artifact paths the issue targets are **already**
-`pub(crate)` at HEAD: `crates/nmp-nip57/src/lnurl/mod.rs:419`
-(`pub(crate) fn fetch_lnurl_invoice_blocking`) and `:559`
-(`pub(crate) fn fetch_bolt11_for_zap`). The architecturally-correct in-kernel path
-`FetchLnurlInvoiceCommand` is the only public bolt11 surface (`lib.rs:30`
-re-export; used by `action.rs:35`). The "three public paths" framing no longer
-holds — crate-external callers can only reach the protocol command.
-
-**Remaining work:** confirm no crate-internal caller still routes through the two
-`pub(crate)` blocking helpers outside `FetchLnurlInvoiceCommand::run`; if clean,
-close #620. If an internal bypass remains, delete it. This is verification-only,
-not a structural re-architecture.
 
 ### V-97 · Four sign-in paths to the same "activate local account" operation [MEDIUM · P1 · issue #622]
 
@@ -1537,16 +1394,18 @@ adjacent hygiene items (header drift in `NmpCore.h`; signer-broker /
 nmp-app-chirp symbols outside this calendar's scope) live in
 [`docs/architecture-audit/ffi-deprecation-calendar.md`](architecture-audit/ffi-deprecation-calendar.md).
 
-### PD-041 · Marmot/NWC scope reconciliation — NEEDS OWNER DECISION
+### PD-041 · Marmot/NWC scope reconciliation — RESOLVED 2026-05-29
+
+**Decision (2026-05-29):** Marmot/MLS (`nmp-marmot`, `nmp-nip29`, `nmp-nip59`)
+and NWC + NIP-57 (`nmp-nwc`, `nmp-nip57`) are formally accepted into the v1
+support matrix. They are fully built and wired; the V-61–V-64/V-79 backend
+sweep confirmed production quality. `docs/plan.md` and product copy treat
+these as v1 capabilities.
 
 Earlier temporal planning deferred M9 DMs/messaging and M12 Wallet to post-v1,
-but Marmot/MLS (`nmp-marmot`, `nmp-nip29`, `nmp-nip59`) and
-NWC + NIP-57 (`nmp-nwc`, `nmp-nip57`) were subsequently built and wired.
-
-**Decision needed:** either formally accept the built Marmot/NWC surfaces into
-the v1 support matrix, or label them experimental/Labs/post-v1 so `docs/plan.md`,
-`docs/plan/post-v1.md`, product copy, and validation expectations do not imply
-contradictory scope.
+but these surfaces were subsequently built, wired, and swept for silent-failure
+violations in the v0.1.0/0.1.1 backend pass. The decision to include them is
+recorded here as closed.
 
 ---
 
@@ -2023,3 +1882,25 @@ Recorded so Opus reviews do not re-flag these as violations.
 | V-38 · NIP-47 NWC wallet stack out of nmp-core | `crates/nmp-nip47/` created; `wallet/` and `actor/commands/wallet.rs` deleted from nmp-core; Cargo.toml dep removed |
 | V-43 · Zap correlation_id chain | correlation_id threaded through in nmp-nip57 (was nmp-core/zap.rs, now nmp-nip57/lnurl/mod.rs) |
 | F-11 · Versioned releases + nmp upgrade | `release/nmp-release.toml`, `nmp upgrade`, `nmp doctor`, `nmp init --nmp-version` all implemented |
+| V-46 · D5 snapshot bounding | PR #770 + #779; `snapshot_projections_with_publish_cluster` in `nmp-core/src/kernel/update/projections.rs` gates timeline/author_view/thread_view on open views. Verified at HEAD. |
+| V-58 · Close-reason backoff | PR #778; `BackoffClass`/`SetBackoffHint` in `nmp-network/src/relay_worker/mod.rs`. Verified at HEAD. |
+| V-61 · Marmot orphaned-commit | PR #772; `MarmotError::OrphanedCommit` in `nmp-marmot/src/service.rs`. Verified at HEAD. |
+| V-62 · Marmot keyring-unavailable | PR #772; `keyring_unavailable` field in `nmp-marmot/src/projection/payload.rs`. Verified at HEAD. |
+| V-63 · NIP-47 encode failures | PR #774; `encode_frame` in `nmp-nip47/src/runtime.rs`. Verified at HEAD. |
+| V-64 · NIP-47 sweep expired payments | PR #774; `sweep_expired_payments` in `nmp-nip47/src/runtime.rs`. Verified at HEAD. |
+| V-65 · NOSTRCONNECT bootstrap capability | PR #780; `NostrConnectBootstrapRelaySlot` in `nmp-core/src/slots.rs`; no hardcoded `wss://relay.damus.io` in `relay_roles.rs` at HEAD. Verified. |
+| V-66 · NoConfiguredRelays diagnostic | PR #782; `no_configured_relays` field in `KernelSnapshot` (`kernel/types.rs:835`). Verified at HEAD. |
+| V-67 · LMDB store-unavailable diagnostic | PR #769; `store_open_failure` field in `KernelSnapshot` (`kernel/types.rs:822`). Verified at HEAD. |
+| V-69 · LMDB orphan-index counter | PR #767; `StoreAnomalySnapshot`/`orphan_index_entries` in `nmp-nostr-lmdb/src/store/lmdb/mod.rs`. Verified at HEAD. |
+| V-70 · hex_to_bytes32 returns Option | PR #775; `pub(super) fn hex_to_bytes32(s: &str) -> Option<[u8; 32]>` in `nmp-store/src/types/ids.rs`. Verified at HEAD. |
+| V-71 · nip65_resolver tracing | PR #759; `tracing::debug!` calls at both malformed-tag skip sites in `nmp-router/src/nip65_resolver.rs`. Verified at HEAD. |
+| V-72 · Signer KindOutOfRange | PR #771; `KindOutOfRange` variant in `nmp-signer-iface/src/error.rs`; `local.rs` returns it. Verified at HEAD. |
+| V-74 · NWC URI UnknownParam | PR #768; `UnknownParam` variant in `nmp-nwc/src/parse.rs`. Verified at HEAD. |
+| V-75 · Router lane attribution | PR #777; `RouteAttempt`/`RoutingLane` in `nmp-core/src/substrate/routing_trace.rs`. Verified at HEAD. |
+| V-77 · Dead MakeInvoice removed | PR #768; `MakeInvoice` absent from `nmp-nwc/src/types.rs`. Verified at HEAD. |
+| V-79 · NWC heartbeat/reconnect | PR #783; `NwcConnectionState`/`tick_heartbeat` in `nmp-nip47/src/runtime.rs`. Verified at HEAD. |
+| V-84 · iOS NFCT decoder + render wiring | PR #762; `TypedHomeFeedDecoder.swift` complete `decodeContentTree`; `KernelBridge.swift:533` wired; typed path live. Verified at HEAD. |
+| V-85 · Android NFCT decoder + render wiring | PR #764; `TypedHomeFeedDecoder.kt` `decodeContentTree` wired; `KernelModel.kt:131-133` confirmed. Verified at HEAD. |
+| V-86 · Flatbuffers pin-check Android coverage | PR #781; `ci/check-flatbuffers-version-pins.sh` covers full `android/app/src/main/java/nmp/` tree. Verified at HEAD. |
+| V-92 · Relay backoff reset after healthy session | Commit 5da5942c; `RELAY_BACKOFF_RESET_AFTER_SECS` reset at line ~426 in `nmp-network/src/relay_worker/mod.rs`. Verified at HEAD. |
+| V-96 · NIP-57 bolt11 consolidation | Already `pub(crate)` at HEAD: `fetch_lnurl_invoice_blocking` (`:419`) + `fetch_bolt11_for_zap` (`:559`) in `nmp-nip57/src/lnurl/mod.rs`; no external callers confirmed. Close GH #620. |
