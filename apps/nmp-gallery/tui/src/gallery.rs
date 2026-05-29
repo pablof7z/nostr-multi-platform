@@ -9,6 +9,7 @@ use ratatui::{
 use crate::{data::GalleryData, render, render::EmbedFrameContext};
 
 pub const COMPONENTS: &[&str] = &[
+    "relay-list",
     "user-avatar",
     "user-name",
     "user-nip05",
@@ -37,6 +38,14 @@ pub struct RegistrySectionSpec {
     pub label: &'static str,
     pub components: &'static [ComponentSpec],
 }
+
+const RELAY_COMPONENTS: &[ComponentSpec] = &[
+    ComponentSpec {
+        id: "relay-list",
+        label: "NostrRelayList",
+        description: "Relay URLs with role badges and connection-status indicators",
+    },
+];
 
 const USER_COMPONENTS: &[ComponentSpec] = &[
     ComponentSpec {
@@ -123,6 +132,10 @@ const EMBED_COMPONENTS: &[ComponentSpec] = &[
 ];
 
 pub const REGISTRY_SECTIONS: &[RegistrySectionSpec] = &[
+    RegistrySectionSpec {
+        label: "Relay",
+        components: RELAY_COMPONENTS,
+    },
     RegistrySectionSpec {
         label: "User",
         components: USER_COMPONENTS,

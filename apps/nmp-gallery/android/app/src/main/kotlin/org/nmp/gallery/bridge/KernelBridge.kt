@@ -45,6 +45,8 @@ class KernelBridge {
 
     fun showcaseReferencesJson(): String = nativeShowcaseReferencesJson()
 
+    fun registryJson(): String = nativeRegistryJson()
+
     /**
      * Open the author view for [pubkey]. Triggers kind:0 + kind:10002 fetch
      * and populates `projections.author_view` on every snapshot tick.
@@ -120,6 +122,7 @@ class KernelBridge {
     private external fun nativeFree(handle: Long)
     private external fun nativeGalleryRegister(handle: Long)
     private external fun nativeShowcaseReferencesJson(): String
+    private external fun nativeRegistryJson(): String
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
     private external fun nativeStop(handle: Long)

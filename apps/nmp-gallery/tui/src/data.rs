@@ -123,23 +123,31 @@ impl LiveProfileMap {
 
     /// Ingest a kernel snapshot, updating the resolved-profile map.
     ///
+    /// Precedence (highest to lowest):
+    /// 1. `claimed_profiles` — component-owned full ProfileCard
+    /// 2. `author_view.profile` — full ProfileCard when has_profile=true
+    /// 3. `mention_profiles` — only-if-absent (lightweight: display_name + picture_url)
+    ///
     /// Three projections feed this:
     /// - `projections.claimed_profiles` — `{ pubkey: ProfileCard }`, emitted
     ///   for component-owned profile claims. This is the user-avatar happy path.
-    /// - `projections.mention_profiles` — `{ pubkey: { pubkey, display_name,
-    ///   picture_url } }`. The lightweight per-mention payload (no nip05 /
-    ///   about). Establishes a profile entry for every author the kernel has
-    ///   kind:0 for among the visible items.
     /// - `projections.author_view.profile` — the full `ProfileCard`
     ///   (`pubkey, npub, display_name, picture_url, nip05, about,
     ///   has_profile`). Richer than `mention_profiles`, so when present and
     ///   `has_profile == true` it *overrides* any same-pubkey entry from
     ///   `mention_profiles`.
+    /// - `projections.mention_profiles` — `{ pubkey: { pubkey, display_name,
+    ///   picture_url } }`. The lightweight per-mention payload (no nip05 /
+    ///   about). Only fills gaps: if a pubkey is already in the map from
+    ///   claimed_profiles or author_view.profile, mention_profiles is skipped.
+    ///   Establishes a profile entry for every author the kernel has kind:0 for
+    ///   among the visible items.
     pub fn update_from_snapshot(&mut self, snapshot: &Value) {
         let Some(projections) = snapshot.get("projections") else {
             return;
         };
 
+        // Step 1: Apply claimed_profiles (highest priority)
         if let Some(claimed_profiles) = projections
             .get("claimed_profiles")
             .and_then(Value::as_object)
@@ -149,26 +157,29 @@ impl LiveProfileMap {
             }
         }
 
-        if let Some(mention_profiles) = projections
-            .get("mention_profiles")
-            .and_then(Value::as_object)
-        {
-            for (pubkey, payload) in mention_profiles {
-                let display_name = string_field(payload, "display_name");
-                let picture_url = string_field(payload, "picture_url");
-                let wire = self.entry_for(pubkey);
-                wire.display_name = display_name;
-                wire.picture_url = picture_url;
-            }
-        }
-
-        // author_view.profile wins: it carries the full field set and only
-        // appears once a kind:0 has actually been received (has_profile).
+        // Step 2: Apply author_view.profile (second priority, overwrites mention_profiles only)
         if let Some(profile) = projections
             .get("author_view")
             .and_then(|av| av.get("profile"))
         {
             self.apply_profile_card("", profile);
+        }
+
+        // Step 3: Apply mention_profiles only-if-absent (lowest priority)
+        if let Some(mention_profiles) = projections
+            .get("mention_profiles")
+            .and_then(Value::as_object)
+        {
+            for (pubkey, payload) in mention_profiles {
+                // Only fill gaps: skip if pubkey already in map
+                if !self.profiles.contains_key(pubkey) {
+                    let display_name = string_field(payload, "display_name");
+                    let picture_url = string_field(payload, "picture_url");
+                    let wire = self.entry_for(pubkey);
+                    wire.display_name = display_name;
+                    wire.picture_url = picture_url;
+                }
+            }
         }
     }
 
