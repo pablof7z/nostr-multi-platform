@@ -35,10 +35,16 @@
 //!   poisoning, or serialization failure.
 
 pub mod ffi;
+pub mod typed_api;
 #[cfg(feature = "wallet")]
 mod wallet_runtime;
+pub mod snapshot_types;
 
 pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
+pub use snapshot_types::{
+    ActionResult, ActionStageRow, InterestRow, ProfileCard, RelayRow, RelayWireSubRow,
+    RuntimeMetrics,
+};
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
     nmp_signer_broker_init,
