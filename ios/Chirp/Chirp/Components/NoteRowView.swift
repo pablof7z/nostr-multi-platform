@@ -114,6 +114,7 @@ struct NoteRowView: View {
             router.push(.profile(pubkey: item.authorPubkey))
         } label: {
             ChirpAvatar(
+                pubkey: item.authorPubkey,
                 url: item.authorPictureUrl,
                 initials: authorAvatarInitials,
                 colorHex: authorAvatarColorHex,

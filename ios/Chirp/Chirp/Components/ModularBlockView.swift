@@ -189,6 +189,7 @@ struct ModularBlockView: View {
             ?? card?.authorPictureUrl
             ?? "identicon:\(pubkey.prefix(16))"
         return ChirpAvatar(
+            pubkey: pubkey,
             url: pictureUrl,
             initials: pubkey.displayInitials,
             colorHex: pubkey.pubkeyColorHex,
