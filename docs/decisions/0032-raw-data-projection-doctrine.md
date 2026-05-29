@@ -79,7 +79,7 @@ serialization paths:
 The helpers themselves stay in `nmp_core::display` — they are
 **legitimate** in:
 
-- TUI render code (`apps/chirp/chirp-tui/src/`, `crates/nmp-desktop/src/`).
+- TUI / desktop render code (`apps/chirp/chirp-tui/src/`, `apps/chirp/chirp-desktop/src/`).
 - CLI / REPL output (`crates/chirp-repl/src/`, `crates/nmp-repl/src/`).
 - `#[cfg(test)]` blocks and `tests/` integration tests.
 
@@ -241,7 +241,7 @@ Where a shell read a deleted field, it must either:
    picture URL, falling back to its own short-pubkey rendering when
    the joined entry is null.
 
-Rust shells (`chirp-tui`, `nmp-desktop`) may call
+Rust shells (`chirp-tui`, `chirp-desktop`) may call
 `nmp_core::display::*` helpers directly — those helpers stay in place
 for exactly this purpose.
 
