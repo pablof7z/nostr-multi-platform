@@ -28,7 +28,7 @@ use jni::JNIEnv;
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
     nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start,
     nmp_app_stop, NmpApp,
