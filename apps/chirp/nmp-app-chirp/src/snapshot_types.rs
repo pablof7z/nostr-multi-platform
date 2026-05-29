@@ -11,7 +11,7 @@
 use serde::Deserialize;
 
 /// Snapshot of runtime metrics shared across shells.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct RuntimeMetrics {
     #[serde(default)]
     pub events_rx: u64,
@@ -24,7 +24,7 @@ pub struct RuntimeMetrics {
 }
 
 /// Relay connection row in diagnostics projection (relay_diagnostics).
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct RelayRow {
     #[serde(default)]
     pub relay_url: String,
@@ -71,7 +71,7 @@ pub struct RelayRow {
 }
 
 /// Wire-level subscription row within a relay's diagnostics.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct RelayWireSubRow {
     #[serde(default)]
     pub wire_id: String,
@@ -102,7 +102,7 @@ pub struct RelayWireSubRow {
 }
 
 /// Interest (filter) row in diagnostics projection (relay_diagnostics).
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct InterestRow {
     #[serde(default)]
     pub key: String,
@@ -115,7 +115,7 @@ pub struct InterestRow {
 }
 
 /// Action result snapshot from action_results projection.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct ActionResult {
     #[serde(default)]
     pub correlation_id: String,
@@ -126,7 +126,7 @@ pub struct ActionResult {
 }
 
 /// Action stage row from action_stages projection.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct ActionStageRow {
     #[serde(default)]
     pub correlation_id: String,
