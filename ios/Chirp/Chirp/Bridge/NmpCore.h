@@ -343,8 +343,6 @@ void nmp_broker_free_string(char *ptr);
 void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
-char *nmp_app_chirp_snapshot(void *handle);
-void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
 
 // ── NIP-29 group-chat read projection ────────────────────────────────────

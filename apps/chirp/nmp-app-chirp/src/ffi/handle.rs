@@ -1,5 +1,5 @@
 //! Opaque handle returned by `nmp_app_chirp_register` and consumed by
-//! `nmp_app_chirp_snapshot` / `nmp_app_chirp_unregister`.
+//! `nmp_app_chirp_unregister`.
 
 use std::sync::Arc;
 
@@ -26,7 +26,7 @@ use nmp_nip02::ActiveFollowSet;
 /// to revoke — the `nmp_app_free` actor join is the fence that makes any
 /// in-flight callback safe (see the `unsafe impl` rationale below).
 pub struct ChirpHandle {
-    /// The OP-feed engine. Read by [`super::nmp_app_chirp_snapshot`].
+    /// The OP-feed engine. Snapshotted via [`ChirpHandle::snapshot`].
     pub(super) engine: Arc<OpFeedEngine>,
     /// Retained so the identity-change path can drive
     /// [`ActiveFollowSet::notify_account_changed`] (deferred follow-up — see
@@ -80,8 +80,7 @@ impl ChirpHandle {
     /// Snapshot the OP-feed engine into the OP-centric
     /// [`crate::ChirpTimelineSnapshot`] (`RootFeedSnapshot`). V-80 rung 7
     /// repointed the handle from the old `ModularTimelineProjection` to the
-    /// `OpFeedEngine`; this mirrors what [`super::nmp_app_chirp_snapshot`] does
-    /// for the FFI boundary.
+    /// `OpFeedEngine`; callers such as the REPL use this directly.
     pub fn snapshot(&self) -> crate::ChirpTimelineSnapshot {
         self.engine.snapshot(&nmp_feed::FeedRequest::default())
     }
