@@ -27,6 +27,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +74,7 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
             )
         } else {
             DmConversationListScreen(
+                model = model,
                 dmInbox = dmInbox,
                 onSelectConversation = { pubkey -> selectedPeerPubkey = pubkey }
             )
@@ -84,29 +87,36 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun DmConversationListScreen(
+    model: KernelModel,
     dmInbox: DmInboxSnapshot,
     onSelectConversation: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Chats", style = MaterialTheme.typography.headlineSmall)
-        }
-        HorizontalDivider()
+    val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
+        if (claim) model.claimProfile(pubkey, consumerId)
+        else model.releaseProfile(pubkey, consumerId)
+    }
+    CompositionLocalProvider(LocalProfileClaimer provides claimer) {
+        Column(modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Chats", style = MaterialTheme.typography.headlineSmall)
+            }
+            HorizontalDivider()
 
-        if (dmInbox.remoteSignerUnsupported) {
-            BunkerUnsupportedState()
-        } else if (dmInbox.conversations.isEmpty()) {
-            EmptyDmState()
-        } else {
-            ConversationListContent(
-                conversations = dmInbox.conversations,
-                onSelectConversation = onSelectConversation
-            )
+            if (dmInbox.remoteSignerUnsupported) {
+                BunkerUnsupportedState()
+            } else if (dmInbox.conversations.isEmpty()) {
+                EmptyDmState()
+            } else {
+                ConversationListContent(
+                    conversations = dmInbox.conversations,
+                    onSelectConversation = onSelectConversation
+                )
+            }
         }
     }
 }
@@ -141,6 +151,7 @@ private fun DmConversationRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    RememberProfileClaim(conversation.peerPubkey, "dm-peer-${conversation.peerPubkey}")
     val latest = conversation.messages.lastOrNull()
     val peerShortHex = if (conversation.peerPubkey.length >= 16) {
         "${conversation.peerPubkey.take(8)}…${conversation.peerPubkey.takeLast(8)}"
@@ -209,6 +220,11 @@ private fun DmConversationView(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    DisposableEffect(peerPubkey) {
+        model.claimProfile(peerPubkey, "dm-thread")
+        onDispose { model.releaseProfile(peerPubkey, "dm-thread") }
+    }
+
     val s by model.state.collectAsStateWithLifecycle()
     val dmInbox = s.projections?.dmInbox ?: DmInboxSnapshot()
     val conversation = dmInbox.conversations.firstOrNull { it.peerPubkey == peerPubkey }
