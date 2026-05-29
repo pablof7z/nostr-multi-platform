@@ -150,6 +150,22 @@ final class KernelHandle {
         }
     }
 
+    func claimEvent(uri: String, consumerID: String) {
+        uri.withCString { uriPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_claim_event(raw, uriPtr, cidPtr)
+            }
+        }
+    }
+
+    func releaseEvent(uri: String, consumerID: String) {
+        uri.withCString { uriPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_release_event(raw, uriPtr, cidPtr)
+            }
+        }
+    }
+
     /// Signal that the author feed for `pubkey` is no longer visible.
     /// Tears down the author-subscription so the kernel's wire_subs count
     /// returns to baseline. Call from `.onDisappear` on the AuthorView
@@ -296,6 +312,19 @@ final class KernelHandle {
             "target": "Auto",
         ]
         return dispatchAction(namespace: "nmp.publish", body: ["PublishNote": inner])
+    }
+
+    /// Publish a kind:6 repost of the given note through `PublishRaw`.
+    /// NIP-18: tags `["e", eventID]` and `["p", authorPubkey]`, empty content.
+    @discardableResult
+    func repost(eventID: String, authorPubkey: String) -> DispatchResult {
+        let inner: [String: Any] = [
+            "kind": 6,
+            "tags": [["e", eventID], ["p", authorPubkey]],
+            "content": "",
+            "target": "Auto",
+        ]
+        return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])
     }
 
     func retryPublish(handle: String) {

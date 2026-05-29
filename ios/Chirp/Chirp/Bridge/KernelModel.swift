@@ -62,6 +62,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
 
+    /// Embed host — updated on every snapshot push so EmbeddedEvent views
+    /// see resolved envelopes as soon as the kernel delivers them (D8).
+    let embedHost = EmbedHost()
+
     /// D7 actor-death surface — flips to `true` exactly once when the Rust
     /// supervisor emits an `{"t":"panic",...}` update frame (the actor thread
     /// died inside `catch_unwind`) OR when the foreground-resume probe
@@ -346,6 +350,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     /// NostrProfileHost conformance: look up a profile by pubkey.
     /// First checks claimed profiles, then falls back to mention profiles.
+    ///
+    /// `ProfileWire.npub` is `nil` on the mention-profiles path because the
+    /// mention projection carries no bech32 encoding. Callers that need npub
+    /// for copy/share must guard for nil — only the claimedProfiles path
+    /// guarantees a non-nil npub.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         if let card = claimedProfiles[pubkey] {
             return ProfileWire(
@@ -355,7 +364,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 pictureUrl: card.pictureUrl,
                 nip05: card.nip05.isEmpty ? nil : card.nip05,
                 npub: card.npub,
-                npubShort: pubkey.shortHex
+                npubShort: card.npub.count > 12
+                    ? "\(card.npub.prefix(9))…\(card.npub.suffix(4))"
+                    : card.npub
             )
         }
         if let mention = mentionProfiles[pubkey] {
@@ -366,7 +377,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 about: nil,
                 pictureUrl: mention.pictureUrl,
                 nip05: nil,
-                npub: "",
+                npub: nil,
                 npubShort: pubkey.shortHex
             )
         }
@@ -450,6 +461,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         track(kernel.react(targetEventID: targetEventID, reaction: reaction))
     }
 
+    @discardableResult
+    func repost(eventID: String, authorPubkey: String) -> DispatchResult {
+        track(kernel.repost(eventID: eventID, authorPubkey: authorPubkey))
+    }
+
     func claimVisibleNoteRelations(eventID: String) {
         kernel.claimVisibleNoteRelations(eventID: eventID)
     }
@@ -471,8 +487,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
     /// The recipient's `lnurl` is sourced from `TimelineItem.authorLnurl`
     /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).
-    /// `amountMsats` defaults to 21,000 msats (21 sats) until an amount
-    /// picker lands.
+    ///
+    /// V-106: `amountMsats` is required — there is no hardcoded default. The
+    /// host surfaces `ZapAmountSheet` to let the user pick the amount (preset
+    /// or custom), and passes the chosen msats here. This removes the old
+    /// "every zap is 21 sats" behaviour.
     ///
     /// V-07: relay selection is kernel policy. We pass an empty `relays`
     /// list; the actor auto-selects from the recipient's kind:10002
@@ -484,7 +503,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         targetEventID: String,
         authorPubkey: String,
         lnurl: String,
-        amountMsats: UInt64 = 21_000,
+        amountMsats: UInt64,
         comment: String? = nil
     ) -> DispatchResult {
         return track(
@@ -594,6 +613,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // reads through this slot. `lastErrorToast` stays distinct because
         // tap-to-dismiss has nowhere else to land.
         snapshot = update
+        embedHost.update(from: update.projections)
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
@@ -665,6 +685,15 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         lastSnapshotAt = Date()
     }
 
+}
+
+extension KernelModel: EventClaimSinkProtocol {
+    func claim(uri: String, consumerId: String) {
+        kernel.claimEvent(uri: uri, consumerID: consumerId)
+    }
+    func release(uri: String, consumerId: String) {
+        kernel.releaseEvent(uri: uri, consumerID: consumerId)
+    }
 }
 
 // ─── Swift-side timing accumulator ───────────────────────────────────────

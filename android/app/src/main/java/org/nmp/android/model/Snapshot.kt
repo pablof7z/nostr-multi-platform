@@ -36,6 +36,48 @@ data class SnapshotProjections(
     @SerialName("active_account") val activeAccount: String? = null,
     val accounts: List<AccountSummary> = emptyList(),
     val timeline: List<TimelineItem> = emptyList(),
+    @SerialName("nmp.nip17.dm_inbox") val dmInbox: DmInboxSnapshot? = null,
+    @SerialName("wallet_status") val walletStatus: String? = null,
+    @SerialName("wallet_balance") val walletBalance: String? = null,
+    @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
+    @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
+    @SerialName("author_view") val authorView: AuthorViewPayload? = null,
+)
+
+/**
+ * Raw kind:0 profile data as emitted by the kernel snapshot.
+ *
+ * Mirrors Rust `ProfileCard` (crates/nmp-core/src/kernel/types.rs).
+ * All fields are nullable/defaulted — `None` signals "no kind:0 has
+ * arrived yet" so the presentation layer can render its own fallback
+ * (D1 best-effort; D8 push semantics on next snapshot tick).
+ */
+@Serializable
+data class ProfileCard(
+    val pubkey: String = "",
+    val npub: String = "",
+    val displayName: String? = null,
+    val pictureUrl: String? = null,
+    val nip05: String = "",
+    val about: String = "",
+    val hasProfile: Boolean = false,
+    val lnurl: String? = null,
+)
+
+/**
+ * `author_view` projection payload.
+ *
+ * Mirrors Rust `AuthorViewPayload` (crates/nmp-core/src/kernel/types.rs).
+ * Present only when the kernel has an open author view.
+ */
+@Serializable
+data class AuthorViewPayload(
+    val pubkey: String = "",
+    val state: String = "",
+    val profile: ProfileCard = ProfileCard(),
+    val items: List<TimelineItem> = emptyList(),
+    val noteCount: Int = 0,
+    val noteCountDisplay: String = "",
 )
 
 @Serializable
@@ -76,4 +118,27 @@ data class RelayStatus(
     val auth: String = "",
     val activeWireSubscriptions: Int = 0,
     val reconnectCount: Long = 0,
+)
+
+@Serializable
+data class DmMessage(
+    val id: String = "",
+    val senderPubkey: String = "",
+    val content: String = "",
+    val createdAt: Long = 0,
+    val replyTo: String? = null,
+    val isOutgoing: Boolean = false,
+    val sourceRelays: List<String>? = null,
+)
+
+@Serializable
+data class DmConversation(
+    val peerPubkey: String = "",
+    val messages: List<DmMessage> = emptyList(),
+)
+
+@Serializable
+data class DmInboxSnapshot(
+    val conversations: List<DmConversation> = emptyList(),
+    val remoteSignerUnsupported: Boolean = false,
 )

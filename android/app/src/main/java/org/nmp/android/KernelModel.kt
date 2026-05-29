@@ -5,13 +5,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
+import org.nmp.android.model.RelayStatus
 
 private const val TAG = "NmpCore"
 
@@ -43,6 +48,16 @@ class KernelModel : ViewModel() {
 
     private val _lastSnapshotAtMs = MutableStateFlow<Long?>(null)
     val lastSnapshotAtMs: StateFlow<Long?> = _lastSnapshotAtMs.asStateFlow()
+
+    /** Derived: account list from the latest snapshot projections. */
+    val accounts: StateFlow<List<AccountSummary>> =
+        state.map { it.projections?.accounts ?: emptyList() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Derived: relay status list from the latest snapshot. */
+    val relays: StateFlow<List<RelayStatus>> =
+        state.map { it.relayStatuses }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var started = false
 
@@ -141,6 +156,100 @@ class KernelModel : ViewModel() {
      */
     fun openAuthor(pubkey: String) {
         bridge.openAuthor(pubkey)
+    }
+
+    /**
+     * Dispatch a named action through the action registry (generic path).
+     * Fire-and-forget — outcomes arrive in the next snapshot tick.
+     */
+    fun dispatchAction(namespace: String, actionJson: String) {
+        val response = bridge.dispatchAction(namespace, actionJson)
+        Log.d(TAG, "dispatchAction($namespace) response: $response")
+    }
+
+    // -------------------------------------------------------------------------
+    // Account management
+    // -------------------------------------------------------------------------
+
+    /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace). */
+    fun signInNsec(secret: String) {
+        bridge.signInNsec(secret)
+        bridge.openTimeline()
+    }
+
+    /** Create a new local account with the given display name. */
+    fun createAccount(displayName: String) {
+        bridge.createLocalAccount(displayName)
+        // Mirror desktop bridge: openTimeline after account creation so the
+        // kernel starts fetching notes for the new account immediately.
+        bridge.openTimeline()
+    }
+
+    /** Switch the active account (direct C-ABI — no ActionModule for switch namespace). */
+    fun switchAccount(pubkey: String) {
+        bridge.switchAccount(pubkey)
+        bridge.openTimeline()
+    }
+
+    /** Remove the account identified by the given pubkey (direct C-ABI). */
+    fun removeAccount(pubkey: String) = bridge.removeAccount(pubkey)
+
+    // -------------------------------------------------------------------------
+    // Relay management
+    // -------------------------------------------------------------------------
+
+    /** Add a relay with the given URL and role ("read", "write", or "both"). */
+    fun addRelay(url: String, role: String = "both") = bridge.addRelay(url, role)
+
+    /** Remove a relay by URL. */
+    fun removeRelay(url: String) = bridge.removeRelay(url)
+
+    // -------------------------------------------------------------------------
+    // Social
+    // -------------------------------------------------------------------------
+
+    /** Zap a note (NIP-57). */
+    fun zapNote(eventId: String, recipientPubkey: String, amountMsats: Long = 21000L, comment: String = "") =
+        bridge.dispatchAction("nmp.nip57.zap", """{"target_event_id":"$eventId","recipient_pubkey":"$recipientPubkey","amount_msats":$amountMsats,"comment":"${escapeJson(comment)}"}""")
+
+    /** React to a note (NIP-25). */
+    fun react(eventId: String, reaction: String = "+") =
+        bridge.dispatchAction("nmp.nip25.react", """{"target_event_id":"$eventId","reaction":"$reaction"}""")
+
+    /** Follow a pubkey. */
+    fun follow(pubkey: String) = bridge.dispatchAction("nmp.follow", """{"pubkey":"$pubkey"}""")
+
+    /** Unfollow a pubkey. */
+    fun unfollow(pubkey: String) = bridge.dispatchAction("nmp.unfollow", """{"pubkey":"$pubkey"}""")
+
+    // -------------------------------------------------------------------------
+    // DMs
+    // -------------------------------------------------------------------------
+
+    /** Send a NIP-17 direct message to the given recipient pubkey. */
+    fun sendDm(recipientPubkey: String, content: String) =
+        bridge.dispatchAction("nmp.nip17.send", """{"recipient_pubkey":"$recipientPubkey","content":"${escapeJson(content)}"}""")
+
+    // -------------------------------------------------------------------------
+    // Wallet (NIP-47 / NWC)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Connect a NIP-47 wallet via NWC URI. Routes through dispatch_action("nmp.wallet.connect", ...).
+     *
+     * The actionJson format is: {"Connect":{"uri":"nostr+walletconnect://..."}}
+     */
+    fun dispatchWalletConnect(actionJson: String) {
+        val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
+        Log.d(TAG, "wallet connect response: $response")
+    }
+
+    /**
+     * Disconnect the current NIP-47 wallet. Routes through dispatch_action("nmp.wallet.disconnect", ...).
+     */
+    fun dispatchWalletDisconnect() {
+        val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
+        Log.d(TAG, "wallet disconnect response: $response")
     }
 
     private fun escapeJson(s: String): String {

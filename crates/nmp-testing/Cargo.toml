@@ -26,6 +26,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
+nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp" }
 nmp-core = { path = "../nmp-core" }
 zeroize = { workspace = true }
 nmp-ffi = { path = "../nmp-ffi" }
@@ -229,3 +230,13 @@ required-features = ["real-relay"]
 [[test]]
 name = "op_feed_doctrine_lint"
 path = "tests/op_feed_doctrine_lint.rs"
+
+# M15 — Cross-platform consistency smoke tests. Validates that ChirpClient
+# (and other action builders) produce correctly-formed action envelopes across
+# all platforms. Unit-level tests (no network, no kernel execution) focus on
+# envelope shape invariants: required fields present, JSON valid, deterministic
+# serialization.
+# `cargo test -p nmp-testing --test cross_platform_parity`
+[[test]]
+name = "cross_platform_parity"
+path = "tests/cross_platform_parity.rs"

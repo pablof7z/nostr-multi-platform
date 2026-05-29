@@ -1,4 +1,6 @@
+import AVKit
 import SwiftUI
+import UIKit
 
 /// SwiftUI renderer for a `ContentTreeWire`. Walks `tree.roots`, flattens the
 /// arena into block-level groups via `nostrContentGroups`, and renders each
@@ -19,6 +21,9 @@ public struct NostrContentView: View {
     public var quoteCardProvider: ((NostrWireUri) -> NostrQuoteCardModel?)?
 
     @Environment(\.nostrContentRenderer) private var renderer
+    @Environment(\.embedHost) private var embedHost
+    @Environment(\.embedClaimSink) private var embedClaimSink
+    @Environment(\.nostrKindRegistry) private var nostrKindRegistry
 
     public init(
         tree: ContentTreeWire,
@@ -117,6 +122,13 @@ public struct NostrContentView: View {
         case .url(let value):
             return Text(value).foregroundStyle(renderer.linkColor)
         case .emoji(let shortcode, _):
+            // Apps fill `renderer.emojiImages` from kind:0 / NIP-30 tag data
+            // and the inline run renders the image directly. Empty dict
+            // (the default) falls back to the literal `:shortcode:` text so
+            // unwired apps still get a readable surface.
+            if let img = renderer.emojiImages[shortcode] {
+                return Text(Image(uiImage: img))
+            }
             return Text(":\(shortcode):")
         case .invoice:
             return Text("⚡ invoice").foregroundStyle(renderer.linkColor)
@@ -162,9 +174,18 @@ public struct NostrContentView: View {
             if !parsed.isEmpty {
                 NostrMediaGrid(imageUrls: parsed)
             }
-        case .video, .audio:
+        case .video:
+            // Inline playback via `AVKit.VideoPlayer` so video media nodes
+            // render with native scrub / fullscreen controls. Audio stays on
+            // the compact link-style row (no waveform UI in v1).
             if let first = urls.first.flatMap(URL.init(string:)) {
-                mediaRow(first, systemImage: kind == .audio ? "speaker.wave.2.fill" : "play.rectangle.fill")
+                VideoPlayer(player: AVPlayer(url: first))
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        case .audio:
+            if let first = urls.first.flatMap(URL.init(string:)) {
+                mediaRow(first, systemImage: "speaker.wave.2.fill")
             }
         }
     }
@@ -190,12 +211,33 @@ public struct NostrContentView: View {
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
     private func eventRefView(_ uri: NostrWireUri) -> some View {
-        // Variant selection is a three-branch decision so the `.missing`
-        // variant is reachable:
-        //   • no provider wired       → `.collapsed` (View quote affordance)
-        //   • provider returned model → `.rich`
-        //   • provider returned nil   → `.missing` (Content unavailable + URI)
+        if let registry = nostrKindRegistry, embedHost != nil || embedClaimSink != nil {
+            // Kind-dispatch path (ADR-0034 / M16). `EmbeddedEvent` owns the
+            // claim/release lifecycle via `task(id:)` + `onDisappear`; the
+            // registry picks the renderer for the resolved projection. The
+            // view always renders even if the host doesn't have the envelope
+            // yet (loading placeholder via `EmbedChromeContainer`).
+            EmbeddedEvent(
+                uri: uri.uri,
+                envelope: embedHost?.envelopeForPrimaryID(uri.primaryId)
+                    ?? embedHost?.envelopeForURI(uri.uri),
+                registry: registry,
+                claimSink: embedClaimSink
+            )
+        } else {
+            // Legacy quote-card path. Kept so existing content-quote-card
+            // showcases keep working — the new embed environment opts in
+            // when an EmbedHost is bound by the gallery shell.
+            legacyQuoteCardView(uri)
+        }
+    }
+
+    /// Legacy `eventRefView` body — split into its own helper so the parent
+    /// `@ViewBuilder` doesn't see the `let variant: ... if {} else {}`
+    /// pattern (Swift's ViewBuilder treats the assignments as Views).
+    private func legacyQuoteCardView(_ uri: NostrWireUri) -> NostrQuoteCard {
         let providedModel = quoteCardProvider?(uri)
         let variant: NostrQuoteCardVariant
         let model: NostrQuoteCardModel

@@ -28,10 +28,12 @@ use jni::JNIEnv;
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
+    nmp_app_dispatch_action, nmp_app_free,
     nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start,
-    nmp_app_stop, NmpApp,
+    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account,
+    nmp_app_remove_relay, nmp_app_set_update_callback, nmp_app_signin_nsec,
+    nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -122,22 +124,18 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "Android User".to_string());
+    // nmp_app_create_new_account expects:
+    //   profile_json = {"name":"…"}
+    //   relays_json  = [["url","role"],…]  (Vec<(String,String)> serde shape)
+    let profile_json = format!(r#"{{"name":"{}"}}"#, name.replace('"', ""));
     let relays_json = default_chirp_relays_json_array();
-    let action = format!(
-        r#"{{"CreateAccount":{{"profile":{{"name":"{name}"}},"relays":{relays_json},"mls":false}}}}"#,
-        name = name.replace('"', ""),
-        relays_json = relays_json
-    );
-    let Ok(ns_c) = CString::new("nmp.create_account") else {
+    let (Ok(profile_c), Ok(relays_c)) = (
+        CString::new(profile_json),
+        CString::new(relays_json),
+    ) else {
         return;
     };
-    let Ok(action_c) = CString::new(action) else {
-        return;
-    };
-    let result_ptr = nmp_app_dispatch_action(s.app, ns_c.as_ptr(), action_c.as_ptr());
-    if !result_ptr.is_null() {
-        nmp_ffi::nmp_app_free_string(result_ptr);
-    }
+    nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false);
 }
 
 #[no_mangle]
@@ -325,11 +323,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
 }
 
 fn default_chirp_relays_json_array() -> String {
-    let relays: Vec<serde_json::Value> = nmp_chirp_config::chirp_default_relay_bootstrap()
+    // nmp_app_create_new_account deserialises relays_json as Vec<(String,String)>,
+    // so the wire shape must be [["url","role"],…], NOT [{"url":"…","role":"…"},…].
+    let relays: Vec<[&str; 2]> = nmp_chirp_config::chirp_default_relay_bootstrap()
         .iter()
-        .map(|e| serde_json::json!({"url": e.url, "role": e.role}))
+        .map(|e| [e.url, e.role])
         .collect();
-    serde_json::Value::Array(relays).to_string()
+    serde_json::to_string(&relays).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Open a thread by note ID.
@@ -368,6 +368,105 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenAuthor(
         return;
     };
     nmp_app_open_author(s.app, pubkey.as_ptr());
+}
+
+/// Add a relay by URL and role string ("read", "write", or "both").
+///
+/// D6: null handle, null URL, or null role is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeAddRelay(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    url: JString,
+    role: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(url) = jstring_to_cstring(&mut env, &url) else {
+        return;
+    };
+    let Some(role) = jstring_to_cstring(&mut env, &role) else {
+        return;
+    };
+    nmp_app_add_relay(s.app, url.as_ptr(), role.as_ptr());
+}
+
+/// Remove a relay by URL.
+///
+/// D6: null handle or null URL is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveRelay(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    url: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(url) = jstring_to_cstring(&mut env, &url) else {
+        return;
+    };
+    nmp_app_remove_relay(s.app, url.as_ptr());
+}
+
+/// Sign in with an nsec secret key.
+///
+/// D6: null handle or invalid secret is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSignInNsec(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    secret: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(secret) = jstring_to_cstring(&mut env, &secret) else {
+        return;
+    };
+    nmp_app_signin_nsec(s.app, secret.as_ptr());
+}
+
+/// Switch the active account to the given pubkey.
+///
+/// D6: null handle or invalid pubkey is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSwitchAccount(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    nmp_app_switch_active(s.app, pubkey.as_ptr());
+}
+
+/// Remove an account by pubkey.
+///
+/// D6: null handle or invalid pubkey is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveAccount(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
+        return;
+    };
+    nmp_app_remove_account(s.app, pubkey.as_ptr());
 }
 
 #[no_mangle]

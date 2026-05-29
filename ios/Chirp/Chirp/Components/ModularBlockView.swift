@@ -49,6 +49,8 @@ struct ModularBlockView: View {
     let items: [String: TimelineItem]
     let mentionProfiles: [String: MentionProfile]
     let onLike: (String) -> Void
+    /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
+    var onRepost: ((String, String) -> Void)? = nil
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. `nil`
     /// when the embedding host does not wire zap (kept optional so views
     /// other than the home feed don't need to thread a no-op). The row
@@ -80,6 +82,7 @@ struct ModularBlockView: View {
                     timelineItems: items,
                     relationCounts: cards[id]?.relationCounts,
                     onLike: onLike,
+                    onRepost: onRepost,
                     onZap: onZap
                 )
         } else if let card = cards[id] {
@@ -95,6 +98,7 @@ struct ModularBlockView: View {
                 timelineItems: items,
                 relationCounts: card.relationCounts,
                 onLike: onLike,
+                onRepost: onRepost,
                 onZap: onZap
             )
         } else {
@@ -189,6 +193,7 @@ struct ModularBlockView: View {
             ?? card?.authorPictureUrl
             ?? "identicon:\(pubkey.prefix(16))"
         return ChirpAvatar(
+            pubkey: pubkey,
             url: pictureUrl,
             initials: pubkey.displayInitials,
             colorHex: pubkey.pubkeyColorHex,
@@ -266,11 +271,11 @@ struct ModularBlockView: View {
     }
 
     private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
-        // ADR-0032: kind:0 metadata is now `Optional<String>` on the wire.
-        // Presentation layer chooses the fallback: card's kind:0 name when
-        // present, otherwise the abbreviated hex pubkey.
-        if let name = card?.authorDisplayName, !name.isEmpty { return name }
         let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+        if !pubkey.isEmpty, let name = model.profile(forPubkey: pubkey)?.display {
+            return name
+        }
+        if let name = card?.authorDisplayName, !name.isEmpty { return name }
         return pubkey.isEmpty ? "Unknown" : pubkey.shortHex
     }
 

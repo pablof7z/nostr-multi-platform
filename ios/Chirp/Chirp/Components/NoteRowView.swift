@@ -22,6 +22,8 @@ struct NoteRowView: View {
     var timelineItems: [String: TimelineItem] = [:]
     var relationCounts: NoteRelationCounts? = nil
     let onLike: (String) -> Void
+    /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
+    var onRepost: ((String, String) -> Void)? = nil
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. Optional
     /// so callers that don't surface zap (e.g. thread / profile views that
     /// have not yet been wired) can omit it. The actions row hides the zap
@@ -39,11 +41,16 @@ struct NoteRowView: View {
     /// ADR-0032 presentation-layer derivations of the raw `authorPubkey`
     /// hex. Kept as computed properties so the view body stays readable.
     private var authorDisplayLabel: String {
-        item.authorPubkey.shortHex
+        model.profile(forPubkey: item.authorPubkey)?.display
+            ?? eventCards[item.id]?.authorDisplayName
+            ?? mentionProfiles[item.authorPubkey]?.display
+            ?? item.authorPubkey.shortHex
     }
 
     private var authorAvatarInitials: String {
-        item.authorPubkey.displayInitials
+        let name = model.profile(forPubkey: item.authorPubkey)?.display
+            ?? eventCards[item.id]?.authorDisplayName
+        return (name ?? item.authorPubkey).displayInitials
     }
 
     private var authorAvatarColorHex: String {
@@ -67,6 +74,7 @@ struct NoteRowView: View {
                     item: item,
                     relationCounts: relationCounts,
                     onLike: onLike,
+                    onRepost: onRepost,
                     onZap: onZap,
                     likeTapped: $likeTapped,
                     showReply: $showReply
@@ -109,6 +117,7 @@ struct NoteRowView: View {
             router.push(.profile(pubkey: item.authorPubkey))
         } label: {
             ChirpAvatar(
+                pubkey: item.authorPubkey,
                 url: item.authorPictureUrl,
                 initials: authorAvatarInitials,
                 colorHex: authorAvatarColorHex,
@@ -197,6 +206,8 @@ struct NoteActionsRow: View {
     let item: TimelineItem
     let relationCounts: NoteRelationCounts?
     let onLike: (String) -> Void
+    /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
+    var onRepost: ((String, String) -> Void)? = nil
     /// NIP-57 — invoked when the user taps the zap bolt. Hidden when this is
     /// `nil` (no zap wiring from the host) OR `item.authorLnurl == nil`
     /// (the author has no kind:0 lud16/lud06). Rust pre-computes
@@ -222,7 +233,8 @@ struct NoteActionsRow: View {
                 label: "Repost",
                 count: relationCounts?.reposts.value
             ) {
-                // Repost command not yet on kernel surface — no-op.
+                onRepost?(item.id, item.authorPubkey)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
 
             Spacer()

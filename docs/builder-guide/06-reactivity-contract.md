@@ -89,6 +89,14 @@ display, reaction counts) live in **store projections**, not view-on-view
 subscriptions, so a kind:0 arrival does a targeted O(items-by-that-author)
 patch rather than a per-view scan (`view-deltas-and-projections.md:110-164`).
 
+> **Note — the push frame also carries a `projections` map.** Beyond the
+> ViewModule view-deltas described in this chapter, each pushed snapshot also
+> carries a `projections` map of named app/module state slices populated by
+> registered *snapshot projectors* (keyed `nmp.*`, e.g. `nmp.follow_list`). That
+> is a **distinct mechanism** from the ViewModule typed-reactive-view-delta
+> projections discussed here — see
+> [15 — How to add a snapshot projection](15-codegen-and-ffi.md).
+
 ## reactivity-bench validation (run 002, report 1779051783)
 
 Run 002 passed all ADR-0001..0004 gates. Harness:

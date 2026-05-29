@@ -15,6 +15,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
+import org.nmp.gallery.gallery.REGISTRY_SECTIONS
+import org.nmp.gallery.gallery.RegistrySection
+import org.nmp.gallery.gallery.parseRegistryJson
 import org.nmp.gallery.registry.ProfileWire
 
 /**
@@ -25,12 +28,21 @@ import org.nmp.gallery.registry.ProfileWire
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
  * the push callback only. Registry components claim pubkeys while visible and
  * claimed profile cards arrive in `projections.claimed_profiles`.
+ *
+ * The registry section list is sourced once from `bridge.registryJson()` at
+ * startup; [REGISTRY_SECTIONS] is used as a fallback if the JSON is absent or
+ * unparseable.
  */
 class GalleryModel : ViewModel() {
 
     private val bridge = KernelBridge()
     val showcase: GalleryShowcaseReferences =
         GalleryShowcaseReferences.decode(bridge.showcaseReferencesJson())
+
+    private val _registrySections = MutableStateFlow<List<RegistrySection>>(
+        parseRegistryJson(bridge.registryJson()) ?: REGISTRY_SECTIONS,
+    )
+    val registrySections: StateFlow<List<RegistrySection>> = _registrySections.asStateFlow()
 
     private val _profileMap = MutableStateFlow<Map<String, ProfileWire>>(emptyMap())
     val profileMap: StateFlow<Map<String, ProfileWire>> = _profileMap.asStateFlow()

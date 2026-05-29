@@ -2,7 +2,11 @@ use serde_json::Value;
 
 use crate::bridge::UpdatePayload;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub use nmp_app_chirp::{
+    ActionResult, ActionStageRow, InterestRow, RelayRow, RelayWireSubRow, RuntimeMetrics,
+};
+
+#[derive(Debug, Clone, Default)]
 pub struct SharedSnapshot {
     pub metrics: RuntimeMetrics,
     pub relays: Vec<RelayRow>,
@@ -37,7 +41,7 @@ impl SharedSnapshot {
         let snapshot = value.get("v").unwrap_or(value);
         let projections = snapshot.get("projections");
         Self {
-            metrics: RuntimeMetrics::from_value(snapshot.get("metrics")),
+            metrics: runtime_metrics_from(snapshot.get("metrics")),
             relays: relays_from(projections),
             interests: interests_from(projections),
             action_results: action_results_from(projections),
@@ -120,90 +124,16 @@ fn merge_home_feed_projection(value: &mut Value, typed_home_feed: Value) {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RuntimeMetrics {
-    pub events_rx: u64,
-    pub visible_items: u64,
-    pub actor_queue_depth: u64,
-    pub update_sequence: u64,
-}
-
-impl RuntimeMetrics {
-    fn from_value(metrics: Option<&Value>) -> Self {
-        let Some(metrics) = metrics else {
-            return Self::default();
-        };
-        Self {
-            events_rx: number_field(metrics, "events_rx"),
-            visible_items: number_field(metrics, "visible_items"),
-            actor_queue_depth: number_field(metrics, "actor_queue_depth"),
-            update_sequence: number_field(metrics, "update_sequence"),
-        }
+fn runtime_metrics_from(metrics: Option<&Value>) -> RuntimeMetrics {
+    let Some(metrics) = metrics else {
+        return RuntimeMetrics::default();
+    };
+    RuntimeMetrics {
+        events_rx: number_field(metrics, "events_rx"),
+        visible_items: number_field(metrics, "visible_items"),
+        actor_queue_depth: number_field(metrics, "actor_queue_depth"),
+        update_sequence: number_field(metrics, "update_sequence"),
     }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RelayRow {
-    pub relay_url: String,
-    pub short_url: String,
-    pub role_label: String,
-    pub role_tone: String,
-    pub connection_label: String,
-    pub connection_tone: String,
-    pub auth_label: String,
-    pub auth_tone: String,
-    pub total_sub_count: u64,
-    pub active_sub_count: u64,
-    pub eosed_sub_count: u64,
-    pub total_events_rx: u64,
-    pub total_events_display: String,
-    pub reconnect_count: u64,
-    pub bytes_rx_display: Option<String>,
-    pub bytes_tx_display: Option<String>,
-    pub last_connected_display: Option<String>,
-    pub last_event_display: Option<String>,
-    pub last_notice: Option<String>,
-    pub last_error: Option<String>,
-    pub wire_subs: Vec<RelayWireSubRow>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RelayWireSubRow {
-    pub wire_id: String,
-    pub short_wire_id: String,
-    pub relay_url: String,
-    pub filter_summary: String,
-    pub state_label: String,
-    pub state_tone: String,
-    pub consumer_count_label: String,
-    pub events_rx_display: Option<String>,
-    pub eose_observed: bool,
-    pub opened_display: String,
-    pub last_event_display: Option<String>,
-    pub eose_display: Option<String>,
-    pub close_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InterestRow {
-    pub key: String,
-    pub state: String,
-    pub refcount: u64,
-    pub cache_coverage: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActionResult {
-    pub correlation_id: String,
-    pub status: String,
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActionStageRow {
-    pub correlation_id: String,
-    pub stage: String,
-    pub reason: Option<String>,
 }
 
 fn relays_from(projections: Option<&Value>) -> Vec<RelayRow> {

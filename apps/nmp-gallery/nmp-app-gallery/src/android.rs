@@ -317,30 +317,6 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNextUpdate
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGallerySnapshot<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    handle: jlong,
-) -> jstring {
-    let null = std::ptr::null_mut();
-    let Some(s) = session_ref(handle) else {
-        return null;
-    };
-    let ptr = crate::nmp_app_gallery_snapshot(s.app as *mut c_void);
-    if ptr.is_null() {
-        return null;
-    }
-    let json = unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned();
-    crate::nmp_app_gallery_snapshot_free(ptr);
-    match env.new_string(json) {
-        Ok(js) => js.into_raw(),
-        Err(_) => null,
-    }
-}
-
-#[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAction<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,

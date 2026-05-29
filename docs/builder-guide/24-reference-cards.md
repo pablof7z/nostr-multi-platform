@@ -109,6 +109,23 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 `SyncStrategy::issues_wire_traffic()` is `true` for everything except
 `SkipReq`.
 
+## Card 7 — SnapshotProjection (the `projections` map seam)
+
+| Field | Value |
+|---|---|
+| **What** | A named `nmp.*` slice of app/module state delivered in `KernelSnapshot.projections[key]` |
+| **Register** | `register_snapshot_projection(key, Fn() -> serde_json::Value)` seam (`crates/nmp-ffi/src/lib.rs:1109`; C-ABI `snapshot.rs:83`; header `NmpCore.h:255`) |
+| **Delivery** | Appended to the reactive push frame every emit tick — no pull symbol, no polling |
+| **Read** | `snapshot.projections[key]` in the host `apply()` (e.g. `projections?.followList`, `KernelBridge.swift:884`) |
+| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); `nmp-nip57` (`nmp.nip57.zaps`) |
+| **Typed sibling** | `register_typed_snapshot_projection` → `snapshot.typedProjections` (ADR-0037), **not** `projections[key]` |
+| **Status** | Structural permanent — `ffi-deprecation-calendar.md:61` ("keep, freeze-locked") |
+
+**Distinct from the ViewModule view-delta projections** of Card 2 — that is the
+typed reactive view (`Spec`→`Payload`/`Delta`); this is a named state slice in
+the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
+[17](17-ios-shell.md).
+
 ## Anti-patterns
 
 - **Linking outdated variant lists.** Card 1 is `app.rs:1-30` at master tip.

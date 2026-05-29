@@ -16,16 +16,31 @@ struct ProfileNoteRow: View {
     let onAvatarTap: () -> Void
     let onRowTap: () -> Void
     let onLike: () -> Void
+    var onRepost: (() -> Void)? = nil
 
+    @EnvironmentObject private var model: KernelModel
     @State private var likeTapped = false
+
+    private var authorDisplayLabel: String {
+        model.profile(forPubkey: item.authorPubkey)?.display
+            ?? renderContext.mentionProfiles[item.authorPubkey]?.display
+            ?? item.authorPubkey.shortHex
+    }
+
+    private var authorAvatarInitials: String {
+        let name = model.profile(forPubkey: item.authorPubkey)?.display
+            ?? renderContext.mentionProfiles[item.authorPubkey]?.display
+        return (name ?? item.authorPubkey).displayInitials
+    }
 
     var body: some View {
         Button(action: onRowTap) {
             HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
+                        pubkey: item.authorPubkey,
                         url: item.authorPictureUrl,
-                        initials: item.authorPubkey.displayInitials,
+                        initials: authorAvatarInitials,
                         colorHex: item.authorPubkey.pubkeyColorHex,
                         size: 40
                     )
@@ -34,7 +49,7 @@ struct ProfileNoteRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Text(item.authorPubkey.shortHex)
+                        Text(authorDisplayLabel)
                             .font(.headline)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -67,6 +82,19 @@ struct ProfileNoteRow: View {
                                 .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
                         }
                         .buttonStyle(.plain)
+
+                        if let onRepost {
+                            Button {
+                                onRepost()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                Label("Repost", systemImage: "arrow.2.squarepath")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.plain)
+                        }
 
                         if item.relayCount > 0 {
                             HStack(spacing: 4) {

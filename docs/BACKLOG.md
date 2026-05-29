@@ -259,7 +259,15 @@ NIP-46 as a v1 sign-in method.
 
 ---
 
-### V-37 · Snapshot output seam doesn't support non-Chirp apps reading kernel state [HIGH]
+### V-37 · Snapshot output seam doesn't support non-Chirp apps reading kernel state [HIGH] — OBVIATED by ADR-0039
+
+**OBVIATED / CLOSE (2026-05-29, ADR-0039).** The push projection seam
+(`register_snapshot_projection` → `KernelSnapshot::projections` → pushed frame)
+already delivers kernel state to non-Chirp apps. Affordance (a) context-pointer is
+obviated by closure capture; (b) generic pull path is **rejected** as a polling
+anti-pattern; (c) follow-set interest is provided by ADR-0036. The premise below
+("the framework does not expose those seams generically") is false at HEAD. See
+ADR-0039 §Decision 3. Retained below for history.
 
 **Verified (2026-05-24 — Notes rewrite investigation):** PD-033-A requires Notes to be
 rewritten against "real framework seams (LogicalInterest, kernel-owned timeline projection,
@@ -307,7 +315,14 @@ written rationale. V-45 splits sub-item (c) into its own tracked item.
 
 ---
 
-### V-107 · Migrate gallery + marmot consumers off bespoke pull-snapshot symbols onto the canonical projection seam [HIGH · PRIORITIZED FOR AWARENESS · depends on V-37]
+### V-107 · Migrate gallery + marmot consumers off bespoke pull-snapshot symbols onto the canonical projection seam [HIGH · PRIORITIZED FOR AWARENESS]
+
+**RATIFICATION LANDED — ADR-0039 (2026-05-29):** the push-vs-pull decision this
+item was gated on is now made — ADR-0039 mandates the push seam and **rescinds the
+ADR-0025 Step-12 read-leg sanction** that kept the Marmot pull symbols alive. Gallery
+chain already removed (PR #791); `nmp_app_chirp_snapshot` already gone (PR #733/#766).
+**Now unblocked:** migrate the live Marmot read-leg (`nmp_marmot_snapshot`,
+`nmp_marmot_group_messages`) per the recipe below, then delete the symbols.
 
 **Surfaced 2026-05-29 (podcast-player polling incident).** A downstream app
 (`/Users/pablofernandez/Work/podcast-player`) independently reinvented the
@@ -436,7 +451,25 @@ The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
-### V-50 · Relay routing is a single hardwired NIP-65 algorithm in `nmp-core` — must become a per-kind dispatch table in `nmp-relay-pool` [HIGH · post-v1]
+### V-50 · Relay routing per-kind dispatch table — RESOLVED (shipped as `nmp-router`); residual re-scoped [was HIGH · post-v1]
+
+**RESOLVED — already shipped (2026-05-29 `open-backlog-resolution` audit; citation
+fully drifted).** The cited `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) no longer
+exists. Per-kind routing shipped as the **`nmp-router`** crate: `GenericOutboxRouter`
+(7 routing lanes, `crates/nmp-router/src/router.rs:147`), the `OutboxRouter` substrate
+trait (`substrate/routing.rs:259`, kernel holds `Arc<dyn OutboxRouter>` at
+`kernel/mod.rs:588`), kind-aware `Nip65OutboxResolver.resolve(kind)`
+(`nip65_resolver.rs:92`), wired in `nmp-app-template/src/lib.rs:204`. DM routing no
+longer leaks into the kernel (`PublishTarget::Explicit` + the `DmInboxLookup` substrate
+trait, not a hardwired kind:10050 case); NIP-29 routes h-tag relays; Marmot uses
+`publish_signed_explicit`. The V-50-as-written deliverable is **DONE**, and it no longer
+blocks V-39/V-40 (their DM routing already shipped without it).
+
+**Residual (NOT the V-50 above) — re-scope or open fresh if pursued:** (1) optional
+`nmp-router`→`nmp-relay-pool` rename + relay-pool *lifecycle* ownership
+(connect/reconnect — genuinely new, exists nowhere); (2) unify the planner-side mixed
+`MailboxCache` (NIP-65 + NIP-17) with the NIP-65-only `substrate::MailboxCache` (the
+V-40 follow-up named in `substrate/routing.rs:10-26`). Both still carry open decisions.
 
 **Evidence:** `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) implements one routing
 strategy — consult kind:10002 write relays for all event kinds. This is correct for kind:1
@@ -655,6 +688,11 @@ once `nmp-codegen`'s Swift emitter is taught the new shape (the
 green because the fixture types do not include these projection shapes).
 
 ### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX] (related: GH #611 AccountsView polling, GH #612 op.wait blocks actor)
+
+**DESIGN PRODUCED (2026-05-29, ADR-pending) — see V-90 cluster note.** V-54's three
+cold-start signs reuse the existing PendingSign park/poll/settle path verbatim (no new
+mechanism). Bundled with V-90 in one off-actor design; needs the ADR there before
+implementation.
 
 **Verified:** `crates/nmp-core/src/actor/commands/identity.rs:826`, `:864`, and
 `:1019` still call the synchronous `sign_active` path while publishing the
@@ -1162,6 +1200,17 @@ split (`Unsigned*` type at action call time, signed variant post-actor-signing).
 
 ### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
 
+**DESIGN PRODUCED (2026-05-29 `open-backlog-resolution`, ADR-pending).** Off-actor
+architecture (V-54 + V-90 as one cluster): three precedented primitives, no ad-hoc
+copies — (A) **PendingSign** park/poll/settle for signing (V-54); (B) **worker-thread
+re-entry** for one-shot off-actor I/O — the dm `op.wait` path reuses the *existing*
+`nmp-nip57` lnurl pattern (`lnurl/mod.rs:244-296`), so it is NOT new design; (C) a
+**serialized capability worker thread** (dedicated thread draining a queue via blocking
+`recv` — never a poll) for ordered native capability I/O, re-entering the actor once via
+a typed `ActorCommand`. (C) is the only genuinely new piece: per-op spawn is wrong
+(account-switch forget/persist would race). **Needs an ADR to ratify the capability-worker
+seam before implementation.** Full design in the workflow output.
+
 Two D8 violations (no blocking on the actor thread):
 
 1. `crates/nmp-nip17/src/dm_send.rs:221` [#612] — `ProtocolCommand::run` calls
@@ -1197,6 +1246,14 @@ callback notification model matching the iOS `set_update_callback` architecture.
 
 ### V-93 · Kernel constructor blocks synchronously on LMDB open and pending load [MEDIUM · D1/P3 · issue #617]
 
+**DESIGN PRODUCED (2026-05-29, ADR-pending).** Defer ONLY the publish-intent load
+(not the LMDB open), resolved as a one-shot step **on the actor thread** after the
+first snapshot emit (never a background thread — that framing self-inflicts the
+construction races). Measurement-first: confirm `load_pending_us` actually dominates
+`construction_us` before implementing, else the deferral fixes the wrong cost. Needs
+ADR.
+
+
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:1020` (`build_event_store`, LMDB
 open) and `:1098` (`load_profile_intents`, which walks all pending publish records
 via `publish_store.load_pending()` at `:1102`) run synchronously in the construction
@@ -1209,6 +1266,15 @@ emitted; open LMDB asynchronously or on a background task that resolves before t
 first publish command needs it.
 
 ### V-94 · 10+ must-call-before-`nmp_app_start` constraints have no type enforcement [MEDIUM · P3 · issue #618]
+
+**DESIGN PRODUCED (2026-05-29, ADR-pending).** `NmpAppBuilder` typestate in
+`nmp-app-template`, unified with **F-08** (one construct, not two): config-phase host
+implementing `AppHost`, terminal `start(self, RunConfig)` consumes the builder so no
+setter is reachable post-start. Rust composition roots get compile-time ordering; the
+stringly-typed C-ABI boundary can only get a runtime `KernelDiagnostic::MissingSetup`.
+Open decision = ABI churn (consume-and-return-new-handle vs in-place started-flag).
+Needs ADR.
+
 
 **Verified:** multiple `crates/nmp-ffi/src/lib.rs` setup symbols must be wired
 before `nmp_app_start` for correct behavior, but ordering is documented in prose
@@ -1224,6 +1290,15 @@ runtime assertion that emits a `KernelDiagnostic::MissingSetup` before the first
 tick.
 
 ### V-95 · WalletRuntime initialization order not type-enforced — OnceLock error risk [MEDIUM · P2/P3 · issue #619]
+
+**DESIGN PRODUCED (2026-05-29, ADR-pending).** Candidate B: relocate the wallet runtime
+to app-scoped actor-side host-extension state and **delete the process-global
+`OnceLock`**, without touching the `ActionModule` trait. Goal reframe (load-bearing):
+"type-enforced init order" is unachievable at the stringly-typed `dispatch_action` site
+— the real win is deleting the global. Use a **substrate-generic** typed-extension
+accessor, NOT a wallet-named getter on `nmp-core`'s `ProtocolCommandContext` (D0 hazard).
+Needs ADR to ratify B-vs-A.
+
 
 **Verified:** `crates/nmp-nip47/src/runtime.rs:107` (`install_wallet_runtime`)
 populates a process-global `OnceLock` read by `active_wallet_runtime()` (`:80`
@@ -1359,7 +1434,18 @@ before picking up Section 4 work to avoid duplicating an in-progress task.
 Items that cannot be resolved autonomously. An agent that encounters one of these must log
 its finding in the decision thread below and move on to the next item, not block.
 
-### PD-033-A · Framework thesis — second non-social app — CLOSED BY DELETION (2026-05-28)
+### PD-033-A · Framework thesis — second non-social app — RE-OPENED AS BUILDABLE (2026-05-29, ADR-0039)
+
+**UNBLOCKED — zero new affordances required (2026-05-29, ADR-0039).** The reassessment
+inverts the long-standing "V-37 blocks PD-033-A" framing. The push projection seam
+already satisfies every property the deleted Notes app violated: kernel-owned
+projection (no D5 shell parsing), handshake-gated sign-in (via the existing
+`projections["bunker_handshake"]`), and D3 outbox routing (not a raw-event tap), all
+read off the pushed frame. None of V-37's three affordances need to be built (see
+ADR-0039 §3). The **podcast-player** is the live candidate — to be built on the push
+seam (deleting its current bespoke `nmp_app_podcast_snapshot` pull symbol + 500 ms
+poll). History of the deletion-closure retained below.
+
 
 **Original closure (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
 client, 299 LOC Swift, 25 LOC Rust, zero new C-ABI protocol symbols. Closed as "confirmed."
@@ -1856,6 +1942,72 @@ generic FlatBuffers value tree `payload_bytes=873200`, `make_update_us=42075`,
 ceilings, but it confirms the generic value tree is an interim transport shape;
 typed snapshot tables are the next F-10 performance step if foreground logs show
 `make_update_us` or payload size approaching budget.
+
+---
+
+### iOS Component — Gallery Extraction Candidates
+
+Swift reusable component candidates identified in `ios/Chirp/`. Every one recreates existing gallery primitives or is missing the lifecycle that the registry pattern requires. Extract as `nmp-gallery` components once F-08 composition root lands. Entries track blockers and acceptance criteria per component.
+
+#### [V-??] Extract ChirpAvatar as NostrAvatar gallery primitive
+
+**File:** `ios/Chirp/Chirp/Theme/ChirpTheme.swift` (circular avatar with picture + identicon fallback).
+
+**Why it matters:** every social Nostr app recreates this avatar. Chirp's version handles picture + fallback identicon but lacks the `claimProfile` / `releaseProfile` lifecycle that the registry pattern requires.
+
+**Blocker:** F-08 Stage 1 (composition root + claim/release adapter).
+
+**Acceptance:** extract as `nmp-gallery` SwiftUI component; wires through registry host for claim/release; Chirp imports from gallery instead of local Theme.
+
+#### [V-??] Extract ChirpNpubChip as NostrNpubChip gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/ProfileView.swift` (copyable npub chip — truncated display + copy-to-clipboard + 2s checkmark animation).
+
+**Why it matters:** functional duplicate of `nmp-gallery`'s `NostrNpubChip`. Every Nostr app needs this interaction.
+
+**Blocker:** F-08 Stage 1 (gallery component model).
+
+**Acceptance:** extract as gallery component; Chirp uses gallery version; animation and copy behavior identical.
+
+#### [V-??] Extract ChirpNip05Badge as NostrNip05Badge gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/ProfileView.swift` (checkmark + NIP-05 identifier, failable on empty).
+
+**Why it matters:** nearly identical to gallery's `NostrNip05Badge`. Standardizing prevents divergence as more apps ship.
+
+**Blocker:** F-08 Stage 1.
+
+**Acceptance:** extract with failable init pattern; Chirp uses gallery version.
+
+#### [V-??] Extract ChirpUserCard as NostrUserCard gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/ProfileView.swift` (avatar + name + NIP-05 badge composite).
+
+**Why it matters:** three-part header is the canonical user card every social Nostr app builds. Composable from the atomic pieces above (avatar, npub chip, NIP-05 badge).
+
+**Blocker:** F-08 Stage 1; completion of the three atomic pieces above.
+
+**Acceptance:** composition built from extracted avatar + name + badge; Chirp wires the three via gallery host; no local profile-header duplication.
+
+#### [V-??] Extract ChirpRelayRow as NostrRelayRow gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/RelaySettingsView.swift` (icon + monospaced URL + role badge).
+
+**Why it matters:** common to all NMP apps with relay settings. Gallery already has `NostrRelayList`; extract the row as the base primitive with optional connection-status dot.
+
+**Blocker:** F-08 Stage 1.
+
+**Acceptance:** `NostrRelayRow` component with role badge and optional status indicator; `NostrRelayList` refactored to use it; Chirp imports from gallery.
+
+#### [V-??] Extract NoteActionsRow as gallery primitive
+
+**File:** `ios/Chirp/Chirp/Components/NoteRowView.swift` (reply/repost/like/zap action bar).
+
+**Why it matters:** compound component every social Nostr app recreates. Strong gallery candidate once action/zap interaction patterns stabilize.
+
+**Blocker:** F-08 (registry) + post-v1 action/dispatch stability.
+
+**Status:** post-v1. Action/zap interactions will be hardened by then.
 
 ---
 

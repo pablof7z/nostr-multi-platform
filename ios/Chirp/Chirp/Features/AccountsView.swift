@@ -56,6 +56,7 @@ private struct AccountRowView: View {
         } label: {
             HStack {
                 ChirpAvatar(
+                    pubkey: account.id,
                     url: account.pictureUrl,
                     initials: (account.displayName ?? account.id).displayInitials,
                     colorHex: account.id.pubkeyColorHex,

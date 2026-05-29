@@ -92,6 +92,7 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .bottom) {
                     ChirpAvatar(
+                        pubkey: profile?.pubkey ?? "",
                         url: profile?.pictureUrl,
                         initials: (profile?.displayLabel ?? "?").displayInitials,
                         colorHex: profile?.pubkey.pubkeyColorHex ?? "",
@@ -224,6 +225,9 @@ struct ProfileView: View {
                         },
                         onLike: {
                             model.react(targetEventID: item.id, reaction: "❤")
+                        },
+                        onRepost: {
+                            model.repost(eventID: item.id, authorPubkey: item.authorPubkey)
                         }
                     )
 

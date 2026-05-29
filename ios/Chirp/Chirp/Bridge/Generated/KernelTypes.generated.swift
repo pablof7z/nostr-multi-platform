@@ -216,6 +216,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let relayDiagnostics: RelayDiagnosticsSnapshot?
     let mentionProfiles: [String: MentionProfileWire]?
     let claimedProfiles: [String: ProfileCard]?
+    let claimedEvents: [String: ClaimedEventDto]?
     let settingsHub: SettingsHubSummary?
 
     enum CodingKeys: String, CodingKey {
@@ -250,6 +251,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case relayDiagnostics
         case mentionProfiles
         case claimedProfiles
+        case claimedEvents
         case settingsHub
     }
 }
