@@ -29,7 +29,9 @@ struct SectionListView: View {
         case "user":
             return "person.crop.circle"
         case "content":
-            return "text.bubble"
+            return "text.bubble.fill"
+        case "embeds":
+            return "link.badge.plus"
         default:
             return "square.grid.2x2"
         }
