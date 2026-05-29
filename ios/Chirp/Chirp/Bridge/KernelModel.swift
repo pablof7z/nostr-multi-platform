@@ -471,8 +471,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
     /// The recipient's `lnurl` is sourced from `TimelineItem.authorLnurl`
     /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).
-    /// `amountMsats` defaults to 21,000 msats (21 sats) until an amount
-    /// picker lands.
+    ///
+    /// V-106: `amountMsats` is required — there is no hardcoded default. The
+    /// host surfaces `ZapAmountSheet` to let the user pick the amount (preset
+    /// or custom), and passes the chosen msats here. This removes the old
+    /// "every zap is 21 sats" behaviour.
     ///
     /// V-07: relay selection is kernel policy. We pass an empty `relays`
     /// list; the actor auto-selects from the recipient's kind:10002
@@ -484,7 +487,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         targetEventID: String,
         authorPubkey: String,
         lnurl: String,
-        amountMsats: UInt64 = 21_000,
+        amountMsats: UInt64,
         comment: String? = nil
     ) -> DispatchResult {
         return track(

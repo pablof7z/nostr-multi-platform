@@ -19,6 +19,18 @@ import SwiftUI
 // ≤80 by default), so the renderer doesn't need to memoize.
 // ─────────────────────────────────────────────────────────────────────────
 
+/// V-106 — the zap target captured when the user taps the zap button, held in
+/// `HomeFeedView` state to drive the `ZapAmountSheet`. Carries only the raw
+/// identifiers the kernel needs (eventID, authorPubkey, lnurl); the amount is
+/// chosen in the sheet. `Identifiable` keyed on the target event so SwiftUI's
+/// `sheet(item:)` re-presents correctly when a different note is zapped.
+struct PendingZap: Identifiable {
+    let eventID: String
+    let authorPubkey: String
+    let lnurl: String
+    var id: String { eventID }
+}
+
 struct HomeFeedView: View {
     @EnvironmentObject private var model: KernelModel
     @EnvironmentObject private var router: ChirpRouter
@@ -27,6 +39,11 @@ struct HomeFeedView: View {
     @State private var showCompose = false
     /// Controls the publish outbox sheet.
     @State private var showOutbox = false
+    /// V-106 — the zap target awaiting an amount selection. Non-nil drives the
+    /// `ZapAmountSheet` presentation; the row's `onZap` closure populates it
+    /// (the kernel still owns relay selection + LNURL — the sheet only picks
+    /// the msats amount + optional comment).
+    @State private var pendingZap: PendingZap?
 
     var body: some View {
         ZStack {
@@ -48,6 +65,20 @@ struct HomeFeedView: View {
         .sheet(isPresented: $showOutbox) {
             NavigationStack {
                 NotificationsView()
+            }
+        }
+        // V-106 — amount picker. `item:` binds to the pending zap target so the
+        // sheet's `onConfirm` has the (eventID, pubkey, lnurl) captured at tap
+        // time; it supplies only the chosen msats amount + optional comment.
+        .sheet(item: $pendingZap) { target in
+            ZapAmountSheet { amountMsats, comment in
+                model.zap(
+                    targetEventID: target.eventID,
+                    authorPubkey: target.authorPubkey,
+                    lnurl: target.lnurl,
+                    amountMsats: amountMsats,
+                    comment: comment
+                )
             }
         }
     }
@@ -80,12 +111,14 @@ struct HomeFeedView: View {
             mentionProfiles: model.mentionProfiles,
             onRefresh: { model.openTimeline() },
             onLike: { model.react(targetEventID: $0, reaction: "❤") },
-            // NIP-57 — 21 sats default until an amount picker lands.
-            // `lnurl` is the pre-extracted `authorLnurl` from the timeline
-            // item (Rust decides zapability; the row only surfaces this
-            // closure when the field is non-nil — see `NoteActionsRow`).
+            // NIP-57 (V-106) — tapping zap opens the amount picker rather than
+            // firing a fixed 21-sat zap. `lnurl` is the pre-extracted
+            // `authorLnurl` from the timeline item (Rust decides zapability;
+            // the row only surfaces this closure when the field is non-nil —
+            // see `NoteActionsRow`). The actual dispatch happens in the sheet's
+            // `onConfirm` once the user picks an amount.
             onZap: { eventID, pubkey, lnurl in
-                model.zap(targetEventID: eventID, authorPubkey: pubkey, lnurl: lnurl)
+                pendingZap = PendingZap(eventID: eventID, authorPubkey: pubkey, lnurl: lnurl)
             },
             onLoadMore: { cursor in
                 model.loadOlderTimeline(after: cursor)
