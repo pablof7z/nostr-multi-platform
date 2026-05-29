@@ -13,6 +13,7 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 # `nmp.nip65.publish_relay_list` action module depends on.
 nmp-core = { path = "../nmp-core" }
 serde = { workspace = true, features = ["derive"] }
+tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
