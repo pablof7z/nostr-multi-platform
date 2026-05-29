@@ -34,3 +34,6 @@ android/.fastembed_cache/
 *.trace/
 *.trace
 .vercel
+
+# Wiki raw capture log (proactive-context artifact; regenerated locally, never committed)
+docs/wiki/_citations.log
