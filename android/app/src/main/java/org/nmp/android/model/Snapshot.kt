@@ -41,6 +41,11 @@ data class SnapshotProjections(
     @SerialName("wallet_balance") val walletBalance: String? = null,
     @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
+    // Pre-merged profile map (claimed > author_view > mention) shipped by the
+    // kernel (PR #812). The UI reads this single key; claimed_profiles /
+    // mention_profiles above are retained for non-UI consumers but no longer
+    // merged in the presentation layer.
+    @SerialName("resolved_profiles") val resolvedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("author_view") val authorView: AuthorViewPayload? = null,
 )
 

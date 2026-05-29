@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -67,19 +68,16 @@ fun ProfileScreen(
 
     // The kernel publishes the author's timeline via openAuthor(pubkey).
     // Profile metadata is resolved from snapshot projections (D8: push semantics,
-    // no derived state). Resolution order: claimed_profiles (demand-driven kind:0)
-    // → author_view.profile (open author screen) → mention_profiles (sidebar cache).
+    // no derived state).
     val items: List<TimelineItem> = snapshot.items
 
     val itemLookup = items.associateBy { it.id }
 
     val projections = snapshot.projections
-    // Resolution order: claimed_profiles (demand-driven kind:0 via claimProfile)
-    // → author_view.profile (kernel's open author screen state)
-    // → mention_profiles (sidebar cache from visible timelines)
-    val profileCard: ProfileCard? = projections?.claimedProfiles?.get(pubkey)
-        ?: projections?.authorView?.profile?.takeIf { it.pubkey == pubkey }
-        ?: projections?.mentionProfiles?.get(pubkey)
+    // Single lookup from the kernel's pre-merged `resolved_profiles` projection
+    // (PR #812). The kernel already applies canonical precedence
+    // (claimed > author_view > mention), so no per-platform merge chain here.
+    val profileCard: ProfileCard? = projections?.resolvedProfiles?.get(pubkey)
 
     val shortPubkey = if (pubkey.length >= 16) {
         "${pubkey.take(8)}…${pubkey.takeLast(8)}"
@@ -93,6 +91,12 @@ fun ProfileScreen(
     val initials = displayName.take(2).uppercase()
     val noteCount = items.size
 
+    // Provide the kernel's pre-merged resolved_profiles map so NoteRow (and any
+    // embedded notes it renders) resolves author display names without a
+    // per-platform merge chain (PR #812).
+    CompositionLocalProvider(
+        LocalResolvedProfiles provides (projections?.resolvedProfiles ?: emptyMap()),
+    ) {
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             // Header: back button + title
@@ -218,6 +222,8 @@ fun ProfileScreen(
                             emptyMap(),
                             model = model,
                         )
+                        // Author display names resolve via LocalResolvedProfiles,
+                        // provided by the enclosing CompositionLocalProvider.
                         if (index < items.lastIndex) {
                             HorizontalDivider(Modifier.padding(start = 56.dp))
                         }
@@ -225,5 +231,6 @@ fun ProfileScreen(
                 }
             }
         }
+    }
     }
 }
