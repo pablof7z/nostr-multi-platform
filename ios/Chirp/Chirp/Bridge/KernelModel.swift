@@ -461,6 +461,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         track(kernel.react(targetEventID: targetEventID, reaction: reaction))
     }
 
+    @discardableResult
+    func repost(eventID: String, authorPubkey: String) -> DispatchResult {
+        track(kernel.repost(eventID: eventID, authorPubkey: authorPubkey))
+    }
+
     func claimVisibleNoteRelations(eventID: String) {
         kernel.claimVisibleNoteRelations(eventID: eventID)
     }
