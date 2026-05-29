@@ -21,6 +21,28 @@ use crate::snapshot::{
 use nmp_chirp_config;
 
 // ---------------------------------------------------------------------------
+// Helper functions — typed OP-feed decode (mirrors chirp-tui approach)
+// ---------------------------------------------------------------------------
+
+/// Extract the typed OP-feed `nmp.feed.home` sidecar and re-serialize it as a
+/// generic `Value` for insertion into the snapshot projections map.
+///
+/// Returns `None` when the projection is absent, the schema id does not match
+/// [`nmp_nip01::OP_FEED_SCHEMA_ID`], or the FlatBuffers payload is corrupt.
+/// Both of these cases fall back to the generic `Value` projection that the
+/// snapshot already carries.
+fn extract_home_feed_from_typed(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Option<serde_json::Value> {
+    let proj = projections
+        .iter()
+        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
+    nmp_nip01::decode_op_feed_snapshot(&proj.payload)
+        .ok()
+        .and_then(|snapshot| serde_json::to_value(&snapshot).ok())
+}
+
+// ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
 
@@ -60,17 +82,19 @@ impl DesktopApp {
         let egui_ctx = cc.egui_ctx.clone();
         std::thread::spawn(move || {
             for event in rx {
-                let env = match nmp_core::decode_update_frame(&event.payload) {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                let nmp_core::UpdateEnvelope::Snapshot(v) = env else {
+                let Ok((value, typed)) =
+                    nmp_core::decode_snapshot_with_typed(&event.payload)
+                else {
                     continue;
                 };
-                let snap: Snapshot = match serde_json::from_value(v) {
+                let mut snap: Snapshot = match serde_json::from_value(value) {
                     Ok(s) => s,
                     Err(_) => continue,
                 };
+                // Prefer the typed OP-feed sidecar when present (same as TUI).
+                if let Some(feed) = extract_home_feed_from_typed(&typed) {
+                    snap.projections.insert("nmp.feed.home".to_string(), feed);
+                }
                 if let Ok(mut slot) = reader_latest.lock() {
                     *slot = Some(snap);
                 }
