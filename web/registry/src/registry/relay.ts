@@ -22,7 +22,7 @@ export const relayComponents: Component[] = [
           { source: "swiftui/relay-list/NostrRelayList.swift", target: "Components/NostrRelays/NostrRelayList.swift", role: "source", content: nostrRelayListSwift },
           { source: "swiftui/relay-list/Examples/NostrRelayListPreview.swift", target: "Components/NostrRelays/Examples/NostrRelayListPreview.swift", role: "example", content: nostrRelayListPreviewSwift },
         ],
-        screenshots: ["relay-list-ios-gallery-preview.png"],
+        screenshots: ["relay-list-ios-gallery-preview.png", "tui-relay-list-preview.png"],
         customization: [
           "Pass a `relayStatuses: [String: String]` dictionary keyed by relay URL to animate connection dots. Build it with `Dictionary(uniqueKeysWithValues: snapshot.relayStatuses.map { ($0.relayUrl, $0.connection) })`.",
           "Role badge colors map semantic tokens (`accent`, `info`, `success`, `neutral`) to SwiftUI system colors — override `tintColor(for:)` to match your brand.",

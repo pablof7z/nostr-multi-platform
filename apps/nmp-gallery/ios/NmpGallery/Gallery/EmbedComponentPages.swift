@@ -93,6 +93,12 @@ struct ProfileEmbedPage: View {
 
     var body: some View {
         VStack(spacing: 16) {
+            // A hidden avatar owns the claim for the showcase pubkey while this
+            // page is visible — mirrors the real-app pattern where a parent
+            // note row or profile header would own the claim.
+            NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .frame(width: 0, height: 0)
+                .clipped()
             EmbedPageFrame(caption: "Inline profile mention — kind:0 via mention chip") {
                 NostrContentView(
                     tree: tree,
@@ -101,7 +107,7 @@ struct ProfileEmbedPage: View {
                             ?? NostrContentView.defaultMentionLabel(uri)
                     }
                 )
-                Text("Profile mentions resolve via `projections.mention_profiles` — the same kind:0 path the user-* pages use. No embed claim is required for `npub:` URIs.")
+                Text("Profile mentions resolve via `projections.claimed_profiles` → `resolved_profiles` — the same kind:0 path the user-* pages use.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
