@@ -16,7 +16,7 @@ use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
     AuthorViewPayload, RelayEditRow, Snapshot, ThreadViewPayload,
-    TimelineItem, ActionStageRow,
+    TimelineItem, ActionStageRow, DmConversationSnapshot,
 };
 use nmp_chirp_config;
 
@@ -51,6 +51,7 @@ pub enum AppTab {
     Home,
     Thread(String),
     Author(String),
+    Dms,
     Settings,
     Diagnostics,
     Outbox,
@@ -61,6 +62,8 @@ pub struct DesktopApp {
     latest: Arc<Mutex<Option<Snapshot>>>,
     tab: AppTab,
     compose: String,
+    selected_dm_pubkey: Option<String>,
+    dm_compose: String,
     nsec_input: String,
     bunker_relay_input: String,
     bunker_uri: Option<String>,
@@ -108,6 +111,8 @@ impl DesktopApp {
             latest,
             tab: AppTab::Home,
             compose: String::new(),
+            selected_dm_pubkey: None,
+            dm_compose: String::new(),
             nsec_input: String::new(),
             bunker_relay_input: "wss://relay.primal.net".to_string(),
             bunker_uri: None,
@@ -216,6 +221,12 @@ impl DesktopApp {
                 }
             }
             if ui
+                .selectable_label(matches!(current_tab, AppTab::Dms), "💬  DMs")
+                .clicked()
+            {
+                self.tab = AppTab::Dms;
+            }
+            if ui
                 .selectable_label(matches!(current_tab, AppTab::Settings), "⚙️  Settings")
                 .clicked()
             {
@@ -273,6 +284,7 @@ impl DesktopApp {
                     let payload: Option<AuthorViewPayload> = snap.projection("author_view");
                     self.author_view(ui, snap, pubkey, payload);
                 }
+                AppTab::Dms => self.dm_panel(ui, snap),
                 AppTab::Settings => self.settings_view(ui, snap),
                 AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
                 AppTab::Outbox => self.outbox_panel(ui, snap),
@@ -465,6 +477,103 @@ impl DesktopApp {
                 ui.add_space(4.0);
             }
         });
+    }
+
+    fn dm_panel(&mut self, ui: &mut Ui, snap: &Snapshot) {
+        ui.heading("Direct Messages");
+        ui.separator();
+
+        let dm_snapshot: Option<DmConversationSnapshot> = snap.projection("nmp.nip17.dm_inbox");
+
+        match dm_snapshot {
+            None => {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(40.0);
+                    ui.label(
+                        RichText::new("No direct messages")
+                            .size(15.0)
+                            .weak(),
+                    );
+                });
+            }
+            Some(dm_data) => {
+                if dm_data.conversations.is_empty() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.label(
+                            RichText::new("No conversations yet")
+                                .size(15.0)
+                                .weak(),
+                        );
+                    });
+                } else {
+                    ui.columns(2, |cols| {
+                        // Left pane: conversation list
+                        ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(&mut cols[0], |ui| {
+                                for conv in &dm_data.conversations {
+                                    let is_selected = self.selected_dm_pubkey.as_ref() == Some(&conv.peer_pubkey);
+                                    if ui
+                                        .selectable_label(is_selected, &conv.peer_display)
+                                        .clicked()
+                                    {
+                                        self.selected_dm_pubkey = Some(conv.peer_pubkey.clone());
+                                    }
+                                    ui.separator();
+                                }
+                            });
+
+                        // Right pane: selected conversation
+                        if let Some(ref selected_pubkey) = self.selected_dm_pubkey {
+                            if let Some(conv) = dm_data
+                                .conversations
+                                .iter()
+                                .find(|c| &c.peer_pubkey == selected_pubkey)
+                            {
+                                ScrollArea::vertical()
+                                    .auto_shrink([false, false])
+                                    .show(&mut cols[1], |ui| {
+                                        for msg in &conv.messages {
+                                            ui.horizontal(|ui| {
+                                                let label = if msg.outgoing {
+                                                    format!("You: {}", msg.content)
+                                                } else {
+                                                    format!("{}: {}", &msg.author[..msg.author.len().min(8)], msg.content)
+                                                };
+                                                ui.label(label);
+                                            });
+                                        }
+
+                                        ui.separator();
+                                        ui.horizontal(|ui| {
+                                            ui.add(
+                                                TextEdit::multiline(&mut self.dm_compose)
+                                                    .hint_text("Type a message…")
+                                                    .desired_rows(2)
+                                                    .desired_width(f32::INFINITY),
+                                            );
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                                if ui.button("Send").clicked() {
+                                                    if !self.dm_compose.trim().is_empty() {
+                                                        let _ = self.bridge.send_dm(
+                                                            selected_pubkey,
+                                                            self.dm_compose.trim(),
+                                                        );
+                                                        self.dm_compose.clear();
+                                                    }
+                                                }
+                                            });
+                                        });
+                                    });
+                            }
+                        }
+                    });
+                }
+            }
+        }
     }
 
     fn settings_view(&mut self,
