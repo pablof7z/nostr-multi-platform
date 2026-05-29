@@ -143,6 +143,23 @@ class KernelModel : ViewModel() {
         bridge.openAuthor(pubkey)
     }
 
+    /**
+     * Send a zap (Lightning payment) to a note. Routes through dispatch_action("nmp.zap", ...).
+     * Uses the default zap amount of 21000 msats.
+     */
+    fun zapNote(noteId: String): String? {
+        val amountMsats = 21000L
+        val actionJson = """{"Zap":{"note_id":"$noteId","amount_msats":$amountMsats}}"""
+        val response = bridge.dispatchAction("nmp.zap", actionJson)
+        return try {
+            val json = org.json.JSONObject(response)
+            json.optString("correlation_id").takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.d(TAG, "zapNote parse error: $response", e)
+            null
+        }
+    }
+
     private fun escapeJson(s: String): String {
         return s.replace("\\", "\\\\")
             .replace("\"", "\\\"")
