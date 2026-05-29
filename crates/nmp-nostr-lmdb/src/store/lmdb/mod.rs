@@ -8,6 +8,8 @@ use std::collections::BTreeSet;
 use std::iter;
 use std::ops::Bound;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
 use heed::byteorder::NativeEndian;
 use heed::types::{Bytes, Unit, U64};
@@ -28,6 +30,25 @@ const EVENT_ID_ALL_255: [u8; 32] = [255; 32];
 /// Current database schema version
 const DB_VERSION: u64 = 2;
 const DB_VERSION_KEY: &[u8] = b"db_version";
+
+/// A snapshot of store-anomaly counters for diagnostic purposes.
+///
+/// A non-zero field indicates index corruption was detected during queries.
+/// Tests and hosts can assert all fields are zero to confirm "no corruption
+/// detected". Counters are monotonically increasing — they never reset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StoreAnomalySnapshot {
+    /// Number of ci_index entries that pointed to a missing event (dangling
+    /// pointer). Incremented by [`Lmdb::query_by_scraping`] whenever
+    /// [`Lmdb::get_event_by_id`] returns `Ok(None)` for an index value.
+    pub orphan_index_entries: u64,
+    /// Number of ci_index entries for which event deserialization failed
+    /// (FlatBuffers decode error or LMDB I/O error on the event row itself).
+    /// Distinct from `orphan_index_entries` because the event row exists but
+    /// cannot be read — this usually indicates on-disk corruption rather than
+    /// a dangling index pointer.
+    pub unresolvable_events: u64,
+}
 
 #[derive(Debug)]
 enum QueryFilterPattern {
@@ -97,6 +118,12 @@ pub struct Lmdb {
     deleted_coordinates: Database<Bytes, U64<NativeEndian>>, // Coordinate, UNIX timestamp
     /// Database metadata (version, etc)
     metadata: Database<Bytes, U64<NativeEndian>>, // Key, Value
+    /// Monotonic counter: ci_index entries whose event row was missing (V-69).
+    /// Shared across all clones via Arc so any query path updates the same counter.
+    anomaly_orphan_index_entries: Arc<AtomicU64>,
+    /// Monotonic counter: ci_index entries whose event row existed but could
+    /// not be deserialized (V-69).
+    anomaly_unresolvable_events: Arc<AtomicU64>,
 }
 
 impl Lmdb {
@@ -224,6 +251,8 @@ impl Lmdb {
             deleted_ids,
             deleted_coordinates,
             metadata,
+            anomaly_orphan_index_entries: Arc::new(AtomicU64::new(0)),
+            anomaly_unresolvable_events: Arc::new(AtomicU64::new(0)),
         };
 
         // Check and run migrations if needed
@@ -253,9 +282,30 @@ impl Lmdb {
     /// open their own sub-dbs on the same environment (atomicity
     /// guarantee). The env is `Clone`able under heed's semantics — clone
     /// it freely.
-    #[must_use] 
+    #[must_use]
     pub fn env(&self) -> &Env {
         &self.env
+    }
+
+    /// NMP fork (V-69): snapshot of store-anomaly counters.
+    ///
+    /// A [`StoreAnomalySnapshot`] with all-zero fields means no index corruption
+    /// has been detected since this `Lmdb` instance was opened. Tests and hosts
+    /// can assert `store_anomaly_snapshot() == StoreAnomalySnapshot::default()`
+    /// to confirm "no corruption detected".
+    ///
+    /// The counter values are read with `Relaxed` ordering — they are
+    /// diagnostic only, not a synchronisation point.
+    #[must_use]
+    pub fn store_anomaly_snapshot(&self) -> StoreAnomalySnapshot {
+        StoreAnomalySnapshot {
+            orphan_index_entries: self
+                .anomaly_orphan_index_entries
+                .load(AtomicOrdering::Relaxed),
+            unresolvable_events: self
+                .anomaly_unresolvable_events
+                .load(AtomicOrdering::Relaxed),
+        }
     }
 
     /// Check database version and run migrations if needed
@@ -950,12 +1000,55 @@ impl Lmdb {
         until: Timestamp,
         limit: Option<usize>,
     ) -> Result<Box<dyn Iterator<Item = EventBorrow<'a>> + 'a>, Error> {
-        // Iterate over created _at index, so events are already sorted
+        // Iterate over created _at index, so events are already sorted.
+        //
+        // V-69 fix: the secondary `get_event_by_id` lookup can fail in two
+        // distinct ways that require separate treatment:
+        //
+        //   Ok(None)  — the index entry points to a non-existent event row
+        //               (dangling / orphan index pointer). This indicates
+        //               index corruption: the index was not cleaned up when
+        //               the event was removed.
+        //
+        //   Err(_)    — the event row exists but cannot be deserialized
+        //               (FlatBuffers corruption or LMDB I/O error).
+        //
+        // Both cases increment a typed counter and emit a tracing::warn so
+        // that silent query incompleteness becomes observable.  The iterator
+        // still skips the entry (returning None from filter_map) to avoid
+        // propagating an error through the iterator interface, but the
+        // non-zero counter signals to callers that results may be incomplete.
+        let orphan_counter = Arc::clone(&self.anomaly_orphan_index_entries);
+        let unresolvable_counter = Arc::clone(&self.anomaly_unresolvable_events);
         Ok(Box::new(
             self.ci_iter(txn, since, until)?
                 .filter_map(move |res| {
                     let (_key, value) = res.ok()?;
-                    let event: EventBorrow = self.get_event_by_id(txn, value).ok()??;
+                    // Distinguish the two error classes instead of using .ok()??.
+                    let event: EventBorrow = match self.get_event_by_id(txn, value) {
+                        Ok(Some(e)) => e,
+                        Ok(None) => {
+                            // Dangling index pointer — event row is gone.
+                            orphan_counter.fetch_add(1, AtomicOrdering::Relaxed);
+                            tracing::warn!(
+                                target: "nmp.nostr_lmdb.anomaly",
+                                key = %value.iter().fold(String::new(), |mut s, b| { use std::fmt::Write; let _ = write!(s, "{b:02x}"); s }),
+                                "orphan ci_index entry: event row missing (V-69 StoreAnomaly::OrphanIndexEntry)",
+                            );
+                            return None;
+                        }
+                        Err(e) => {
+                            // Row exists but is unreadable / cannot be deserialized.
+                            unresolvable_counter.fetch_add(1, AtomicOrdering::Relaxed);
+                            tracing::warn!(
+                                target: "nmp.nostr_lmdb.anomaly",
+                                key = %value.iter().fold(String::new(), |mut s, b| { use std::fmt::Write; let _ = write!(s, "{b:02x}"); s }),
+                                error = %e,
+                                "unresolvable ci_index entry: event row undeserializable (V-69 StoreAnomaly::UnresolvableEvent)",
+                            );
+                            return None;
+                        }
+                    };
 
                     if filter.match_event(&event) {
                         Some(event)
@@ -1491,5 +1584,83 @@ mod tests {
             result.unwrap_err(),
             Error::Migration(MigrationError::NewerVersion { .. })
         ));
+    }
+
+    /// V-69 regression: a ci_index entry that points to a missing event row
+    /// (orphan / dangling index pointer) must increment the
+    /// `anomaly_orphan_index_entries` counter and be silently skipped rather
+    /// than causing an undetectable silent result omission.
+    ///
+    /// Corruption is simulated by storing an event (which populates ci_index),
+    /// then deleting only the event row from the `events` database while
+    /// leaving the ci_index entry intact.  An empty-filter query routes
+    /// through `query_by_scraping`, which is the path that contained the
+    /// original `.ok()??` double-swallow.
+    #[test]
+    fn test_v69_orphan_index_increments_anomaly_counter() {
+        let temp_dir = TempDir::new().unwrap();
+        let lmdb = Lmdb::new(temp_dir.path(), 1024 * 1024 * 100, 126, 0).unwrap();
+        let mut fbb = FlatBufferBuilder::new();
+
+        // Store one normal event and one that will become the orphan.
+        let normal_event = create_test_event(1, 2000);
+        let orphan_event = create_test_event(1, 1000);
+
+        {
+            let mut txn = lmdb.write_txn().unwrap();
+            lmdb.store(&mut txn, &mut fbb, &normal_event).unwrap();
+            lmdb.store(&mut txn, &mut fbb, &orphan_event).unwrap();
+            txn.commit().unwrap();
+        }
+
+        // Verify baseline: no anomalies yet.
+        let snap_before = lmdb.store_anomaly_snapshot();
+        assert_eq!(
+            snap_before,
+            StoreAnomalySnapshot::default(),
+            "no anomalies expected before corruption is introduced"
+        );
+
+        // Simulate corruption: delete ONLY the event row for `orphan_event`,
+        // leaving its ci_index entry dangling.
+        {
+            let mut txn = lmdb.write_txn().unwrap();
+            lmdb.events
+                .delete(&mut txn, orphan_event.id.as_bytes())
+                .unwrap();
+            txn.commit().unwrap();
+        }
+
+        // An empty filter routes through query_by_scraping (no ids/authors/
+        // kinds/tags → QueryFilterPattern::Scraping).
+        {
+            let txn = lmdb.read_txn().unwrap();
+            let results: Vec<_> = lmdb.query(&txn, Filter::new()).unwrap().collect();
+
+            // Only the normal event should be returned — the orphan is skipped.
+            assert_eq!(
+                results.len(),
+                1,
+                "only the non-orphaned event should be returned"
+            );
+            assert_eq!(
+                results[0].id,
+                normal_event.id.as_bytes(),
+                "the surviving event should be the non-orphaned one"
+            );
+
+            txn.commit().unwrap();
+        }
+
+        // The orphan counter must have been incremented exactly once.
+        let snap_after = lmdb.store_anomaly_snapshot();
+        assert_eq!(
+            snap_after.orphan_index_entries, 1,
+            "one orphan ci_index entry should have been detected and counted"
+        );
+        assert_eq!(
+            snap_after.unresolvable_events, 0,
+            "no unresolvable-event anomalies expected"
+        );
     }
 }

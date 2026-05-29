@@ -735,16 +735,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-69 · LMDB store silently swallows index-corruption errors via `ok()??` / `filter_map(res.ok())` [MEDIUM · silent query incompleteness]
-
-**Verified:** `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs:958` (`ok()??` double-error swallow in `query_by_scraping`) and the broader pattern `filter_map(|res| { res.ok()? })` on iteration paths in the same module. When a key resolves to a missing or undeserializable value (index points to a dangling event), the iterator silently produces fewer results rather than surfacing a corruption signal.
-
-**Impact:** queries appear to succeed but return incomplete result sets. No metric, no log, no `KernelDiagnostic`. Index corruption (which V-60 GC churn or a crash mid-write could induce) becomes a slow, undiagnosable "why is my note missing" bug. Test coverage for this path does not exist because the failure mode is silent.
-
-**Correct fix:** every `res.ok()?` on a query iteration must increment a typed `StoreAnomaly::OrphanIndexEntry` counter and emit `tracing::warn!` with the offending key. A non-zero counter must be exposed on the diagnostic snapshot so the host (and tests) can assert "no corruption detected". The double-swallow `.ok()??` at line 958 is the worst offender — replace with explicit `match` so the two error classes (missing key vs. deserialize failure) are distinguishable.
-
----
-
 ### V-70 · `hex_to_bytes32` returns all-zeros on malformed hex — `RawEvent::id_bytes/pubkey_bytes` produce valid-shape but wrong IDs [LOW · sharp-edge API]
 
 **Verified:** `crates/nmp-store/src/types/ids.rs:20-34` — `hex_to_bytes32(s)` returns `[0u8; 32]` whenever `s.len() != 64` or any byte is non-hex. `crates/nmp-store/src/types/events.rs:38-46` exposes this via `RawEvent::id_bytes()` and `RawEvent::pubkey_bytes()` with doc-comments that admit the silent-zero behaviour.
