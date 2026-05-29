@@ -2,6 +2,28 @@ import Foundation
 import Observation
 import SwiftUI
 
+/// Raw wire shape for one entry in `projections["claimed_events"]` (ADR-0034 /
+/// F-CR-06). Hand-declared value type for the generated
+/// `SnapshotProjections.claimedEvents` field — Stage-2 codegen emits the
+/// `claimedEvents` field (see
+/// `crates/nmp-codegen/src/swift_projections_registry.rs`) but references this
+/// value type by name; per the registry's maintenance contract the value type
+/// itself stays hand-written until the Stage-3 sweep. Mirrors the kernel's
+/// `ClaimedEventDto` (`crates/nmp-core/src/kernel/types.rs`). The kernel emits
+/// snake_case keys; `KernelHandle.decode` applies `.convertFromSnakeCase`, so
+/// the property names below are the post-transform camelCase form. Extra
+/// kernel fields (`primaryId`, author profile hints) decode-tolerant: Codable
+/// ignores wire keys with no matching property, so the renderer-relevant
+/// subset below is all this host consumes.
+struct ClaimedEventDto: Decodable, Equatable {
+    let id: String
+    let authorPubkey: String
+    let kind: Int
+    let createdAt: Int
+    let content: String
+    let tags: [[String]]
+}
+
 /// Chirp mirror of the gallery EmbedHost. Reads claimed_events from the
 /// typed SnapshotProjections pushed by the kernel on every frame (D8 — push-driven).
 @MainActor

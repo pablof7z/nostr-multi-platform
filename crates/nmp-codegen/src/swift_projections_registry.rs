@@ -288,6 +288,22 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         swift_field: "claimedProfiles",
         swift_type: "[String: ProfileCard]",
     },
+    // Reference-first claimed-event map (ADR-0034 / F-CR-06) — keyed by
+    // `primary_id` (hex-64 event id for nevent/note, `kind:pubkey:d_tag`
+    // coordinate for naddr), one `ClaimedEventDto` per currently claimed
+    // embed/kind-registry event. Built in
+    // `kernel/update/projections.rs::snapshot_projections_with_publish_cluster`
+    // from the kernel's claimed-event set (see
+    // `crates/nmp-core/src/kernel/types.rs::ClaimedEventDto`). The Swift
+    // value type `ClaimedEventDto` is hand-declared (Stage-3 value types are
+    // not schema-reflected) in `ios/Chirp/Chirp/Bridge/EmbedHost.swift`, its
+    // sole consumer. Drives `EmbedHost.update(from:)` for the NMP embed
+    // system.
+    SnapshotProjectionEntry {
+        json_key: "claimed_events",
+        swift_field: "claimedEvents",
+        swift_type: "[String: ClaimedEventDto]",
+    },
     SnapshotProjectionEntry {
         json_key: "settings_hub",
         swift_field: "settingsHub",
@@ -299,18 +315,17 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
 mod tests {
     use super::*;
 
-    /// Locks the registry size — the hand-written `SnapshotProjections`
-    /// declaration in `KernelBridge.swift` carries 32 fields. Anyone
-    /// adding or removing an entry changes the generated Swift; this test
-    /// makes that change explicit rather than silent.
+    /// Locks the registry size. Anyone adding or removing an entry changes
+    /// the generated Swift; this test makes that change explicit rather than
+    /// silent.
     #[test]
     fn registry_size_is_locked() {
-        // The current hand-written declaration: 32 entries. Bump this
-        // (and add a new SnapshotProjectionEntry above) when a new
-        // projection is wired.
+        // 33 entries: the original 32 plus the `claimed_events` projection
+        // (ADR-0034 / F-CR-06 NMP embed system). Bump this (and add a new
+        // SnapshotProjectionEntry above) when a new projection is wired.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            32,
+            33,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }

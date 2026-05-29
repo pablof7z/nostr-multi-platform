@@ -216,8 +216,8 @@ struct SnapshotProjections: Decodable, Equatable {
     let relayDiagnostics: RelayDiagnosticsSnapshot?
     let mentionProfiles: [String: MentionProfileWire]?
     let claimedProfiles: [String: ProfileCard]?
-    let settingsHub: SettingsHubSummary?
     let claimedEvents: [String: ClaimedEventDto]?
+    let settingsHub: SettingsHubSummary?
 
     enum CodingKeys: String, CodingKey {
         case wallet
@@ -251,19 +251,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case relayDiagnostics
         case mentionProfiles
         case claimedProfiles
-        case settingsHub
         case claimedEvents
+        case settingsHub
     }
-}
-
-// MARK: - ClaimedEventDto (pending nmp-codegen registration)
-// Raw wire shape for one entry in projections["claimed_events"].
-// FlatBufferValueDecoder converts snake_case → camelCase automatically.
-struct ClaimedEventDto: Decodable, Equatable {
-    let id: String
-    let authorPubkey: String
-    let kind: Int
-    let createdAt: Int
-    let content: String
-    let tags: [[String]]
 }
