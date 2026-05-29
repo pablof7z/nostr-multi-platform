@@ -5,6 +5,11 @@
 //!   through an `mpsc` channel.
 //! - `AppRuntime` constructs the kernel via FFI, registers Chirp projections,
 //!   starts the actor, and exposes typed action dispatch methods.
+//!
+//! Typed social actions (publish_note, react, follow, etc.) are delegated to
+//! [`nmp_app_chirp::ChirpClient`] instead of re-implementing dispatch JSON
+//! construction here. Raw FFI methods (add_relay, open_timeline, etc.) remain
+//! unchanged.
 
 use std::cell::Cell;
 use std::ffi::{CStr, CString};
@@ -17,7 +22,7 @@ use nmp_app_chirp::ffi::{
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_register, nmp_app_chirp_unregister,
     nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister, nmp_signer_broker_init,
-    ChirpHandle, MarmotHandle,
+    ChirpClient, ChirpHandle, MarmotHandle,
 };
 use nmp_ffi::{
     nmp_app_dispatch_action,
@@ -26,11 +31,6 @@ use nmp_ffi::{
     nmp_app_set_capability_callback,
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
     nmp_app_cancel_publish, NmpApp,
-};
-use nmp_app_chirp::typed_api::{
-    publish_note_action, react_action, follow_action, unfollow_action,
-    send_dm_action, zap_action, create_account_action, sign_in_nsec_action,
-    switch_account_action, remove_account_action, publish_profile_action,
 };
 use serde_json::Value;
 use std::ffi::c_void;
@@ -92,6 +92,9 @@ extern "C" fn on_update(context: *mut std::ffi::c_void, payload: *const u8, len:
 
 pub struct AppRuntime {
     app: *mut NmpApp,
+    /// Typed action client — delegates social/account dispatch to ChirpClient
+    /// instead of re-implementing JSON construction here.
+    client: ChirpClient,
     chirp: *mut ChirpHandle,
     marmot: Cell<*mut MarmotHandle>,
     /// Keep the update bridge alive — the FFI callback stores a raw pointer
@@ -143,6 +146,7 @@ impl AppRuntime {
         Some((
             Self {
                 app,
+                client: ChirpClient::new(app),
                 chirp,
                 marmot: Cell::new(initial_marmot),
                 update_bridge: Some(bridge),
@@ -215,15 +219,15 @@ impl AppRuntime {
         let name = profile.get("name").map(String::as_str).unwrap_or("");
         let about = profile.get("about").map(String::as_str).unwrap_or("");
         let picture = profile.get("picture").map(String::as_str).unwrap_or("");
-        let relays_ref: Vec<(&str, &str)> =
-            relays.iter().map(|(u, r)| (u.as_str(), r.as_str())).collect();
-        let (ns, action) = create_account_action(name, about, picture, &relays_ref);
-        let _ = self.dispatch_action(&ns, &action);
+        let relay_pairs: Vec<(&str, &str)> = relays
+            .iter()
+            .map(|(url, role)| (url.as_str(), role.as_str()))
+            .collect();
+        let _ = self.client.create_account(name, about, picture, &relay_pairs);
     }
 
     pub fn sign_in_nsec(&self, secret: String) {
-        let (ns, action) = sign_in_nsec_action(&secret);
-        let _ = self.dispatch_action(&ns, &action);
+        let _ = self.client.sign_in_nsec(&secret);
     }
 
     pub fn connect_bunker(&self, relay_url: &str) -> Result<String, String> {
@@ -293,33 +297,27 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String, String> {
-        let (ns, action) = publish_note_action(content, reply_to);
-        self.dispatch_action(&ns, &action)
+        self.client.publish_note(content, reply_to)
     }
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String, String> {
-        let (ns, action) = react_action(event_id, reaction);
-        self.dispatch_action(&ns, &action)
+        self.client.react(event_id, reaction)
     }
 
     pub fn follow(&self, pubkey: &str) -> Result<String, String> {
-        let (ns, action) = follow_action(pubkey);
-        self.dispatch_action(&ns, &action)
+        self.client.follow(pubkey)
     }
 
     pub fn unfollow(&self, pubkey: &str) -> Result<String, String> {
-        let (ns, action) = unfollow_action(pubkey);
-        self.dispatch_action(&ns, &action)
+        self.client.unfollow(pubkey)
     }
 
     pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, String> {
-        let (ns, action) = send_dm_action(recipient_pubkey, content);
-        self.dispatch_action(&ns, &action)
+        self.client.send_dm(recipient_pubkey, content)
     }
 
     pub fn zap(&self, recipient_pubkey: &str, amount_msats: u64, target_event_id: &str) -> Result<String, String> {
-        let (ns, action) = zap_action(recipient_pubkey, amount_msats, target_event_id, "");
-        self.dispatch_action(&ns, &action)
+        self.client.zap(recipient_pubkey, amount_msats, target_event_id, "")
     }
 
     // ------------------------------------------------------------------
@@ -327,17 +325,15 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn switch_account(&self, pubkey: &str) {
-        let (ns, action) = switch_account_action(pubkey);
-        let _ = self.dispatch_action(&ns, &action);
+        let _ = self.client.switch_account(pubkey);
     }
 
     pub fn remove_account(&self, pubkey: &str) {
-        let (ns, action) = remove_account_action(pubkey);
-        let _ = self.dispatch_action(&ns, &action);
+        let _ = self.client.remove_account(pubkey);
     }
 
     pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
-        self.dispatch_action("nmp.publish", &publish_profile_action(name, about, picture))
+        self.client.publish_profile(name, about, picture)
     }
 
     // ------------------------------------------------------------------
