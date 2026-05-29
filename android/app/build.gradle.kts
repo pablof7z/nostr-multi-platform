@@ -33,6 +33,11 @@ android {
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     // .so files are produced by cargo-ndk into src/main/jniLibs (see cargoNdk).
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+    testOptions {
+        // OpFeedDecoderTest's fallback paths log via android.util.Log; return
+        // default (no-op) values so the pure-JVM unit test needs no Robolectric.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -48,6 +53,8 @@ dependencies {
     // FlatBuffers Java/Kotlin runtime. Pin matches nmp_update.fbs header comment
     // ("Android/Kotlin runtime: 25.2.10") and the Rust+Swift pin asymmetry table.
     implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")
+    // JVM unit tests (e.g. OpFeedDecoderTest — ADR-0038 Stage T4 golden parity).
+    testImplementation("junit:junit:4.13.2")
 }
 
 // ── cargo-ndk: cross-compile the JNI shim that links the SAME nmp-core kernel
