@@ -195,13 +195,39 @@ pub struct MarmotSnapshot {
     /// separately-plumbed `is_registered` flag.
     #[serde(default)]
     pub is_registered: bool,
+    /// Cumulative count of `PendingGroupChange` / `CreateGroupPending` handles
+    /// dropped without commit/clear this session (V-61 diagnostic).
+    ///
+    /// A non-zero value means a kind:445/commit event was produced locally but
+    /// may not have reached the relay — local MLS state and the
+    /// relay-published epoch may have diverged for one or more groups. The
+    /// host should block further group sends and surface a recovery prompt.
+    /// Resets to zero only when the `MarmotService` is re-initialized (e.g.
+    /// on the next app launch). This is an additive field — older hosts that
+    /// do not read it degrade gracefully.
+    #[serde(default)]
+    pub orphaned_commit_count: u32,
+    /// `true` when Marmot was initialized with an in-memory credential store
+    /// because the platform keyring was unavailable at registration time
+    /// (V-62 diagnostic).
+    ///
+    /// When `true`, MLS group secrets live only in process memory — they are
+    /// lost on the next launch and every group becomes unjoinable. The host
+    /// should surface a prominent warning and block group features until the
+    /// user resolves the keyring issue (e.g. via Keychain access prompt,
+    /// device unlock, or app re-install). This field is `false` when the real
+    /// platform keyring is in use and is never set to `true` silently. This
+    /// is an additive field — older hosts that do not read it degrade
+    /// gracefully.
+    #[serde(default)]
+    pub keyring_unavailable: bool,
 }
 
 impl MarmotSnapshot {
     /// D6 — degraded/empty snapshot (poisoned mutex, service init failure).
     /// Returned by the iOS shell whenever no `MarmotHandle` exists; the
     /// kernel-side snapshot path always sets `is_registered = true`.
-    #[must_use] 
+    #[must_use]
     pub fn empty() -> Self {
         let kp = KeyPackageStatus {
             subtitle: KeyPackageStatus::SUBTITLE_NOT_REGISTERED.to_string(),
@@ -215,6 +241,8 @@ impl MarmotSnapshot {
             cached_kp_pubkeys: Vec::new(),
             invites_chip_label: None,
             is_registered: false,
+            orphaned_commit_count: 0,
+            keyring_unavailable: false,
         }
     }
 }

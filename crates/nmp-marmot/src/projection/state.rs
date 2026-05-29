@@ -152,6 +152,11 @@ struct Inner {
     /// for the in-memory test projection (publish degrades to a silent
     /// no-op there — the D6 fire-and-forget contract).
     app: *mut NmpApp,
+    /// V-62: `true` when the projection was initialized with an in-memory
+    /// mock credential store because the platform keyring was unavailable.
+    /// Set once at construction; never flipped back to `false`. Surfaced in
+    /// the snapshot so the host can warn the user and block group features.
+    keyring_unavailable: bool,
 }
 
 /// Owned Marmot projection. `Mutex` because `on_kernel_event` takes `&self`
@@ -198,8 +203,12 @@ impl MarmotProjection {
     /// `app` starts `null`; the FFI `register` path calls
     /// [`MarmotProjection::set_app`] with the retained pointer. Tests that
     /// build the projection directly leave it `null` → publish no-ops.
+    ///
+    /// `keyring_unavailable` must be `true` when the service was initialized
+    /// with the in-memory mock credential store (V-62). The flag is surfaced
+    /// in every subsequent snapshot so the host can warn the user.
     #[must_use]
-    pub fn new(service: MarmotService) -> Self {
+    pub fn new(service: MarmotService, keyring_unavailable: bool) -> Self {
         Self {
             inner: Mutex::new(Inner {
                 service,
@@ -208,6 +217,7 @@ impl MarmotProjection {
                 key_package_d_tag: None,
                 group_relays: HashMap::new(),
                 app: std::ptr::null_mut(),
+                keyring_unavailable,
             }),
         }
     }
@@ -311,6 +321,8 @@ impl MarmotProjection {
         };
 
         let cached_kp_pubkeys = inner.service.cached_kp_pubkeys();
+        let orphaned_commit_count = inner.service.orphaned_commit_count();
+        let keyring_unavailable = inner.keyring_unavailable;
         MarmotSnapshot {
             groups,
             pending_welcomes,
@@ -318,6 +330,8 @@ impl MarmotProjection {
             cached_kp_pubkeys,
             invites_chip_label,
             is_registered: true,
+            orphaned_commit_count,
+            keyring_unavailable,
         }
     }
 }

@@ -653,26 +653,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-61 · Marmot `PendingGroupChange::drop` silently clears unresolved MLS commit [HIGH · MLS state divergence]
-
-**Verified:** `crates/nmp-marmot/src/service.rs:172` — `PendingGroupChange::drop` clears the pending MLS commit on drop without surfacing an error. If a panic or early return drops the guard before the commit is resolved, the group's local MLS state is mutated as if the commit were applied, but no kind:445/`commit` event reaches the relay.
-
-**Impact:** group state diverges from the relay-published timeline. Subsequent members joining or syncing see a different epoch than this client. There is no recovery path short of leaving and rejoining the group.
-
-**Correct fix:** the drop path must either (a) roll the pending change back to pre-commit state, or (b) record a typed `MarmotError::OrphanedCommit` on the kernel error toast and refuse further group sends until the operator resolves the divergence. Silent drop is not a doctrined option.
-
----
-
-### V-62 · Marmot keyring failure silently installs in-memory mock store [HIGH · MLS secret durability]
-
-**Verified:** `crates/nmp-marmot/src/ffi.rs:228-269` — nested fallback: real keyring open fails → delete-and-retry path → on second failure installs the in-memory mock store with no host-visible signal. MLS group secrets thereafter live only in process memory.
-
-**Impact:** the user believes MLS groups are persistent; on next launch the secret material is gone and every group is unjoinable. There is no toast, no error code returned to the host, no metric. Once secrets are lost, group membership cannot be recovered.
-
-**Correct fix:** surface a typed `MarmotInitError::KeyringUnavailable` to the host; let the app decide whether to block group features, prompt the user, or fall back to an explicit ephemeral session. Never install the mock store as an implicit decision inside `ffi.rs`.
-
----
-
 ### V-63 · NIP-47 outbound payment serialization uses `unwrap_or_default` — payment frame can be empty string [HIGH · silent payment failure]
 
 **Verified:** `crates/nmp-nip47/src/runtime.rs:222`, `:267`, `:460` — `serde_json::to_string(...).unwrap_or_default()` on the REQ/EVENT/CLOSE frames. If serialization fails, the resulting `""` is pushed onto the outbound queue. For `pay_invoice` (line 460) the `pending_payments` map is populated before the broken frame is sent, so the correlation_id is registered as inflight while the relay never receives a payment request.
@@ -707,7 +687,7 @@ part of the deleted scratch plan.
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:1417,1420` — when `relay_edit_rows` is empty the kernel substitutes `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` for the active routing set. The substitution is silent (no toast, no log, no slot delta) so the host has no way to tell whether the user has zero configured relays or whether their configuration was wiped.
 
-**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62), the loss is invisible until they notice their followers no longer see their notes.
+**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62 — now fixed), the loss is invisible until they notice their followers no longer see their notes.
 
 **Correct fix:** distinguish "no rows" from "rows present but degraded". When `relay_edit_rows` is empty the kernel must publish `KernelDiagnostic::NoConfiguredRelays` and either (a) refuse to publish with a typed `NoTargets` error (matches V-50/V-51 fail-closed direction) or (b) require the host to explicitly opt in via a `BootstrapRelaysCapability`. Hardcoded URL constants in nmp-core must not be the production path.
 
@@ -719,7 +699,7 @@ part of the deleted scratch plan.
 
 **Impact:** the user runs the app, ingests events, publishes notes — and on the next launch every locally-stored event is gone (because the LMDB file was never opened, so the in-memory store was the only persistence layer). Notifications, drafts, profile cache, follow list — all transient without warning. This is one of the harder failure modes to diagnose because everything else works.
 
-**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring): silent mock installation is not a doctrined option.
+**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring — fixed in PR fix/v61-v62-marmot-silent-failures): silent mock installation is not a doctrined option.
 
 ---
 
