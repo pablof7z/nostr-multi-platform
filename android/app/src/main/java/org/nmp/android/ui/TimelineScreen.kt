@@ -305,6 +305,8 @@ internal fun NoteRow(
     embedDepth: Int = 0,
     embedded: Boolean = false,
     model: KernelModel? = null,
+    claimedProfiles: Map<String, String> = emptyMap(),
+    mentionProfiles: Map<String, String> = emptyMap(),
 ) {
     val item = items[eventId]
     val card = cards[eventId]
@@ -325,7 +327,12 @@ internal fun NoteRow(
     } else {
         authorPubkey.ifEmpty { "unknown" }
     }
-    val author = card?.authorDisplayName?.nonEmptyOrNull() ?: shortPubkey
+    // Resolve author name: prefer card authorDisplayName, then fall back to
+    // claimedProfiles (canonical order per H2), then mentionProfiles, then shortPubkey.
+    val author = card?.authorDisplayName?.nonEmptyOrNull()
+        ?: claimedProfiles[authorPubkey]?.nonEmptyOrNull()
+        ?: mentionProfiles[authorPubkey]?.nonEmptyOrNull()
+        ?: shortPubkey
     val initials = author.take(2).uppercase()
     val color = ""
     val createdAt = item?.createdAt?.takeIf { it > 0 }
@@ -378,7 +385,7 @@ internal fun NoteRow(
             modifier = Modifier.fillMaxWidth(),
         ) {
             IconButton(
-                onClick = { model?.zapNote(eventId) },
+                onClick = { model?.zapNote(eventId, authorPubkey) },
                 enabled = model != null,
             ) {
                 Text("⚡", style = MaterialTheme.typography.labelMedium)
