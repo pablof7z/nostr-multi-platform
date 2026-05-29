@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 public struct NostrContentCallbacks: @unchecked Sendable {
     public var onMentionTap: (String) -> Void
@@ -35,6 +36,7 @@ public struct NostrContentRenderer: @unchecked Sendable {
     public var codeBackgroundColor: Color
     public var placeholderColor: Color
     public var callbacks: NostrContentCallbacks
+    public var emojiImages: [String: UIImage]
 
     public init(
         textColor: Color = .primary,
@@ -46,7 +48,8 @@ public struct NostrContentRenderer: @unchecked Sendable {
         quoteBackgroundColor: Color = Color.gray.opacity(0.08),
         codeBackgroundColor: Color = Color.gray.opacity(0.15),
         placeholderColor: Color = Color.gray.opacity(0.6),
-        callbacks: NostrContentCallbacks = NostrContentCallbacks()
+        callbacks: NostrContentCallbacks = NostrContentCallbacks(),
+        emojiImages: [String: UIImage] = [:]
     ) {
         self.textColor = textColor
         self.secondaryTextColor = secondaryTextColor
@@ -58,6 +61,7 @@ public struct NostrContentRenderer: @unchecked Sendable {
         self.codeBackgroundColor = codeBackgroundColor
         self.placeholderColor = placeholderColor
         self.callbacks = callbacks
+        self.emojiImages = emojiImages
     }
 }
 
