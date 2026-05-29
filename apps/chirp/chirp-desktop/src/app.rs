@@ -40,6 +40,10 @@ pub struct DesktopApp {
     nsec_input: String,
     new_relay_url: String,
     new_relay_role: String,
+    edit_display_name: String,
+    edit_about: String,
+    edit_picture: String,
+    show_edit_profile: bool,
 }
 
 impl DesktopApp {
@@ -78,6 +82,10 @@ impl DesktopApp {
             nsec_input: String::new(),
             new_relay_url: String::new(),
             new_relay_role: "both".to_string(),
+            edit_display_name: String::new(),
+            edit_about: String::new(),
+            edit_picture: String::new(),
+            show_edit_profile: false,
         }
     }
 
@@ -458,6 +466,61 @@ impl DesktopApp {
                     self.bridge.open_timeline();
                 }
             });
+        }
+
+        // Edit profile section
+        if let Some(ref _pk) = snap.active_account {
+            ui.add_space(12.0);
+            ui.separator();
+            if !self.show_edit_profile {
+                if ui.button("Edit Profile").clicked() {
+                    self.show_edit_profile = true;
+                    // Populate fields from current profile
+                    self.edit_display_name = snap
+                        .profile
+                        .display_name
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_string();
+                    self.edit_about = snap.profile.about.clone();
+                    self.edit_picture = snap
+                        .profile
+                        .picture_url
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_string();
+                }
+            } else {
+                ui.label(RichText::new("Edit Profile").strong());
+                ui.horizontal(|ui| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut self.edit_display_name);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("About:");
+                    ui.text_edit_multiline(&mut self.edit_about);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Picture URL:");
+                    ui.text_edit_singleline(&mut self.edit_picture);
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        let _ = self.bridge.publish_profile(
+                            &self.edit_display_name,
+                            &self.edit_about,
+                            &self.edit_picture,
+                        );
+                        self.show_edit_profile = false;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.show_edit_profile = false;
+                        self.edit_display_name.clear();
+                        self.edit_about.clear();
+                        self.edit_picture.clear();
+                    }
+                });
+            }
         }
 
         ui.add_space(12.0);

@@ -245,6 +245,21 @@ impl AppRuntime {
         self.dispatch_action("nmp.unfollow", &action)
     }
 
+    pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
+        let mut fields = serde_json::Map::new();
+        if !name.is_empty() {
+            fields.insert("name".to_string(), Value::String(name.to_string()));
+        }
+        if !about.is_empty() {
+            fields.insert("about".to_string(), Value::String(about.to_string()));
+        }
+        if !picture.is_empty() {
+            fields.insert("picture".to_string(), Value::String(picture.to_string()));
+        }
+        let action = json!({ "PublishProfile": { "fields": Value::Object(fields) } }).to_string();
+        self.dispatch_action("nmp.publish", &action)
+    }
+
     // ------------------------------------------------------------------
     // Relay actions
     // ------------------------------------------------------------------
