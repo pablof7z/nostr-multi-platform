@@ -188,10 +188,10 @@ class KernelModel : ViewModel() {
     // -------------------------------------------------------------------------
 
     /** Add a relay with the given URL and role ("read", "write", or "both"). */
-    fun addRelay(url: String, role: String = "both") = bridge.dispatchAction("nmp.add_relay", """{"url":"$url","role":"$role"}""")
+    fun addRelay(url: String, role: String = "both") = bridge.addRelay(url, role)
 
     /** Remove a relay by URL. */
-    fun removeRelay(url: String) = bridge.dispatchAction("nmp.remove_relay", """{"url":"$url"}""")
+    fun removeRelay(url: String) = bridge.removeRelay(url)
 
     // -------------------------------------------------------------------------
     // Social
