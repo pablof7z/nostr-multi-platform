@@ -51,6 +51,7 @@ use nmp_core::slots::{
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use nmp_core::store::{EventStore, PubKey, StoredEvent};
+use tracing;
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
@@ -265,9 +266,11 @@ fn parse_nip65_tags(stored: &StoredEvent) -> (Vec<RelayUrl>, Vec<RelayUrl>) {
             continue;
         }
         let Some(url) = tag.get(1) else {
+            tracing::debug!(target: "nmp.router.nip65", reason = "missing url", "skipping malformed kind:10002 tag");
             continue;
         };
         if !is_relay_url(url) {
+            tracing::debug!(target: "nmp.router.nip65", url = %url, reason = "non-wss scheme", "skipping malformed kind:10002 tag");
             continue;
         }
         match tag.get(2).map(String::as_str) {
