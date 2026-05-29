@@ -21,6 +21,13 @@ data class RegistryComponent(
 
 val REGISTRY_SECTIONS: List<RegistrySection> = listOf(
     RegistrySection(
+        id = "relay",
+        label = "Relay",
+        components = listOf(
+            RegistryComponent("relay-list", "NostrRelayList", "Relay URLs with role badges and connection status dots"),
+        ),
+    ),
+    RegistrySection(
         id = "user",
         label = "User",
         components = listOf(
@@ -41,6 +48,16 @@ val REGISTRY_SECTIONS: List<RegistrySection> = listOf(
             RegistryComponent("content-minimal", "NostrMinimalContentView", "Flow-layout minimal renderer"),
             RegistryComponent("content-media-grid", "NostrMediaGrid", "Photo-style image grid"),
             RegistryComponent("content-quote-card", "NostrQuoteCard", "Embedded event quote card"),
+        ),
+    ),
+    RegistrySection(
+        id = "embeds",
+        label = "Embeds & Kinds",
+        components = listOf(
+            RegistryComponent("embed-article", "ArticleEmbed", "Kind:30023 long-form article — hero image, title, summary"),
+            RegistryComponent("embed-profile", "ProfileEmbed", "Inline npub mention chip — kind:0 profile"),
+            RegistryComponent("embed-note", "NoteEmbed", "Kind:1 short text note via nevent claim"),
+            RegistryComponent("embed-highlight", "HighlightEmbed", "Kind:9802 highlight — pull-quote + source"),
         ),
     ),
 )

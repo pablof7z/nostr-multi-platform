@@ -1,0 +1,109 @@
+{
+  "schema": "nmp.gallery.registry/1",
+  "sections": [
+    {
+      "id": "relay",
+      "label": "Relay",
+      "components": [
+        {
+          "id": "relay-list",
+          "label": "NostrRelayList",
+          "description": "Relay URLs with role badges and connection status dots"
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "label": "User",
+      "components": [
+        {
+          "id": "user-avatar",
+          "label": "NostrAvatar",
+          "description": "Circular avatar with identicon fallback"
+        },
+        {
+          "id": "user-name",
+          "label": "NostrProfileName",
+          "description": "Display name with npub fallback"
+        },
+        {
+          "id": "user-nip05",
+          "label": "NostrNip05Badge",
+          "description": "NIP-05 verified identity badge"
+        },
+        {
+          "id": "user-npub",
+          "label": "NostrNpubChip",
+          "description": "Copyable npub chip"
+        },
+        {
+          "id": "user-card",
+          "label": "NostrUserCard",
+          "description": "Compact avatar + name + nip05 row"
+        }
+      ]
+    },
+    {
+      "id": "content",
+      "label": "Content",
+      "components": [
+        {
+          "id": "content-core",
+          "label": "ContentTreeWire",
+          "description": "Wire type + identicon renderer"
+        },
+        {
+          "id": "content-view",
+          "label": "NostrContentView",
+          "description": "Full rich content renderer"
+        },
+        {
+          "id": "content-mention-chip",
+          "label": "NostrMentionChip",
+          "description": "Tappable @mention chip"
+        },
+        {
+          "id": "content-minimal",
+          "label": "NostrMinimalContentView",
+          "description": "Flow-layout minimal renderer"
+        },
+        {
+          "id": "content-media-grid",
+          "label": "NostrMediaGrid",
+          "description": "Photo-style image grid"
+        },
+        {
+          "id": "content-quote-card",
+          "label": "NostrQuoteCard",
+          "description": "Embedded event quote card"
+        }
+      ]
+    },
+    {
+      "id": "embeds",
+      "label": "Embeds & Kinds",
+      "components": [
+        {
+          "id": "embed-article",
+          "label": "ArticleEmbed",
+          "description": "Kind:30023 long-form article — hero image, title, summary"
+        },
+        {
+          "id": "embed-profile",
+          "label": "ProfileEmbed",
+          "description": "Inline npub mention chip — kind:0 profile"
+        },
+        {
+          "id": "embed-note",
+          "label": "NoteEmbed",
+          "description": "Kind:1 short text note via nevent claim"
+        },
+        {
+          "id": "embed-highlight",
+          "label": "HighlightEmbed",
+          "description": "Kind:9802 highlight — pull-quote + source"
+        }
+      ]
+    }
+  ]
+}

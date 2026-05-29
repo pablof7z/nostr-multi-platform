@@ -70,6 +70,7 @@
 #[cfg(feature = "android-ffi")]
 mod android;
 
+pub mod registry;
 pub mod showcase;
 
 // Re-export every C-ABI symbol the platform shells need. As with
