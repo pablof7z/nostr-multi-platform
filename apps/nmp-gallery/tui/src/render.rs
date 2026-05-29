@@ -55,6 +55,14 @@ pub fn plain_lines(
 ) -> Vec<String> {
     let primary = profiles.resolve(&data.primary_pubkey);
     match id {
+        "relay-list" => {
+            use nmp_app_gallery::showcase;
+            let refs = showcase::references();
+            refs.relays
+                .iter()
+                .map(|r| format!("{} [{}]", r.url, r.role))
+                .collect()
+        }
         "content-core" => content_core_lines(&data.content_core, width),
         "content-minimal" => content_minimal_lines(&data.content_minimal, width),
         "content-view" => content_view_lines(&data.content_view, width),
@@ -82,6 +90,7 @@ pub fn render_body(
 ) {
     let media_images = media_refs(data);
     match id {
+        "relay-list" => render_relay_list(area, buf),
         "content-core" => paragraph(content_core_ratatui_lines(
             &data.content_core,
             area.width as usize,
@@ -240,6 +249,35 @@ fn render_avatar(
     NostrAvatar::for_pubkey(&data.primary_pubkey, &profile_host)
         .image(data.avatar_image.as_ref())
         .render(centered, buf);
+}
+
+fn render_relay_list(area: Rect, buf: &mut Buffer) {
+    use nmp_app_gallery::showcase;
+    use ratatui::style::Color;
+    use ratatui::text::Span;
+
+    let refs = showcase::references();
+    let rows: Vec<Line<'static>> = refs
+        .relays
+        .iter()
+        .map(|relay| {
+            Line::from(vec![
+                Span::styled(
+                    "● ".to_string(),
+                    ratatui::style::Style::default().fg(Color::Rgb(34, 197, 94)),
+                ),
+                Span::styled(
+                    relay.url.clone(),
+                    ratatui::style::Style::default().fg(Color::Rgb(203, 213, 225)),
+                ),
+                Span::styled(
+                    format!("  [{}]", relay.role),
+                    ratatui::style::Style::default().fg(Color::Rgb(148, 163, 184)),
+                ),
+            ])
+        })
+        .collect();
+    paragraph(rows).render(area, buf);
 }
 
 fn profile_host_from_context<'a>(embed_ctx: EmbedFrameContext<'a>) -> GalleryProfileHost<'a> {
