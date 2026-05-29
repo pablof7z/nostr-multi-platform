@@ -27,6 +27,10 @@ use nmp_ffi::{
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
     nmp_app_cancel_publish, NmpApp,
 };
+use nmp_app_chirp::typed_api::{
+    follow_action, publish_note_action, react_action, remove_account_action, send_dm_action,
+    sign_in_nsec_action, switch_account_action, unfollow_action,
+};
 use serde_json::{json, Value};
 use std::ffi::c_void;
 
@@ -224,8 +228,8 @@ impl AppRuntime {
     }
 
     pub fn sign_in_nsec(&self, secret: String) {
-        let action = json!({ "SignInNsec": { "secret": secret } }).to_string();
-        let _ = self.dispatch_action("nmp.sign_in_nsec", &action);
+        let (ns, action) = sign_in_nsec_action(&secret);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn connect_bunker(&self, relay_url: &str) -> Result<String, String> {
@@ -295,38 +299,28 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String, String> {
-        let action = json!({
-            "PublishNote": {
-                "content": content,
-                "reply_to_id": reply_to,
-                "target": "Auto"
-            }
-        })
-        .to_string();
-        self.dispatch_action("nmp.publish", &action)
+        let (ns, action) = publish_note_action(content, reply_to);
+        self.dispatch_action(&ns, &action)
     }
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String, String> {
-        let action = json!({ "target_event_id": event_id, "reaction": reaction }).to_string();
-        self.dispatch_action("nmp.nip25.react", &action)
+        let (ns, action) = react_action(event_id, reaction);
+        self.dispatch_action(&ns, &action)
     }
 
     pub fn follow(&self, pubkey: &str) -> Result<String, String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        self.dispatch_action("nmp.follow", &action)
+        let (ns, action) = follow_action(pubkey);
+        self.dispatch_action(&ns, &action)
     }
 
     pub fn unfollow(&self, pubkey: &str) -> Result<String, String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        self.dispatch_action("nmp.unfollow", &action)
+        let (ns, action) = unfollow_action(pubkey);
+        self.dispatch_action(&ns, &action)
     }
 
     pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, String> {
-        let action = json!({
-            "recipient_pubkey": recipient_pubkey,
-            "content": content,
-        }).to_string();
-        self.dispatch_action("nmp.nip17.send", &action)
+        let (ns, action) = send_dm_action(recipient_pubkey, content);
+        self.dispatch_action(&ns, &action)
     }
 
     pub fn zap(&self, recipient_pubkey: &str, amount_msats: u64, target_event_id: &str) -> Result<String, String> {
@@ -344,13 +338,13 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn switch_account(&self, pubkey: &str) {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        let _ = self.dispatch_action("nmp.switch_account", &action);
+        let (ns, action) = switch_account_action(pubkey);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn remove_account(&self, pubkey: &str) {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        let _ = self.dispatch_action("nmp.remove_account", &action);
+        let (ns, action) = remove_account_action(pubkey);
+        let _ = self.dispatch_action(&ns, &action);
     }
 
     pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
