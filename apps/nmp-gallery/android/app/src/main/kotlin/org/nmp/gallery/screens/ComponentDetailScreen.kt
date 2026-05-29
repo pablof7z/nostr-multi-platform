@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.gallery.ContentComponentPage
+import org.nmp.gallery.gallery.EmbedComponentPage
 import org.nmp.gallery.gallery.RegistryComponent
 import org.nmp.gallery.gallery.RegistrySection
 import org.nmp.gallery.gallery.RelayComponentPage
@@ -69,9 +70,5 @@ private fun RelayComponentSection(model: GalleryModel, component: RegistryCompon
 
 @Composable
 private fun EmbedsComponentSection(model: GalleryModel, component: RegistryComponent) {
-    Text(
-        text = "${component.label} — coming soon",
-        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(16.dp),
-    )
+    EmbedComponentPage(model = model, componentId = component.id)
 }
