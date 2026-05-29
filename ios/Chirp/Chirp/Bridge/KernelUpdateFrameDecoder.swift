@@ -22,7 +22,7 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    case snapshot(UInt32, KernelUpdate)
+    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope])
     case panic(String)
 }
 
@@ -54,7 +54,8 @@ enum KernelUpdateFrameDecoder {
                 throw KernelUpdateFrameDecoderError.missingSnapshotPayload
             }
             let update = try KernelUpdate(from: FlatBufferValueDecoder(value: payload, codingPath: []))
-            return .snapshot(snapshot.schemaVersion, update)
+            let envelopes = extractTypedProjections(from: snapshot)
+            return .snapshot(snapshot.schemaVersion, update, envelopes)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload

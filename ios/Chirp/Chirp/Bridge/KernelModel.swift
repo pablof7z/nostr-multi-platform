@@ -37,6 +37,13 @@ final class KernelModel: ObservableObject {
     /// Latest decoded snapshot. `nil` before the first tick lands.
     @Published private(set) var snapshot: KernelUpdate?
 
+    /// ADR-0038 typed home-feed override. Non-nil when the typed NOFS+NFCT
+    /// decode succeeded on the most-recent snapshot tick. Preferred over the
+    /// generic `snapshot?.homeFeed` in `modularTimeline`. Falls back to nil
+    /// on any tick where the typed path returns nil, at which point
+    /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
+    @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
+
     // ── Local mutable state ──────────────────────────────────────────────
 
     @Published private(set) var snapshotCount: UInt64 = 0
@@ -75,7 +82,10 @@ final class KernelModel: ObservableObject {
     // ── Computed projections — read through `snapshot` ────────────────────
 
     var isRunning: Bool { snapshot?.running ?? false }
-    var modularTimeline: ChirpTimelineSnapshot { snapshot?.homeFeed ?? .empty }
+    /// ADR-0038: prefers the typed NOFS+NFCT decode (full contentTree +
+    /// relationCounts) when available; falls back to the generic Value path
+    /// when the typed path returns nil (ADR-0037 Commitment 4).
+    var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
     var rev: UInt64 { snapshot?.rev ?? 0 }
     var profile: ProfileCard? { snapshot?.profile }
     var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
@@ -543,6 +553,9 @@ final class KernelModel: ObservableObject {
         // reads through this slot. `lastErrorToast` stays distinct because
         // tap-to-dismiss has nowhere else to land.
         snapshot = update
+        // ADR-0038: store the typed home-feed result. Nil means the generic
+        // projections.homeFeed fallback applies for this tick.
+        typedHomeFeed = result.typedHomeFeed
         lastErrorToast = update.lastErrorToast
 
         let activeAccountChanged = update.activeAccount != priorActiveAccount

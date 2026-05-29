@@ -511,7 +511,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update) = frame else {
+            guard case let .snapshot(frameSchemaVersion, update, envelopes) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -526,11 +526,17 @@ final class KernelHandle {
                 kbLog.error("schema version mismatch: frame=\(frameSchemaVersion) payload=\(update.schemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
                 return nil
             }
+            // ADR-0038 typed path: prefer the typed home-feed decode when the
+            // NOFS sidecar is present and fully decodable (NFCT bytes filled).
+            // Returns nil when absent or malformed → generic path stays active
+            // (ADR-0037 Commitment 4 graceful fallback).
+            let typedHomeFeed = TypedHomeFeedDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
                 KernelUpdateResult(
                     update: update,
+                    typedHomeFeed: typedHomeFeed,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
                     decodeMicros: duration.microseconds
@@ -609,6 +615,11 @@ private let nmpUpdateCallback: NmpUpdateCallback = { context, bytes, count in
 
 struct KernelUpdateResult {
     let update: KernelUpdate
+    /// Typed home-feed decode result (ADR-0038 typed path). Non-nil when the
+    /// snapshot carried a well-formed `NOFS` typed projection that the Swift
+    /// `NFCT` decoder could fully populate. `nil` means the generic
+    /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
+    let typedHomeFeed: ChirpTimelineSnapshot?
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int
