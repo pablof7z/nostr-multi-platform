@@ -15,7 +15,7 @@ use egui::{
 use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
-    AuthorViewPayload, DmConversationSnapshot, RelayEditRow, Snapshot, ThreadViewPayload,
+    AuthorViewPayload, RelayEditRow, Snapshot, ThreadViewPayload,
     TimelineItem,
 };
 use nmp_chirp_config;
@@ -244,7 +244,6 @@ impl DesktopApp {
                     let payload: Option<AuthorViewPayload> = snap.projection("author_view");
                     self.author_view(ui, snap, pubkey, payload);
                 }
-                AppTab::Dms => self.dm_panel(ui, snap),
                 AppTab::Settings => self.settings_view(ui, snap),
             }
         });

@@ -266,3 +266,32 @@ pub struct ModularTimelineSnapshot {
     #[serde(default)]
     pub cards: Vec<serde_json::Value>,
 }
+
+/// `nmp.nip17.dm_inbox` projection payload.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DmConversationSnapshot {
+    #[serde(default)]
+    pub conversations: Vec<DmConversation>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DmConversation {
+    #[serde(default)]
+    pub peer_pubkey: String,
+    #[serde(default)]
+    pub peer_display: String,
+    #[serde(default)]
+    pub messages: Vec<DmMessage>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DmMessage {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub outgoing: bool,
+}
