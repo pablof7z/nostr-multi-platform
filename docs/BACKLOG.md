@@ -1823,6 +1823,72 @@ typed snapshot tables are the next F-10 performance step if foreground logs show
 
 ---
 
+### iOS Component — Gallery Extraction Candidates
+
+Swift reusable component candidates identified in `ios/Chirp/`. Every one recreates existing gallery primitives or is missing the lifecycle that the registry pattern requires. Extract as `nmp-gallery` components once F-08 composition root lands. Entries track blockers and acceptance criteria per component.
+
+#### [V-??] Extract ChirpAvatar as NostrAvatar gallery primitive
+
+**File:** `ios/Chirp/Chirp/Theme/ChirpTheme.swift` (circular avatar with picture + identicon fallback).
+
+**Why it matters:** every social Nostr app recreates this avatar. Chirp's version handles picture + fallback identicon but lacks the `claimProfile` / `releaseProfile` lifecycle that the registry pattern requires.
+
+**Blocker:** F-08 Stage 1 (composition root + claim/release adapter).
+
+**Acceptance:** extract as `nmp-gallery` SwiftUI component; wires through registry host for claim/release; Chirp imports from gallery instead of local Theme.
+
+#### [V-??] Extract ChirpNpubChip as NostrNpubChip gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/ProfileView.swift` (copyable npub chip — truncated display + copy-to-clipboard + 2s checkmark animation).
+
+**Why it matters:** functional duplicate of `nmp-gallery`'s `NostrNpubChip`. Every Nostr app needs this interaction.
+
+**Blocker:** F-08 Stage 1 (gallery component model).
+
+**Acceptance:** extract as gallery component; Chirp uses gallery version; animation and copy behavior identical.
+
+#### [V-??] Extract ChirpNip05Badge as NostrNip05Badge gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/ProfileView.swift` (checkmark + NIP-05 identifier, failable on empty).
+
+**Why it matters:** nearly identical to gallery's `NostrNip05Badge`. Standardizing prevents divergence as more apps ship.
+
+**Blocker:** F-08 Stage 1.
+
+**Acceptance:** extract with failable init pattern; Chirp uses gallery version.
+
+#### [V-??] Extract ChirpUserCard as NostrUserCard gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/ProfileView.swift` (avatar + name + NIP-05 badge composite).
+
+**Why it matters:** three-part header is the canonical user card every social Nostr app builds. Composable from the atomic pieces above (avatar, npub chip, NIP-05 badge).
+
+**Blocker:** F-08 Stage 1; completion of the three atomic pieces above.
+
+**Acceptance:** composition built from extracted avatar + name + badge; Chirp wires the three via gallery host; no local profile-header duplication.
+
+#### [V-??] Extract ChirpRelayRow as NostrRelayRow gallery primitive
+
+**File:** `ios/Chirp/Chirp/Features/RelaySettingsView.swift` (icon + monospaced URL + role badge).
+
+**Why it matters:** common to all NMP apps with relay settings. Gallery already has `NostrRelayList`; extract the row as the base primitive with optional connection-status dot.
+
+**Blocker:** F-08 Stage 1.
+
+**Acceptance:** `NostrRelayRow` component with role badge and optional status indicator; `NostrRelayList` refactored to use it; Chirp imports from gallery.
+
+#### [V-??] Extract NoteActionsRow as gallery primitive
+
+**File:** `ios/Chirp/Chirp/Components/NoteRowView.swift` (reply/repost/like/zap action bar).
+
+**Why it matters:** compound component every social Nostr app recreates. Strong gallery candidate once action/zap interaction patterns stabilize.
+
+**Blocker:** F-08 (registry) + post-v1 action/dispatch stability.
+
+**Status:** post-v1. Action/zap interactions will be hardened by then.
+
+---
+
 ## Section 5 — Post-V1
 
 Deliberately deferred. Do not start until Section 4 is complete.
