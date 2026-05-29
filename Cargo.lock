@@ -4928,6 +4928,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tungstenite",
+ "zeroize",
 ]
 
 [[package]]
