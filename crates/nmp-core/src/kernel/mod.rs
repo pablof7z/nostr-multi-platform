@@ -186,6 +186,8 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
+mod v66_no_configured_relays_tests;
+#[cfg(test)]
 mod v67_store_open_failure_tests;
 #[cfg(test)]
 mod test_router;
@@ -2294,6 +2296,15 @@ impl Kernel {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_store_open_failure_for_test(&mut self, reason: impl Into<String>) {
         self.store_open_failure = Some(reason.into());
+    }
+
+    /// V-66 test seam — set `active_account` directly so unit tests can exercise
+    /// the "signed in but no configured relays" diagnostic path without wiring up
+    /// the full account-creation flow. Production code sets `active_account` via
+    /// `identity_state::update_accounts`; this seam is test-only.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
+        self.active_account = Some(pubkey.into());
     }
 
     /// Read-only access to the injected [`OutboxRouter`].

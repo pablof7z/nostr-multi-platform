@@ -171,6 +171,21 @@ impl Kernel {
             // (`skip_serializing_if`) to keep the snapshot size unchanged for
             // healthy (no-failure) sessions.
             store_open_failure: self.store_open_failure.clone(),
+            // V-66 (D3): when an account is active but relay_edit_rows is empty
+            // every outbound socket connects to the hardcoded FALLBACK relays.
+            // The fallback keeps the app functional, but must no longer be
+            // silent — the host needs to know it is running on unconfigured
+            // defaults so it can surface a banner / alert to the user.
+            // `Some(true)` iff signed-in + no rows; absent from the wire
+            // (`skip_serializing_if`) in all other states so healthy sessions
+            // produce byte-identical snapshots to pre-V-66 builds.
+            no_configured_relays: if self.active_account.is_some()
+                && self.relay_edit_rows.is_empty()
+            {
+                Some(true)
+            } else {
+                None
+            },
             // D0: NIP-47 NWC wallet state and NIP-46 bunker handshake state are
             // no longer kernel fields — both are app nouns surfaced via
             // host-registered snapshot projections (`"wallet"` /
