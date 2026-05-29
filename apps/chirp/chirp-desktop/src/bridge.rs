@@ -22,7 +22,7 @@ use nmp_ffi::{
     nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
     nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
-    nmp_app_start, NmpApp,
+    nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, NmpApp,
 };
 use serde_json::{json, Value};
 
@@ -243,6 +243,20 @@ impl AppRuntime {
     pub fn unfollow(&self, pubkey: &str) -> Result<String, String> {
         let action = json!({ "pubkey": pubkey }).to_string();
         self.dispatch_action("nmp.unfollow", &action)
+    }
+
+    // ------------------------------------------------------------------
+    // Account lifecycle
+    // ------------------------------------------------------------------
+
+    pub fn switch_account(&self, pubkey: &str) {
+        let action = json!({ "pubkey": pubkey }).to_string();
+        let _ = self.dispatch_action("nmp.switch_account", &action);
+    }
+
+    pub fn remove_account(&self, pubkey: &str) {
+        let action = json!({ "pubkey": pubkey }).to_string();
+        let _ = self.dispatch_action("nmp.remove_account", &action);
     }
 
     pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
