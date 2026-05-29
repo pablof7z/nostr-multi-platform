@@ -84,6 +84,7 @@
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22815F76AA03DAE183DBA656 /* GroupChatView.swift */; };
+		F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */; };
 		F1EA6E7AABA81D70DD3C93F2 /* NostrQuoteCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 181DB651D587AA70439571C4 /* NostrQuoteCard.swift */; };
 		F5E5940625200643254B4588 /* NostrContentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475509EE4AB3F523D5551F7 /* NostrContentRenderer.swift */; };
 		F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */; };
@@ -139,6 +140,7 @@
 		48719893F014AF8002B426C4 /* OpFeedSnapshot.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpFeedSnapshot.generated.swift; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
+		5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.generated.swift; sourceTree = "<group>"; };
 		5A015A4A241347592C09EC0B /* ProfileWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWire.swift; sourceTree = "<group>"; };
 		5EC56C5F40E415157200F282 /* NostrKindRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKindRegistry.swift; sourceTree = "<group>"; };
 		64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicGroupBridge.swift; sourceTree = "<group>"; };
@@ -351,6 +353,7 @@
 		935D67AACBA8594449383214 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				5551E62304F0F24C6733EF34 /* BuildInfo.generated.swift */,
 				E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */,
 				31F55FC6A139DA43D434DBF9 /* RootShell.swift */,
 			);
@@ -570,6 +573,7 @@
 			files = (
 				A4D78531938555278B719582 /* AccountsView.swift in Sources */,
 				BCE5D9B3E0F2FEA3373C5FC1 /* ArticleEmbed.swift in Sources */,
+				F1146701FF513AE90112ACAB /* BuildInfo.generated.swift in Sources */,
 				4E112E69FDB45203BAC81E1D /* ChatsView.swift in Sources */,
 				192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */,
 				62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */,

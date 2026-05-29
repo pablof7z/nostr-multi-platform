@@ -82,18 +82,10 @@ impl Kernel {
         let to_pick = open_slots.min(remaining_budget).min(candidates.len());
 
         if to_pick == 0 && matches!(phase, Phase::Phase1) {
-            // No candidates available — immediately terminate as Exhausted
-            if let Some(claim) = self.pending_claims.get_mut(&iid) {
-                claim.phase = Phase::Terminal(ClaimTermination::Exhausted);
-                if let Some(ref a) = author {
-                    wire_log::log_wire(wire_log::WireLogEvent::ClaimPhaseAdvance {
-                        author: a,
-                        from: "phase1",
-                        to: "terminal_exhausted",
-                        reason: "no_candidates",
-                    });
-                }
-            }
+            // No candidates — route through terminate_claim so claim_sub_index
+            // is cleaned up (B3 invariant). Inline phase mutation would leave
+            // stale reverse-index entries when poll_claim_expansion prunes later.
+            self.terminate_claim(iid, ClaimTermination::Exhausted);
             return;
         }
 
