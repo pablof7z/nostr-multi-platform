@@ -11,7 +11,10 @@ public struct ProfileWire: Equatable, Sendable {
     public let pictureUrl: String?
     public let nip05: String?
     /// Full bech32 `npub1…` string. Use for copy / share.
-    public let npub: String
+    /// `nil` when the profile originates from a mention projection that does
+    /// not carry the bech32 encoding (callers that pass `npub` to a share
+    /// sheet or clipboard must guard for nil).
+    public let npub: String?
     /// Rust-truncated npub (e.g. `npub1abcd…wxyz`). Display only.
     public let npubShort: String
 
@@ -21,7 +24,7 @@ public struct ProfileWire: Equatable, Sendable {
         about: String? = nil,
         pictureUrl: String? = nil,
         nip05: String? = nil,
-        npub: String,
+        npub: String? = nil,
         npubShort: String
     ) {
         self.pubkey = pubkey
