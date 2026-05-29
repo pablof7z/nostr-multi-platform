@@ -143,6 +143,33 @@ class KernelModel : ViewModel() {
         bridge.openAuthor(pubkey)
     }
 
+    /**
+     * Send a NIP-17 direct message. Fire-and-forget — the sent message
+     * reappears through the next snapshot tick (the actor gift-wraps a
+     * self-copy to the sender).
+     */
+    fun sendDm(recipientPubkey: String, content: String, replyTo: String? = null) {
+        bridge.sendDm(recipientPubkey, content, replyTo)
+    }
+
+    /**
+     * Connect a NIP-47 wallet via NWC URI. Routes through dispatch_action("nmp.wallet.connect", ...).
+     *
+     * The actionJson format is: {"Connect":{"uri":"nostr+walletconnect://..."}}
+     */
+    fun dispatchWalletConnect(actionJson: String) {
+        val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
+        Log.d(TAG, "wallet connect response: $response")
+    }
+
+    /**
+     * Disconnect the current NIP-47 wallet. Routes through dispatch_action("nmp.wallet.disconnect", ...).
+     */
+    fun dispatchWalletDisconnect() {
+        val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
+        Log.d(TAG, "wallet disconnect response: $response")
+    }
+
     private fun escapeJson(s: String): String {
         return s.replace("\\", "\\\\")
             .replace("\"", "\\\"")
