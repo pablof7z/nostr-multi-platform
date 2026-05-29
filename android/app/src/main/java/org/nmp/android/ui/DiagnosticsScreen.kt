@@ -52,7 +52,7 @@ fun DiagnosticsScreen(model: KernelModel, modifier: Modifier = Modifier) {
         if (s.relayStatuses.isEmpty()) {
             item { Text("No relay status yet", style = MaterialTheme.typography.bodySmall) }
         } else {
-            items(s.relayStatuses, key = { it.relayUrl }) { RelayRow(it) }
+            items(s.relayStatuses, key = { "${it.role}:${it.relayUrl}" }) { RelayRow(it) }
         }
     }
 }

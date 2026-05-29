@@ -326,3 +326,34 @@ fn reset_for_identity_change_clears_all_state() {
     h.engine.reset_for_identity_change();
     assert!(h.snapshot().cards.is_empty());
 }
+
+#[test]
+fn gated_out_kind_never_becomes_a_phantom_root() {
+    use std::sync::Arc;
+
+    use nmp_core::substrate::KernelEvent;
+
+    // Gate admits kind:1 only — modelling the NIP-10 wiring that drops kind:3
+    // (contacts) and kind:10002 (relay list) echoes from account creation.
+    let h = Harness::with_gate(&["alice"], Arc::new(|e: &KernelEvent| e.kind == 1));
+
+    // A kind:3 echo from the freshly-created account: root-shaped (no parent
+    // tags) so without the gate it would become a phantom root card.
+    let contacts = KernelEvent {
+        id: "contacts1".to_string(),
+        author: "self".to_string(),
+        kind: 3,
+        created_at: 5,
+        tags: Vec::new(),
+        content: String::new(),
+    };
+    h.ingest(&contacts);
+
+    // Gate dropped it before any state was touched: no card, no claim.
+    assert!(h.snapshot().cards.is_empty());
+    assert!(h.claims().is_empty());
+
+    // A real kind:1 root still surfaces, proving the gate only filters kinds.
+    h.ingest(&root_event("op1", "bob", 10, "hello"));
+    assert_eq!(h.snapshot().cards.len(), 1);
+}

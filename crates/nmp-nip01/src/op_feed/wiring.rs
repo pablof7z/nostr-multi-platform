@@ -72,7 +72,7 @@ use nmp_core::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ActorCommand;
 use nmp_feed::{
-    CardBuilder, ClaimRequest, ClaimSink, EventLookup, FollowPredicate, ProfileDetector,
+    CardBuilder, ClaimRequest, ClaimSink, EventGate, EventLookup, FollowPredicate, ProfileDetector,
     RootIndexedFeed,
 };
 use nmp_threading::pointer::ThreadPointer;
@@ -129,6 +129,25 @@ pub fn register_op_feed(
             profile_from_event(event).map(|profile| (event.author.clone(), profile))
         });
 
+    // Gate admits exactly the kinds the engine has a real handler for:
+    //   kind:0  → profile_detector → apply_profile (display refresh)
+    //   kind:1  → root / reply (NIP-10 short text note)
+    //   kind:6  → repost (NIP-18)
+    // Every other kind arriving via the observer fan-out (kind:3 contacts,
+    // kind:10002 relay lists, …) has NO handler — it only ever reaches the
+    // `ingest_root` fall-through and becomes a phantom root card when the relay
+    // echoes published events back during account creation. Those kinds are
+    // dropped here before any state is touched. The predicate lives at the
+    // NIP-10 protocol layer so the generic nmp-feed engine stays kind-agnostic
+    // (D0). kind:0 is `profile_from_event`'s literal (profile_display.rs); it was
+    // never a phantom root (the profile detector short-circuits it), so admitting
+    // it preserves display-refresh without reintroducing Bug 1.
+    let event_gate: EventGate = Arc::new(|event: &KernelEvent| {
+        event.kind == 0
+            || event.kind == crate::kinds::KIND_SHORT_NOTE
+            || event.kind == nmp_nip18::KIND_REPOST
+    });
+
     let card_builder: CardBuilder<TimelineEventCard> =
         Box::new(|root: &KernelEvent, target: Option<&KernelEvent>| {
             TimelineEventCard::from_event_for_op_feed(root, target)
@@ -137,6 +156,7 @@ pub fn register_op_feed(
     Arc::new(RootIndexedFeed::new(
         Nip10Resolver,
         follow_predicate,
+        event_gate,
         event_lookup,
         claim_sink,
         profile_detector,

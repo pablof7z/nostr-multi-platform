@@ -20,6 +20,12 @@ where
     /// Resilient to a poisoned lock (D6: drop the event rather than panic on
     /// the actor thread).
     pub(super) fn ingest(&self, event: &KernelEvent) {
+        // Fast gate: drop non-feed-eligible kinds before touching any state.
+        // The predicate is caller-supplied so the engine stays kind-agnostic (D0).
+        if !(self.caps.event_gate)(event) {
+            return;
+        }
+
         // Profile events are handled first and short-circuit: a profile is not
         // a feed event.
         if let Some((pubkey, profile)) = (self.caps.profile_detector)(event) {
