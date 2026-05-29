@@ -19,6 +19,7 @@ import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.gallery.ContentComponentPage
 import org.nmp.gallery.gallery.RegistryComponent
 import org.nmp.gallery.gallery.RegistrySection
+import org.nmp.gallery.gallery.RelayComponentPage
 import org.nmp.gallery.gallery.UserComponentPage
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,11 +64,7 @@ fun ComponentDetailScreen(
 
 @Composable
 private fun RelayComponentSection(model: GalleryModel, component: RegistryComponent) {
-    Text(
-        text = "${component.label} — coming soon",
-        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(16.dp),
-    )
+    RelayComponentPage(model = model, componentId = component.id)
 }
 
 @Composable
