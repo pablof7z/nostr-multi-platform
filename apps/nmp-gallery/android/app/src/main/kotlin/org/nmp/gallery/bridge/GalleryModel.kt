@@ -14,7 +14,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonPrimitive
 import org.nmp.gallery.gallery.REGISTRY_SECTIONS
 import org.nmp.gallery.gallery.RegistrySection
 import org.nmp.gallery.gallery.parseRegistryJson
@@ -27,7 +26,8 @@ import org.nmp.gallery.registry.ProfileWire
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
  * the push callback only. Registry components claim pubkeys while visible and
- * claimed profile cards arrive in `projections.claimed_profiles`.
+ * resolved profile cards arrive pre-merged in `projections.resolved_profiles`
+ * (the kernel performs the claimed/author/mention merge — this host does not).
  *
  * The registry section list is sourced once from `bridge.registryJson()` at
  * startup; [REGISTRY_SECTIONS] is used as a fallback if the JSON is absent or
@@ -107,9 +107,11 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Decode one FlatBuffers snapshot frame. Profiles are assembled from
-     * component-owned `projections.claimed_profiles`, plus the author/mention
-     * projections used by other gallery showcases.
+     * Decode one FlatBuffers snapshot frame. Profiles are read directly from
+     * `projections.resolved_profiles` — the kernel's single, pre-merged profile
+     * projection (added in PR #812). The three-source merge (claimed_profiles +
+     * author_view.profile + mention_profiles, with its precedence rule) now
+     * lives in the kernel, so this host no longer reimplements it.
      */
     private fun applyFrame(raw: ByteArray) {
         val v = try {
@@ -122,40 +124,15 @@ class GalleryModel : ViewModel() {
 
         val assembled = mutableMapOf<String, ProfileWire>()
 
-        // Component-owned path: projections.claimed_profiles[pubkey].
-        (projections["claimed_profiles"] as? JsonObject)?.let { claimed ->
-            for ((pubkey, el) in claimed) {
-                val card = runCatching {
-                    json.decodeFromJsonElement<ProfileCard>(el)
+        // Kernel-merged path: projections.resolved_profiles[pubkey] is already
+        // a ProfileWire-shaped entry. `npub_short` is derived from `npub` by the
+        // ProfileWire constructor default when absent (same algorithm as before).
+        (projections["resolved_profiles"] as? JsonObject)?.let { resolved ->
+            for ((pubkey, el) in resolved) {
+                val profile = runCatching {
+                    json.decodeFromJsonElement<ProfileWire>(el)
                 }.getOrNull() ?: continue
-                assembled[pubkey] = card.toProfileWire(pubkey)
-            }
-        }
-
-        // Author-view fallback: projections.author_view.profile (ProfileCard shape)
-        (projections["author_view"] as? JsonObject)?.let { av ->
-            val pubkey = av["pubkey"]?.jsonPrimitive?.content ?: return@let
-            val profileEl = av["profile"] as? JsonObject ?: return@let
-            val card = runCatching {
-                json.decodeFromJsonElement<ProfileCard>(profileEl)
-            }.getOrNull() ?: return@let
-            assembled[pubkey] = card.toProfileWire(pubkey)
-        }
-
-        // Secondary: projections.mention_profiles (display_name + picture_url only)
-        (projections["mention_profiles"] as? JsonObject)?.let { mentions ->
-            for ((pubkey, el) in mentions) {
-                if (assembled.containsKey(pubkey)) continue
-                val mp = runCatching {
-                    json.decodeFromJsonElement<MentionProfilePayload>(el)
-                }.getOrNull() ?: continue
-                assembled[pubkey] = ProfileWire(
-                    pubkey = pubkey,
-                    displayName = mp.displayName,
-                    pictureUrl = mp.pictureUrl,
-                    npub = "",
-                    npubShort = pubkey.take(8) + "…" + pubkey.takeLast(8),
-                )
+                assembled[pubkey] = profile
             }
         }
 
@@ -200,38 +177,4 @@ data class ClaimedEventWire(
     @SerialName("content") val content: String = "",
     @SerialName("author_display_name") val authorDisplayName: String? = null,
     @SerialName("author_picture_url") val authorPictureUrl: String? = null,
-)
-
-/**
- * Wire shape of `projections.author_view.profile` — the kernel's ProfileCard.
- * `npub_short` is not emitted by the kernel; we derive it from `npub`.
- */
-@Serializable
-private data class ProfileCard(
-    @SerialName("pubkey") val pubkey: String = "",
-    @SerialName("npub") val npub: String = "",
-    @SerialName("display_name") val displayName: String? = null,
-    @SerialName("picture_url") val pictureUrl: String? = null,
-    @SerialName("nip05") val nip05: String? = null,
-    @SerialName("about") val about: String? = null,
-) {
-    fun toProfileWire(overridePubkey: String): ProfileWire {
-        val pk = overridePubkey.ifEmpty { pubkey }
-        val short = if (npub.length > 16) npub.take(8) + "…" + npub.takeLast(8) else npub
-        return ProfileWire(
-            pubkey = pk,
-            displayName = displayName?.takeIf { it.isNotEmpty() },
-            about = about?.takeIf { it.isNotEmpty() },
-            pictureUrl = pictureUrl?.takeIf { it.isNotEmpty() },
-            nip05 = nip05?.takeIf { it.isNotEmpty() },
-            npub = npub,
-            npubShort = short,
-        )
-    }
-}
-
-@Serializable
-private data class MentionProfilePayload(
-    @SerialName("display_name") val displayName: String? = null,
-    @SerialName("picture_url") val pictureUrl: String? = null,
 )
