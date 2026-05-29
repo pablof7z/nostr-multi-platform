@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.nmp.android.model.ChirpTimelineSnapshot
+import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
 
 private const val TAG = "NmpCore"
@@ -122,20 +122,15 @@ class KernelModel : ViewModel() {
                 null
             }
             is KernelDecodedUpdateFrame.Snapshot -> {
-                // ADR-0038 Stage T4: the typed `nmp.feed.home` decoder
-                // ([TypedHomeFeedDecoder]) now targets the OP-centric `NOFS`
-                // shape and returns the distinct `ChirpOpFeedSnapshot` type. It
-                // is intentionally NOT wired into the render preference here
-                // (decoder-only, matching the iOS T3 posture): Android has no
-                // Kotlin `NFCT` decoder, so the typed card's content tree cannot
-                // be filled and a typed render would show blank content. Until
-                // that follow-up lands the host always renders the generic
-                // `Value` projection carried in `frame.update.modularTimeline`.
-                // (The prior NFTS wiring overwrote the generic timeline with an
-                // empty NFTS decode anyway — the producer emits `NOFS`, not
-                // `NFTS`, since Stage T1 — so dropping it also fixes a latent
-                // feed-blanking bug.)
-                frame.update
+                // ADR-0038 V-85: the typed `nmp.feed.home` NOFS decoder
+                // ([TypedHomeFeedDecoder]) now fills `contentTree` via the
+                // native Kotlin NFCT decoder, making the typed path
+                // render-complete. Prefer it when present; fall back to the
+                // generic `Value` projection (ADR-0037 Commitment 4: the
+                // generic path is a permanent fallback, never removed).
+                val typed: ChirpOpFeedSnapshot? =
+                    TypedHomeFeedDecoder.decode(frame.typedProjections)
+                if (typed != null) frame.update.copy(modularTimeline = typed) else frame.update
             }
         }
     }

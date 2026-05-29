@@ -38,7 +38,6 @@ fun DiagnosticsScreen(model: KernelModel, modifier: Modifier = Modifier) {
         item { KV("snapshots received", "$count") }
         item { KV("running", if (s.running) "yes" else "no") }
         item { KV("last snapshot", relativeAge(lastAt)) }
-        item { KV("chirp blocks", "${s.modularTimeline.blocks.size}") }
         item { KV("chirp cards", "${s.modularTimeline.cards.size}") }
 
         s.metrics?.let { m ->

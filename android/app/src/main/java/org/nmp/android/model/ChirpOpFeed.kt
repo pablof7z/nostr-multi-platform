@@ -1,7 +1,10 @@
 package org.nmp.android.model
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
 // ─────────────────────────────────────────────────────────────────────────
-// V-80 OP-centric home feed — Android model (ADR-0038 Stage T4 / B4).
+// V-80 OP-centric home feed — Android model (ADR-0038, V-85 complete).
 //
 // `projections["nmp.feed.home"]` is the Rust `RootFeedSnapshot<
 // TimelineEventCard, Nip10ReplyAttribution>` (`apps/chirp/nmp-app-chirp`
@@ -14,14 +17,11 @@ package org.nmp.android.model
 // reply to a non-followed author's note surfaces THAT note here, tagged with
 // the replier in `attribution`. Replies never get their own row.
 //
-// This is the SAME shape the iOS peer models in `ios/Chirp/.../TimelineBlock.swift`
-// (`ChirpReplyAttribution` / `ChirpRootCard` / `ChirpTimelineSnapshot{cards,page}`).
-// On Android the existing `ChirpTimelineSnapshot{blocks, cards}` name is still
-// owned by the legacy NFTS/`TimelineScreen` render path (not yet migrated to the
-// OP-centric shape — same stale-renderer class as iOS pre-rung-7, tracked as a
-// V-84-class follow-up). To keep that render compiling, the typed `NOFS` decoder
-// produces a DISTINCT [ChirpOpFeedSnapshot] type here rather than reshaping the
-// legacy one. Decoder-only: nothing in the render reads these types yet.
+// V-85: these types now carry `@Serializable` so that `KernelUpdate` (also
+// `@Serializable`) compiles cleanly with `modularTimeline: ChirpOpFeedSnapshot`.
+// The generic JSON fallback path (ADR-0037 Commitment 4) can therefore decode
+// the `modularTimeline` field directly from the Rust serde JSON — the field
+// names are snake_case on the Rust side so `@SerialName` annotations map them.
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
@@ -32,12 +32,13 @@ package org.nmp.android.model
  * (ADR-0032 raw-data: the `has_*` companion bool distinguishes "absent (no
  * kind:0 yet)" from "present empty string").
  */
+@Serializable
 data class ChirpReplyAttribution(
-    val authorPubkey: String = "",
-    val authorDisplayName: String? = null,
-    val authorPictureUrl: String? = null,
-    val replyEventId: String = "",
-    val replyCreatedAt: ULong = 0UL,
+    @SerialName("author_pubkey") val authorPubkey: String = "",
+    @SerialName("author_display_name") val authorDisplayName: String? = null,
+    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
+    @SerialName("reply_event_id") val replyEventId: String = "",
+    @SerialName("reply_created_at") val replyCreatedAt: ULong = 0UL,
 )
 
 /**
@@ -46,29 +47,35 @@ data class ChirpReplyAttribution(
  * repliers raw; the renderer chooses how many to show (V-80 Q1) — the list
  * length IS the count, there is no separate total.
  */
+@Serializable
 data class ChirpRootCard(
     val card: ChirpEventCard,
     val attribution: List<ChirpReplyAttribution> = emptyList(),
 )
 
 /** A feed position — raw protocol hex event id plus its signed `created_at`. */
+@Serializable
 data class TimelineWindowCursor(
-    val createdAt: ULong = 0UL,
+    @SerialName("created_at") val createdAt: ULong = 0UL,
     val id: String = "",
 )
 
 /** One page of the feed: the request bound plus the next opaque cursor. */
+@Serializable
 data class TimelineWindowPage(
     val limit: ULong = 0UL,
-    val nextCursor: TimelineWindowCursor? = null,
-    val hasMore: Boolean = false,
-    val totalBlocks: ULong = 0UL,
+    @SerialName("next_cursor") val nextCursor: TimelineWindowCursor? = null,
+    @SerialName("has_more") val hasMore: Boolean = false,
+    @SerialName("total_blocks") val totalBlocks: ULong = 0UL,
 )
 
 /**
  * Decoded OP-centric home projection payload (`RootFeedSnapshot`). [page] is
  * null when the snapshot carries no paging envelope (the empty-feed case).
+ * ADR-0037 Commitment 4: the generic `Value` path can populate this type from
+ * the Rust JSON serde output when no NOFS typed projection is available.
  */
+@Serializable
 data class ChirpOpFeedSnapshot(
     val cards: List<ChirpRootCard> = emptyList(),
     val page: TimelineWindowPage? = null,
