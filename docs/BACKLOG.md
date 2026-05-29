@@ -644,16 +644,6 @@ a zeroizable key type or mutable erasure hook, then delete the partial-mitigatio
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
 
-### V-58 · Reconnect worker backoff is blind to relay close reason [LOW · reliability] (related: GH #616 — rate-limited CLOSED read side missing)
-
-**Verified:** `crates/nmp-core/src/kernel/ingest/closed.rs:27` and `:149` — two `// TODO` comments note that `last_close_reason` (populated from `CLOSED` relay frames, which may carry machine-readable prefixes such as `"rate-limited"` or `"slow-down"`) is not forwarded to the reconnect worker's backoff logic. The backoff schedule runs at a fixed/jitter cadence regardless of the close reason.
-
-**Impact:** a relay that issues `CLOSED ["rate-limited: …"]` will be reconnected at the same interval as a relay that closed due to a transient network drop. Under active rate-limiting the reconnect worker amplifies the load on the relay rather than backing off.
-
-**Correct fix:** thread `last_close_reason` into the reconnect worker's backoff decision; treat `"rate-limited"` and `"slow-down"` as long-backoff triggers (e.g. 60 s + jitter). The `closed.rs` already records the reason string; the worker needs a `CloseReason`-aware schedule variant rather than a single fixed delay.
-
----
-
 ### V-59 · `EventStore` trait missing kernel clock injection — `SystemTime::now()` in watermarks and queries [LOW · correctness]
 
 **Verified:**

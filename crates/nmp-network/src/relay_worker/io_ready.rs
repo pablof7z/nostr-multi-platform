@@ -10,7 +10,7 @@ use mio::unix::SourceFd;
 use mio::{Events, Interest, Poll, Token, Waker};
 use tungstenite::stream::MaybeTlsStream;
 
-use super::{RelayCommand, RelaySocket};
+use super::{BackoffClass, RelayCommand, RelaySocket};
 
 const SOCKET: Token = Token(0);
 const CONTROL: Token = Token(1);
@@ -52,11 +52,24 @@ fn forward_commands(
 }
 
 impl ControlInbox {
-    pub(super) fn drain_pending(&self, pending: &mut VecDeque<String>) -> ControlDrain {
+    /// Drain pending commands into `pending` (for outbound text frames) and
+    /// `backoff_hint` (for V-58 rate-limit hints). Returns the appropriate
+    /// `ControlDrain` variant when a shutdown or disconnect is observed.
+    ///
+    /// `SetBackoffHint` updates the caller-supplied `backoff_hint` slot; the
+    /// last hint wins if multiple arrive before the next disconnect. The caller
+    /// consumes the hint in the reconnect branch and clears it there.
+    pub(super) fn drain_pending(
+        &self,
+        pending: &mut VecDeque<String>,
+        backoff_hint: &mut Option<BackoffClass>,
+    ) -> ControlDrain {
         loop {
             match self.rx.try_recv() {
                 Ok(RelayCommand::Send(text)) => pending.push_back(text),
                 Ok(RelayCommand::Shutdown) => return ControlDrain::Shutdown,
+                // V-58: store the hint; last writer wins.
+                Ok(RelayCommand::SetBackoffHint(class)) => *backoff_hint = Some(class),
                 Err(TryRecvError::Empty) => return ControlDrain::Continue,
                 Err(TryRecvError::Disconnected) => return ControlDrain::Disconnected,
             }

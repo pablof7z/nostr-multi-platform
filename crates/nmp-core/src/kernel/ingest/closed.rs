@@ -24,8 +24,9 @@
 //! |                   | challenge — we do NOT synthesize a pseudo-challenge     |
 //! |                   | from CLOSED (would violate NIP-42 replay protection).   |
 //! | `rate-limited:`   | Stamp `last_error`, record `last_close_reason`.         |
-//! |                   | TODO: wire to reconnect-worker backoff logic (currently |
-//! |                   | the transport backoff is blind to rate-limiting).       |
+//! |                   | Enqueue a `BackoffHint::RateLimited` in                 |
+//! |                   | `pending_backoff_hints` so the actor can forward it to  |
+//! |                   | the pool worker (V-58 fix).                             |
 //! | `restricted:`     | Set `relay.denied = true`. Reconnect/REQ machinery      |
 //! | `blocked:`        | treats `denied` as offline-for-this-client; recovery is |
 //! | `shadowbanned:`   | a fresh socket only (relay edit / re-pay).              |
@@ -72,7 +73,9 @@ impl Kernel {
             CloseReason::Restricted | CloseReason::Blocked | CloseReason::Shadowbanned => {
                 self.on_closed_denied(role, sub_id, class, raw);
             }
-            CloseReason::RateLimited => self.on_closed_rate_limited(role, sub_id, raw),
+            CloseReason::RateLimited => {
+                self.on_closed_rate_limited(role, relay_url, sub_id, raw);
+            }
             CloseReason::Error
             | CloseReason::Invalid
             | CloseReason::Unsupported
@@ -136,12 +139,19 @@ impl Kernel {
         ));
     }
 
-    /// `rate-limited:` — record the classification for diagnostic purposes.
-    /// We deliberately do NOT mutate any reconnect-backoff state here: that
-    /// machinery is owned by the transport worker (G4 territory).
-    // TODO: wire last_close_reason to the reconnect worker's backoff logic
-    // (currently the transport backoff is blind to rate-limiting).
-    fn on_closed_rate_limited(&mut self, role: RelayRole, sub_id: &str, raw: &str) {
+    /// `rate-limited:` — record the classification for diagnostic purposes and
+    /// enqueue a one-shot [`super::super::BackoffHint::RateLimited`] so the
+    /// actor forwards it to the pool worker (V-58). The transport backoff
+    /// machinery lives in the worker (`nmp-network`/G4); the kernel's only job
+    /// here is to signal that a long backoff is warranted on the next reconnect.
+    /// The hint is URL-keyed so the actor can route it to the right pool handle.
+    fn on_closed_rate_limited(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        sub_id: &str,
+        raw: &str,
+    ) {
         let relay = self.relay_mut(role);
         relay.last_close_reason = Some(CloseReason::RateLimited.as_key().to_string());
         relay.last_error = Some(format!("rate-limited: {}", truncate(raw, 140)));
@@ -149,8 +159,15 @@ impl Kernel {
             .error_category()
             .map(str::to_string);
         self.changed_since_emit = true;
+        // V-58: enqueue the backoff hint so the actor can forward it to the
+        // pool worker on this URL. The hint is one-shot — the worker clears
+        // it after applying it on the next disconnect.
+        self.pending_backoff_hints.push((
+            relay_url.to_string(),
+            super::super::BackoffHint::RateLimited,
+        ));
         self.log(format!(
-            "CLOSED rate-limited from {} sub={sub_id}: {}",
+            "CLOSED rate-limited from {} sub={sub_id}: {} (backoff hint enqueued)",
             role.key(),
             truncate(raw, 120)
         ));
