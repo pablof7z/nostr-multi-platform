@@ -286,14 +286,24 @@ mod tests {
         byte.repeat(32)
     }
 
+    /// Arbitrary host-declared timeline kind set for `timeline_for` fixtures.
+    /// Deliberately NOT `{1, 6}` — these hashing/dedup tests are kind-agnostic,
+    /// and using a non-social set keeps the V-68 "substrate carries no app
+    /// default" boundary visible at the call site.
+    fn tl_kinds() -> std::collections::BTreeSet<u32> {
+        [30023u32].into_iter().collect()
+    }
+
     // ── canonical_filter_hash ────────────────────────────────────────────────
 
     #[test]
     fn canonical_filter_hash_is_deterministic_for_identical_shapes() {
         // Two shapes built independently from the same field values must hash
         // identically — the §3.4 plan-id stability contract depends on this.
-        let a = InterestShape::timeline_for([hex("aa"), hex("bb")].into_iter().collect());
-        let b = InterestShape::timeline_for([hex("bb"), hex("aa")].into_iter().collect());
+        let a =
+            InterestShape::timeline_for([hex("aa"), hex("bb")].into_iter().collect(), tl_kinds());
+        let b =
+            InterestShape::timeline_for([hex("bb"), hex("aa")].into_iter().collect(), tl_kinds());
         // Same logical shape (BTreeSet sorts insertion order away).
         assert_eq!(a, b);
         // ...therefore the same canonical hash.
@@ -306,8 +316,8 @@ mod tests {
     fn canonical_filter_hash_differs_for_distinct_shapes() {
         // Clearly distinct author sets → distinct hashes. Collision risk for
         // wholly different inputs is negligible for a 32-bit window.
-        let aa = InterestShape::timeline_for([hex("aa")].into_iter().collect());
-        let bb = InterestShape::timeline_for([hex("bb")].into_iter().collect());
+        let aa = InterestShape::timeline_for([hex("aa")].into_iter().collect(), tl_kinds());
+        let bb = InterestShape::timeline_for([hex("bb")].into_iter().collect(), tl_kinds());
         assert_ne!(canonical_filter_hash(&aa), canonical_filter_hash(&bb));
 
         // A different kind set on the same authors also changes the hash.
@@ -332,7 +342,7 @@ mod tests {
         // caller (wire-emitter diff, watermark store) relies on this width.
         for shape in [
             InterestShape::default(),
-            InterestShape::timeline_for([hex("aa")].into_iter().collect()),
+            InterestShape::timeline_for([hex("aa")].into_iter().collect(), tl_kinds()),
             InterestShape::profile_for(hex("cc")),
         ] {
             let hash = canonical_filter_hash(&shape);
@@ -350,7 +360,7 @@ mod tests {
     fn recompute_hash_refreshes_a_stale_hash_from_the_current_shape() {
         // Start with a SubShape carrying a deliberately wrong cached hash.
         let mut sub = SubShape {
-            shape: InterestShape::timeline_for([hex("aa")].into_iter().collect()),
+            shape: InterestShape::timeline_for([hex("aa")].into_iter().collect(), tl_kinds()),
             originating_interests: vec![InterestId(1)],
             canonical_filter_hash: "deadbeef".to_string(),
         };
@@ -374,7 +384,7 @@ mod tests {
         // Only `shape` is hashed — the originating-interest provenance list is
         // not part of wire identity. Two SubShapes with identical shapes but
         // different originating interests must produce the same hash.
-        let shape = InterestShape::timeline_for([hex("aa")].into_iter().collect());
+        let shape = InterestShape::timeline_for([hex("aa")].into_iter().collect(), tl_kinds());
         let mut one = SubShape {
             shape: shape.clone(),
             originating_interests: vec![InterestId(1)],

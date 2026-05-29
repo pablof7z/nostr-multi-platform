@@ -36,6 +36,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use mdk_core::key_packages::KeyPackageEventData;
@@ -64,6 +65,17 @@ pub enum MarmotError {
     GiftWrap(String),
     /// Service-level invariant violation.
     Invariant(String),
+    /// A `PendingGroupChange` was dropped without being committed or cleared.
+    ///
+    /// The pending commit was defensively cleared in `Drop`, but the
+    /// kind:445/commit event was never published to the relay — local MLS
+    /// state and the relay-published epoch have diverged. The host must block
+    /// further group sends until the operator resolves the divergence (e.g.
+    /// via a `self_update` re-sync or by rejoining the group).
+    OrphanedCommit {
+        /// Hex-encoded MLS group id the orphaned commit belongs to.
+        group_id_hex: String,
+    },
 }
 
 impl std::fmt::Display for MarmotError {
@@ -73,6 +85,12 @@ impl std::fmt::Display for MarmotError {
             Self::Nostr(s) => write!(f, "nostr error: {s}"),
             Self::GiftWrap(s) => write!(f, "nip59 error: {s}"),
             Self::Invariant(s) => write!(f, "invariant violation: {s}"),
+            Self::OrphanedCommit { group_id_hex } => write!(
+                f,
+                "orphaned MLS commit for group {group_id_hex}: \
+                 PendingGroupChange dropped without commit/clear; \
+                 local state may have diverged from the relay-published epoch"
+            ),
         }
     }
 }
@@ -122,6 +140,9 @@ pub struct PendingGroupChange<'a> {
     /// handle's `commit()` is a no-op (NO `merge_pending_commit`).
     self_remove: bool,
     resolved: bool,
+    /// Shared counter from the owning `MarmotService`. Incremented in
+    /// `Drop` when the handle is dropped unresolved (V-61 diagnostic).
+    orphaned_commit_count: Arc<AtomicU32>,
     pub evolution_event: Event,
     pub welcome_rumors: Vec<UnsignedEvent>,
 }
@@ -170,6 +191,17 @@ impl<'a> Drop for PendingGroupChange<'a> {
         // not wedged. A correct caller always commit()'s or clear()'s.
         if !self.resolved && !self.self_remove {
             let _ = self.service.mdk.clear_pending_commit(&self.group_id);
+            // V-61: record the orphaned commit so the host can observe the
+            // divergence. The pending commit was cleared (group is not wedged),
+            // but the kind:445/commit event was never published — local MLS
+            // state and the relay-published epoch may have diverged.
+            let group_id_hex = hex_encode(self.group_id.as_slice());
+            self.orphaned_commit_count.fetch_add(1, Ordering::Relaxed);
+            // Surface the error as a typed `MarmotError::OrphanedCommit` via
+            // stderr so it is never silently swallowed. The projection also
+            // reads `orphaned_commit_count` and surfaces it in the snapshot.
+            let err = MarmotError::OrphanedCommit { group_id_hex };
+            eprintln!("nmp-marmot: {err}");
         }
     }
 }
@@ -188,6 +220,17 @@ pub struct MarmotService {
     /// (cache lookup in `create_group`/`add_members`) lives here so all
     /// NMP apps get it for free.
     kp_cache: Mutex<HashMap<String, Event>>,
+    /// Cumulative count of `PendingGroupChange` / `CreateGroupPending` handles
+    /// that were dropped without being committed or cleared (V-61). Each
+    /// increment means local MLS state may have diverged from the
+    /// relay-published epoch for the affected group. The projection reads this
+    /// counter and surfaces it in the snapshot so the host can observe the
+    /// divergence and decide whether to block further group sends.
+    ///
+    /// Shared via `Arc` so the `PendingGroupChange` handle (which borrows
+    /// `&MarmotService` with a lifetime that cannot outlive the service) can
+    /// write to it from `Drop` without needing a mutable borrow.
+    pub(crate) orphaned_commit_count: Arc<AtomicU32>,
 }
 
 impl MarmotService {
@@ -211,6 +254,7 @@ impl MarmotService {
             mdk: MDK::new(storage),
             keys,
             kp_cache: Mutex::new(HashMap::new()),
+            orphaned_commit_count: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -223,12 +267,24 @@ impl MarmotService {
             mdk: MDK::builder(storage).with_config(config).build(),
             keys,
             kp_cache: Mutex::new(HashMap::new()),
+            orphaned_commit_count: Arc::new(AtomicU32::new(0)),
         }
     }
 
     /// The local identity public key (binds the MLS credential).
     pub fn public_key(&self) -> PublicKey {
         self.keys.public_key()
+    }
+
+    /// Cumulative count of `PendingGroupChange` / `CreateGroupPending` handles
+    /// that were dropped without commit/clear this session (V-61 diagnostic).
+    ///
+    /// A non-zero value means local MLS state may have diverged from the
+    /// relay-published epoch for one or more groups. The host should block
+    /// further group sends and surface a recovery prompt to the user.
+    #[must_use]
+    pub fn orphaned_commit_count(&self) -> u32 {
+        self.orphaned_commit_count.load(Ordering::Relaxed)
     }
 
     // ── KeyPackage cache (populated by the app's raw-event tap) ─────────────
@@ -339,6 +395,7 @@ impl MarmotService {
                 service: self,
                 group_id,
                 resolved: false,
+                orphaned_commit_count: Arc::clone(&self.orphaned_commit_count),
                 welcome_rumors: result.welcome_rumors,
             },
         ))
@@ -398,6 +455,7 @@ impl MarmotService {
             group_id,
             self_remove,
             resolved: false,
+            orphaned_commit_count: Arc::clone(&self.orphaned_commit_count),
             evolution_event: r.evolution_event,
             welcome_rumors: r.welcome_rumors.unwrap_or_default(),
         }
@@ -544,6 +602,9 @@ pub struct CreateGroupPending<'a> {
     service: &'a MarmotService,
     group_id: GroupId,
     resolved: bool,
+    /// Shared counter from the owning `MarmotService`. Incremented in
+    /// `Drop` when the handle is dropped unresolved (V-61 diagnostic).
+    orphaned_commit_count: Arc<AtomicU32>,
     pub welcome_rumors: Vec<UnsignedEvent>,
 }
 
@@ -586,6 +647,11 @@ impl<'a> Drop for CreateGroupPending<'a> {
     fn drop(&mut self) {
         if !self.resolved {
             let _ = self.service.mdk.clear_pending_commit(&self.group_id);
+            // V-61: record the orphaned commit (see `PendingGroupChange::drop`).
+            let group_id_hex = hex_encode(self.group_id.as_slice());
+            self.orphaned_commit_count.fetch_add(1, Ordering::Relaxed);
+            let err = MarmotError::OrphanedCommit { group_id_hex };
+            eprintln!("nmp-marmot: {err}");
         }
     }
 }

@@ -104,20 +104,27 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
 
-### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation]
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1 DONE, Stage 2-3 OPEN]
 
 **Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
-subscription defaults that belong in NIP/app modules:
+subscription defaults that belong in NIP/app modules. The four sites and their
+status (Stage 1 landed 2026-05-29):
 
-- `crates/nmp-core/src/kernel/requests/profile.rs:532-550` hardcodes selected-author
-  note/repost requests as `{"kinds":[1,6], ...}`.
-- `crates/nmp-core/src/kernel/requests/thread.rs:217-223` hardcodes recursive thread
-  reply requests as `{"kinds":[1,6], ...}`.
-- `crates/nmp-core/src/kernel/ingest/mod.rs:623-650` fires mailbox-change routing
-  traces with `&[1, 6]` as the canonical content kind set.
-- `crates/nmp-planner/src/interest.rs:183-189` exposes
-  `InterestShape::timeline_for` as a generic-looking constructor while internally
-  selecting `[1, 6]`.
+- ✅ **DONE** `crates/nmp-planner/src/interest.rs` — `InterestShape::timeline_for`
+  no longer injects `[1, 6]`; it now takes `kinds: BTreeSet<u32>` and carries the
+  caller-supplied set verbatim. It has **zero production callers** (every caller is
+  a test or a real-relay integration test); the constructor is now kind-agnostic and
+  tests pass arbitrary host kinds (`{30023}`), with the NIP-01-scoped real-relay
+  tests explicitly declaring `{1, 6}` as the host.
+- ✅ **DONE** `crates/nmp-core/src/kernel/ingest/mod.rs` — the mailbox-change trace
+  fire now passes `&[]` instead of `&[1, 6]`. This site's routing decision is
+  kind-independent (the trace URL result is discarded, and `is_discovery_kind`
+  covers only `{0, 3, 10000–19999}` so content kinds never alter the lane), so the
+  removal is behavior-preserving.
+- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
+  still hardcodes selected-author note/repost requests as `{"kinds":[1,6], ...}`.
+- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/thread.rs:~217-223`
+  still hardcodes recursive thread reply requests as `{"kinds":[1,6], ...}`.
 
 **Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
 substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`
@@ -125,12 +132,48 @@ as filter data, but they must not choose app defaults. Defaults like "follow-lis
 timeline means kind:1 + kind:6" belong in `nmp-nip01`, `nmp-nip02`,
 `nmp-app-template`, or an app crate such as Chirp.
 
-**Required fix:** move the remaining social subscription constructors and trace
-inputs out of `nmp-core`/generic planner APIs. Keep the existing
+**Stage 2 (author-view + thread-reply) — the remaining production behavior.**
+These two sites carry live behavior and CANNOT reuse the follow-feed's
+host-declared `Kernel::follow_feed_kinds`: `nmp_app_open_author`
+(`ProfileView.swift`) and `nmp_app_open_thread` fire **independently** of
+`nmp_app_open_timeline`/`OpenContactListSubscription`, so a deep-link can open an
+author/thread before the home feed ever declared its kinds — borrowing
+`follow_feed_kinds` would request zero kinds and silently break profile/thread
+views. The correct seam is **per-call kinds**, extending the existing
+`OpenContactListSubscription { kinds }` pattern: add `kinds: BTreeSet<u32>` to
+`ActorCommand::OpenAuthor` and `ActorCommand::OpenThread`, thread them through
+`Kernel::open_author` / `open_thread` → `author_requests` / thread reply builder,
+and have the FFI symbols (`nmp_app_open_author` / `nmp_app_open_thread`) accept the
+kind set from the host. Because kinds arrive *with* the call there is no ordering
+problem — the Swift `ProfileView`/thread call site declares them exactly as
+`nmp_app_open_timeline` declares `{1, 6}` today. Cost is FFI + `NmpCore.h` +
+`KernelBridge.swift` churn (iOS blast radius), which is why it is staged.
+
+  *Rejected alternative:* a single app-level `content_kinds` field set once at app
+  init would avoid the ABI churn, but only if an init hook is guaranteed to run
+  before any view opens, and it must be a **separate** field from
+  `follow_feed_kinds` (overloading conflates "no declared kinds" with "follow-feed
+  inactive"). Per-call kinds is the safe default; pursue the field only if that
+  init guarantee is proven cheap.
+
+**Stage 3 (finalizer):** once Stage 2 lands and no `[1, 6]` literal remains in
+`nmp-core`/`nmp-planner` production code, add a doctrine-lint rule banning hardcoded
+social content-kind sets (`[1, 6]` / `[1u32, 6u32]`) in those crates' non-test
+source so the door stays closed. Do NOT add the lint before Stage 2 — `profile.rs`
+and `thread.rs` still carry the literal and would fail the build.
+
+**Required fix (general):** move the remaining social subscription constructors and
+trace inputs out of `nmp-core`/generic planner APIs. Keep the existing
 `ActorCommand::OpenContactListSubscription { kinds }` direction: hosts or NIP
 modules declare the kind set, and the substrate registers/executes those kinds as
 data. Tests covering follow-feed behavior must use arbitrary host-declared kinds,
 not `{1, 6}`, unless the test is explicitly scoped to a NIP-01/NIP-18 module.
+
+**Note (out of scope, separate cleanup):** `crates/nmp-core/src/kernel/ingest/event.rs`
+and `ingest/eose.rs` are orphan files (not declared as modules in `ingest/mod.rs`,
+so not compiled). `event.rs` contains a stale duplicate of `on_mailbox_changed`
+still carrying `&[1, 6]`; it is dead code and was left untouched to keep this PR
+scoped. A follow-up should delete the orphan files.
 
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
@@ -318,27 +361,25 @@ Drop V-37(c) as a sub-item; track here separately.
 
 ---
 
-### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [HIGH · pre-v1 doctrine fix]
+### V-46 · Snapshot built-in projection cluster is unbounded — D5 silently violated [RESOLVED]
 
-**Evidence:** `crates/nmp-core/src/kernel/update/projections.rs:35-274` —
-`snapshot_projections_with_publish_cluster` unconditionally inserts on every tick:
-`publish_queue`, `publish_outbox`, `outbox_summary`, `relay_edit_rows`,
-`relay_role_options`, `settings_hub`, `accounts`, `active_account`, `profile`,
-`timeline`, `author_view`, `thread_view`, `inserted`, `updated`, `removed`,
-`relay_diagnostics`, `mention_profiles` — plus all host-registered projections.
+**Resolved** by PR fix/v46-snapshot-d5-bounding (2026-05-29).
 
-D5 (`plan.md:43`) reads "snapshots bounded by open views." The built-in cluster is
-not bounded. Even with zero open views, the cluster carries 20 keys
-unconditionally inserted including `relay_diagnostics` (rolls every relay + every
-wire sub) and `mention_profiles` (walks every visible item).
+**Option (b) implemented** — view-dependent keys moved to a "only-if-view-subscribed"
+branch in `crates/nmp-core/src/kernel/update/projections.rs`:
 
-The perf gate (`perf_tests.rs:128`) runs against `Kernel::new()` with zero registered
-host projections — it does not exercise the full cluster.
+- `timeline`, `inserted`, `updated`, `removed`: emitted only when
+  `follow_feed_kinds` is non-empty (i.e., the shell has called
+  `nmp_app_open_timeline` / `ActorCommand::OpenContactListSubscription`).
+- `author_view`: emitted only when `author_view()` returns `Some(...)`.
+- `thread_view`: emitted only when `thread_view()` returns `Some(...)`.
 
-**Recommended action:** either (a) rewrite D5 to "bounded by a static cluster gated by
-`snapshot_perf_firehose_gate` + open-view-dependent payloads", or (b) move genuinely
-view-dependent keys (`author_view`, `thread_view`, `timeline`, `inserted`, `updated`,
-`removed`) into a "only-if-view-subscribed" branch. Option (b) is doctrine-honest.
+**Shell tolerance verified** before change: iOS `SnapshotProjections` declares all
+six keys as `Optional` (Swift `?`); Android `SnapshotProjections` uses default
+`emptyList()` / nullable; TUI reads via `.get(key)` returning `Option`; web uses
+`Array.isArray(...)` guard and `?? undefined` optional chain — all shells are
+absence-tolerant. D5 doctrine text updated to describe the static vs.
+view-dependent cluster split.
 
 ---
 
@@ -655,26 +696,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-61 · Marmot `PendingGroupChange::drop` silently clears unresolved MLS commit [HIGH · MLS state divergence]
-
-**Verified:** `crates/nmp-marmot/src/service.rs:172` — `PendingGroupChange::drop` clears the pending MLS commit on drop without surfacing an error. If a panic or early return drops the guard before the commit is resolved, the group's local MLS state is mutated as if the commit were applied, but no kind:445/`commit` event reaches the relay.
-
-**Impact:** group state diverges from the relay-published timeline. Subsequent members joining or syncing see a different epoch than this client. There is no recovery path short of leaving and rejoining the group.
-
-**Correct fix:** the drop path must either (a) roll the pending change back to pre-commit state, or (b) record a typed `MarmotError::OrphanedCommit` on the kernel error toast and refuse further group sends until the operator resolves the divergence. Silent drop is not a doctrined option.
-
----
-
-### V-62 · Marmot keyring failure silently installs in-memory mock store [HIGH · MLS secret durability]
-
-**Verified:** `crates/nmp-marmot/src/ffi.rs:228-269` — nested fallback: real keyring open fails → delete-and-retry path → on second failure installs the in-memory mock store with no host-visible signal. MLS group secrets thereafter live only in process memory.
-
-**Impact:** the user believes MLS groups are persistent; on next launch the secret material is gone and every group is unjoinable. There is no toast, no error code returned to the host, no metric. Once secrets are lost, group membership cannot be recovered.
-
-**Correct fix:** surface a typed `MarmotInitError::KeyringUnavailable` to the host; let the app decide whether to block group features, prompt the user, or fall back to an explicit ephemeral session. Never install the mock store as an implicit decision inside `ffi.rs`.
-
----
-
 ### V-65 · `NOSTRCONNECT_DEFAULT_RELAY_URL = "wss://relay.damus.io"` hardcoded in `nmp-core` [MEDIUM · D0 leak + third-party dependency]
 
 **Verified:** `crates/nmp-core/src/actor/relay_roles.rs:5` — `pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";` is a hardcoded third-party relay URL used as a fallback when a user without configured write relays initiates a `nostrconnect://` handshake (NIP-46).
@@ -689,7 +710,7 @@ part of the deleted scratch plan.
 
 **Verified:** `crates/nmp-core/src/kernel/mod.rs:1417,1420` — when `relay_edit_rows` is empty the kernel substitutes `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` for the active routing set. The substitution is silent (no toast, no log, no slot delta) so the host has no way to tell whether the user has zero configured relays or whether their configuration was wiped.
 
-**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62), the loss is invisible until they notice their followers no longer see their notes.
+**Impact:** the user appears to be online (publishes succeed against the fallback), but they are publishing to a relay they did not consent to. If their actual relay rows were lost (e.g. keyring re-init, V-62 — now fixed), the loss is invisible until they notice their followers no longer see their notes.
 
 **Correct fix:** distinguish "no rows" from "rows present but degraded". When `relay_edit_rows` is empty the kernel must publish `KernelDiagnostic::NoConfiguredRelays` and either (a) refuse to publish with a typed `NoTargets` error (matches V-50/V-51 fail-closed direction) or (b) require the host to explicitly opt in via a `BootstrapRelaysCapability`. Hardcoded URL constants in nmp-core must not be the production path.
 
@@ -701,7 +722,7 @@ part of the deleted scratch plan.
 
 **Impact:** the user runs the app, ingests events, publishes notes — and on the next launch every locally-stored event is gone (because the LMDB file was never opened, so the in-memory store was the only persistence layer). Notifications, drafts, profile cache, follow list — all transient without warning. This is one of the harder failure modes to diagnose because everything else works.
 
-**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring): silent mock installation is not a doctrined option.
+**Correct fix:** LMDB open failure must surface as `KernelInitError::StoreUnavailable { reason }` to the host. The host decides whether to retry, fall back, or block startup. nmp-core never installs an ephemeral store as an implicit default. Same posture as V-62 (Marmot keyring — fixed in PR fix/v61-v62-marmot-silent-failures): silent mock installation is not a doctrined option.
 
 ---
 
@@ -735,16 +756,6 @@ part of the deleted scratch plan.
 
 ---
 
-### V-72 · `LocalKeySigner` silently coerces overflowing event `kind` to `u16::MAX` (65535) [LOW · silent overflow]
-
-**Verified:** `crates/nmp-signers/src/signers/local.rs:191` — `u16::try_from(unsigned.kind).unwrap_or(u16::MAX)` for an `unsigned.kind: u32`. NIP-01 kinds beyond 65535 are non-spec but architecturally reachable; the signer silently rebinds to kind 65535.
-
-**Impact:** a caller that passes an out-of-range `kind` gets a signed event with a different kind than they asked for. The signature is valid for kind 65535, so the relay accepts it and the recipient sees the wrong event class. There is no warning at the signer boundary.
-
-**Correct fix:** return `SignerError::KindOutOfRange { kind: u32 }` instead of silently coercing. Callers that genuinely want kind 65535 must pass it as a typed `u16` upstream.
-
----
-
 ### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
 
 **Verified:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs:114` — null or malformed `viewer_pubkey` is replaced with `Pubkey::default()` (32 zero bytes) and the register call proceeds. No error is returned to Swift.
@@ -752,16 +763,6 @@ part of the deleted scratch plan.
 **Impact:** the iOS host believes it registered a logged-in user; the Rust side proceeds with the all-zeros pubkey as the active viewer. Personal-timeline projections, NIP-65 outbox resolution, and DM inbox filtering all run against the zero-pubkey "anonymous" identity. The user appears to be logged in to themselves but is treated as the canonical empty account by every Rust subsystem.
 
 **Correct fix:** the C-ABI `nmp_app_chirp_register` must return `NmpRegisterStatus::InvalidViewerPubkey` on null or non-32-byte input; Swift surfaces the failure to the onboarding flow. There is no doctrined reason for a register call with an invalid identity to silently succeed as anonymous.
-
----
-
-### V-74 · NIP-47 NWC URI parser drops unknown params silently — misspelled `relay=` vanishes [LOW · silent config drop]
-
-**Verified:** `crates/nmp-nwc/src/parse.rs:135` — the `_ => {}` arm in the URI param match silently discards any param key the parser does not recognise. A user-pasted URI with `relays=wss://...` (note the `s`) or `Relay=wss://...` is accepted as a parse success with no relay configured.
-
-**Impact:** the user pastes a malformed NWC URI, the parse succeeds with a missing relay, the wallet connection fails on the next outbound, and the user has no clue why. This is a textbook silent-config-drop pattern; the URI parser is the right place to surface it.
-
-**Correct fix:** the `_` arm must either (a) return `NwcParseError::UnknownParam { key }` so the host can warn the user, or (b) record the unknown key into a `parse_warnings: Vec<String>` field on the parsed URI which the host surfaces in the wallet-connect sheet. Doctrine prefers (a) for required-shape params (`relay=`, `secret=`) and (b) for unknown extension params.
 
 ---
 
@@ -782,16 +783,6 @@ part of the deleted scratch plan.
 **Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) sees a Chirp web app that "works" but blocks the main thread on every kernel tick. Performance is silently degraded; the diagnostic surface is empty.
 
 **Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "performance-degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
-
----
-
-### V-77 · `nmp-nwc` defines `MakeInvoice` end-to-end but never dispatches it — dead receive-side API surface [LOW · misleading API surface]
-
-**Verified:** `crates/nmp-nwc/src/types.rs:25` declares `NwcMethod::MakeInvoice`; `crates/nmp-nwc/src/types.rs:50` defines `MakeInvoiceParams`; `crates/nmp-nwc/src/types.rs:99` defines `MakeInvoiceResult`; `crates/nmp-nwc/src/build.rs:160` exports `make_invoice_content(...)`. The only caller is the in-crate test `make_invoice_request_shape` at `build.rs:250`. There is no `make_invoice_result()` parser, no `ActorCommand` or `dispatch_action` namespace, no FFI symbol, and no Swift/Kotlin/TS host caller. The receive-side NIP-47 leg (invoice creation, used by lightning-address resolution, receive flows, and zap-recipient pairing) is wire-protocol-complete but never reachable at runtime.
-
-**Impact:** NMP advertises NIP-47 NWC support (see `docs/plan.md:29` — "NWC wallet (NIP-47, still in nmp-core)") but the receive half is dead. Any host integrator who reads the public type surface (`pub use ... MakeInvoiceParams, MakeInvoiceResult` in `nmp-nwc/src/lib.rs:28`) sees a complete `MakeInvoice` API, attempts to call it, and discovers no entry point exists. This is the misleading-API-surface failure mode the doctrine prohibits: types that exist but cannot be invoked.
-
-**Correct fix:** either (a) finish the receive path — add `MakeInvoiceResult::from_response()`, an `nmp.nwc.make_invoice` dispatch action, and an FFI / wasm symbol — gated on a real receive-flow consumer (zap-recipient or invoice-request UI); or (b) delete `MakeInvoice`, `MakeInvoiceParams`, `MakeInvoiceResult`, and `make_invoice_content` until a caller exists. Doctrine prefers (b) — no scaffolding without a consumer.
 
 ---
 

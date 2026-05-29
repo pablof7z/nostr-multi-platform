@@ -5,7 +5,7 @@
 //! signs it with the client secret key, and routes it to the NWC relay.
 
 use crate::crypto;
-use crate::types::{MakeInvoiceParams, NwcMethod, PayInvoiceParams};
+use crate::types::{NwcMethod, PayInvoiceParams};
 use serde_json::{json, Value};
 
 /// Errors surfaced by `nmp-nwc`'s request-build and crypto layer.
@@ -151,27 +151,6 @@ pub fn pay_invoice_content(
     )
 }
 
-/// Build encrypted content for a `make_invoice` request.
-///
-/// # Errors
-///
-/// Returns `NwcBuildError` if key parsing, params serialization, or encryption fails.
-#[must_use]
-pub fn make_invoice_content(
-    client_secret_hex: &str,
-    wallet_pubkey_hex: &str,
-    params: &MakeInvoiceParams,
-) -> Result<String, NwcBuildError> {
-    let params_value = serde_json::to_value(params)
-        .map_err(|e| NwcBuildError::Json(format!("serialize params: {e}")))?;
-    request_content(
-        client_secret_hex,
-        wallet_pubkey_hex,
-        &NwcMethod::MakeInvoice,
-        &params_value,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,25 +222,6 @@ mod tests {
         assert!(
             json["params"].get("amount").is_none(),
             "absent amount must be omitted, not serialized as null"
-        );
-    }
-
-    #[test]
-    fn make_invoice_request_shape() {
-        let wallet_pk = wallet_pk();
-        let params = MakeInvoiceParams {
-            amount: 5_000,
-            description: Some("coffee".to_string()),
-            expiry: None,
-        };
-        let content = make_invoice_content(CLIENT_SECRET, &wallet_pk, &params).unwrap();
-        let json = decrypt_built(&content, &wallet_pk);
-        assert_eq!(json["method"], "make_invoice");
-        assert_eq!(json["params"]["amount"], 5_000);
-        assert_eq!(json["params"]["description"], "coffee");
-        assert!(
-            json["params"].get("expiry").is_none(),
-            "absent expiry must be omitted"
         );
     }
 

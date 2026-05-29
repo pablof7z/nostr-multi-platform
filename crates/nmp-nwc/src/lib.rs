@@ -25,6 +25,6 @@ pub use build::NwcBuildError;
 pub use kinds::{KIND_NWC_REQUEST, KIND_NWC_RESPONSE};
 pub use parse::{NwcUri, ParseError};
 pub use types::{
-    GetBalanceResult, GetInfoResult, MakeInvoiceParams, MakeInvoiceResult, NwcError, NwcMethod,
-    NwcResponse, PayInvoiceParams, PayInvoiceResult,
+    GetBalanceResult, GetInfoResult, NwcError, NwcMethod, NwcResponse, PayInvoiceParams,
+    PayInvoiceResult,
 };

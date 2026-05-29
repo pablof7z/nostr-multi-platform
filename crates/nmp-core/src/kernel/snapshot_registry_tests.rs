@@ -109,14 +109,15 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
         .expect("projections must serialize as a JSON object");
     let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
     keys.sort_unstable();
+    // D5: view-dependent keys (`timeline`, `inserted`, `updated`, `removed`,
+    // `author_view`, `thread_view`) are absent when no view is open. The
+    // expected set is the static cluster only.
     assert_eq!(
         keys,
         [
             // identity pair
             "accounts",
             "active_account",
-            // views cluster (D0)
-            "author_view",
             // generic claimed-event projection (F-CR-06 / ADR-0034):
             // primary_id -> ClaimedEventDto for every event a renderer
             // has called `claim_event` on and that has since arrived in
@@ -127,13 +128,12 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // generic claimed-profile projection: pubkey -> ProfileCard for
             // profile references a component has called `claim_profile` on.
             "claimed_profiles",
-            "inserted",
             // derived view: per-author mention payloads scoped to the
-            // open author-view items (aim.md §4.2).
+            // open author-view items (aim.md §4.2). Always present (D1).
             "mention_profiles",
             // publish cluster — outbox header summary (§6 anti-pattern #1)
             "outbox_summary",
-            // views cluster (D0)
+            // views cluster (D0) — `profile` is always present
             "profile",
             // publish cluster
             "publish_outbox",
@@ -142,15 +142,12 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "relay_diagnostics",
             "relay_edit_rows",
             "relay_role_options",
-            // views cluster (D0)
-            "removed",
             // settings-hub view (relays subtitle pre-format)
             "settings_hub",
-            "thread_view",
-            "timeline",
-            "updated",
+            // D5: `author_view`, `thread_view`, `timeline`, `inserted`,
+            // `updated`, `removed` are absent — no view is open.
         ],
-        "with no host projection the map carries only the kernel-owned built-ins"
+        "with no host projection and no open views the map carries only the static built-ins"
     );
 }
 

@@ -35,6 +35,10 @@ pub enum SignerError {
     /// a compromised or malicious bunker returning a payload the local
     /// kernel would otherwise trust verbatim.
     SignatureVerificationFailed(String),
+    /// Event kind is outside the valid u16 range (0–65535). The caller must
+    /// ensure the kind fits within NIP-01's u16 namespace before requesting
+    /// a signature.
+    KindOutOfRange { kind: u32 },
     /// Backend-specific failure (network, IO, parse, etc.).
     Backend(String),
 }
@@ -49,6 +53,9 @@ impl std::fmt::Display for SignerError {
             Self::Timeout(m) => write!(f, "timeout: {m}"),
             Self::SignatureVerificationFailed(m) => {
                 write!(f, "signature verification failed: {m}")
+            }
+            Self::KindOutOfRange { kind } => {
+                write!(f, "event kind {} is outside valid u16 range (0–65535)", kind)
             }
             Self::Backend(m) => write!(f, "backend error: {m}"),
         }
