@@ -645,10 +645,11 @@ mod tests {
 
     use std::cell::RefCell;
 
-    use nmp_content::npub::{encode_npub, npub_short};
+    use nmp_content::context::ContentProfileRenderData;
     use nmp_content::ShortNoteProjection;
 
-    use super::super::kind_renderer::{author_byline, KindAuthorHost};
+    use super::super::kind_renderer::author_byline;
+    use crate::nostr_mention_chip::NostrMentionProfileHost;
 
     const SHOWCASE_PUBKEY: &str =
         "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
@@ -660,15 +661,19 @@ mod tests {
         claimed: RefCell<Vec<(String, String)>>,
     }
 
-    impl KindAuthorHost for FakeAuthorHost {
-        fn claim_author(&self, pubkey: &str, consumer_id: &str) {
+    impl NostrMentionProfileHost for FakeAuthorHost {
+        fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
             self.claimed
                 .borrow_mut()
                 .push((pubkey.to_string(), consumer_id.to_string()));
         }
 
-        fn author_display(&self, _pubkey: &str) -> Option<String> {
-            self.display.clone()
+        fn profile_for_pubkey(&self, _pubkey: &str) -> Option<ContentProfileRenderData> {
+            Some(ContentProfileRenderData {
+                display_name: self.display.clone(),
+                picture_url: None,
+                npub: None,
+            })
         }
     }
 
