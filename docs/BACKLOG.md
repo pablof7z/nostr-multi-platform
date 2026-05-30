@@ -1234,8 +1234,8 @@ re-entry** for one-shot off-actor I/O — the dm `op.wait` path reuses the *exis
 **serialized capability worker thread** (dedicated thread draining a queue via blocking
 `recv` — never a poll) for ordered native capability I/O, re-entering the actor once via
 a typed `ActorCommand`. (C) is the only genuinely new piece: per-op spawn is wrong
-(account-switch forget/persist would race). **Needs an ADR to ratify the capability-worker
-seam before implementation.** Full design in the workflow output.
+(account-switch forget/persist would race). **ADR-0040 drafted (Proposed 2026-05-30,
+`docs/decisions/0040-capability-worker-seam.md`), pending ratification.**
 
 Two D8 violations (no blocking on the actor thread):
 
