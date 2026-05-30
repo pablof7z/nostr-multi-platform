@@ -385,29 +385,60 @@ fn handle_pool_event(
         // Binary/Ping/Pong/Close — NIP-01 is text-only; keepalive is
         // handled inside the Pool's translator.
         PoolEvent::Frame { .. } => {}
-        // V-14 step b: transient mid-session close — the Pool will auto-
-        // reconnect (jittered backoff). Report `"reconnecting"` so the host
-        // can show a reconnecting indicator.
+        // V-14 step b: relay closed — map reason to connection-state token
+        // using the pure discriminator (Permanent→failed, Requested→reconnecting,
+        // Shutdown→no-emit so session-replace doesn't flash a spurious failure).
         PoolEvent::Closed { reason, .. } => {
-            use nmp_network::pool::ClosedReason;
-            let is_permanent = matches!(reason, ClosedReason::Permanent | ClosedReason::Shutdown);
-            let state = if is_permanent { "failed" } else { "reconnecting" };
-            if let Some(cb) = on_connection_state {
-                cb(state, None);
+            if let Some(state) = closed_reason_to_state(&reason) {
+                if let Some(cb) = on_connection_state {
+                    cb(state, None);
+                }
             }
         }
-        // V-14 step b: Failed — transient errors trigger Pool reconnect;
-        // permanent errors (HTTP 401/403) stop reconnect and brick the session.
+        // V-14 step b: transport failed — transient triggers Pool reconnect;
+        // permanent (HTTP 401/403) bricks the session.
         PoolEvent::Failed { error, .. } => {
-            let state = if error.permanent { "failed" } else { "reconnecting" };
+            let (state, reason) = transport_error_to_state(&error);
             if let Some(cb) = on_connection_state {
-                cb(state, Some(error.message.as_str()));
+                cb(state, reason.as_deref());
             }
         }
         // Health snapshots carry no state change — they aggregate counters
         // already reflected in Opened/Closed/Failed.
         PoolEvent::Health { .. } => {}
     }
+}
+
+/// Classify a `ClosedReason` as a connection-state string for V-14 step b.
+///
+/// - `Permanent` → `"failed"` (relay rejected the client; Pool stops retrying)
+/// - `Requested` → `"reconnecting"` (cancelled via `cancel()`; the broker
+///   tears down the session intentionally, so this is treated as transient
+///   from the reconnect FSM's point of view — a fresh session would start from
+///   "connecting")
+///
+/// `Shutdown` is `Pool::shutdown()` — intentional teardown, not a relay
+/// failure. It never reaches this path in practice (the dispatcher's `recv`
+/// exits when the Pool drops its sender before emitting Closed{Shutdown}), so
+/// it returns `None` to avoid a spurious "failed" flash on session-replace.
+pub(crate) fn closed_reason_to_state(reason: &nmp_network::pool::ClosedReason) -> Option<&'static str> {
+    use nmp_network::pool::ClosedReason;
+    match reason {
+        ClosedReason::Permanent => Some("failed"),
+        ClosedReason::Requested => Some("reconnecting"),
+        ClosedReason::Shutdown => None,
+    }
+}
+
+/// Classify a `TransportError` as a connection-state string + reason for V-14.
+///
+/// - `permanent == true` → `("failed", Some(message))` (HTTP 401/403; Pool stops)
+/// - `permanent == false` → `("reconnecting", Some(message))` (transient; Pool retries)
+pub(crate) fn transport_error_to_state(
+    error: &nmp_network::pool::TransportError,
+) -> (&'static str, Option<String>) {
+    let state = if error.permanent { "failed" } else { "reconnecting" };
+    (state, Some(error.message.clone()))
 }
 
 /// Parse `["EVENT", <sub_id>, <event_json>]` and return the `<event_json>`
@@ -489,6 +520,52 @@ mod tests {
         };
         stub.subscribe("[\"REQ\",\"x\",{}]".to_string()).unwrap();
         assert_eq!(stub.send_count.load(Ordering::Relaxed), 1);
+    }
+
+    // ─── V-14 step b: connection-state discriminator tests ────────────────
+    //
+    // These tests exercise the pure classifier functions `closed_reason_to_state`
+    // and `transport_error_to_state` — the decision logic that maps relay
+    // lifecycle signals to host-visible connection-state tokens. `ClosedReason`
+    // and `TransportError` are fully `pub` in nmp-network and require no live
+    // socket, so they are constructable here without crossing `pub(crate)`.
+
+    #[test]
+    fn permanent_close_reason_maps_to_failed() {
+        use nmp_network::pool::ClosedReason;
+        assert_eq!(closed_reason_to_state(&ClosedReason::Permanent), Some("failed"));
+    }
+
+    #[test]
+    fn requested_close_reason_maps_to_reconnecting() {
+        use nmp_network::pool::ClosedReason;
+        assert_eq!(closed_reason_to_state(&ClosedReason::Requested), Some("reconnecting"),
+            "Requested (cancel/replace) must be reconnecting so session-replace doesn't alarm the host");
+    }
+
+    #[test]
+    fn shutdown_close_reason_maps_to_none() {
+        use nmp_network::pool::ClosedReason;
+        assert!(closed_reason_to_state(&ClosedReason::Shutdown).is_none(),
+            "Shutdown is intentional teardown; must not emit a state change (no spurious failed flash)");
+    }
+
+    #[test]
+    fn transient_transport_error_maps_to_reconnecting() {
+        use nmp_network::pool::TransportError;
+        let err = TransportError { message: "connection reset by peer".to_string(), permanent: false };
+        let (state, reason) = transport_error_to_state(&err);
+        assert_eq!(state, "reconnecting");
+        assert_eq!(reason.as_deref(), Some("connection reset by peer"));
+    }
+
+    #[test]
+    fn permanent_transport_error_maps_to_failed() {
+        use nmp_network::pool::TransportError;
+        let err = TransportError { message: "403 Forbidden".to_string(), permanent: true };
+        let (state, reason) = transport_error_to_state(&err);
+        assert_eq!(state, "failed");
+        assert_eq!(reason.as_deref(), Some("403 Forbidden"));
     }
 
     // ─── No-polling doctrine guard (V-13 Stage 2) ──────────────────────────
