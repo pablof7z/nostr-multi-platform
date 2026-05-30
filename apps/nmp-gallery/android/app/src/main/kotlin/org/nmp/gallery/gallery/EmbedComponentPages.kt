@@ -3,21 +3,25 @@ package org.nmp.gallery.gallery
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.nmp.gallery.bridge.ClaimedEventWire
 import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.bridge.GalleryShowcaseReferences
+import org.nmp.gallery.registry.NostrProfileName
 
 /**
  * Showcase pages for the kind-dispatch embed renderers (ADR-0034 / M16).
@@ -232,11 +236,25 @@ private fun EventDisplayCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
-            Text(
-                "author: ${truncatePubkey(event.authorPubkey)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+            // Self-claiming byline: the name component owns claiming the
+            // author's kind:0 — the kernel never fetches it.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    "author:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                NostrProfileName(
+                    pubkey = event.authorPubkey,
+                    style = LocalTextStyle.current.copy(
+                        fontWeight = MaterialTheme.typography.bodySmall.fontWeight,
+                    ),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
             val contentPreview = if (event.content.length > 100) {
                 event.content.take(97) + "…"
             } else {
@@ -255,11 +273,6 @@ private fun EventDisplayCard(
             )
         }
     }
-}
-
-private fun truncatePubkey(pubkey: String): String {
-    if (pubkey.length < 16) return pubkey
-    return pubkey.take(12) + "…"
 }
 
 private fun labelFor(componentId: String): String = when (componentId) {
