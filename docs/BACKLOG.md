@@ -422,26 +422,6 @@ once `nmp-codegen`'s Swift emitter is taught the new shape (the
 `gen modules --check` gate against `apps/fixture/nmp.toml` is currently
 green because the fixture types do not include these projection shapes).
 
-### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX] (related: GH #611 AccountsView polling, GH #612 op.wait blocks actor)
-
-**ADR-0040 ratified (Accepted 2026-05-31) — see V-90 cluster note.** V-54's three
-cold-start signs reuse the existing PendingSign park/poll/settle path verbatim (no new
-mechanism). Bundled with V-90 in one off-actor design; ADR-0040 now ratified, Site 3
-(cold-start signs) is the next PR after Site 2.
-
-**Verified:** `crates/nmp-core/src/actor/commands/identity.rs:826`, `:864`, and
-`:1019` still call the synchronous `sign_active` path while publishing the
-initial kind:0 metadata, kind:10002 relay list, and kind:3 follows during
-`create_account`. `sign_active` is bounded by `REMOTE_SIGN_TIMEOUT` (5s), but
-a remote signer can still stall the actor during account creation.
-
-**Impact:** the non-blocking signing path exists for normal publish/react/follow
-flows, but onboarding remains a residual blocking path for bunker accounts.
-
-**Correct fix:** move the three cold-start publishes onto the existing
-`sign_active_nonblocking` / `PendingSign` settlement path, preserving explicit
-cold-start relay targets and D6 toast surfaces for "no cold-start relay".
-
 ### V-55 · `LocalKeySigner` cannot zero all `nostr::Keys` secret copies [MEDIUM · upstream-blocked]
 
 **Verified:** `crates/nmp-signers/src/signers/local.rs:35-46` documents that
@@ -559,27 +539,46 @@ debug/diagnostics-only channel.
 ### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
 
 **ADR-0040 ratified (Accepted 2026-05-31, `docs/decisions/0040-capability-worker-seam.md`).** Off-actor
-architecture (V-54 + V-90 as one cluster): three precedented primitives, no ad-hoc
-copies — (A) **PendingSign** park/poll/settle for signing (V-54); (B) **worker-thread
-re-entry** for one-shot off-actor I/O (Site 1, shipped); (C) a
-**serialized capability worker thread** (dedicated thread draining a queue via blocking
-`recv` — never a poll) for ordered native capability I/O (Site 2, pending PR 3).
+architecture — two real in-actor blocking sites: (A) **worker-thread re-entry**
+for one-shot off-actor I/O (Site 1, DM `op.wait`, **shipped** via
+`fix/v90-site1-dm-offactor`); (B) a **serialized capability worker thread**
+(dedicated thread draining a queue via blocking `recv` — never a poll) for
+ordered native capability I/O (Site 2, pending PR). *(Site 3 / V-54 cold-start
+signs were originally bundled here but were found to be a misdiagnosis and
+withdrawn — `create_account` runs with a local key active, so its signs never
+reach `.wait()`; see ADR-0040's corrected site-3 note. V-54 deleted.)*
 
-Remaining D8 violations (Site 1 shipped via `fix/v90-site1-dm-offactor`):
+Remaining D8 violation — **Site 2** (Site 1 shipped):
 
 1. `crates/nmp-ffi/src/capability.rs:56` (`nmp_app_dispatch_capability`), invoked
    in-actor via `self.dispatch_capability(&req)` at
    `crates/nmp-ffi/src/lib.rs:1524,1541` [#613] — the registered platform
    capability callback runs synchronously on the actor thread; iOS Keychain
-   blocks hundreds of ms. **Site 2** — needs serialized capability-worker thread
-   (ADR-0040 §3, PR 3). Per-op spawn rejected (account-switch forget/persist
+   blocks hundreds of ms. Needs serialized capability-worker thread
+   (ADR-0040 §3). Per-op spawn rejected (account-switch forget/persist
    would race).
 
-**Note:** Related to V-54 (NIP-46 onboarding blocks the actor thread, at
-`identity.rs:826,864,1019`). V-90 covers Site 2 (capability) in addition to V-54.
-
-**Correct fix for remaining site:** Serialized capability-worker thread as specified
+**Correct fix:** Serialized capability-worker thread as specified
 in ADR-0040 §3; `ActorCommand::CapabilityResultReady` re-entry with account-id check.
+
+### V-106 · Actor thread retains a *callable* blocking-sign primitive [LOW · D8-hardening]
+
+**Verified:** the blocking `sign_active` (`crates/nmp-core/src/actor/commands/identity.rs:693`,
+does `.wait(REMOTE_SIGN_TIMEOUT)` when `active_remote()` is `Some`) still has 3
+production call sites — all inside `create_account`/`publish_initial_follows`
+(925/963/1118). They are safe *today* only because `create_account` activates a
+local key first (enforced by `debug_assert!(active_remote().is_none())`), so the
+`.wait()` branch is never reached. But the blocking primitive remains callable
+from actor-thread code: a future caller that signs while a bunker is active
+would silently re-introduce an actor freeze.
+
+**Correct fix (separate refactor, its own blast radius — NOT bundled with V-90):**
+make it structurally impossible for the actor thread to block on signing — either
+delete `sign_active` and route its 3 callers through `sign_active_nonblocking`
+(then the park arms become live, not dead), or `#[cfg(test)]`-gate `sign_active`
+(only tests at 295/581/877 use the blocking form) so production actor code
+physically cannot call it. Pick after measuring whether the nonblocking
+conversion of `create_account` is worth the park-arm complexity.
 
 ### V-91 · Android nativeNextUpdate blocks calling thread 250ms per poll [MEDIUM · P2/P3 · issue #614]
 

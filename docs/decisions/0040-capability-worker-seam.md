@@ -3,9 +3,21 @@
 - **Status:** Accepted (2026-05-31) — implementation begun (Site 1 / DM off-actor, `fix/v90-site1-dm-offactor`)
 - **Relates to:**
   - **Resolves V-90** (actor thread blocking during remote-signer operations,
-    HIGH · D8 violation · GH #612 #613).
-  - **Resolves V-54** (NIP-46 onboarding still blocks the actor thread —
-    `identity.rs:825,863,1018` cold-start signs; GH #611).
+    HIGH · D8 violation · GH #612 #613) — via Site 1 (DM `op.wait`, shipped)
+    and Site 2 (capability-worker seam, pending).
+  - **~~Resolves V-54~~ — CORRECTED 2026-05-31: Site 3 was a MISDIAGNOSIS.**
+    V-54 claimed `identity.rs` cold-start signs block the actor on a bunker.
+    They do not: `create_account` unconditionally activates a freshly-generated
+    **local** key (identity.rs:893-894) *before* the three signs (925/963/1118),
+    so `active_remote()` is provably `None` at every sign site (no active-flip
+    between `Keys::generate()` and the signs, verified inside the function) and
+    `sign_active` takes the synchronous local branch — it never reaches
+    `.wait(REMOTE_SIGN_TIMEOUT)`. A bunker user's *real* onboarding publishes go
+    through `publish_unsigned_event` (publish.rs:128), which already uses
+    `sign_active_nonblocking` + `PendingSign`. There is no cold-start-on-bunker
+    freeze. V-54 is closed as a non-bug; the 3 sites carry a
+    `debug_assert!(active_remote().is_none())` to *enforce* the local-key
+    invariant. See PR #866 (closed) for the rejected park-arm approach.
   - **ADR-0024** (async capability protocol) — that ADR proposed a two-phase
     `CapabilityResultReady` re-entry but was never implemented and only ever
     scoped the *HTTP* capability. This ADR supersedes its mechanism for the
@@ -27,10 +39,11 @@
     precisely because actor stalls are observable; this ADR removes two of the
     stalls it was built to detect.
 - **Scope:** the two confirmed-live in-actor blocking sites (NIP-17 DM
-  gift-wrap `op.wait`; the synchronous-native capability dispatch) plus the
-  V-54 cold-start signs. It ratifies **one new primitive** — the serialized
-  capability-worker thread — and confirms that the other two paths reuse
-  *existing* precedented mechanisms (`PendingSign`; the nmp-nip57 lnurl worker).
+  gift-wrap `op.wait`; the synchronous-native capability dispatch). It ratifies
+  **one new primitive** — the serialized capability-worker thread — and confirms
+  that Site 1 reuses an *existing* precedented mechanism (the nmp-nip57 lnurl
+  worker). (Site 3 / V-54 cold-start signs were originally bundled here but were
+  found to be a misdiagnosis — see the corrected V-54 note above.)
   Out of scope: the HTTP/LNURL capability (already non-blocking via the lnurl
   worker), Android `nativeNextUpdate` polling (V-91), and any change to the
   `bunker_hook` handshake transport.
@@ -95,13 +108,24 @@ persist/forget/switch. ADR-0023 explicitly scoped this synchronous socket as an
 MVP that "blocks the actor thread — a deliberate, documented" choice; this ADR
 retires that sanction for the in-actor sites. **Confirmed live.**
 
-### Blocking site 3 — cold-start onboarding signs [V-54]
+### ~~Blocking site 3 — cold-start onboarding signs [V-54]~~ — NOT A BLOCKING SITE (corrected 2026-05-31)
 
-`crates/nmp-core/src/actor/commands/identity.rs:825,863,1018` publish the
+`crates/nmp-core/src/actor/commands/identity.rs:925,963,1118` publish the
 initial kind:0 metadata, kind:10002 relay list, and kind:3 follows during
-`create_account` via the synchronous `sign_active` path
-(`REMOTE_SIGN_TIMEOUT`, 5 s). For a bunker account each of the three is a
-blocking actor stall during onboarding. This is in V-90's cluster as V-54.
+`create_account` via `sign_active`. This was **originally flagged** as a
+blocking stall on a bunker account — but that was wrong. `sign_active` only
+blocks (`.wait(REMOTE_SIGN_TIMEOUT)`) when `active_remote()` is `Some`, and
+`create_account` activates a freshly-generated **local** key (893-894) before
+these signs and never flips `active` to a remote signer in between (verified
+inside the function). So `active_remote()` is always `None` here and
+`sign_active` takes the synchronous local branch — there is no actor stall.
+The bunker user's later publishes go through `publish_unsigned_event`
+(publish.rs:128), already on `sign_active_nonblocking` + `PendingSign`.
+Resolution: close V-54 as a non-bug and add
+`debug_assert!(active_remote().is_none())` at the 3 sites to enforce the
+invariant. (The "actor thread has zero *callable* blocking-sign paths"
+hardening — delete/`cfg(test)`-gate the blocking `sign_active` so it can never
+be re-introduced on the actor thread — is a separate D8 item, not this ADR.)
 
 ### Why this is one ADR
 
@@ -161,10 +185,11 @@ hence this ADR.
 
 ## Options considered
 
-### Site 1 (DM `op.wait`) and Site 3 (cold-start signs) — settled by reuse
+### Site 1 (DM `op.wait`) — settled by reuse (and Site 3, withdrawn)
 
-These two are **not** new design and are recorded here only to fix their
-mechanism by reference:
+Site 1 is **not** new design and is recorded here only to fix its mechanism by
+reference. Site 3 was withdrawn (misdiagnosis — see above); its former
+`PendingSign` plan is struck through below.
 
 - **Site 1 → worker-thread re-entry, reusing the nmp-nip57 lnurl pattern.**
   `gift_wrap_with_signer` already returns `SignerOp::Pending(rx)` and spawns
@@ -180,11 +205,11 @@ mechanism by reference:
   `PublishSignedEvent`, which carries a fully-signed, self-contained kind:1059
   envelope bound to no mutable account slot — applying it after an account
   switch publishes an already-built envelope, it cannot corrupt account state.
-- **Site 3 → `PendingSign` park/poll/settle.** The three cold-start signs move
-  from `sign_active` to the existing `sign_active_nonblocking` /
-  `PendingSign` settlement path (`PublishTarget::Explicit` cold-start relays
-  preserved, D6 "no cold-start relay" toast preserved). Verbatim reuse of the
-  V-54 mechanism that already ships for normal publishes.
+- **~~Site 3 → `PendingSign` park/poll/settle.~~** WITHDRAWN — the three
+  cold-start signs run with a local key active (see corrected site-3 note), so
+  they never block; converting them to `PendingSign` would only add unreachable
+  park arms (rejected in PR #866). No change to `create_account` beyond the
+  enforcing `debug_assert`.
 
 The remainder of this section weighs the genuinely-new piece: **Site 2, the
 synchronous-native capability seam.**
