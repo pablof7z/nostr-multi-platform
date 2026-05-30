@@ -29,6 +29,21 @@
 //! authored by anyone else (e.g. social-graph contacts surfaced by the WOT
 //! bootstrap) are dropped so we never suppress based on a stranger's mute list.
 //!
+//! # Account-switch safety — read-time owner gate
+//!
+//! The `MuteSet` stores an `owner_pubkey` alongside the muted entries — the
+//! hex pubkey of the account whose kind:10000 populated the set. The
+//! `SuppressionLookup` read path (`is_suppressed_author`, `is_suppressed_event`)
+//! re-reads the live `active_pubkey` slot and **compares it against
+//! `owner_pubkey`**. If they differ (account was switched between the write and
+//! the read), the stale set is invisible and the methods return `false`.
+//!
+//! This mirrors the pattern used by `FollowListProjection` (nmp-nip02): gate
+//! reads on the live active slot rather than on an explicit clear call. The
+//! kernel writes the slot on every account switch, so no additional wiring at
+//! the composition root is required — the fix is self-contained and
+//! unconditionally correct in production.
+//!
 //! # Standing subscription
 //!
 //! The WOT bootstrap interest pushed by `nmp-wot` includes kind:10000 in its
@@ -67,9 +82,17 @@ pub struct MuteListSnapshot {
     pub muted_event_ids: Vec<String>,
 }
 
-/// Inner mutable state — the active account's muted pubkeys and event ids.
+/// Inner mutable state — the active account's muted pubkeys and event ids,
+/// stamped with the pubkey of the account that produced the set.
+///
+/// The `owner_pubkey` is compared against the live `active_pubkey` slot on
+/// every read: if they differ the set is treated as empty (account-switch
+/// safety — see module doc).
 #[derive(Default)]
 struct MuteSet {
+    /// Hex pubkey of the account whose kind:10000 populated this set.
+    /// `None` means the set has never been populated (initial state).
+    owner_pubkey: Option<String>,
     pubkeys: HashSet<String>,
     event_ids: HashSet<String>,
 }
@@ -115,11 +138,25 @@ impl MuteListProjection {
     }
 
     /// Build a typed snapshot.
+    ///
+    /// Returns the active account's muted pubkeys and event ids. Returns an
+    /// empty snapshot when no active account, no kind:10000 has arrived yet,
+    /// or the stored set belongs to a different (stale) account (D6).
     #[must_use]
     pub fn snapshot(&self) -> MuteListSnapshot {
+        let active = match self.active_pubkey.lock() {
+            Ok(guard) => guard.as_ref().cloned(),
+            Err(_) => return MuteListSnapshot::default(),
+        };
         let Ok(mute_set) = self.mute_set.lock() else {
             return MuteListSnapshot::default();
         };
+        // Owner gate: only return data when the set belongs to the current
+        // active account. On account switch the set is stale until the new
+        // account's kind:10000 arrives and overwrites it.
+        if mute_set.owner_pubkey.as_deref() != active.as_deref() {
+            return MuteListSnapshot::default();
+        }
         let mut muted_pubkeys: Vec<String> = mute_set.pubkeys.iter().cloned().collect();
         let mut muted_event_ids: Vec<String> = mute_set.event_ids.iter().cloned().collect();
         muted_pubkeys.sort_unstable();
@@ -209,26 +246,61 @@ impl KernelEventObserver for MuteListProjection {
         };
         // Full replacement on every kind:10000 event — the NIP-51 replaceable
         // model means the newest event is the complete canonical list.
-        *mute_set = MuteSet { pubkeys, event_ids };
+        // Store `owner_pubkey` so the read path can gate against the live
+        // active slot (account-switch safety — see module doc).
+        *mute_set = MuteSet {
+            owner_pubkey: Some(event.author.clone()),
+            pubkeys,
+            event_ids,
+        };
     }
 }
 
 impl SuppressionLookup for MuteListProjection {
     /// Returns `true` if `author_pubkey` is in the active account's mute set.
-    /// Fails open (returns `false`) on a poisoned mutex (D6).
+    ///
+    /// Reads the live `active_pubkey` slot and compares it against the set's
+    /// `owner_pubkey`. If they differ (e.g. after an account switch before the
+    /// new account's kind:10000 arrives) returns `false` — the stale set from
+    /// the prior account is invisible. Fails open (returns `false`) on a
+    /// poisoned mutex (D6).
     fn is_suppressed_author(&self, author_pubkey: &str) -> bool {
+        let active = match self.active_pubkey.lock() {
+            Ok(guard) => guard.as_ref().cloned(),
+            Err(_) => return false,
+        };
+        let active = match active {
+            Some(pk) => pk,
+            None => return false,
+        };
         self.mute_set
             .lock()
-            .map(|g| g.pubkeys.contains(author_pubkey))
+            .map(|g| {
+                g.owner_pubkey.as_deref() == Some(active.as_str())
+                    && g.pubkeys.contains(author_pubkey)
+            })
             .unwrap_or(false)
     }
 
     /// Returns `true` if `event_id` is in the active account's mute set.
+    ///
+    /// Applies the same read-time owner gate as [`Self::is_suppressed_author`].
     /// Fails open (returns `false`) on a poisoned mutex (D6).
     fn is_suppressed_event(&self, event_id: &str) -> bool {
+        let active = match self.active_pubkey.lock() {
+            Ok(guard) => guard.as_ref().cloned(),
+            Err(_) => return false,
+        };
+        let active = match active {
+            Some(pk) => pk,
+            None => return false,
+        };
         self.mute_set
             .lock()
-            .map(|g| g.event_ids.contains(event_id))
+            .map(|g| {
+                g.owner_pubkey.as_deref() == Some(active.as_str())
+                    && g.event_ids.contains(event_id)
+            })
             .unwrap_or(false)
     }
 }
@@ -344,21 +416,46 @@ mod tests {
         assert_eq!(snap.muted_event_ids, vec![EID_A]);
     }
 
+    /// Verifies the real account-switch property: after switching from Alice to
+    /// Carol, Alice's stale mutes must not suppress content even if Carol has
+    /// never published a kind:10000. The previous version of this test masked
+    /// the bug by immediately sending Carol's kind:10000 (which emptied the set
+    /// via the write path). This version sends NO kind:10000 for Carol.
+    ///
+    /// Without Fix 2 this test fails: `is_suppressed_author(BOB)` returns
+    /// `true` because the stale `MuteSet` from Alice's kind:10000 is still in
+    /// memory. With Fix 2 (read-time owner gate) it passes: the read path
+    /// compares `active_pubkey` (Carol) against `owner_pubkey` (Alice), finds
+    /// them different, and returns `false`.
     #[test]
     fn account_switch_clears_previous_mute_set() {
         let slot = Arc::new(Mutex::new(Some(ALICE.to_string())));
         let proj = MuteListProjection::new(Arc::clone(&slot));
+
+        // Alice mutes Bob.
         proj.on_kernel_event(&mute_event(ALICE, &[BOB], &[]));
-        assert!(proj.is_suppressed_author(BOB));
+        assert!(
+            proj.is_suppressed_author(BOB),
+            "Bob should be suppressed while Alice is active"
+        );
 
         // Account switch: FFI rewrites the active slot to Carol.
+        // Carol has never published a kind:10000 — no event arrives.
         *slot.lock().unwrap() = Some(CAROL.to_string());
 
-        // Carol's kind:10000 arrives — must NOT include Bob.
-        proj.on_kernel_event(&mute_event(CAROL, &[], &[]));
+        // The real property: Carol's session must start with an empty mute set.
+        // Alice's stale mutes must NOT suppress Bob in Carol's session.
         assert!(
             !proj.is_suppressed_author(BOB),
-            "after switch, Alice's mute list must not suppress Bob"
+            "after switch to Carol (who has no kind:10000), Alice's stale mutes \
+             must not suppress Bob — stale owner gate must prevent this"
+        );
+
+        // Logout (slot → None) must also suppress nothing.
+        *slot.lock().unwrap() = None;
+        assert!(
+            !proj.is_suppressed_author(BOB),
+            "after logout, nobody's mutes should be active"
         );
     }
 
