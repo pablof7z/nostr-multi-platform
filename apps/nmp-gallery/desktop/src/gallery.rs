@@ -155,18 +155,26 @@ pub fn update(app: &mut GalleryApp, message: Message) {
     match message {
         Message::Snapshot(snap) => {
             // 1. Update profiles and embed host from the kernel snapshot.
+            //    The embed host rebuilds its envelope map; we deliberately
+            //    ignore its `authors_needing_profile` return value now.
+            //    Embed-author kind:0 claiming is component-owned (iOS #833):
+            //    each embed renderer that shows an author byline claims that
+            //    author itself via `claim_and_resolve_author` at render time.
+            //    The central pre-warm loop that claimed EVERY embed author on
+            //    EVERY snapshot tick (regardless of whether it was being
+            //    displayed) is gone — that was a component-owned-reactivity
+            //    violation. NO event triggers a reactive kernel kind:0 fetch;
+            //    fetching kind:0 is the presentation layer's concern, owned by
+            //    the component that displays the author.
             app.profiles.update_from_snapshot(&snap);
-            let embed_authors = app.embed_host.update_from_snapshot(&snap);
+            let _ = app.embed_host.update_from_snapshot(&snap);
 
-            // 2. Claim profiles for any newly discovered embed authors.
-            for pk in &embed_authors {
-                app.bridge.claim_profile(pk, CONSUMER_ID);
-            }
-
-            // 3. Claim the primary pubkey so the kind:0 fetch proceeds.
+            // 2. Claim the primary pubkey so the kind:0 fetch proceeds. This
+            //    is the app's own identity bootstrap for the user-* showcase
+            //    components — a separate path from embed author bylines.
             app.bridge.claim_profile(primary_pubkey(), CONSUMER_ID);
 
-            // 4. Claim embed event refs from the four showcase content trees.
+            // 3. Claim embed event refs from the four showcase content trees.
             claim_tree_refs(&app.bridge, &app.data.embed_article.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_profile.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_note.tree.nodes);
@@ -174,14 +182,14 @@ pub fn update(app: &mut GalleryApp, message: Message) {
 
             app.last_rev += 1;
 
-            // 5. Check if a background avatar fetch completed. Create the Handle
+            // 4. Check if a background avatar fetch completed. Create the Handle
             //    exactly once here — never in view() — so the same Handle ID is
             //    passed to iced every frame and the GPU texture is not re-uploaded.
             if let Some(bytes) = app.avatar_pending.lock().ok().and_then(|mut s| s.take()) {
                 app.avatar_handle = Some(ImageHandle::from_bytes(bytes));
             }
 
-            // 6. Start fetching the primary pubkey's picture_url if it changed.
+            // 5. Start fetching the primary pubkey's picture_url if it changed.
             let primary = app.profiles.resolve(primary_pubkey());
             if let Some(url) = primary.picture_url {
                 if app.avatar_url_fetching.as_deref() != Some(&url) {
@@ -440,7 +448,13 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
             &app.embed_host,
             |proj| {
                 if let EmbedKindProjection::Article(a) = proj {
-                    Some(ArticleCard::new(a).into_element())
+                    // Component-owned claiming (iOS #833): the byline renders
+                    // from a profile this component claims, not from the
+                    // projection's static author_display_name. Claim the
+                    // author's kind:0 and resolve its name; the next snapshot
+                    // tick fills it in (npub_short until then).
+                    let author_name = claim_and_resolve_author(app, &a.author_pubkey);
+                    Some(ArticleCard::new(a, author_name).into_element())
                 } else {
                     None
                 }
@@ -466,19 +480,27 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
         ),
         "embed-note" => render_embed(&app.data.embed_note.tree.nodes, &app.embed_host, |proj| {
             if let EmbedKindProjection::ShortNote(n) = proj {
+                // Component-owned claiming (iOS #833): resolve the byline from a
+                // profile this renderer claims, not from the projection's
+                // static author_display_name. Falls back to npub_short until
+                // the claimed kind:0 lands on a later snapshot tick.
+                let author_name = claim_and_resolve_author(app, &n.author_pubkey);
                 Some(
                     column![
-                        text(n.author_display_name.as_deref().unwrap_or("Unknown"))
+                        text(author_name)
                             .size(13)
                             .font(iced::Font {
                                 weight: iced::font::Weight::Bold,
                                 ..iced::Font::default()
                             }),
-                        text(format!("kind:1 · {}", &n.author_pubkey[..12]))
-                            .size(12)
-                            .style(|_| text::Style {
-                                color: Some(INACTIVE_TEXT)
-                            }),
+                        text(format!(
+                            "kind:1 · {}",
+                            &n.author_pubkey[..12.min(n.author_pubkey.len())]
+                        ))
+                        .size(12)
+                        .style(|_| text::Style {
+                            color: Some(INACTIVE_TEXT)
+                        }),
                     ]
                     .spacing(4)
                     .into(),
@@ -508,6 +530,27 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
 
         _ => text("Unknown component").into(),
     }
+}
+
+/// Component-owned author resolution (mirrors iOS #833).
+///
+/// When a renderer needs to display an author byline it calls this: the
+/// *displaying* component claims that author's kind:0 (presentation-owned
+/// claiming — the kernel is never asked to fetch kind:0 reactively on its own)
+/// and reads the resolved name back from the live `LiveProfileMap` via
+/// `ProfileWire::display()`, the canonical precedence shared by every host
+/// (real display name, else truncated npub — never a fabricated name, never the
+/// projection's static `author_display_name` field).
+///
+/// Claiming here is idempotent (deduped per `(pubkey, consumer_id)` in the
+/// kernel) and re-issued on every render of an author byline, matching the
+/// existing claim-every-tick discipline so claims stick once a relay connects.
+fn claim_and_resolve_author(app: &GalleryApp, author_pubkey: &str) -> String {
+    if author_pubkey.is_empty() {
+        return String::new();
+    }
+    app.bridge.claim_profile(author_pubkey, CONSUMER_ID);
+    app.profiles.resolve(author_pubkey).display().to_string()
 }
 
 /// Render an embed showcase: find the first EventRef in `nodes`, look it up

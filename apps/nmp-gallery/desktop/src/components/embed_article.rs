@@ -11,24 +11,37 @@ const BORDER_COLOR: Color = Color { r: 0.278, g: 0.333, b: 0.404, a: 1.0 };
 ///
 /// Shows title, author · date · N min read byline, and summary. No image
 /// loading for now — hero image is a follow-on.
+///
+/// Component-owned claiming (mirrors iOS #833): the byline renders from an
+/// `author_name` the *displaying* renderer resolved from a profile it claimed
+/// (presentation-owned claiming), NOT from the projection's static
+/// `author_display_name` field. The render path in `gallery.rs` claims the
+/// article author's kind:0 and resolves it through `LiveProfileMap` before
+/// constructing this card. The kernel still emits `author_display_name` for
+/// now, but this component no longer depends on it for display.
 pub struct ArticleCard<'a> {
     article: &'a ArticleProjection,
+    /// Presentation-resolved author label: the displaying renderer's
+    /// `ProfileWire::display()` (real display name, or npub_short fallback).
+    author_name: String,
 }
 
 impl<'a> ArticleCard<'a> {
+    /// Build a card from the article projection plus the author label the
+    /// displaying renderer resolved from its own profile claim.
     #[must_use]
-    pub fn new(article: &'a ArticleProjection) -> Self {
-        Self { article }
+    pub fn new(article: &'a ArticleProjection, author_name: impl Into<String>) -> Self {
+        Self {
+            article,
+            author_name: author_name.into(),
+        }
     }
 
     pub fn into_element<Message: 'static>(self) -> Element<'a, Message> {
         let a = self.article;
 
         let title = a.title.as_deref().unwrap_or("Untitled article");
-        let author = a
-            .author_display_name
-            .as_deref()
-            .unwrap_or_else(|| &a.author_pubkey[..8.min(a.author_pubkey.len())]);
+        let author = self.author_name;
         let date = format_short_date(a.created_at);
 
         let summary_src = a.summary.as_deref().unwrap_or_default();
