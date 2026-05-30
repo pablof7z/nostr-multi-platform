@@ -14,6 +14,9 @@ import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/Nostr
 // inline in the kind registry, identical to the content-kind-* TUI components.
 import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_registry.rs?raw";
 
+// Embeds & Kinds — Desktop (iced)
+import desktopArticleCardRust from "../vendor/desktop/embed-article/embed_article.rs?raw";
+
 export const embedComponents: Component[] = [
   {
     slug: "embed-article",
@@ -67,6 +70,22 @@ export const embedComponents: Component[] = [
         customization: [
           "Replace `DefaultArticleRenderer` by registering your own `KindRenderer` for `ArticleProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "Author byline pulls `author_display_name` straight from `ArticleProjection`; the Rust kernel resolves kind:0 enrichment before the snapshot reaches the TUI.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/embed-article",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`ArticleCard::new(&ArticleProjection, author_name)` is the iced kind:30023 card. It renders the article title (bold), a byline (red dot + presentation-resolved author label + short date), and a summary snippet (first 300 chars), wrapped in a rounded bordered container. The byline uses an author label the displaying renderer resolved from a profile it claimed (component-owned claiming, mirroring iOS #833), not the projection's static `author_display_name`. Note: this card does NOT load the hero image yet — the `image` tag is rendered on iOS/Compose but the iced surface only shows title + byline + summary, with hero loading documented as a follow-on in `embed_article.rs`.",
+        files: [
+          { source: "desktop/embed-article/embed_article.rs", target: "src/components/nostr_content/embed_article.rs", role: "source", content: desktopArticleCardRust },
+        ],
+        screenshots: ["embed-article-desktop-preview.png"],
+        customization: [
+          "The author label is passed in by the caller (`ArticleCard::new(article, author_name)`), so the host owns profile claiming and resolution; the card stays purely declarative.",
+          "Hero image loading is a documented follow-on — add an `iced::widget::image` row above the title once the host decodes the article `image` tag into a `Handle`.",
         ],
       },
     },
