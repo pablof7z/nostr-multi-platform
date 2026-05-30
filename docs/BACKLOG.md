@@ -45,67 +45,31 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-57 · 2026-05-26 architecture audit follow-up queue [HIGH · priority tracker]
+### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · cleanup]
 
-**ARCH ASSESSMENT CLOSED 2026-05-27.** Codex confirmed **ARCHITECTURE IS IN VERY GOOD STANDING** (all 6 checks passed) against master commit `7213d7ba` (PR #656). Two additional P1 violations found by the assessment were fixed and merged: D0 — `swap_nip17_dm_inbox_observer` renamed to `swap_dm_inbox_observer` in `AppHost` substrate trait (PR #654); D6 — `display::short_npub` removed from `publish_outbox` kernel projection (PR #655). P2–P6 items below remain as ongoing debt tracked here.
+Kind-constant centralisation is partially done (`nmp-kinds` Layer-0 crate exists; seven
+constants migrated; `nmp-core::kinds` and `nmp-nip59::kinds` are now re-exports). The
+following duplicates are still crate-local and must be migrated when each NIP crate is
+next refactored:
 
-**Scope:** this is the canonical roll-up for the six-agent architecture audit run on
-2026-05-26. PR #578 removes the duplicate planning/status authorities; the remaining
-findings below are ordered by architectural risk. When a slice gets a dedicated V/PD entry
-or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
+- `nmp-nip57` — `KIND_ZAP_REQUEST` / `KIND_ZAP_RECEIPT`
+- `nmp-nip17` — `KIND_DM_RELAY_LIST`
+- `nmp-nip51` — `KIND_MUTE_LIST`
+- `nmp-router` — `KIND_BLOCKED_RELAYS`
+- `nmp-nip17/src/inbox.rs:75` — `KIND_CHAT_MESSAGE` (u16, used against `rumor.kind.as_u16()`; needs cast, separate change)
+- `nmp-nip29` — `KIND_CHAT_MESSAGE = 9` (distinct semantic from registry `= 14`; stays crate-local unless semantics are unified)
 
-**Priority order:**
-2. ~~**P2 — centralise Nostr kind constants.**~~ **DONE — 2026-05-30 (V-57 P2 gift-wrap cycle closed).**
+**Open items from the 2026-05-26 audit that remain:**
 
-   **Stage 1 — DONE.** `crates/nmp-core/src/kinds.rs` established the canonical
-   workspace registry; no production `nmp-core` code path holds a hand-rolled
-   `1059` / `10002` literal.
-
-   **Stage 2 — nmp-router DONE (2026-05-30).** `nmp-router` imports
-   `nmp_core::kinds::KIND_RELAY_LIST`; no hand-rolled `10002` literals in
-   production code.
-
-   **Stage 2 — nmp-nip59 / gift-wrap DONE (2026-05-30).** Owner decision:
-   option (c) — create `crates/nmp-kinds/`, a zero-dependency Layer-0 crate
-   (same pattern as `nmp-nip42-types`) holding the seven canonical integer
-   constants. `nmp-core::kinds` is now `pub use nmp_kinds::*` (all existing
-   `nmp_core::kinds::KIND_*` call sites unchanged). `nmp-nip59::kinds` is now
-   `pub use nmp_kinds::KIND_GIFT_WRAP` (no cycle: `nmp-kinds` has zero workspace
-   deps). `nmp-marmot` and `nmp-nip17` duplicate `KIND_GIFT_WRAP` / `KIND_CHAT_MESSAGE`
-   also eliminated. `nmp-nip02` and `nmp-wot` `KIND_CONTACT_LIST`/`KIND_RELAY_LIST`
-   duplicates eliminated. `cargo build --workspace` succeeds; 42/42 doctrine lint
-   smoke tests pass.
-
-   **Deferred (non-blocking, post-v1):** `nmp-nip57` `KIND_ZAP_REQUEST`/`KIND_ZAP_RECEIPT`
-   and `nmp-nip17` `KIND_DM_RELAY_LIST` are NIP-specific integers not yet in the
-   registry; `nmp-nip51` `KIND_MUTE_LIST` and `nmp-router` `KIND_BLOCKED_RELAYS` likewise.
-   Add those constants to `nmp-kinds` and migrate callers when the respective NIP crates
-   are refactored. `nmp-nip29`'s `KIND_CHAT_MESSAGE = 9` stays crate-local (different
-   semantics from the registry `KIND_CHAT_MESSAGE = 14`).
-
-   **Future:** if `nmp-proto` (Layer-0 planned crate) lands, it can re-export or
-   absorb `nmp-kinds` — that migration is orthogonal. `nmp-kinds` is the permanent
-   Layer-0 home until then.
-3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
-   ~~`apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses in the
-   TUI~~: **FIXED** — now routes through `runtime.zap()`. ~~`apps/chirp/chirp-tui/src/runtime_commands.rs:249-269`
-   bypasses the action door for Marmot~~: **ACCEPTABLE** — `marmot_register_active` is
-   identity setup, not a reactive dispatch bypass.
-   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` **CURRENT:** dispatches two
-   protocol publishes while tracking only one correlation id. **Next step:** expose a
-   composite Rust action / action-stage projection for the relay-settings publish.
-4. ~~**P4 — make wasm use the same snapshot and error contract as native.**~~
-   **DONE (2026-05-29 audit):** all 5 cited TODO markers resolved. Wasm is
-   post-v1 per user direction 2026-05-29.
-5. ~~**P5 — close native update-loop and envelope discipline gaps.**~~
-   **DONE (2026-05-29 audit):** Gallery polling now properly handles disconnect
-   (`IllegalStateException` pattern); the `recv_timeout` two-arm pattern on the
-   Rust side is correct.
-6. **P6 — strengthen enforcement so these regressions trip earlier.**
-   V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
-   dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
-   lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
-   plus explicit allowlists for sanctioned adapter crates.
+- **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
+  `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two
+  protocol publishes while tracking only one correlation id. **Next step:** expose a
+  composite Rust action / action-stage projection for the relay-settings publish.
+- **P6 — strengthen enforcement so these regressions trip earlier.**
+  V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
+  dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
+  lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
+  plus explicit allowlists for sanctioned adapter crates.
 
 ### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1+2-thread DONE, Stage 2-author+Stage 3 OPEN]
 
