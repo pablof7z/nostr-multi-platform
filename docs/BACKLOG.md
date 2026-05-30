@@ -1423,17 +1423,14 @@ This is the real coverage narrowing mechanism that shipped after nmp-nip77 delet
 All 6/6 live tests pass: `cargo test -p nmp-testing --test e2e_full_pipeline` +
 doctrine_lint_smoke green.
 
-### V-105 · Test infra: `wait_for_snapshot_predicate` uses untyped substring scanning [LOW · test hygiene · issue #630]
+### ~~V-105 · Test infra: `wait_for_snapshot_predicate` uses untyped substring scanning~~ [DONE — 2026-05-30]
 
-**Verified:** `crates/nmp-testing/tests/nip46_bunker_signing.rs:191` (and `:229,
-:237`) probe snapshot JSON blobs with `frame.contains("\"signer_kind\":\"nip46\"")`
-because no typed "signer registered" observable exists; and
-`crates/nmp-testing/tests/publish_unsigned_event.rs:146-149` runs a ~300 ms blind
-`recv_timeout` drain loop to "ensure the Start completes". **Confirmed live.**
-
-**Correct fix:** (1) Add an `ActorEvent::SignerRegistered` variant or a signer-state
-field in `UpdateEnvelope` so tests can use a typed `recv()`. (2) Add an
-`ActorCommand::Barrier` equivalent to replace the drain loop.
+**Fixed:** Added `ActorCommand::Barrier { ack: SyncSender<()> }` (test-support only)
+to `nmp-core/src/actor/mod.rs` + dispatch arm in `dispatch.rs`. Added typed snapshot
+helpers `wait_barrier`, `snapshot_projection_str`, `snapshot_projection`, and
+`snapshot_last_error_toast` to `nmp_core::testing`. Rewrote both integration tests to
+use typed JSON field navigation (no substring scanning) and `Barrier` in place of the
+blind drain loop. All substring `.contains()` probes replaced. PR: test/v105-typed-observables.
 
 ---
 

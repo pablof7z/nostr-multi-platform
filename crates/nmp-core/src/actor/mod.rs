@@ -756,6 +756,23 @@ pub enum ActorCommand {
     /// Detach one owner from a logical interest registered through
     /// [`EnsureInterest`](Self::EnsureInterest).
     DropInterestOwner(crate::subs::SubIdentity),
+    /// Test-support synchronisation primitive (V-105). When the actor dequeues
+    /// this command it sends `()` on the `ack` channel, proving all prior
+    /// commands have been dispatched. Tests that need to wait for the actor to
+    /// reach a known state send this after enqueuing the commands they care
+    /// about and then block on the ack receiver — deterministic, no blind
+    /// `recv_timeout` polling.
+    ///
+    /// Only compiled when `any(test, feature = "test-support")` so the variant
+    /// never appears in production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    Barrier {
+        /// One-shot ack channel. The actor sends `()` here immediately after
+        /// processing this command. The sender is `SyncSender` so it can be
+        /// `send`-ed without blocking from any thread (the actor never holds a
+        /// borrow on the channel after the `send` call).
+        ack: std::sync::mpsc::SyncSender<()>,
+    },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -451,4 +451,65 @@ pub mod testing {
             .collect();
         tx.send(ActorCommand::IngestPreVerifiedEvents(events))
     }
+
+    /// Send a [`ActorCommand::Barrier`] and block until the actor acknowledges
+    /// it (V-105). Returns `true` when the ack arrives before `timeout`, or
+    /// `false` on timeout / disconnected channel.
+    ///
+    /// Sending `Barrier` after a batch of commands and waiting for the ack is
+    /// the deterministic replacement for blind `recv_timeout` drain loops:
+    /// the ack fires only once the actor has dispatched every command that
+    /// preceded the barrier on the channel, so when `wait_barrier` returns
+    /// `true` the actor's state reflects all prior commands.
+    pub fn wait_barrier(
+        tx: &mpsc::Sender<ActorCommand>,
+        timeout: std::time::Duration,
+    ) -> bool {
+        let (ack_tx, ack_rx) = mpsc::sync_channel(1);
+        if tx.send(ActorCommand::Barrier { ack: ack_tx }).is_err() {
+            return false;
+        }
+        ack_rx.recv_timeout(timeout).is_ok()
+    }
+
+    /// Walk a decoded snapshot `serde_json::Value` produced by
+    /// [`crate::decode_snapshot_payload`] and return the string value at
+    /// `projections.<projection_key>.<field_key>`, or `None` if any component
+    /// is absent.
+    ///
+    /// Replaces `snapshot.to_string().contains(...)` probes in tests with a
+    /// typed field access so tests are resilient to field reordering and
+    /// whitespace changes in the JSON serializer (V-105).
+    pub fn snapshot_projection_str<'a>(
+        snapshot: &'a serde_json::Value,
+        projection_key: &str,
+        field_key: &str,
+    ) -> Option<&'a str> {
+        snapshot
+            .get("projections")
+            .and_then(|p| p.get(projection_key))
+            .and_then(|proj| proj.get(field_key))
+            .and_then(serde_json::Value::as_str)
+    }
+
+    /// Walk a decoded snapshot and return the `projections.<projection_key>`
+    /// value directly (as a `&serde_json::Value`). Convenience accessor for
+    /// projections that serialize as arrays or nested objects.
+    pub fn snapshot_projection<'a>(
+        snapshot: &'a serde_json::Value,
+        projection_key: &str,
+    ) -> Option<&'a serde_json::Value> {
+        snapshot
+            .get("projections")
+            .and_then(|p| p.get(projection_key))
+    }
+
+    /// Return the `last_error_toast` string from a decoded snapshot, or `None`
+    /// when absent. Replaces `snapshot.to_string().contains(expected)` probes
+    /// against the toast field (V-105).
+    pub fn snapshot_last_error_toast(snapshot: &serde_json::Value) -> Option<&str> {
+        snapshot
+            .get("last_error_toast")
+            .and_then(serde_json::Value::as_str)
+    }
 }
