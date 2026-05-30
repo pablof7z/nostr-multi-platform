@@ -15,7 +15,7 @@ use nmp_content::embed_projection::EmbeddedEventEnvelope;
 
 use super::embed_chrome_container::EmbedChromeContainer;
 use super::NostrKindRegistry;
-use crate::nostr_mention_chip::NostrMentionProfileHost;
+use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 pub struct EmbeddedEvent<'a> {
     pub envelope: &'a EmbeddedEventEnvelope,

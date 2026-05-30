@@ -10,7 +10,7 @@ use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_core::display::short_npub;
 
 use super::NostrKindRegistry;
-use crate::nostr_mention_chip::NostrMentionProfileHost;
+use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 /// Resolve the author byline for an embed, component-owned (mirrors iOS #833).
 ///
