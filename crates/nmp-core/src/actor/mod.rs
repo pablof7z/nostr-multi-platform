@@ -45,6 +45,8 @@ mod relay_mgmt;
 mod relay_roles;
 #[cfg(all(test, feature = "native"))]
 mod relay_url_canonical_tests;
+#[cfg(all(test, feature = "native"))]
+mod send_gate_universal_tests;
 #[cfg(feature = "native")]
 mod session_persistence;
 #[cfg(all(test, feature = "native"))]
@@ -182,8 +184,7 @@ use crate::app::KernelAction;
 use relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
 #[cfg(feature = "native")]
 use relay_mgmt::{
-    all_relays_connected, close_relays, maybe_send_startup, route_dispatch_outbound,
-    send_all_outbound,
+    claim_send_gate, close_relays, maybe_send_startup, route_dispatch_outbound, send_all_outbound,
 };
 #[cfg(feature = "native")]
 use tick::{compute_wait, emit_now, flush_due};
@@ -1540,7 +1541,19 @@ pub fn run_actor_with_observers(
                     // Built fresh per command and dropped immediately after, so
                     // every other call site in this loop keeps using the
                     // original locals untouched (no loop-lifetime borrow).
-                    let relays_ready = all_relays_connected(&connected_relays);
+                    //
+                    // Fix A (universal latent-bug fix): `relays_ready` is the
+                    // SINGLE claim/open send-gate, computed here once per dispatch
+                    // and fed to every consumer (claim_event / claim_profile /
+                    // open_author / open_thread / open_firehose /
+                    // sign_in_nsec→retarget / session restore). `claim_send_gate`
+                    // returns true as soon as ANY bootstrap lane is connected; the
+                    // prior `all`-lane gate parked every claim forever when one
+                    // lane (e.g. the Indexer) never opened its socket. See
+                    // `relay_mgmt::claim_send_gate` for the full rationale and the
+                    // proof that hosts connecting all lanes (iOS/TUI) are
+                    // behavior-preserved.
+                    let relays_ready = claim_send_gate(&connected_relays);
                     let mut ctx = ActorContext {
                         kernel: &mut kernel,
                         identity: &mut identity,

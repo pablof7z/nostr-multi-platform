@@ -191,7 +191,19 @@ impl Kernel {
             return Vec::new();
         }
 
-        if !can_send {
+        // Fix B (universal latent-bug fix): a cold claim (`!can_send`) parks
+        // ONLY when it has no usable relay hint. When the URI carries NIP-19
+        // relay TLVs, the claim has a concrete publisher-provided relay to leave
+        // on right now — so it must fall through to the registration path
+        // below, which seeds the OneshotApi interest with those hints. The
+        // planner then compiles a REQ targeting the hint relay (empirically
+        // confirmed even with zero bootstrap relays connected and no cached
+        // mailbox — see `event_claim_tests::
+        // claim_event_parked_with_uri_hint_registers_and_targets_hint_relay`),
+        // and `send_outbound` dials that URL on demand (relay_mgmt.rs:358-389).
+        // This lets an nevent with a working hint resolve even if NO bootstrap
+        // relay is up.
+        if !can_send && uri_relay_hints.is_empty() {
             // Cold-start parking. Mirrors `ProfileRequestState.pending`:
             // the claim has already been refcounted into `event_claims`
             // (so the renderer sees the claim row immediately) but no

@@ -1,8 +1,12 @@
 // App module for the standalone NMP Gallery. Links against the prebuilt
 // `libnmp_app_gallery.so` placed in `src/main/jniLibs/<abi>/` by
-// `cargo ndk build --target arm64-v8a -p nmp-app-gallery`. There is NO
-// custom WebSocket/HTTP code in this app — all relay traffic is owned by
-// the NMP kernel via JNI.
+// `cargo ndk build --target arm64-v8a -p nmp-app-gallery --features android-ffi`.
+// The `--features android-ffi` flag is MANDATORY: the JNI shim symbols
+// (`Java_org_nmp_gallery_*`, e.g. `nativeNew`) are gated behind that feature
+// in `nmp-app-gallery`. Without it the .so links cleanly but exports ZERO JNI
+// symbols, and the APK crashes at launch with
+// `UnsatisfiedLinkError: nativeNew`. There is NO custom WebSocket/HTTP code in
+// this app — all relay traffic is owned by the NMP kernel via JNI.
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -39,7 +43,11 @@ android {
 
     // Pre-built .so files live in `src/main/jniLibs/<abi>/`. Produced by:
     //   cargo ndk -t arm64-v8a -o apps/nmp-gallery/android/app/src/main/jniLibs \
-    //       build --release -p nmp-app-gallery
+    //       build --release -p nmp-app-gallery --features android-ffi
+    // `--features android-ffi` is REQUIRED — it enables the `Java_org_nmp_gallery_*`
+    // JNI exports. Verify after building:
+    //   nm -D src/main/jniLibs/arm64-v8a/libnmp_app_gallery.so \
+    //       | grep -c Java_org_nmp_gallery   # must be 14
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 
     // Kotlin sources live in `src/main/kotlin` rather than `src/main/java`.
