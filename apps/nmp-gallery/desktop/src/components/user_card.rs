@@ -72,7 +72,9 @@ impl UserCard {
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .map(str::to_string)
+            // Elide the NIP-05 "_@" root prefix so `_@f7z.io` shows as `f7z.io`,
+            // matching the standalone Nip05Badge and the iOS/Android badge.
+            .map(|s| s.strip_prefix("_@").unwrap_or(s).to_string())
         {
             let nip05_row = row![
                 text("✓")

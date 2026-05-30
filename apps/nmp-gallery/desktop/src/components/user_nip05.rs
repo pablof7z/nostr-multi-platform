@@ -30,8 +30,15 @@ impl Nip05Badge {
     }
 
     /// Render the badge as an iced [`Element`].
+    ///
+    /// A leading `_@` (the NIP-05 "root" identifier convention) is elided so
+    /// `_@f7z.io` renders as the bare domain `f7z.io`; a normal
+    /// `name@domain` identifier renders verbatim.
     pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {
-        let nip05 = self.nip05;
+        let nip05 = self
+            .nip05
+            .strip_prefix("_@")
+            .map_or(self.nip05.clone(), str::to_string);
         row![
             text("✓").size(13).style(|_theme| iced::widget::text::Style {
                 color: Some(GREEN),
