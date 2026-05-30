@@ -129,7 +129,7 @@ fn t168_switch_active_reconciles_followfeed_to_new_account() {
     // follow-feed is live) so the `switch_active` under test moves A → second.
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, false);
+    create_account(&mut id, &mut kernel, false, &profile, &relays, false, &mut Vec::new());
     let second_id = id.active_pubkey().expect("second account active");
     switch_active(&mut id, &mut kernel, &a, false);
     let _ = kernel.drain_lifecycle_tick();

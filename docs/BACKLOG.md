@@ -423,23 +423,12 @@ green because the fixture types do not include these projection shapes).
 
 ### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX] (related: GH #611 AccountsView polling, GH #612 op.wait blocks actor)
 
-**ADR-0040 ratified (Accepted 2026-05-31) — see V-90 cluster note.** V-54's three
-cold-start signs reuse the existing PendingSign park/poll/settle path verbatim (no new
-mechanism). Bundled with V-90 in one off-actor design; ADR-0040 now ratified, Site 3
-(cold-start signs) is the next PR after Site 2.
-
-**Verified:** `crates/nmp-core/src/actor/commands/identity.rs:826`, `:864`, and
-`:1019` still call the synchronous `sign_active` path while publishing the
-initial kind:0 metadata, kind:10002 relay list, and kind:3 follows during
-`create_account`. `sign_active` is bounded by `REMOTE_SIGN_TIMEOUT` (5s), but
-a remote signer can still stall the actor during account creation.
-
-**Impact:** the non-blocking signing path exists for normal publish/react/follow
-flows, but onboarding remains a residual blocking path for bunker accounts.
-
-**Correct fix:** move the three cold-start publishes onto the existing
-`sign_active_nonblocking` / `PendingSign` settlement path, preserving explicit
-cold-start relay targets and D6 toast surfaces for "no cold-start relay".
+**DONE (Site 3 — cold-start signs).** The three blocking `sign_active` calls in
+`create_account` (kind:0 profile, kind:10002 relay list, kind:3 contacts) are replaced
+with `sign_active_nonblocking` + `PendingSign::with_target` (explicit cold-start relay
+target preserved). `prepopulate_author_relay_list` is called synchronously using
+`compute_unsigned_event_id` (event ID is signature-independent per NIP-01). V-54 fully
+closed; no residual blocking sign sites in `create_account`.
 
 ### V-55 · `LocalKeySigner` cannot zero all `nostr::Keys` secret copies [MEDIUM · upstream-blocked]
 
@@ -564,18 +553,15 @@ re-entry** for one-shot off-actor I/O (Site 1, shipped); (C) a
 **serialized capability worker thread** (dedicated thread draining a queue via blocking
 `recv` — never a poll) for ordered native capability I/O (Site 2, pending PR 3).
 
-Remaining D8 violations (Site 1 shipped via `fix/v90-site1-dm-offactor`):
+Remaining D8 violation (Sites 1 and 3 shipped):
 
 1. `crates/nmp-ffi/src/capability.rs:56` (`nmp_app_dispatch_capability`), invoked
    in-actor via `self.dispatch_capability(&req)` at
    `crates/nmp-ffi/src/lib.rs:1524,1541` [#613] — the registered platform
    capability callback runs synchronously on the actor thread; iOS Keychain
    blocks hundreds of ms. **Site 2** — needs serialized capability-worker thread
-   (ADR-0040 §3, PR 3). Per-op spawn rejected (account-switch forget/persist
+   (ADR-0040 §3, final PR). Per-op spawn rejected (account-switch forget/persist
    would race).
-
-**Note:** Related to V-54 (NIP-46 onboarding blocks the actor thread, at
-`identity.rs:826,864,1019`). V-90 covers Site 2 (capability) in addition to V-54.
 
 **Correct fix for remaining site:** Serialized capability-worker thread as specified
 in ADR-0040 §3; `ActorCommand::CapabilityResultReady` re-entry with account-id check.

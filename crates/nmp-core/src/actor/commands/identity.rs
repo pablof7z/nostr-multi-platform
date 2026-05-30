@@ -11,11 +11,13 @@ use std::time::Duration;
 
 use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::{FromBech32, ToBech32};
-use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
+use nostr::{EventBuilder, EventId, Keys, Kind, PublicKey, SecretKey, Tag, Tags, Timestamp};
 use serde::{Deserialize, Serialize};
 
+use crate::actor::pending_sign::PendingSign;
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
+use crate::publish::PublishTarget;
 use crate::relay::{canonical_relay_url, default_relay_bootstrap, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
@@ -580,6 +582,34 @@ pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedE
     })
 }
 
+/// Compute the deterministic Nostr event ID for `unsigned` **without signing
+/// it** — the ID is SHA-256 of the canonical JSON serialisation of the event
+/// fields (NIP-01 §"Event IDs"), independent of the signature.
+///
+/// Used by the cold-start `create_account` path so that `prepopulate_author_relay_list`
+/// can be called synchronously (the pubkey, created_at, kind, tags, and
+/// content are all known at build time), while the actual signing is deferred
+/// to `sign_active_nonblocking` + `PendingSign` — keeping the actor
+/// non-blocking (D8) even for NIP-46 bunker accounts.
+///
+/// Returns `None` if any tag in `unsigned.tags` fails to parse (malformed
+/// tag content), mirroring the hard-fail in `sign_with`. The caller drops the
+/// prepopulate in that case; the signed event will not materialise from the
+/// park either (the broker will reject the same malformed tag).
+fn compute_unsigned_event_id(unsigned: &UnsignedEvent) -> Option<String> {
+    let pubkey = PublicKey::from_hex(&unsigned.pubkey).ok()?;
+    let kind = Kind::from_u16(unsigned.kind as u16);
+    let created_at = Timestamp::from(unsigned.created_at);
+
+    let mut parsed_tags = Vec::with_capacity(unsigned.tags.len());
+    for t in &unsigned.tags {
+        parsed_tags.push(Tag::parse(t).ok()?);
+    }
+    let tags = Tags::from_list(parsed_tags);
+
+    Some(EventId::new(&pubkey, &created_at, &kind, &tags, &unsigned.content).to_hex())
+}
+
 /// Sign `unsigned` with the active account. Returns `Err` (as state, surfaced
 /// via toast — never panics across FFI, D6) if no active account. Remote
 /// signers are consulted first (D0: actor only sees the trait); local keys
@@ -789,6 +819,7 @@ pub(crate) fn create_account(
     profile: &HashMap<String, String>,
     relays: &[(String, String)],
     _mls: bool,
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let id = identity.add(Keys::generate());
     identity.active = Some(id.clone());
@@ -822,30 +853,57 @@ pub(crate) fn create_account(
             content: kind0_content,
             created_at: kernel.now_secs(),
         };
-        if let Ok(signed) = sign_active(identity, &unsigned_meta) {
-            // Cold-start routing (same chicken-and-egg as kind:10002 below).
-            // A brand-new account has no kind:10002 on file, so the NIP-65
-            // outbox resolver (`PublishTarget::Auto`) would resolve
-            // `NoTargets` and the publish engine would silently drop this
-            // profile metadata — nobody would ever see the new account's
-            // display name. Route the initial kind:0 to the explicit
-            // cold-start target instead.
-            let target_relays = cold_start_publish_targets(kernel, &relay_rows);
-            if target_relays.is_empty() {
-                // D6: no usable cold-start relay — surface a toast, never
-                // panic. The account still exists locally; the user can add
-                // relays and re-publish their profile from Settings.
-                kernel.set_last_error_toast(Some(
-                    "could not publish profile — no cold-start relays available".to_string(),
-                ));
-            } else {
-                publish_outbound.extend(kernel.publish_signed_to(
-                    &signed,
-                    &[],
-                    crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
-                    },
-                ));
+        // Cold-start routing: a brand-new account has no kind:10002 on file,
+        // so the NIP-65 outbox resolver (`PublishTarget::Auto`) would resolve
+        // `NoTargets` and the publish engine would silently drop this profile
+        // metadata — nobody would ever see the new account's display name.
+        // Route the initial kind:0 to the explicit cold-start target instead.
+        //
+        // D8 (non-blocking actor): use `sign_active_nonblocking` so a NIP-46
+        // bunker account does not freeze the kernel loop waiting for the
+        // remote-signer RPC. For a local nsec the op resolves immediately
+        // (`SignerOp::Ready`); for a bunker it parks as `PendingSign` and the
+        // actor's idle-tick `retain_mut` poll settles it once the broker
+        // responds — no blocking wait.
+        let target_relays = cold_start_publish_targets(kernel, &relay_rows);
+        if target_relays.is_empty() {
+            // D6: no usable cold-start relay — surface a toast, never
+            // panic. The account still exists locally; the user can add
+            // relays and re-publish their profile from Settings.
+            kernel.set_last_error_toast(Some(
+                "could not publish profile — no cold-start relays available".to_string(),
+            ));
+        } else {
+            match sign_active_nonblocking(identity, &unsigned_meta) {
+                Err(reason) => {
+                    kernel.set_last_error_toast(Some(reason));
+                }
+                Ok(mut op) => match op.poll() {
+                    Some(Ok(signed)) => {
+                        publish_outbound.extend(kernel.publish_signed_to(
+                            &signed,
+                            &[],
+                            PublishTarget::Explicit {
+                                relays: target_relays,
+                            },
+                        ));
+                    }
+                    Some(Err(e)) => {
+                        kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+                    }
+                    None => {
+                        // Remote signer pending — park with the explicit
+                        // cold-start target so the settle loop publishes to
+                        // the right relay set when the broker responds.
+                        pending_signs.push(PendingSign::with_target(
+                            op,
+                            Vec::new(),
+                            PublishTarget::Explicit {
+                                relays: target_relays,
+                            },
+                        ));
+                    }
+                },
             }
         }
     }
@@ -860,38 +918,72 @@ pub(crate) fn create_account(
             content: String::new(),
             created_at: kernel.now_secs(),
         };
-        if let Ok(signed) = sign_active(identity, &unsigned_relay) {
+        // Pre-populate the mailbox cache synchronously so `PublishTarget::Auto`
+        // routing works immediately for subsequent publishes, without waiting
+        // for the kind:10002 to round-trip from the relay.
+        //
+        // The Nostr event ID is deterministic from the unsigned fields (NIP-01:
+        // SHA-256 of the canonical JSON, signature-independent). Pre-compute
+        // it here so `prepopulate_author_relay_list` can be called now, before
+        // the sign op is parked or settled.
+        if let Some(precomputed_id) = compute_unsigned_event_id(&unsigned_relay) {
             kernel.prepopulate_author_relay_list(
-                signed.unsigned.pubkey.clone(),
-                signed.id.clone(),
-                signed.unsigned.created_at,
-                signed.unsigned.tags.clone(),
+                unsigned_relay.pubkey.clone(),
+                precomputed_id,
+                unsigned_relay.created_at,
+                unsigned_relay.tags.clone(),
             );
-            // Cold-start routing. A brand-new account has no kind:10002 on
-            // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
-            // would resolve `NoTargets` and the publish engine would silently
-            // drop this very event — the chicken-and-egg the account can never
-            // escape (it can't announce its relays because it has no relays on
-            // record). Route the initial relay list explicitly instead: to the
-            // relays the user just declared (the canonical NIP-65 home of a
-            // relay list — publish it to the relays it names) unioned with the
-            // well-known discovery seed so others can find the new account.
-            let target_relays = cold_start_publish_targets(kernel, &relay_rows);
-            if target_relays.is_empty() {
-                // D6: no usable cold-start relay — surface a toast, never
-                // panic. The account still exists locally; the user can add
-                // relays and re-publish from Settings.
-                kernel.set_last_error_toast(Some(
-                    "could not publish relay list — no cold-start relays available".to_string(),
-                ));
-            } else {
-                publish_outbound.extend(kernel.publish_signed_to(
-                    &signed,
-                    &[],
-                    crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
-                    },
-                ));
+        }
+        // Cold-start routing. A brand-new account has no kind:10002 on
+        // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
+        // would resolve `NoTargets` and the publish engine would silently
+        // drop this very event — the chicken-and-egg the account can never
+        // escape (it can't announce its relays because it has no relays on
+        // record). Route the initial relay list explicitly instead: to the
+        // relays the user just declared (the canonical NIP-65 home of a
+        // relay list — publish it to the relays it names) unioned with the
+        // well-known discovery seed so others can find the new account.
+        //
+        // D8 (non-blocking actor): same non-blocking park as kind:0 above.
+        let target_relays = cold_start_publish_targets(kernel, &relay_rows);
+        if target_relays.is_empty() {
+            // D6: no usable cold-start relay — surface a toast, never
+            // panic. The account still exists locally; the user can add
+            // relays and re-publish from Settings.
+            kernel.set_last_error_toast(Some(
+                "could not publish relay list — no cold-start relays available".to_string(),
+            ));
+        } else {
+            match sign_active_nonblocking(identity, &unsigned_relay) {
+                Err(reason) => {
+                    kernel.set_last_error_toast(Some(reason));
+                }
+                Ok(mut op) => match op.poll() {
+                    Some(Ok(signed)) => {
+                        publish_outbound.extend(kernel.publish_signed_to(
+                            &signed,
+                            &[],
+                            PublishTarget::Explicit {
+                                relays: target_relays,
+                            },
+                        ));
+                    }
+                    Some(Err(e)) => {
+                        kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+                    }
+                    None => {
+                        // Remote signer pending — park with the explicit
+                        // cold-start target so the settle loop publishes to
+                        // the right relay set when the broker responds.
+                        pending_signs.push(PendingSign::with_target(
+                            op,
+                            Vec::new(),
+                            PublishTarget::Explicit {
+                                relays: target_relays,
+                            },
+                        ));
+                    }
+                },
             }
         }
     }
@@ -900,7 +992,7 @@ pub(crate) fn create_account(
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_outbound);
-    outbound.extend(publish_initial_follows(identity, kernel, &relay_rows));
+    outbound.extend(publish_initial_follows(identity, kernel, &relay_rows, pending_signs));
     outbound
 }
 
@@ -1000,6 +1092,7 @@ fn publish_initial_follows(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     relay_rows: &[RelayEditRow],
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         return Vec::new();
@@ -1015,32 +1108,53 @@ fn publish_initial_follows(
         content: String::new(),
         created_at: kernel.now_secs(),
     };
-    match sign_active(identity, &unsigned) {
-        Ok(signed) => {
-            let target_relays = cold_start_publish_targets(kernel, relay_rows);
-            if target_relays.is_empty() {
-                // D6: no usable cold-start relay — surface a toast, never
-                // panic. The follow set is already pre-populated locally
-                // (`prepopulate_seed_contacts`); the user can re-publish
-                // their contacts once relays are configured.
-                kernel.set_last_error_toast(Some(
-                    "could not publish contacts — no cold-start relays available".to_string(),
-                ));
-                Vec::new()
-            } else {
-                kernel.publish_signed_to(
-                    &signed,
-                    &[],
-                    crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
-                    },
-                )
-            }
-        }
+    // Cold-start routing: a brand-new account has no kind:10002 on file, so
+    // `PublishTarget::Auto` would drop the contacts list. Route explicitly.
+    //
+    // D8 (non-blocking actor): use `sign_active_nonblocking` so a NIP-46
+    // bunker account does not freeze the kernel loop. For a local nsec the op
+    // resolves immediately; for a bunker it parks as `PendingSign`.
+    let target_relays = cold_start_publish_targets(kernel, relay_rows);
+    if target_relays.is_empty() {
+        // D6: no usable cold-start relay — surface a toast, never
+        // panic. The follow set is already pre-populated locally
+        // (`prepopulate_seed_contacts`); the user can re-publish
+        // their contacts once relays are configured.
+        kernel.set_last_error_toast(Some(
+            "could not publish contacts — no cold-start relays available".to_string(),
+        ));
+        return Vec::new();
+    }
+    match sign_active_nonblocking(identity, &unsigned) {
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
             Vec::new()
         }
+        Ok(mut op) => match op.poll() {
+            Some(Ok(signed)) => kernel.publish_signed_to(
+                &signed,
+                &[],
+                PublishTarget::Explicit {
+                    relays: target_relays,
+                },
+            ),
+            Some(Err(e)) => {
+                kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+                Vec::new()
+            }
+            None => {
+                // Remote signer pending — park with the explicit cold-start
+                // target so the settle loop publishes to the right relay set.
+                pending_signs.push(PendingSign::with_target(
+                    op,
+                    Vec::new(),
+                    PublishTarget::Explicit {
+                        relays: target_relays,
+                    },
+                ));
+                Vec::new()
+            }
+        },
     }
 }
 
@@ -1221,3 +1335,7 @@ fn parse_bunker_remote(uri: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "identity/nip46_onboarding_tests.rs"]
 mod nip46_onboarding_tests;
+
+#[cfg(test)]
+#[path = "identity/coldstart_nonblocking_tests.rs"]
+mod coldstart_nonblocking_tests;

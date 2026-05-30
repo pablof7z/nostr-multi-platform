@@ -120,6 +120,7 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
         &HashMap::new(),
         &relays,
         false,
+        &mut Vec::new(),
     );
     let mut queued_publish_outbound = Vec::new();
 

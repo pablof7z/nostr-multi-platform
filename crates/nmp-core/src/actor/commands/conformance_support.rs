@@ -185,6 +185,7 @@ impl ConformanceHarness {
             &profile,
             relays,
             false,
+            &mut Vec::new(),
         );
     }
 

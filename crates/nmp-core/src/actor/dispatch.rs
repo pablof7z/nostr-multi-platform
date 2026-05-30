@@ -555,6 +555,7 @@ pub(super) fn dispatch_command(
                 &profile,
                 &relays,
                 mls,
+                ctx.pending_signs,
             );
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::persist_current_active_session(
