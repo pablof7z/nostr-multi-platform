@@ -5,7 +5,7 @@
   - **Resolves V-90** (actor thread blocking during remote-signer operations,
     HIGH · D8 violation · GH #612 #613).
   - **Resolves V-54** (NIP-46 onboarding still blocks the actor thread —
-    `identity.rs:826,864,1019` cold-start signs; GH #611).
+    `identity.rs:825,863,1018` cold-start signs; GH #611).
   - **ADR-0024** (async capability protocol) — that ADR proposed a two-phase
     `CapabilityResultReady` re-entry but was never implemented and only ever
     scoped the *HTTP* capability. This ADR supersedes its mechanism for the
@@ -97,7 +97,7 @@ retires that sanction for the in-actor sites. **Confirmed live.**
 
 ### Blocking site 3 — cold-start onboarding signs [V-54]
 
-`crates/nmp-core/src/actor/commands/identity.rs:826,864,1019` publish the
+`crates/nmp-core/src/actor/commands/identity.rs:825,863,1018` publish the
 initial kind:0 metadata, kind:10002 relay list, and kind:3 follows during
 `create_account` via the synchronous `sign_active` path
 (`REMOTE_SIGN_TIMEOUT`, 5 s). For a bunker account each of the three is a
@@ -173,6 +173,9 @@ mechanism by reference:
   and re-enters with `ActorCommand::PublishSignedEvent` per envelope — the
   *exact* shape of `nmp-nip57/src/lnurl/mod.rs:244-296` (`ctx.command_sender_clone()`
   → `std::thread::spawn` → blocking work → `worker_tx.send(ActorCommand::…)`).
+  (Note: the lnurl worker re-enters via `ActorCommand::Protocol(WalletPayInvoiceCommand)`;
+  the DM worker re-enters via `PublishSignedEvent` — same structural pattern, different
+  command.)
   No new primitive. Account-switch is a non-issue here: the worker re-enters via
   `PublishSignedEvent`, which carries a fully-signed, self-contained kind:1059
   envelope bound to no mutable account slot — applying it after an account
@@ -325,7 +328,7 @@ callers already off the actor thread.
   worker-thread spawn that re-enters via `PublishSignedEvent` / `ShowToast` /
   `RecordActionFailure`. The actor no longer blocks up to ~24 s on a two-leg
   bunker DM.
-- `crates/nmp-core/src/actor/commands/identity.rs:826,864,1019` — the three
+- `crates/nmp-core/src/actor/commands/identity.rs:825,863,1018` — the three
   cold-start signs move to `sign_active_nonblocking` + `PendingSign`.
 - `crates/nmp-ffi/src/lib.rs` (in-actor capability call sites) — synchronous
   `dispatch_capability` calls become enqueues to the capability worker.
@@ -398,7 +401,7 @@ saga framing is untouched (the lnurl worker already realizes it).
 
 **PR 2 — Site 3 (cold-start signs), no new seam.**
 - `crates/nmp-core/src/actor/commands/identity.rs`: route the three
-  `create_account` cold-start publishes (`:826,:864,:1019`) through
+  `create_account` cold-start publishes (`:825,:863,:1018`) through
   `sign_active_nonblocking` + `PendingSign::with_target` (explicit cold-start
   relays), preserving the D6 "no cold-start relay" toast.
 - Tests: bunker `create_account` non-block assertion in the identity command
