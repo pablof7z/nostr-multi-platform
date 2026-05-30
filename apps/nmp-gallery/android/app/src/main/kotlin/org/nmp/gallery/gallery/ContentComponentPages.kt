@@ -33,6 +33,7 @@ import org.nmp.gallery.registry.NostrMentionChip
 import org.nmp.gallery.registry.NostrQuoteCard
 import org.nmp.gallery.registry.NostrQuoteCardModel
 import org.nmp.gallery.registry.NostrQuoteCardVariant
+import org.nmp.gallery.registry.NostrRelativeTime
 import org.nmp.gallery.registry.ProfileWire
 import org.nmp.gallery.registry.WireNode
 import org.nmp.gallery.registry.WireNostrUri
@@ -301,7 +302,7 @@ private fun quoteCardFor(
         authorAvatarUrl = event.authorPictureUrl,
         content = event.content,
         mediaThumbnailUrl = mediaUrls(event).firstOrNull(),
-        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.toString(),
+        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.let { NostrRelativeTime.ago(it) },
     )
 }
 

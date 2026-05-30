@@ -83,7 +83,7 @@ export const contentComponents: Component[] = [
           { source: "compose/content-core/NostrContentRenderer.kt", target: "Components/NostrContent/NostrContentRenderer.kt", role: "source", content: composeContentRendererKotlin },
           { source: "compose/content-core/ContentTreeWire.kt", target: "Components/NostrContent/ContentTreeWire.kt", role: "source", content: composeContentTreeWireKotlin },
         ],
-        screenshots: ["compose-content-core-preview.png", "content-core-kotlin-preview.png"],
+        screenshots: ["content-core-kotlin-preview.png"],
         customization: [
           "Edit `NostrContentRenderer.kt` to change the default text, mention, hashtag, and link colors — or to swap the callback signatures for your own routing model.",
           "Inject a per-screen renderer with `CompositionLocalProvider(LocalNostrContentRenderer provides ...)`; child components pick it up via `LocalNostrContentRenderer.current`.",
@@ -187,7 +187,7 @@ export const contentComponents: Component[] = [
           { source: "compose/content-view/NostrContentView.kt", target: "Components/NostrContent/NostrContentView.kt", role: "source", content: composeContentViewKotlin },
           { source: "compose/content-view/NostrContentGrouping.kt", target: "Components/NostrContent/NostrContentGrouping.kt", role: "source", content: composeContentGroupingKotlin },
         ],
-        screenshots: ["compose-content-view-preview.png", "content-view-kotlin-preview.png"],
+        screenshots: ["content-view-kotlin-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` and dispatches each block-level group to the matching sub-component. Customizing usually means editing the sub-component rather than this dispatcher.",
           "Inline runs are concatenated into a single `AnnotatedString` and rendered through `ClickableText` for tap-offset routing.",
@@ -229,7 +229,7 @@ export const contentComponents: Component[] = [
           { source: "swiftui/content-kind-registry/NostrKindRegistry.swift", target: "Components/NostrContent/NostrKindRegistry.swift", role: "source", content: swiftuiNostrKindRegistrySwift },
           { source: "swiftui/content-kind-registry/EmbeddedEvent.swift", target: "Components/NostrContent/EmbeddedEvent.swift", role: "source", content: swiftuiEmbeddedEventSwift },
         ],
-        screenshots: ["swiftui-content-kind-registry-preview.png", "content-kind-registry-ios-gallery-preview.png"],
+        screenshots: ["embed-article-ios-gallery-preview.png"],
         customization: [
           "Build the registry once at app start with `NostrKindRegistry.makeDefault()` then `registry.setArticle(ArticleEmbed())` / `registry.setHighlight(HighlightEmbed())` to swap in richer per-kind components.",
           "Inject it into the SwiftUI environment via `.environment(\\.nostrKindRegistry, registry)` — `NostrContentView` and `EmbeddedEvent` both read from there.",
@@ -274,7 +274,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-kind-30023/ArticleEmbed.swift", target: "Components/NostrContent/ArticleEmbed.swift", role: "source", content: swiftuiArticleEmbedSwift },
         ],
-        screenshots: ["swiftui-content-kind-30023-preview.png", "content-kind-30023-ios-gallery-preview.png"],
+        screenshots: ["embed-article-ios-gallery-preview.png"],
         customization: [
           "Replace the hero `AsyncImage` with your own loader (Nuke / Kingfisher) — the rest of the layout stays untouched.",
           "Bind a tap callback by wrapping the returned `AnyView` with `.onTapGesture` at the call site; the renderer itself is purely declarative.",
@@ -314,7 +314,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "swiftui/content-kind-9802/HighlightEmbed.swift", target: "Components/NostrContent/HighlightEmbed.swift", role: "source", content: swiftuiHighlightEmbedSwift },
         ],
-        screenshots: ["swiftui-content-kind-9802-preview.png", "content-kind-9802-ios-gallery-preview.png"],
+        screenshots: ["embed-highlight-ios-gallery-preview.png"],
         customization: [
           "Tweak the accent colour by editing the literal `Color.yellow.opacity(0.7)` — it merges cleanly on `nmp update component`.",
           "Extend `sourceFooter` to render rich previews when an `e` tag's referenced note has already been claimed.",
@@ -330,7 +330,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
         ],
-        screenshots: ["tui-embed-highlight.png"],
+        screenshots: ["tui-embed-highlight-preview.png"],
         customization: [
           "Replace `DefaultHighlightRenderer` by registering your own `KindRenderer` for `HighlightProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "The source footer branches on `source_url` → `source_event_id` → `source_event_addr` in priority order; extend the match arms to render richer previews when the referenced event has been claimed.",
@@ -366,7 +366,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "compose/content-mention-chip/NostrMentionChip.kt", target: "Components/NostrContent/NostrMentionChip.kt", role: "source", content: composeMentionChipKotlin },
         ],
-        screenshots: ["compose-content-mention-chip-preview.png", "content-mention-chip-kotlin-preview.png"],
+        screenshots: ["content-mention-chip-kotlin-preview.png"],
         customization: [
           "Uses Coil's `SubcomposeAsyncImage` for the avatar. Swap to Glide or a custom Painter by replacing the loader call in `MentionAvatar`.",
           "Tap routes through `NostrContentCallbacks.onMentionTap`; override at the screen level to push into your own navigator.",
@@ -416,7 +416,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "compose/content-quote-card/NostrQuoteCard.kt", target: "Components/NostrContent/NostrQuoteCard.kt", role: "source", content: composeQuoteCardKotlin },
         ],
-        screenshots: ["compose-content-quote-card-preview.png", "content-quote-card-kotlin-preview.png"],
+        screenshots: ["content-quote-card-kotlin-preview.png"],
         customization: [
           "Pick the variant per call-site — `Rich` for inline quote cards, `Collapsed` for a `View quote` affordance, `Missing` for an unresolved reference, `Compact` for dense feeds.",
           "Border, corner radius, and padding are literals so they merge cleanly on `nmp update component`.",
@@ -465,7 +465,7 @@ export const contentComponents: Component[] = [
         files: [
           { source: "compose/content-media-grid/NostrMediaGrid.kt", target: "Components/NostrContent/NostrMediaGrid.kt", role: "source", content: composeMediaGridKotlin },
         ],
-        screenshots: ["compose-content-media-grid-preview.png", "content-media-grid-kotlin-preview.png"],
+        screenshots: ["content-media-grid-kotlin-preview.png"],
         customization: [
           "Layout is count-driven: 1 = full-width 16:9, 2 = side-by-side, 3 = one large + two stacked, 4+ = 2×2 with `+N more` overlay — identical to the SwiftUI variant.",
           "Replace `SubcomposeAsyncImage` with your own loader if you already use Glide/Picasso. The cell composable is intentionally small to make the swap painless.",

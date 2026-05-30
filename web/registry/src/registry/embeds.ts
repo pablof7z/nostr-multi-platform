@@ -122,7 +122,7 @@ export const embedComponents: Component[] = [
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
         ],
-        screenshots: ["tui-embed-highlight.png", "tui-embed-highlight-preview.png"],
+        screenshots: ["tui-embed-highlight-preview.png"],
         customization: [
           "Replace `DefaultHighlightRenderer` by registering your own `KindRenderer` for `HighlightProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "The source footer branches on `source_url` → `source_event_id` → `source_event_addr` in priority order; extend the match arms to render richer previews when the referenced event has been claimed.",
