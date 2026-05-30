@@ -42,6 +42,7 @@ mod action;
 mod app_host;
 mod blocked_relays;
 mod bounded;
+mod suppression;
 mod capability;
 mod dm_inbox_relays;
 mod empty_routing;
@@ -64,6 +65,7 @@ pub use action::{
 };
 pub use app_host::AppHost;
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
+pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 #[cfg(any(test, feature = "test-support"))]

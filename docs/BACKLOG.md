@@ -404,19 +404,19 @@ added by the same 2026-05-29 workflow (root-cause fix for the recurrence).
 but no production projection exists. kind:30023 appears in `crates/nmp-core/src/tags.rs`
 only as a constant — no decoder, no projection, no action module.
 
-- **NIP-51 mute lists** — v1-A safety-relevant. A user has no way to suppress
-  harassment from within an app built on NMP. The `BlockListView` in Chirp is absent
-  from the iOS shell (`grep -r "BlockListView" ios/Chirp/` returns nothing).
-  Prerequisite: only a `KernelEventObserver` projection + kind:10000/10001 decoder.
-  Effort: ~1 day.
+- **NIP-51 mute lists (kind:10000)** — DONE (2026-05-30). `crates/nmp-nip51/` ships
+  `MuteListProjection` (a `KernelEventObserver` + `SuppressionLookup` impl). The substrate
+  seam `SuppressionLookup` in `nmp-core` lets `ModularTimelineProjection` apply suppression
+  without a `nmp-nip01 → nmp-nip51` sibling dep. Public `p`/`e` tags only (no NIP-44
+  private-mute decryption — that is post-v1). kind:10001 not implemented (post-v1).
+  **Follow-up (tracked here):** `nmp-wot` independently parses kind:10000 `p` tags in
+  `WotGraph::ingest_mute_list` for trust-scoring. Consolidating both onto `nmp-nip51`'s
+  decode (making `nmp-wot` depend on `nmp-nip51`) is a clean-up step, not v1 scope.
 - **NIP-23 long-form articles** — post-v1. kind:30023 constant already in `tags.rs`.
   Need: decoder + `KernelEventObserver` projection. Effort: ~2 days.
 - **NIP-94 / NIP-96 file metadata + media servers** — post-v1. Ships in every modern
   client for HEIC vs JPEG, dimensions, MIME, SHA-256. Need: `imeta` tag parser + action
   for upload. Effort: ~2 days per NIP.
-
-**Recommended action:** promote NIP-51 mute list to v1-A backlog as its own item;
-add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
 
 ---
 
