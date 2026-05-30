@@ -23,8 +23,6 @@ public struct HighlightEmbed: KindRenderer {
             return AnyView(EmptyView())
         }
 
-        let author = highlight.authorDisplayName ?? shortHex(highlight.authorPubkey)
-
         return AnyView(
             VStack(alignment: .leading, spacing: 10) {
                 // Pull-quote: italic body with a thin yellow accent stripe.
@@ -59,10 +57,17 @@ public struct HighlightEmbed: KindRenderer {
                     Image(systemName: "highlighter")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("highlighted by \(author)")
+                    Text("highlighted by")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    // Self-claiming byline: the name component owns claiming the
+                    // author's kind:0 — the kernel never fetches it.
+                    NostrProfileName(
+                        pubkey: highlight.authorPubkey,
+                        font: .caption.weight(.medium),
+                        color: .secondary
+                    )
                     Spacer(minLength: 0)
                     Text("kind:9802")
                         .font(.caption2.monospaced())

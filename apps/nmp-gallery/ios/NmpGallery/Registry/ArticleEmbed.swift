@@ -63,10 +63,13 @@ public struct ArticleEmbed: KindRenderer {
                         pictureUrl: article.authorPictureUrl.flatMap(URL.init(string:)),
                         size: 24
                     )
-                    Text(article.authorDisplayName ?? shortHex(article.authorPubkey))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    // Self-claiming byline: avatar + name each own claiming the
+                    // author's kind:0 — the kernel never fetches it.
+                    NostrProfileName(
+                        pubkey: article.authorPubkey,
+                        font: .caption.weight(.medium),
+                        color: .secondary
+                    )
                     Spacer(minLength: 0)
                     Text("article · kind:30023")
                         .font(.caption2.monospaced())
@@ -74,10 +77,5 @@ public struct ArticleEmbed: KindRenderer {
                 }
             }
         )
-    }
-
-    private func shortHex(_ value: String) -> String {
-        guard value.count > 10 else { return value }
-        return "\(value.prefix(8))…"
     }
 }
