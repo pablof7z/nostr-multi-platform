@@ -1995,6 +1995,16 @@ impl Kernel {
         self.event_claim_requested.contains(primary_id)
     }
 
+    /// Test-only: number of `(uri, consumer_id)` pairs currently parked in
+    /// `pending_event_claims` — i.e. claims that hit the cold-start
+    /// `!can_send` branch and registered NO OneshotApi interest. A non-zero
+    /// count means the claim is stuck waiting for `pending_event_claim_requests`
+    /// to drain it once the send-gate flips.
+    #[cfg(test)]
+    pub(crate) fn pending_event_claims_len_for_test(&self) -> usize {
+        self.pending_event_claims.len()
+    }
+
     /// T133 retention-test accessor — total `wire_subs` row count, evicted or
     /// not. The whole point of T133 is that this stabilises rather than
     /// growing with close-cycle count.

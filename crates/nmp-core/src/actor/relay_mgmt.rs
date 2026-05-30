@@ -45,14 +45,50 @@ use std::collections::{HashMap, HashSet};
 use super::{RelayConnectionKind, RelayControl};
 
 /// True when at least one URL on **every** lane has reported `Connected`.
-/// Used as a diagnostic helper; no longer used as a startup-send gate
-/// (decoupled by V-87 #602 — startup interests are registered immediately on
-/// `running=true`; relay lanes that connect later pick up the compiled REQs
-/// via the planner's reconnect-replay path).
+///
+/// Historical send-gate semantics. No longer used in production: V-87 #602
+/// decoupled startup interests from it, and Fix A (the universal latent-bug fix)
+/// replaced the claim/open send-gate with [`claim_send_gate`] — the `all` gate
+/// parked every claim forever when one bootstrap lane (e.g. the Indexer) never
+/// opened its socket. Retained `#[cfg(test)]` as the contrast reference in
+/// `send_gate_universal_tests` (proving `all` is false while `claim_send_gate`
+/// is true when one lane is offline).
+#[cfg(test)]
 pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> bool {
     RelayRole::all()
         .into_iter()
         .all(|role| connected_relays.contains(&role))
+}
+
+/// THE claim/open send-gate — the single production decision point for whether
+/// a `claim_event` / `claim_profile` / `open_author` / `open_thread` /
+/// `open_firehose` / sign-in-driven retarget sends its REQ now or parks until a
+/// relay connects. Its value is computed once per dispatch at `actor/mod.rs` and
+/// fed to every consumer as `relays_ready` / `can_send`.
+///
+/// # Fix A — universal latent-bug fix (`all` → `any`)
+///
+/// Returns `true` as soon as **any** bootstrap lane (`Content` or `Indexer`) has
+/// reported `Connected`. Previously this gate required **every** lane
+/// ([`all_relays_connected`]); if one bootstrap lane never opened its socket
+/// (the Android emulator's `purplepag.es` Indexer lane), the gate was
+/// permanently `false` and every claim/open parked forever with no REQ — even
+/// for an nevent carrying a working relay hint.
+///
+/// Relaxing to `any` is correct and behavior-preserving:
+/// * Every consumer treats this as a **park-until-connect readiness heuristic**,
+///   not a correctness invariant requiring all lanes. Relays that connect later
+///   pick up the compiled REQ via the planner's reconnect-replay path (the same
+///   decoupling V-87 #602 applied to startup interests).
+/// * For hosts that connect all bootstrap lanes (iOS, the TUI smoke), `any` is
+///   reached no later than `all`, so the gate flips `true` at the same point or
+///   earlier — they pass identically before and after this change. They were
+///   never special-cased; they only ever passed because their environment
+///   connects both lanes.
+pub(super) fn claim_send_gate(connected_relays: &HashSet<RelayRole>) -> bool {
+    RelayRole::all()
+        .into_iter()
+        .any(|role| connected_relays.contains(&role))
 }
 
 /// Lane-bootstrap seeds: spawn one worker per configured URL returned by
