@@ -44,6 +44,7 @@ import swiftuiEmbedChromeContainerSwift from "../vendor/swiftui/content-kind-reg
 import swiftuiNostrKindRegistrySwift from "../vendor/swiftui/content-kind-registry/NostrKindRegistry.swift?raw";
 import swiftuiEmbeddedEventSwift from "../vendor/swiftui/content-kind-registry/EmbeddedEvent.swift?raw";
 import swiftuiArticleEmbedSwift from "../vendor/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
+import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/NostrArticleCard.kt?raw";
 import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
 
 export const contentComponents: Component[] = [
@@ -278,6 +279,22 @@ export const contentComponents: Component[] = [
         customization: [
           "Replace the hero `AsyncImage` with your own loader (Nuke / Kingfisher) — the rest of the layout stays untouched.",
           "Bind a tap callback by wrapping the returned `AnyView` with `.onTapGesture` at the call site; the renderer itself is purely declarative.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/content-kind-30023",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "`NostrArticleCard` is the canonical NIP-23 Compose card. Per-kind dispatch lives in `NostrContentView.EventRefBlock` via an `articleCardProvider`, so the card stays self-contained on `compose/content-core` — no separate kind-registry component. Renders the article's `image` tag as a 16:9 hero (Coil `SubcomposeAsyncImage` with a placeholder fallback), the `title` as a semibold headline, an optional `summary` line, then an author byline with an avatar (`NostrIdenticon` fallback) + display name + `article · kind:30023` tag. The app hydrates a `NostrArticleCardModel` from a resolved `claimed_events` entry; the card only renders.",
+        files: [
+          { source: "compose/content-kind-30023/NostrArticleCard.kt", target: "Components/NostrContent/NostrArticleCard.kt", role: "source", content: composeArticleCardKotlin },
+        ],
+        screenshots: ["embed-article-kotlin-preview.png"],
+        customization: [
+          "Replace the hero `SubcomposeAsyncImage` with Glide or a custom `Painter` loader — the rest of the layout stays untouched.",
+          "Wire per-kind dispatch by passing an `articleCardProvider` to `NostrContentView.EventRefBlock`; tap routes through `NostrContentCallbacks.onEventRefTap` unless you supply your own `onTap`.",
         ],
       },
       tui: {
