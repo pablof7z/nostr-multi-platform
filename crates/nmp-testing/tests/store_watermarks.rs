@@ -43,7 +43,12 @@ for_each_backend!(missing_watermark_returns_none, |h: &mut StoreHarness| {
 for_each_backend!(
     coverage_unknown_for_missing_watermark,
     |h: &mut StoreHarness| {
-        let cov = h.store.coverage(&make_key("wss://x/")).unwrap();
+        // No row written; result must be Unknown regardless of now_secs.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let cov = h.store.coverage(&make_key("wss://x/"), now).unwrap();
         assert_eq!(cov, Coverage::Unknown);
     }
 );
@@ -59,7 +64,8 @@ for_each_backend!(
         let row = make_row("wss://a/", now - 10, now);
         h.store.write_watermark(row).unwrap();
 
-        let cov = h.store.coverage(&make_key("wss://a/")).unwrap();
+        // Pass the same `now` so age = 0, which is within the staleness window.
+        let cov = h.store.coverage(&make_key("wss://a/"), now).unwrap();
         assert!(
             matches!(cov, Coverage::CompleteAsOf(_)),
             "fresh watermark should be CompleteAsOf, got {cov:?}"
@@ -79,7 +85,8 @@ for_each_backend!(
         let row = make_row("wss://a/", stale_updated_at - 60, stale_updated_at);
         h.store.write_watermark(row).unwrap();
 
-        let cov = h.store.coverage(&make_key("wss://a/")).unwrap();
+        // Pass `now` so age = 600s > 300s window → PartialUpTo.
+        let cov = h.store.coverage(&make_key("wss://a/"), now).unwrap();
         assert!(
             matches!(cov, Coverage::PartialUpTo(_)),
             "stale watermark should be PartialUpTo, got {cov:?}"

@@ -313,7 +313,11 @@ pub trait EventStore: Send + Sync {
     fn write_watermark(&self, row: WatermarkRow) -> Result<(), StoreError>;
 
     /// Coverage classification for a `(filter, relay)` pair.
-    fn coverage(&self, key: &WatermarkKey) -> Result<Coverage, StoreError>;
+    ///
+    /// `now_secs` is the current wall-clock time as Unix seconds, supplied by
+    /// the caller so the store never reads the clock directly (D7 — the kernel
+    /// owns the wall clock; lower layers receive time, they do not read it).
+    fn coverage(&self, key: &WatermarkKey, now_secs: u64) -> Result<Coverage, StoreError>;
 
     /// Iterate watermarks for a specific relay.
     fn list_watermarks_for_relay<'a>(
