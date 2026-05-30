@@ -71,6 +71,7 @@ public fun NostrContentView(
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     mentionLabel: (WireNostrUri) -> String = ::defaultMentionLabel,
     quoteCardProvider: ((WireNostrUri) -> NostrQuoteCardModel?)? = null,
+    articleCardProvider: ((WireNostrUri) -> NostrArticleCardModel?)? = null,
 ) {
     val groups = nostrContentGroups(tree)
     if (groups.isEmpty()) return
@@ -86,6 +87,7 @@ public fun NostrContentView(
                 textStyle = textStyle,
                 mentionLabel = mentionLabel,
                 quoteCardProvider = quoteCardProvider,
+                articleCardProvider = articleCardProvider,
             )
         }
     }
@@ -108,6 +110,7 @@ private fun RenderGroup(
     textStyle: TextStyle,
     mentionLabel: (WireNostrUri) -> String,
     quoteCardProvider: ((WireNostrUri) -> NostrQuoteCardModel?)?,
+    articleCardProvider: ((WireNostrUri) -> NostrArticleCardModel?)?,
 ) {
     when (group) {
         is NostrContentGroup.Inline -> InlineGroup(
@@ -124,6 +127,7 @@ private fun RenderGroup(
         is NostrContentGroup.EventRefGroup -> EventRefBlock(
             uri = group.uri,
             quoteCardProvider = quoteCardProvider,
+            articleCardProvider = articleCardProvider,
         )
         is NostrContentGroup.CodeBlockGroup -> CodeBlockBlock(
             info = group.info,
@@ -429,7 +433,21 @@ private fun MediaRow(url: String, isAudio: Boolean) {
 private fun EventRefBlock(
     uri: WireNostrUri,
     quoteCardProvider: ((WireNostrUri) -> NostrQuoteCardModel?)?,
+    articleCardProvider: ((WireNostrUri) -> NostrArticleCardModel?)?,
 ) {
+    val renderer = LocalNostrContentRenderer.current
+    // Per-kind inline dispatch: an addressable long-form article (kind:30023)
+    // renders as a typed article card (hero + title + summary + byline),
+    // mirroring iOS's NostrKindRegistry/ArticleEmbed and the TUI article
+    // renderer. Everything else falls back to the generic quote card.
+    val articleModel = articleCardProvider?.invoke(uri)
+    if (articleModel != null) {
+        NostrArticleCard(
+            model = articleModel,
+            onTap = { renderer.callbacks.onEventRefTap(uri.primaryId) },
+        )
+        return
+    }
     // Variant selection mirrors SwiftUI: provider missing → .Collapsed,
     // provider hit → .Rich, provider miss → .Missing.
     val providedModel = quoteCardProvider?.invoke(uri)
@@ -449,7 +467,6 @@ private fun EventRefBlock(
             model = NostrQuoteCardModel(id = uri.primaryId, unresolvedUri = uri.uri)
         }
     }
-    val renderer = LocalNostrContentRenderer.current
     NostrQuoteCard(
         model = model,
         variant = variant,

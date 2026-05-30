@@ -98,24 +98,27 @@ The embed-loading blocker is RESOLVED via two merged fixes: #843 (kernel claim-r
 - embed-highlight ✅ — "Vibe-coding is what brought me back to programming" pull-quote + source "note · 6e7d8dbb…" + inline "found this interesting"
 Screenshots saved (resolved content) to web/registry/public/screenshots/embed-{article,note,profile,highlight}-ios-gallery-preview.png.
 
-## Platform verification status (2026-05-30)
+## Platform verification status (2026-05-30 — re-verified by direct pixel inspection + presentation-layer fixes)
 
 Website platforms = SwiftUI (iOS), Compose (Android), TUI. Desktop is a diagnostic target, NOT in the web registry (registry platforms: swiftui|compose|tui|web).
 
-### iOS (SwiftUI) — ✅ ALL 16 RESOLVED, on master
-All user/relay/content/embed cells captured with resolved content (PABLOF7z names, real images, inline embed surrounding text). PRs #846 (embeds), #847 (content claim fix), #848 (user/content/relay).
+**Ground truth: the kernel/projection is correct on every platform.** TUI rendered title + author display name + a formatted time ("4d ago", "Mar 20 · 1 min read") for every cell from the start, which proves the data (title, author, created_at) was always present in the projection. The earlier "Android kind:1/kind:30023 *fetch* gap" theory was WRONG and is retracted — the note and article DO resolve on Android. The real defects were three **presentation-layer** rendering bugs, now fixed:
 
-### TUI — ✅ ALL 16 RESOLVED (PR #849)
-Including embed-highlight (was the stale hex-fallback one, now "Vibe-coding…"). Avatar/media-grid are ASCII/URL fallbacks (no terminal-image protocol — by design). Reusable capture script added: scripts/capture-tui-screenshots.mjs.
+1. **Android article rendered as a generic quote card** (no title, no hero) — Android had no per-kind inline renderer. FIX: new `registry/NostrArticleCard.kt` (typed hero + title + summary + byline) + per-kind dispatch in `NostrContentView.EventRefBlock` via an `articleCardProvider` (mirrors iOS `NostrKindRegistry`/`ArticleEmbed` and the TUI article renderer).
+2. **Raw `created_at` epoch** shown instead of a formatted time, on iOS + Android quote cards. FIX: new `NostrRelativeTime` helper (Swift + Kotlin, mirrors Rust `nmp_core::display::format_ago_secs` → "Xd ago"); applied at the model-hydration sites (the projection carries the raw epoch per the display-separation doctrine — presentation formats it).
+3. **NIP-05 root identifier shown as raw `_@f7z.io`** — matrix line 22 requires domain only. FIX: `NostrNip05Badge` (Swift + Kotlin) elides a leading `_@` → `f7z.io`.
 
-### Android (Compose) — 12/16 RESOLVED + 4 KNOWN-GAP
-RESOLVED (committed): user-avatar, user-name, user-nip05, user-npub, user-card, relay-list, content-core, content-mention-chip, content-minimal, content-media-grid, embed-profile (@PABLOF7z inline), embed-highlight ("Vibe-coding…" + @PABLOF7z byline + avatar). Verified #845 inline-surrounding-text + #839 self-claiming byline both WORK on Android.
+### iOS (SwiftUI) — all 16 cells, no defects
+Recaptured after fixes: content-quote-card (formatted time), user-nip05 + user-card ("f7z.io"). The rest were already clean (PABLOF7z names, real images, inline embed surrounding text).
 
-**ANDROID-SPECIFIC GAP (4 cells, NOT committed — would show fallback):** content-view, content-quote-card, embed-note, embed-article. All depend on the kind:1 note (`276d69d6…`) or the kind:30023 article (naddr `6e468422…`) — which **fail to fetch on the Android emulator** even after ~14 min, while the SAME nevent (with nos.lol hint) resolves on iOS and TUI from the same showcase-references.json. The kind:9802 highlight (identical relay-hint TLV) DOES resolve on Android, so it's not a blanket relay-hint defect. Root cause undetermined — Android JNI-bridge/relay-seeding or kind:1-specific path. **This is a real, isolated Android bug to investigate; do NOT ship fallback screenshots for these 4.** Tracked as a follow-up (the note resolved on iOS/TUI proving network reachability).
+### TUI — all 16 cells, no defects (reference renderer)
+Formats time "4d ago"; renders the typed article card (title + "Gigi · Mar 20 · 1 min read"). Avatar/media-grid are ASCII/URL fallbacks (no terminal-image protocol — by design). Capture script: scripts/capture-tui-screenshots.mjs.
+
+### Android (Compose) — all 16 cells, no defects (after the three fixes)
+Recaptured after fixes: embed-article (typed article card with hero + title "What's left of the internet?" + Gigi byline), content-quote-card / content-view / embed-note / embed-highlight (formatted time), user-nip05 + user-card ("f7z.io").
 
 ## Remaining
-- Investigate the Android kind:1/kind:30023 fetch gap (4 cells) — separate from website assembly.
-- Verification PDF (matrix + all resolved screenshots).
+- None for the website cells. Optional follow-up: remove the `request_profile_for_rendered_note` kind:1 auto-fetch in the kernel once every platform self-claims (separate from this presentation work).
 
 ## Sign-off
 - [ ] iOS: all 16 components verified on running simulator

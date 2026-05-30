@@ -17,10 +17,12 @@ import org.nmp.gallery.bridge.ClaimedEventWire
 import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.bridge.GalleryShowcaseReferences
 import org.nmp.gallery.registry.ContentTreeWire
+import org.nmp.gallery.registry.NostrArticleCardModel
 import org.nmp.gallery.registry.LocalNostrContentRenderer
 import org.nmp.gallery.registry.NostrContentRenderer
 import org.nmp.gallery.registry.NostrContentView
 import org.nmp.gallery.registry.NostrQuoteCardModel
+import org.nmp.gallery.registry.NostrRelativeTime
 import org.nmp.gallery.registry.ProfileWire
 import org.nmp.gallery.registry.WireNode
 import org.nmp.gallery.registry.WireNostrUri
@@ -186,9 +188,10 @@ private fun ArticleEmbedPage(
             // profile cache the claim populates), but reading profileMap makes
             // the byline robust to enrichment-tick timing.
             quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents, profileMap) },
+            articleCardProvider = { uri -> articleCardFor(uri, claimedEvents, profileMap) },
         )
         Text(
-            "The renderer fires `claim` on the article naddr and on the author's kind:0; the kernel resolves kind:30023 and the author profile (Gigi) so the byline resolves. Android renders it inline as a quote card (no per-kind inline dispatch yet).",
+            "The renderer fires `claim` on the article naddr and on the author's kind:0; the kernel resolves kind:30023 and the author profile (Gigi). The kind:30023 EventRef dispatches to a typed NostrArticleCard (hero + title + summary + byline), mirroring iOS's NostrKindRegistry/ArticleEmbed and the TUI article renderer.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -395,7 +398,36 @@ private fun quoteCardFor(
         authorDisplayName = event.authorDisplayName ?: profile?.displayName,
         authorAvatarUrl = event.authorPictureUrl ?: profile?.pictureUrl,
         content = event.content,
-        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.toString(),
+        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.let { NostrRelativeTime.ago(it) },
+    )
+}
+
+/**
+ * Build a typed [NostrArticleCardModel] for a kind:30023 long-form article
+ * EventRef. Returns null for any non-article ref so [NostrContentView] falls
+ * back to the generic quote card. Title / summary / hero come from the event's
+ * NIP-23 tags; the byline prefers the kernel's claimed_events enrichment and
+ * falls back to a separately claimed profile (Gigi) — mirroring iOS's typed
+ * ArticleEmbed byline.
+ */
+private fun articleCardFor(
+    uri: WireNostrUri,
+    claimedEvents: Map<String, ClaimedEventWire>,
+    profileMap: Map<String, ProfileWire>,
+): NostrArticleCardModel? {
+    val event = claimedEvents[uri.primaryId] ?: return null
+    if (event.kind != 30023L) return null
+    fun tag(key: String): String? =
+        event.tags.firstOrNull { it.firstOrNull() == key }?.getOrNull(1)?.takeIf { it.isNotEmpty() }
+    val profile = profileMap[event.authorPubkey]
+    return NostrArticleCardModel(
+        id = event.id,
+        authorPubkey = event.authorPubkey,
+        authorDisplayName = event.authorDisplayName ?: profile?.displayName,
+        authorPictureUrl = event.authorPictureUrl ?: profile?.pictureUrl,
+        title = tag("title"),
+        summary = tag("summary"),
+        heroImageUrl = tag("image"),
     )
 }
 
