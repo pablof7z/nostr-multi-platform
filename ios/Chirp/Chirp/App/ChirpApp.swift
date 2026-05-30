@@ -28,7 +28,19 @@ struct ChirpApp: App {
                 .environment(\.embedClaimSink, model)
                 .environment(\.nostrKindRegistry, kindRegistry)
                 .tint(ChirpColor.accent)
-                .task { model.start() }
+                .task {
+                    // Skip kernel boot when the app is launched as an XCTest
+                    // host. Starting the kernel here saturates the main thread
+                    // with the 4Hz snapshot→@MainActor apply storm, which
+                    // starves the XCTest runner during its "preparing to run
+                    // tests" phase and trips the runner-prepare timeout — no
+                    // ChirpTests assertion ever executes. Unit tests construct
+                    // their own `KernelModel()` and drive it directly, so the
+                    // host runtime is unnecessary under test.
+                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+                        model.start()
+                    }
+                }
                 .onOpenURL { url in
                     guard url.scheme?.lowercased() == "chirp" else { return }
                     if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
