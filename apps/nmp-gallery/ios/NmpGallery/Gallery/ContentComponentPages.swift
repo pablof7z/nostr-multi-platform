@@ -105,6 +105,13 @@ struct ContentViewPage: View {
 
     var body: some View {
         VStack(spacing: 16) {
+            // A hidden avatar owns the claim for the showcase pubkey while this
+            // page is visible — same mechanism as `ProfileEmbedPage`, so
+            // `model.profile(forPubkey:)` resolves to the display name instead
+            // of the truncated hex fallback.
+            NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .frame(width: 0, height: 0)
+                .clipped()
             RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrContentView(tree:)") {
                 NostrContentView(
@@ -161,6 +168,12 @@ struct ContentMentionChipPage: View {
     var body: some View {
         let profile = model.profile(forPubkey: SHOWCASE_PUBKEY_HEX)
         VStack(spacing: 16) {
+            // A hidden avatar owns the claim for the showcase pubkey while this
+            // page is visible — same mechanism as `ProfileEmbedPage`, so the
+            // mention chip resolves the display name instead of the hex fallback.
+            NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .frame(width: 0, height: 0)
+                .clipped()
             RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrContentView — live mention resolution") {
                 NostrContentView(
@@ -209,6 +222,12 @@ struct ContentMinimalPage: View {
 
     var body: some View {
         VStack(spacing: 16) {
+            // A hidden avatar owns the claim for the showcase pubkey while this
+            // page is visible — same mechanism as `ProfileEmbedPage`, so the
+            // minimal-run mention resolves the display name, not the hex fallback.
+            NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .frame(width: 0, height: 0)
+                .clipped()
             RawToggle(rawMode: $rawMode)
             ContentPageFrame(caption: "NostrMinimalContentView(runs:)") {
                 NostrMinimalContentView(runs: runs)
@@ -269,6 +288,14 @@ struct ContentQuoteCardPage: View {
     var body: some View {
         let quoteModel = relayQuoteModel(from: model)
         VStack(spacing: 16) {
+            // The `.task` below claims the quote-card *event* (kind:1 content).
+            // The author display name is a separate profile-host claim — owned
+            // here by a hidden avatar, mirroring `ProfileEmbedPage`. The author
+            // pubkey is statically `SHOWCASE_PUBKEY_HEX`; we claim it directly
+            // rather than waiting on the resolved `note.authorPubkey`.
+            NostrAvatar(pubkey: SHOWCASE_PUBKEY_HEX, size: 0)
+                .frame(width: 0, height: 0)
+                .clipped()
             ContentPageFrame(caption: "NostrQuoteCard — rich") {
                 NostrQuoteCard(
                     model: quoteModel,
