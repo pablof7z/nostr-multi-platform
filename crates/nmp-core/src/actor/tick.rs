@@ -101,9 +101,12 @@ mod tests {
     /// Verifies that idle ticks do not emit snapshots when kernel state has not
     /// changed (D8: zero false-wakeup allocations after warmup — codex T23 P2).
     ///
-    /// The actor is spawned WITHOUT sending `Start`, so no relays connect and
-    /// `changed_since_emit` never becomes true.  Over 1 s the 250 ms idle-poll
-    /// fires ~4 times; none should produce a snapshot.
+    /// V-87 #601 (offline-first §3): the actor now emits exactly ONE pre-flight
+    /// snapshot immediately on startup, before the host sends any command, so
+    /// that a host waiting for the first frame before sending `Start` does not
+    /// deadlock.  That pre-flight frame is the ONLY snapshot expected here.
+    /// Over the subsequent 1 s the 250 ms idle-poll fires ~4 more times; none
+    /// should produce additional snapshots (state has not changed).
     #[test]
     fn idle_ticks_do_not_emit_snapshots_when_state_unchanged() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
@@ -121,10 +124,13 @@ mod tests {
             idle_count += 1;
         }
 
+        // Exactly 1 is expected: the D1 pre-flight frame (offline-first §3).
+        // More than 1 is the D8 false-wakeup regression.
         assert_eq!(
-            idle_count, 0,
+            idle_count, 1,
             "D8 regression: actor emitted {idle_count} snapshot(s) without any \
-             Start command or state change; expected 0"
+             Start command or state change; expected exactly 1 (the V-87 D1 \
+             pre-flight frame only — no additional spurious frames)"
         );
     }
 
@@ -242,12 +248,16 @@ mod tests {
             }
         }
 
-        // Configure ITSELF emits one snapshot — that's the lifecycle event,
-        // which is allowed. View dispatches must not add to the count.
+        // V-87 #601 — the actor emits one pre-flight frame (D1 / offline-first
+        // §3) unconditionally at startup.  Configure ITSELF also emits one
+        // snapshot (the lifecycle event).  So the expected upper bound is now
+        // 2 (pre-flight + Configure).  View dispatches must not add to the
+        // count — the S2 retention constraint is that per-dispatch emits while
+        // `running=false` are suppressed; that invariant is unchanged.
         assert!(
-            snapshots <= 1,
+            snapshots <= 2,
             "regression: view-command dispatches emitted {snapshots} snapshot(s) \
-             while running=false; expected ≤ 1 (lifecycle Configure only). \
+             while running=false; expected ≤ 2 (V-87 pre-flight + Configure only). \
              This is the S2 retention leak — see s2-retention-audit.md."
         );
     }

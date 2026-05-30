@@ -51,6 +51,8 @@ mod session_persistence;
 mod session_persistence_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
+#[cfg(all(test, feature = "native"))]
+mod v87_d1_startup_tests;
 #[cfg(feature = "native")]
 mod tick;
 
@@ -1183,12 +1185,46 @@ pub fn run_actor_with_observers(
     // the FFI surface and diagnostic snapshot don't change.
     let dispatch_drops = Arc::new(AtomicU64::new(0));
 
-    // Wait for the first command before constructing the kernel. `nmp_app_new`
-    // starts this actor thread immediately, while the host sets the LMDB path
-    // through `nmp_app_set_storage_path` right after creating the handle and
-    // before `Start`. Blocking here removes that init-order race without
-    // polling; the first command is replayed through the normal dispatch path
-    // below after the kernel has been built with the latest path.
+    // D1 / offline-first §3 — emit one empty-but-valid snapshot BEFORE the
+    // host has sent any command. A host that waits for the first snapshot
+    // before sending `Start` must not deadlock (offline-first.md §3: "the
+    // first snapshot is unconditional … even if the working set is empty").
+    //
+    // We cannot construct the real kernel yet — the LMDB storage path is
+    // resolved only after the first command arrives (the init-order comment
+    // below explains why). A temporary bare kernel with default settings is
+    // constructed here solely to produce a well-formed `running=false`
+    // snapshot and then dropped.  This frame unblocks any host that observes
+    // the update channel before sending its first command; the real kernel
+    // (with the correct storage path) is still built below, after `recv()`.
+    //
+    // tick.rs `emit_now` is intentionally used here rather than an inline
+    // `encode_snapshot_value` so the frame travels the same code path as
+    // every other snapshot (FlatBuffers envelope, `SNAPSHOT_SCHEMA_VERSION`,
+    // `running=false` field).  The `last_emit` instant is not available yet
+    // (it is initialised after kernel construction below); we pass the
+    // channel sender directly without updating `last_emit` — that field is
+    // re-initialised below anyway.
+    // #601 rev-collision fix: capture the pre-flight kernel's rev after its
+    // single `make_update(false)` call.  The real kernel is initialised at
+    // rev=0; we will advance it to `preflight_rev` below (before its own
+    // first `make_update`), so the real kernel's first frame carries
+    // `preflight_rev + 1`.  The iOS host's `guard update.rev > rev` guard
+    // only accepts strictly increasing revs, so this guarantees the
+    // `running=true` Start frame is never silently dropped even when a
+    // snapshot-first host has already consumed the pre-flight frame (rev=1).
+    let preflight_rev: u64;
+    {
+        let mut pre_kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let _ = update_tx.send(pre_kernel.make_update(false));
+        preflight_rev = pre_kernel.current_rev();
+    }
+    // Wait for the first command before constructing the real kernel.
+    // `nmp_app_new` starts this actor thread immediately, while the host sets
+    // the LMDB path through `nmp_app_set_storage_path` right after creating
+    // the handle and before `Start`. Blocking here removes that init-order
+    // race without polling; the first command is replayed through the normal
+    // dispatch path below after the kernel has been built with the latest path.
     let first_command = match command_rx.recv() {
         Ok(ActorCommand::Shutdown) | Err(_) => return,
         Ok(command) => command,
@@ -1215,6 +1251,12 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // #601 rev-collision fix: advance the real kernel's rev counter to
+    // `preflight_rev` so its first `make_update` emits `preflight_rev + 1`.
+    // This must happen AFTER kernel construction and BEFORE the dispatch loop
+    // replays `first_command` — the construction order (real kernel built
+    // post-recv()) is unaffected. The storage-path race fix is preserved.
+    kernel.resume_rev_after_preflight(preflight_rev);
     // V-51 phase 4 — publish the kernel's routing-trace projection clone
     // into the shared slot so `NmpApp::routing_trace` can read it. The
     // kernel default is `EmptyOutboxRouter` (substrate-honest debt B), so
