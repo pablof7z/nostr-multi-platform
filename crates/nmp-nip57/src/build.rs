@@ -110,15 +110,20 @@ impl ZapRequestBuilder {
         self
     }
 
+    /// Consume the builder and produce an [`UnsignedEvent`].
+    ///
+    /// `pubkey` is set to `""` — the D7 sentinel. The actor (or
+    /// `sign_zap_request`) re-derives the pubkey from the active signing
+    /// `Keys`; the placeholder is never published.
+    ///
+    /// `created_at` is set to `0` — the D7 sentinel. The protocol command
+    /// (`FetchLnurlInvoiceCommand::run`) re-stamps it from
+    /// `ProtocolCommandContext::now_secs()` before signing.
+    ///
     /// # Errors
     ///
-    /// Returns [`ZapRequestBuildError`] if recipient or target is missing.
-    #[must_use]
-    pub fn build(
-        self,
-        author: impl Into<String>,
-        created_at: u64,
-    ) -> Result<UnsignedEvent, ZapRequestBuildError> {
+    /// Returns [`ZapRequestBuildError`] if the recipient pubkey is missing.
+    pub fn build(self) -> Result<UnsignedEvent, ZapRequestBuildError> {
         if self.recipient.trim().is_empty() {
             return Err(ZapRequestBuildError::MissingRecipient);
         }
@@ -152,11 +157,13 @@ impl ZapRequestBuilder {
         }
 
         Ok(UnsignedEvent {
-            pubkey: author.into(),
+            // D7 — re-derived from active Keys at sign time; never published.
+            pubkey: String::new(),
             kind: KIND_ZAP_REQUEST,
             tags,
             content: self.comment,
-            created_at,
+            // D7 sentinel — re-stamped from `ctx.now_secs()` in run().
+            created_at: 0,
         })
     }
 }
@@ -164,8 +171,6 @@ impl ZapRequestBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const AUTHOR: &str = "deadbeef";
 
     fn tag_keys(unsigned: &UnsignedEvent) -> Vec<&str> {
         unsigned.tags.iter().filter_map(|t| t.first()).map(String::as_str).collect()
@@ -175,7 +180,7 @@ mod tests {
     fn minimal_request_emits_relays_and_p() {
         let unsigned = ZapRequest::to_pubkey("alice")
             .relays(vec!["wss://r.x".into(), "wss://r.y".into()])
-            .build(AUTHOR, 0)
+            .build()
             .unwrap();
         assert_eq!(unsigned.kind, KIND_ZAP_REQUEST);
         let keys = tag_keys(&unsigned);
@@ -190,7 +195,7 @@ mod tests {
         let unsigned = ZapRequest::to_pubkey("alice")
             .amount_msats(12_345)
             .relays(vec!["wss://r".into()])
-            .build(AUTHOR, 0)
+            .build()
             .unwrap();
         assert_eq!(tag_keys(&unsigned), vec!["relays", "amount", "p"]);
         assert_eq!(unsigned.tags[1][1], "12345");
@@ -201,7 +206,7 @@ mod tests {
         let unsigned = ZapRequest::to_pubkey("alice")
             .relays(vec!["wss://r".into()])
             .zapped_event("NOTE_ID")
-            .build(AUTHOR, 0)
+            .build()
             .unwrap();
         let keys = tag_keys(&unsigned);
         assert_eq!(keys, vec!["relays", "p", "e"]);
@@ -213,7 +218,7 @@ mod tests {
         let unsigned = ZapRequest::to_pubkey("alice")
             .relays(vec!["wss://r".into()])
             .zapped_address("30023:alice:intro")
-            .build(AUTHOR, 0)
+            .build()
             .unwrap();
         let keys = tag_keys(&unsigned);
         assert_eq!(keys, vec!["relays", "p", "a"]);
@@ -228,7 +233,7 @@ mod tests {
     #[test]
     fn no_relays_builds_without_relays_tag() {
         let unsigned = ZapRequest::to_pubkey("alice")
-            .build(AUTHOR, 0)
+            .build()
             .expect("build must succeed without relays — actor injects them");
         let keys = tag_keys(&unsigned);
         assert!(
@@ -244,7 +249,7 @@ mod tests {
     fn whitespace_only_relays_filtered_to_empty_emits_no_tag() {
         let unsigned = ZapRequest::to_pubkey("alice")
             .relays(vec!["   ".into(), "\t".into()])
-            .build(AUTHOR, 0)
+            .build()
             .expect("whitespace-only relays filter to empty; build must still succeed");
         let keys = tag_keys(&unsigned);
         assert!(
@@ -257,7 +262,7 @@ mod tests {
     fn missing_recipient_errors() {
         let err = ZapRequest::to_pubkey("  ")
             .relays(vec!["wss://r".into()])
-            .build(AUTHOR, 0)
+            .build()
             .unwrap_err();
         assert_eq!(err, ZapRequestBuildError::MissingRecipient);
     }
@@ -267,7 +272,7 @@ mod tests {
         let unsigned = ZapRequest::to_pubkey("alice")
             .relays(vec!["wss://r".into()])
             .comment("nice post")
-            .build(AUTHOR, 0)
+            .build()
             .unwrap();
         assert_eq!(unsigned.content, "nice post");
     }
@@ -276,7 +281,7 @@ mod tests {
     fn builder_consumes_self_compile_check() {
         let _: UnsignedEvent = ZapRequest::to_pubkey("a")
             .relays(vec!["wss://r".into()])
-            .build(AUTHOR, 0)
+            .build()
             .unwrap();
     }
 }

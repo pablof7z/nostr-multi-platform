@@ -191,13 +191,10 @@ impl ActionModule for ZapAction {
         if let Some(ref comment) = action.comment {
             builder = builder.comment(comment);
         }
-        // `author` is the kernel-resolved active account at sign time —
-        // the protocol command overrides this when it builds the signed
-        // event. Pass an empty placeholder; the substrate `UnsignedEvent`
-        // carries it through unchanged but `sign_zap_request` re-signs
-        // from the active `Keys` (its pubkey is what `EventBuilder` stamps).
-        // `created_at = 0` is the D7 sentinel — re-stamped in `run()`.
-        let unsigned = match builder.build(String::new(), 0) {
+        // D7: `pubkey` and `created_at` are sentinels set internally by the
+        // builder — the protocol command re-stamps both from the active Keys
+        // and `ctx.now_secs()` in `FetchLnurlInvoiceCommand::run`.
+        let unsigned = match builder.build() {
             Ok(unsigned) => unsigned,
             Err(e) => {
                 record_action_failure(

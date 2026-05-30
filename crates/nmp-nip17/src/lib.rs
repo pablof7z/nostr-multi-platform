@@ -101,10 +101,15 @@ pub struct DmInput {
 /// - when `input.reply_to` is `Some`, an `["e", reply_to, "", "reply"]` tag
 ///   (NIP-10 reply marker; empty relay-hint slot).
 ///
+/// `pubkey` is set to `""` — the actor re-derives it from the active signing
+/// `Keys` when gift-wrapping (D7: the action module on the FFI thread does not
+/// have access to the account pubkey; the actor overrides it at sign time,
+/// exactly as the NIP-29 actions do).
+///
 /// `created_at` is set to `0` — the D7 sentinel. The actor re-stamps it from
 /// the kernel clock before wrapping; this crate never reads the system clock.
-#[must_use] 
-pub fn build_dm_rumor(input: &DmInput, sender_pubkey: &str) -> UnsignedEvent {
+#[must_use]
+pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = vec![vec![
         "p".to_string(),
         input.recipient_pubkey.clone(),
@@ -122,7 +127,9 @@ pub fn build_dm_rumor(input: &DmInput, sender_pubkey: &str) -> UnsignedEvent {
     }
 
     UnsignedEvent {
-        pubkey: sender_pubkey.to_string(),
+        // D7 — the actor re-derives the pubkey from the active signing Keys
+        // at gift-wrap time; this placeholder is never published.
+        pubkey: String::new(),
         kind: KIND_CHAT_MESSAGE,
         tags,
         content: input.content.clone(),
@@ -169,7 +176,6 @@ pub fn register_actions(app: &mut impl AppHost) {
 mod tests {
     use super::*;
 
-    const SENDER: &str = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
     const RECIPIENT: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
     #[test]
@@ -179,19 +185,24 @@ mod tests {
             content: "hello there".to_string(),
             reply_to: None,
         };
-        let rumor = build_dm_rumor(&input, SENDER);
+        let rumor = build_dm_rumor(&input);
         assert_eq!(rumor.kind, 14, "NIP-17 chat message is kind:14");
     }
 
     #[test]
-    fn build_dm_rumor_carries_sender_pubkey() {
+    fn build_dm_rumor_pubkey_is_empty_actor_restamps() {
+        // D7: the builder does not know the active account's pubkey — the actor
+        // re-derives it from the signing Keys at gift-wrap time.
         let input = DmInput {
             recipient_pubkey: RECIPIENT.to_string(),
             content: "hi".to_string(),
             reply_to: None,
         };
-        let rumor = build_dm_rumor(&input, SENDER);
-        assert_eq!(rumor.pubkey, SENDER, "rumor pubkey is the sender");
+        let rumor = build_dm_rumor(&input);
+        assert!(
+            rumor.pubkey.is_empty(),
+            "D7: pubkey placeholder is empty — the actor re-stamps it from active Keys"
+        );
     }
 
     #[test]
@@ -201,7 +212,7 @@ mod tests {
             content: "the quick brown fox".to_string(),
             reply_to: None,
         };
-        let rumor = build_dm_rumor(&input, SENDER);
+        let rumor = build_dm_rumor(&input);
         assert_eq!(rumor.content, "the quick brown fox");
     }
 
@@ -212,7 +223,7 @@ mod tests {
             content: "hi".to_string(),
             reply_to: None,
         };
-        let rumor = build_dm_rumor(&input, SENDER);
+        let rumor = build_dm_rumor(&input);
         assert_eq!(
             rumor.tags,
             vec![vec!["p".to_string(), RECIPIENT.to_string()]],
@@ -228,7 +239,7 @@ mod tests {
             content: "replying".to_string(),
             reply_to: Some(parent.to_string()),
         };
-        let rumor = build_dm_rumor(&input, SENDER);
+        let rumor = build_dm_rumor(&input);
         assert_eq!(
             rumor.tags,
             vec![
@@ -251,7 +262,7 @@ mod tests {
             content: "hi".to_string(),
             reply_to: None,
         };
-        let rumor = build_dm_rumor(&input, SENDER);
+        let rumor = build_dm_rumor(&input);
         assert_eq!(
             rumor.created_at, 0,
             "D7: created_at is the 0 sentinel — the actor re-stamps it"

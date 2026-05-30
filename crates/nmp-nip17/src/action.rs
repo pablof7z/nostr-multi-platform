@@ -15,15 +15,13 @@
 //!   [`crate::dm_send::SendGiftWrappedDmCommand`] in this crate — runs on
 //!   the actor thread and does the seal + gift-wrap + publish chain.
 //!
-//! # Why the rumor's `pubkey` is left empty
+//! # Why the rumor's `pubkey` is empty
 //!
 //! The action module runs on the FFI thread and does not know the active
-//! account's pubkey — only the actor does. [`build_dm_rumor`] takes a
-//! `sender_pubkey` argument, but the actor's `dm.rs::build_nostr_rumor`
-//! re-derives the pubkey from the signing `Keys` (`EventBuilder::build(pubkey)`
-//! takes the pubkey separately and ignores `rumor.pubkey`). So passing an
-//! empty string here is correct — the actor overrides it at sign time. This
-//! mirrors the NIP-29 actions, whose `event.pubkey` is likewise a placeholder.
+//! account's pubkey — only the actor does. [`build_dm_rumor`] sets `pubkey`
+//! to `""` internally (D7 sentinel). The actor's `dm.rs::build_nostr_rumor`
+//! re-derives the pubkey from the signing `Keys` at gift-wrap time, exactly
+//! as the NIP-29 actions do.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
@@ -80,7 +78,7 @@ impl ActionModule for SendDmAction {
             content: action.content,
             reply_to: action.reply_to,
         };
-        let rumor = build_dm_rumor(&dm_input, "");
+        let rumor = build_dm_rumor(&dm_input);
         // V-39: dispatch via the substrate `ActorCommand::Protocol` arm
         // wrapping a `SendGiftWrappedDmCommand`. The protocol-command
         // body runs on the actor thread, resolves the active local

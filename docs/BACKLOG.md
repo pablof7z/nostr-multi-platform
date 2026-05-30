@@ -1177,26 +1177,31 @@ debug/diagnostics-only channel.
 Three builders require sentinel (zero/empty) inputs that callers must not replace
 with real values, with no type-level enforcement of the distinction:
 
-1. **#608 — CITATION STALE; re-scope to the real seam.** The filed cite
+1. ~~**#608 — CITATION STALE; re-scope to the real seam.** The filed cite
    `crates/nmp-nip59/src/wrap.rs:41-55` (dual-public `gift_wrap` /
    `gift_wrap_with_signer`) does **not** match HEAD: `wrap.rs` exposes only
    `unwrap_gift_wrap` (`:33`); there is no `gift_wrap(sender: &Keys, …)` free
    function. The signer seam is `gift_wrap_with_signer` at
    `crates/nmp-nip59/src/signer_seal.rs:234` (re-exported `lib.rs:38`). PR #760
    already made `wallet_connect` `pub(crate)`. Re-file #608 against the actual
-   `signer_seal.rs` API surface, or close it if the dual-path no longer exists.
-2. `crates/nmp-nip17/src/lib.rs:107` [#609] — `build_dm_rumor(input,
+   `signer_seal.rs` API surface, or close it if the dual-path no longer exists.~~
+   **(#1 was already stale at original filing; nip59 cite did not match HEAD.)**
+2. ~~`crates/nmp-nip17/src/lib.rs:107` [#609] — `build_dm_rumor(input,
    sender_pubkey: &str)` writes `pubkey: sender_pubkey.to_string()` (`:125`);
    action-executor call sites must pass `sender_pubkey = ""` and a real value
-   double-stamps. No type enforcement. **Confirmed live.**
-3. `crates/nmp-nip57/src/build.rs:117-122`, `action.rs:200` [#610] —
+   double-stamps. No type enforcement.~~ **DONE** — `sender_pubkey` param
+   removed; `pubkey` set internally to `""` (D7 sentinel). Callers updated.
+3. ~~`crates/nmp-nip57/src/build.rs:117-122`, `action.rs:200` [#610] —
    `ZapRequestBuilder::build(author, created_at)` (`build.rs:117`, writes
    `pubkey: author.into()` at `:155`) is called with `String::new(), 0` at
    `action.rs:200`; `created_at = 0` is the documented D7 sentinel (`action.rs:199`)
-   and real values double-stamp. **Confirmed live.**
+   and real values double-stamp.~~ **DONE** — `author` and `created_at` params
+   removed from `build()`; both set internally as D7 sentinels. All callers updated,
+   including `fetch_bolt11_for_zap` (standalone path re-stamps `created_at` directly).
 
-**Correct fix:** Each function should accept `Option<T>` or use a builder/typestate
-split (`Unsigned*` type at action call time, signed variant post-actor-signing).
+~~**Correct fix:** Each function should accept `Option<T>` or use a builder/typestate
+split (`Unsigned*` type at action call time, signed variant post-actor-signing).~~
+All three items resolved; V-89 is fully closed.
 
 ### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
 
