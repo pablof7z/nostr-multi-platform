@@ -81,6 +81,12 @@ struct ComponentDetailView: View {
             NoteEmbedPage()
         case "embed-highlight":
             HighlightEmbedPage()
+        // Auth pages — render the login block in its no-signer fallback
+        // state (the sim has no signer apps + no LSApplicationQueriesSchemes,
+        // so the `.task {}` probe returns empty and the manual key-entry path
+        // + install hint are shown).
+        case "login-block":
+            LoginBlockPage()
         default:
             Text("Unknown component: \(component.id)")
                 .foregroundStyle(.secondary)

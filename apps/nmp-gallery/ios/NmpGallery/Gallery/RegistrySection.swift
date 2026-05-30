@@ -95,4 +95,10 @@ let REGISTRY_SECTIONS: [RegistrySection] = [
             label: "HighlightEmbed",
             description: "Kind:9802 highlight — pull-quote + source"),
     ]),
+    RegistrySection(id: "auth", label: "Auth", components: [
+        RegistryComponent(
+            id: "login-block",
+            label: "NostrLoginBlock",
+            description: "Signer detection + manual key-entry login UI"),
+    ]),
 ]

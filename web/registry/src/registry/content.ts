@@ -508,7 +508,7 @@ export const contentComponents: Component[] = [
             content: loginBlockSwift,
           },
         ],
-        screenshots: [],
+        screenshots: ["login-block-ios-gallery-preview.png"],
         customization: [
           "Add `LSApplicationQueriesSchemes` to your app's Info.plist listing `nostrsigner`, `primal`, and `nostrconnect`. Without this entry `canOpenURL` always returns `false`, even when the signer is installed.",
           "Extend `NostrSignerDetector.knownSigners` to add future signer apps. Each entry needs its URL scheme listed in Info.plist too.",
