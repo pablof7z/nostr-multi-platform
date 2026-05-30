@@ -23,7 +23,10 @@ const TEST_WRITE_RELAYS: &[&str] = &["wss://test-write-r1.test", "wss://test-wri
 
 fn fresh() -> (IdentityRuntime, Kernel) {
     (
-        IdentityRuntime::new(new_bunker_handshake_slot()),
+        IdentityRuntime::new(
+            new_bunker_handshake_slot(),
+            crate::actor::new_bunker_connection_state_slot(),
+        ),
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
     )
 }
@@ -35,7 +38,10 @@ fn fresh_with_publish_store() -> (IdentityRuntime, Kernel, Arc<InMemoryPublishSt
         Arc::clone(&publish_store) as Arc<dyn PublishStore>,
     );
     (
-        IdentityRuntime::new(new_bunker_handshake_slot()),
+        IdentityRuntime::new(
+            new_bunker_handshake_slot(),
+            crate::actor::new_bunker_connection_state_slot(),
+        ),
         kernel,
         publish_store,
     )

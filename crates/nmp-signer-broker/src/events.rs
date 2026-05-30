@@ -25,6 +25,20 @@ pub enum BrokerEvent {
         /// its own session reference so cancellation can drain pending RPCs.
         signer: Arc<Nip46Signer>,
     },
+    /// The relay-layer connection state changed. Emitted when the underlying
+    /// `PoolRelayClient` observes a `Opened`, `Closed`, or `Failed` event from
+    /// the `nmp-network` Pool. V-14 step b: gives the host visibility into
+    /// mid-session relay flaps so the UI can display a reconnecting indicator
+    /// or prompt re-auth rather than silently bricking the session.
+    ///
+    /// `state` is one of: `"connected"`, `"reconnecting"`, `"failed"`.
+    /// `reason` carries the error message for `"reconnecting"` and `"failed"`.
+    ConnectionStateChanged {
+        /// Current relay-layer connection state token.
+        state: String,
+        /// Optional human-readable reason (error message on disconnect).
+        reason: Option<String>,
+    },
 }
 
 /// Callback installed by the host adapter that receives broker events.

@@ -98,6 +98,9 @@ pub(crate) use commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
 // handing it to the actor; promoted to `pub` for the extracted crate.
 #[cfg(feature = "native")]
 pub use commands::new_bunker_handshake_slot;
+// V-14 step b: bunker relay-layer connection-state slot.
+#[cfg(feature = "native")]
+pub use commands::{new_bunker_connection_state_slot, BunkerConnectionStateSlot};
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
@@ -346,6 +349,23 @@ pub enum ActorCommand {
         stage: String,
         /// Optional human-readable status (e.g. relay URL, error reason).
         message: Option<String>,
+    },
+    /// V-14 step b — relay-layer connection state update for the NIP-46 bunker
+    /// session. Emitted by the `nmp-ffi` broker adapter when the broker emits
+    /// `BrokerEvent::ConnectionStateChanged`. The actor writes it to the shared
+    /// `BunkerConnectionStateSlot`; the built-in `"bunker_connection_state"`
+    /// snapshot projection reads the slot on every tick.
+    ///
+    /// D4: the actor is the sole writer of the slot — the broker callback routes
+    /// through this command (not directly to the slot) so the write happens on
+    /// the actor thread.
+    #[allow(dead_code)]
+    // live cross-crate caller in nmp-ffi — per-crate lint false positive
+    BunkerConnectionStateChanged {
+        /// `"connected"` | `"reconnecting"` | `"failed"`.
+        state: String,
+        /// Optional human-readable reason (error message on reconnect/failed).
+        reason: Option<String>,
     },
     /// T66a publish — sign a kind:1 (optionally a reply) with the active
     /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
@@ -870,6 +890,8 @@ pub fn run_actor(
         // throwaway bunker-handshake slot (no FFI surface to register the
         // `"bunker_handshake"` projection here).
         new_bunker_handshake_slot(),
+        // V-14 step b: throwaway connection-state slot (no FFI surface here).
+        new_bunker_connection_state_slot(),
         // Typed slot constructor; the backwards-compatible entry
         // point has no FFI surface to read the slot, so it's a throwaway.
         crate::kernel::new_relay_edit_rows_slot(),
@@ -970,6 +992,8 @@ pub fn run_actor_with_lifecycle_observer(
         // D0: NIP-46 remote signing is an app noun — private throwaway
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
+        // V-14 step b: throwaway connection-state slot (no FFI surface here).
+        new_bunker_connection_state_slot(),
         // Typed slot constructor; private throwaway here.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
@@ -1064,6 +1088,11 @@ pub fn run_actor_with_observers(
     // snapshot-projection closure on the `NmpApp`; this one is handed to the
     // actor's `IdentityRuntime`, which is the sole writer (D4).
     bunker_handshake: BunkerHandshakeSlot,
+    // V-14 step b: bunker relay-layer connection-state slot. Parallel to
+    // `bunker_handshake` — one `Arc` clone is captured by the built-in
+    // `"bunker_connection_state"` snapshot-projection closure; this one is
+    // handed to `IdentityRuntime` (sole writer, D4).
+    bunker_connection_state: BunkerConnectionStateSlot,
     // Typed slot ([`crate::kernel::RelayEditRowsSlot`]) so the actor
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
@@ -1460,6 +1489,24 @@ pub fn run_actor_with_observers(
             });
         }
     }
+    // V-14 step b — third built-in NIP-46 projection: `"bunker_connection_state"`.
+    // Tracks the relay-layer connection health of the established bunker session.
+    // Distinct from `"bunker_handshake"` (which tracks protocol-handshake
+    // progress). `None` (no active bunker session) → JSON `null`.
+    // D0: relay-layer connection state for a remote signer session is an app noun.
+    {
+        let projection_slot = Arc::clone(&bunker_connection_state);
+        if let Ok(mut registry) = snapshot_projections.lock() {
+            registry.register("bunker_connection_state", move || {
+                let slot = projection_slot
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                slot.as_ref().map_or(serde_json::Value::Null, |dto| {
+                    serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
+                })
+            });
+        }
+    }
     // Bind the shared relay-edit rows handle so external Rust callers
     // (e.g. a per-app dispatch crate) can read the user's current
     // relay list without crossing FFI. Survives `Reset` the same way as
@@ -1468,8 +1515,8 @@ pub fn run_actor_with_observers(
     // D4: the identity runtime is the sole writer of the shared
     // bunker-handshake slot. The built-in `"bunker_handshake"` snapshot
     // projection registered above reads the same `Arc<Mutex<…>>` clone on
-    // every tick.
-    let mut identity = IdentityRuntime::new(bunker_handshake);
+    // every tick. Same for `bunker_connection_state` (V-14 step b).
+    let mut identity = IdentityRuntime::new(bunker_handshake, bunker_connection_state);
     // V-38: the wallet runtime moved to `nmp-nip47`. The actor no longer
     // owns it; the substrate relay-text interceptor slot
     // (`relay_text_interceptor`) is the only seam the actor calls for NIP-47

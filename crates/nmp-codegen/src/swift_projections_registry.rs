@@ -116,6 +116,15 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         swift_field: "nip46Onboarding",
         swift_type: "Nip46Onboarding",
     },
+    // V-14 step b: bunker relay-layer connection state. Tracks whether the
+    // relay socket that the established NIP-46 session rides on is
+    // `"connected"`, `"reconnecting"` (auto-reconnect in progress), or
+    // `"failed"` (permanent error). `null` when no bunker session is active.
+    SnapshotProjectionEntry {
+        json_key: "bunker_connection_state",
+        swift_field: "bunkerConnectionState",
+        swift_type: "BunkerConnectionState",
+    },
     // Publish-cluster outbox feeds — kernel-owned `publish_queue` and
     // `publish_outbox` arrays driven by the actor publish path.
     SnapshotProjectionEntry {
@@ -330,12 +339,12 @@ mod tests {
     /// silent.
     #[test]
     fn registry_size_is_locked() {
-        // 33 entries: the original 32 plus the `claimed_events` projection
-        // (ADR-0034 / F-CR-06 NMP embed system). Bump this (and add a new
-        // SnapshotProjectionEntry above) when a new projection is wired.
+        // 34 entries: 33 (previous) + `bunker_connection_state` (V-14 step b).
+        // Bump this (and add a new SnapshotProjectionEntry above) when a new
+        // projection is wired.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            33,
+            34,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }

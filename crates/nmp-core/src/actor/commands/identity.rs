@@ -145,6 +145,73 @@ pub fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
     Arc::new(Mutex::new(None))
 }
 
+/// NIP-46 bunker relay-layer connection state — the app noun projected onto
+/// the snapshot under `projections["bunker_connection_state"]`. V-14 step b.
+///
+/// D0: this is an app-shaped noun (relay connection state for the NIP-46
+/// bunker session) — NOT a typed `KernelSnapshot` field. The actor writes it
+/// to a [`BunkerConnectionStateSlot`]; a built-in snapshot projection
+/// serializes it into `projections` every tick.
+///
+/// Distinct from [`BunkerHandshakeDto`] (which tracks the NIP-46
+/// connect/get_public_key protocol state). This DTO tracks the relay
+/// transport health after the handshake is complete — i.e. whether the
+/// relay socket that the established bunker session rides on is currently
+/// `"connected"`, `"reconnecting"` (transient flap, auto-reconnect in
+/// progress), or `"failed"` (permanent error, session bricked).
+///
+/// `Deserialize` is retained so Swift codegen / round-trip tests can decode
+/// it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[doc(hidden)]
+pub struct BunkerConnectionStateDto {
+    /// `"connected"` | `"reconnecting"` | `"failed"`
+    pub(crate) state: String,
+    /// Optional human-readable reason (error message on reconnecting/failed).
+    pub(crate) reason: Option<String>,
+    /// `true` when `state == "connected"`.
+    pub(crate) is_connected: bool,
+    /// `true` when `state == "reconnecting"` (transient flap, auto-reconnect
+    /// in progress). Hosts show a reconnecting indicator on this signal.
+    pub(crate) is_reconnecting: bool,
+    /// `true` when `state == "failed"` (permanent error, session bricked).
+    /// Hosts prompt re-auth on this signal.
+    pub(crate) is_failed: bool,
+}
+
+impl BunkerConnectionStateDto {
+    /// Construct from a state wire token + optional reason, pre-computing all
+    /// derived boolean flags. Centralising the derivation here ensures shells
+    /// never reconstruct the flags from `state` (aim.md §6 / AP1).
+    pub(crate) fn new(state: String, reason: Option<String>) -> Self {
+        let is_connected = state == "connected";
+        let is_reconnecting = state == "reconnecting";
+        let is_failed = state == "failed";
+        Self {
+            state,
+            reason,
+            is_connected,
+            is_reconnecting,
+            is_failed,
+        }
+    }
+}
+
+/// Shared bunker-connection-state slot. Parallels [`BunkerHandshakeSlot`].
+///
+/// `None` (the default) means no bunker session is active (the projection
+/// then contributes JSON `null` under `"bunker_connection_state"`).
+#[doc(hidden)]
+pub type BunkerConnectionStateSlot = Arc<Mutex<Option<BunkerConnectionStateDto>>>;
+
+/// Construct a fresh, empty [`BunkerConnectionStateSlot`].
+///
+/// `pub` so `nmp-ffi`'s `nmp_app_new` can build the slot; the actor is the
+/// sole writer (D4).
+pub fn new_bunker_connection_state_slot() -> BunkerConnectionStateSlot {
+    Arc::new(Mutex::new(None))
+}
+
 /// Typed token for the NIP-46 handshake stage. Mirrors the wire strings the
 /// broker writes into [`BunkerHandshakeDto::stage`] one-to-one; hosts read
 /// this instead of string-comparing the raw stage value (which is then a Rust
@@ -342,23 +409,34 @@ pub(crate) struct IdentityRuntime {
     /// snapshot projection reads it. D0: NIP-46 remote signing is an app noun,
     /// so handshake state is NOT a typed `KernelSnapshot` field.
     bunker_handshake: BunkerHandshakeSlot,
+    /// Shared output slot for the bunker relay-layer connection-state projection.
+    /// Parallels `bunker_handshake`. The actor is the sole writer (D4); the
+    /// built-in `"bunker_connection_state"` snapshot projection reads it.
+    /// V-14 step b: gives the host visibility into relay flaps after the
+    /// handshake completes so it can show a reconnecting indicator or
+    /// prompt re-auth rather than silently bricking the session.
+    bunker_connection_state: BunkerConnectionStateSlot,
 }
 
 impl IdentityRuntime {
-    /// Construct an identity runtime bound to a shared bunker-handshake slot.
+    /// Construct an identity runtime bound to shared bunker slots.
     ///
-    /// `bunker_handshake` is the `Arc<Mutex<…>>` the actor writes handshake
-    /// progress into and the built-in `"bunker_handshake"` snapshot projection
-    /// reads from. The two `Arc` clones share one inner `Mutex`, so an actor
+    /// `bunker_handshake` and `bunker_connection_state` are the `Arc<Mutex<…>>`
+    /// slots the actor writes into and the built-in snapshot projections read
+    /// from. The two `Arc` clones share one inner `Mutex` each, so an actor
     /// write is visible to the projection closure on the next tick without
     /// crossing the FFI boundary.
-    pub(crate) fn new(bunker_handshake: BunkerHandshakeSlot) -> Self {
+    pub(crate) fn new(
+        bunker_handshake: BunkerHandshakeSlot,
+        bunker_connection_state: BunkerConnectionStateSlot,
+    ) -> Self {
         Self {
             keys: HashMap::new(),
             remote_signers: HashMap::new(),
             order: Vec::new(),
             active: None,
             bunker_handshake,
+            bunker_connection_state,
         }
     }
 
@@ -382,6 +460,28 @@ impl IdentityRuntime {
     #[cfg(test)]
     pub(crate) fn bunker_handshake_for_test(&self) -> Option<BunkerHandshakeDto> {
         self.bunker_handshake
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Write the latest bunker relay-layer connection state into the shared
+    /// projection slot (D4: actor is sole writer). A poisoned mutex recovers via
+    /// `into_inner` rather than panicking the actor thread (D6).
+    pub(crate) fn set_bunker_connection_state(&self, value: Option<BunkerConnectionStateDto>) {
+        let mut slot = self
+            .bunker_connection_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *slot = value;
+    }
+
+    /// Test-only read of the current bunker-connection-state projection state.
+    ///
+    /// Production code never reads this slot through the runtime.
+    #[cfg(test)]
+    pub(crate) fn bunker_connection_state_for_test(&self) -> Option<BunkerConnectionStateDto> {
+        self.bunker_connection_state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -1125,6 +1225,28 @@ pub(crate) fn add_remote_signer(
 /// NOT flip `changed_since_emit`, so the kernel is marked dirty explicitly —
 /// otherwise the refreshed projection could sit unemitted until an unrelated
 /// kernel mutation triggered a tick.
+/// Update the `"bunker_connection_state"` projection when the relay-layer
+/// connection state changes. V-14 step b.
+///
+/// `state` is one of `"connected"` | `"reconnecting"` | `"failed"`.
+/// `reason` carries the error message for `"reconnecting"` and `"failed"`.
+///
+/// D0: the connection state is an app noun — written to the shared
+/// [`BunkerConnectionStateSlot`] (read by the `"bunker_connection_state"`
+/// snapshot projection) instead of a typed `KernelSnapshot` field. The slot
+/// write does NOT flip `changed_since_emit`, so the kernel is marked dirty
+/// explicitly — otherwise the refreshed projection could sit unemitted until
+/// an unrelated kernel mutation triggered a tick.
+pub(crate) fn bunker_connection_state_changed(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    state: String,
+    reason: Option<String>,
+) {
+    identity.set_bunker_connection_state(Some(BunkerConnectionStateDto::new(state, reason)));
+    kernel.mark_changed_since_emit();
+}
+
 pub(crate) fn bunker_handshake_progress(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

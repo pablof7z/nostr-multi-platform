@@ -53,6 +53,17 @@ const CONNECT_BUDGET: Duration = Duration::from_secs(10);
 /// MUST be cheap (called on the dispatcher thread); offload work if needed.
 pub type EventCallback = Arc<dyn Fn(Value) + Send + Sync>;
 
+/// Signature of the connection-state callback. Called on the dispatcher
+/// thread when the relay-layer connection transitions between
+/// `"connected"` / `"reconnecting"` / `"failed"`. V-14 step b: the broker
+/// adapter translates these into a `BrokerEvent::ConnectionStateChanged`
+/// and routes it through `ActorCommand::BunkerConnectionStateChanged` so
+/// the snapshot projection is updated on the actor thread (D4).
+///
+/// `state` is one of `"connected"`, `"reconnecting"`, or `"failed"`.
+/// `reason` is `Some(msg)` for `"reconnecting"` and `"failed"`.
+pub type ConnectionStateCallback = Arc<dyn Fn(&str, Option<&str>) + Send + Sync>;
+
 /// Errors returned from the relay client. String-typed to keep the surface
 /// small; the broker converts these to `BunkerHandshakeProgress` failures
 /// via `Display`.
@@ -108,6 +119,13 @@ pub trait RelayClient: Send + Sync {
 /// parses kind-24133 frames out of `["EVENT", sub_id, event_json]`
 /// envelopes, fires the user-supplied [`EventCallback`], and re-replays
 /// installed subscriptions on every reconnect (V-14).
+///
+/// V-14 step b: accepts an optional [`ConnectionStateCallback`] that is
+/// invoked on `Opened` (→ `"connected"`), `Closed` (→ `"reconnecting"`
+/// unless `ClosedReason::Permanent`/`Shutdown` → `"failed"`), and
+/// `Failed` (→ `"reconnecting"` for transient / `"failed"` for permanent)
+/// so the broker can emit a `BrokerEvent::ConnectionStateChanged` without
+/// polling.
 pub struct PoolRelayClient {
     pool: Pool,
     handle: RelayHandle,
@@ -131,7 +149,16 @@ impl PoolRelayClient {
     /// mid-session reconnect is fully transparent: the worker handles
     /// backoff and the dispatcher replays subscriptions on each fresh
     /// `Opened` (V-14).
-    pub fn connect(url: &str, on_event: EventCallback) -> Result<Self, RelayError> {
+    ///
+    /// V-14 step b: `on_connection_state` is an optional callback invoked
+    /// on relay lifecycle events (`Opened` → `"connected"`, transient
+    /// `Closed`/`Failed` → `"reconnecting"`, permanent `Closed`/`Failed`
+    /// → `"failed"`). Pass `None` for callers that don't need it.
+    pub fn connect(
+        url: &str,
+        on_event: EventCallback,
+        on_connection_state: Option<ConnectionStateCallback>,
+    ) -> Result<Self, RelayError> {
         // Per-session pool: the broker's relays are not the user's relays,
         // so we don't share the kernel's pool. See module docs for the
         // full rationale.
@@ -164,6 +191,7 @@ impl PoolRelayClient {
                     handle,
                     subs_for_dispatch,
                     on_event,
+                    on_connection_state,
                     buffered,
                 );
             })
@@ -298,25 +326,27 @@ pub type TungsteniteRelayClient = PoolRelayClient;
 
 /// Pool-event dispatcher. Blocks on `pool_events_rx` (D8: no polling) until
 /// the Pool's translator drops its sender (triggered indirectly by
-/// `Pool::shutdown`). On `Opened` replays every stored subscription (V-14).
-/// On `Frame(Text)` parses the NIP-01 EVENT envelope and fires the user
-/// callback. Other frame types are ignored.
+/// `Pool::shutdown`). On `Opened` replays every stored subscription (V-14)
+/// and fires `on_connection_state("connected", None)`. On `Closed`/`Failed`
+/// fires `on_connection_state("reconnecting"|"failed", reason)` (V-14 step b).
+/// On `Frame(Text)` parses the NIP-01 EVENT envelope and fires `on_event`.
 fn run_dispatcher(
     pool_events_rx: Receiver<PoolEvent>,
     pool: Pool,
     handle: RelayHandle,
     subscriptions: Arc<Mutex<Vec<String>>>,
     on_event: EventCallback,
+    on_connection_state: Option<ConnectionStateCallback>,
     buffered: Vec<PoolEvent>,
 ) {
     // Replay events that arrived during the connect-wait first — the
     // Opened we waited for is in here too, so its subscription-replay
     // pass fires before we enter the recv loop.
     for ev in buffered {
-        handle_pool_event(ev, &pool, handle, &subscriptions, &on_event);
+        handle_pool_event(ev, &pool, handle, &subscriptions, &on_event, &on_connection_state);
     }
     while let Ok(ev) = pool_events_rx.recv() {
-        handle_pool_event(ev, &pool, handle, &subscriptions, &on_event);
+        handle_pool_event(ev, &pool, handle, &subscriptions, &on_event, &on_connection_state);
     }
 }
 
@@ -326,6 +356,7 @@ fn handle_pool_event(
     handle: RelayHandle,
     subscriptions: &Arc<Mutex<Vec<String>>>,
     on_event: &EventCallback,
+    on_connection_state: &Option<ConnectionStateCallback>,
 ) {
     match ev {
         PoolEvent::Opened { .. } => {
@@ -337,6 +368,10 @@ fn handle_pool_event(
                 .unwrap_or_default();
             for frame in frames {
                 let _ = pool.send(handle, WireFrame::Text(frame));
+            }
+            // V-14 step b: relay connected (or reconnected after a flap).
+            if let Some(cb) = on_connection_state {
+                cb("connected", None);
             }
         }
         PoolEvent::Frame {
@@ -350,9 +385,28 @@ fn handle_pool_event(
         // Binary/Ping/Pong/Close — NIP-01 is text-only; keepalive is
         // handled inside the Pool's translator.
         PoolEvent::Frame { .. } => {}
-        // The worker auto-reconnects. V-14 step b (broker-visible
-        // BunkerConnectionState) will tap these in a follow-up PR.
-        PoolEvent::Closed { .. } | PoolEvent::Failed { .. } | PoolEvent::Health { .. } => {}
+        // V-14 step b: transient mid-session close — the Pool will auto-
+        // reconnect (jittered backoff). Report `"reconnecting"` so the host
+        // can show a reconnecting indicator.
+        PoolEvent::Closed { reason, .. } => {
+            use nmp_network::pool::ClosedReason;
+            let is_permanent = matches!(reason, ClosedReason::Permanent | ClosedReason::Shutdown);
+            let state = if is_permanent { "failed" } else { "reconnecting" };
+            if let Some(cb) = on_connection_state {
+                cb(state, None);
+            }
+        }
+        // V-14 step b: Failed — transient errors trigger Pool reconnect;
+        // permanent errors (HTTP 401/403) stop reconnect and brick the session.
+        PoolEvent::Failed { error, .. } => {
+            let state = if error.permanent { "failed" } else { "reconnecting" };
+            if let Some(cb) = on_connection_state {
+                cb(state, Some(error.message.as_str()));
+            }
+        }
+        // Health snapshots carry no state change — they aggregate counters
+        // already reflected in Opened/Closed/Failed.
+        PoolEvent::Health { .. } => {}
     }
 }
 

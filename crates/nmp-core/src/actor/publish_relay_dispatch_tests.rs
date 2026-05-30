@@ -111,7 +111,10 @@ fn explicit_publish_target_spawns_worker_for_unseen_relay() {
 fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
     let (mut kernel, pool, _events_rx, mut relay_controls, mut slot_to_url, mut next_generation) =
         route_state();
-    let mut identity = IdentityRuntime::new(new_bunker_handshake_slot());
+    let mut identity = IdentityRuntime::new(
+        new_bunker_handshake_slot(),
+        crate::actor::new_bunker_connection_state_slot(),
+    );
     let relays = vec![(UNSEEN_RELAY.to_string(), "write".to_string())];
     let outbound = create_account(
         &mut identity,

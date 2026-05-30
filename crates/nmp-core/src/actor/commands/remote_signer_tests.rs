@@ -141,7 +141,10 @@ impl RemoteSignerHandle for StubRemoteSigner {
 
 fn fresh() -> (IdentityRuntime, Kernel) {
     (
-        IdentityRuntime::new(new_bunker_handshake_slot()),
+        IdentityRuntime::new(
+            new_bunker_handshake_slot(),
+            crate::actor::new_bunker_connection_state_slot(),
+        ),
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
     )
 }
@@ -458,7 +461,10 @@ fn snapshot_carries_bunker_handshake_value() {
     // the kernel level: a projection closure reads the identity runtime's
     // shared slot and the kernel collects it into `projections` on emit.
     let bunker_slot = new_bunker_handshake_slot();
-    let id = IdentityRuntime::new(Arc::clone(&bunker_slot));
+    let id = IdentityRuntime::new(
+        Arc::clone(&bunker_slot),
+        crate::actor::new_bunker_connection_state_slot(),
+    );
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Register the `"bunker_handshake"` projection exactly as `nmp_app_new`
@@ -496,6 +502,171 @@ fn snapshot_carries_bunker_handshake_value() {
         snapshot["projections"]["bunker_handshake"]["stage"],
         serde_json::json!("connecting")
     );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// V-14 step b: BunkerConnectionState projection tests.
+//
+// These tests prove the `"bunker_connection_state"` projection is driven by
+// REAL transitions through the identity-runtime setter and that the snapshot
+// reflects them correctly. No live socket required — the command handler
+// (`bunker_connection_state_changed`) is called directly.
+// ──────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn bunker_connection_state_projection_reflects_transitions() {
+    use crate::actor::commands::{bunker_connection_state_changed, new_bunker_connection_state_slot};
+    use crate::actor::new_bunker_handshake_slot;
+
+    // Wire up a connection-state slot + identity runtime, register the
+    // `"bunker_connection_state"` projection closure, bind it onto a kernel.
+    let conn_state_slot = new_bunker_connection_state_slot();
+    let id = IdentityRuntime::new(
+        new_bunker_handshake_slot(),
+        Arc::clone(&conn_state_slot),
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let projections = crate::kernel::new_snapshot_projection_slot();
+    {
+        let slot = Arc::clone(&conn_state_slot);
+        projections
+            .lock()
+            .expect("registry lock")
+            .register("bunker_connection_state", move || {
+                let s = slot.lock().unwrap_or_else(|e| e.into_inner());
+                s.as_ref()
+                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
+                    .unwrap_or(serde_json::Value::Null)
+            });
+    }
+    kernel.set_snapshot_projection_handle(projections);
+
+    // 1. Initial state: projection key is null (no active bunker session).
+    let snapshot = kernel.make_update_value_for_test(true);
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"],
+        serde_json::Value::Null,
+        "idle slot must project null: {snapshot}"
+    );
+
+    // 2. Simulate the broker reporting "connected" after handshake completes.
+    bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
+    let snapshot = kernel.make_update_value_for_test(true);
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["state"],
+        serde_json::json!("connected"),
+        "connected transition must surface in projection: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["is_connected"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["is_reconnecting"],
+        serde_json::json!(false)
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["is_failed"],
+        serde_json::json!(false)
+    );
+
+    // 3. Simulate a relay flap → "reconnecting".
+    bunker_connection_state_changed(
+        &id,
+        &mut kernel,
+        "reconnecting".to_string(),
+        Some("connection reset by peer".to_string()),
+    );
+    let snapshot = kernel.make_update_value_for_test(true);
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["state"],
+        serde_json::json!("reconnecting"),
+        "relay flap must project reconnecting: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["is_reconnecting"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["reason"],
+        serde_json::json!("connection reset by peer")
+    );
+
+    // 4. Simulate a permanent failure → "failed".
+    bunker_connection_state_changed(
+        &id,
+        &mut kernel,
+        "failed".to_string(),
+        Some("403 Forbidden".to_string()),
+    );
+    let snapshot = kernel.make_update_value_for_test(true);
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["state"],
+        serde_json::json!("failed"),
+        "permanent failure must project failed: {snapshot}"
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["is_failed"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        snapshot["projections"]["bunker_connection_state"]["reason"],
+        serde_json::json!("403 Forbidden")
+    );
+}
+
+#[test]
+fn bunker_connection_state_slot_reflects_direct_write() {
+    // Drive `bunker_connection_state_changed` (the pub command handler) directly
+    // to prove the slot writer pre-computes flags correctly without going
+    // through the actor loop. Uses the test-accessor to read back the slot.
+    use crate::actor::commands::{bunker_connection_state_changed, new_bunker_connection_state_slot};
+    use crate::actor::new_bunker_handshake_slot;
+
+    let conn_state_slot = new_bunker_connection_state_slot();
+    let id = IdentityRuntime::new(
+        new_bunker_handshake_slot(),
+        Arc::clone(&conn_state_slot),
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Idle: slot is None.
+    assert!(id.bunker_connection_state_for_test().is_none());
+
+    // Write "reconnecting" via the command handler.
+    bunker_connection_state_changed(
+        &id,
+        &mut kernel,
+        "reconnecting".to_string(),
+        Some("timeout".to_string()),
+    );
+    let dto = id.bunker_connection_state_for_test().expect("slot must be Some after reconnecting");
+    assert_eq!(dto.state, "reconnecting");
+    assert!(dto.is_reconnecting);
+    assert!(!dto.is_connected);
+    assert!(!dto.is_failed);
+    assert_eq!(dto.reason.as_deref(), Some("timeout"));
+
+    // Overwrite with "connected".
+    bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
+    let dto = id.bunker_connection_state_for_test().expect("slot must be Some after connected");
+    assert!(dto.is_connected);
+    assert!(!dto.is_reconnecting);
+    assert!(!dto.is_failed);
+    assert!(dto.reason.is_none());
+
+    // Overwrite with "failed".
+    bunker_connection_state_changed(
+        &id,
+        &mut kernel,
+        "failed".to_string(),
+        Some("403 Forbidden".to_string()),
+    );
+    let dto = id.bunker_connection_state_for_test().expect("slot must be Some after failed");
+    assert!(dto.is_failed);
+    assert!(!dto.is_connected);
+    assert!(!dto.is_reconnecting);
+    assert_eq!(dto.reason.as_deref(), Some("403 Forbidden"));
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -562,6 +733,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // V-38: substrate-generic relay-text interceptor slot.
             crate::substrate::new_relay_text_interceptor_slot(),
             bunker_slot,
+            // V-14 step b: throwaway connection-state slot.
+            crate::actor::new_bunker_connection_state_slot(),
             // Typed slot constructor.
             crate::kernel::new_relay_edit_rows_slot(),
             Arc::new(std::sync::Mutex::new(None)),
