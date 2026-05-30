@@ -133,7 +133,9 @@ impl Kernel {
         // newlines, zero-width joiners are irrelevant at the byte level because
         // bech32 is alphanumeric only — splitting on these never truncates a
         // valid bech32 string).
-        for raw in content.split(|c: char| c.is_ascii_whitespace() || matches!(c, ',' | '(' | ')' | '"' | '\'' | '<' | '>')) {
+        for raw in content.split(|c: char| {
+            c.is_ascii_whitespace() || matches!(c, ',' | '(' | ')' | '"' | '\'' | '<' | '>')
+        }) {
             // Only try to parse tokens that look like a nostr: URI.  The
             // leading 10 characters `nostr:npub1` / `nostr:npro` are the
             // only profile-bearing prefixes we care about.
@@ -302,19 +304,26 @@ impl Kernel {
             return;
         };
 
-        // V-59 rung 1 (#4) — EOSE-no-match release for an event claim. If this
-        // oneshot sub belongs to a still-pending claim (a matching EVENT would
-        // have terminated the claim via `on_claim_outcome_hit`, removing it
-        // from `pending_claims`) AND the event is not already in the store,
-        // the relay set has confirmed it has nothing. Clear the claim state so
-        // a re-claim can re-fetch, push the id into the released ring, and
-        // notify observers.
-        if let Some(primary_id) = self.claim_primary_id_for_unmatched_sub(sub_id) {
-            self.event_claims.remove(&primary_id);
-            self.event_claim_requested.remove(&primary_id);
-            self.record_event_claim_released(&primary_id);
-        }
-
+        // V-59 rung 1 (#4) — EOSE handling for an event claim is NO LONGER
+        // released here.
+        //
+        // A claim's REQ fans out to MULTIPLE relays sharing one `sub_id`
+        // (B4 shape-shared subs). A single relay's EOSE-no-match means only
+        // THAT relay had nothing — a sibling relay's matching EVENT may still
+        // be in flight. Releasing the claim on the first EOSE here raced the
+        // EVENT: the relay set's slowest member could deliver the event AFTER
+        // a faster, content-less relay EOSE'd, and the claim row would already
+        // be gone — the `claimed_events` projection would then never surface
+        // the stored event (the embed renders "loading" forever).
+        //
+        // The per-relay EOSE is recorded by `record_claim_expansion_eose_no_match`
+        // (called immediately after this in the EOSE arm), which removes this
+        // relay's `in_flight_attempts` slot. The claim is released ONLY when the
+        // controller (`poll_claim_expansion`) observes genuine terminal-miss —
+        // `Terminal(Exhausted)` (all candidate relays tried, none in flight) or
+        // `Terminal(Budget)` (total budget elapsed). The `event_claims` teardown
+        // + release-ring fan-out lives in `terminate_claim`, gated on those two
+        // reasons (a `Hit` keeps the row so the projection surfaces the event).
         self.oneshot.complete(token);
         // `drain_completed` keeps the idempotent-drain contract; we release
         // immediately because the kernel reads results from the store/cache,

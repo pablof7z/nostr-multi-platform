@@ -185,6 +185,10 @@ impl Kernel {
             return;
         };
         let author = claim.author.clone().unwrap_or_default();
+        // Cloned inside the borrow for the terminal-miss teardown below (run
+        // after the borrow ends so `record_event_claim_released` can take
+        // `&mut self`).
+        let primary_id = claim.primary_id.clone();
         let from = match &claim.phase {
             Phase::Phase1 => "phase1",
             Phase::Phase2InFlight => "phase2",
@@ -195,6 +199,12 @@ impl Kernel {
             ClaimTermination::Exhausted => "terminal_exhausted",
             ClaimTermination::Budget => "terminal_budget",
         };
+        // Compute the terminal-miss decision BEFORE `reason` is moved into
+        // `Phase::Terminal(reason)` below (ClaimTermination is not `Copy`).
+        let is_terminal_miss = matches!(
+            reason,
+            ClaimTermination::Exhausted | ClaimTermination::Budget
+        );
         wire_log::log_wire(wire_log::WireLogEvent::ClaimPhaseAdvance {
             author: &author,
             from,
@@ -205,6 +215,26 @@ impl Kernel {
 
         // B3: remove all reverse-index entries pointing to this claim
         self.claim_sub_index.retain(|_, v| *v != iid);
+
+        // V-59 rung 1 (#4) — terminal-miss teardown. Released here (the single
+        // controller-owned termination site) ONLY for the two genuine
+        // no-event outcomes:
+        //   - `Exhausted`: every candidate relay was tried and none had it.
+        //   - `Budget`:    the total per-claim budget elapsed first.
+        // In both cases the relay set has confirmed (or timed out trying to
+        // confirm) that no relay holds the event, so we clear the claim state
+        // (`event_claims` refcount row + `event_claim_requested`) and push the
+        // id into the release ring so a re-claim re-fetches. A `Hit` MUST keep
+        // the `event_claims` row intact — the matching EVENT is now in the
+        // store and the `claimed_events` projection surfaces it on the next
+        // snapshot tick. (Previously this teardown lived in
+        // `complete_unknown_oneshot` and fired on the FIRST relay's
+        // EOSE-no-match, racing a sibling relay's still-in-flight EVENT.)
+        if is_terminal_miss {
+            self.event_claims.remove(&primary_id);
+            self.event_claim_requested.remove(&primary_id);
+            self.record_event_claim_released(&primary_id);
+        }
 
         // B3 invariant: every remaining claim_sub_index value must point to
         // an existing pending_claim (after terminal entries are removed in the

@@ -318,6 +318,13 @@ fn claim_event_bounded_at_max_event_claims_per_key() {
 /// 6. Snapshot push semantics (D8): a claim registered BEFORE the event
 /// arrives leaves `claimed_events` empty; once the event is ingested the
 /// next snapshot tick surfaces the DTO under the `primary_id` key.
+///
+/// NOTE: this test ingests via the `inject_note` bypass and so does NOT
+/// exercise the multi-relay EOSE-no-match teardown that can precede the EVENT.
+/// The race regression for that path —
+/// `claimed_kind1_surfaces_when_event_arrives_after_sibling_eose_no_match` —
+/// lives in `claim_expansion_ingest_tests.rs`, which has the production
+/// `handle_text` + B4 shared-sub harness this bypass test lacks.
 #[test]
 fn claimed_events_projection_emits_dto_keyed_by_primary_id() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
