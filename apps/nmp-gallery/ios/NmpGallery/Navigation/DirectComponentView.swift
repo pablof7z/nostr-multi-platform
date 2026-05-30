@@ -74,6 +74,8 @@ struct DirectComponentView: View {
             NoteEmbedPage()
         case "embed-highlight":
             HighlightEmbedPage()
+        case "login-block":
+            LoginBlockPage()
         default:
             Text("Unknown component: \(component.id)")
                 .foregroundStyle(.secondary)

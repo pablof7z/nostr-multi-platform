@@ -15,10 +15,12 @@
 		1567440E5CAD34C549BAE09B /* EmbeddedEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F773C1AE333707F031437E /* EmbeddedEvent.swift */; };
 		20DDB9992ED10F9F4EC89648 /* NostrNpubChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */; };
 		20E58F5EBD42EAF8ED46EAC4 /* EmbedKindProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7930F5278836668225735EC5 /* EmbedKindProjection.swift */; };
+		25CC074E4138068ED73D5B7A /* NostrProfileHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6378368998EB7ECCA47FE9F5 /* NostrProfileHost.swift */; };
 		29231718AE0080B8DBB38E54 /* NostrKindRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630AE36F4D7EA414FEA9020A /* NostrKindRegistry.swift */; };
 		328AFCD8867E60202F152596 /* RelayComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA4EB3843AF142754F973865 /* RelayComponentPages.swift */; };
 		35B6AC6851702565602DBA2F /* EventClaimSink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B8FCD1C122F2D5AB3F55E2 /* EventClaimSink.swift */; };
 		3AFBC7EC900132F25AFE4868 /* EmbedChromeContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 569D0431681AFE8CE2F12779 /* EmbedChromeContainer.swift */; };
+		3F0876E28748BC7C50C32EBB /* NostrRelativeTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAEC17185E38162C6E100EA2 /* NostrRelativeTime.swift */; };
 		4E04939850D1F5920F4C7DFF /* NostrAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */; };
 		4F5290134DE6177279101B4A /* NostrMentionChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFF9A2206748816172F8E00 /* NostrMentionChip.swift */; };
 		5134A56E7710BF1650E143F4 /* NostrContentGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70093462B21EFEE184D5AB6D /* NostrContentGrouping.swift */; };
@@ -31,10 +33,10 @@
 		7A7FE14D11B5567D98FF93EA /* DirectComponentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C50496D401A334EEF5199E2 /* DirectComponentView.swift */; };
 		866EF612F73C566B3F4574F6 /* EmbedComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91341CF5FBEEA10908271E1 /* EmbedComponentPages.swift */; };
 		8B08E0DACA4841D443483BD0 /* EmbedHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5E64D5A238551D49F8E4E9 /* EmbedHost.swift */; };
-		8D87428A9D19DECF2B78C4C1 /* NostrProfileHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D87428A9D19DECF2B78C4C0 /* NostrProfileHost.swift */; };
 		91F5C25A561E0C6055DB8EB7 /* NostrProfileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178F68FA938F19E5CC76902B /* NostrProfileName.swift */; };
 		9879ED595B26E60D623D2111 /* SectionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C0C0410ED532F645E1EF0E /* SectionListView.swift */; };
 		9D9087C9F1760A51C0B0FDBA /* NostrUserCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */; };
+		A7B15A0FAF77E87D66889A9D /* AuthComponentPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942C0E58E6BB898523B98384 /* AuthComponentPages.swift */; };
 		AF4382BE1C4738BCEC1A774F /* NostrLoginBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 777B5C73F0DB8699B6484909 /* NostrLoginBlock.swift */; };
 		B12BEBD352C83894013067EB /* NostrRelayList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D80853B9C9FD81C72BBDC36 /* NostrRelayList.swift */; };
 		B460476F92691955D51D5333 /* NostrMediaGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F15A1B2EBC5BC92ABA4E550 /* NostrMediaGrid.swift */; };
@@ -67,6 +69,7 @@
 		5FAE1282D8D5B6BA540C7FCD /* NostrMinimalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrMinimalContentView.swift; sourceTree = "<group>"; };
 		603752C0D6DEB2C4CDA84CEC /* ContentComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentComponentPages.swift; sourceTree = "<group>"; };
 		630AE36F4D7EA414FEA9020A /* NostrKindRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKindRegistry.swift; sourceTree = "<group>"; };
+		6378368998EB7ECCA47FE9F5 /* NostrProfileHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrProfileHost.swift; sourceTree = "<group>"; };
 		64076DAB0A088C7B05FF6CC6 /* NmpGallery.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NmpGallery.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6DE182FEFD5F2DAA789D2993 /* GalleryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryModel.swift; sourceTree = "<group>"; };
 		6F9256608B19032CA625722F /* NostrQuoteCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrQuoteCard.swift; sourceTree = "<group>"; };
@@ -77,7 +80,7 @@
 		8178DFF99C0D4CD59A662BEF /* GalleryKernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryKernelBridge.swift; sourceTree = "<group>"; };
 		837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrUserCard.swift; sourceTree = "<group>"; };
 		853208E9878618BC9FB930B6 /* RegistrySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrySection.swift; sourceTree = "<group>"; };
-		8D87428A9D19DECF2B78C4C0 /* NostrProfileHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrProfileHost.swift; sourceTree = "<group>"; };
+		942C0E58E6BB898523B98384 /* AuthComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthComponentPages.swift; sourceTree = "<group>"; };
 		94444DA5ACC2E7B1F880665C /* ContentTreeWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentTreeWire.swift; sourceTree = "<group>"; };
 		9C50496D401A334EEF5199E2 /* DirectComponentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectComponentView.swift; sourceTree = "<group>"; };
 		A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrNpubChip.swift; sourceTree = "<group>"; };
@@ -89,6 +92,7 @@
 		E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWire.swift; sourceTree = "<group>"; };
 		EA4EB3843AF142754F973865 /* RelayComponentPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayComponentPages.swift; sourceTree = "<group>"; };
 		F4F8DC32A1BE42C89C70DC3C /* NostrAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrAvatar.swift; sourceTree = "<group>"; };
+		FAEC17185E38162C6E100EA2 /* NostrRelativeTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrRelativeTime.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -111,6 +115,7 @@
 		6CE261217A2C0441BE8AF9E0 /* Gallery */ = {
 			isa = PBXGroup;
 			children = (
+				942C0E58E6BB898523B98384 /* AuthComponentPages.swift */,
 				603752C0D6DEB2C4CDA84CEC /* ContentComponentPages.swift */,
 				E91341CF5FBEEA10908271E1 /* EmbedComponentPages.swift */,
 				853208E9878618BC9FB930B6 /* RegistrySection.swift */,
@@ -161,9 +166,10 @@
 				5FAE1282D8D5B6BA540C7FCD /* NostrMinimalContentView.swift */,
 				E0840B3061A60EE899BADEB1 /* NostrNip05Badge.swift */,
 				A2F62031AF3D9FBD30705AC0 /* NostrNpubChip.swift */,
-				8D87428A9D19DECF2B78C4C0 /* NostrProfileHost.swift */,
+				6378368998EB7ECCA47FE9F5 /* NostrProfileHost.swift */,
 				178F68FA938F19E5CC76902B /* NostrProfileName.swift */,
 				6F9256608B19032CA625722F /* NostrQuoteCard.swift */,
+				FAEC17185E38162C6E100EA2 /* NostrRelativeTime.swift */,
 				7D80853B9C9FD81C72BBDC36 /* NostrRelayList.swift */,
 				837FF88F2C3D99BFEFDD4FDA /* NostrUserCard.swift */,
 				E9C89E718AE2ECBAC57992E3 /* ProfileWire.swift */,
@@ -255,6 +261,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C5FC7049E3C92D696C8CE83D /* ArticleEmbed.swift in Sources */,
+				A7B15A0FAF77E87D66889A9D /* AuthComponentPages.swift in Sources */,
 				C238056A192E8A0398B52082 /* ComponentDetailView.swift in Sources */,
 				60232E17601576EC053AB29D /* ComponentListView.swift in Sources */,
 				668CC9B523ECD4BE9A39B3EB /* ContentComponentPages.swift in Sources */,
@@ -282,9 +289,10 @@
 				72655451AE46362C0AFF4619 /* NostrMinimalContentView.swift in Sources */,
 				03B29281A3A3A1EEA839A9B5 /* NostrNip05Badge.swift in Sources */,
 				20DDB9992ED10F9F4EC89648 /* NostrNpubChip.swift in Sources */,
-				8D87428A9D19DECF2B78C4C1 /* NostrProfileHost.swift in Sources */,
+				25CC074E4138068ED73D5B7A /* NostrProfileHost.swift in Sources */,
 				91F5C25A561E0C6055DB8EB7 /* NostrProfileName.swift in Sources */,
 				0CF4C06BB3CFF2587C788BF1 /* NostrQuoteCard.swift in Sources */,
+				3F0876E28748BC7C50C32EBB /* NostrRelativeTime.swift in Sources */,
 				B12BEBD352C83894013067EB /* NostrRelayList.swift in Sources */,
 				9D9087C9F1760A51C0B0FDBA /* NostrUserCard.swift in Sources */,
 				BAC8BCD4BF99A624C0AEAEBE /* ProfileWire.swift in Sources */,
