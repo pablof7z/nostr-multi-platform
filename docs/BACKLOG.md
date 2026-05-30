@@ -1370,16 +1370,15 @@ state) for any remaining relay-dependency phrasing and re-file #624 with accurat
 `file:line`, or close it. The doctrine (never communicate relay-dependency to
 users; offline-first copy only) stands regardless. Paired with V-87 items 5–6.
 
-### V-100 · iOS WalletView validates the NIP-47 URI scheme in Swift [LOW · P5 · issue #625]
+### V-100 · iOS WalletView validates the NIP-47 URI scheme in Swift [DONE · PR refactor/v100-nwc-uri-validation-rust]
 
-**Verified:** `ios/Chirp/Chirp/Features/WalletView.swift:209-211` —
-`schemeLooksValid(_:)` checks `trimmed.lowercased().hasPrefix("nostr+walletconnect://")`
-in Swift and gates the connect button (`.disabled(!schemeLooksValid(uri))` at
-`:192`). Protocol URI validation belongs in Rust. **Confirmed live.**
-
-**Correct fix:** Remove the Swift-side validation. `dispatch_action(
-"nmp.nwc.connect", {"uri": …})` should validate and surface a typed
-`ActionError::InvalidNwcUri` in the action-lifecycle projection.
+**Fixed:** `WalletConnectModule::start()` in `crates/nmp-nip47/src/action.rs` now
+validates the `nostr+walletconnect://` scheme prefix (case-insensitive) and returns
+`ActionRejection::Invalid` for invalid URIs. The `nmp_app_wallet_connect` FFI shim
+in `crates/nmp-ffi/src/wallet.rs` checks the dispatch result and surfaces rejections
+as `ActorCommand::ShowToast` so the error reaches `last_error_toast` in the kernel
+snapshot. `schemeLooksValid(_:)` and its `.disabled(!schemeLooksValid(uri))` call
+removed from `WalletView.swift`; the button now gates only on non-empty input.
 
 ### V-101 · iOS NIP-29 group relay URL hardcoded in Swift `@State` [LOW · P5 · issue #626]
 
