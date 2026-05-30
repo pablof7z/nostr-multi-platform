@@ -14,11 +14,18 @@ pub struct ClaimerId(pub u64);
 /// Budget for one `gc_step()` call.
 ///
 /// Defaults: `max_events_per_step = 2000`, `max_duration_ms = 50`.
+/// `max_total_events = usize::MAX` (no ceiling — backward-compatible default).
 /// See `docs/design/lmdb/gc.md` §3.
 #[derive(Clone, Copy, Debug)]
 pub struct GcBudget {
     pub max_events_per_step: usize,
     pub max_duration_ms: u32,
+    /// LRU eviction ceiling: if the store holds more events than this,
+    /// `gc_step` evicts least-recently-accessed events (by access-sequence counter)
+    /// down to this ceiling.  Only un-pinned (unclaimed) events are eligible.
+    ///
+    /// Default: `usize::MAX` (disabled).  Set to a finite value to cap store size.
+    pub max_total_events: usize,
 }
 
 /// Report produced by `gc_step()`.

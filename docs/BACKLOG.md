@@ -739,13 +739,15 @@ exists, do not claim full zeroization for local-key accounts.
 
 ---
 
-### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management]
+### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management] — **DONE 2026-05-30**
 
-**Verified:** `crates/nmp-store/src/lmdb/gc.rs:8-10` — module comment: "LRU eviction is not implemented in this milestone — `Mem` doesn't have one either; `gc_step` reports `lru_evicted = 0`. Future work tracked under M4 GC tuning."
+**Fixed:** `GcBudget` gains `max_total_events: usize` (ceiling; `usize::MAX` = disabled).  Both `mem/gc.rs` and `lmdb/gc.rs` implement LRU eviction in `gc_step` Phase 2: events are sorted ascending by access-sequence counter (strictly monotonic, no ties), un-pinned candidates are evicted oldest-first until the store is at or under the ceiling, and pinned (claimed) events are always skipped.  Access is stamped on insert and on `get_by_id` hits.
 
-**Impact:** a long-running session that ingests a high-throughput feed will grow the LMDB store without bound. The GC step runs on each tick but evicts nothing; no byte or event-count budget is enforced.
+**D7 fix:** `gc_step` now takes `now_secs: u64` (kernel-clock-supplied); `SystemTime::now()` calls removed from both gc files.  All call sites updated to pass an explicit timestamp.
 
-**Correct fix:** implement an LRU policy in `gc_step` — track last-access time per event, evict the least-recently-read events when the store exceeds a configurable byte or event-count ceiling. The `mem` store needs the same policy for test consistency. Prerequisite: `EventStore` clock injection (V-59) so eviction timestamps are kernel-clock-sourced.
+**Index consistency:** evicted events are removed from all secondary indexes symmetrically — `provenance`, `relay_index` (Mem), `lru_access` (LMDB) — matching the pattern established by V-52.  No tombstone is written for LRU-evicted events (they remain valid and may be re-fetched).
+
+**Tests:** `crates/nmp-testing/tests/store_lru_eviction.rs` — 7 tests covering basic eviction, ceiling enforcement, LRU order (recently-read survive), pinned-event safety, relay-index consistency, D7 clock determinism, and no-op below ceiling.  All pass on both backends.
 
 ---
 

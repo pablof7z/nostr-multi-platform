@@ -286,10 +286,14 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
 
     let report = h
         .store
-        .gc_step(GcBudget {
-            max_events_per_step: 100,
-            max_duration_ms: 1_000,
-        })
+        .gc_step(
+            GcBudget {
+                max_events_per_step: 100,
+                max_duration_ms: 1_000,
+                max_total_events: usize::MAX,
+            },
+            2, // now_secs past the event's expiration=2
+        )
         .unwrap();
     assert!(
         report.expired_reaped >= 1,

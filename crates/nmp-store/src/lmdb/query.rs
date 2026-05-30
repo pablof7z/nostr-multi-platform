@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{conv, provenance, tombstones, Inner};
+use super::{conv, gc, provenance, tombstones, Inner};
 use crate::events::EventIter;
 use crate::types::{
     Coverage, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, SyncMethod, TombstoneRow,
@@ -26,26 +26,45 @@ pub(super) fn get_by_id(
     inner: &Arc<Inner>,
     id: &EventId,
 ) -> Result<Option<StoredEvent>, StoreError> {
-    let txn = inner
-        .lmdb
-        .read_txn()
-        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
-    // Tombstoned events MUST NOT be returned by get_by_id.
-    if tombstones::get(inner.tombstones, &txn, id)?.is_some() {
-        return Ok(None);
+    // Check tombstone under a read-txn first (cheap).
+    {
+        let txn = inner
+            .lmdb
+            .read_txn()
+            .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
+        if tombstones::get(inner.tombstones, &txn, id)?.is_some() {
+            return Ok(None);
+        }
+        if inner
+            .lmdb
+            .get_event_by_id(&txn, id)
+            .map_err(|e| StoreError::Io(format!("get: {e}")))?
+            .is_none()
+        {
+            return Ok(None);
+        }
     }
+    // Event exists — re-fetch in a write-txn so we can stamp the LRU access
+    // counter.  Write-txn per point-read is an accepted trade-off (see gc.rs
+    // module-level doc on write-amp vs D7 compliance).
+    let mut txn = inner
+        .env
+        .write_txn()
+        .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
     let Some(borrow) = inner
         .lmdb
         .get_event_by_id(&txn, id)
         .map_err(|e| StoreError::Io(format!("get: {e}")))?
     else {
+        txn.abort();
         return Ok(None);
     };
     let owned: Event = borrow.into_owned();
     let raw = conv::nostr_to_raw(&owned)?;
-    Ok(Some(conv::stored_from_raw(
-        raw, /* received_at_ms */ 0,
-    )))
+    gc::lru_stamp(inner, &mut txn, id)?;
+    txn.commit()
+        .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+    Ok(Some(conv::stored_from_raw(raw, /* received_at_ms */ 0)))
 }
 
 // ─── Scans ───────────────────────────────────────────────────────────────────

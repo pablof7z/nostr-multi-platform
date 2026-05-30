@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{provenance, Inner};
+use super::{gc, provenance, Inner};
 use crate::types::{DeleteFilter, EventId};
 use crate::StoreError;
 
@@ -65,6 +65,7 @@ fn by_ids(
                 .delete(txn, f)
                 .map_err(|e| StoreError::Io(format!("del: {e}")))?;
             provenance::delete(inner.provenance, txn, &id)?;
+            gc::lru_delete(inner, txn, &id)?;
             n += 1;
         }
     }
@@ -91,6 +92,7 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
     for id in ids {
         provenance::delete(inner.provenance, txn, &id)?;
+        gc::lru_delete(inner, txn, &id)?;
     }
     Ok(n)
 }
@@ -120,6 +122,7 @@ fn by_kind_range(
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
     for id in ids {
         provenance::delete(inner.provenance, txn, &id)?;
+        gc::lru_delete(inner, txn, &id)?;
     }
     Ok(n)
 }
@@ -155,6 +158,7 @@ fn by_relay_only(
             .delete(txn, f)
             .map_err(|e| StoreError::Io(format!("del: {e}")))?;
         provenance::delete(inner.provenance, txn, &id)?;
+        gc::lru_delete(inner, txn, &id)?;
     }
     Ok(n)
 }

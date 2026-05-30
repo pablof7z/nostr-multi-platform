@@ -12,7 +12,7 @@ use nmp_nostr_lmdb::SaveEventStatus;
 use nostr_database::FlatBufferBuilder;
 use nostr_database::RejectedReason;
 
-use super::{conv, provenance, tombstones, Inner};
+use super::{conv, gc, provenance, tombstones, Inner};
 use crate::types::{EventId, InsertOutcome, RawEvent, RejectReason, RelayUrl, TombstoneOrigin};
 use crate::StoreError;
 
@@ -142,9 +142,12 @@ pub(super) fn insert(
                 source.clone(),
                 received_at_ms,
             )?;
+            // Stamp LRU access for the newly stored event.
+            gc::lru_stamp(inner, &mut txn, &id_bytes)?;
             if let Some(replaced_id) = pre_existing_id {
-                // Replaced — also drop the replaced event's provenance.
+                // Replaced — also drop the replaced event's provenance + LRU entry.
                 provenance::delete(inner.provenance, &mut txn, &replaced_id)?;
+                gc::lru_delete(inner, &mut txn, &replaced_id)?;
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
                     replaced_id,
@@ -352,8 +355,9 @@ fn handle_kind5(
                 .lmdb
                 .delete(txn, filter)
                 .map_err(|e| StoreError::Io(format!("k5 delete: {e}")))?;
-            // Also drop NMP-side provenance.
+            // Also drop NMP-side provenance and LRU entry.
             provenance::delete(inner.provenance, txn, &target_id_bytes)?;
+            gc::lru_delete(inner, txn, &target_id_bytes)?;
         }
     }
 
@@ -443,6 +447,8 @@ fn handle_kind5(
         source.clone(),
         received_at_ms,
     )?;
+    // Stamp LRU access for the newly stored kind:5 event.
+    gc::lru_stamp(inner, txn, &kind5_id)?;
     Ok(InsertOutcome::Inserted {
         id: kind5_id,
         sources_after: count,
