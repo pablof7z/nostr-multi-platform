@@ -645,10 +645,10 @@ mod tests {
 
     use std::cell::RefCell;
 
-    use nmp_content::context::ContentProfileRenderData;
     use nmp_content::ShortNoteProjection;
 
     use super::super::kind_renderer::author_byline;
+    use crate::content_render_data::ContentProfileRenderData;
     use crate::nostr_mention_chip::NostrMentionProfileHost;
 
     const SHOWCASE_PUBKEY: &str =
@@ -668,11 +668,12 @@ mod tests {
                 .push((pubkey.to_string(), consumer_id.to_string()));
         }
 
-        fn profile_for_pubkey(&self, _pubkey: &str) -> Option<ContentProfileRenderData> {
+        fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData> {
             Some(ContentProfileRenderData {
+                pubkey: pubkey.to_string(),
                 display_name: self.display.clone(),
-                picture_url: None,
                 npub: None,
+                picture_url: None,
             })
         }
     }
@@ -746,11 +747,15 @@ mod tests {
             claimed: RefCell::new(Vec::new()),
         };
         let projection = EmbedKindProjection::ShortNote(ShortNoteProjection {
+            id: "b".repeat(64),
             author_pubkey: SHOWCASE_PUBKEY.to_string(),
             // Even when the kernel still emits a different static name, the
             // byline must come from the live-resolved claim, not this field.
             author_display_name: Some("STATIC-SHOULD-NOT-SHOW".to_string()),
-            ..Default::default()
+            author_picture_url: None,
+            created_at: 0,
+            content_tree: ContentTreeWire::default(),
+            media_urls: Vec::new(),
         });
 
         let area = Rect::new(0, 0, 40, 6);
@@ -779,7 +784,8 @@ mod tests {
         // render_embedded_event → EmbeddedEvent::author_host → KindRenderer.
         // Proves the host actually reaches the byline renderer through the
         // EmbeddedEvent widget, not only the helper in isolation.
-        use nmp_content::embed_projection::EmbeddedEventEnvelope;
+        use nmp_content::embed_projection::{EmbeddedEventEnvelope, RenderContextWire};
+        use nmp_content::RenderContext;
         use ratatui::widgets::Widget;
 
         use super::super::EmbeddedEvent;
@@ -789,13 +795,20 @@ mod tests {
             claimed: RefCell::new(Vec::new()),
         };
         let envelope = EmbeddedEventEnvelope {
+            uri: "nostr:nevent1example".to_string(),
+            primary_id: "b".repeat(64),
+            render_context: RenderContextWire::from(&RenderContext::new()),
             projection: EmbedKindProjection::ShortNote(ShortNoteProjection {
+                id: "b".repeat(64),
                 author_pubkey: SHOWCASE_PUBKEY.to_string(),
                 author_display_name: Some("STATIC-SHOULD-NOT-SHOW".to_string()),
-                ..Default::default()
+                author_picture_url: None,
+                created_at: 0,
+                content_tree: ContentTreeWire::default(),
+                media_urls: Vec::new(),
             }),
             collapsed: false,
-            ..Default::default()
+            collapse_reason: None,
         };
 
         let area = Rect::new(0, 0, 48, 8);
