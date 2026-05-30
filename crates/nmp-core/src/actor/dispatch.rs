@@ -611,6 +611,11 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::BunkerConnectionStateChanged { state, reason } => {
+            commands::bunker_connection_state_changed(ctx.identity, ctx.kernel, state, reason);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::PublishNote {
             content,
             reply_to_id,
@@ -1787,7 +1792,8 @@ mod nip65_auto_publish_tests {
     }
 
     fn fresh_identity() -> IdentityRuntime {
-        IdentityRuntime::new(new_bunker_handshake_slot())
+        use crate::actor::new_bunker_connection_state_slot;
+        IdentityRuntime::new(new_bunker_handshake_slot(), new_bunker_connection_state_slot())
     }
 
     fn signed_in_identity(kernel: &mut Kernel) -> IdentityRuntime {

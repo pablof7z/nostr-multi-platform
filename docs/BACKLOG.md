@@ -201,12 +201,13 @@ from the 2026-05-29 audit:*
 - `crates/nmp-core/src/publish/engine.rs` — now 458 LOC, under ceiling.
 - `crates/nmp-core/src/kernel/relay_diagnostics.rs` — now 420 LOC, under ceiling.
 
-### V-14 · Bunker reconnect — host-visible `BunkerConnectionState` projection missing [MEDIUM]
+### V-14 · Bunker reconnect — iOS/Android consumption of `BunkerConnectionState` projection [MEDIUM]
 
-**Reconnect logic landed (PR #431).** Remaining: step b — host-visible `BunkerConnectionState` projection (Connected / Connecting / TransportLost) so the host shell can surface a non-silent indicator.
+**Step b DONE (PR feat/v14-bunker-connection-state).** The kernel now emits `projections["bunker_connection_state"]` with `state`/`is_connected`/`is_reconnecting`/`is_failed`/`reason` derived from real Pool relay-lifecycle events. D0 clean, D4 compliant, tested.
 
-**Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
-NIP-46 as a v1 sign-in method.
+**Remaining:** iOS/Android shells must consume the projection — show a reconnecting indicator, prompt re-auth on `is_failed`. Swift `BunkerConnectionState` Decodable stub needed in `KernelBridge.swift`; Android equivalent in the Kotlin bridge. Deadline: before v1-A (without host consumption the silent-brick UX is unchanged for the user).
+
+**Deadline:** before v1-A.
 
 ### V-107 · Migrate gallery + marmot consumers off bespoke pull-snapshot symbols onto the canonical projection seam [HIGH · PRIORITIZED FOR AWARENESS]
 

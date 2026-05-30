@@ -26,7 +26,13 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     // this the kernel's `follow_feed_kinds` is empty and follow-feed
     // registration is a no-op (D0: the substrate no longer hardcodes a kind set).
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
-    (IdentityRuntime::new(new_bunker_handshake_slot()), kernel)
+    (
+        IdentityRuntime::new(
+            new_bunker_handshake_slot(),
+            crate::actor::new_bunker_connection_state_slot(),
+        ),
+        kernel,
+    )
 }
 
 /// Sign in account A, register A's kind:3 follow set (follows ALICE), and

@@ -92,7 +92,12 @@ impl BunkerBroker {
             "connecting",
             Some(&format!("connecting to relay {relay_url}")),
         );
-        let relay = match TungsteniteRelayClient::connect(&relay_url, Arc::clone(&event_cb)) {
+        let conn_state_cb = self.make_connection_state_callback();
+        let relay = match TungsteniteRelayClient::connect(
+            &relay_url,
+            Arc::clone(&event_cb),
+            Some(conn_state_cb),
+        ) {
             Ok(c) => Arc::new(c) as Arc<dyn RelayClient>,
             Err(e) => {
                 self.emit_progress("failed", Some(&format!("relay connect failed: {e}")));

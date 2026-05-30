@@ -264,7 +264,8 @@ pub use actor::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserv
 #[doc(hidden)]
 pub mod __ffi_internal {
     pub use crate::actor::{
-        has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+        has_role, new_bunker_connection_state_slot, new_bunker_handshake_slot,
+        new_event_observer_slot, new_lifecycle_observer_slot,
         new_raw_event_observer_slot, nostrconnect_relay_url, register_c_observer,
         register_c_raw_observer, register_rust_observer, register_rust_raw_observer,
         run_actor_with_observers, unregister_observer, unregister_raw_observer,
@@ -378,6 +379,7 @@ pub mod testing {
                 crate::kernel::new_snapshot_projection_slot(),
                 crate::substrate::new_relay_text_interceptor_slot(),
                 crate::actor::new_bunker_handshake_slot(),
+                crate::actor::new_bunker_connection_state_slot(),
                 crate::kernel::new_relay_edit_rows_slot(),
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),

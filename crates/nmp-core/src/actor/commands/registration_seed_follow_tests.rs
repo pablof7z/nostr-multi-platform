@@ -25,7 +25,13 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     // this the kernel's `follow_feed_kinds` is empty and `sync_follow_feed_interests`
     // registers nothing (D0: the substrate no longer hardcodes a kind set).
     kernel.follow_feed_kinds = BTreeSet::from([1u32, 6u32]);
-    (IdentityRuntime::new(new_bunker_handshake_slot()), kernel)
+    (
+        IdentityRuntime::new(
+            new_bunker_handshake_slot(),
+            crate::actor::new_bunker_connection_state_slot(),
+        ),
+        kernel,
+    )
 }
 
 fn onboarding_relays() -> Vec<(String, String)> {

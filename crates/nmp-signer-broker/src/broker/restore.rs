@@ -84,7 +84,7 @@ impl BunkerBroker {
     }
 
     fn connect_session(
-        &self,
+        self: &Arc<Self>,
         relays: &[String],
         local_keys: &Keys,
         cancel: &AtomicBool,
@@ -95,6 +95,7 @@ impl BunkerBroker {
             let _ = inbound_tx_for_cb.send(event);
         });
 
+        let conn_state_cb = self.make_connection_state_callback();
         let mut relay_result: Option<Arc<dyn RelayClient>> = None;
         let mut last_err: Option<String> = None;
         for url in relays {
@@ -103,7 +104,11 @@ impl BunkerBroker {
                 return None;
             }
             self.emit_progress("connecting", Some(&format!("dialing {url}")));
-            match TungsteniteRelayClient::connect(url, Arc::clone(&event_cb)) {
+            match TungsteniteRelayClient::connect(
+                url,
+                Arc::clone(&event_cb),
+                Some(Arc::clone(&conn_state_cb)),
+            ) {
                 Ok(client) => {
                     relay_result = Some(Arc::new(client) as Arc<dyn RelayClient>);
                     break;

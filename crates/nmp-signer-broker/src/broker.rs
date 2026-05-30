@@ -204,13 +204,18 @@ impl BunkerBroker {
         // Dial the first relay. Cycle through on failure.
         let mut relay_result: Option<Arc<dyn RelayClient>> = None;
         let mut last_err: Option<String> = None;
+        let conn_state_cb = self.make_connection_state_callback();
         for url in &bunker_uri.relays {
             if cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 self.emit_progress("failed", Some("cancelled"));
                 return;
             }
             self.emit_progress("connecting", Some(&format!("dialing {url}")));
-            match TungsteniteRelayClient::connect(url, Arc::clone(&event_cb)) {
+            match TungsteniteRelayClient::connect(
+                url,
+                Arc::clone(&event_cb),
+                Some(Arc::clone(&conn_state_cb)),
+            ) {
                 Ok(client) => {
                     relay_result = Some(Arc::new(client) as Arc<dyn RelayClient>);
                     break;
@@ -355,6 +360,26 @@ impl BunkerBroker {
             stage: stage.to_string(),
             message: message.map(str::to_string),
         });
+    }
+
+    fn emit_connection_state(&self, state: &str, reason: Option<&str>) {
+        self.emit(BrokerEvent::ConnectionStateChanged {
+            state: state.to_string(),
+            reason: reason.map(str::to_string),
+        });
+    }
+
+    /// Build the [`crate::relay_client::ConnectionStateCallback`] that routes
+    /// relay-layer lifecycle events back through `emit_connection_state`. Called
+    /// once per dial attempt so the broker — not the dispatcher thread — owns
+    /// the `Arc<Self>` reference used for the callback.
+    fn make_connection_state_callback(
+        self: &Arc<Self>,
+    ) -> crate::relay_client::ConnectionStateCallback {
+        let me = Arc::clone(self);
+        Arc::new(move |state: &str, reason: Option<&str>| {
+            me.emit_connection_state(state, reason);
+        })
     }
 
     fn emit(&self, event: BrokerEvent) {

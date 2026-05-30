@@ -61,6 +61,11 @@ fn handle_broker_event(tx: &Sender<ActorCommand>, event: BrokerEvent) {
         BrokerEvent::SignerReady { signer } => ActorCommand::AddRemoteSigner {
             handle: Box::new(ArcRemoteSigner(signer)),
         },
+        // V-14 step b: relay-layer connection state. Routes through the actor
+        // (D4 — actor is sole writer of the `bunker_connection_state` slot).
+        BrokerEvent::ConnectionStateChanged { state, reason } => {
+            ActorCommand::BunkerConnectionStateChanged { state, reason }
+        }
     };
     let _ = tx.send(cmd);
 }

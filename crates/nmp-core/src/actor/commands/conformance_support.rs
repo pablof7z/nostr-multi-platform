@@ -44,8 +44,11 @@ impl ConformanceHarness {
         Self {
             // D0: NIP-46 remote signing is an app noun — the conformance
             // harness wires a private throwaway bunker-handshake slot (no host
-            // reads it).
-            identity: IdentityRuntime::new(super::new_bunker_handshake_slot()),
+            // reads it). V-14 step b: likewise a throwaway connection-state slot.
+            identity: IdentityRuntime::new(
+                super::new_bunker_handshake_slot(),
+                super::new_bunker_connection_state_slot(),
+            ),
             kernel: Kernel::with_publish_store(
                 DEFAULT_VISIBLE_LIMIT,
                 Arc::clone(&publish_store) as Arc<dyn PublishStore>,

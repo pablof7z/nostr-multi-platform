@@ -84,7 +84,10 @@ fn registered_slot() -> CapabilityCallbackSlot {
 
 fn fresh() -> (IdentityRuntime, Kernel) {
     (
-        IdentityRuntime::new(commands::new_bunker_handshake_slot()),
+        IdentityRuntime::new(
+            commands::new_bunker_handshake_slot(),
+            commands::new_bunker_connection_state_slot(),
+        ),
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
     )
 }

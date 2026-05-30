@@ -103,9 +103,9 @@ mod tests;
 // V-01 Phase 1c: identity command handlers sit on the native actor runtime.
 #[cfg(feature = "native")]
 pub(super) use identity::{
-    add_remote_signer, bunker_handshake_progress, create_account, ensure_default_onboarding_relays,
-    remove_account, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
-    IdentityRuntime,
+    add_remote_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
+    ensure_default_onboarding_relays, remove_account, restore_bunker_session, sign_in_bunker,
+    sign_in_nsec, switch_active, IdentityRuntime,
 };
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the
@@ -122,6 +122,10 @@ pub(crate) use identity::build_nip46_onboarding_dto;
 // shape — but the type stays out of the public docs.
 #[cfg(feature = "native")]
 pub use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
+// V-14 step b: bunker relay-layer connection-state slot + constructor.
+// Same pattern as `BunkerHandshakeSlot` / `new_bunker_handshake_slot`.
+#[cfg(feature = "native")]
+pub use identity::{new_bunker_connection_state_slot, BunkerConnectionStateSlot};
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;
