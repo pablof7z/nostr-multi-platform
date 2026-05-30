@@ -131,6 +131,6 @@ not an application framework. NMP does not claim the app-layer axes as a
 
 ## See also
 
-- [02 — Mental model — kernel + 5 trait families](02-mental-model.md)
+- [02 — Mental model — kernel + extension seams](02-mental-model.md)
 - [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md)
 - [25 — Migration — NDK / Applesauce → NMP](25-migration-from-ndk-applesauce.md)

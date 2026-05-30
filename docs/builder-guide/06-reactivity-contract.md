@@ -167,7 +167,7 @@ nothing changed so the buffer stays empty.
   Every sleep-poll loop is a latency tax, a CPU wake-lock, and a false-wake
   source. If you feel the urge to write one, find the event that replaces it.
 
-See also: [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
+See also: [05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [07 — Subscription planner — Interest → CompiledPlan → wire](07-subscription-planner.md) ·
 [18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md) ·
 [04 — Actor model (TEA on one thread)](04-actor-and-tea.md)

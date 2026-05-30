@@ -163,7 +163,7 @@ into kernel internals.
   violation — those symbols are gated test-support, not the FFI contract
   (`lib.rs:37-56`, `actor/mod.rs:46-48`).
 
-See also: [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
+See also: [05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [06 — Reactivity contract (D8)](06-reactivity-contract.md) ·
 [17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md) ·
 [27 — Doc/code discrepancies (orchestrator queue)](27-discrepancies.md)

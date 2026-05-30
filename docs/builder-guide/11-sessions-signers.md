@@ -13,14 +13,13 @@
 Per doctrine **D0**, `nmp-core` carries no identity material. Signers,
 account state, and the bunker parser ship in the `nmp-signers` crate
 (`crates/nmp-signers/src/lib.rs:1-37`). The kernel only knows the
-*shape* of an identity via `IdentityModule` + `IdentityScopeKind`
-(`crates/nmp-core/src/substrate/identity.rs:8-76`); the concrete signer
+scope kind via `IdentityScopeKind`
+(`crates/nmp-core/src/substrate/identity.rs`); the concrete signer
 backends are policy + capability bridges, not substrate. Rationale:
 `docs/decisions/0015-m6-signer-design.md`.
 
-The kernel's `IdentityModule` trait is the seam. `nmp-signers` supplies
-the implementations the kernel composes; the kernel never imports a
-secret key, an `nsec`, or a `bunker://` URL.
+`nmp-signers` supplies the signer implementations the kernel composes;
+the kernel never imports a secret key, an `nsec`, or a `bunker://` URL.
 
 ## The `Signer` trait
 

@@ -45,7 +45,7 @@ by importance — out-of-order reading will leave you missing prerequisites.
 ### Path A — "I want to ship an app" (builders)
 
 ```
-01 what NMP is ──▶ 02 mental model ──▶ 05 the 5 trait families
+01 what NMP is ──▶ 02 mental model (kernel + extension seams) ──▶ 05 traits + seams
                           │
                           ▼
    25 migrate from NDK/Applesauce   17 iOS shell ──▶ 19 walkthrough
@@ -62,10 +62,10 @@ not re-implement it). **26** when something breaks.
 ### Path B — "I want to extend the kernel" (agents)
 
 ```
-03 doctrine D0–D10 ──▶ 02 mental model ──▶ 04 actor / TEA
+03 doctrine D0–D10 ──▶ 02 mental model (kernel + extension seams) ──▶ 04 actor / TEA
         │                                      │
         ▼                                      ▼
-05 trait families ──▶ 06 reactivity ──▶ 07 planner ──▶ 08 EventStore
+05 traits + seams ──▶ 06 reactivity ──▶ 07 planner ──▶ 08 EventStore
         │                                                    │
         ▼                                                    ▼
 20 add a protocol module      18 testing      22 doctrine checklist
@@ -111,7 +111,7 @@ M12 Wallet) — not bugs.
 ## Anti-patterns
 
 - **Reading sections out of order.** The graph above is a dependency order,
-  not a suggestion. Section 12 (publishing) assumes 05 (trait families) and
+  not a suggestion. Section 12 (publishing) assumes 05 (traits + seams) and
   11 (signers); skipping them yields confusion that looks like a doc error.
 - **Copying PLANNED code into a real app.** PLANNED sections cite plan files,
   never `crates/` `path:line`. There is no code behind them yet. Treat their
@@ -127,4 +127,4 @@ M12 Wallet) — not bugs.
   Builders who ignore D1/D4 re-introduce the spinner-gating and parallel-cache
   bugs NMP exists to prevent.
 
-See also: [01 — What NMP is + why it exists](01-what-nmp-is.md), [02 — Mental model — kernel + 5 trait families](02-mental-model.md), [22 — Doctrine compliance checklist](22-doctrine-checklist.md).
+See also: [01 — What NMP is + why it exists](01-what-nmp-is.md), [02 — Mental model — kernel + extension seams](02-mental-model.md), [22 — Doctrine compliance checklist](22-doctrine-checklist.md).

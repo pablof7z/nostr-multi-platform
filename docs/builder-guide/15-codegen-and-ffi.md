@@ -42,7 +42,7 @@ order, which is why the determinism test passes.
 ## What `generate_modules` emits
 
 `crates/nmp-codegen/src/generate.rs:12-42` wipes `out_dir`, recreates `src/`,
-and writes exactly eight files:
+and writes exactly nine files:
 
 | File | Content | Source fn |
 |---|---|---|
@@ -50,10 +50,11 @@ and writes exactly eight files:
 | `src/lib.rs` | `pub mod` + re-exports of the four enums | `lib_rs` :60 |
 | `src/action.rs` | `AppAction` enum + `namespace()` | `action_rs` :78 |
 | `src/update.rs` | `AppUpdate` enum + `namespace()` | `update_rs` :88 |
-| `src/view_spec.rs` | `ViewSpec` enum + `namespace()` | `view_spec_rs` :98 |
-| `src/capability.rs` | `CAPABILITY_MODULE_CRATES: &[&str]` | `capability_rs` :140 |
-| `src/domain.rs` | `DOMAIN_MODULE_CRATES: &[&str]` | `domain_rs` :144 |
-| `src/ffi.rs` | `FfiApp` struct with `rev`/`dispatch` | `ffi_rs` :158 |
+| `src/envelope.rs` | `pub use` re-exports of FlatBuffers decode helpers | `envelope_rs` :161 |
+| `src/view_spec.rs` | `ViewSpec` enum + `namespace()` | `view_spec_rs` :172 |
+| `src/capability.rs` | `CAPABILITY_MODULE_CRATES: &[&str]` | `capability_rs` |
+| `src/domain.rs` | `DOMAIN_MODULE_CRATES: &[&str]` | `domain_rs` |
+| `src/ffi.rs` | `FfiApp` struct routing `AppAction` through live seams | `ffi_rs` |
 
 ### Before vs after generate — `AppAction`
 
@@ -105,10 +106,10 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 │ extern "C" fns (nmp_app_new, nmp_app_start, nmp_app_open_author …).  │
 │ On master, updates still cross as one JSON string via a callback.    │
 │ That is the historical transport being retired, not a fallback path. │
-│ The GENERATED FfiApp (generate.rs:158) is a STUB: dispatch() just   │
-│ bumps `rev` and returns KernelUpdate::Diagnostics. It does not yet  │
-│ wire to the live actor — the live actor is reached through the      │
-│ hand-written raw C FFI in nmp-core, which ios/Chirp consumes.       │
+│ The GENERATED FfiApp (nmp-app-fixture/src/ffi.rs) is the live per-  │
+│ app FFI entry-point: it allocates NmpApp, calls each module's        │
+│ register(), and routes AppAction variants through dispatch_action.   │
+│ ios/Chirp consumes the hand-written raw C FFI in nmp-core directly. │
 ├─ FlatBuffers runtime transport (IN PROGRESS) ───────────────────────┤
 │ One canonical schema carries `FullState`, `ViewBatch`, and effects   │
 │ from Rust to frontend shells. JSON is allowed only for Nostr relay    │
@@ -139,13 +140,14 @@ into [27 — Doc/code discrepancies](27-discrepancies.md).
 ## How to add a snapshot projection to your app
 
 > **Disambiguation — read this first.** This guide uses the word *projection*
-> ~30 times for the **ViewModule** system (a typed reactive view: `Spec` →
-> `Payload`/`Delta`, `on_projection_changed` — see [06](06-reactivity-contract.md)).
-> This section is a **different mechanism**: a **snapshot projection** — a named
-> slice of app/module state delivered under its key in
-> `KernelSnapshot.projections[key]`. The word's existing presence in this guide
-> does **not** cover this; they are unrelated. Everywhere below, "snapshot
-> projection" means the `projections` map, never the ViewModule view-delta.
+> in two senses. The `KernelEventObserver`-driven view system (a reactive event
+> fan-out into an app-owned store, described in [05a](05a-substrate-traits.md) +
+> [06](06-reactivity-contract.md)) is one sense. **This section** is the other:
+> a **snapshot projection** — a named JSON slice of app/module state delivered
+> under its key in `KernelSnapshot.projections[key]`, registered via
+> `register_snapshot_projection`. These two mechanisms are unrelated. Everywhere
+> below, "snapshot projection" means the `projections` map, never the
+> event-observer view update path.
 
 **What it is.** A snapshot projection is a named slice of app- or module-owned
 state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.publish.status`,
@@ -265,7 +267,7 @@ dynamically, so the registry's only theoretical benefit doesn't apply.
 - Current-vs-future FFI box — legacy raw C JSON today, FlatBuffers runtime
   transport target, UniFFI M14, `nmp init` CLI ships.
 
-See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
-[05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
+See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
+[05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [06 — Reactivity contract — the push frame carries `projections`](06-reactivity-contract.md) ·
 [17 — iOS shell — reading `projections[key]` in `apply()`](17-ios-shell.md)

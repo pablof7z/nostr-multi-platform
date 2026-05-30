@@ -189,6 +189,6 @@ mechanism, not an app noun. No ADR → no waiver → the box stays unchecked.
 ## See also
 
 - [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md)
-- [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md)
+- [05 — Kernel substrate — traits + seams](05a-substrate-traits.md)
 - [18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md)
 - [27 — Doc/code discrepancies (orchestrator queue)](27-discrepancies.md)

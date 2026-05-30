@@ -125,10 +125,15 @@ let action = RunSyncAction {
 // terminal: RunSyncOutput { completed, bytes_on_wire_via_neg, bytes_saved_vs_req }
 ```
 
+> **⚠ Cite drift (§27 row 16).** The `run_sync.rs` file and `ActionPlan`/
+> `ActionInput` step-machine pattern above reflect a prior design. Current
+> `crates/nmp-nip77/src/` has `runtime.rs` + `reconciler.rs`. The conceptual
+> flow (start sync, capability probe, complete) is correct; the specific file
+> cites and type names need reverification against master tip.
+
 `start` returns `ActionStatus::Pending`; `reduce` advances
 `Prepared → Running → Complete` and maps a malformed capability payload to a
-non-transient `Fail`, a deadline to a *transient* `Fail`
-(`run_sync.rs:113-128`).
+non-transient `Fail`, a deadline to a *transient* `Fail`.
 
 ## Capability probe state machine
 
@@ -143,10 +148,9 @@ Unknown --begin()--> Probing --NEG-MSG--> Supported   (terminal)
 `CapabilityProbe::settle(None)` keeps the probe `Pending` (frame was for a
 different sub-id) — `capability.rs:173-182`. Terminal states require an
 explicit reset (e.g. a manual `RunSync`) to re-probe. Durable backing is the
-`CapabilityDomain` `DomainModule` (namespace `nmp.nip77.capabilities`,
-`crates/nmp-nip77/src/capability_domain.rs:46-68`); `hydrate_cache`
-(`capability_domain.rs:75-82`) re-populates the in-memory cache before any
-reconciliation runs.
+capability probe state is persisted and restored by the NIP-77 runtime
+(`crates/nmp-nip77/src/runtime.rs`) before any reconciliation runs. (File
+cite stale — see §27 row 16.)
 
 ## Metrics counters
 

@@ -3,7 +3,7 @@
 **Status: SHIPS · audience: builders.** Part 2 of 2. Continues
 [19a](19a-walkthrough-microblog.md) (scaffold). This part runs codegen, wires
 the publish path through a real signer, runs on the iOS simulator, and gives
-the "what publishes today vs tomorrow" milestone matrix.
+the "what ships today vs tomorrow" milestone matrix.
 
 ## Build / run cheatsheet
 
@@ -11,7 +11,7 @@ the "what publishes today vs tomorrow" milestone matrix.
 
 ```sh
 cargo build -p microblog-core
-cargo test  -p microblog-core      # exercises the module_descriptors() registry
+cargo test  -p microblog-core      # exercises register(), ActionModule, observer
 ```
 
 ### 2. Regenerate the per-app FFI crate
@@ -32,122 +32,102 @@ Or, with the CLI installed (`cargo install --path crates/nmp-cli`):
 nmp gen modules --manifest apps/microblog/nmp.toml
 ```
 
-> **Honest framing.** This is exactly the command that *regenerates the
-> existing fixture* ([`apps/fixture/`](../../apps/fixture)). `nmp init`
-> exists today but creates a **standalone** project workspace — a separate
-> repo that depends on NMP as a path dependency. When adding an app to the
-> NMP monorepo (as this walkthrough does), you hand-create
-> `apps/microblog/nmp.toml` and `crates/microblog-core/` (as in
-> [19a](19a-walkthrough-microblog.md)), then run `gen modules` to produce
+> **Honest framing.** This is exactly the command that regenerates the
+> existing fixture (`apps/fixture/`). `nmp init` exists today but creates a
+> **standalone** project workspace — a separate repo that depends on NMP as a
+> path dependency. When adding an app to the NMP monorepo (as this walkthrough
+> does), you hand-create `apps/microblog/nmp.toml` and `crates/microblog-core/`
+> (as in [19a](19a-walkthrough-microblog.md)), then run `gen modules` to produce
 > the FFI crate. The `--out` directory defaults to
-> `apps/{name}/{app_crate_name}` per
-> [`nmp-codegen/src/main.rs:57-63`](../../crates/nmp-codegen/src/main.rs).
+> `apps/{name}/{app_crate_name}` per `nmp-codegen/src/main.rs:57-63`.
 
 ### 3. Build the FFI library + run on the iOS simulator
 
 The reference shell is **Chirp** (`ios/Chirp/`, the active live iOS app).
-It links the Rust static lib and decodes the JSON
-snapshot via
-[`ios/Chirp/Chirp/Bridge/KernelBridge.swift`](../../ios/Chirp/Chirp/Bridge/KernelBridge.swift).
-You point a shell at your FFI crate's static lib; you do not write a new
-Swift app from scratch for this walkthrough.
+It links the Rust static lib and decodes the snapshot via
+`ios/Chirp/Chirp/Bridge/KernelBridge.swift`. You point a shell at your FFI
+crate's static lib; you do not write a new Swift app from scratch for this
+walkthrough.
 
 ```sh
-# 1. build the Rust cdylib/staticlib for the sim target
+# 1. build the Rust staticlib for the sim target
 cargo build -p nmp-app-microblog --target aarch64-apple-ios-sim --release
 # 2. generate the Xcode project (Chirp uses xcodegen: ios/Chirp/project.yml)
 cd ios/Chirp && xcodegen generate
 # 3. build + run on a booted simulator (see section 17 for the bridge details)
 ```
 
-The Swift side never changes shape: it decodes the same 16-field JSON
-snapshot regardless of which app-core is linked (see the field reference in
-[26](26-faq-troubleshooting.md)).
+The Swift side reads `projections["microblog.items"]` from the snapshot's
+`projections` map alongside the built-in fields (see
+[17 — iOS shell](17-ios-shell.md) §Reading a snapshot projection in `apply()`).
 
-## Wiring the publish path
+## How publish flows
 
-The post action in [19a](19a-walkthrough-microblog.md) ends at
-`NoteStep::BuildAndPublish`. The actual publish is the kernel's job, not the
-app's. The shipped surface is
-[`crates/nmp-core/src/publish/action.rs:40-50`](../../crates/nmp-core/src/publish/action.rs):
+The `PostNote` action in [19a](19a-walkthrough-microblog.md) calls
+`send(ActorCommand::PublishNote { content: text, … })` inside `execute`.
+The actual signing and routing is entirely the kernel's job:
 
-```rust
-pub enum PublishAction {
-    Publish { handle: PublishHandle, event: SignedEvent, target: PublishTarget },
-    Cancel  { handle: PublishHandle },
-}
-pub enum PublishTarget { Auto, Explicit { relays: Vec<RelayUrl> } }
+```
+app dispatch(PostNote { text })
+  → nmp_app_dispatch_action(NAMESPACE, json)
+  → ActionModule::start() validates (non-empty text)
+  → ActionModule::execute() calls send(ActorCommand::PublishNote { … })
+  → actor thread receives PublishNote
+  → fills pubkey from active signer, stamps created_at from kernel.now_secs() (D9)
+  → signs once (local key: immediate; NIP-46 bunker: async via PendingSign, D8)
+  → PublishEngine fans out to author's NIP-65 write relays (D3)
+  → per-relay ACK surfaces in projections["action_stages"][correlation_id] (D6)
 ```
 
-`PublishTarget::Auto` defers to the outbox resolver (D3 — NIP-65 routing is
-automatic; `Explicit` is the named opt-out). **The app never lists relays.**
+**The app contributes `text`. The kernel decides pubkey, timestamp, relays,
+retry policy.** That is the whole write contract.
 
-The signer is [`LocalKeySigner`](../../crates/nmp-signers/src/signers/local.rs).
-Construct it from an `nsec` or hex secret; it derives and caches the pubkey
-and signs via the `nostr` crate:
+`is_async_completing() = true` means `dispatch_action` returns immediately with
+`{ "correlation_id": "…" }`. The terminal outcome (`Publishing → Accepted /
+Failed`) arrives later through the snapshot's `projections["action_stages"]`
+map keyed by that id.
 
-```rust
-// crates/nmp-signers/src/signers/local.rs:64,57
-let signer = LocalKeySigner::from_nsec("nsec1...")?;       // or:
-let signer = LocalKeySigner::from_secret_hex("<64-hex>")?;
-// signer.sign(unsigned) -> SignerOp::Ready(Ok(SignedEvent { id, sig, .. }))
-//   local.rs:185-187 / 138-173
-```
-
-Flow: app `Action::PostNote` → kernel builds an `UnsignedEvent` (kind:1,
-content = `text`) → active `IdentityModule` / `LocalKeySigner` signs **once**
-(never re-signed on retry — `action.rs:34-39`) → `PublishAction::Publish {
-event, target: Auto }` → publish engine fans out per NIP-65 and retries
-transient failures (policy is the kernel's, not native's — D7). The app's
-`reduce` returns `ActionOutput::Queued`; the per-relay outcome surfaces in
-the snapshot, not as a thrown error (D6).
-
-> **Doctrine recap for this flow.** D4: the engine owns per-(event,relay)
-> state. D3: `Auto` routing is automatic. D6: no `Result<E>` crosses FFI —
-> failures become snapshot rows. D7: retry policy lives in the kernel. The
-> app contributes a `text` string and reads a bounded snapshot. That is the
-> whole contract.
-
-## What publishes today vs tomorrow — milestone matrix
+## What ships today vs tomorrow — milestone matrix
 
 | Capability | Ships today | Planned |
 |---|---|---|
-| `PublishAction` substrate + retry queue | ✅ M7 (DONE) | — |
+| `ActorCommand::PublishNote` (kind:1 sign + outbox publish) | ✅ DONE | — |
+| `ActorCommand::PublishRawEvent` (arbitrary kind) | ✅ DONE | — |
 | `LocalKeySigner` (nsec / hex / ncryptsec) | ✅ M6 (DONE) | — |
-| Multi-account switch (`AccountManager`) | ✅ M8 (DONE) | — |
-| Outbox auto-routing in the planner | ✅ M2 (DONE) | wiring the planner into the *actor's REQ path* is the gap tracked in [27](27-discrepancies.md); the kernel demo still uses constant relays |
-| Legacy raw C FFI (JSON-over-string snapshot on master) | ✅ today | FlatBuffers runtime transport in progress; UniFFI binding/lifecycle bridge = **M14, PLANNED** |
-| `nmp init` (Rust workspace) | ✅ ships | Creates a Rust workspace only; full multi-platform starter is M16. This walkthrough hand-scaffolds inside the monorepo. |
-| iOS shell (Chirp, active) | ✅ M1/M10.5 (DONE) | Additional app shells are deferred until Chirp is complete |
+| NIP-46 bunker signer | ✅ M6 (DONE) | — |
+| Multi-account switch | ✅ M8 (DONE) | — |
+| Outbox auto-routing (NIP-65) | ✅ T105 (DONE) | — |
+| `KernelEventObserver` + `register_event_observer` | ✅ DONE | — |
+| `register_snapshot_projection` | ✅ DONE | — |
+| Legacy raw C FFI (JSON-over-string snapshot) | ✅ today | FlatBuffers migration in progress (F-10); UniFFI binding/lifecycle bridge = **M14, PLANNED** |
+| `nmp init` (Rust workspace scaffold) | ✅ ships | Creates a Rust workspace only; full multi-platform starter is M16. This walkthrough hand-scaffolds inside the monorepo. |
+| iOS shell (Chirp, active) | ✅ DONE | Additional app shells deferred until Chirp is complete |
 
-The publish substrate, the local signer, and multi-account all ship today.
-What is *not* shipped: the typed UniFFI bridge (M14) and a one-command app
-scaffolder (M16). The example above is therefore hand-assembled — that is
-expected and honest, not a defect.
+The publish substrate, the local signer, multi-account, event observer, and
+snapshot projection all ship today. What is *not* shipped: the typed UniFFI
+bridge (M14) and a one-command multi-platform scaffolder (M16). The example
+above is hand-assembled — that is expected and honest, not a defect.
 
 ## Anti-patterns (wire & run phase)
 
 - **Building, signing, or publishing the event in the app.** The app emits
-  `Action::PostNote { text }`. The kernel builds the `UnsignedEvent`, the
-  signer signs once, the engine publishes and retries. App-side
-  build-sign-publish duplicates kernel state and breaks D4/D7.
+  `Action::PostNote { text }`. The actor fills pubkey, timestamps, signs, and
+  publishes. App-side build-sign-publish duplicates kernel state and breaks D4/D7.
 - **Passing relay URLs from app code.** There is no relay parameter on the
-  post action. `PublishTarget::Auto` routes via NIP-65 (D3). Hardcoding
-  relays in the app is the named opt-out, not the default — and almost
-  always a mistake in a microblog.
-- **Manual REQ in app code to "refresh the feed."** The `FeedViewModule`
-  snapshot updates reactively. A manual REQ scan parallel to the kernel is
-  a D2/D4 violation; the feed is a projection, not something you poll.
+  post action. `PublishNote` routes via NIP-65 outbox (D3). Hardcoding
+  relays is the named opt-out, not the default.
+- **Manual REQ in app code to "refresh the feed."** The feed store updates
+  reactively via `on_kernel_event`. A manual REQ scan parallel to the kernel
+  is a D2/D4 violation; the feed is a projection, not something you poll.
 - **Per-platform SwiftData/Room cache parallel to `AppState`.** The decoded
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
 - **Expecting UniFFI typed payload delivery today.** UniFFI is the planned
   binding/lifecycle bridge (M14); it is not the hot update payload format.
-  Code that imports a typed UniFFI `AppUpdate` will not compile against
-  master. (`nmp init` does ship for Rust-workspace scaffolding; see above.)
+  Code that imports a typed UniFFI `AppUpdate` will not compile against master.
 
-See also: [02 — Mental model — kernel + 5 trait families](02-mental-model.md) ·
-[05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
+See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
+[05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [12 — Publishing + the publish engine](12-publish-and-ledger.md) ·
 [15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) ·
 [17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md) ·

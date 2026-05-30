@@ -140,7 +140,8 @@ across app kill + relaunch — none rebuilt from network:
   mid-shutdown crash doesn't lose hot-set protection; on cold start
   claims are **re-derived from re-opened views** and stale rows dropped
   (`docs/design/lmdb/gc.md:198`).
-- **Domain rows + schema versions**: per-`DomainModule` sub-dbs;
+- **App-module domain rows + schema versions**: per-namespace sub-dbs
+  (namespaces declared by each module crate, e.g. `"fixture.todo.domain"`);
   migrations run at `open()`, data write + `_meta` version bump in **one
   txn** (no TOCTOU) (`docs/design/lmdb/watermarks.md:130-165`).
 

@@ -22,17 +22,19 @@ status marker; unmarked rows ship today.
 `AppState = { rev: u64, open_view_count: usize }`. Every update carries a
 monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 
-## Card 2 — The 5 trait families (`crates/nmp-core/src/substrate/`)
+## Card 2 — Extension seams + traits (`crates/nmp-core/src/substrate/`, `crates/nmp-ffi/src/lib.rs`)
 
-| Family | Owns | One-liner | File |
+| Seam / trait | Owns | One-liner | Source |
 |---|---|---|---|
-| **DomainModule** | durable records | schema version, migrations, `ingest_kinds()` | `domain.rs:1` |
-| **ViewModule** | projections | `Spec`→`Payload`/`Delta`; declares reverse-index deps | `view.rs:37` |
-| **ActionModule** | side effects | `start`→`ActionPlan`, `reduce`→`ActionTransition` | `action.rs:10` |
-| **CapabilityModule** | native bridges | request → native → result envelope (D7) | `capability.rs:3` |
-| **IdentityModule** | signing scopes | `scope_kind`, `create`, async `sign`, `destroy` | `identity.rs:8` |
+| `register_action<M>()` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
+| `register_snapshot_projection(key, fn)` | read output | JSON slice pushed under `projections[key]` on every tick | `nmp-ffi/src/lib.rs:1109` |
+| `register_event_observer(arc)` | event-driven views | `on_kernel_event` fires per `Inserted\|Replaced` on actor thread | `event_observer.rs:189` |
+| **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
+| **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
 
-Composed via `ModuleRegistry` (`substrate/mod.rs:38`).
+Module composition: each module crate exports `pub fn register(app: &mut NmpApp) -> Store`; codegen wires them in `FfiApp::new`.
+
+> **Removed:** `DomainModule`, `ViewModule`, `IdentityModule`, `ModuleRegistry` — never shipped. See [05a](05a-substrate-traits.md) §Removed v2 traits.
 
 ## Card 3 — v1 capability catalog (`docs/product-spec/api-surface.md:192-229` §6.5)
 
@@ -45,7 +47,7 @@ Composed via `ModuleRegistry` (`substrate/mod.rs:38`).
 | `BlobPickerCapability` | `pick(PickRequest)` | spec §6.5 |
 
 These are the v1 catalog defined in the spec; the shipped substrate trait is
-`CapabilityModule` (`substrate/capability.rs:3`). Every capability is
+`CapabilityModule` (`substrate/capability.rs:11`). Every capability is
 idempotent (`start` after `start` = no-op) and reports only — it never
 decides retry, recovery, or routing (D7). Protocol-specific or app-specific
 capabilities compose the same way.
@@ -121,9 +123,9 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 | **Typed sibling** | `register_typed_snapshot_projection` → `snapshot.typedProjections` (ADR-0037), **not** `projections[key]` |
 | **Status** | Structural permanent — `ffi-deprecation-calendar.md:61` ("keep, freeze-locked") |
 
-**Distinct from the ViewModule view-delta projections** of Card 2 — that is the
-typed reactive view (`Spec`→`Payload`/`Delta`); this is a named state slice in
-the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
+**Distinct from `KernelEventObserver`-driven view updates** (Card 2 seam 3) —
+those push typed view deltas via `ViewBatch`; this is a named JSON state slice
+in the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
 [17](17-ios-shell.md).
 
 ## Anti-patterns
@@ -143,4 +145,4 @@ the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
   rule *numbers* are stable identities; the *evaluation* order
   (`lattice/mod.rs`) is 6, 9, 1, 2, … for early cheap pruning. Quote both.
 
-See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md), [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md), [16 — Capabilities (D7)](16-capabilities.md).
+See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md), [05 — Kernel substrate — traits + seams](05a-substrate-traits.md), [16 — Capabilities (D7)](16-capabilities.md).
