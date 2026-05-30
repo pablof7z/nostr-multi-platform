@@ -24,11 +24,11 @@ enum PublishAction {
 `PublishTarget` (`action.rs:28-32`) is `Auto` (NIP-65 via
 `OutboxResolver`, per **D3**) or `Explicit { relays }` (the named D3
 opt-out). The event arrives **pre-signed**: the kernel ledger signs
-once via the active `IdentityModule` and never re-signs on retry — id +
+once via the active signer and never re-signs on retry — id +
 sig are preserved across the whole lifecycle (`action.rs:34-39`).
 
 `PublishModule` (`action.rs:85-164`) is the `ActionModule` impl
-(`crates/nmp-core/src/substrate/action.rs:10-84`). `start()` rejects an
+(`crates/nmp-core/src/substrate/action.rs:56`). `start()` rejects an
 event with empty `id`/`sig` (`action.rs:99-104`). The action ledger sees
 a coarse `PublishStep` (`Planning`/`Dispatching`/`Waiting`/`Done`); the
 fine per-relay timing is the engine's, not the ledger's
@@ -41,7 +41,7 @@ fine per-relay timing is the engine's, not the ledger's
 | **Write** an event | dispatch `PublishAction::Publish` | action only — no direct relay/store call |
 | **Cancel** a publish | dispatch `PublishAction::Cancel { handle }` | action only |
 | **Observe** publish status | open `PublishStatusView` | store/view subscription — never a return value |
-| **Read** events back | normal `ViewModule` subscription | store subscription |
+| **Read** events back | snapshot projection / `KernelEventObserver` | store subscription |
 | Pick relays | `OutboxResolver` (D3 automatic) | engine-internal; app only via `Explicit` opt-out |
 | Decide retry | `classify_ack` in the engine | engine-internal; never the dispatcher, never native (D7) |
 
@@ -198,7 +198,7 @@ Observe it by opening the view; never poll the engine.
 
 ## See also
 
-- [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md)
+- [05 — Kernel substrate — traits + seams](05a-substrate-traits.md)
 - [10 — Outbox routing (NIP-65)](10-outbox-routing.md)
 - [11 — Sessions + signers + identity scopes](11-sessions-signers.md)
 - [14 — Subscription lifecycle + relay manager + NIP-42](14-relay-manager.md)

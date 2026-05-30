@@ -12,12 +12,13 @@ your platform code only `dispatch(action)`s intents and renders the snapshot
 it is handed. You are not porting code — you are deleting the layer you used
 to write.
 
-Critically, **Applesauce `model()` is not NMP `ViewModule`**. Applesauce is
-RxJS observables in a browser; a model is an in-process stream you subscribe
-to. An NMP `ViewModule` is an actor-owned projection that produces a bounded
-snapshot crossing the FFI boundary at ≤60 Hz. They solve the same *problem*
-(typed derived views) with incompatible *mechanics*. Treating them as the
-same API is the central migration mistake.
+Critically, **Applesauce `model()` is not NMP's snapshot projection**. Applesauce
+is RxJS observables in a browser; a model is an in-process stream you subscribe
+to. NMP's equivalent is a registered snapshot projection (`register_snapshot_projection`)
+combined with a `KernelEventObserver` that maintains an app-owned store —
+an actor-owned value that produces a bounded JSON slice pushed to the host at
+≤60 Hz. They solve the same *problem* (typed derived views) with incompatible
+*mechanics*. Treating them as the same API is the central migration mistake.
 
 ## Concept translation
 
@@ -25,10 +26,10 @@ same API is the central migration mistake.
 |---|---|---|
 | `NDKRelaySet` / per-author relay calc | relay-map / `selectOptimalRelays` | `CompiledPlan` — the planner resolves relays from a `LogicalInterest`; you never assemble relay sets (`07-subscription-planner.md`) |
 | `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `OpenView(spec)` dispatched as an action → kernel registers a `LogicalInterest`; you pass *intent*, not filters/relays |
-| `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | `ViewModule` — actor-owned projection emitted in the snapshot; **not** a stream you subscribe to |
+| `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | `KernelEventObserver` + `register_snapshot_projection` — actor-owned projection pushed as a JSON slice in every snapshot; **not** a stream you subscribe to |
 | build event → `signer.sign` → `ndk.publish` | `ActionRunner` + `ctx.publish(event, relays?)` | `ActionModule` + the publish engine — one action signs, publishes (outbox-routed), and updates the store atomically |
 | `NDKPrivateKeySigner` / `NDKNip46Signer` / NIP-55 | `SimpleSigner` / `ExtensionSigner` / `AmberClipboardSigner` | `nmp-signers::Signer` (Local / NIP-46 / NIP-07) + Keyring capability; iOS Keychain SHIPS, iOS external-signer is a capability hook not turnkey |
-| `@nostr-dev-kit/sessions` store + `activePubkey` | `AccountManager` + `IAccount` | kernel `AppState.session` + `nmp-signers::AccountManager`; account is identity-only, derived state lives in domain stores |
+| `@nostr-dev-kit/sessions` store + `activePubkey` | `AccountManager` + `IAccount` | kernel `AppState.session` + `nmp-signers::AccountManager`; account is identity-only, derived state lives in app-owned stores |
 | kind:3 watcher in sessions pkg + Svelte runes / React deps to rewire | consumer manually re-subscribes | **framework-magic** — kernel watches active account's kind:3, auto-recompiles every dependent interest on the wire; app dispatches **zero** code |
 
 ## What NMP handles for you
@@ -61,7 +62,7 @@ Each item below is code you wrote in NDK/Applesauce that NMP **owns**:
 - **Do not 1:1 port NDK/Applesauce code.** The whole subscription/relay/store
   layer you wrote becomes `dispatch` calls. Porting it re-introduces the bug
   classes NMP exists to remove.
-- **Do not treat Applesauce `model()` as `ViewModule`.** RxJS-in-browser vs
+- **Do not treat Applesauce `model()` as an NMP snapshot projection.** RxJS-in-browser vs
   actor-owned-snapshot-over-FFI. Don't expect JS event-stream ergonomics
   (`.pipe`, `.subscribe`, hot observables) across the FFI boundary; you get
   a snapshot with a monotonic `rev` guard.
@@ -81,7 +82,7 @@ Each item below is code you wrote in NDK/Applesauce that NMP **owns**:
 ## See also
 
 - [01 — What NMP is + why it exists](01-what-nmp-is.md)
-- [02 — Mental model — kernel + 5 trait families](02-mental-model.md)
+- [02 — Mental model — kernel + extension seams](02-mental-model.md)
 - [07 — Subscription planner — Interest → CompiledPlan → wire](07-subscription-planner.md)
 - [10 — Outbox routing (NIP-65)](10-outbox-routing.md)
 - [11 — Sessions + signers + identity scopes](11-sessions-signers.md)

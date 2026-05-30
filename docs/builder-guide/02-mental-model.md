@@ -1,4 +1,4 @@
-# 02 — Mental model: kernel + 5 trait families
+# 02 — Mental model: kernel + extension seams
 
 *Status: SHIPS · Audience: both · Read after [01](01-what-nmp-is.md).*
 
@@ -7,9 +7,9 @@ extension modules — not a framework with closed built-ins.** The kernel knows
 *how* to run a reactive Nostr client. It does not know *what* a Profile, an
 Episode, a Highlight, or a TODO is. Those nouns live in modules you write.
 
-This section gives you the four-layer stack, the five trait families in one
-paragraph each, the no-app-nouns-in-kernel rule, what crosses FFI, and a
-concrete "where does X live?" map. It is the map for the whole guide.
+This section gives you the four-layer stack, the three extension seams, the
+no-app-nouns-in-kernel rule, what crosses FFI, and a concrete "where does X
+live?" map. It is the map for the whole guide.
 
 ## The 4-layer stack
 
@@ -24,10 +24,10 @@ Four layers, strict ownership. Built from the bottom up:
                                   │ FlatBuffers payload; UniFFI = lifecycle/bindings
 ┌────────────────────────────────┴───────────────────────────────────────┐
 │ GENERATED FFI CRATE     nmp-codegen output (per-app `nmp-app-<name>`)   │
-│  owns: concrete AppAction / AppUpdate / ViewSpec enums + wrappers       │
+│  owns: concrete AppAction / AppUpdate / ViewSpec enums + FfiApp wrapper  │
 │  D6 ► no Result<T,E> crosses here; envelopes only                      │
 └────────────────────────────────▲───────────────────────────────────────┘
-                                  │ ModuleRegistry composition
+                                  │ codegen convention exports + NmpApp seams
         ┌─────────────────────────┼──────────────────────────┐
 ┌───────┴──────────┐  ┌───────────┴───────────┐  ┌────────────┴─────────┐
 │ APP CORE CRATES   │  │ NMP PROTOCOL MODULES   │  │  (more app cores)    │
@@ -40,7 +40,7 @@ Four layers, strict ownership. Built from the bottom up:
         └─────────────────────────┼──────────────────────────┘
 ┌────────────────────────────────┴───────────────────────────────────────┐
 │ nmp-core KERNEL    actor · EventStore · planner · subs · publish        │
-│                    + 5 substrate trait families + codegen + diagnostics │
+│                    + 2 extension traits + 3 registration seams          │
 │  D0 ► ZERO app nouns. ZERO protocol nouns. Generic infrastructure only. │
 │  D4 ► one writer per fact (the actor) — never the platform              │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -56,11 +56,11 @@ product shell.
 
 - **D0 (kernel/extension boundary).** The dividing line *is* this section.
   `nmp-core` provides generic infrastructure only — actor runtime, verified
-  event store, planner, publish pipeline, signer plumbing, the five trait
-  registries. It contains
-  **no** `Profile`/`Timeline`/`Episode`/`Highlight`/`Project` types. The rule:
-  *if shipping your app requires adding a domain noun to `nmp-core`, the
-  boundary is wrong and the kernel changes — never the app.*
+  event store, planner, publish pipeline, signer plumbing, the extension
+  seams. It contains **no** `Profile`/`Timeline`/`Episode`/`Highlight`/
+  `Project` types. The rule: *if shipping your app requires adding a domain
+  noun to `nmp-core`, the boundary is wrong and the kernel changes — never
+  the app.*
 - **D4 (single writer per fact).** Exactly one component owns each fact. The
   actor inside the kernel is that writer. The platform shell never mutates
   state; it renders snapshots and dispatches actions.
@@ -69,32 +69,131 @@ product shell.
   store. The runtime payload format is FlatBuffers; the shell holds no
   source-of-truth state.
 
-## The 5 trait families in one paragraph each
+## The 3 extension seams
 
-`nmp-core` defines five extension trait families. An extension crate implements
-one or more; the kernel runtime knows only that a module conforms to a trait
-and contributes to the generated per-app enums.
+Extension crates plug into a vanilla `NmpApp` through exactly three seams
+(`crates/nmp-ffi/src/lib.rs:1087-1599`). A crate uses one, two, or all three;
+it never reaches into kernel internals.
 
-- **`DomainModule`** — durable records that are *not* Nostr events: drafts,
-  settings, transcripts, weight logs. The kernel owns storage, migrations,
-  indexes; the module owns record meaning. Empty `ingest_kinds()` = pure
-  app-local store; protocol crates override it to claim Nostr kinds.
-- **`ViewModule`** — typed reactive projections. You declare a `Spec`,
-  `Payload`, `Delta`, `Key`, `State` and the dependency keys you care about;
-  the kernel feeds you `on_event_*` callbacks and you emit deltas. This is the
-  only sanctioned way state reaches the UI.
-- **`ActionModule`** — durable workflows on the action ledger. A `start` →
-  validated `ActionPlan`, then a `reduce` step machine driven by capability
-  results, relay acks, timeouts. Survives restarts.
-- **`CapabilityModule`** — typed native fact reports. The module declares a
-  request/result pair and a callback-interface name; native code *reports
-  facts*, it never decides policy (D7).
-- **`IdentityModule`** — signer scopes beyond "the active Nostr account":
-  `HumanAccount`, `AppLocal`, `ExternalSigner`, `Ephemeral`. Identity lives in
-  `nmp-signers`, never `nmp-core`.
+### Seam 1 — `register_action<M>()`
 
-Full signatures, lifecycles, and a "which trait?" decision tree are in
-[05 — Kernel substrate](05-substrate-traits.md).
+```rust
+app.register_action::<MyActionModule>();
+```
+
+Registers an `ActionModule`: its `start()` validates dispatched actions;
+its `execute()` enqueues `ActorCommand`s into the actor. The registered module
+receives every `nmp_app_dispatch_action(app, NAMESPACE, json)` call whose
+`NAMESPACE` matches `MyActionModule::NAMESPACE`.
+
+### Seam 2 — `register_snapshot_projection(key, closure)`
+
+```rust
+app.register_snapshot_projection("nmp.myapp.items", move || {
+    project_items(&store.lock().unwrap())
+});
+```
+
+Registers a named JSON slice pushed under `projections["nmp.myapp.items"]` on
+every snapshot tick. The closure runs on the **actor thread**; it must be
+cheap and non-blocking (D8). Registered under dotted `nmp.*` namespaces.
+
+### Seam 3 — `register_event_observer(arc)`
+
+```rust
+app.register_event_observer(Arc::new(MyObserver { store: Arc::clone(&store) }));
+```
+
+Registers a `KernelEventObserver` (`actor/commands/event_observer.rs:189`)
+for event-driven view updates. `on_event_inserted` / `on_event_replaced` fire
+on the actor thread for every accepted ingest. Use this in in-process
+consumers (`nmp-app-chirp`, per-app projection crates) that build typed views
+from raw `KernelEvent`s.
+
+### The two kernel-defined extension traits
+
+**`ActionModule`** (`substrate/action.rs:56`) — the write seam.
+
+```rust
+pub trait ActionModule: Send + Sync + 'static {
+    const NAMESPACE: &'static str;
+    type Action: Clone + Serialize + DeserializeOwned + Send + 'static;
+
+    // Validate `action` upfront. Default: always accept.
+    fn start(ctx: &mut ActionContext, action: Self::Action)
+        -> Result<(), ActionRejection> { Ok(()) }
+
+    // Optional: suggest a stable correlation_id (e.g. the event id).
+    fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> { None }
+
+    // True when the terminal outcome arrives async through
+    // projections["action_stages"] rather than the dispatch return value.
+    fn is_async_completing() -> bool { false }
+
+    // Enqueue the ActorCommand(s) that carry out the validated action.
+    fn execute(
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String>;
+}
+```
+
+**`CapabilityModule`** (`substrate/capability.rs:11`) — the native bridge
+shape. Defines typed request/result envelopes; native code implements the
+callback and reports raw facts; the kernel decides policy (D7).
+
+```rust
+pub trait CapabilityModule: Send + Sync + 'static {
+    const NAMESPACE: &'static str;
+    type Request: Clone + Serialize + DeserializeOwned + Send + 'static;
+    type Result:  Clone + Serialize + DeserializeOwned + Send + 'static;
+    fn callback_interface_name() -> &'static str;
+}
+```
+
+> **v2 traits that were removed.** An earlier design proposed `ViewModule`,
+> `IdentityModule`, and `DomainModule` traits, plus a `ModuleRegistry` that
+> collected them. No kernel runtime ever drove them. `substrate/mod.rs`
+> documents this explicitly: *"documentation theater that misled readers about
+> how extension actually works today."* They are absent from master. The
+> correct patterns are the three seams above. See
+> [27 — discrepancies](27-discrepancies.md) rows 11–15.
+
+### The codegen convention
+
+`nmp-codegen` generates a per-app FFI crate from each app module. Every app
+module crate **must** export these names — codegen reads them by convention
+(`crates/nmp-codegen/src/generate.rs`):
+
+| Export | Type | Purpose |
+|---|---|---|
+| `ACTION_NAMESPACE` | `&'static str` | must equal `MyActionModule::NAMESPACE` |
+| `Store` | type alias | app-owned state (`Arc<Mutex<T>>`) |
+| `register(app: &mut NmpApp) -> Store` | fn | wires seams, returns store |
+| `accepted() -> Update` | fn | success variant for dispatch result |
+| `ViewSpec` | enum | host-driven view specs (empty if none) |
+| `Update` | enum | update variants (at minimum `ActionAccepted`) |
+
+`register()` is the composition root. From the canonical reference
+`apps/fixture/fixture-todo-core/src/lib.rs:122-146`:
+
+```rust
+pub fn register(app: &mut NmpApp) -> TodoStore {
+    let store = TODO_STORE.get_or_init(|| Arc::new(Mutex::new(Vec::new()))).clone();
+    // Seam 1: wire the write path.
+    app.register_action::<TodoActionModule>();
+    // Seam 2: wire the read path.
+    let s = Arc::clone(&store);
+    app.register_snapshot_projection(TODO_SNAPSHOT_KEY, move || {
+        match s.lock() {
+            Ok(g) => project_todo_items(&g),
+            Err(_) => serde_json::Value::Null,   // D6: no panic on poison
+        }
+    });
+    store
+}
+```
 
 ## The no-app-nouns-in-kernel rule
 
@@ -103,39 +202,38 @@ This is D0 restated operationally. Before adding a type to `nmp-core`, ask:
 app cares about?* `VerifiedEvent`, `CompiledPlan`, `InsertOutcome` are
 infrastructure. `Episode`, `Highlight`, `Project`, `Group` are nouns —
 protocol nouns go in `nmp-nip*` crates, app nouns in app-core crates. The live
-proof that the boundary holds in both directions: `fixture-todo-core` exercises
-all five families with zero Nostr concepts, and `nmp-nip29` adds 13 domains /
-7 views / 15 actions of group machinery while `nmp-core` gains exactly *one*
-generic seam (the relay-pin routing lane) and zero group nouns.
+proof that the boundary holds: `fixture-todo-core` exercises all three seams
+with zero Nostr concepts, and `nmp-nip29` adds actions + projections for group
+machinery while `nmp-core` gains exactly *one* generic seam (the relay-pin
+routing lane) and zero group nouns.
 
 ## What crosses FFI (and what does not)
 
 | Crosses FFI | Stays in Rust |
 |---|---|
 | One FlatBuffers update frame per emit (D5) | The EventStore + every `VerifiedEvent` |
-| Dispatched `AppAction` variants | Action ledger, step machines |
+| Dispatched `AppAction` variants | Action ledger, ActorCommand queue |
 | `CapabilityRequest` / `CapabilityEnvelope` | Planner, subscription pool, signer keys |
 | `rev: u64` monotonic guard | All policy / retry / routing decisions |
+| `projections[key]` JSON slices | Kernel-internal view state |
 
 No `Result<T,E>` crosses the boundary (D6) — failures arrive as data inside
-the snapshot or as capability envelopes. The intended runtime update
-transport is a single canonical FlatBuffers schema for `FullState`,
-`ViewBatch`, and side-effect frames. UniFFI remains the binding, object
-lifecycle, and callback-registration surface; it is not the hot payload
-format. Historical raw C JSON-over-string remains relevant only while the
-current migration is incomplete and for legacy/test tooling that has not yet
-been converted (see [27 — Discrepancies](27-discrepancies.md)).
+the snapshot or as capability envelopes. The hot update transport is a single
+canonical FlatBuffers schema for `FullState`, `ViewBatch`, and side-effect
+frames. Historical raw C JSON-over-string remains live while the FlatBuffers
+migration is incomplete (see [15](15-codegen-and-ffi.md) and
+[27](27-discrepancies.md) row 3).
 
 ## "Where does X live?" — concrete map
 
 | Noun | Lives in | Why |
 |---|---|---|
 | `VerifiedEvent`, `CompiledPlan` | `nmp-core` | generic Nostr infra |
-| `Signer`, `IdentityScopeKind` | `nmp-signers` | identity is a protocol module (D0) |
-| NIP-29 `GroupId`, group views | `nmp-nip29` | protocol noun |
+| `Signer`, keyring access | `nmp-signers` | identity is a protocol module (D0) |
+| NIP-29 `GroupId`, group actions | `nmp-nip29` | protocol noun |
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
-| Media `Episode`, feed records | future media app crate | app noun; keep it outside `nmp-core` |
-| `TodoRecord` | `fixture-todo-core` | app noun (non-Nostr proof) |
+| `TodoRecord`, todo store | `fixture-todo-core` | app noun (non-Nostr proof) |
+| App-owned store (`Arc<Mutex<T>>`) | app-core crate | D4: app owns its state |
 | SwiftUI list cell, OS audio handle | `ios/Chirp` / shell | rendering / OS execution |
 
 The single test of correctness: a future app module can be added with **zero
@@ -145,24 +243,24 @@ changes to `nmp-core`**.
 
 1. **Putting `Highlight` / `Episode` / `Project` in `nmp-core`.** This is the
    exact abstraction error ADR-0009 exists to forbid — it turns the kernel
-   into "a junk drawer of every consumer's domain concepts." App nouns go in
+   into a junk drawer of every consumer's domain concepts. App nouns go in
    app-core crates; protocol nouns in `nmp-nip*` crates.
-2. **Conflating a `ViewModule` with platform UI components.** A `ViewModule`
-   is a Rust reactive projection that emits a typed payload. It is not a
-   SwiftUI `View`, not a Compose `@Composable`. The shell renders the
-   payload; it does not contain the projection logic.
-3. **Bypassing `ViewModule` to render raw events in SwiftUI.** Decoding
-   `kind:1` JSON in Swift re-implements the kernel's reactive contract in the
-   shell, duplicates state ownership (D4 violation), and breaks D5 bounding.
-   Every read goes through a `ViewModule` snapshot.
-4. **Adding a 6th trait family without an ADR.** The five families are a
-   closed architectural contract adopted by ADR-0009 + `kernel-substrate.md`.
-   A new family is a kernel change that requires its own ADR, not an ad-hoc
-   trait dropped into `substrate/`.
+2. **Reaching for the removed v2 traits.** `ViewModule`, `DomainModule`,
+   `IdentityModule`, and `ModuleRegistry` are not on master. Use
+   `register_snapshot_projection` for the read path and `register_action`
+   for the write path — see [05a](05a-substrate-traits.md).
+3. **Bypassing `register_snapshot_projection` to render raw events in
+   SwiftUI.** Decoding `kind:1` JSON in Swift re-implements the kernel's
+   reactive contract in the shell, duplicates state ownership (D4 violation),
+   and breaks D5 bounding. Every read goes through a registered projection or
+   a `KernelEventObserver`-driven view.
+4. **Adding a 4th registration seam without an ADR.** The three seams are the
+   extension contract. A new seam is a kernel change that requires its own ADR.
 
-Paste the **"Where does X live?" map** next to any PR that adds a new type and answer the "why" column before merging.
+Paste the **"Where does X live?" map** next to any PR that adds a new type and
+answer the "why" column before merging.
 
 See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
-[05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
+[05a — Kernel substrate — the 2 traits + 3 seams](05a-substrate-traits.md) ·
 [15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) ·
 [20 — Adding a new protocol module (`nmp-nip29` as reference)](20-new-protocol-module.md)

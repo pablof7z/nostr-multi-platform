@@ -128,7 +128,7 @@ Before a capability bridge is accepted, verify:
   `Load { url_or_path }`. The noun leaks the app into the reusable substrate.
 
 See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
-[05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
+[05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [11 — Sessions + signers + identity scopes](11-sessions-signers.md) ·
 [12 — Publishing + the publish engine](12-publish-and-ledger.md) ·
 [17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md)

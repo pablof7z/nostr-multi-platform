@@ -149,8 +149,8 @@ gates); `cargo test --workspace` green; reactivity-bench --fail-on-gate green.
 
 ## See also
 
-- [02 — Mental model — kernel + 5 trait families](02-mental-model.md)
-- [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md)
+- [02 — Mental model — kernel + extension seams](02-mental-model.md)
+- [05 — Kernel substrate — traits + seams](05a-substrate-traits.md)
 - [06 — Reactivity contract (D8)](06-reactivity-contract.md)
 - [10 — Outbox routing (NIP-65)](10-outbox-routing.md)
 - [16 — Capabilities (D7)](16-capabilities.md)
