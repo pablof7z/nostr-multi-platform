@@ -4678,6 +4678,7 @@ version = "0.1.0"
 dependencies = [
  "nmp-core",
  "nmp-nip59",
+ "nmp-signer-iface",
  "nostr",
  "serde",
  "serde_json",

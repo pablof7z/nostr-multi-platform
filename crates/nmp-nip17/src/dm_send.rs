@@ -64,6 +64,7 @@ use nmp_core::substrate::{
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
+use nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT;
 use nostr::{
     nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK, EventBuilder, Kind, PublicKey, Tag, Timestamp,
 };
@@ -209,38 +210,91 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
         // 7. Gift-wrap TWICE — fresh ephemeral outer key per call
         // (NIP-59 unlinkability). Each envelope routes to *its
         // receiver's* kind:10050 list.
+        //
+        // ADR-0040 Site 1: `op.wait` is moved OFF the actor thread.
+        // For each envelope we call `gift_wrap_with_signer` (already
+        // non-blocking: local-nsec returns `SignerOp::Ready` immediately;
+        // remote-signer returns `SignerOp::Pending` with an off-actor driver
+        // thread). The ops and relay info are collected into an owned `Vec`,
+        // then handed to a single short-lived worker thread that calls
+        // `op.wait` off-actor and re-enters via `ActorCommand::PublishSignedEvent`
+        // (success) or `ActorCommand::ShowToast` + `ActorCommand::RecordActionFailure`
+        // (D6 failure/timeout). The actor thread returns immediately after spawning.
+        //
+        // Mirrors `crates/nmp-nip57/src/lnurl/mod.rs:244-296` exactly.
+        // `SignerOp` is named in `nmp-signer-iface`; we avoid adding that
+        // direct dep by letting the compiler infer the Vec element type from
+        // the `gift_wrap_with_signer` return.
+        let mut envelopes = Vec::with_capacity(2);
         for (label, receiver_pk, relays) in [
-            ("recipient", &recipient, recipient_relays),
-            ("self-copy", &sender, self_relays),
+            ("recipient" as &'static str, &recipient, recipient_relays),
+            ("self-copy" as &'static str, &sender, self_relays),
         ] {
-            // NIP-59 randomises the kind:13 + kind:1059 timestamps in a
-            // 2-day window so an observer cannot correlate envelope
-            // timestamps with the underlying rumor.
             let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
-            let op = nmp_nip59::gift_wrap_with_signer(&signer, receiver_pk, &nostr_rumor, tweaked);
-            let envelope = match op.wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT) {
-                Ok(ev) => ev,
-                Err(e) => {
-                    let toast = format!("cannot send DM: gift-wrap ({label}) failed: {e}");
-                    ctx.set_last_error_toast(Some(toast.clone()));
-                    if let Some(id) = correlation_id.clone() {
-                        ctx.record_action_failure(id, toast);
-                    }
-                    return Ok(());
-                }
-            };
+            let op =
+                nmp_nip59::gift_wrap_with_signer(&signer, receiver_pk, &nostr_rumor, tweaked);
+            envelopes.push((label, op, relays));
+        }
 
-            // The kind:1059 envelope is already signed by its ephemeral
-            // key. Route via the signed-event publish path so the kernel
-            // forwards it verbatim — re-signing with the account key
-            // would destroy the unlinkability gift-wrap exists to
-            // provide.
-            let raw = nostr_event_to_raw(&envelope);
-            ctx.send(ActorCommand::PublishSignedEvent {
-                raw,
-                target: PublishTarget::Explicit { relays },
-                correlation_id: correlation_id.clone(),
+        // Clone the command sender; the worker moves it into its closure.
+        // `command_sender_clone` is a cheap atomic ref-count bump.
+        let worker_tx = ctx.command_sender_clone();
+        // Clone `correlation_id` so we retain a copy for the spawn-failure
+        // fallback path below (the closure moves its own copy).
+        let correlation_id_for_spawn_error = correlation_id.clone();
+
+        // Spawn the off-actor worker. D8: zero blocking on the actor
+        // thread after this point. The worker owns all data it needs;
+        // nothing references `ctx` or any actor-owned state from the
+        // closure. `SendGiftWrappedDmCommand::run` returns immediately.
+        let spawn_result = std::thread::Builder::new()
+            .name("nmp-nip17-gift-wrap-worker".to_string())
+            .spawn(move || {
+                for (label, op, relays) in envelopes {
+                    // D8: blocking `recv_timeout` is called HERE, off the
+                    // actor thread, never in the actor loop.
+                    let envelope = match op.wait(GIFT_WRAP_TOTAL_TIMEOUT) {
+                        Ok(ev) => ev,
+                        Err(e) => {
+                            let toast =
+                                format!("cannot send DM: gift-wrap ({label}) failed: {e}");
+                            let _ = worker_tx
+                                .send(ActorCommand::ShowToast { message: toast.clone() });
+                            if let Some(ref id) = correlation_id {
+                                let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                                    correlation_id: id.clone(),
+                                    reason: toast,
+                                });
+                            }
+                            // Stop-on-failure: mirror the original `return`
+                            // semantics — do not attempt the second envelope.
+                            return;
+                        }
+                    };
+
+                    // The kind:1059 envelope is already signed by its
+                    // ephemeral key. Route via the signed-event publish
+                    // path so the kernel forwards it verbatim —
+                    // re-signing with the account key would destroy the
+                    // unlinkability gift-wrap exists to provide.
+                    let raw = nostr_event_to_raw(&envelope);
+                    let _ = worker_tx.send(ActorCommand::PublishSignedEvent {
+                        raw,
+                        target: PublishTarget::Explicit { relays },
+                        correlation_id: correlation_id.clone(),
+                    });
+                }
             });
+
+        // OS thread-spawn failure is extremely rare (exhausted thread
+        // budget). Surface as a D6 toast + action failure on-actor,
+        // never panic (D6).
+        if let Err(e) = spawn_result {
+            let toast = format!("cannot send DM: worker thread spawn failed: {e}");
+            ctx.set_last_error_toast(Some(toast.clone()));
+            if let Some(id) = correlation_id_for_spawn_error {
+                ctx.record_action_failure(id, toast);
+            }
         }
 
         Ok(())
