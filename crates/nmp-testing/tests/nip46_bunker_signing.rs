@@ -153,9 +153,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
 fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
 
-    use nmp_core::testing::{
-        run_actor, snapshot_projection, snapshot_projection_str, wait_barrier, ActorCommand,
-    };
+    use nmp_core::testing::{run_actor, snapshot_projection, ActorCommand};
 
     let bunker_keys = Keys::generate();
     let user_keys = Keys::generate();
@@ -189,16 +187,16 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     // Wait for the actor's snapshot to confirm the nip46 account is active.
     //
-    // V-105: use a typed Barrier-then-snapshot approach instead of
-    // `wait_for_snapshot_predicate`. The broker posts `AddRemoteSigner` onto
-    // `cmd_tx`; once `wait_barrier` returns we know the actor has processed
-    // that command AND emitted a snapshot — so the next snapshot on `upd_rx`
-    // reflects the registered signer. We drain the update channel looking for
-    // a snapshot whose `accounts` projection contains an entry with
-    // `signer_kind == "nip46"` and matching pubkey, using typed JSON
-    // navigation rather than substring matching.
+    // V-105: drain the snapshot channel looking for typed JSON state that
+    // confirms a NIP-46 account with the expected pubkey is registered and
+    // active. No Barrier is needed: the broker posts `AddRemoteSigner`
+    // asynchronously, so a Barrier ack only proves the command was enqueued,
+    // not that the actor has processed it and emitted a snapshot with the
+    // signer present. We use typed JSON navigation (`projections.accounts`
+    // array + `projections.active_account` string) rather than substring
+    // matching.
     let user_pk_for_wait = user_pubkey_hex.clone();
-    wait_for_nip46_account_active(&upd_rx, &cmd_tx, &user_pk_for_wait, Duration::from_secs(10))
+    wait_for_nip46_account_active(&upd_rx, &user_pk_for_wait, Duration::from_secs(10))
         .expect("actor snapshot must include the nip46 account after handshake completes");
 
     // Now drive a publish.  This walks `sign_active` → handle.sign() →
@@ -254,17 +252,14 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     );
 
     // Confirm `active_account` projection still points to our user pubkey
-    // (typed string field, not substring).
-    let active_account = snapshot_projection_str(&last_snap, "active_account", "pubkey")
-        .or_else(|| {
-            // `active_account` projection may serialize as a plain string or
-            // as `{"pubkey":"..."}` depending on the build. Try both shapes.
-            snapshot_projection(&last_snap, "active_account")
-                .and_then(serde_json::Value::as_str)
-        });
+    // (typed string field — the slot is `Option<String>`, so it serializes
+    // as a plain string, never as `{"pubkey":"..."}`).
+    let active_account = snapshot_projection(&last_snap, "active_account")
+        .and_then(|v| v.as_str().map(str::to_owned));
+    let active_account = active_account.as_deref();
     if let Some(active_pk) = active_account {
         assert_eq!(
-            active_pk, user_pubkey_hex,
+            active_pk, &user_pubkey_hex,
             "active_account must still be the bunker user pubkey"
         );
     }
@@ -281,10 +276,6 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     broker.cancel();
     let _ = cmd_tx.send(ActorCommand::Shutdown);
     let _ = actor_handle.join();
-
-    // Suppress unused-import warning for wait_barrier on builds where the
-    // typed wait helpers above cover all barrier needs.
-    let _ = wait_barrier;
 }
 
 /// Block on `actor_rx` until an `AddRemoteSigner` arrives; return the boxed
@@ -318,7 +309,6 @@ fn wait_for_add_remote_signer(
 /// the `accounts` projection for a NIP-46 entry matching `expected_pubkey`.
 fn wait_for_nip46_account_active(
     upd_rx: &mpsc::Receiver<Vec<u8>>,
-    _cmd_tx: &mpsc::Sender<ActorCommand>,
     expected_pubkey: &str,
     timeout: Duration,
 ) -> Option<()> {
@@ -353,19 +343,12 @@ fn wait_for_nip46_account_active(
                     .unwrap_or(false);
 
                 // Also verify `active_account` projection contains the pubkey.
-                // The projection may serialize as a plain string or as a map.
+                // The slot is `Option<String>` so it always serializes as a
+                // plain string — never as `{"pubkey":"..."}`.
                 let active_proj = snapshot.get("projections").and_then(|p| p.get("active_account"));
                 let active_matches = active_proj
-                    .map(|v| {
-                        // Try plain string shape first.
-                        if let Some(s) = v.as_str() {
-                            return s == expected_pubkey;
-                        }
-                        // Try map shape `{"pubkey":"..."}`.
-                        v.get("pubkey")
-                            .and_then(serde_json::Value::as_str)
-                            == Some(expected_pubkey)
-                    })
+                    .and_then(serde_json::Value::as_str)
+                    .map(|s| s == expected_pubkey)
                     .unwrap_or(false);
 
                 if has_active_nip46 && active_matches {
