@@ -24,6 +24,12 @@ fn actor_command_from_event(event: BrokerEvent) -> ActorCommand {
         BrokerEvent::SignerReady { signer } => ActorCommand::AddRemoteSigner {
             handle: Box::new(ArcRemoteSigner(signer)),
         },
+        // V-14 step b: relay-layer connection state. Routes through the actor
+        // (D4 — actor is sole writer of the `bunker_connection_state` slot),
+        // mirroring the production translation in nmp-ffi/src/signer_broker.rs.
+        BrokerEvent::ConnectionStateChanged { state, reason } => {
+            ActorCommand::BunkerConnectionStateChanged { state, reason }
+        }
     }
 }
 
