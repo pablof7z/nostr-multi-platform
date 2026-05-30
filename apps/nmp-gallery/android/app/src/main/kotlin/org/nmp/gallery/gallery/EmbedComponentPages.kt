@@ -104,7 +104,7 @@ private fun EmbedComponentBody(
     model: GalleryModel,
 ) {
     when (componentId) {
-        "embed-article" -> ArticleEmbedPage(showcase, claimedEvents, model)
+        "embed-article" -> ArticleEmbedPage(showcase, claimedEvents, profileMap, model)
         "embed-profile" -> ProfileEmbedPage(showcase, profileMap, model)
         "embed-note" -> NoteEmbedPage(showcase, claimedEvents, model)
         "embed-highlight" -> HighlightEmbedPage(showcase, claimedEvents, model)
@@ -118,14 +118,41 @@ private fun EmbedComponentBody(
 private fun ArticleEmbedPage(
     showcase: GalleryShowcaseReferences,
     claimedEvents: Map<String, ClaimedEventWire>,
+    profileMap: Map<String, ProfileWire>,
     model: GalleryModel,
 ) {
     val articleUri = showcase.article.uri
+    // The article author (Gigi) is a DIFFERENT pubkey than the showcase
+    // profile (pablof7z), and Android has no per-kind inline renderer — the
+    // EventRef paints as a generic quote card, so nothing instantiates a
+    // NostrProfileName/avatar that would claim the author's kind:0 (the way
+    // iOS's typed ArticleEmbed does). Without an explicit claim the kernel
+    // never fetches Gigi's kind:0, `claimed_events` enrichment leaves
+    // `author_display_name` null, and the byline falls back to hex.
+    //
+    // Component-owned claiming (ADR-0034; mirrors iOS #847 / ProfileEmbedPage
+    // below): the presentation component claims the author's profile so the
+    // kernel resolves it into its profile cache — the kernel must NEVER fetch
+    // an author's kind:0 as a side effect of event ingest. The author hex is
+    // the pubkey TLV of the naddr, available verbatim as the middle field of
+    // the addressable coordinate `<kind>:<pubkey>:<d-tag>`.
+    val articleAuthorPubkey = articleAuthorPubkeyOf(showcase)
 
     DisposableEffect(articleUri) {
         model.claimEvent(articleUri, GalleryModel.CONSUMER_ID)
         onDispose {
             model.releaseEvent(articleUri, GalleryModel.CONSUMER_ID)
+        }
+    }
+
+    DisposableEffect(articleAuthorPubkey) {
+        if (articleAuthorPubkey != null) {
+            model.claimProfile(articleAuthorPubkey, GalleryModel.CONSUMER_ID)
+        }
+        onDispose {
+            if (articleAuthorPubkey != null) {
+                model.releaseProfile(articleAuthorPubkey, GalleryModel.CONSUMER_ID)
+            }
         }
     }
 
@@ -151,10 +178,17 @@ private fun ArticleEmbedPage(
         )
         NostrContentView(
             tree = tree,
-            quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents) },
+            // Resolve the byline from the live profile map as well as the
+            // claimed_events enrichment — the same read-from-profile shape the
+            // note path uses (ContentComponentPages QuoteCardShowcase) and that
+            // iOS's typed renderer relies on. The claimed_events enrichment also
+            // resolves Gigi (kernel `profile_for_pubkey` reads the general
+            // profile cache the claim populates), but reading profileMap makes
+            // the byline robust to enrichment-tick timing.
+            quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents, profileMap) },
         )
         Text(
-            "The renderer fires `claim` on the article naddr; the kernel resolves kind:30023 and the typed ArticleProjection flows through EmbedHost. Android renders it inline as a quote card (no per-kind inline dispatch yet).",
+            "The renderer fires `claim` on the article naddr and on the author's kind:0; the kernel resolves kind:30023 and the author profile (Gigi) so the byline resolves. Android renders it inline as a quote card (no per-kind inline dispatch yet).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -347,18 +381,32 @@ private fun profileMentionUri(showcase: GalleryShowcaseReferences) = WireNostrUr
 private fun quoteCardFor(
     uri: WireNostrUri,
     claimedEvents: Map<String, ClaimedEventWire>,
+    profileMap: Map<String, ProfileWire> = emptyMap(),
 ): NostrQuoteCardModel? {
     val event = claimedEvents[uri.primaryId] ?: return null
+    // Prefer the kernel's claimed_events enrichment; fall back to a separately
+    // claimed profile in the live profile map. Mirrors ContentComponentPages
+    // QuoteCardShowcase (the note path) and iOS's read-from-profile byline.
+    val profile = profileMap[event.authorPubkey]
     return NostrQuoteCardModel(
         id = event.id,
         unresolvedUri = uri.uri,
         authorPubkey = event.authorPubkey,
-        authorDisplayName = event.authorDisplayName,
-        authorAvatarUrl = event.authorPictureUrl,
+        authorDisplayName = event.authorDisplayName ?: profile?.displayName,
+        authorAvatarUrl = event.authorPictureUrl ?: profile?.pictureUrl,
         content = event.content,
         createdAtDisplay = event.createdAt.takeIf { it > 0L }?.toString(),
     )
 }
+
+/**
+ * The article author's hex pubkey, parsed from the addressable coordinate
+ * `<kind>:<pubkey>:<d-tag>` (the naddr's pubkey TLV). `kind` and `pubkey`
+ * never contain `:`, so index `[1]` is the author even when the d-tag does.
+ * Returns null if the coordinate is malformed (the claim is then skipped).
+ */
+private fun articleAuthorPubkeyOf(showcase: GalleryShowcaseReferences): String? =
+    showcase.article.primaryId.split(":").getOrNull(1)?.takeIf { it.isNotBlank() }
 
 private fun labelFor(componentId: String): String = when (componentId) {
     "embed-article" -> "Article embed — kind:30023"
