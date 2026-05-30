@@ -43,6 +43,7 @@
 
 use std::sync::Arc;
 
+use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::publish::{
     OutboxResolver, PublishTarget, RelaySelectionReason, RelayUrl, ResolvedRelay,
 };
@@ -148,7 +149,7 @@ impl Nip65OutboxResolver {
         let author = hex_to_pubkey(author_hex)?;
         let iter = self
             .store
-            .scan_by_author_kind(&author, &[10002], None, None, 1)
+            .scan_by_author_kind(&author, &[KIND_RELAY_LIST], None, None, 1)
             .ok()?;
         let stored = iter.into_iter().next()?.ok()?;
         Some(parse_nip65_tags(&stored))

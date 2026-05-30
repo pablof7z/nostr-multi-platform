@@ -27,6 +27,7 @@
 
 use std::sync::Arc;
 
+use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, MailboxCache, ParsedRelayList};
 
@@ -55,7 +56,7 @@ impl Kind10002Parser {
     /// not name the kernel-side lifecycle.
     pub fn parse_event(&self, evt: &VerifiedEvent) {
         let raw = evt.raw();
-        if raw.kind != 10_002 {
+        if raw.kind != KIND_RELAY_LIST {
             return;
         }
         let parsed = parse_relay_list(&raw.tags);

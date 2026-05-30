@@ -65,14 +65,12 @@
 //! The action namespace is `nmp.nip65.publish_relay_list` — byte-stable
 //! across the move from `nmp-nip65` so callers do not need to change.
 
+use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, UnsignedEvent,
 };
 use nmp_core::{canonical_relay_url, ActorCommand};
 use serde::{de, Deserialize, Deserializer, Serialize};
-
-/// NIP-65 kind: the relay list — read/write outbox/inbox advertisement.
-const KIND_RELAY_LIST: u32 = 10002;
 
 /// Per-relay role marker for a NIP-65 entry.
 ///
